@@ -30,7 +30,7 @@ export interface StandingReadingFamily {
           | "buildPillars"
           | "recentLabHighlights"
           | "outcome-goal-source"
-          | "summarizeDashboardHabits";
+          | "orderDashboardHabits";
       };
   cap?: number;
 }
@@ -62,7 +62,7 @@ export function cappedFamilyGather<Row>(
 
 // The fixed dashboard instrument cluster. Declaration order is render order.
 // This is intentionally the sole list of Standing families: a newly gathered
-// reading remains in Everything until this closed registry explicitly claims it.
+// reading remains in Show everything until this closed registry explicitly claims it.
 export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
   {
     key: "last-night-sleep",
@@ -204,7 +204,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     // rather than a loose fact: it celebrates the transition in Now and, once
     // that decays, /training owns it (#3186).
     matches: idStartsWith("target.weekly-progress:"),
-    memberOrder: { kind: "source", authority: "summarizeDashboardHabits" },
+    memberOrder: { kind: "source", authority: "orderDashboardHabits" },
     cap: 4,
   },
 ] as const;
@@ -229,12 +229,25 @@ function orderFamilyMembers(
   family: StandingReadingFamily
 ): DashboardCandidate[] {
   if (family.memberOrder.kind === "source") {
-    return members.toSorted((a, b) => a.sourceOrder - b.sourceOrder);
+    return members.toSorted(
+      (a, b) =>
+        a.sourceOrder - b.sourceOrder ||
+        a.candidateId.localeCompare(b.candidateId)
+    );
   }
   const prefixes = family.memberOrder.prefixes;
   return members.toSorted(
-    (a, b) => identityOrder(a, prefixes) - identityOrder(b, prefixes)
+    (a, b) =>
+      identityOrder(a, prefixes) - identityOrder(b, prefixes) ||
+      a.sourceOrder - b.sourceOrder ||
+      a.candidateId.localeCompare(b.candidateId)
   );
+}
+
+export function standingFamilyForCandidate(
+  candidate: DashboardCandidate
+): StandingReadingFamily | undefined {
+  return STANDING_READING_ORDER.find((family) => family.matches(candidate));
 }
 
 function isStandingReadingOrReplacement(

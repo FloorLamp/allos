@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // #2948 parts 1 + 2 — the whole point of the feature, end to end: a person types the
 // note they were already typing ("right knee weird"), and instead of that signal
@@ -90,8 +95,11 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
     .getByTestId("training-log-row")
     .filter({ hasText: title })
     .first(); // first-ok: the probe session is uniquely titled for this run
-  await row.click();
-  await expect(page).toHaveURL(/\/training\/activity\/\d+$/);
+  await followLink(
+    page,
+    row.getByRole("link", { name: title, exact: true }),
+    /\/training\/activity\/\d+$/
+  );
 
   const notesCard = page.getByTestId("activity-notes-card");
   await expect(notesCard).toContainText("right knee weird");

@@ -172,7 +172,7 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // This is the DUE list — must + should only. A `may` item never reaches it, because
 // isDueOn short-circuits on `may` (#1505): with no obligation there is no dueness, so
 // there is nothing here to be late for. That single short-circuit is what keeps the
-// Upcoming rows, the #1504 aggregate count, the dashboard hero, the calendar feed and
+// Upcoming rows, the #1504 aggregate count, dashboard placement, the calendar feed and
 // the digest's Today section agreeing, instead of five surface-local filters (#221).
 //
 // `may` items are NOT dropped from the page — they are COLLAPSED. `offeredItems`
@@ -250,7 +250,7 @@ function scheduledDoseRows(
   const doses = getIntakeDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
   // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
-  // situational dose surfaces on Upcoming + the hero + the digest exactly while its
+  // situational dose surfaces on Upcoming + dashboard placement + the digest exactly while its
   // derived context holds — the SAME effective set the Supplements bar uses.
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
@@ -356,7 +356,7 @@ function doseRowToItem({
 
 // `may` items ON OFFER today (issue #1505) — the collapsed-not-removed half of the
 // Upcoming model. These are NOT due, carry no date, and must never be banded with the
-// due rows or counted in the hero/aggregate headline: they are an availability list,
+// due rows or counted in the app badge/aggregate headline: they are an availability list,
 // rendered behind a disclosure the way food suggestions are.
 //
 // Scoped by `isOfferedOn` (the item's day condition, obligation `may`) and labelled
@@ -638,7 +638,7 @@ export function uvOverexposureItems(
 //     merely warm day says nothing however many diuretics are in the stack.
 //
 // Care-tier (#449), like the interaction/PGx/ototoxic/allergy notes it sits beside: it
-// reaches Upcoming + the dashboard hero and rides the digest that already fires. NO
+// reaches Upcoming + dashboard placement and rides the digest that already fires. NO
 // dedicated send is created — the #1727 boundary. Dismissible per the care-tier norms
 // (these inform, they don't escalate), keyed per (item, entry, DATE) so a dismissal
 // silences that day and a new qualifying day surfaces fresh.
@@ -707,7 +707,7 @@ export function weatherMedItems(
 // getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming
 // silences it ("dismiss once, silence everywhere"). SAFETY / care-tier (per #449 —
 // like the drug-interaction findings, and HLA-B*57:01 × abacavir leans care-tier):
-// banded to Today so it surfaces on the dashboard "Needs attention" hero. Standing
+// banded to Today so it surfaces in dashboard placement. Standing
 // informational finding (no due date), framed "discuss with your prescriber", never
 // prescriptive — the app never auto-changes a medication.
 export function pgxItems(profileId: number): UpcomingItem[] {
@@ -740,7 +740,7 @@ const CONTRAST_SOURCE_HREF: Record<ContrastStudySource, AppRoute> = {
 // like every other finding, so a dismiss/snooze on Upcoming silences it ("dismiss
 // once, silence everywhere"). SAFETY / care-tier (per #449 — a pre-procedure safety
 // note, like the drug-interaction/PGx items): banded to Today so it surfaces on the
-// dashboard "Needs attention" hero. Standing informational finding (no due date),
+// dashboard placement. Standing informational finding (no due date),
 // never prescriptive — the app never blocks or advises for/against the study.
 export function contrastItems(
   profileId: number,
@@ -767,7 +767,7 @@ export function contrastItems(
 // it goes through getFindingSuppressions like every other finding, so a dismiss/snooze
 // silences it ("dismiss once, silence everywhere"). SAFETY / care-tier (per #449 — a
 // pre-procedure safety note, like the contrast/interaction/PGx items): banded to Today
-// so it surfaces on the dashboard "Needs attention" hero. A routine cleaning is
+// so it surfaces in dashboard placement. A routine cleaning is
 // non-invasive and produces nothing (the gate is in the gather). Standing
 // informational finding (no due date), never prescriptive.
 export function dentalSafetyItems(profileId: number): UpcomingItem[] {
@@ -792,7 +792,7 @@ export function dentalSafetyItems(profileId: number): UpcomingItem[] {
 // finding, so a dismiss/snooze silences it everywhere ("dismiss once, silence
 // everywhere"). SAFETY / care-tier (per #449 — a medication-safety note, like the
 // interaction/PGx/dental items): banded to Today so it surfaces on the dashboard "Needs
-// attention" hero. Standing informational finding (no due date), never prescriptive.
+// dashboard placement. Standing informational finding (no due date), never prescriptive.
 export function ototoxicItems(profileId: number): UpcomingItem[] {
   return getOtotoxicWarnings(profileId).map((hit) => ({
     key: hit.dedupeKey,
@@ -815,7 +815,7 @@ export function ototoxicItems(profileId: number): UpcomingItem[] {
 // it dies with either row) through the shared bus ("one question, one computation").
 // SAFETY / care-tier (per #449 — a recorded-allergy match is exactly the
 // interaction/PGx class of med-safety note): banded to Today so it surfaces on the
-// dashboard "Needs attention" hero and rides the Telegram digest. Standing
+// dashboard placement and rides the Telegram digest. Standing
 // informational finding (no due date), framed "discuss with your prescriber/
 // pharmacist", never prescriptive — the check runs at surface time and never blocks a
 // med write (#1029 ask 4).
@@ -824,7 +824,7 @@ export function ototoxicItems(profileId: number): UpcomingItem[] {
 // contraindication is a SAFETY signal, so — like the overdue follow-up (#700 ask 5) —
 // a page dismissal must not PERMANENTLY silence it. `carePersistent: true` routes it
 // through the "snooze-only" lifecycle policy (isItemHiddenBySuppression): an
-// indefinite dismiss is RESISTED (the finding re-surfaces on the hero / Upcoming /
+// indefinite dismiss is RESISTED (the finding re-surfaces on the dashboard / Upcoming /
 // digest while BOTH the med is active AND the allergy stands), while a deliberate
 // time-boxed SNOOZE still defers it, and the surfaces render a snooze-only menu (no
 // Dismiss). The both-stand gating is inherent in the builder: the finding vanishes
@@ -857,7 +857,7 @@ export function drugAllergyItems(profileId: number): UpcomingItem[] {
 //
 // Per-entry reach tier (#449 / #995 decision 1): CARE entries (lithium/clozapine/warfarin/
 // valproate/carbamazepine) carry a structured `medication-monitoring` reason + priority,
-// so — banded by real dueness like any retest — they reach the Needs-attention hero and
+// so — banded by real dueness like any retest — they reach dashboard placement and
 // surface as a Telegram digest HIGHLIGHT (the push). COACHING entries (antipsychotic
 // metabolic, amiodarone, methotrexate, ACEi/ARB, metformin) carry no reason/priority, so
 // they stay calm — visible on Upcoming + the medications row note, never pushed. The
@@ -878,7 +878,7 @@ export function medMonitoringItems(
       dueDate: hit.dueDate,
     };
     if (hit.tier === "care") {
-      // Care-tier: rank up + carry the cited "why" so it reaches the hero + digest
+      // Care-tier: rank up + carry the cited "why" so it reaches dashboard placement + digest
       // highlight (the push). The reason leads with the drug the monitor is for.
       item.priority = 1;
       item.reasons = [medMonitoringReason(hit.entryLabel, hit.citation)];
@@ -890,7 +890,7 @@ export function medMonitoringItems(
 // Mental-health crisis findings (issue #716) — a CARE-tier, NON-DISMISSIBLE signal. When
 // the latest PHQ-9/GAD-7 score sits in the SEVERE band, or a stored PHQ-9 item 9
 // (suicidal-ideation) answer is positive, surface a crisis-resources + discuss-with-a-
-// clinician finding banded `today` so it reaches Upcoming + the Needs-attention hero for
+// clinician finding banded `today` so it reaches Upcoming + dashboard placement for
 // the profile's OWN view. It is `suppressionPolicy: "safety-ungated"` + `suppressible:
 // false`, so the dismissal bus can NEVER hide it and no snooze/dismiss control renders —
 // the deliberate #716 exception, same standing as a safety dose reminder. It is

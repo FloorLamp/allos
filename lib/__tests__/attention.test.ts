@@ -1,18 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  ATTENTION_CARD_CAP,
-  attentionCardItems,
-  attentionCountLabel,
-  attentionSetupItems,
+  attentionBadgeItems,
   SETUP_GROUP_LABEL,
   buildAttentionModel,
   buildFlaggedItem,
-  cardBandForItem,
-  groupAttentionForCard,
+  attentionEmphasisBandForItem,
   groupAttentionForPage,
-  moreInUpcomingCount,
-  planAttentionMoreLinks,
-  CARD_BAND_ORDER,
   type AttentionInput,
 } from "../attention";
 import type { UpcomingItem } from "../upcoming";
@@ -319,8 +312,8 @@ describe("groupAttentionForPage — the planning view (everything, time-ordered)
   });
 });
 
-describe("groupAttentionForCard — the triage glance (act-now subset)", () => {
-  it("bands Urgent / Today / Needs review and EXCLUDES this-week + later scheduled items", () => {
+describe("the app-badge care-tier subset", () => {
+  it("includes overdue, today, and review while excluding future scheduled items", () => {
     const model = buildAttentionModel(
       input({
         upcoming: [
@@ -347,108 +340,52 @@ describe("groupAttentionForCard — the triage glance (act-now subset)", () => {
         reviewCount: 1, // → Needs review
       })
     );
-    const groups = groupAttentionForCard(model, TODAY);
-    expect(groups.map((g) => g.band)).toEqual(["urgent", "today", "review"]);
-    expect(groups.map((g) => g.label)).toEqual([
-      "Past due",
-      "Today",
-      "Needs review",
-    ]);
-    // The week/later scheduled appointments are NOT on the card.
-    const cardKeys = groups.flatMap((g) => g.items.map((i) => i.key));
-    expect(cardKeys).not.toContain("appointment:2");
-    expect(cardKeys).not.toContain("appointment:3");
-    // Both signals land in Needs review.
-    const review = groups.find((g) => g.band === "review")!;
-    expect(review.items.map((i) => i.key).sort()).toEqual([
+    const badgeKeys = attentionBadgeItems(model, TODAY).map((item) => item.key);
+    expect(badgeKeys).toEqual([
+      "appointment:1",
+      "dose:1",
       "biomarker-flag:ldl",
       "review",
     ]);
   });
 
-  it("cardBandForItem maps overdue→urgent, today→today, signals→review, week/later→excluded", () => {
+  it("attentionEmphasisBandForItem maps overdue→urgent, today→today, signals→review, week/later→excluded", () => {
     expect(
-      cardBandForItem(
+      attentionEmphasisBandForItem(
         up({ key: "a", domain: "appointment", dueDate: "2026-07-01" }),
         TODAY
       )
     ).toBe("urgent");
     expect(
-      cardBandForItem(up({ key: "b", domain: "dose", dueDate: null }), TODAY)
+      attentionEmphasisBandForItem(
+        up({ key: "b", domain: "dose", dueDate: null }),
+        TODAY
+      )
     ).toBe("today");
     expect(
-      cardBandForItem(
+      attentionEmphasisBandForItem(
         up({ key: "c", domain: "appointment", dueDate: "2026-07-14" }),
         TODAY
       )
     ).toBeNull();
     expect(
-      cardBandForItem(
+      attentionEmphasisBandForItem(
         up({ key: "d", domain: "appointment", dueDate: "2026-08-24" }),
         TODAY
       )
     ).toBeNull();
     expect(
-      cardBandForItem(
+      attentionEmphasisBandForItem(
         up({ key: "review", domain: "review", signalGroup: "review" }),
         TODAY
       )
     ).toBe("review");
     expect(
-      cardBandForItem(
+      attentionEmphasisBandForItem(
         up({ key: "f:x", domain: "biomarker-flag", signalGroup: "flagged" }),
         TODAY
       )
     ).toBe("review");
-  });
-
-  it("caps the whole card and reports the rest as overflow (issue #283)", () => {
-    const model = buildAttentionModel(
-      input({
-        upcoming: Array.from({ length: 12 }, (_, i) =>
-          up({
-            key: `appointment:${i}`,
-            domain: "appointment",
-            title: `Visit ${String(i).padStart(2, "0")}`,
-            dueDate: "2026-07-01",
-          })
-        ),
-      })
-    );
-    const [group] = groupAttentionForCard(model, TODAY);
-    expect(group.band).toBe("urgent");
-    expect(group.items).toHaveLength(ATTENTION_CARD_CAP);
-    expect(group.overflow).toBe(12 - ATTENTION_CARD_CAP);
-    expect(group.items[0].title).toBe("Visit 00");
-    const [tight] = groupAttentionForCard(model, TODAY, 2);
-    expect(tight.items).toHaveLength(2);
-    expect(tight.overflow).toBe(10);
-  });
-
-  it("keeps every populated band represented inside the total cap", () => {
-    const model = buildAttentionModel(
-      input({
-        upcoming: [
-          ...Array.from({ length: 10 }, (_, i) =>
-            up({
-              key: `appointment:${i}`,
-              domain: "appointment",
-              dueDate: "2026-07-01",
-            })
-          ),
-          up({ key: "dose:1", domain: "dose", dueDate: TODAY }),
-        ],
-        reviewCount: 1,
-      })
-    );
-    const groups = groupAttentionForCard(model, TODAY, 4);
-    expect(groups.flatMap((g) => g.items)).toHaveLength(4);
-    expect(groups.map((g) => g.band)).toEqual(["urgent", "today", "review"]);
-    expect(groups.find((g) => g.band === "urgent")?.items).toHaveLength(2);
-  });
-
-  it("card bands come back in fixed Past due → Today → Needs review order", () => {
-    expect(CARD_BAND_ORDER).toEqual(["urgent", "today", "review"]);
   });
 });
 
@@ -487,7 +424,7 @@ describe("the strict subset invariant", () => {
 
   it("every card item exists in the page model with the same key", () => {
     const modelKeys = new Set(model.map((i) => i.key));
-    for (const item of attentionCardItems(model, TODAY)) {
+    for (const item of attentionBadgeItems(model, TODAY)) {
       expect(modelKeys.has(item.key)).toBe(true);
     }
   });
@@ -503,127 +440,6 @@ describe("the strict subset invariant", () => {
       "Review"
     );
   });
-
-  it("card count + 'more in Upcoming' reconciles to the page total", () => {
-    const card = attentionCardItems(model, TODAY);
-    const cardCount = card.length;
-    const more = moreInUpcomingCount(model, cardCount);
-    // The page's total is the whole model; the card's count plus the hidden
-    // far-future items equals it exactly.
-    expect(cardCount + more).toBe(model.length);
-    // The hidden set is precisely the week/later scheduled items the card omits.
-    expect(more).toBe(3); // appointment:2 (week) + appointment:3 (later) + goal:1 (later)
-  });
-});
-
-// Issue #512 — the honest per-band count label + the card/page reconciliation.
-describe("count helpers", () => {
-  it("attentionCountLabel: plain count with no overflow, 'shown of total' when capped", () => {
-    expect(attentionCountLabel(5, 0)).toBe("5");
-    expect(attentionCountLabel(8, 3)).toBe("8 of 11");
-  });
-
-  it("moreInUpcomingCount never goes negative", () => {
-    expect(moreInUpcomingCount([], 0)).toBe(0);
-    expect(moreInUpcomingCount([up({ key: "a" })], 5)).toBe(0);
-  });
-});
-
-// Issue #538 — the two kinds of "+N more" link must be told apart by what they
-// point at (the #531 convention), never by vertical position, and must never stack
-// as two identical-looking links.
-describe("planAttentionMoreLinks — disambiguated '+N more' copy (issue #538)", () => {
-  it("a non-last band's cap overflow names its own band and deep-links to that band anchor", () => {
-    const { perBand, trailing } = planAttentionMoreLinks(
-      [
-        { band: "urgent", overflow: 1 },
-        { band: "today", overflow: 0 },
-      ],
-      0
-    );
-    expect(perBand.urgent).toEqual({
-      count: 1,
-      text: "+1 more overdue in Upcoming",
-      href: "/upcoming#overdue",
-    });
-    expect(perBand.today).toBeUndefined();
-    expect(trailing).toBeNull();
-  });
-
-  it("the card remainder alone names what it HIDES ('scheduled later') and links to the Later section", () => {
-    const { perBand, trailing } = planAttentionMoreLinks(
-      [{ band: "urgent", overflow: 0 }],
-      4
-    );
-    expect(perBand).toEqual({});
-    expect(trailing).toEqual({
-      count: 4,
-      text: "+4 scheduled later — view all in Upcoming",
-      href: "/upcoming#later",
-    });
-  });
-
-  it("MERGES the last band's overflow with the remainder into ONE line so two links never stack", () => {
-    // The exact #538 report: the last (only) band overflows by 1 AND 4 far-future
-    // items are hidden — two adjacent "+N more in Upcoming" links. They collapse to
-    // a single, self-describing line.
-    const { perBand, trailing } = planAttentionMoreLinks(
-      [{ band: "urgent", overflow: 1 }],
-      4
-    );
-    // The last band's own overflow link is withheld — it's folded into `trailing`.
-    expect(perBand.urgent).toBeUndefined();
-    expect(trailing).toEqual({
-      count: 5,
-      text: "+1 more overdue and 4 scheduled later in Upcoming",
-      href: "/upcoming",
-    });
-  });
-
-  it("only the LAST band merges: an earlier band still renders its own link alongside the merged trailing line", () => {
-    const { perBand, trailing } = planAttentionMoreLinks(
-      [
-        { band: "urgent", overflow: 2 },
-        { band: "review", overflow: 3 },
-      ],
-      4
-    );
-    // The urgent band isn't adjacent to the remainder, so it keeps its own link.
-    expect(perBand.urgent).toEqual({
-      count: 2,
-      text: "+2 more overdue in Upcoming",
-      href: "/upcoming#overdue",
-    });
-    // The review band is last and overflows, so it merges with the remainder.
-    expect(perBand.review).toBeUndefined();
-    expect(trailing).toEqual({
-      count: 7,
-      text: "+3 more to review and 4 scheduled later in Upcoming",
-      href: "/upcoming",
-    });
-  });
-
-  it("the review band spans two page groupings, so its overflow link carries no misleading anchor", () => {
-    const { perBand } = planAttentionMoreLinks(
-      [{ band: "review", overflow: 2 }],
-      0
-    );
-    expect(perBand.review).toEqual({
-      count: 2,
-      text: "+2 more to review in Upcoming",
-      href: "/upcoming",
-    });
-  });
-
-  it("no overflow and no remainder → no links at all", () => {
-    expect(planAttentionMoreLinks([{ band: "today", overflow: 0 }], 0)).toEqual(
-      { perBand: {}, trailing: null }
-    );
-    expect(planAttentionMoreLinks([], 0)).toEqual({
-      perBand: {},
-      trailing: null,
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -631,9 +447,7 @@ describe("planAttentionMoreLinks — disambiguated '+N more' copy (issue #538)",
 // ---------------------------------------------------------------------------
 //
 // A preventive rule with nothing on record rides the shared model (so it keeps its
-// dedupe key, its suppression and its row affordances) but must never occupy an
-// attention slot. These pin the three places that could quietly re-inflate it: the
-// card bands, the count, and the "+N scheduled later" link.
+// dedupe key, suppression, and row affordances) but is outside the care-tier badge.
 describe("never-recorded preventive setup items (#1433)", () => {
   const setupItem = (key = "screening:colorectal_cancer") =>
     up({
@@ -645,17 +459,17 @@ describe("never-recorded preventive setup items (#1433)", () => {
       dueText: "No record yet",
     });
 
-  it("is excluded from every card band — so it can never render as attention", () => {
-    expect(cardBandForItem(setupItem(), TODAY)).toBeNull();
+  it("has no emphasis band, so it cannot inflate the badge or enter Now", () => {
+    expect(attentionEmphasisBandForItem(setupItem(), TODAY)).toBeNull();
   });
 
-  it("does not count toward the hero count or the badge", () => {
+  it("does not count toward the app badge", () => {
     const model = [
       setupItem("screening:colorectal_cancer"),
       setupItem("visit:dental_cleaning"),
       up({ key: "dose:1", doseId: 1 }),
     ];
-    expect(attentionCardItems(model, TODAY).map((i) => i.key)).toEqual([
+    expect(attentionBadgeItems(model, TODAY).map((i) => i.key)).toEqual([
       "dose:1",
     ]);
   });
@@ -666,25 +480,7 @@ describe("never-recorded preventive setup items (#1433)", () => {
       setupItem("visit:dental_cleaning"),
       setupItem("visit:adult_physical"),
     ];
-    expect(attentionCardItems(model, TODAY)).toEqual([]);
-    expect(groupAttentionForCard(model, TODAY)).toEqual([]);
-    // And the trailing link does not re-announce them as "scheduled later".
-    expect(moreInUpcomingCount(model, 0)).toBe(0);
-    expect(planAttentionMoreLinks([], 0).trailing).toBeNull();
-  });
-
-  it("surfaces them as ONE collected, alphabetized line for the hero", () => {
-    const model = [
-      setupItem("visit:dental_cleaning"),
-      setupItem("screening:colorectal_cancer"),
-      up({ key: "dose:1", doseId: 1 }),
-    ];
-    model[0].title = "Dental check-up & cleaning";
-    const setup = attentionSetupItems(model);
-    expect(setup.map((i) => i.title)).toEqual([
-      "Colorectal cancer screening",
-      "Dental check-up & cleaning",
-    ]);
+    expect(attentionBadgeItems(model, TODAY)).toEqual([]);
   });
 
   it("groups LAST on the Upcoming page, below everything actually due", () => {
@@ -698,19 +494,5 @@ describe("never-recorded preventive setup items (#1433)", () => {
     );
     expect(groups.map((g) => g.kind)).toEqual(["today", "review", "setup"]);
     expect(groups.at(-1)!.label).toBe(SETUP_GROUP_LABEL);
-  });
-
-  it("still subtracts real far-future work from the trailing link", () => {
-    const model = [
-      setupItem(),
-      up({
-        key: "appointment:1",
-        domain: "appointment",
-        dueDate: "2026-09-01",
-      }),
-      up({ key: "dose:1", doseId: 1 }),
-    ];
-    // 3 items, 1 of them setup, 1 on the card → exactly 1 "scheduled later".
-    expect(moreInUpcomingCount(model, 1)).toBe(1);
   });
 });

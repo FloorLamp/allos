@@ -1,7 +1,7 @@
 // The PURE decision half of the sun-exposure coaching observation (issue #571).
 // Coaching-tier only (findings two-tier policy): it joins collectCoachingFindings,
 // its dedupeKey prefix is registered in RULE_FINDING_PREFIXES, and it NEVER notifies
-// and never reaches the non-hideable "Needs attention" hero.
+// and never reaches dashboard Now.
 //
 // COPY STAYS OBSERVATIONAL, NEVER PRESCRIPTIVE. Sun exposure is genuinely dual-edged
 // (vitamin D vs. skin-cancer risk), so we surface the DATA — little daylight logged,

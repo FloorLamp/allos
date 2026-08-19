@@ -218,7 +218,7 @@ describe("cycleControlState under a suspension (#2801)", () => {
 });
 
 // Issue #1892 — the ONE offer three surfaces render (the Cycle page control, the
-// dashboard phase widget, the quick-log sheet's overlay). It is a pure function of the
+// dashboard control atom, the quick-log sheet's overlay). It is a pure function of the
 // control state, so it cannot disagree with itself across surfaces; what is asserted
 // here is which verb each state yields and that at most one is ever on offer.
 describe("cycleOffer (#1892 — the label names the write)", () => {

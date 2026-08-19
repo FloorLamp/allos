@@ -260,7 +260,7 @@ export const COACHING_ENTITY_FINDING_LIMITS = {
 
 // The four observational domains below (training balance/plateau, body-metric
 // hygiene, goal pacing, adherence patterns) are the #45 "coaching" reach tier: calm,
-// observational FYIs — never a push, never the non-hideable Needs-attention hero. Each
+// observational FYIs — never a push, never dashboard Now. Each
 // renders on its own tab today, so a stale-exercise or off-pace-goal finding a user
 // never opens that tab for is invisible (issue #449). This ONE aggregator is the
 // single computation the dashboard "Coaching observations" rollup AND the four tabs
@@ -395,7 +395,7 @@ export function buildMedicationDuplicationFindings(
 // — never behavioral nagging (the hard boundary in lib/data-quality's header). No owned
 // SQL is added here (reads through profile-scoped queries), so the scoping guard holds.
 // The ONE gather → detect for a profile's structural gaps, leverage-ranked. Shared by
-// the dashboard widget/coaching finding (buildDataQualityFindings) and the household
+// the dashboard presentation/coaching finding (buildDataQualityFindings) and the household
 // rollup (household/page.tsx), so every surface keys on the SAME gap model (one
 // question, one computation). No owned SQL added (reads through profile-scoped queries).
 export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
@@ -499,11 +499,9 @@ export function collectCoachingFindings(
     ...buildTtcWorkupFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
     // set (so a decline rides the shared bus and silences every surface), behind the
-    // observational domains. NOTE (#1533): the order is no longer load-bearing for the
-    // dashboard rollup — the rollup now excludes families that have their own dashboard
-    // widget (FINDING_DASHBOARD_HOME), so gaps don't render there at all while the Data
-    // quality widget is on. This order still shapes the coaching TAB, which is the
-    // legitimate catch-all and shows everything.
+    // observational domains. The dashboard page maps these gaps to their own statement
+    // candidates and excludes them from coaching-observation candidates (#1533). This
+    // order still shapes the coaching tab, which shows the complete finding census.
     ...buildDataQualityFindings(profileId),
   ];
 }
@@ -850,7 +848,7 @@ export function buildCycleBleedingFindings(
 // COACHING tier by hard product contract (#449): it joins collectCoachingFindings, its
 // dedupeKey (`ttc-workup:<declared start>`, TTC_WORKUP_PREFIX registered in
 // RULE_FINDING_PREFIXES) rides the shared suppression bus, and it NEVER notifies and never
-// reaches the non-hideable hero. TTC carries no obligation (the attention doctrine), and a
+// reaches dashboard Now. TTC carries no obligation (the attention doctrine), and a
 // fertility timeline arriving as a push would be the single worst place for it.
 //
 // Gated on the DECLARED start only — nothing here infers that someone is trying — and it
@@ -1215,7 +1213,7 @@ function volumeObservationToFinding(o: VolumeBandObservation): Finding {
     dedupeKey: o.key,
     title: o.title,
     detail: o.detail,
-    // Calm, observational FYI — never a push, never the Needs-attention hero (#449).
+    // Calm, observational FYI — never a push, never dashboard Now (#449).
     tone: "info",
     actionHref: "/training?tab=overview",
     actionLabel: "View coverage",
@@ -1385,7 +1383,7 @@ export function buildGoalPacingFindings(
   // Off-pace BIOMARKER goals (#1853). Same builder, same `goal-pace:` namespace, same
   // dismiss action and therefore the same COACHING tier — a lab goal drifting is an
   // observation about a plan, not a safety signal, so it must not reach Upcoming, the
-  // Needs-attention hero or a notification, and adding it here rather than to a new
+  // dashboard Now or a notification, and adding it here rather than to a new
   // prefix is what guarantees that (docs/internals/findings.md).
   //
   // The verdict itself is `assessGoalPace` over `projectGoal` — the SAME projection

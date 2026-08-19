@@ -26,6 +26,10 @@ import {
   RECOVERING_LOAD_FACTOR,
   type InjuryConstraint,
 } from "../injury-model";
+import {
+  resolveTrainingTemper,
+  type NiggleCoachingContext,
+} from "../niggle-model";
 import type { ConditionConsideration } from "../condition-training-considerations";
 import type { EnduranceArm } from "../endurance-plan";
 import { parkedDisclosureLines } from "../weather-training";
@@ -51,7 +55,7 @@ import {
 //
 // A deterministic (no-AI) "one clear thing to do today" recommender. It ranks a
 // small set of independently-derived recommendations and returns them
-// highest-priority first, so the dashboard widget shows the top one (and can
+// highest-priority first, so the dashboard presentation shows the top one (and can
 // show a secondary), and the Training overview's next-workout card renders the
 // top one — now recovery-aware.
 //
@@ -97,7 +101,7 @@ export interface Recommendation {
   // ordinary training/rest recs whose `detail` already stands alone.
   reasons?: Reason[];
   // Calm context lines riding ALONGSIDE the recommendation (issues #666/#838), carried on
-  // the ONE model so every surface (Training-overview card, dashboard widget, Telegram)
+  // the ONE model so every surface (Training-overview card, dashboard presentation, Telegram)
   // renders the same text (#221): active-injury exclusion disclosures ("Avoiding Chest
   // (right shoulder injury)") and curated condition consideration notes. Informational —
   // the recommendation itself is unchanged. Absent when there's no injury/condition
@@ -285,13 +289,19 @@ export interface CoachingInput {
   // regions + temper recovering ones by construction (#221). Absent / empty ⇒ no injury
   // context (the prior behavior).
   injuries?: InjuryConstraint[];
+  // The profile's LIVE niggles (#3211 part 3) — the third and weakest tier, threaded
+  // through this ONE gather so the dashboard card, the Training overview and the Telegram
+  // nudge temper and disclose identically (#221). Held by the illness hold above (the
+  // hold returns before the core is ever called) and outranked by an injury exclusion.
+  // Absent / empty ⇒ no niggle tier (the prior behavior).
+  niggles?: NiggleCoachingContext[];
   // Curated condition→training CONSIDERATION notes (#666) for the profile's ACTIVE mapped
   // conditions — informational, never gating/re-ranking. Threaded through so the note
   // rides the same recommendation everywhere. Absent / empty ⇒ nothing.
   considerations?: ConditionConsideration[];
   // The plan-aware cardio ARM for the soonest active endurance plan (#839) — pre-computed
   // by the gather (which applies the illness pause, #837). Threaded through so the
-  // dashboard widget + Telegram render the same note the Training overview does. Absent /
+  // dashboard presentation + Telegram render the same note the Training overview does. Absent /
   // null ⇒ no active plan (or held by illness).
   endurancePlanArm?: EnduranceArm | null;
   // Weather context (#1724) — today's conditions plus the profile's own revealed
@@ -925,7 +935,11 @@ function strengthExerciseRec(
   // Recovering-injury tempering (#838/#2024): the resolved {applies, factor} for THIS
   // lift — a suggestion, never a lockout — so the compact card agrees with the model
   // everywhere. Default: no tempering.
-  tempering: { recoveringRegion: boolean; recoveringFactor: number } = {
+  tempering: {
+    recoveringRegion: boolean;
+    recoveringFactor: number;
+    temperRationale?: string | null;
+  } = {
     recoveringRegion: false,
     recoveringFactor: RECOVERING_LOAD_FACTOR,
   }
@@ -1106,7 +1120,7 @@ function trainingRecommendations(
   tu: TemperatureUnit
 ): Recommendation[] {
   const recs = nw.items.map((item) => formatWorkoutItem(item, nw, today, wu));
-  // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard widget
+  // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard presentation
   // and Telegram render the same disclosure/consideration text the Training overview does
   // (one computation, #221). Attached only to the lead card to avoid duplication.
   const notes = contextNotes(nw, tu);
@@ -1144,6 +1158,10 @@ export function contextNotes(
     notes.push(temperedExerciseLabel(d));
     for (const limitation of d.limitations) notes.push(limitation);
   }
+  // The niggle tier (#3211 part 3) — the third and weakest constraint. Sits AFTER the
+  // injury lines because it is outranked by them, and it is NEVER omitted: a target that
+  // moved without a line saying so is exactly the silent change #2948 forbids.
+  for (const t of nw.niggleTempers) notes.push(t.note);
   for (const c of nw.considerations) notes.push(c.note);
   // Weather parking (#1724) — ALWAYS disclosed, never a silent disappearance (#838).
   // The note explains why the outdoor activity isn't in today's pick and names the
@@ -1169,11 +1187,21 @@ export function contextNotes(
 function injuryTempering(
   exerciseName: string,
   nw: NextWorkout
-): { recoveringRegion: boolean; recoveringFactor: number } {
+): {
+  recoveringRegion: boolean;
+  recoveringFactor: number;
+  temperRationale: string | null;
+} {
   const v = exerciseInjuryVerdict(nw.injuryConstraints, exerciseName);
+  // #3211 part 3 — the LIVE NIGGLE tier folds in here, at the one composition point, so
+  // the ordering (exclusion → recovering injury → niggle) is written down once and every
+  // surface inherits it. `resolveTrainingTemper` takes the min of the two factors, which
+  // is what makes the tilt only ever WEAKEN a session.
+  const t = resolveTrainingTemper(v, nw.niggleTempers, exerciseName);
   return {
-    recoveringRegion: v.kind === "tempered",
-    recoveringFactor: v.kind === "tempered" ? v.factor : RECOVERING_LOAD_FACTOR,
+    recoveringRegion: t.recoveringRegion,
+    recoveringFactor: t.recoveringRegion ? t.factor : RECOVERING_LOAD_FACTOR,
+    temperRationale: t.rationale,
   };
 }
 

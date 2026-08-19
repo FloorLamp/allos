@@ -46,7 +46,7 @@ export const DRUG_ALLERGY_PROFILE = "Drug Allergy (e2e)";
 
 // ── Structural data-quality gaps (#1045) ──────────────────────────────────────
 // A member whose SOLE (active) profile is intentionally GAPPY — no birthdate, no sex,
-// and one failed-extraction document — so the dashboard "Data quality" widget renders
+// and one failed-extraction document — so the dashboard Data quality atom renders
 // the top-3 structural gaps (birthdate, sex, failed doc) with fix-it CTAs, and the
 // dismiss test can silence one across the widget + the coaching rollup. Dedicated +
 // isolated on purpose (#868): the dismiss test WRITES an upcoming_dismissals row on it,
@@ -77,7 +77,7 @@ export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
 // gaps whose CTAs must deep-link the exact forms (smoking-history / risk-factors
 // anchors, the prefilled biomarker add form). It also owns the dashboard-deeplinks
 // fixtures that need a quiet dedicated dashboard: a target-less goal (#1219 item 3)
-// and four ongoing protocols + a layout that shows the active-protocols widget
+// and four ongoing protocols for the dashboard's atomic protocol facts
 // (#1219 item 4). Read-mostly: its spec only navigates; no dismissals are written.
 export const E2E_LOGIN_DQ_ADULT = "e2e_dq_adult";
 export const DQ_ADULT_PROFILE = "Data Quality Adult (e2e)";

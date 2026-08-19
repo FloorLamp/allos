@@ -35,7 +35,7 @@ export function biomarkerDismissalKey(name: string): string {
   return `biomarker:${biomarkerRetestIdentity(name).toLowerCase()}`;
 }
 
-// The dashboard hero keys a newly-flagged biomarker on `biomarker-flag:<family>`,
+// Dashboard placement keys a newly-flagged biomarker on `biomarker-flag:<family>`,
 // on the #482 biomarker FAMILY identity (biomarkerFamily over the canonical/raw
 // name) — so a flag dismiss follows the analyte's IDENTITY family and the key doesn't
 // drift as which member is the newest reading. This is the IDENTITY scope, NOT the

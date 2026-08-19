@@ -63,6 +63,8 @@ export const E2E_LOGIN_STREAM_ONBOARD = "e2e_stream_onboard";
 export const STREAM_ONBOARD_PROFILE = "Stream Onboard (e2e)";
 export const E2E_LOGIN_STREAM_DECLINE = "e2e_stream_decline";
 export const STREAM_DECLINE_PROFILE = "Stream Decline (e2e)";
+export const E2E_LOGIN_DASHBOARD_ALL = "e2e_dashboard_all";
+export const DASHBOARD_ALL_PROFILE = "Dashboard All (e2e)";
 
 // #2162 — the OFFBOARDING moment. Two months of heart-rate history, then nothing for
 // a fortnight, with the bedtime reminder ON: the expected-active gate closed itself

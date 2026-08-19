@@ -334,7 +334,7 @@ export async function dismissMultiviewHintAction(): Promise<FormResult> {
 
 // Snooze a single due-item: hide it until `today + days`, after which it
 // reappears. The window is validated + clamped by the shared snoozeUntil helper
-// (one source of truth for the snooze policy, shared with the dashboard hero).
+// (one source of truth for the snooze policy, shared with dashboard atoms).
 // Delegates to the shared findings-suppression writer (upserts on the
 // (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
 // dismissed item — just moves the date and clears any dismiss). Profile-scoped.

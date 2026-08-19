@@ -81,7 +81,7 @@ matters most — the core's clear is a `DELETE … WHERE dose_id = ? AND date = 
 so an undo that skipped the probe would take a PRN administration logged in the
 meantime with it.
 
-Surfaces wired: the dashboard attention hero (`markAttentionDose` /
+Surfaces wired: the dashboard dose atom (`markAttentionDose` /
 `undoAttentionDose`) and the household member card (`confirmDoseAction` /
 `undoConfirmDoseAction`), both through `components/DoseConfirmButton.tsx`. The
 household undo re-runs the CARD's gate — `requireProfileWriteAccess` on the

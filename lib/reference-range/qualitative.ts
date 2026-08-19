@@ -717,7 +717,7 @@ export function qualitativeFlagResolution(
   if (c.polarity === "bad") {
     // A bad-polarity positive (positive HBsAg/HCV/HIV, a positive culture) that the
     // extractor left null/normal would otherwise display as "Normal" and never reach
-    // the attention hero (#629). #549 established the extractor's qualitative flag is
+    // dashboard placement (#629). #549 established the extractor's qualitative flag is
     // NOT trusted, so we can't rely on it having set a red flag here — the
     // highest-stakes category. Given the harm asymmetry (a positive infection marker
     // shown as Normal vs. a false red on a benign qualitative), set "abnormal" when

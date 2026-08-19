@@ -18,7 +18,7 @@
 // entire feature — the morning digest's Today section is a formatter over the SAME set,
 // so the item and its digest line share one dedupe key and one dismissal (#221), and
 // neither leg needs a send of its own. It is deliberately NOT joined to
-// `getIntegrationAttention`, which feeds the hero and Data → Review's escalated card:
+// `getIntegrationAttention`, which feeds dashboard placement and Data → Review's escalated card:
 // that list is for a connection that is BROKEN, and a household being asked to download
 // an export is not a fault to repair.
 

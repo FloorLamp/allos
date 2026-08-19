@@ -116,7 +116,7 @@ export default function SymptomLogBar({
   // Profile-local zone used to seed the reading-time field when temperature entry opens.
   // Important for household logging, where the target's zone may differ from the browser.
   timeZone?: string;
-  // The profile this bar writes to (issue #858). Set ONLY on the illness-hero cockpit,
+  // The profile this bar writes to (issue #858). Set ONLY on the illness Now-group cockpit,
   // where a caregiver logs for a household member without switching — every action posts
   // this so the server gates on the TARGET (requireProfileWriteAccess). Absent on the
   // default dashboard/Timeline mounts, which write the session's active profile.
@@ -327,7 +327,7 @@ export default function SymptomLogBar({
   const notes = notesByDate[activeDate] ?? {};
 
   // Stamp the cross-profile target (issue #858) onto every write, when this bar is a
-  // hero cockpit for a non-active profile. A no-op on the default mounts (profileId
+  // illness Now cockpit for a non-active profile. A no-op on the default mounts (profileId
   // undefined), which write the session's active profile.
   const withTarget = (fd: FormData): FormData => {
     if (profileId != null) fd.set("profileId", String(profileId));

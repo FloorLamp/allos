@@ -19,13 +19,13 @@ import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { dateStrInTz } from "@/lib/date";
 import { statedHhmm } from "@/lib/stated-time";
 
-// One PRN (as-needed) medication's quick-log row in the dashboard widget (#797).
+// One PRN (as-needed) medication's shared quick-log row (#797).
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
 // the shared WhenControl (#2236) — an absolute time today, empty until stated, with
 // a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
 // old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
 // TAP time, so it drifts with every minute a rendered page sits open, which is the
-// argument lib/correction-time.ts already made and this dashboard control never saw
+// argument lib/correction-time.ts already made and this control never saw
 // — the failure #2236 exists to end. Each successful log is a real administration
 // (the ledger allows multiples/day), and the action's own revalidate brings back the
 // updated "N today · last …" subtitle with its response.
@@ -61,9 +61,9 @@ export default function QuickLogPrnControl({
   redosePrimary?: boolean;
   // The name links to the med's detail page (#852 item 2), matching the scheduled row.
   // Both hosts — the Medications Today panel (#851 item 10) and the dashboard quick-log
-  // widget — pass this now; it stays a prop only so a future non-linking host can opt out.
+  // atom — pass this now; it stays a prop only so a future non-linking host can opt out.
   linkToDetail?: boolean;
-  // The profile this dose is logged for (issue #858). Set on the illness-hero cockpit so
+  // The profile this dose is logged for (issue #858). Set on the illness Now-group cockpit so
   // a caregiver logs a household member's PRN dose without switching — the action gates on
   // the TARGET (requireProfileWriteAccess). Absent on the dashboard/medications mounts.
   profileId?: number;

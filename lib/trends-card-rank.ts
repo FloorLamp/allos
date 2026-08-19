@@ -404,7 +404,7 @@ export function bodyCardOrder(
 
 // Sort a renderer's already-built list into a card order. Items whose key is not in
 // the order keep their relative position at the end (an unregistered card is never
-// dropped — the same defensive posture as the dashboard layout merge).
+// dropped — the same defensive posture as the saved trend-card order merge).
 export function applyCardOrder<T>(
   items: readonly T[],
   order: readonly BodyCardId[],

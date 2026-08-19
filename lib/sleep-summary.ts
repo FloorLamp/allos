@@ -1,7 +1,7 @@
 // Pure formatters for the dedicated Sleep page (issue #1066) and its dashboard
 // "last night" tile. NO new engine — every value here is derived from the SAME
 // sleep sessions the SRI/pillar computations already read, run through the
-// shared main-vs-nap classifier (#1118). The page hero and the dashboard tile
+// shared main-vs-nap classifier (#1118). The page hero and dashboard sleep presentation
 // both consume `lastNightSummary`, so the two surfaces can't disagree about
 // "how did I sleep last night" (the one-question-one-computation rule, #221).
 //
@@ -42,7 +42,7 @@ export function formatSleepWindow(
 }
 
 // The "last night" model: the MAIN overnight session (#1118) reduced to the facts
-// the hero and the dashboard tile render — never a score (the pillars-not-a-
+// the hero and dashboard sleep presentation render — never a score (the pillars-not-a-
 // composite stance). Naps are deliberately absent: the detailed nap model owns
 // them, and `durationMin` remains main sleep only.
 export interface LastNightSummary {
@@ -89,7 +89,7 @@ function groupByWakeDay(
 }
 
 // The most-recent night's summary, or null when the profile has no usable sleep
-// session. The hero AND the dashboard tile read THIS — same inputs, same answer.
+// session. The hero and dashboard sleep presentation read THIS — same inputs, same answer.
 export function lastNightSummary(
   sessions: SleepSession[],
   tz: string,
@@ -236,8 +236,8 @@ export function isSleepTracking(
 }
 
 // Issue #1186: "Last night" is a strict relative-day claim, not a synonym for
-// "latest row". This ONE pure formatter is shared by the page hero + dashboard
-// tile. Recent lag stays visible with an honest dated label; older lag is hidden
+// "latest row". This ONE pure formatter is shared by the page hero and dashboard
+// sleep presentation. Recent lag stays visible with an honest dated label; older lag is hidden
 // behind a sync-oriented empty state. Four nights is the pinned relabel window.
 //
 // COUNT NIGHTS, NOT DAYS. `wakeDay` is the local date the session ENDED, so the

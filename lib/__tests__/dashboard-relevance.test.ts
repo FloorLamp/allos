@@ -63,6 +63,8 @@ const rank = (candidates: DashboardCandidate[]) =>
   rankDashboardCandidates(candidates, {
     activeProfileId: 7,
     minutesOfDay: 12 * 60,
+    today: "2026-08-19",
+    upcoming: [],
   });
 
 describe("atomic dashboard placement", () => {
@@ -102,6 +104,49 @@ describe("atomic dashboard placement", () => {
       action("may", "may", { owed: true, windowOpen: true }),
     ]);
     expect(placements[0].lane).toBe("everything");
+  });
+
+  // #3224 — the window a `should` action declares must be a MOMENT. A weekly
+  // target spelled `windowOpen` as "not met this week", which is true for seven
+  // days, so its log offer occupied Now all week and "Nothing needs you." — the
+  // state #3077 names the goal — was unreachable on an ordinary week.
+  it("keeps a should action with no reason out of Now entirely", () => {
+    const placements = rank([
+      action("target.log:1", "should", { owed: false, windowOpen: false }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:1" }, lane: "everything" },
+    ]);
+    expect(placements[0]).toMatchObject({ everythingGroup: "act" });
+  });
+
+  it("admits a should action whose rhythm-derived window is open", () => {
+    const placements = rank([
+      action("target.log:2", "should", { owed: false, windowOpen: true }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:2" }, lane: "now" },
+    ]);
+  });
+
+  it("still cards a behind-pace target on the owed path with the window shut", () => {
+    const placements = rank([
+      action("target.log:3", "should", { owed: true, windowOpen: false }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:3" }, lane: "now" },
+    ]);
+  });
+
+  it("leaves Now empty when every open target is on pace outside its moment", () => {
+    const placements = rank([
+      action("target.log:4", "should", { owed: false, windowOpen: false }),
+      action("target.log:5", "should", { owed: false, windowOpen: false }),
+      reading("target.weekly-progress:4"),
+    ]);
+    expect(placements.filter((placement) => placement.lane === "now")).toEqual(
+      []
+    );
   });
 
   it("keeps every safety candidate beyond the ordinary cap", () => {
@@ -149,15 +194,12 @@ describe("atomic dashboard placement", () => {
     ]);
   });
 
-  it("keeps household readings out of the acting profile Standing lane", () => {
+  it("keeps ordinary household readings out of the dashboard census", () => {
     const placements = rank([
       reading("activity.steps:self"),
       reading("activity.steps:member", 8),
     ]);
-    expect(placements.map((placement) => placement.lane)).toEqual([
-      "standing",
-      "everything",
-    ]);
+    expect(placements.map((placement) => placement.lane)).toEqual(["standing"]);
   });
 
   it("keeps manual and external readings in the fixed Standing lane", () => {
@@ -471,6 +513,290 @@ describe("atomic dashboard placement", () => {
       lane: "everything",
       timingDisposition: { kind: "future-today", opensAt: 780 },
     });
+  });
+
+  it("moves the same owed action from Ahead to Now at its exact opening", () => {
+    const candidate = {
+      ...action("boundary", "should", { owed: true }),
+      timing: {
+        kind: "local-time" as const,
+        opensAt: 780,
+        closesAt: 840,
+        wrapsMidnight: false,
+      },
+    };
+    const before = rankDashboardCandidates([candidate], {
+      activeProfileId: 7,
+      minutesOfDay: 779,
+      today: "2026-08-19",
+      upcoming: [],
+    });
+    const open = rankDashboardCandidates([candidate], {
+      activeProfileId: 7,
+      minutesOfDay: 780,
+      today: "2026-08-19",
+      upcoming: [],
+    });
+    expect(before).toMatchObject([
+      {
+        candidate: { candidateId: "boundary", factKey: "fact.boundary" },
+        lane: "ahead",
+        aheadBucket: "later-today",
+        opensAt: 780,
+      },
+    ]);
+    expect(open).toMatchObject([
+      {
+        candidate: { candidateId: "boundary", factKey: "fact.boundary" },
+        lane: "now",
+      },
+    ]);
+  });
+
+  it("places a shared future-today fact only once after canonical sorting", () => {
+    const timing = {
+      kind: "local-time" as const,
+      opensAt: 780,
+      closesAt: 840,
+      wrapsMidnight: false,
+    };
+    const must = {
+      ...action("duplicate-must", "must", { owed: true }),
+      factKey: "fact.shared-future",
+      timing,
+    };
+    const should = {
+      ...action("duplicate-should", "should", { owed: true }),
+      factKey: "fact.shared-future",
+      timing,
+    };
+    const placements = rankDashboardCandidates([should, must], {
+      activeProfileId: 7,
+      minutesOfDay: 779,
+      today: "2026-08-19",
+      upcoming: [],
+    });
+    expect(placements).toMatchObject([
+      {
+        lane: "ahead",
+        candidate: { candidateId: "duplicate-must" },
+      },
+    ]);
+  });
+
+  it("does not force an opened Ahead action through a full Now cap", () => {
+    const first = action("first", "must", { owed: true });
+    const second = action("second", "must", { owed: true });
+    const candidate = {
+      ...action("boundary-full", "should", { owed: true }),
+      timing: {
+        kind: "local-time" as const,
+        opensAt: 780,
+        closesAt: 840,
+        wrapsMidnight: false,
+      },
+    };
+    const before = rankDashboardCandidates([first, second, candidate], {
+      activeProfileId: 7,
+      minutesOfDay: 779,
+      today: "2026-08-19",
+      upcoming: [],
+    });
+    const open = rankDashboardCandidates([first, second, candidate], {
+      activeProfileId: 7,
+      minutesOfDay: 780,
+      today: "2026-08-19",
+      upcoming: [],
+    });
+    expect(
+      before.find(({ candidate }) => candidate.candidateId === "boundary-full")
+        ?.lane
+    ).toBe("ahead");
+    expect(
+      open.find(({ candidate }) => candidate.candidateId === "boundary-full")
+    ).toMatchObject({ lane: "everything", everythingGroup: "act" });
+  });
+
+  it("projects the unchanged week/later Upcoming subset in canonical order", () => {
+    const item = (
+      key: string,
+      dueDate: string,
+      over: Partial<UpcomingItem> = {}
+    ): UpcomingItem => ({
+      key,
+      domain: "appointment",
+      title: key,
+      href: "/appointments",
+      dueDate,
+      ...over,
+    });
+    const upcoming = [
+      item("later", "2026-09-01"),
+      item("week-second", "2026-08-23"),
+      item("week-first", "2026-08-20"),
+      item("signal", "2026-08-20", { signalGroup: "review" }),
+      item("today", "2026-08-18"),
+    ];
+    const placements = rankDashboardCandidates(
+      attentionCandidates(subject, upcoming, "2026-08-18"),
+      {
+        activeProfileId: 7,
+        minutesOfDay: 720,
+        today: "2026-08-18",
+        upcoming,
+      }
+    );
+    const horizon = placements.filter(
+      (placement) =>
+        placement.lane === "ahead" && placement.aheadBucket === "horizon"
+    );
+    expect(horizon.map((placement) => placement.upcomingKey)).toEqual([
+      "week-first",
+      "week-second",
+      "later",
+    ]);
+    expect(horizon.map((placement) => placement.upcomingBand)).toEqual([
+      "week",
+      "week",
+      "later",
+    ]);
+    expect(horizon.map(({ candidate }) => candidate.factKey)).toEqual([
+      "upcoming.week-first",
+      "upcoming.week-second",
+      "upcoming.later",
+    ]);
+  });
+
+  it("lets Standing keep a shared fact before Ahead projects the horizon", () => {
+    const upcoming: UpcomingItem[] = [
+      {
+        key: "shared",
+        domain: "appointment",
+        title: "Shared",
+        href: "/appointments",
+        dueDate: "2026-08-20",
+      },
+    ];
+    const [attention] = attentionCandidates(subject, upcoming, "2026-08-18");
+    const standing = {
+      ...reading("activity.steps:shared"),
+      factKey: "upcoming.shared",
+    };
+    const placements = rankDashboardCandidates([attention, standing], {
+      activeProfileId: 7,
+      minutesOfDay: 720,
+      today: "2026-08-18",
+      upcoming,
+    });
+    expect(placements).toMatchObject([
+      {
+        lane: "standing",
+        candidate: { candidateId: "activity.steps:shared" },
+      },
+    ]);
+  });
+
+  it("groups the unplaced remainder without relevance scoring", () => {
+    const setup = actionCandidate({
+      ...action("setup", "may"),
+      relevance: { kind: "setup" },
+      obligation: "may",
+    });
+    const dormant = {
+      ...reading("unregistered-dormant"),
+      relevance: profileDataRelevance("dormant", "manual"),
+    };
+    const statement = statementCandidate({
+      candidateId: "understand",
+      factKey: "fact.understand",
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      sourceOrder: order++,
+    });
+    const state = stateCandidate({
+      candidateId: "state",
+      factKey: "fact.state",
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "state" },
+      sourceOrder: order++,
+    });
+    const placements = rank([
+      action("may", "may"),
+      dormant,
+      statement,
+      setup,
+      state,
+    ]).filter((placement) => placement.lane === "everything");
+    expect(
+      placements.map((placement) => [
+        placement.everythingGroup,
+        placement.candidate.candidateId,
+      ])
+    ).toEqual([
+      ["act", "may"],
+      ["read", "unregistered-dormant"],
+      ["understand", "understand"],
+      ["setup", "setup"],
+      ["active-states", "state"],
+    ]);
+  });
+
+  it("chooses a duplicate remainder fact by canonical group, not gather order", () => {
+    const act = {
+      ...action("shared-act", "may"),
+      factKey: "fact.shared-remainder",
+    };
+    const understand = statementCandidate({
+      candidateId: "shared-understand",
+      factKey: "fact.shared-remainder",
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      sourceOrder: order++,
+    });
+    const signature = (input: DashboardCandidate[]) =>
+      rank(input).map((placement) => ({
+        id: placement.candidate.candidateId,
+        lane: placement.lane,
+        group:
+          placement.lane === "everything"
+            ? placement.everythingGroup
+            : undefined,
+      }));
+    expect(signature([understand, act])).toEqual(signature([act, understand]));
+    expect(signature([understand, act])).toEqual([
+      { id: "shared-act", lane: "everything", group: "act" },
+    ]);
+  });
+
+  it("preserves explicit illness context while excluding ordinary other-profile facts", () => {
+    const ordinary = actionCandidate({
+      ...action("other", "may"),
+      subject: { scope: "profile", profileId: 8 },
+      obligation: "may",
+    });
+    const reopen = actionCandidate({
+      ...action("reopen", "may"),
+      subject: { scope: "profile", profileId: 8 },
+      dashboardScope: "illness-context",
+      obligation: "may",
+    });
+    const history = actionCandidate({
+      ...action("history", "may"),
+      subject: { scope: "login" },
+      dashboardScope: "illness-context",
+      obligation: "may",
+    });
+    expect(
+      rank([ordinary, reopen, history]).map(
+        ({ candidate }) => candidate.candidateId
+      )
+    ).toEqual(["reopen", "history"]);
   });
 
   it("removes an expired finished-session recap and post-nap reading", () => {

@@ -10,7 +10,7 @@ const A_QUIET_DAY = "2026-01-18";
 // The Timeline's base empty state names a next action (issue #1410).
 //
 // A brand-new account landing on the Timeline used to be told "No timeline events
-// yet." and nothing else — the app's own good empty states (WidgetEmpty,
+// yet." and nothing else — the app's own good empty states (DashboardSetupAtom,
 // StrengthExplorer) all name the next action. The two cases this spec separates are
 // the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED feed is
 // fixed by widening the filter, and offering "log an activity" to someone who just

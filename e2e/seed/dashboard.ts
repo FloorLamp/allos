@@ -42,6 +42,10 @@ import {
   NOW_STRIP_APPOINTMENT,
   E2E_LOGIN_NOWSAFETY,
   NOW_SAFETY_PROFILE,
+  E2E_LOGIN_NOWQUIET,
+  NOW_QUIET_PROFILE,
+  NOW_QUIET_MED,
+  NOW_QUIET_TARGETS,
   E2E_LOGIN_FOLDREOPEN,
   FOLD_REOPEN_PARENT_PROFILE,
   FOLD_REOPEN_KID_A_PROFILE,
@@ -165,14 +169,14 @@ export function seedTodayPanel(): void {
   );
 }
 
-// ── Dashboard "Now" strip + collapsible hero ──
+// ── Dashboard Now placement ──
 export function seedNowStrip(): void {
   const iso = (d: Date) => d.toISOString();
-  // ── Dashboard "Now" strip + collapsible hero fixtures (issue #1413) ──────────
+  // ── Dashboard Now placement fixtures (issue #1413) ──────────────────────────
   // A profile whose dashboard deterministically shows BOTH halves of #1413: a
   // just-finished session (the Now strip's top-ranked card, same shape as the RECAP
   // fixture above) and one appointment scheduled TODAY, which gives the
-  // "Needs attention" hero a stable non-zero count for the collapse test.
+  // dashboard Now a stable second candidate.
   //
   // Why a just-finished workout rather than relying on the clock: the e2e run pins
   // local time to 13:mm (e2e/pinned-timezone.ts), which sits inside the default 13:00
@@ -214,7 +218,7 @@ export function seedNowStrip(): void {
        VALUES (?, 'Barbell Row', 1, 55, 8, 8),
               (?, 'Barbell Row', 2, 55, 8, 8)`
     ).run(finishedId, finishedId);
-    // One appointment TODAY → a due-today attention item, so the hero has a count.
+    // One appointment today → a due-today attention item in Now.
     db.prepare(
       `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
      VALUES (?, ?, '16:00', ?, 'Test Clinic (e2e)', 'scheduled')`
@@ -246,7 +250,7 @@ export function seedNowStrip(): void {
   // (index 8, 0-based). Either alone escalates (crisisDecision = severe || selfHarm);
   // seeding both keeps the fixture robust to a band-threshold edit. That makes
   // mentalHealthCrisisItems emit a `suppressionPolicy: "safety-ungated"` attention
-  // item, which attentionHeroState must refuse to collapse (#449/#942).
+  // item, which the dashboard must keep in Now (#449/#942).
   // Synthetic score on a fictional profile — no PHI. Idempotent.
   const nowSafetyId = adultFixtureProfileId(NOW_SAFETY_PROFILE);
   db.prepare(
@@ -269,8 +273,73 @@ export function seedNowStrip(): void {
   }
   seedMemberLogin(E2E_LOGIN_NOWSAFETY, nowSafetyId);
 
+  // The handled day (#3224): two UNMET, ON-PACE weekly training targets and a day
+  // with nothing left in it. Now must be empty — the targets' log offers belong in
+  // Show everything's Act group, not in the two slots the strip has.
+  //
+  // Determinism is the week window. A zero count is "behind" from the moment the
+  // week is far enough along to owe one (floor(2 × elapsed / 7) ≥ 1, i.e. day 4 of
+  // 7), and behind is the `owed` path, which SHOULD card. So the profile's calendar
+  // week is pinned to start on the run's own frozen weekday: today is day 1, the
+  // targets owe nothing yet, and the fixture reads the same on every CI day.
+  // Idempotent hard-clear; synthetic, no PHI.
+  const nowQuietId = adultFixtureProfileId(NOW_QUIET_PROFILE);
+  {
+    const quietDay = today(nowQuietId);
+    setWeekMode(nowQuietId, "calendar");
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'week_start', ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(nowQuietId, String(new Date(quietDay + "T00:00:00Z").getUTCDay()));
+
+    db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(
+      nowQuietId
+    );
+    for (const scopeValue of NOW_QUIET_TARGETS) {
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, per_week, created_at)
+         VALUES (?, 'group', ?, 2, ?)`
+      ).run(nowQuietId, scopeValue, `${shiftDateStr(quietDay, -60)} 00:00:00`);
+    }
+
+    // The handled half: one scheduled morning dose, already logged taken today, so
+    // the day is genuinely dealt with rather than merely empty.
+    db.prepare(
+      `DELETE FROM intake_item_logs WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(nowQuietId);
+    db.prepare(
+      `DELETE FROM intake_item_doses WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(nowQuietId);
+    db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(nowQuietId);
+    const quietItemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'medication', 'daily', 'must')`
+        )
+        .run(nowQuietId, NOW_QUIET_MED).lastInsertRowid
+    );
+    const quietDoseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tablet', 'morning', 'any', 0)`
+        )
+        .run(quietItemId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, amount)
+       VALUES (?, ?, ?, 'taken', '1 tablet')`
+    ).run(quietDoseId, quietItemId, quietDay);
+  }
+  seedMemberLogin(E2E_LOGIN_NOWQUIET, nowQuietId);
+
   console.log(
-    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment) and profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, safety-locked hero)`
+    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224)`
   );
 
   // Truly empty, isolated profiles for the goal-based onboarding paths (#719).
@@ -440,7 +509,7 @@ export function seedNowStrip(): void {
   // main-sleep floor — so the merge must read them as ONE ~8h night (bed 23:00 → wake
   // 08:00, no nap), the behavior f53892f shipped with no browser test for the rendered
   // hero/tile. Pin UTC so the wall-clock labels are explicit; the latest wake-day is
-  // "today" so the hero + dashboard tile both render it. Rebuilt every seed; no browser
+  // "today" so the hero + dashboard sleep presentation both render it. Rebuilt every seed; no browser
   // test writes or cleans this profile, so parallel / --repeat-each runs cannot contend.
   const sleepSegmentedId = fixtureProfileId(SLEEP_SEGMENTED_PROFILE);
   setFixtureTimezone(db, sleepSegmentedId, "sleep-segmented", "UTC");

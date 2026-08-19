@@ -6,7 +6,7 @@
 // engine (lib/coaching.ts — all-time aggregates, routine-gap driven). Same
 // morning they could disagree by construction. This module is the ONE pure core
 // both surfaces now consume; each surface only formats the result (Telegram copy
-// vs the CoachingWidget/Training-overview Recommendation cards).
+// vs the CoachingRecommendationAtom/Training-overview Recommendation cards).
 //
 // The core folds together the strongest parts of both: the Telegram engine's
 // bounded window + recovery exclusion + weekday habit + frequency-ranked exercise
@@ -42,6 +42,11 @@ import {
   type InjuryConstraint,
   type ExcludedRegionDisclosure,
 } from "./injury-model";
+import {
+  niggleTempers,
+  type NiggleCoachingContext,
+  type NiggleTemper,
+} from "./niggle-model";
 import type { ConditionConsideration } from "./condition-training-considerations";
 import type { EnduranceArm } from "./endurance-plan";
 import type {
@@ -309,6 +314,13 @@ export interface NextWorkoutInput {
   // The exclusion is the user's own constraint (equipment-availability class of #666's
   // taxonomy), so re-ranking IS permitted here. Absent / empty ⇒ no exclusion.
   injuries?: InjuryConstraint[];
+  // The profile's LIVE niggles (#3211 part 3) — the THIRD and WEAKEST constraint tier,
+  // below the injury exclusion and the injury temper. A live niggle's region STAYS in the
+  // recommendation (never excluded, never held) and its targets are TEMPERED, with the
+  // reason named on `niggleTempers` below. Liveness and the profile-local report day are
+  // resolved by the gather, exactly as `injuries` and `illness` are. Absent / empty ⇒ no
+  // niggle tier at all, and the result is byte-for-byte the prior one.
+  niggles?: NiggleCoachingContext[];
   // Curated condition→training CONSIDERATION notes (#666) for the profile's ACTIVE mapped
   // conditions. These ride ALONGSIDE the unchanged recommendation — they NEVER gate or
   // re-rank (medical judgment stays with the clinician). Passed straight through to
@@ -455,6 +467,15 @@ export interface NextWorkout {
   // Individual LIFTS a recovering finer constraint tempers, each carrying the load
   // fraction that applies and whether it came from the user or from the app's default.
   temperedExercises: TemperedExerciseDisclosure[];
+  // Regions returning at TEMPERED targets because a LIVE NIGGLE covers them (#3211 part
+  // 3), each carrying the load fraction and the rendered disclosure line ("Easing off
+  // Legs — right knee niggle from Tuesday"). A region an ACTIVE injury already excluded
+  // is NOT listed: the exclusion outranks the tilt. Empty when no live niggle.
+  //
+  // The recommendation ITSELF is untouched by this tier — same items, same focus, same
+  // exercise ranking as with no niggle at all. Only the TARGET a surface seeds moves, and
+  // only downward (`resolveTrainingTemper`).
+  niggleTempers: NiggleTemper[];
   // The resolved constraints themselves, so a surface that asks about an exercise the
   // recommendation did not list (the live logger's picked lift, the detail panel) resolves
   // it through the SAME pure verdict rather than re-deriving one (#2024 / #221).
@@ -1346,6 +1367,12 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     ...(input.datedExercises ?? []).map((d) => d.exercise),
   ];
   const finerDisclosures = exerciseDisclosures(constraints, candidateLifts);
+  // The niggle tier (#3211 part 3), resolved ONCE alongside the injury tiers so every
+  // branch's result agrees. It reads `excluded` — the ACTIVE region exclusions — and
+  // yields nothing for a region already off the table, which is where "injury exclusion
+  // outranks a live niggle" is enforced. Nothing below this line reads it: the tier
+  // deliberately does not touch the pick, the focus, the ranking or the behind set.
+  const niggles = niggleTempers(input.niggles ?? [], excluded, today);
   // Weather parking (#1724), resolved ONCE so every branch's result agrees — and so
   // the Telegram nudge, dashboard card and Training overview inherit the same answer
   // (#221). The candidate set is the profile's own recent cardio: an activity it has
@@ -1360,6 +1387,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     temperedRegions: [...computeTemperedRegions(constraints)],
     excludedExercises: finerDisclosures.excluded,
     temperedExercises: finerDisclosures.tempered,
+    niggleTempers: niggles,
     injuryConstraints: constraints,
     considerations: input.considerations ?? [],
     endurancePlanArm: input.endurancePlanArm ?? null,

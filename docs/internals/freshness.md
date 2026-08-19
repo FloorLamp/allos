@@ -172,15 +172,13 @@ knowable from here.
 
 **What dormancy may never do.** Change reach. The collapsed line carries the fix and
 everything it replaced is one tap away. Nothing is removed by adaptation. Anything
-carrying an OBLIGATION never collapses: doses, refills and care follow-ups reach the
-dashboard through the pinned attention hero, which is not data-aware and so cannot be
-flagged dormant by construction.
+carrying an obligation never collapses as dormant: doses, refills, and care follow-ups
+enter the dashboard as atomic candidates whose placement is not data-aware.
 
 **Tenants.** The dashboard's atomic candidate builders (`lib/dashboard-candidates/`).
-Every `dataAware` widget either declares a `dormancyDomain` or is named in
-`DORMANCY_EXEMPT_WIDGETS` with its reason. `widgetDisplayState` owns the precedence —
-dormant outranks empty, and a widget that declares neither capability can be flagged
-for neither.
+When a domain supports dormancy, the page resolves `dormancyState` from its last
+record and emits either current reading candidates or one dormant Standing candidate.
+Obligations bypass dormancy and keep their normal placement.
 
 ## Adding a tenant
 

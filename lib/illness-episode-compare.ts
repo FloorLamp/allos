@@ -1,12 +1,12 @@
 // Historical-duration comparison for an OPEN illness episode (issue #856 item 10). A
 // CALM, coaching-tier context line — "day 5; your last 3 illnesses ran 4–6 days" — shown
-// only on the open-episode page. NOT a notification and NOT the dashboard hero (the
+// only on the open-episode page. NOT a notification and NOT a dashboard candidate (the
 // findings two-tier discipline #449: this is observational context, never a push). It
 // formats over the SAME per-episode assembly (durations come from the stored rows via
 // summarizeEpisodesForProfile), so there is no second duration engine. Auth-blind,
 // profileId-first.
 //
-// The household-overlap half of item 10 is served by the illness hero (#858, grants-
+// The household-overlap half of item 10 is served by the illness Now group (#858, grants-
 // scoped — the former sick-household card folded into it); this module owns the
 // duration-comparison half.
 

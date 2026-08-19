@@ -93,12 +93,12 @@ describe("getDrugAllergyWarnings — recorded allergy × active med (#1029)", ()
     expect(warnings[0].dedupeKey).toBe(`allergy-med:${allergyId}-${medId}`);
 
     // Surface 2: the care-tier Upcoming finding — same dedupeKey, banded Today so it
-    // reaches the Needs-attention hero, and marked care-persistent (#1092).
+    // reaches dashboard placement, and is marked care-persistent (#1092).
     const up = collectUpcoming(profileId, today(profileId)).find(
       (i) => i.domain === "allergy-med"
     );
     expect(up?.key).toBe(warnings[0].dedupeKey);
-    expect(up?.band).toBe("today"); // care-tier → Needs-attention hero
+    expect(up?.band).toBe("today"); // care-tier → current dashboard placement
     expect(up?.carePersistent).toBe(true);
     expect(up?.detail).toContain("with your prescriber");
   });

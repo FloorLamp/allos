@@ -14,7 +14,7 @@ import type {
 } from "@/lib/dose-outcome-text";
 
 // The dose-confirm form for surfaces whose feedback channel is a toast (#2106): the
-// household card's per-member "Confirm" and the dashboard attention hero's "Mark
+// household card's per-member "Confirm" and the dashboard atom's "Mark
 // taken". Both are registered under the `dose-status` one-tap affordance, whose
 // declared feedback is `outcome-toast` — the tap is ANSWERED from markDoseTaken's
 // typed outcome and never confirmed unconditionally (the #280 rule, the same

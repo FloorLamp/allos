@@ -6,9 +6,13 @@
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import {
   resolveStandingMembers,
+  standingFamilyForCandidate,
+  STANDING_READING_ORDER,
   type StandingFamilyKey,
   type StandingSectionKey,
 } from "./dashboard-standing";
+import { groupUpcoming, type UpcomingItem } from "./upcoming";
+import { dashboardAttentionCandidateId } from "./dashboard-attention-identity";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -108,6 +112,10 @@ export interface DashboardCandidateBase {
   readingPromotion?: DashboardReadingPromotion;
   standingEligible?: boolean;
   sourceOrder: number;
+  // Explicitly authorized illness context that remains useful after an episode
+  // closes. Apart from open `episodeGroup` context, this is the only cross-profile
+  // exception to active-profile/login-setup scope; a candidate id grants nothing.
+  dashboardScope?: "illness-context";
 }
 
 export type DashboardCandidate =
@@ -119,18 +127,46 @@ export type DashboardCandidate =
   | (DashboardCandidateBase & { kind: "statement" })
   | (DashboardCandidateBase & { kind: "state" });
 
-export type DashboardLane = "now" | "standing" | "everything";
+export type DashboardLane = "now" | "standing" | "ahead" | "everything";
 export type DashboardNowLayer = "safety" | "illness" | "ordinary";
+export type DashboardAheadBucket = "later-today" | "horizon";
+export type DashboardEverythingGroup =
+  "act" | "read" | "understand" | "setup" | "active-states";
 
-export interface DashboardPlacement {
+interface DashboardPlacementBase {
   candidate: DashboardCandidate;
-  lane: DashboardLane;
   laneOrder: number;
   timingDisposition: DashboardTimingDisposition;
-  nowLayer?: DashboardNowLayer;
-  standingFamilyKey?: StandingFamilyKey;
-  standingSection?: StandingSectionKey;
 }
+
+export type DashboardPlacement =
+  | (DashboardPlacementBase & {
+      lane: "now";
+      nowLayer: DashboardNowLayer;
+    })
+  | (DashboardPlacementBase & {
+      lane: "standing";
+      standingFamilyKey: StandingFamilyKey;
+      standingSection: StandingSectionKey;
+    })
+  | (DashboardPlacementBase & {
+      lane: "ahead";
+      aheadBucket: "later-today";
+      memberOrder: number;
+      opensAt: number;
+    })
+  | (DashboardPlacementBase & {
+      lane: "ahead";
+      aheadBucket: "horizon";
+      memberOrder: number;
+      upcomingKey: string;
+      upcomingBand: "week" | "later";
+    })
+  | (DashboardPlacementBase & {
+      lane: "everything";
+      everythingGroup: DashboardEverythingGroup;
+      memberOrder: number;
+    });
 
 export const NOW_CANDIDATE_CAP = 2;
 export const WAKE_WINDOW_MIN = 180;
@@ -140,6 +176,8 @@ export const DEFAULT_WAKE_MINUTES = DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 export interface DashboardPlacementSignals {
   activeProfileId: number;
   minutesOfDay: number;
+  today: string;
+  upcoming: readonly UpcomingItem[];
 }
 
 function minuteInWindow(
@@ -336,7 +374,80 @@ function eligibleEpisodeMember(candidate: DashboardCandidate): boolean {
   return candidate.kind === "action" && candidate.rankReasons.owed;
 }
 
-// Now + Standing + Everything is an exact once-by-factKey partition. Now has
+function inDashboardScope(
+  candidate: DashboardCandidate,
+  activeProfileId: number
+): boolean {
+  if (candidate.episodeGroup) return true;
+  if (candidate.dashboardScope === "illness-context") return true;
+  if (candidate.subject.scope === "profile")
+    return candidate.subject.profileId === activeProfileId;
+  return (
+    candidate.subject.scope === "login" && candidate.relevance.kind === "setup"
+  );
+}
+
+function everythingGroup(
+  candidate: DashboardCandidate
+): DashboardEverythingGroup {
+  if (
+    candidate.relevance.kind === "setup" ||
+    (candidate.relevance.kind === "profile-data" &&
+      candidate.relevance.presence === "never")
+  )
+    return "setup";
+  if (
+    candidate.relevance.kind === "profile-data" &&
+    candidate.relevance.presence === "dormant"
+  )
+    return "read";
+  if (candidate.kind === "action") return "act";
+  if (candidate.kind === "reading") return "read";
+  if (candidate.kind === "statement") return "understand";
+  return "active-states";
+}
+
+const EVERYTHING_GROUP_ORDER: readonly DashboardEverythingGroup[] = [
+  "act",
+  "read",
+  "understand",
+  "setup",
+  "active-states",
+];
+
+function compareEverything(
+  a: DashboardCandidate,
+  b: DashboardCandidate,
+  group: DashboardEverythingGroup
+): number {
+  if (group === "act") {
+    const obligationOrder: Record<DashboardObligation, number> = {
+      must: 0,
+      should: 1,
+      may: 2,
+    };
+    if (a.kind === "action" && b.kind === "action")
+      return (
+        obligationOrder[a.obligation] - obligationOrder[b.obligation] ||
+        compareSource(a, b)
+      );
+  }
+  if (group === "read") {
+    const af = standingFamilyForCandidate(a);
+    const bf = standingFamilyForCandidate(b);
+    const ai = af
+      ? STANDING_READING_ORDER.indexOf(af)
+      : Number.MAX_SAFE_INTEGER;
+    const bi = bf
+      ? STANDING_READING_ORDER.indexOf(bf)
+      : Number.MAX_SAFE_INTEGER;
+    return ai - bi || compareSource(a, b);
+  }
+  return compareSource(a, b);
+}
+
+// Now + Standing + Ahead + Show everything is an exact once-by-factKey partition
+// of the dashboard census. Now has
 // structural layers: uncapped safety, whole authorized illness groups, then the
 // ordinary capped rank. Episode grouping is placement only; it never grants access or
 // changes a member's safety, obligation, timing, or applicability.
@@ -349,7 +460,11 @@ export function rankDashboardCandidates(
   // when profile state, access, or life-stage applicability changes.
   validateCandidates(candidates);
   const applicable = candidates
-    .filter((candidate) => candidate.applicable)
+    .filter(
+      (candidate) =>
+        candidate.applicable &&
+        inDashboardScope(candidate, signals.activeProfileId)
+    )
     .map((candidate) => ({
       candidate,
       timingDisposition: resolveDashboardTiming(
@@ -475,15 +590,96 @@ export function rankDashboardCandidates(
     selectedNow.map((entry, index) => [entry.candidate.candidateId, index])
   );
 
-  const remaining = live.filter(
+  const remainingAfterNow = live.filter(
     ({ candidate }) =>
       !nowIds.has(candidate.candidateId) && !nowFacts.has(candidate.factKey)
   );
   const standing = resolveStandingMembers(
-    remaining
+    remainingAfterNow
       .filter(({ timingDisposition }) => timingDisposition.kind === "active")
       .map(({ candidate }) => candidate),
     signals.activeProfileId
+  );
+  const remainingAfterStanding = remainingAfterNow.filter(
+    ({ candidate }) =>
+      !standing.memberIds.has(candidate.candidateId) &&
+      !standing.factKeys.has(candidate.factKey)
+  );
+
+  const laterTodayFacts = new Set<string>();
+  const laterToday = remainingAfterStanding
+    .filter(
+      ({ candidate, timingDisposition }) =>
+        candidate.subject.scope === "profile" &&
+        candidate.subject.profileId === signals.activeProfileId &&
+        candidate.kind === "action" &&
+        candidate.obligation !== "may" &&
+        candidate.rankReasons.owed &&
+        !candidate.rankReasons.safety &&
+        candidate.relevance.kind !== "setup" &&
+        timingDisposition.kind === "future-today"
+    )
+    .sort((a, b) => {
+      const ad = a.timingDisposition as Extract<
+        DashboardTimingDisposition,
+        { kind: "future-today" }
+      >;
+      const bd = b.timingDisposition as Extract<
+        DashboardTimingDisposition,
+        { kind: "future-today" }
+      >;
+      return (
+        ad.opensAt - bd.opensAt ||
+        (a.candidate.kind === "action" &&
+        b.candidate.kind === "action" &&
+        a.candidate.obligation !== b.candidate.obligation
+          ? a.candidate.obligation === "must"
+            ? -1
+            : 1
+          : 0) ||
+        compareOrdinal(a.candidate.candidateId, b.candidate.candidateId)
+      );
+    })
+    .filter(({ candidate }) => {
+      if (laterTodayFacts.has(candidate.factKey)) return false;
+      laterTodayFacts.add(candidate.factKey);
+      return true;
+    });
+  const aheadFacts = new Set(
+    laterToday.map(({ candidate }) => candidate.factKey)
+  );
+  const remainingByAttentionId = new Map(
+    remainingAfterStanding
+      .filter(({ candidate }) => !aheadFacts.has(candidate.factKey))
+      .map((entry) => [entry.candidate.candidateId, entry])
+  );
+  const horizon = groupUpcoming(
+    signals.upcoming.filter((item) => item.signalGroup == null),
+    signals.today
+  ).flatMap((group) => {
+    if (group.band !== "week" && group.band !== "later") return [];
+    return group.items.flatMap((item) => {
+      const entry = remainingByAttentionId.get(
+        dashboardAttentionCandidateId(item.key)
+      );
+      if (!entry || aheadFacts.has(entry.candidate.factKey)) return [];
+      aheadFacts.add(entry.candidate.factKey);
+      return [
+        {
+          ...entry,
+          item,
+          band: group.band as "week" | "later",
+        },
+      ];
+    });
+  });
+  const aheadIds = new Set([
+    ...laterToday.map(({ candidate }) => candidate.candidateId),
+    ...horizon.map(({ candidate }) => candidate.candidateId),
+  ]);
+  const remaining = remainingAfterStanding.filter(
+    ({ candidate }) =>
+      !aheadIds.has(candidate.candidateId) && !aheadFacts.has(candidate.factKey)
   );
   const dispositionByCandidateId = new Map(
     live.map(({ candidate, timingDisposition }) => [
@@ -491,36 +687,39 @@ export function rankDashboardCandidates(
       timingDisposition,
     ])
   );
+  const everythingEntries = remaining.filter(
+    ({ candidate }) =>
+      !standing.memberIds.has(candidate.candidateId) &&
+      !standing.factKeys.has(candidate.factKey) &&
+      // Owner ruling (#3186): a capped Standing family renders its capped
+      // members and nothing else. The tail beyond the cap is not a dashboard
+      // fact in any lane — the family's own page owns the rest of the census.
+      // It still surfaces when it earns Now on its own: an active promotion
+      // (a marker that just became notable) or a safety flag, which is what
+      // keeps this from hiding the readings someone most needs to see.
+      (!standing.cappedOverflowIds.has(candidate.candidateId) ||
+        candidate.rankReasons.changed ||
+        candidate.rankReasons.safety)
+  );
+  const orderedEverything = EVERYTHING_GROUP_ORDER.flatMap((group) =>
+    everythingEntries
+      .filter(({ candidate }) => everythingGroup(candidate) === group)
+      .sort(({ candidate: a }, { candidate: b }) =>
+        compareEverything(a, b, group)
+      )
+      .map((entry) => ({ ...entry, group }))
+  );
   const everythingFacts = new Set<string>();
-  const everything = remaining
-    .filter(
-      ({ candidate }) =>
-        !standing.memberIds.has(candidate.candidateId) &&
-        !standing.factKeys.has(candidate.factKey) &&
-        // Owner ruling (#3186): a capped Standing family renders its capped
-        // members and nothing else. The tail beyond the cap is not a dashboard
-        // fact in any lane — the family's own page owns the rest of the census.
-        // It still surfaces when it earns Now on its own: an active promotion
-        // (a marker that just became notable) or a safety flag, which is what
-        // keeps this from hiding the readings someone most needs to see.
-        (!standing.cappedOverflowIds.has(candidate.candidateId) ||
-          candidate.rankReasons.changed ||
-          candidate.rankReasons.safety)
-    )
-    .sort(({ candidate: a }, { candidate: b }) => {
-      const kinds: Record<DashboardCandidateKind, number> = {
-        action: 0,
-        statement: 1,
-        state: 2,
-        reading: 3,
-      };
-      return kinds[a.kind] - kinds[b.kind] || compareSource(a, b);
-    })
-    .filter(({ candidate }) => {
-      if (everythingFacts.has(candidate.factKey)) return false;
-      everythingFacts.add(candidate.factKey);
-      return true;
-    });
+  const uniqueEverything = orderedEverything.filter(({ candidate }) => {
+    if (everythingFacts.has(candidate.factKey)) return false;
+    everythingFacts.add(candidate.factKey);
+    return true;
+  });
+  const everything = EVERYTHING_GROUP_ORDER.flatMap((group) =>
+    uniqueEverything
+      .filter((entry) => entry.group === group)
+      .map((entry, memberOrder) => ({ ...entry, memberOrder }))
+  );
 
   return [
     ...selectedNow.map(({ candidate, timingDisposition, nowLayer }) => ({
@@ -538,12 +737,42 @@ export function rankDashboardCandidates(
       standingFamilyKey: family.key,
       standingSection: family.section,
     })),
-    ...everything.map(({ candidate, timingDisposition }, laneOrder) => ({
+    ...laterToday.map(({ candidate, timingDisposition }, memberOrder) => ({
       candidate,
-      lane: "everything" as const,
-      laneOrder,
+      lane: "ahead" as const,
+      laneOrder: memberOrder,
       timingDisposition,
+      aheadBucket: "later-today" as const,
+      memberOrder,
+      opensAt: (
+        timingDisposition as Extract<
+          DashboardTimingDisposition,
+          { kind: "future-today" }
+        >
+      ).opensAt,
     })),
+    ...horizon.map(
+      ({ candidate, timingDisposition, item, band }, memberOrder) => ({
+        candidate,
+        lane: "ahead" as const,
+        laneOrder: laterToday.length + memberOrder,
+        timingDisposition,
+        aheadBucket: "horizon" as const,
+        memberOrder,
+        upcomingKey: item.key,
+        upcomingBand: band,
+      })
+    ),
+    ...everything.map(
+      ({ candidate, timingDisposition, group, memberOrder }, laneOrder) => ({
+        candidate,
+        lane: "everything" as const,
+        laneOrder,
+        timingDisposition,
+        everythingGroup: group,
+        memberOrder,
+      })
+    ),
   ];
 }
 
@@ -563,11 +792,14 @@ export function orderedIllnessGroupKeys(
   });
 }
 
-export function placementsInLane(
+export function placementsInLane<Lane extends DashboardLane>(
   placements: readonly DashboardPlacement[],
-  lane: DashboardLane
-): DashboardPlacement[] {
+  lane: Lane
+): Extract<DashboardPlacement, { lane: Lane }>[] {
   return placements
-    .filter((placement) => placement.lane === lane)
+    .filter(
+      (placement): placement is Extract<DashboardPlacement, { lane: Lane }> =>
+        placement.lane === lane
+    )
     .sort((a, b) => a.laneOrder - b.laneOrder);
 }

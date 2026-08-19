@@ -12,7 +12,7 @@
 //      produce identical items. When the stale reading is FLAGGED (out-of-range or
 //      non-optimal) the detail acknowledges the status ("Below optimal at last
 //      test · …") so the user isn't left asking "what do I do with this?" — the
-//      flag surface (dashboard hero) still owns the management action; this item
+//      flagged-result dashboard placement still owns the management action; this item
 //      stays the retest clock, now honest about the reading's status.
 
 import { flagLabel, isNonOptimal, isOutOfRange } from "./reference-range";

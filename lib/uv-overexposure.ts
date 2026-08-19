@@ -2,7 +2,7 @@
 // of the two-sided UV-dose model: when a day's cumulative erythemal dose from outdoor
 // daylight time crosses the skin-type-adjusted burn (MED) threshold, surface an
 // actionable heads-up ("high UV during your 90 min out — ~X min to burn for your skin
-// type"). Care tier (#449) — it reaches Upcoming + the non-hideable dashboard hero,
+// type"). Care tier (#449) — it reaches Upcoming + dashboard placement,
 // distinct from the calm/observational sufficiency signal. STAYS SILENT without a skin
 // type (the overexposure threshold is undefined then — degrade gracefully, never guess).
 //

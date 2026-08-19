@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -16,10 +16,8 @@ import { workerDbPath } from "./worker-env";
 //
 // Period start was missing from the sheet entirely — `lib/quick-log.ts` had no entry —
 // even though #1506's charter is exactly "logging actions" and day 1 is the app's most
-// time-sensitive log. This spec pins the row, the overlay it opens, and the property
-// that matters most: the sheet and the dashboard card show the SAME verb, because both
-// render the same server-resolved `cycleControlState` rather than deciding for
-// themselves.
+// time-sensitive log. This spec pins the row and the overlay it opens. The shared
+// `cycleControlState`/PeriodOfferButton contract is pinned in the renderer suite.
 //
 // A raw context from loginAs does NOT inherit the `mobile` project's `use` block, so the
 // phone viewport has to be restated or this silently runs at desktop width where the
@@ -40,34 +38,6 @@ function clearCycles(profileName: string): void {
   } finally {
     db.close();
   }
-}
-
-// The verb the sheet's overlay is currently offering, as the write it will perform.
-//
-// Since #2651 the period row lives in the sheet's Body segment rather than a flat
-// list, so reaching it costs one segment tap — asserted, not assumed, by
-// `showLogRow` (e2e/log-sheet-helpers.ts). What this helper measures is unchanged:
-// the verb the overlay offers, once the row is reached.
-async function sheetVerb(page: Page): Promise<string | null> {
-  const sheet = await openLogSheet(page);
-  const row = await showLogRow(sheet, "log-period");
-  await row.click();
-  const panel = page.getByTestId("quick-cycle-panel");
-  await expect(panel).toBeVisible({ timeout: 20_000 });
-  const offer = panel.getByTestId("period-offer-sheet").getByRole("button");
-  if ((await offer.count()) === 0) return null;
-  return offer.getAttribute("data-period-write");
-}
-
-// The verb the dashboard card is offering, same encoding.
-async function widgetVerb(page: Page): Promise<string | null> {
-  const offer = page
-    .getByRole("main")
-    .getByTestId("cycle-phase-widget")
-    .getByTestId("period-offer-widget")
-    .getByRole("button");
-  if ((await offer.count()) === 0) return null;
-  return offer.getAttribute("data-period-write");
 }
 
 test.describe("quick-log sheet: log a period (#1892)", () => {
@@ -128,7 +98,7 @@ test.describe("the period row is relevance-gated (#1892/#1042)", () => {
 
   test("a profile cycle tracking doesn't apply to never sees it", async () => {
     // The shell fixture's profile has no sex, no cycle rows — cycleTrackingRelevant is
-    // false, exactly as for the Cycle nav entry and the dashboard card. The sheet's
+    // false, exactly as for the Cycle nav entry and dashboard control atom. The sheet's
     // other rows are unaffected: the gate is per-entry, not a mode.
     await page.goto("/");
     const sheet = await openLogSheet(page);

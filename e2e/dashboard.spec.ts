@@ -1,8 +1,38 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_DAILY,
+  E2E_LOGIN_DASHBOARD_ALL,
+  E2E_LOGIN_SICK_SELF,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { openDashboardAll, settledClick } from "./helpers";
+
+function resetDashboardAllOffer(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profile = db
+      .prepare(
+        `SELECT p.id
+           FROM profiles p
+           JOIN login_profiles lp ON lp.profile_id = p.id
+           JOIN logins l ON l.id = lp.login_id
+          WHERE l.username = ?`
+      )
+      .get(E2E_LOGIN_DASHBOARD_ALL) as { id: number };
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'stream-onboard:%'"
+    ).run(profile.id);
+    db.prepare(
+      "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'wear_reminder_enabled'"
+    ).run(profile.id);
+  } finally {
+    db.close();
+  }
+}
 
 function setSecondDashboardNap(enabled: boolean): void {
   const db = new Database(workerDbPath());
@@ -47,7 +77,7 @@ function setSecondDashboardNap(enabled: boolean): void {
   }
 }
 
-test("the dashboard renders one fixed instrument cluster and no editor", async ({
+test("the dashboard renders the fixed four-zone instrument cluster", async ({
   page,
 }) => {
   await page.goto("/");
@@ -55,7 +85,6 @@ test("the dashboard renders one fixed instrument cluster and no editor", async (
 
   await expect(main.getByTestId("now-strip")).toBeVisible();
   await expect(main.getByTestId("dashboard-standing")).toBeVisible();
-  await expect(main.getByTestId("dashboard-everything")).toBeVisible();
   const standing = main.getByTestId("dashboard-standing");
   expect(
     await standing
@@ -73,13 +102,11 @@ test("the dashboard renders one fixed instrument cluster and no editor", async (
   await expect(
     standing.locator('[data-standing-section="longer-view"]')
   ).toBeVisible();
-  await expect(
-    main.getByRole("button", { name: "Edit dashboard" })
-  ).toHaveCount(0);
-  await expect(main.getByText("Customize", { exact: true })).toHaveCount(0);
 });
 
-test("attention facts render as separate atoms", async ({ page }) => {
+test("attention facts use write-capable atoms outside read-only Ahead", async ({
+  page,
+}) => {
   await page.goto("/");
   const facts = page.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:"]'
@@ -87,11 +114,12 @@ test("attention facts render as separate atoms", async ({ page }) => {
   const count = await facts.count();
 
   expect(count).toBeGreaterThan(1);
-  await expect(facts.nth(0)).toBeVisible();
-  for (let index = 0; index < Math.min(count, 5); index += 1) {
-    await expect(
-      facts.nth(index).getByTestId("dashboard-attention-atom")
-    ).toHaveCount(1);
+  for (let index = 0; index < count; index += 1) {
+    const fact = facts.nth(index);
+    const lane = await fact.getAttribute("data-lane");
+    await expect(fact.getByTestId("dashboard-attention-atom")).toHaveCount(
+      lane === "ahead" ? 0 : 1
+    );
   }
 });
 
@@ -109,18 +137,97 @@ test("clinical results render as dense individual facts", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("household access renders one fact per other profile", async ({
+test("ordinary other-profile attention stays off the acting dashboard", async ({
   page,
 }) => {
   await page.goto("/");
   const facts = page.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="household.attention:"]'
   );
-  expect(await facts.count()).toBeGreaterThan(0);
-  const ids = await facts.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-candidate-id"))
+  await expect(facts).toHaveCount(0);
+});
+
+test("Ahead expands by keyboard without opening Show everything", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const ahead = page.getByTestId("dashboard-ahead");
+  await expect(ahead).toBeVisible();
+  const horizon = ahead.locator('[data-ahead-bucket="horizon"]');
+  const expander = horizon.getByRole("button", {
+    name: /^\+\d+ more in This week and later$/,
+  });
+  const controlled = await expander.getAttribute("aria-controls");
+  expect(controlled).toBeTruthy();
+  await expect(expander).toHaveAccessibleName(
+    /^\+\d+ more in This week and later$/
   );
-  expect(new Set(ids).size).toBe(ids.length);
+  await expect(expander).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(`#${controlled}`)).toBeHidden();
+  await expander.focus();
+  await expander.press("Enter");
+  await expect(expander).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(`#${controlled}`)).toBeVisible();
+  await expander.press("Space");
+  await expect(expander).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(`#${controlled}`)).toBeHidden();
+  await expect(page.getByTestId("dashboard-all")).not.toHaveAttribute(
+    "open",
+    ""
+  );
+});
+
+test("Show everything remembers its open state on this device", async ({
+  browser,
+}) => {
+  resetDashboardAllOffer();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DASHBOARD_ALL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const details = page.getByTestId("dashboard-all");
+    await expect(details).not.toHaveAttribute("open", "");
+    await openDashboardAll(page);
+    await page.addInitScript(() => {
+      const state = window as typeof window & {
+        __dashboardAllOpenAtFirstFrame?: boolean;
+      };
+      const sampleFirstFrame = () => {
+        const disclosure = document.querySelector<HTMLDetailsElement>(
+          '[data-testid="dashboard-all"]'
+        );
+        if (disclosure) {
+          state.__dashboardAllOpenAtFirstFrame = disclosure.open;
+          return;
+        }
+        requestAnimationFrame(sampleFirstFrame);
+      };
+      requestAnimationFrame(sampleFirstFrame);
+    });
+    await page.reload();
+    await expect(details).toHaveAttribute("open", "");
+    await expect(page.getByTestId("dashboard-all-contents")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __dashboardAllOpenAtFirstFrame?: boolean;
+              }
+            ).__dashboardAllOpenAtFirstFrame
+        )
+      )
+      .toBe(true);
+
+    await settledClick(page, page.getByTestId("stream-offer-decline-onboard"));
+    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+  } finally {
+    resetDashboardAllOffer();
+    await page.context().close();
+  }
 });
 
 test("manual and external readings are both eligible for Standing", async ({
@@ -148,19 +255,23 @@ test("manual and external readings are both eligible for Standing", async ({
   }
 });
 
-test("mobile and desktop expose the same Standing fact order", async ({
+test("mobile and desktop expose the same four-zone fact order", async ({
   page,
 }) => {
   await page.goto("/");
-  const facts = page
-    .getByTestId("dashboard-standing")
-    .getByTestId("dashboard-candidate");
+  const facts = page.getByRole("main").getByTestId("dashboard-candidate");
   const desktop = await facts.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-fact-key"))
+    nodes.map(
+      (node) =>
+        `${node.getAttribute("data-lane")}:${node.getAttribute("data-fact-key")}`
+    )
   );
   await page.setViewportSize({ width: 390, height: 844 });
   const mobile = await facts.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-fact-key"))
+    nodes.map(
+      (node) =>
+        `${node.getAttribute("data-lane")}:${node.getAttribute("data-fact-key")}`
+    )
   );
   expect(mobile).toEqual(desktop);
 });
@@ -257,10 +368,80 @@ test("every applicable fact appears in exactly one atomic lane", async ({
   page,
 }) => {
   await page.goto("/");
-  const candidates = page.getByRole("main").getByTestId("dashboard-candidate");
-  const factKeys = await candidates.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-fact-key"))
+  const candidates = page
+    .getByRole("main")
+    .locator("[data-candidate-id][data-fact-key]");
+  const identities = await candidates.evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      candidateId: node.getAttribute("data-candidate-id"),
+      factKey: node.getAttribute("data-fact-key"),
+    }))
   );
+  const candidateIds = identities.map(({ candidateId }) => candidateId);
+  const factKeys = identities.map(({ factKey }) => factKey);
+  expect(candidateIds.every(Boolean)).toBe(true);
+  expect(new Set(candidateIds).size).toBe(candidateIds.length);
   expect(factKeys.every(Boolean)).toBe(true);
   expect(new Set(factKeys).size).toBe(factKeys.length);
+});
+
+test("illness identities stay exact-once when the cockpit folds", async ({
+  browser,
+}) => {
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_SICK_SELF, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
+  try {
+    await page.goto("/");
+    const main = page.getByRole("main");
+    const cockpit = main
+      .getByTestId("illness-now-group")
+      .locator('[data-active="true"]');
+    await expect(cockpit).toHaveCount(1);
+
+    const illnessIdentities = async () =>
+      main
+        .locator('[data-candidate-id^="illness."][data-fact-key^="illness."]')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            candidateId: node.getAttribute("data-candidate-id")!,
+            factKey: node.getAttribute("data-fact-key")!,
+          }))
+        );
+    const expectExactOnce = (
+      identities: Awaited<ReturnType<typeof illnessIdentities>>
+    ) => {
+      expect(
+        identities.some(({ candidateId }) =>
+          candidateId.startsWith("illness.state:")
+        )
+      ).toBe(true);
+      expect(
+        identities.some(({ candidateId }) =>
+          candidateId.startsWith("illness.temperature:")
+        )
+      ).toBe(true);
+      expect(
+        new Set(identities.map(({ candidateId }) => candidateId)).size
+      ).toBe(identities.length);
+      expect(new Set(identities.map(({ factKey }) => factKey)).size).toBe(
+        identities.length
+      );
+    };
+
+    const expanded = await illnessIdentities();
+    expectExactOnce(expanded);
+    await settledClick(
+      page,
+      cockpit.locator('[data-testid^="illness-cockpit-toggle-"]')
+    );
+    await expect(cockpit).toHaveAttribute("data-expanded", "false");
+    const collapsed = await illnessIdentities();
+    expectExactOnce(collapsed);
+    expect(collapsed).toEqual(expanded);
+  } finally {
+    await page.context().close();
+  }
 });

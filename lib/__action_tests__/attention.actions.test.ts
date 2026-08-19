@@ -1,8 +1,8 @@
-// SERVER-ACTION TIER — the "Needs attention" hero's per-item controls (issue #171).
+// SERVER-ACTION TIER — dashboard attention atoms' per-item controls (issue #171).
 //
 // snoozeAttention / dismissAttention / markAttentionDose wrap the shared findings
 // suppression + dose-confirm writers, revalidating the dashboard (and Upcoming) so a
-// snooze/dismiss/mark on the hero matches the Upcoming page exactly. These assert the
+// snooze/dismiss/mark on the dashboard matches the Upcoming page exactly. These assert the
 // suppression row lands under the acting profile, the day-clamp holds, and the mark
 // path is idempotent/profile-scoped.
 
@@ -90,7 +90,7 @@ describe("markAttentionDose", () => {
     const { profile } = seedActor();
     const doseId = seedDose(profile.id);
 
-    // The action carries markDoseTaken's typed outcome (#2106) — the hero renders
+    // The action carries markDoseTaken's typed outcome (#2106) — the dashboard atom renders
     // from it, so the success wording and the idempotent repeat are both stated.
     expect(await markAttentionDose(fd({ dose_id: doseId }))).toEqual({
       ok: true,

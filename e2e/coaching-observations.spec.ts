@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import { plateauSignalKey } from "@/lib/training-observations";
 import {
@@ -15,7 +15,7 @@ const DISMISS_PRESS = "E2E Dismiss Press";
 // body-metric hygiene, goal pacing, adherence patterns) render only on their own
 // tabs. The dashboard "Coaching observations" rollup gives them REACH WITHOUT NOISE:
 // the SAME findings (one computation, collectCoachingFindings) surface as a calm,
-// hideable dashboard widget, and a dismiss there silences the finding on its origin
+// hideable dashboard presentation, and a dismiss there silences the finding on its origin
 // tab too (shared findings bus). The seed + e2e fixtures ship a plateaued Skullcrusher,
 // a 92 kg weight glitch, and off-pace weight goals, so the rollup has content on the
 // seeded DB.
@@ -50,6 +50,7 @@ test("the dashboard surfaces tab-only coaching observations (#449)", async ({
 }) => {
   resetCoachingObservationDismissals();
   await page.goto("/");
+  await openDashboardAll(page);
 
   const rollup = dashboardCandidateWithText(
     page,
@@ -67,6 +68,7 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
 }) => {
   resetCoachingObservationDismissals();
   await page.goto("/");
+  await openDashboardAll(page);
 
   const rollup = dashboardCandidateWithText(
     page,
@@ -137,12 +139,14 @@ test("repeat dismissal eventually retires a coaching topic (#2386)", async ({
 
   // Never declined: it is raised routinely.
   await page.goto("/");
+  await openDashboardAll(page);
   await expect(lead).toHaveCount(1);
 
   // Two separate raisings declined → it is quieter in ordering, but the thresholded
   // widget does not hide it behind a capped overflow.
   declinePastRaisings(2);
   await page.goto("/");
+  await openDashboardAll(page);
   await expect(lead).toHaveCount(1);
 
   // Four → retired from the routine surface altogether.

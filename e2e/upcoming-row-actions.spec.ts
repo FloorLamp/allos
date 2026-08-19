@@ -20,9 +20,7 @@ import { type Locator, type Page } from "@playwright/test";
 // exact counts of shared rows (a neighbour spec marks preventive items done or
 // overrides them) and never name a single catalog rule: every assertion is
 // either per-row, a lower bound, or "any preventive row". Deliberately NOT a
-// dedicated fixture profile: an extra profile is visible to every OTHER spec's
-// dashboard (household strip), and adding one measurably destabilised the
-// already-racy needs-attention-menu spec.
+// dedicated fixture profile: these assertions do not need another persisted subject.
 
 async function openUpcoming(page: Page): Promise<Locator> {
   await page.goto("/upcoming");

@@ -1643,7 +1643,7 @@ describe("qualitativeFlagResolution — LOINC hint (#684)", () => {
   });
 
   // #910 §1 — the mis-flag half. "A POSITIVE" contains "POSITIVE", so the
-  // extractor stamps a blood type "abnormal" and it reaches the attention hero and
+  // extractor stamps a blood type "abnormal" and it reaches dashboard placement and
   // the Telegram push. The name regex can't see "ABORh", so nothing cleared it.
   it("clears the blunt 'abnormal' the extractor stamped on a blood type (#910)", () => {
     // Without the LOINC: no verdict, so the wrong flag stands — the bug.
@@ -1745,7 +1745,7 @@ describe("qualitativeFlagResolution (#549 routing #544 + #548)", () => {
 describe("qualitativeFlagResolution — bad-polarity promotion (#629)", () => {
   it("sets 'abnormal' on an infection-positive the extractor left unflagged", () => {
     // A positive HBsAg with flag=null would otherwise display as "Normal" and never
-    // reach the attention hero. #549 established the extractor's qualitative flag is
+    // reach dashboard placement. #549 established the extractor's qualitative flag is
     // untrusted, so we promote rather than assume it flagged the row.
     expect(
       qualitativeFlagResolution(

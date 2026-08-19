@@ -5,6 +5,7 @@ import { loginAs } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
   expectNoClippedContent,
+  openDashboardAll,
   settledClick,
   settledClickApplied,
   settledFill,
@@ -71,7 +72,7 @@ test("simultaneous episodes keep whole controls and close independently", async 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     const cockpits = page
-      .getByTestId("illness-hero")
+      .getByTestId("illness-now-group")
       .locator("[data-episode-key]");
     await expect(cockpits).toHaveCount(3);
     await cockpits
@@ -115,7 +116,7 @@ test("simultaneous episodes keep whole controls and close independently", async 
 
     const bySituation = (situation: string) =>
       page
-        .getByTestId("illness-hero")
+        .getByTestId("illness-now-group")
         .locator(`[data-situation="${situation}"]`);
     async function addSymptom(cockpit: Locator, symptom: string) {
       const bar = cockpit.getByTestId("symptom-log-bar");
@@ -135,21 +136,23 @@ test("simultaneous episodes keep whole controls and close independently", async 
       bySituation("Migraine").getByTestId("symptom-nausea-sev-1")
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
-      page.getByTestId("illness-hero").getByTestId("symptom-cough-sev-1")
+      page.getByTestId("illness-now-group").getByTestId("symptom-cough-sev-1")
     ).toHaveCount(1);
     await expect(
-      page.getByTestId("illness-hero").getByTestId("symptom-nausea-sev-1")
+      page.getByTestId("illness-now-group").getByTestId("symptom-nausea-sev-1")
     ).toHaveCount(1);
     await expect(
-      page.getByTestId("illness-hero").getByTestId("symptom-headache-sev-2")
+      page
+        .getByTestId("illness-now-group")
+        .getByTestId("symptom-headache-sev-2")
     ).toHaveCount(1);
 
     const owningCockpit = bySituation("Stomach bug");
     await expect(
-      page.getByTestId("illness-hero").getByTestId("temp-quick-toggle")
+      page.getByTestId("illness-now-group").getByTestId("temp-quick-toggle")
     ).toHaveCount(1);
     await expect(
-      page.getByTestId("illness-hero").getByTestId("cockpit-prn")
+      page.getByTestId("illness-now-group").getByTestId("cockpit-prn")
     ).toHaveCount(1);
     await expect(
       owningCockpit.getByTestId("illness-shared-profile-controls-context")
@@ -177,13 +180,13 @@ test("simultaneous episodes keep whole controls and close independently", async 
     ).toContainText("Ibuprofen");
     await expect(
       page
-        .getByTestId("illness-hero")
+        .getByTestId("illness-now-group")
         .getByTestId("episode-last-temperature")
         .filter({ hasText: "101.9" })
     ).toHaveCount(1);
     await expect(
       page
-        .getByTestId("illness-hero")
+        .getByTestId("illness-now-group")
         .getByTestId("episode-last-dose")
         .filter({ hasText: "Ibuprofen" })
     ).toHaveCount(1);
@@ -203,14 +206,14 @@ test("simultaneous episodes keep whole controls and close independently", async 
 
     async function close(situation: string, remaining: string[]) {
       const cockpit = page
-        .getByTestId("illness-hero")
+        .getByTestId("illness-now-group")
         .locator("[data-episode-key]")
         .filter({ hasText: situation });
       await cockpit.getByTestId("cockpit-end-episode").click();
       const dialog = page.getByRole("dialog", { name: "End this episode?" });
       await dialog.getByRole("button", { name: "End episode" }).click();
       await expect(
-        page.getByTestId("illness-hero").locator("[data-episode-key]")
+        page.getByTestId("illness-now-group").locator("[data-episode-key]")
       ).toHaveCount(remaining.length);
       if (remaining.length > 0)
         expect(await situationNames()).toEqual(remaining);
@@ -232,7 +235,7 @@ test("simultaneous episodes keep whole controls and close independently", async 
     }
     await page.goto("/");
     await expect(
-      page.getByTestId("illness-hero").locator("[data-episode-key]")
+      page.getByTestId("illness-now-group").locator("[data-episode-key]")
     ).toHaveCount(3);
   } finally {
     await page.context().close();
@@ -241,7 +244,7 @@ test("simultaneous episodes keep whole controls and close independently", async 
 
 function memberCockpit(page: Page, name: string) {
   return page
-    .getByTestId("illness-hero")
+    .getByTestId("illness-now-group")
     .locator("[data-episode-key]")
     .filter({ hasText: name });
 }
@@ -276,7 +279,7 @@ test("an active illness renders the real cockpit with exact candidate identity",
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     const cockpit = page
-      .getByTestId("illness-hero")
+      .getByTestId("illness-now-group")
       .locator('[data-active="true"]');
     await expect(cockpit).toHaveCount(1);
     await expect(cockpit).toHaveAttribute("data-expanded", "true");
@@ -313,7 +316,7 @@ test("collapse and expansion survive a reload", async ({ browser }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto("/");
     const cockpit = () =>
-      page.getByTestId("illness-hero").locator('[data-active="true"]');
+      page.getByTestId("illness-now-group").locator('[data-active="true"]');
     const toggle = () =>
       cockpit().locator('[data-testid^="illness-cockpit-toggle-"]');
 
@@ -352,8 +355,8 @@ test("household episodes stay ordered and a writable accordion logs without swit
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
       "Care Parent"
     );
-    const hero = page.getByTestId("illness-hero");
-    const names = await hero
+    const illnessGroup = page.getByTestId("illness-now-group");
+    const names = await illnessGroup
       .locator('[data-testid^="illness-cockpit-name-"]')
       .allTextContents();
     expect(names).toEqual([
@@ -403,7 +406,7 @@ test("household episodes stay ordered and a writable accordion logs without swit
     );
     await expect(
       page
-        .getByTestId("illness-hero")
+        .getByTestId("illness-now-group")
         .locator('[data-active="true"]')
         .locator('[data-testid^="illness-cockpit-name-"]')
     ).toContainText("Sick Kid A");
@@ -464,19 +467,24 @@ test.describe("fresh-profile illness front door", () => {
     test.slow();
     await createProfileViaFamily(page, "phase5-front-door");
     await page.goto("/");
+    await openDashboardAll(page);
     await settledClickApplied(
       page,
       page.getByTestId("symptom-illness-bridge-activate"),
-      page.getByTestId("illness-hero")
+      page.getByTestId("illness-now-group")
     );
-    const bar = page.getByTestId("illness-hero").getByTestId("symptom-log-bar");
+    const bar = page
+      .getByTestId("illness-now-group")
+      .getByTestId("symptom-log-bar");
     await bar.getByTestId("temp-quick-toggle").click();
     await expect(bar.getByTestId("temp-quick-entry")).toBeVisible();
     await bar.getByTestId("temp-quick-input").fill("102");
     await bar.getByTestId("temp-quick-time").fill("07:00");
     await settledClick(page, bar.getByTestId("temp-quick-save"));
     await expect(
-      page.getByTestId("illness-hero").getByTestId("episode-last-temperature")
+      page
+        .getByTestId("illness-now-group")
+        .getByTestId("episode-last-temperature")
     ).toContainText("102");
 
     await page.getByTestId("illness-add-medication").click();
@@ -488,7 +496,9 @@ test.describe("fresh-profile illness front door", () => {
     await expect(page.getByTestId("prn-log-now")).toBeVisible();
     await page.reload();
     await expect(
-      page.getByTestId("illness-hero").getByText("Ibuprofen", { exact: true })
+      page
+        .getByTestId("illness-now-group")
+        .getByText("Ibuprofen", { exact: true })
     ).toBeVisible();
   });
 });

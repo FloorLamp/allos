@@ -1,5 +1,5 @@
 // Pure scheduling helpers for intake items (no DB access), shared by the
-// intake surfaces, the dashboard widget, and any future notifier. Keeping the
+// intake surfaces, the dashboard presentation, and any future notifier. Keeping the
 // "is this due today?" / time-bucket / priority logic here (not inline in the
 // page) means an alerting layer can reuse it directly.
 
@@ -566,7 +566,7 @@ export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
 
 // THE push predicate. Whether this item may ride a SYSTEM-INITIATED surface at all:
 // dose reminders, refill nudges, the digest's Today section, Upcoming's due rows, the
-// dashboard hero. `may` means the user declared no expectation, so the system never
+// dashboard Now. `may` means the user declared no expectation, so the system never
 // initiates about it — it stays fully reachable through USER-initiated access (the
 // Supplements page, quick log, the digest's "➕ Doses" tail, keyboards) exactly as
 // the surface taxonomy in docs/internals/findings.md requires.

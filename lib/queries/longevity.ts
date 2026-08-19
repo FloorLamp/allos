@@ -1,12 +1,12 @@
 // Server-side assembly for the pillars behind the LONGEVITY page (/longevity) and
-// its dashboard widget (issue #161).
+// its dashboard presentation (issue #161).
 //
 // Naming (#1638): "healthspan" is the domain concept — the span of healthy life the
 // pillars estimate — and "Longevity" is the shipped surface label and route. The
 // module was `lib/queries/healthspan.ts` until #1638 renamed it after the surface,
 // so grepping for the Longevity page's data layer finds it; the word healthspan
-// survives here and in the widget id `healthspan-pillars` (a persisted dashboard
-// preference key, deliberately NOT renamed) so the old term still leads here too.
+// survives here and in the stable `healthspan-pillars` presentation selector, so
+// the old term still leads here too.
 //
 // This is a pure DB SEAM: it gathers each pillar's inputs from the ALREADY-MERGED
 // computations (fitness percentile #158, sleep regularity #160, PhenoAge

@@ -103,13 +103,8 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/actions.ts",
-    fn: "saveAttentionHeroCollapsed",
-    why: "login-scoped: stores the caller's OWN dashboard hero collapse preference (a display-density flag in login_settings, #1413), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate. Deliberately NOT requireWriteAccess: a read-only viewer of someone else's profile still gets to choose how tall the card is on their own screen. It cannot hide the hero or its count (#449) — the stored flag is one input to attentionHeroState, which ignores it entirely for a safety-locked hero",
-  },
-  {
-    file: "app/(app)/actions.ts",
     fn: "dismissRecentlyResolved",
-    why: "login-scoped: stores the caller's OWN hide of a 'Recently resolved — reopen?' line (a JSON id set in login_settings, #1548), not profile-owned data — same shape as saveAttentionHeroCollapsed, so requireSession() is the right gate. Deliberately NOT requireWriteAccess: a read-only caregiver may still tidy their own dashboard, and the hide is per-login so a co-caregiver's copy is untouched. The episode id IS authorized here — getAccessibleProfiles() feeds the auth-blind write core, which refuses any id outside that set's reopen-eligible ids; it can never reopen, close, or re-window an episode",
+    why: "login-scoped: stores the caller's OWN hide of a 'Recently resolved — reopen?' line (a JSON id set in login_settings, #1548), not profile-owned data. Deliberately NOT requireWriteAccess: a read-only caregiver may still tidy their own dashboard, and the hide is per-login so a co-caregiver's copy is untouched. The episode id IS authorized here — getAccessibleProfiles() feeds the auth-blind write core, which refuses any id outside that set's reopen-eligible ids; it can never reopen, close, or re-window an episode",
   },
   {
     file: "app/(app)/whats-new/actions.ts",
@@ -244,7 +239,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/actions.ts",
     fn: "dismissDataQualityGap",
-    why: "delegates to dismissCoachingObservation(), which calls requireWriteAccess() (#1219 named alias so the two widgets can diverge safely)",
+    why: "delegates to dismissCoachingObservation(), which calls requireWriteAccess() (#1219 named alias so the two atoms can diverge safely)",
   },
   {
     file: "app/(app)/encounters/appointment-actions.ts",

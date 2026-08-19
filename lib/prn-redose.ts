@@ -26,7 +26,7 @@
 // The findings-bus namespace for the "over the confirmed daily max" care finding. A
 // per-item, count-per-day analogue of the dietary-limit (UL) warning: when today's
 // administrations EXCEED the user's confirmed max_daily_count, surface a dismissible
-// care-tier finding (Upcoming + the dashboard attention hero). Registered on the
+// care-tier finding (Upcoming + dashboard placement). Registered on the
 // intake-surface dismiss guard so a dismiss silences it like any other finding.
 import { parseUtcSql } from "./date";
 import {
@@ -253,7 +253,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 }
 
 // A marker-AGNOSTIC redose status for the always-on SURFACING paths (the med card,
-// the dashboard PRN widget) — unlike redoseNoticeDecision, this ignores the one-shot
+// the shared PRN quick-log content) — unlike redoseNoticeDecision, this ignores the one-shot
 // notification marker, because a card should always show the current window state, not
 // go silent after the notice fired. Returns null when nothing has been logged yet
 // (no window to describe). The interval/max are the item's confirmed numbers.

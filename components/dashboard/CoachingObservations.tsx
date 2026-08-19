@@ -7,7 +7,7 @@ import { dismissCoachingObservation } from "@/app/(app)/actions";
 // domains (training balance/plateau, body-metric hygiene, goal pacing, adherence
 // patterns) render only on their own tabs; a finding a user never opens that tab for
 // is indistinguishable from one that never fired. This calm rollup gives them
-// dashboard REACH WITHOUT NOISE — no notification, no non-hideable hero slot (it's a
+// dashboard REACH WITHOUT NOISE — no notification and never Now (it's a
 // dashboard observation surface) — surfacing the SAME findings (one computation:
 // lib/rule-findings collectCoachingFindings) with their SAME dedupeKeys, so a dismiss
 // here silences the origin tab too and vice-versa, through the shared findings bus.

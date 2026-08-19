@@ -118,7 +118,7 @@ Three surfaces render it and **none of them re-derives it**:
 | surface                | component                                         | where the state comes from             |
 | ---------------------- | ------------------------------------------------- | -------------------------------------- |
 | Cycle page control     | `app/(app)/medical/cycles/PeriodQuickActions.tsx` | the page, once per render              |
-| Dashboard phase widget | `components/dashboard/CyclePhaseWidget.tsx`       | the dashboard page, once per render    |
+| Dashboard control atom | `components/dashboard/CycleControlAtom.tsx`       | the dashboard page, once per render    |
 | Quick-log sheet        | `components/quick-entry/QuickCyclePanel.tsx`      | `loadQuickEntry("cycle")`, **on open** |
 
 All three mount `components/cycle/PeriodOfferButton.tsx`, the only caller of

@@ -529,7 +529,7 @@ surface FORMATS its answers:
   that tolerance (a calm amber fact), which now includes a provider failing every
   run while its data keeps landing. Only `failing` and `needs-reauth` escalate
   (`standingEscalates`): the Data badge (`getImportIssues` /
-  `getImportReviewCount`), Review's Needs-attention card, the dashboard hero
+  `getImportReviewCount`), Review's Needs-attention card, dashboard placement
   item, and the digest's 🔌 lines all gate on that one predicate, so an
   intermittent source can never increase contact anywhere. The amber surfaces state
   the honest failure tally AND the observed success cadence beside it
@@ -1359,7 +1359,7 @@ It reaches the surfaces the same way the expired-Health-Connect signal (#607)
 does — as a synthetic issue in `getImportIssues` (emitted for an escalated
 provider whose latest run SUCCEEDED long ago, i.e. nothing failed on record),
 carrying the shared `STALE_SYNC_EVENT_ID` sentinel — so the profile-menu badge,
-the Data → Review Needs-attention card, the dashboard hero, the Upcoming page
+the Data → Review Needs-attention card, dashboard placement, the Upcoming page
 and the morning digest all read one list and cannot disagree about which sources
 are broken. A provider whose latest run is a RECORDED failure contributes that
 real event instead (it names a cause) — one row per provider either way. Because the
@@ -1560,7 +1560,7 @@ classes 2/3 only**: a calm card on Data → Review (`components/QuietStreams.tsx
 slate, not the rose Needs-attention card), with **no push, no digest line, and no
 `notify_*` marker**. `AttentionIntegration.kind` gained `"quiet-stream"` beside
 `failing`/`stale`, and the tier is enforced rather than documented:
-`getQuietStreamAttention` is a separate entry point that the badge, hero and
+`getQuietStreamAttention` is a separate entry point that the care badge, Upcoming, and
 digest never call, and `isEscalatingIntegration` (`lib/attention.ts`) filters the
 kind inside `buildAttentionModel` and the digest's own integration section. The
 row also **yields**: a provider already carrying a `failing`/`stale` row is never

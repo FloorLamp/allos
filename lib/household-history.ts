@@ -9,7 +9,7 @@
 //
 // Auth-blind, profileId-LIST-first: every function here takes the ALREADY-RESOLVED
 // set of profile ids (the viewing login's accessible set — the same access basis as
-// the household strip / family calendar). The AUTH decision (which profiles the login
+// the Household page / family calendar). The AUTH decision (which profiles the login
 // may see) stays at the page/action layer via getAccessibleProfiles; this module
 // never imports lib/auth. Because it composes the existing profile-scoped readers
 // (getEncounters, summarizeEpisodesForProfile) it introduces no un-scoped SQL, so the

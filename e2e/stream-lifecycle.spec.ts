@@ -6,7 +6,11 @@ import {
   E2E_LOGIN_STREAM_ONBOARD,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  openDashboardAll,
+  settledClick,
+} from "./helpers";
 
 // The continuous-stream on/offboarding lifecycle (#2162), rendered.
 //
@@ -66,6 +70,7 @@ test("the dashboard card is dismissible, enables nothing, and stays dismissed (#
   });
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const card = page.getByTestId("stream-lifecycle-offers");
     await expect(card).toBeVisible();
     await expect(

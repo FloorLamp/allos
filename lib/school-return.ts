@@ -1,6 +1,6 @@
 // The school-return "fever-free 24h without meds" countdown — PURE computation +
 // formatter (issue #859 item 2). No DB/network, so it's unit-tested in lib/__tests__
-// and shared by EVERY surface (episode page, dashboard illness hero, household line)
+// and shared by EVERY surface (episode page, dashboard illness Now group, household line)
 // via the one gather in lib/school-return-data.ts — the one-question-one-computation
 // discipline (#221).
 //
@@ -82,7 +82,7 @@ export function computeSchoolReturn(
   };
 }
 
-// The one-line countdown every surface renders (episode page, hero cockpit,
+// The one-line countdown every surface renders (episode page, illness Now cockpit,
 // household line). Leads with the fever-free hours + last reading, annotates the last
 // fever reducer when one was taken, and states the convention + threshold. `tempUnit`
 // renders the reading in the viewer's preference (storage is canonical °F). Neutral,

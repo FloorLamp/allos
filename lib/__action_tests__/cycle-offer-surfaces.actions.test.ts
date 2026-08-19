@@ -6,7 +6,7 @@
 //
 //   • the quick-log sheet's overlay gathers the SAME state the Cycle page resolves —
 //     verbatim, not a lookalike — and is gated on the SAME `cycle` relevance bit as the
-//     nav entry and the dashboard widget, server-side, so a deep link can't reach it;
+//     nav entry and the dashboard presentation, server-side, so a deep link can't reach it;
 //   • a STALE tap — the surface offering a verb the state has since moved past — is
 //     REFUSED with the write core's typed message, never a double-log or an invented
 //     period. That is what makes putting the button on a long-lived dashboard safe.
@@ -107,7 +107,7 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
 
   it("is relevance-gated SERVER-side, so a deep link can't reach it", async () => {
     // Male, no cycle rows → cycleTrackingRelevant is false, exactly as for the nav
-    // entry and the dashboard widget. The sheet already drops the row for this
+    // entry and the dashboard presentation. The sheet already drops the row for this
     // profile; this is the second lock, for a hand-written `?quick=log-period`.
     setProfileSetting(profileId, "sex", "male");
     setProfileSetting(

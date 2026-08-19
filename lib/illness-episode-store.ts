@@ -247,7 +247,7 @@ export function mostRecentClosedEpisodeRow(
 // window (#1140 Part A) — the dashboard "Recently resolved — reopen?" affordance's
 // subject. Uses the SAME episodeReopenEligibility rule as the detail page (one
 // computation, #221). Returns null when there's no closed episode, it has expired, or the
-// same situation is currently OPEN again (that's a hero cockpit, not a reopen prompt).
+// same situation is currently OPEN again (that's an illness Now cockpit, not a reopen prompt).
 export interface ReopenEligibleEpisode {
   id: number;
   situation: string;
@@ -271,10 +271,10 @@ export function reopenEligibleEpisodeForProfile(
 // ── ONE per-profile episode state (issue #2115) ───────────────────────────────
 //
 // "What is this profile's illness situation right now?" is ONE question, and the
-// dashboard used to ask it three times per profile per render: the hero accordion
+// dashboard used to ask it three times per profile per render: the illness context line
 // read the row covering today, the reopen affordance read the most-recent CLOSED
 // row, and the household-history promo read BOTH again — while the page's own
-// comment claimed it reused the hero's rows. Two of the four statements were
+// comment claimed it reused the illness group's rows. Two of the four statements were
 // literally the same SQL with the same binds.
 //
 // So the two row reads are gathered ONCE, per profile, and every derivation is a

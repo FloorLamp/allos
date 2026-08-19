@@ -12,7 +12,7 @@
 //   • one ask per problem — a portal-mapped profile gets #1757's ask, never this one;
 //   • no clinical base at all raises nothing (that is onboarding's territory);
 //   • the reach is exactly Upcoming + the digest line its banding yields: registered
-//     dedupe prefix, coaching tier, NOT on the "Needs attention" hero, and a single
+//     dedupe prefix, coaching tier, NOT in dashboard Now, and a single
 //     dismissal silences the page and the digest together;
 //   • the Fitbit vendor scores stay engine-inert — the ask reads their DATE, and the
 //     verdict is unchanged by their VALUE.
@@ -40,7 +40,7 @@ import {
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
 import { groupUpcoming } from "@/lib/upcoming";
-import { attentionCardItems } from "@/lib/attention";
+import { attentionBadgeItems } from "@/lib/attention";
 import { buildUpcomingDigest } from "@/lib/notifications/upcoming-digest";
 import {
   bindPortalIdentity,
@@ -364,7 +364,7 @@ describe("reach: rows only, coaching tier, never a send", () => {
     expect(tierForDedupeKey(item.key)).toBe("coaching");
   });
 
-  it("surfaces on Upcoming and as the digest's named line, and never on the hero", () => {
+  it("surfaces on Upcoming, Ahead, and as the digest's named line", () => {
     const f = takeoutProfile("digest", HORIZON + 9);
     const items = collectUpcoming(f.profileId, f.today);
     const mine = items.filter((i) => i.domain === "records-recency");
@@ -372,7 +372,7 @@ describe("reach: rows only, coaching tier, never a send", () => {
 
     // The hero is the one surface a user cannot choose not to look at.
     expect(
-      attentionCardItems(items, f.today).some(
+      attentionBadgeItems(items, f.today).some(
         (i) => i.domain === "records-recency"
       )
     ).toBe(false);

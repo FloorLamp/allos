@@ -11,7 +11,7 @@ import FindingRow from "@/components/FindingRow";
 // namespace-guarded server action (passed in as `dismissAction`). Renders nothing
 // when there are no findings.
 //
-// Capped surfaces (the dashboard rollup widgets, #1219) pass their overflow as
+// A caller with a deliberate local fold may pass its overflow as
 // `moreFindings`: the rows beyond the cap render inside a native <details>
 // disclosure ("Show N more"), so a "N of M" subtitle always comes with a path to
 // the hidden M−N — same rows, same links, same dismiss affordance. Overflow rows

@@ -328,7 +328,7 @@ describe("offer dedupe", () => {
 // The dashboard fact never enters Now
 // ---------------------------------------------------------------------------
 describe("dashboard placement", () => {
-  it("a review candidate lands in the Everything lane, never Now", () => {
+  it("a review candidate lands in Show everything, never Now", () => {
     const candidate = preventiveReviewCandidate(
       { scope: "profile", profileId: 1 },
       { recordId: 7, ruleKey: "cervical_cancer" },
@@ -341,6 +341,8 @@ describe("dashboard placement", () => {
       const placements = rankDashboardCandidates([candidate], {
         activeProfileId: 1,
         minutesOfDay,
+        today: "2026-08-19",
+        upcoming: [],
       });
       expect(placements).toHaveLength(1);
       expect(placements[0].lane).toBe("everything");

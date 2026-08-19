@@ -1826,7 +1826,7 @@ apptIns.run(
 ); // Later
 
 // A scheduled MENTAL-HEALTH visit (#997). Its kind defaults to MINIMAL detail on
-// shared surfaces (the household strip + the family calendar feed) — "Medical
+// shared surfaces (the Household page + the family calendar feed) — "Medical
 // appointment", not "Therapy — Dr Okafor" — even though other kinds show full
 // detail; the profile's own pages still show the full title. Synthetic provider.
 db.prepare(
@@ -2644,7 +2644,7 @@ for (let d = 30; d >= 8; d--) {
 // rollup). The alcohol servings the food log above already records are the
 // consumption ledger — a standard drink IS one `alcohol` food-group serving.
 // category 'instrument' (#1076): a screening score files on its own class, off the
-// general lab surfaces (and the flagged hero).
+// general clinical-result surfaces (including flagged-result dashboard placement).
 {
   const suScore = db
     .prepare(
@@ -2774,7 +2774,7 @@ const seedSymptom = db.prepare(
 const seededSymptoms: [number, string, number, string | null][] = [
   // Current episode. Fever is logged on ALL FOUR consecutive days (daysAgo 3→0),
   // so it crosses the cited "more than 3 days" line and the illness-care care
-  // finding (#805) surfaces on Upcoming + the Needs-attention hero.
+  // finding (#805) surfaces on Upcoming and the dashboard.
   [3, "sore_throat", 2, null],
   [3, "fatigue", 2, null],
   [3, "fever", 2, null],

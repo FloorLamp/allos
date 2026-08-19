@@ -146,7 +146,7 @@ export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
 
 // A second empty onboarding profile dedicated to the caregiver path. Keeping it
 // separate lets the self/metrics and caregiver browser tests run in parallel
-// without racing over onboarding state or dashboard layout.
+// without racing over onboarding state.
 export const E2E_LOGIN_ONBOARDING_CAREGIVER = "e2e_onboarding_caregiver";
 export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
 
@@ -166,7 +166,7 @@ export const NAV_MALE_PROFILE = "Nav Cycle Male (e2e)";
 
 // ── Dashboard weight quick-add (#1042 phase 2) ────────────────────────────────
 // A dedicated, write-granted ADULT profile with two seeded weigh-ins (notes
-// 'e2e:seed-weight') so the dashboard weight-trend widget renders its chart.
+// 'e2e:seed-weight') so the dashboard weight presentation renders its chart.
 // Spec-owned on purpose (#868): the weight-quick-add spec resets every non-seed
 // body_metrics row on it at test start (the smoke.spec direct-DB precedent), so
 // it's repeat-safe and its writes never perturb a shared profile's weight series
@@ -200,28 +200,47 @@ export const DAILY_LOOP_PROFILE = "Daily Loop (e2e)";
 export const E2E_LOGIN_WHATSNEW = "e2e_whatsnew";
 export const WHATS_NEW_PROFILE = "Whats New (e2e)";
 
-// ── Dashboard "Now" strip + collapsible hero (issue #1413) ───────────────────
+// ── Dashboard Now placement (issue #1413) ────────────────────────────────────
 // Two spec-owned fixtures for e2e/dashboard-now.mobile.spec.ts.
 //
 // The first carries a JUST-FINISHED strength session (so the Now strip's highest
 // signal fires deterministically — the strip is otherwise time-of-day dependent,
 // and the e2e clock pins local time to 13:mm) plus one appointment scheduled
-// TODAY, which gives the "Needs attention" hero a non-zero, stable count to
-// collapse. It needs its own LOGIN because the collapse preference is stored per
-// login (login_settings) and the spec toggles it — doing that on a shared login
-// would leak a collapsed hero into every other spec's dashboard.
+// TODAY, which gives Now a deterministic second atomic candidate. It has a dedicated
+// login so the fixture remains isolated from other dashboard specs.
 export const E2E_LOGIN_NOWSTRIP = "e2e_nowstrip";
 export const NOW_STRIP_PROFILE = "Now Strip (e2e)";
 export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 
 // The second proves the #449 safety carve-out: a severe PHQ-9 reading (with a
 // positive item 9) makes the crisis finding fire, and that item declares
-// `suppressionPolicy: "safety-ungated"` — so its hero must render EXPANDED with no
-// collapse control at all, no matter what the viewer's preference says. Separate
-// from the profile above precisely because a safety-locked hero can't be collapsed:
-// one profile cannot exercise both contracts.
+// `suppressionPolicy: "safety-ungated"` — so its read-only fact remains uncapped in
+// Now with an honest navigation action and no write control.
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
+
+// ── The handled day (#3224) ──────────────────────────────────────────────────
+// The third Now fixture, and the one that pins "Nothing needs you." as a state a
+// real week can actually reach. A profile with a HANDLED day — today's scheduled
+// dose logged taken, nothing overdue, no safety — carrying two open weekly
+// training targets that are UNMET and ON PACE.
+//
+// That combination is the whole fixture. `windowOpen` for a target's log action
+// used to be spelled "not met this week", which is true for seven days, so these
+// two targets alone filled Now (cap 2) every day of every week and the empty state
+// was unreachable. Their week is pinned to START today (a week_start matching the
+// run's frozen weekday) so a zero count is on pace rather than behind on whichever
+// weekday CI happens to run — behind is the `owed` path, which still cards, and is
+// covered separately in the pure ranker tests.
+//
+// Dedicated and read-only in its spec: the assertion is an ABSENCE, so any
+// neighbouring spec logging a dose, a workout or a reading here would erase it.
+export const E2E_LOGIN_NOWQUIET = "e2e_nowquiet";
+export const NOW_QUIET_PROFILE = "Now Quiet (e2e)";
+export const NOW_QUIET_MED = "Quiet Morning Med (e2e)";
+// The two open weekly targets — strength groups, the shape of the owner's own
+// "Log Lower body — 0 of 2" cards. Neither has a per-target rhythm to ask.
+export const NOW_QUIET_TARGETS = ["Lower", "Upper"] as const;
 
 // ── Just-recovered dashboard band folds (issues #1548 / #1549) ────────────────
 // Three spec-owned caregiver fixtures for e2e/dashboard-household-folds.spec.ts, one
@@ -251,10 +270,9 @@ export const FOLD_REOPEN_KID_B_SITUATION = "Strep throat";
 
 //   • FOLDTAIL — one child resolved 10 days ago: past the 7-day reopen window, still
 //     inside the 14-day promo window. The 8–14-day TAIL, where #1009's "surfaces near
-//     the illness hero" rationale is void because the hero is long gone. No reopen band
-//     exists, so the promo lands in the household strip's label row instead. The
-//     household is deliberately QUIET (no attention items anywhere), so the strip has
-//     NO chips — the orphan case #1549's sketch assumed away.
+//     the illness context" rationale is void because that context is long gone. The
+//     history link remains as typed illness context in Show everything. The household
+//     is deliberately quiet (no attention items anywhere).
 export const E2E_LOGIN_FOLDTAIL = "e2e_foldtail";
 export const FOLD_TAIL_PARENT_PROFILE = "Fold Tail Parent (e2e)";
 export const FOLD_TAIL_KID_PROFILE = "Fold Tail Kid (e2e)";

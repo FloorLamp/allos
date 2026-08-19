@@ -318,7 +318,7 @@ function cardioActivityIdentities(profileId: number): string[] {
 // collision with an existing save/dismissal already under the new name is a no-op;
 // the caller then runs the orphan sweeps to drop any leftover old row. The save
 // store's `key` is COLLATE NOCASE (as the star store's canonical_name was); the
-// dismissal keys are already lowercased. The `biomarker-flag:` key (the hero's
+// dismissal keys are already lowercased. The `biomarker-flag:` key (dashboard placement's
 // flagged-result dismissal, issue #283) rides the same lifecycle.
 //
 // Scoped to kind='clinical-result' (#1456): the unified store also holds `trend-metric`

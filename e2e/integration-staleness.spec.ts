@@ -122,7 +122,7 @@ test("the stopped sync is counted by the Review badge", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("the dashboard attention card carries the stopped sync with its own action", async ({
+test("dashboard placement carries the stopped sync with its own action", async ({
   page,
 }) => {
   await page.goto("/upcoming");

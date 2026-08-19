@@ -7,7 +7,7 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_ILLNESS_CARE } from "./fixture-logins";
 // "Illness" situation with a FEVER logged on four consecutive days (daysAgo 3→0),
 // which crosses the cited "more than 3 days" line. The care-tier finding surfaces on
 // Upcoming (the deterministic planning surface) via the SAME unified attention model
-// the dashboard "Needs attention" hero subsets — so this asserts the model end-to-end
+// and dashboard placement — so this asserts the model end-to-end
 // where the render is cap-independent.
 //
 // Fixture ownership (#868): profile 1 carries the same 4-day-fever fixture, but the

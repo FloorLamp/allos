@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // THE MORNING IS ONE PHYSICAL EVENT (#2458) — the composed one-tap on the dashboard.
@@ -22,6 +22,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
   try {
     test.slow();
     await page.goto("/");
+    await openDashboardAll(page);
 
     // The control names EVERY write it will perform — both halves, with the seam
     // between servings and dose confirms visible. The label IS the promise.
@@ -73,6 +74,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     await expect(page.getByTestId("count-fermented")).toHaveText("0");
 
     await page.goto("/");
+    await openDashboardAll(page);
     await expect(page.getByTestId("routine-usual-offer")).toBeVisible();
     await expect(page.getByTestId("routine-usual-names")).toHaveText(
       "Berries and Fermented foods + Creatine, Collagen and B-complex"

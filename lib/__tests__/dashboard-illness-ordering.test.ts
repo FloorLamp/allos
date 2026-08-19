@@ -112,6 +112,8 @@ const rank = (candidates: DashboardCandidate[]) =>
   rankDashboardCandidates(candidates, {
     activeProfileId,
     minutesOfDay: 12 * 60,
+    today: "2026-08-19",
+    upcoming: [],
   });
 
 describe("dashboard illness ordering", () => {
@@ -253,6 +255,7 @@ describe("dashboard illness ordering", () => {
         placements,
         candidateNodes: nodes,
         standingPresentations: new Map(),
+        aheadPresentations: new Map(),
         attentionBadgeCount: 0,
         illnessGroupNode: createElement(
           "div",

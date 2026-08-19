@@ -2,8 +2,8 @@ import { IconMoodCheck } from "@tabler/icons-react";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 
-// "Feeling better" — end an illness episode from its hero cockpit (issue #858). Now a thin
-// wrapper over the shared EndEpisodeReconcile (issue #880), so the hero end and the episode
+// "Feeling better" — end an illness episode from its Now cockpit (issue #858). Now a thin
+// wrapper over the shared EndEpisodeReconcile (issue #880), so the cockpit and the episode
 // page end offer the SAME episode-end medication checklist (one component, no drift).
 // Carries the episode id AND, for a household member's cockpit, the target profileId so the
 // action gates on THAT profile (requireProfileWriteAccess) and closes their episode without

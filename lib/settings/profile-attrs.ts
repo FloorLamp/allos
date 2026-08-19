@@ -1289,7 +1289,7 @@ export function setRecommendationLastSignature(
 
 // Shared-surface detail for the profile's MENTAL-HEALTH visits (#997). A
 // mental_health appointment defaults to MINIMAL detail ("Medical appointment") on
-// shared/exported surfaces — the household strip and the .ics family calendar feed
+// shared/exported surfaces — household rollups and the .ics family calendar feed
 // — even when other kinds show full detail. This per-profile flag is the OWNER's
 // opt-in to instead show those visits in full detail on shared surfaces. Default
 // false (privacy-by-default); the profile's OWN surfaces always show full detail

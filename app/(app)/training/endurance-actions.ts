@@ -34,7 +34,7 @@ function trainingUnavailable(profileId: number): FormResult | null {
 function revalidateEndurance(): void {
   revalidateRoute("/training");
   revalidateRoute("/timeline");
-  // The plan-aware cardio arm rides the dashboard coaching widget + Upcoming too.
+  // The plan-aware cardio arm rides the dashboard coaching atom + Upcoming too.
   revalidateRoute("/upcoming");
   revalidateRoute("/");
 }

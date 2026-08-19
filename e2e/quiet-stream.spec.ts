@@ -81,7 +81,7 @@ test("the quiet-stream row offers NO push-shaped affordance anywhere (#2146 cons
     await expect(links).toHaveCount(1);
     await expect(links).toHaveAttribute("href", "/integrations/health-connect");
 
-    // And it did not travel: the dashboard's non-hideable Needs-attention hero and
+    // And it did not travel: dashboard Now and
     // the Upcoming page are escalation surfaces, and a coaching-tier observation may
     // not appear on either.
     await page.goto("/upcoming");

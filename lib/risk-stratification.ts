@@ -712,7 +712,7 @@ export const RISK_RULES: RiskRule[] = [
   // rule's cadence, so a condition/behavior/family-history factor brings a routine
   // eye or dental visit due SOONER and explains WHY in a calm, cited line (fed by
   // visitModulationFor → the pure preventive assessor scales the interval; the reason
-  // rides the Upcoming/hero item exactly like the retest reasons). Deliberately
+  // rides the shared Upcoming/dashboard item exactly like the retest reasons). Deliberately
   // conservative + informational, mirroring the retest/screening rules' discipline.
   //
   // ROOM FOR OWN-RECORD INPUTS (#699 point 6): a recorded elevated IOP or a
@@ -835,7 +835,7 @@ export const RISK_RULES: RiskRule[] = [
   // The immunization arm of #517: the same curated risk factors that tighten a
   // retest / rank a screening also rank up the vaccines ACIP flags for a person
   // with that factor, so a risk-elevated DUE/OVERDUE vaccine leads within its band
-  // on Upcoming, the immunization page, the attention card, and the digest. These
+  // on Upcoming, the immunization page, dashboard placement, and the digest. These
   // rules carry ONLY an `immunizationCodes` target (cadenceMultiplier 1, no
   // analyte/screening keys), so they feed immunizationPriorityFor alone. Deliberately
   // conservative + informational, mirroring the screening rules' discipline; each

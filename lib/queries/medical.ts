@@ -509,7 +509,7 @@ export function getClinicalReports(profileId: number): ClinicalReport[] {
 
 // A currently-flagged biomarker reading — a biomarker family whose CURRENT
 // (latest-per-family) reading is out-of-range/non-optimal. The minimal shape the
-// digest/hero flagged surface consumes (canonical-preferred display name so links
+// digest/dashboard flagged surface consumes (canonical-preferred display name so links
 // key on the same identity the biomarker view resolves).
 export interface CurrentFlaggedReading {
   name: string;
@@ -522,11 +522,11 @@ export interface CurrentFlaggedReading {
 // ---- Hoisted current-reading statements (#2110) -----------------------------
 //
 // The DEDUP+LATEST pass over medical_records is the most expensive text this module
-// compiles, and the dashboard's household strip asks for it once PER MEMBER: the
+// compiles, and the Household page asks for it once PER MEMBER: the
 // flagged-labs read is the attention model's own (through the digest's
 // getNewlyFlaggedBiomarkers), the qualitative read is the condition-suggestion
 // builder's. Hoisting compiles each once per connection instead of once per member
-// per render — the value is never cached, so the chip's integer is untouched.
+// per render — the value is never cached, so the rollup's integer is untouched.
 //
 // getClinicalObservations' row/count reads are deliberately NOT here: their WHERE
 // clause is assembled from the caller's filters (an exclude list contributes one
@@ -624,10 +624,10 @@ const CURRENT_QUALITATIVE_STMT = hoistedStatement(
 // can never disagree, and a SUPERSEDED historical out-of-range reading — a
 // 5-year-old low that a later normal reading has since replaced — can NEVER
 // surface: only an analyte whose LATEST reading is flagged does. Before #557 the
-// digest/hero read raw SQL (`created_at > since AND flag NOT IN ...`) with no
+// digest/dashboard read raw SQL (`created_at > since AND flag NOT IN ...`) with no
 // current-reading filter, so any historical flagged row leaked through.
 //
-// Category scope (#1076): `category = 'lab'` ONLY. This is the care-tier hero +
+// Category scope (#1076): `category = 'lab'` ONLY. This is the care-tier dashboard +
 // digest source, so a non-lab flagged reading — a fever ('vitals'), a high BP
 // ('vitals'), a severe PHQ-9 ('instrument') — must NEVER surface here; each is
 // owned by its domain engine (temp-red-flag #859, BP percentiles #150, instrument
@@ -640,7 +640,7 @@ const CURRENT_QUALITATIVE_STMT = hoistedStatement(
 // stays off the care-tier surface. It was a denylist until #2937; see FLAGGED_NOTABLE.
 //
 // Recency (#557 fix 2): when `since` is given the read is windowed by BOTH the
-// import cursor (`created_at > since` — the digest send-cursor / hero stable
+// import cursor (`created_at > since` — the digest send-cursor / dashboard stable
 // window, so a delivered digest doesn't re-report and the #283 stable window is
 // preserved) AND the COLLECTION date (`date >= date(since)`). The collection-date
 // half is what stops a history backfill (created_at = today, collection date years
@@ -667,7 +667,7 @@ export function getCurrentFlaggedBiomarkers(
 // difference is `category = 'vitals'` instead of `'lab'`.
 //
 // WHY A SEPARATE FUNCTION rather than a category parameter. #1076 scoped the flagged
-// LAB read to `category = 'lab'` on purpose: it is the care-tier hero + digest source,
+// LAB read to `category = 'lab'` on purpose: it is the care-tier dashboard + digest source,
 // and a fever or a high BP belongs to its own domain engine, not to the general
 // "flagged results" list. That decision stands. This read exists for the RECENT-CHANGES
 // collector only, which reports what changed rather than raising a care finding, and it

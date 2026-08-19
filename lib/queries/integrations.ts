@@ -197,7 +197,7 @@ export function getLastSuccessfulSyncAt(
 // construction (a correlated `id = latest-for-this-source` match), so a source
 // whose latest event is a failure is never lost behind a chattier source's flood of
 // recent rows (issue #304). This is the failure detector's feed: it matches, row for
-// row, what each grid card shows via getLatestSyncEvent, so the badge/hero and the
+// row, what each grid card shows via getLatestSyncEvent, so the badge/dashboard and the
 // per-source card can no longer disagree. Profile-scoped.
 export function getLatestSyncEventPerSource(
   profileId: number
@@ -364,7 +364,7 @@ function resolveSourceFacts(
 // recorded failure, just a last success beyond the source's threshold. Shaped as an
 // IntegrationSyncEvent for the same reason the expired-token issue is: everything
 // downstream of getImportIssues (the profile-menu badge, the Data → Review count and
-// Needs-attention card, the attention item, and the digest) already reads that one
+// Needs-attention card, dashboard placement, and the digest) already reads that one
 // list. `at` is the INSTANT of the last successful sync — the moment the data stopped
 // — so the row sorts and reads honestly next to real events. It was the bare DATE
 // until #2263, which made a synthetic row compare as midnight against a column of
@@ -466,10 +466,10 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
 // accept; type is the detector's question, on the branches where it still asks it.
 //
 // Hoisted (#2110): getReviewPairCount reaches this on every attention gather, and the
-// dashboard's household strip runs one gather per member — so the widest text this
-// module compiles was being recompiled once per chip. Text is fixed at import (both
+// Household page runs one gather per member — so the widest text this module compiles
+// was being recompiled once per member. Text is fixed at import (both
 // interpolations are module constants); the value is not cached, so the review-pair
-// count the chip folds in is unchanged.
+// count the rollup folds in is unchanged.
 const ACTIVITY_DUP_ROWS_STMT = hoistedStatement(
   `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
        SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
@@ -662,8 +662,8 @@ export function getReviewPairCount(profileId: number): number {
 }
 
 // The ESCALATED-integration events (one per genuinely-broken source), for the
-// Review tab's "Needs attention" card, the profile-menu/Data badge, the dashboard
-// hero, and the digest. Since #1880 this is the flap-aware standing, not
+// Review tab's "Needs attention" card, the profile-menu/Data badge, dashboard
+// placement, and the digest. Since #1880 this is the flap-aware standing, not
 // latest-event-wins: a source contributes an issue only when its standing
 // escalates (`failing` — no successful run inside the source's silence tolerance,
 // #2263 — or `needs-reauth`). An `intermittent` source — failures in the recent
@@ -708,7 +708,7 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // item can pick its copy (#1685).
 //
 // It lives here, next to getImportIssues, rather than in lib/queries/attention.ts because
-// two unrelated readers need it: the attention model (dashboard hero + Upcoming page) and
+// two unrelated readers need it: the attention model (dashboard placement + Upcoming page) and
 // the morning digest gather. Keeping it in the attention module would have made
 // lib/notifications/digest-data.ts import lib/queries/attention.ts, which already imports
 // digest-data for the newly-flagged-biomarker read — a cycle. One home, no cycle, and the
@@ -722,7 +722,7 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // broken-sync section (#1685) from the same list. `cache()` is identity in a tick
 // (lib/request-cache.ts says so deliberately), so the collapse that matters here is
 // `tickCached`; the `cache()` beside it collapses the request-side readers — the
-// dashboard hero and the Upcoming page both reach this through the attention model,
+// dashboard placement and the Upcoming page both reach this through the attention model,
 // and the Sleep page's source card asks separately.
 //
 // Nothing inside a tick writes these rows AFTER the first read. `syncIntegrations` is

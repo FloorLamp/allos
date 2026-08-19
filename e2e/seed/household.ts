@@ -616,7 +616,7 @@ export function seedMultiProfile(): void {
   // ── Own-profile / not-self write affordances fixture (issue #1013) ────────────
   // A dedicated member (E2E_LOGIN_OWN) granted TWO adult profiles WRITE, with its
   // own-profile pointing at the FIRST (SELF). Each carries a due-today dose (household
-  // dose-confirm buttons) + one weigh-in (the dashboard weight widget renders). The
+  // dose-confirm buttons) + one weigh-in (the dashboard weight presentation renders). The
   // spec asserts the not-self naming on the OTHER profile (never the login's own).
   {
     const ownSelfId = adultFixtureProfileId(OWN_SELF_PROFILE);

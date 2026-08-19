@@ -3,7 +3,7 @@
 import SubmitButton from "@/components/SubmitButton";
 
 // The confirm-first (#560) finding-follow-up resolution controls (issue #700 ask 3),
-// shared by BOTH the Upcoming page and the dashboard "Needs attention" hero so the
+// shared by BOTH the Upcoming page and dashboard attention atoms so the
 // offer reads and behaves identically on every surface. When a matching later record
 // has landed, the follow-up row offers three outcomes — Resolved / Stable / Changed —
 // each a submit button in ONE form that posts its `resolution` value plus the

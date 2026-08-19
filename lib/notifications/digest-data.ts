@@ -142,9 +142,9 @@ const MAX_FLAGGED = 8;
 // entire history of flagged results. created_at/uploaded_at are datetime('now')
 // UTC strings, so this is computed in the same format for a correct string
 // comparison. This cursor is the DIGEST's window only (it advances on every send)
-// — the dashboard hero passes its own stable window into
+// — the dashboard passes its own stable window into
 // getNewlyFlaggedBiomarkers (lib/queries/attention.ts), so sending a digest never
-// changes what the hero shows (issue #283).
+// changes what dashboard placement shows (issue #283).
 export function digestSince(profileId: number): string {
   return (
     db
@@ -156,10 +156,10 @@ export function digestSince(profileId: number): string {
 }
 
 // Out-of-range biomarkers newly flagged since `since` (profile-scoped). This is the
-// single read behind BOTH the digest's "New" section and the dashboard hero's
+// single read behind BOTH the digest's "New" section and the dashboard's
 // flagged-biomarker attention items, so the two can never disagree on which results
 // are "newly flagged" — each surface passes its OWN window (`since`): the digest
-// its send cursor, the hero a stable trailing window (issue #283).
+// its send cursor, the dashboard a stable trailing window (issue #283).
 //
 // The heavy lifting is getCurrentFlaggedBiomarkers (lib/queries/medical.ts): it
 // restricts to each analyte family's CURRENT (latest-per-family) reading via the
@@ -360,7 +360,7 @@ export function gatherDigestInput(
   // banded collectUpcoming, which already drops snoozed/dismissed items and whose
   // dose items carry the
   // #558 predicted-training-day dueness. This REPLACES the digest's own dueDoseIds /
-  // frequency-target computation, so the morning message and the Upcoming page/hero
+  // frequency-target computation, so the morning message and Upcoming
   // can't disagree, and a page dismissal finally silences the digest too.
   let upcoming = collectUpcoming(profileId, td);
   // Preventive-care domain toggle (#87): off ⇒ no preventive visit/screening lines
@@ -375,7 +375,7 @@ export function gatherDigestInput(
   // of history, not a due signal, and a system-initiated message about them would be
   // the app telling a brand-new user they are behind on twelve things it has no
   // evidence about. They stay on the pull surfaces (the Upcoming setup group, the
-  // hero's collapsed line), where the user goes looking. Dropping them here is a
+  // dashboard Show everything), where the user goes looking. Dropping them here is a
   // strict REDUCTION in contact — the doctrine's one unilateral direction.
   upcoming = upcoming.filter((i) => i.signalGroup !== "setup");
   // REPEAT DISMISSAL, READ AS AN ANSWER (#2386, digest half #2543). The third strict
@@ -402,7 +402,7 @@ export function gatherDigestInput(
     );
   }
   // Broken syncs join the banded set (#1685) — the ONE place the digest learns about a
-  // dead integration. They are built by the SAME integrationToItem the dashboard hero and
+  // dead integration. They are built by the SAME integrationToItem dashboard placement and
   // the Upcoming page render, from the SAME getIntegrationAttention list the Data → Review
   // badge counts, so the four surfaces cannot disagree about which sources are broken or
   // what to call them (#221). Deliberately appended AFTER `upcoming` is used for the dose
@@ -423,7 +423,7 @@ export function gatherDigestInput(
   // (bus-honored + #558) — the same items the Today section bands over. No local
   // priority filter here any more (#1505): the "tracked, never pushed" exclusion now
   // lives in collectUpcoming's doseItems, the ONE shared model this reads, so the
-  // digest count, the Upcoming rows, the aggregate and the hero can no longer
+  // digest count, the Upcoming rows, the aggregate and dashboard placement can no longer
   // disagree about which doses are pushable (#221 — one question, one computation).
   const todayDoseIds = upcoming
     .filter((i) => i.domain === "dose" && i.doseId != null)

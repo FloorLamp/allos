@@ -1,7 +1,7 @@
 // Proactive illness-care nudge (issue #805). Once per waking day per profile, checks
 // whether the profile's CURRENT open illness episode has crossed a cited
 // duration/trajectory care line (the SAME illnessCareFindingsFor computation the
-// Upcoming page + Needs-attention hero render) and pings when a NEW finding comes due.
+// Upcoming page and dashboard render) and pings when a NEW finding comes due.
 // The pure episode/dedup decision is lib/illness-care (planIllnessCareNudges); this
 // file is the DB gather + marker read/write + send, mirroring ./preventive and
 // ./refill.
@@ -9,7 +9,7 @@
 // CARE-TIER, BUS-GATED (deliberately, per docs/internals/notifications.md): an
 // illness-care finding is a REMINDER-class care finding — not a dose-safety signal —
 // so it IS gated by the shared findings-suppression bus (dismiss-once-silence-
-// everywhere, #227/#245): a finding dismissed/snoozed on Upcoming or the hero is held
+// everywhere, #227/#245): a finding dismissed/snoozed on Upcoming or the dashboard is held
 // out of the push too. This is the opposite of the safety-tier senders (dose
 // reminders, missed-dose escalation, PRN redose), which are DELIBERATELY never
 // bus-gated because a page dismissal must never silence a possibly-critical dose
@@ -88,7 +88,7 @@ export async function runIllnessCare(
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
-  // The SAME computation the Upcoming page / hero render — one question, one answer.
+  // The SAME computation the Upcoming page and dashboard render — one question, one answer.
   const findings = illnessCareFindingsFor(profileId, date);
   const byKey = new Map<string, IllnessCareFinding>(
     findings.map((f) => [f.dedupeKey, f])

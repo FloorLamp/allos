@@ -29,7 +29,7 @@ export interface DoseOutcomeMessage {
 // The shape every in-app dose-confirm Server Action resolves with (#2106): `ok`
 // means "the request was understood", and the OUTCOME — not the fact the action
 // returned — is what the surface renders through doseConfirmMessage. Shared so the
-// Upcoming markTaken, the household confirm and the attention-hero mark-taken all
+// Upcoming markTaken, the household confirm and the dashboard atom mark-taken all
 // answer in one currency and none can quietly go back to returning void.
 export type DoseConfirmResult =
   { ok: true; outcome: DoseTakenOutcome } | { ok: false; error: string };

@@ -239,22 +239,25 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // cleanup entry — with zero writers there is nothing stored to move or prune, and
 // the read path is simply gone.
 
-// Per-viewer illness-hero UI state (issue #858): whether the acting profile's own
+// Per-viewer illness Now-group UI state (issue #858): whether the acting profile's own
 // cockpit is collapsed to its one-line headline, and which OTHER accessible profile's
 // accordion cockpit is expanded (one at a time). Stored per acting profile in the same
-// key/value store as other profile presentation preferences. The hero is
-// COLLAPSIBLE, never hideable — this only remembers open/closed, never removes a cockpit
+// key/value store as other profile presentation preferences. The group is
+// collapsible, never removable — this only remembers open/closed, never removes a cockpit
 // while an episode is open. Read defensively: a malformed blob falls back to defaults.
-export interface IllnessHeroUiState {
+export interface IllnessNowUiState {
   collapsedActive: boolean;
   openOtherKey: string | null;
 }
 
-export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
-  const fallback: IllnessHeroUiState = {
+export function getIllnessNowUi(profileId: number): IllnessNowUiState {
+  const fallback: IllnessNowUiState = {
     collapsedActive: false,
     openOtherKey: null,
   };
+  // Storage compatibility: this key shipped before the dashboard's atomic cutover.
+  // The value shape still answers the current illness Now group, so renaming the key
+  // would add a data migration without changing meaning.
   const v = getProfileSetting(profileId, "illness_hero_ui");
   if (!v) return fallback;
   try {
@@ -270,11 +273,11 @@ export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
   }
 }
 
-export function setIllnessHeroUi(
+export function setIllnessNowUi(
   profileId: number,
-  state: IllnessHeroUiState
+  state: IllnessNowUiState
 ): void {
-  const normalized: IllnessHeroUiState = {
+  const normalized: IllnessNowUiState = {
     collapsedActive: state.collapsedActive === true,
     openOtherKey:
       typeof state.openOtherKey === "string" && state.openOtherKey.length > 0
@@ -284,34 +287,8 @@ export function setIllnessHeroUi(
   setProfileSetting(profileId, "illness_hero_ui", JSON.stringify(normalized));
 }
 
-// The dashboard "Needs attention" hero's collapse preference (issue #1413, section
-// B). Per-LOGIN, not per-profile: it is a viewing-density choice about the reader's
-// own screen (the same tier as their unit and date-format prefs), not a fact about
-// the person whose health is being displayed — a caregiver who collapses the hero on
-// their phone means it for every profile they switch between, and should not have to
-// re-collapse it per family member.
-//
-// Stored as a plain "1"/"0" string rather than JSON: it is one boolean with no
-// foreseeable second field, and the illness hero's JSON blob shape (setIllnessHeroUi)
-// exists only because that one carries a profile id alongside its flag.
-//
-// Note what this setting canNOT do (#449): it never hides the hero, never removes
-// the count, and never applies to a safety-locked hero — those are decided by
-// attentionHeroState (lib/attention.ts), which consults this preference LAST.
-export function getAttentionHeroCollapsed(loginId: number): boolean {
-  return getLoginSetting(loginId, "attention_hero_collapsed") === "1";
-}
-
-export function setAttentionHeroCollapsed(
-  loginId: number,
-  collapsed: boolean
-): void {
-  setLoginSetting(loginId, "attention_hero_collapsed", collapsed ? "1" : "0");
-}
-
 // The dashboard "Recently resolved — reopen?" lines the VIEWER has dismissed (issue
-// #1548), as a set of episode ids. Per-LOGIN, exactly like the attention hero's
-// collapse preference above and for the same reason: this is a statement about the
+// #1548), as a set of episode ids. This per-login viewing state is a statement about the
 // reader's own screen, not a fact about the person whose episode it is. Another login
 // with access to the same profile still sees the line — deliberately.
 //

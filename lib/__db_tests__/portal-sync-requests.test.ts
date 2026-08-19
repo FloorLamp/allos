@@ -43,7 +43,7 @@ import { collectUpcoming } from "@/lib/queries";
 import { dismissFinding, restoreFinding } from "@/lib/queries";
 import { groupUpcoming } from "@/lib/upcoming";
 import { buildUpcomingDigest } from "@/lib/notifications/upcoming-digest";
-import { attentionCardItems } from "@/lib/attention";
+import { attentionBadgeItems } from "@/lib/attention";
 import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
@@ -569,18 +569,18 @@ describe("reach — an Upcoming item and a digest line sharing one key", () => {
     expect(model!.lines.join(" ")).not.toContain("portal check");
   });
 
-  it("stays OFF the non-hideable Needs-attention hero", () => {
+  it("stays outside the care-tier app badge", () => {
     const { f } = withOpenRequest("hero");
     const upcoming = collectUpcoming(f.momProfile, f.anchor);
-    // Even when its expiry lands on today, a calm ask is never pinned to the hero.
+    // Even when its expiry lands on today, the calm ask does not inflate the badge.
     db.prepare(
       "UPDATE portal_sync_requests SET expires_at = ? WHERE account_id = ?"
     ).run(stamp(f.anchor, "23:59:59"), f.mom.id);
-    const card = attentionCardItems(
+    const badge = attentionBadgeItems(
       collectUpcoming(f.momProfile, f.anchor),
       f.anchor
     );
-    expect(card.some((i) => i.domain === "portal-sync")).toBe(false);
+    expect(badge.some((i) => i.domain === "portal-sync")).toBe(false);
     expect(upcoming.some((i) => i.domain === "portal-sync")).toBe(true);
   });
 

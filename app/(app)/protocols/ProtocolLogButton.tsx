@@ -37,7 +37,7 @@ export default function ProtocolLogButton({
   showDetails?: boolean;
   // Render the inline duration stepper on the practice scope (#2204, owner ruling).
   // This was the LAST one-tap practice log that silently discarded the duration: the
-  // detail page had the expanded form beside it and the dashboard widget had nothing
+  // detail page had the expanded form beside it and the dashboard presentation had nothing
   // at all, and in both cases the tap wrote a session with no duration for a domain
   // where "20 min sauna" vs "5 min" is most of the meaning. Passed straight through —
   // the shared button routes both the render and the write through one `stepperShown`

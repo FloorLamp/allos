@@ -177,7 +177,7 @@ const RECORDS: Group = {
 // ORDER (#1042 design principle 1): frequency earns nav position; urgency earns
 // dashboard promotion; NEITHER earns both. The nav is a directory, ordered by
 // how often each surface is deliberately visited — the daily loop deliberately
-// does NOT run through it (dose confirms = dashboard widget/Telegram; activity
+// does NOT run through it (dose confirms = dashboard presentation/Telegram; activity
 // log = the sidebar's pinned LogActivityButton; live workout = the dock), and
 // episodic surfaces (illness, cycle) get contextual promotion via the existing
 // heroes, not permanent prominence. Reference surfaces (Medical, Data, Settings)
@@ -208,7 +208,7 @@ const entries: Entry[] = [
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
   // Trends → Overview → body census). Gate = any recorded sleep session (the `sleep` relevance bit);
   // like every relevance gate it's cosmetic — the page stays reachable by URL (the
-  // pillar deep-link and dashboard tile both point here).
+  // pillar deep-link and dashboard healthspan readout both point here).
   {
     href: "/sleep",
     label: "Sleep",

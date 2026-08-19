@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SITCOACH } from "./fixture-logins";
+import { openDashboardAll } from "./helpers";
 
 // Situation-aware coaching (#837) + situation-activation visibility (#662 item 1).
 // The SITCOACH fixture (seed-events.ts) is a sick profile (open flagged-illness
@@ -12,13 +13,14 @@ function creds(username: string) {
   return { username, password: E2E_MEMBER_PASSWORD };
 }
 
-test("dashboard coaching widget HOLDS the nags during an open illness episode (#837)", async ({
+test("the dashboard coaching statement holds nags during an open illness episode (#837)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, creds(E2E_LOGIN_SITCOACH));
 
-  // The coaching widget (defaultOn) shows the calm HELD note — routine training nudges
-  // are paused while the episode is open — instead of a "go train" gap nag.
+  // The Show-everything coaching statement is the calm HELD note — routine training
+  // nudges are paused while the episode is open — instead of a "go train" gap nag.
+  await openDashboardAll(page);
   await expect(page.getByText("Recovery mode — coaching paused")).toBeVisible();
 
   // The training overview's next-workout card renders the SAME top recommendation

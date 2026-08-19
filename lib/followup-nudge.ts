@@ -8,7 +8,7 @@
 //   1. ONE send when the follow-up crosses overdue;
 //   2. ONE repeat FOLLOWUP_REPEAT_DAYS later, framed as final;
 //   3. then NOTHING further, ever — the finding keeps holding the calm surfaces
-//      (Upcoming + the non-hideable hero), which never age out.
+//      (Upcoming + dashboard placement), which never age out.
 // The marker (notify_last_followup_<carePlanItemId>, profile_settings) stores the
 // send DATES, comma-joined, so the whole cadence state is one value and the repeat
 // spacing is data, not a second marker. Ids are care_plan_items AUTOINCREMENT ids —

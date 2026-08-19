@@ -8,13 +8,13 @@
 //
 // ONE gather (tempRedFlagFindingFor), formatters over it (#221): the care-tier Finding
 // (for the #448 registry/reflection guard), the Upcoming item (→ Upcoming page + the
-// non-hideable Needs-attention hero), the inline log toast, and — in
+// dashboard placement), the inline log toast, and — in
 // lib/notifications/temp-red-flag.ts — the Telegram nudge. All carry the SAME
 // dedupeKey, so a dismiss on any surface silences every surface through the shared bus.
 //
 // Care tier, deliberately (#449): its dedupeKey prefix (TEMP_RED_FLAG_PREFIX) is
 // registered in RULE_FINDING_PREFIXES, and its item is banded "today" so it reaches
-// the hero. It is NOT part of collectCoachingFindings. It reuses the Upcoming
+// dashboard placement. It is NOT part of collectCoachingFindings. It reuses the Upcoming
 // "illness-care" domain (both are illness care-tier findings) so the exhaustive domain
 // Record is untouched; the dedupeKey prefix still distinguishes the two on the bus.
 
@@ -100,7 +100,7 @@ export function buildTempRedFlagFindings(
 }
 
 // The temperature red-flag findings as Upcoming items → the Upcoming page AND the
-// non-hideable Needs-attention hero. Banded "today" like the other care-tier findings,
+// dashboard placement. Banded "today" like the other care-tier findings,
 // keyed by the SAME dedupeKey so a dismiss on any surface silences it. Reuses the
 // "illness-care" Upcoming domain (see the module header).
 export function tempRedFlagItems(

@@ -42,7 +42,7 @@ under **Settings → Notifications**; and **milestone alerts** — a brief note 
 you cross a milestone (your 10th/50th/100th/… workout, or a completed goal). Both
 are rule-based and work with **no AI configured**. Milestones are always recorded
 to your **Timeline** (under the **Milestone** filter) regardless of the alert
-toggle. The recap is also available in the dashboard's **Everything** section
+toggle. The recap is also available in the dashboard's **Show everything** section
 when its reporting window has a recap to show.
 
 The recap also has a **cadence** — _Weekly_, _Monthly_ or _Quarterly_, beside the
@@ -94,7 +94,7 @@ push). Informational only — not medical advice.
 
 **Dismiss once, silence everywhere.** Snoozing or dismissing a **refill**,
 **preventive-care**, or **training-target** item on the **Upcoming** page (or
-the dashboard attention banner) now also silences its **push nudge**, not just
+dashboard placement) now also silences its **push nudge**, not just
 the page and digest lines — the reminder and the nudge share the same identity,
 so one "I've decided about this" hides both. For the workout nudge that means
 dismissing every behind training target quiets the "today's workout" reminder (a

@@ -182,18 +182,14 @@ export const CARE_PLAN_REPRESENTATIVE_IDS = representativeIds(
 //
 // These are the profile's DURABLE clinical facts — conditions, allergies, family
 // history, procedures, variants, imaging, dental, optical, care plan items. Almost
-// every attention generator consults at least one of them, which makes them the
-// densest compile cluster on the dashboard's household fan-out: the strip asks
-// attentionCountForProfile() once per member, and each ask used to recompile this
-// whole set from scratch. Measured on a seeded sparse member, one gather compiled
+// every attention generator consults at least one of them. Before these statements
+// were hoisted, one seeded sparse attention gather compiled
 // 44 distinct texts at ~7.6ms, of which this cluster is the largest single share:
 // the same gather prepared the conditions read 14×, allergies 8× and family history
 // 5×, each compile discarded immediately after one use.
 //
 // Hoisting caches the COMPILED STATEMENT per connection, never the value, so a
-// read-after-write in the same request still sees the write and the household chip
-// keeps returning the identical integer — that equality is what
-// lib/__db_tests__/household-attention-count.test.ts pins.
+// read-after-write in the same request still sees the write.
 //
 // Declared HERE rather than beside each function because the texts interpolate the
 // representative-id subqueries above: a module constant evaluated before those would

@@ -10,7 +10,7 @@ import { workerDbPath } from "./worker-env";
 // #798 PRN redose notice + confirm flow. The seed (e2e/seed-events.ts) ships
 // "PRN Redose Med (e2e)" — a PRN med with a CONFIRMED redose notice (6h interval,
 // max 4/day) and ONE administration ~7h ago, so its redose window is OPEN and both
-// the Medications card and the dashboard widget render the status line. The add-form
+// the Medications card and the dashboard presentation render the status line. The add-form
 // test drives the confirm flow: pre-fill the label defaults, opt in, save.
 //
 // #868 fixture ownership: the "N of 4 today" count is a SHARED-seed tally whose exact

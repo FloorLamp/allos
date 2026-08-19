@@ -14,7 +14,7 @@ import type { QuickEntryDose } from "@/app/(app)/quick-entry-actions";
 // from the same `collectDueDosesNow` computation the context chip reads (gathered
 // in quick-entry-actions.ts), and the confirm posts the EXISTING `markTaken`
 // action — the same idempotent
-// markDoseTaken the Upcoming page's inline form, the dashboard hero and the
+// markDoseTaken the Upcoming page's inline form, the dashboard atom and the
 // Telegram tap all go through. Nothing here logs a dose itself.
 //
 // **It never unconditionally confirms.** `markTaken` returns markDoseTaken's

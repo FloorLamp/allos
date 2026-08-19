@@ -3,7 +3,7 @@
 // assembleIllnessEpisode GATHERS DB state (symptom series, temperature/fever curve,
 // PRN administrations, bridged conditions) and hands it to the pure formatters, so it
 // carries a DB-tier fixture asserting the END-TO-END assembled output — the pure tier
-// can't see the SQL gather. Also exercises the cross-profile illness-hero access path
+// can't see the SQL gather. Also exercises the cross-profile illness Now-group access path
 // (grants-scoped, #858) and the promote-to-condition write core + undo.
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; fixed dates; no network.
@@ -399,7 +399,7 @@ describe("currentEpisodeForProfile + household access", () => {
     const sick = newProfile("household-sick");
     makeCurrentlySick(sick);
     const other = newProfile("household-other");
-    // The illness hero (#858) iterates getAccessibleProfiles() (grants-scoped:
+    // The illness Now group (#858) iterates getAccessibleProfiles() (grants-scoped:
     // admins=all, members=grants) — the SAME reach the Household page uses. Assert that
     // reach over the underlying login_profiles JOIN (auth itself is mocked in this tier).
     const memberReach = (loginId: number) =>
@@ -436,12 +436,12 @@ describe("currentEpisodeForProfile + household access", () => {
   });
 });
 
-// ── openEpisodeForProfile: the illness-hero ACTIVE cockpit key (#858) ──
+// ── openEpisodeForProfile: the illness Now-group ACTIVE cockpit key (#858) ──
 describe("openEpisodeForProfile", () => {
   it("returns the assembled open episode even before any signal is logged (door-A)", () => {
     // Just an open illness_episodes row (situation activated), NO symptom/temp/dose —
     // the #843 "I'm feeling sick" tap. currentEpisodeForProfile stays null (no signal),
-    // but openEpisodeForProfile resolves it so the hero cockpit surfaces immediately.
+    // but openEpisodeForProfile resolves it so the illness Now cockpit surfaces immediately.
     const p = newProfile("just-activated");
     const start = shiftDateStr(today(p), 0);
     db.prepare(

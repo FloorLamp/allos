@@ -142,7 +142,7 @@ model**:
   `due | taken | skipped` so the card can pair each row with `/dose` actuation).
   **Status honesty note:** the Upcoming bus deliberately drops resolved doses,
   so the doses domain is served from the **morning-digest dose model** (the same
-  shared computation the dashboard's today-actions widget renders — due doses +
+  shared computation the dashboard's today-action candidates renders — due doses +
   logged status via the digest's reads); the other domains come from the banded
   Upcoming model. Two existing computations, no new engine — the convention
   holds because both payloads mirror models other surfaces already render.
@@ -290,9 +290,9 @@ instance before release:
 4. **Environmental context ingestion** (bedroom temp/humidity, CO2, PM2.5/AQI
    via `/ingest`) — needs canonical metric homes first, and its payoff is
    correlation (protocols/insights, #161). Stage behind demand.
-5. **Household attention sensors** — per-profile attention counts as HA sensors
-   ("Dad: 2 overdue"), letting HA notify whoever is home. A formatter over the
-   dashboard redesign's Tier-1 aggregation — gated on #171 building that model.
+5. **Per-profile attention sensors** — future HA sensors could format the shared
+   attention model for one explicitly authorized profile. This requires a separate
+   delivery and privacy design; it is not derived from dashboard household counts.
 6. **HA as a notification CHANNEL (Allos → HA)** — the one genuinely new piece
    of machinery in this space: a webhook channel in `dispatch()`'s fan-out
    beside Telegram/push, letting HA present reminders with what only it knows

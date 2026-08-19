@@ -15,7 +15,7 @@ import type { AppRoute } from "@/lib/hrefs";
 // (IllnessCockpitBody) — passed as a node so the SAME component serves every cockpit and
 // no data-fetch happens client-side. `status` is the collapsed at-a-glance reading;
 // `displayName` is already disambiguated by the page (#531).
-export interface HeroCockpit {
+export interface IllnessContextCockpit {
   episodeKey: string;
   episodeOrder: number;
   profileId: number;
@@ -57,27 +57,27 @@ function getXlSnapshot() {
   return window.matchMedia(XL_QUERY).matches;
 }
 
-// The illness hero (issue #858): a pinned, non-hideable band above the customizable grid
-// that renders every accessible open illness episode as a per-patient cockpit. The acting
-// profile's own episode is a FULL cockpit at hero position; every other accessible
+// The illness context group (issue #858): a Now member that renders every accessible
+// open illness episode as a per-patient cockpit. The acting profile's own episode is a
+// full leading cockpit; every other accessible
 // profile's is a compact accordion line that expands IN PLACE into that profile's cockpit
 // WITHOUT switching the acting profile. One other-profile cockpit expands at a time; the
 // acting profile's primary cockpit and every additional active episode collapse
 // independently. The primary active and household choices are remembered per viewer via
-// saveState (persisted in the layout blob). COLLAPSIBLE, never hideable — a cockpit never
+// saveState (persisted in the acting profile's key/value settings). COLLAPSIBLE, never hideable — a cockpit never
 // disappears while its episode is open; there is no dismiss control, only collapse.
 //
 // Per-patient identity is a safety feature (#531/#534): the name + colored avatar ride ON
 // each cockpit header and the logging controls live only inside the named, expanded
 // cockpit — no positional (left/right) disambiguation, so logging Mia's dose against
 // Theo can't happen from screen position alone.
-export default function IllnessHero({
+export default function IllnessNowGroup({
   cockpits,
   initialCollapsedActive,
   initialOpenOtherKey,
   saveState,
 }: {
-  cockpits: HeroCockpit[];
+  cockpits: IllnessContextCockpit[];
   initialCollapsedActive: boolean;
   initialOpenOtherKey: string | null;
   saveState: (
@@ -124,7 +124,7 @@ export default function IllnessHero({
 
   return (
     <section
-      data-testid="illness-hero"
+      data-testid="illness-now-group"
       aria-label="Illness"
       className="flex min-w-0 w-full flex-col gap-3"
     >

@@ -1,6 +1,6 @@
 // Pure formatters for the PRN redose notice (#798) — no DB/network, unit-tested in
 // lib/__tests__/redose-format.test.ts. Shared by the notify orchestrator (the
-// Telegram/push body) and the on-page surfacing (the med card + dashboard widget), so
+// Telegram/push body) and the on-page surfacing (the med card + dashboard presentation), so
 // every surface phrases the SAME redose state identically ("one question, one
 // computation"). INFORMATIONAL only: the copy states elapsed time against the user's
 // OWN confirmed numbers — never "you can take more".
@@ -103,7 +103,7 @@ export function redoseNoticeMessage(input: {
   };
 }
 
-// The marker-agnostic status line for the med card / dashboard widget, or null when
+// The marker-agnostic status line for the med card / dashboard presentation, or null when
 // there's nothing useful to say (nothing logged today). Never permissive — it reports
 // window state and the running count, deferring to the user's judgment:
 //   • at the confirmed max → "Max reached · 4 of 4 today"
@@ -199,7 +199,7 @@ export function prnLogAnswerText(
 // ---- The over-max care finding's detail line (#798 / #1027 / #1854) ---------
 //
 // One formatter for the `prn-max:<itemId>` finding so every surface it reaches
-// (Upcoming, the attention hero, the digest) phrases the SAME verdict — and
+// (Upcoming, dashboard placement, the digest) phrases the SAME verdict — and
 // states the BASIS it was computed on. Milligrams read "2400 mg logged today …
 // max of 1200 mg per day" (with an honest "At least" lead when some doses had no
 // recorded amount — the mg lower bound that is already past the ceiling); the

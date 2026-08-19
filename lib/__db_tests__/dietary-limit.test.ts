@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (issue #635). getDietaryLimitWarnings is the DB half over the
-// pure stackUlWarnings — a CARE-TIER findings gather (it reaches Upcoming, the
-// non-hideable "Needs attention" hero, and the digest push), so it earns a #448
+// pure stackUlWarnings — a CARE-TIER findings gather (it reaches Upcoming,
+// dashboard placement, and the digest push), so it earns a #448
 // fixture. The original bug: the gather summed EVERY active item's dose as a DAILY UL
 // total, ignoring workout/rest/situational items that aren't taken every day — a
 // standing false "above the upper limit" alarm. This seeds those non-daily items above

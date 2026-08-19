@@ -20,6 +20,7 @@ import { buildPracticeHeatmap } from "../practice-heatmap";
 import {
   inferPracticeRhythm,
   predictedOnDay,
+  rhythmMomentOpen,
   type WeeklyRhythm,
 } from "../weekly-rhythm";
 import type { ProtocolHeatmap } from "../protocol-heatmap";
@@ -657,6 +658,36 @@ export function isPredictedPracticeDay(
   return predictedOnDay(inferPracticeSchedule(profileId, practice), date);
 }
 
+// Whether NOW is a moment this weekly target normally gets done — the dashboard's
+// window for the target's one-tap log action (#3224).
+//
+// `windowOpen` used to be spelled `!met`, which is not a window at all: "unmet this
+// week" holds for seven days, so an ordinary week's Now was permanently occupied by
+// log offers and "Nothing needs you." — the state #3077 named the goal — was
+// unreachable. A window is a moment, so this asks the rhythm (#2188): on a predicted
+// day, around the typical hour.
+//
+// Only a practice target has a per-target rhythm to ask. A region/group/type target's
+// rhythm question is "when do you train", which the profile-wide workout cadence
+// answers about SESSIONS, not about this target's scope — so it would re-open the
+// window on days that say nothing about Lower body. No rhythm means no moment, and
+// no moment means no promotion: `owed` (behind pace) still cards the target, the
+// `weekly-target-transition` promotion still celebrates it, and the log action still
+// sits one tap away in Show everything's Act group. It is un-promoted, not removed.
+export function frequencyTargetLogWindowOpen(
+  profileId: number,
+  target: Pick<FrequencyTarget, "scope_kind" | "scope_value">,
+  date: string,
+  minuteOfDay: number
+): boolean {
+  if (target.scope_kind !== "practice") return false;
+  return rhythmMomentOpen(
+    inferPracticeSchedule(profileId, target.scope_value),
+    date,
+    minuteOfDay
+  );
+}
+
 // ---- The Trends wellness lens (#1632) --------------------------------------
 
 // One COMPLETED week of a tracked practice: the window's inclusive start, the
@@ -706,7 +737,7 @@ export interface PracticeTrend {
 //     question the app had already answered.
 //   • The verdict per week is `practiceWeekVerdict`, which is
 //     `frequencyRangeState` with the week fully elapsed — the same computation the
-//     /wellness card, the Goals-and-habits widget, Upcoming and the Telegram nudge
+//     /wellness card, the goal/habit atoms, Upcoming and the Telegram nudge
 //     key on. Trends formats those decisions; it never makes its own.
 //
 // TRACKED only: a practice with no weekly cadence has no floor and no ceiling, so

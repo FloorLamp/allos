@@ -61,7 +61,7 @@ import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
 import { getInjuries, getInjuryConstraints } from "@/lib/injuries";
 import MobilitySection from "./MobilitySection";
-import { getConditionConsiderations } from "@/lib/queries";
+import { getConditionConsiderations, getNiggleContext } from "@/lib/queries";
 import { getActiveSituations } from "@/lib/settings/profile-attrs";
 import {
   isBuiltInInjurySituation,
@@ -69,6 +69,7 @@ import {
   BUILTIN_POOR_SLEEP_SITUATION,
 } from "@/lib/situations";
 import { exerciseInjuryVerdict, injuryReviewDue } from "@/lib/injury-model";
+import { resolveTrainingTemper } from "@/lib/niggle-model";
 import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
@@ -291,7 +292,7 @@ export default async function OverviewSection() {
     restAck: getRestAck(profile.id, todayStr),
     // Situation-aware hold (#837): the SAME illness context gatherCoachingInput reads,
     // so this overview card holds the gap nags during an open episode exactly like the
-    // dashboard coaching widget — never a second, drifting derivation (#221).
+    // dashboard coaching atom — never a second, drifting derivation (#221).
     illness: getIllnessCoachingContext(profile.id, todayStr),
     // Rest-card tense (#921): soften "rest today" to next-session framing while a
     // session is live, matching the dashboard/Telegram surfaces (one computation).
@@ -299,6 +300,10 @@ export default async function OverviewSection() {
     // Injury constraints (#838) + condition considerations (#666): the SAME gather the
     // dashboard/Telegram surfaces use, so the exclusion/tempering/notes here agree (#221).
     injuries: getInjuryConstraints(profile.id),
+    // Live niggles (#3211 part 3) — the SAME gather gatherCoachingInput reads, so this
+    // overview tempers and discloses the niggle exactly like the dashboard widget and the
+    // Telegram nudge rather than being the one surface that ignores it (#221).
+    niggles: getNiggleContext(profile.id),
     considerations: getConditionConsiderations(profile.id),
     // Plan-aware cardio arm (#839): the SAME arm the dashboard/Telegram surfaces read, with
     // the illness pause applied — so the note here agrees everywhere (#221).
@@ -411,10 +416,19 @@ export default async function OverviewSection() {
               nw.injuryConstraints,
               s.exercise
             );
+            // #3211 part 3: the live-niggle tier folds in through the SAME shared
+            // resolver the coaching card uses, so this card cannot seed an un-tempered
+            // load while the card beside it names the niggle as the reason it eased off.
+            const slotTemper = resolveTrainingTemper(
+              slotInjury,
+              nw.niggleTempers,
+              s.exercise
+            );
             const nextSet = contextualNextSet(base, s.exercise, {
               deloadWeek: session.deloadWeek,
-              recoveringRegion: slotInjury.kind === "tempered",
-              recoveringFactor: slotInjury.factor,
+              recoveringRegion: slotTemper.recoveringRegion,
+              recoveringFactor: slotTemper.factor,
+              temperRationale: slotTemper.rationale,
             });
             const sets = session.deloadWeek
               ? deloadAdjust({

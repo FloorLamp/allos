@@ -14,11 +14,11 @@ import { workerDbPath } from "./worker-env";
 // fixture profile records a "Penicillin — hives" allergy and tracks amoxicillin
 // (same-class hit) + cephalexin (documented cross-reactivity hit). The Medications
 // safety strip must render both cards — informational, cited, never prescriptive —
-// and the same finding (same dedupeKey) must reach the care-tier Needs-attention hero.
+// and the same finding (same dedupeKey) must reach care-tier dashboard placement.
 // As a SAFETY signal it is CARE-PERSISTENT (#1092, the #942/#553 stance): a page
 // dismissal must NOT permanently silence a live contraindication — the finding
 // re-surfaces while both the med is active AND the allergy stands, and only a
-// time-boxed snooze defers it (so the hero menu is snooze-only). The fixture login is
+// time-boxed snooze defers it (so the dashboard atom menu is snooze-only). The fixture login is
 // isolated (#868), and dismissals are reset before each test so the spec owns its
 // suppression state under --repeat-each.
 
@@ -47,7 +47,7 @@ function resetAllergyDismissals(): void {
 
 // Write a page-dismissal row straight to the shared bus for the amoxicillin allergy
 // finding — the same row a "Dismiss" click on any surface would create — so the test
-// can prove the care-tier hero RESISTS it (a page dismissal must never permanently
+// can prove the care-tier dashboard candidate RESISTS it (a page dismissal must never permanently
 // silence a live contraindication, #1092). Resolves the id-keyed dedupeKey
 // (`allergy-med:<allergyId>-<amoxicillinItemId>`) from the seeded rows.
 function dismissAmoxicillinAllergyViaBus(): void {

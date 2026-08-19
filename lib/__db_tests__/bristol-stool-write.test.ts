@@ -16,6 +16,9 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
+import { zonedWallIsoToUtc } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import { logBristolStool } from "@/lib/offline/writes";
 import {
   getBristolPanel,
@@ -101,13 +104,34 @@ describe("logBristolStool — instant grain", () => {
 
   it("stamps the profile-local clock when no time is given", () => {
     const date = today(profileId);
+    // BRACKETED, not "not midnight" (#3214). A one-tap log records WHEN, which is
+    // what makes a second tap a second observation rather than an overwrite of the
+    // first — and the property that says so is "stamped during this operation", so
+    // the write is bracketed between two readings of the app's own clock seam and
+    // the stamp has to land between them. The old check inferred the clock from a
+    // single value the stamp was unlikely to equal (`${date}T00:00:00`), which is
+    // wrong the moment the real value IS the marker: it reds for the first second
+    // after local midnight, and it would go on passing if the fallback were ever
+    // changed to any other fixed time.
+    //
+    // The stored stamp is DECODED back to an instant rather than compared against a
+    // rebuilt string — rebuilding it would restate the writer's own arithmetic and
+    // could not see a mutant in it.
+    const zone = getTimezone(profileId);
+    const before = clockNow().getTime();
     expect(logBristolStool(profileId, date, 3)).toBe(true);
+    const after = clockNow().getTime();
+
     const stored = rows();
     expect(stored).toHaveLength(1);
-    // Not midnight: a one-tap log records WHEN, which is what makes a second tap a
-    // second observation rather than an overwrite of the first.
-    expect(stored[0].started_at.startsWith(`${date}T`)).toBe(true);
-    expect(stored[0].started_at).not.toBe(`${date}T00:00:00`);
+    const stampedAt = zonedWallIsoToUtc(zone, stored[0].started_at);
+    expect(stampedAt).not.toBeNull();
+    // Whole seconds, so the lower bound is `before` floored to its own second; the
+    // upper bound needs no slack.
+    expect(stampedAt!.getTime()).toBeGreaterThanOrEqual(
+      Math.floor(before / 1000) * 1000
+    );
+    expect(stampedAt!.getTime()).toBeLessThanOrEqual(after);
   });
 });
 

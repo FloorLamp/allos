@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { bandForItem, upcomingDueText } from "@/lib/upcoming";
-import { attentionCardItems } from "@/lib/attention";
+import { attentionBadgeItems } from "@/lib/attention";
 import { collectAttentionModel } from "@/lib/queries/attention";
 import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import {
@@ -73,15 +73,15 @@ describe("preventive Upcoming integration", () => {
     );
     expect(items.some((i) => /overdue/i.test(i.dueText ?? ""))).toBe(false);
     expect(items.some((i) => /overdue/i.test(i.detail ?? ""))).toBe(false);
-    // Nothing preventive reaches the dashboard hero's act-now card. (Scoped to the
+    // Nothing preventive reaches the current-care app badge. (Scoped to the
     // preventive domains on purpose: the immunization schedule is a separate engine
     // and legitimately has age-based dueness of its own.)
-    const card = attentionCardItems(
+    const badge = attentionBadgeItems(
       collectAttentionModel(bare, today(bare)),
       today(bare)
     );
     expect(
-      card.filter((i) => i.domain === "visit" || i.domain === "screening")
+      badge.filter((i) => i.domain === "visit" || i.domain === "screening")
     ).toEqual([]);
   });
 
@@ -104,7 +104,7 @@ describe("preventive Upcoming integration", () => {
     expect(item?.band).toBeUndefined();
     expect(item && upcomingDueText(item, today(lapsed))).toMatch(/overdue/i);
     expect(
-      attentionCardItems(
+      attentionBadgeItems(
         collectAttentionModel(lapsed, today(lapsed)),
         today(lapsed)
       ).some((i) => i.key === "visit:dental_cleaning")

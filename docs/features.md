@@ -38,49 +38,38 @@ feature. Architecture and implementation invariants live in
 
 Your health at a glance, attention-first.
 
-### Needs attention
+### Now, Standing, Ahead, and Show everything
 
-A pinned **Needs attention** banner leads every visit with the **act-now slice**
-of one shared attention model — banded as **Past due / Today / Needs review** —
-that merges everything needing you now: overdue and due-today
-doses/appointments/care-plan items plus the "something's off" signals
-(newly-flagged labs, low supply, failing integrations, review-inbox items). It
-renders from the **same computation** as the **Upcoming** page — the banner is a
-strict **subset** of it, so the numbers always reconcile: this-week and later
-scheduled work isn't dropped, it moves to Upcoming behind a "**+N more in
-Upcoming**" link. The banner is globally capped at five rows while preserving at
-least one item from every populated band, so a large overdue backlog cannot bury
-a new flagged result or failing sync. Mobile rows move status and actions below
-the description instead of truncating the task into one crowded line; review
-signals carry explicit **Review / Review result / Reconnect** actions on the
-shared model. A flagged lab carries a verb ("Review HDL Cholesterol") and
-deep-links to its series, never a dead-end "flagged result". Snooze or dismiss
-any eligible item right there (it stays hidden on Upcoming and in the digest
-too), and an empty banner collapses to a quiet one-line "all clear". Below it, a
-login that reaches more than one profile gets one household fact for each other
-person, with a direct path to the Household view.
+The dashboard places atomic facts once across four zones. **Now** is a bounded
+act-now lane. Safety is uncapped; newly changed facts are protected from
+capped-family tail exclusion but still compete for the ordinary Now seats.
+**Standing** holds ongoing context. **Ahead** is read-only: later-today work and
+the same week/later items gathered for Upcoming, with compact inline expansion.
+**Show everything** is a remembered disclosure for the active profile's remaining
+Act, Read, Understand, Setup, and Active states facts. Ordinary facts from other
+profiles stay off the dashboard; explicit household illness context remains
+available. Upcoming and dashboard placement reuse one gather and one fact identity,
+so the same item cannot appear twice or acquire different meaning between surfaces.
 
-Just after an illness, the dashboard keeps the household's leftovers to **one
-band at a time**. Each member whose episode is still inside its seven-day reopen
-window gets a calm **"Recently resolved — reopen?"** line, and dismissing one
+Each member whose episode is still inside its seven-day reopen window gets a calm
+**"Recently resolved — reopen?"** action in Show everything, and dismissing one
 **stays dismissed** across reloads for that reader: the hide is a per-login
 viewing preference, so another caregiver with access to the same person still
-sees the line, and it never changes the episode or its reopen window. The link
-to the household's illness history rides with the reopen facts while those are
-showing and otherwise appears with the household facts.
+sees the action, and it never changes the episode or its reopen window. Household
+illness history is an independent typed context fact in Show everything.
 
 ### Atomic overview
 
 The dashboard renders facts and actions as separate atoms in one column at every
 viewport. A protocol state, its adherence reading, its primary outcome, and a due
 practice are distinct entries; the same applies to individual labs, findings,
-goals, naps, and household people. No card can hide an unrelated fact.
+goals, naps, and authorized household illness context. No card can hide an unrelated fact.
 
 Placement is derived on every request. **Now** contains every safety item plus at
 most two ordinary items whose obligation, window, or changed state makes them
-current. **Standing** contains the acting profile's ongoing readings. **Everything**
-contains the exact remainder, grouped as actions, statements, states, and readings.
-Expanding Everything never performs another query.
+current. **Standing** contains ongoing context, **Ahead** previews later work without
+write controls, and **Show everything** holds the exact grouped remainder. Expanding
+it never performs another query.
 
 There is no dashboard editor, saved order, or hidden set. Old saved layouts are
 removed during upgrade, and onboarding no longer asks anyone to arrange a dashboard.
@@ -90,7 +79,8 @@ facts from another area.
 
 ### Data quality
 
-A **Data quality** widget surfaces the _structural_ gaps that silently degrade
+Each **Data quality** gap is an atomic dashboard statement about a structural
+problem that silently degrades
 the engines — a missing birthdate (which hides every adult-population model), an
 unset sex, medications with no confirmed RxNorm code (name-only safety
 matching), a partial biological-age panel, a failed document extraction,
@@ -109,12 +99,11 @@ you can only dismiss, and once reviewed the card says so instead of looking
 identical to a profile that has never opened it. It's deliberately **not a
 completeness score** (no percentage ring — the same pillars-not-a-composite
 stance), covers **structural one-time fixes only** (never behavioral nagging
-like "log more weigh-ins"), self-hides when a profile has none, and rides the
-shared findings bus (declining a gap silences it on the widget, the coaching tab,
-and the household line at once). The widget is the family's dedicated dashboard
-home, so a gap is never also a row in the Coaching observations rollup — hide the
-widget and the gaps fall back into that rollup rather than losing their dashboard
-reach. The same gap model formats a compact
+like "log more weigh-ins"), emits no candidate when a profile has none, and rides
+the shared findings bus (declining a gap silences the same fact on the dashboard,
+the coaching tab, and the household line at once). Data-quality statements and
+coaching observations are disjoint candidate families, so the same gap never appears
+twice on the dashboard. The same gap model formats a compact
 per-member line on the **Household** page — kids' profiles are where
 birthdate/sex gaps cluster and the caregiver is who can fix them.
 
@@ -195,8 +184,8 @@ over-the-counter medication without leaving the flow.
 
 ### Illness episodes
 
-Choosing **Not feeling well?** opens the built-in Illness situation and promotes
-the sick-day controls to a pinned Dashboard hero. Symptoms, temperatures, and
+Choosing **Not feeling well?** opens the built-in Illness situation and lets the
+sick-day controls lead Dashboard Now. Symptoms, temperatures, and
 as-needed doses remain ordinary records; an illness episode groups them by the
 dates on which the illness situation was active.
 
@@ -223,9 +212,9 @@ by default.
 
 ### Care signals and household visibility
 
-An open episode appears in the household Dashboard hero for every caregiver who
-already has access to that profile. Other people remain compact accordions until
-opened, but a caregiver can log a symptom, temperature, or dose without
+An open episode appears as typed household illness context for every caregiver who
+already has access to that profile. Other people remain compact until opened, but a
+caregiver can log a symptom, temperature, or dose without
 switching the active profile. The household summary includes illness day,
 temperature trend, and last as-needed dose to reduce accidental double dosing.
 
@@ -277,7 +266,7 @@ badge, or milestone.
 
 The coaching layer may show a calm, dismissible observation for a sustained
 low-mood window or a sleep drop that co-occurs with one. It describes
-co-occurrence rather than causation and never enters the attention hero or a
+co-occurrence rather than causation and never enters Now or a
 safety notification. The optional daily reminder is off by default,
 automatically pauses after five ignored days, and re-arms after the next manual
 check-in. An optional weekly recap reports the average as a summary, not a score
@@ -296,8 +285,8 @@ the one page the hero renders on),
 **fitness-check percentiles** (a read view over your guided fitness checks, “Run
 a fitness check” deep-links into Training), **sleep regularity** (SRI, timing
 spread, trend), and the per-marker breakdown behind **“N of M biomarkers
-optimal”** — the same pillar model the dashboard widget renders (each widget
-card deep-links to its section), pillars and never a composite score, with
+optimal”** — the same pillar model the dashboard renders as separate readouts
+(each readout deep-links to its section), pillars and never a composite score, with
 absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
@@ -424,10 +413,9 @@ whether you had the screening before you started using Allos. So a rule with
 nothing on record reads as a calm **setup** state ("No record yet — add a past
 date or schedule") rather than a red **Overdue**:
 
-- On the dashboard the never-recorded rules collapse into **one** closed line —
-  **"Set up your screening history (N)"** — below the Needs-attention card. They
-  are outside the card's bands, its count, and the installed-app badge, so a
-  brand-new profile's hero is not a wall of red about a person it met a minute
+- On the dashboard, never-recorded rules remain calm Setup facts in **Show
+  everything**. They are outside dashboard Now and the installed-app badge, so a
+  brand-new profile does not see a wall of red about a person the app met a minute
   ago.
 - On **Upcoming** they get their own trailing **Set up your screening history**
   group, below everything that is genuinely due, in the quietest tone on the page.
@@ -1064,9 +1052,9 @@ card now deep-links here), a **consistency strip** (each night's bed→wake wind
 on a shared noon-to-noon axis, weekends tinted), **stage composition** over
 recent nights, and — when both are logged — an inline **sleep ↔ mood** view
 (observational co-occurrence, never a diagnosis); every night links to its
-**Timeline** day view. A compact **last-night tile** ships on the dashboard
-(duration + regularity, linking here), and Trends → Overview → body census keeps a compact
-**Sleep** summary tile pointing at this page rather than the full charts.
+**Timeline** day view. The dashboard's atomic sleep readings reuse the same
+last-night model in Standing, and Trends → Overview → body census keeps a compact
+**Sleep** summary card pointing at this page rather than the full charts.
 
 ## Progress photos
 
@@ -1152,8 +1140,8 @@ classification, and a course whose prescriber matches a linked visit reads
 "prescribed at the Day-2 visit"); "Illness + visits" also interleaves the
 unlinked routine visits. It's promoted with a calm dashboard link whenever
 anyone in the house is **currently or recently sick** (and receding when the
-house is well) — the link rides inside the recently-resolved band or the
-household strip rather than occupying a band of its own; each illness-episode
+house is well) — the dashboard keeps it as a typed illness-context fact in
+**Show everything**, alongside recently-resolved reopen rows; each illness-episode
 page carries an **"Around the household"**
 card of other members' overlapping or closely adjacent illnesses (a dated fact —
 "overlapped by 4 days", never a cause) and a **Care** line linking the resulting
@@ -2107,7 +2095,7 @@ write core's **typed outcome** — a tap that changes nothing says so, and never
 reports success.
 
 **That control has three renderers, not three implementations** (#1892). The
-same one-tap offer sits on the **dashboard Cycle-phase card** and in the **phone's
+same one-tap offer sits in the **dashboard Cycle control atom** and in the **phone's
 quick-log sheet** ("Log period"), and all three surfaces render the SAME
 server-resolved control state, so they can never disagree about which verb is
 available. The label always names the write it will perform — _Period started
@@ -2118,10 +2106,7 @@ dated form owns that exception. A tap from a page that has gone stale (a
 dashboard tab open since yesterday, a period logged on another device) hits the
 same write core and gets its honest refusal, never a double-log.
 
-The dashboard card **no longer self-hides when nothing is derivable yet**. That
-was precisely the state of someone who had not logged day 1, so the card
-vanished exactly when logging mattered most and the only path was
-nav → Medical → Cycle. It is now the registry's data-aware CTA — "Log your period
+When nothing is derivable yet, the dashboard emits a setup atom — "Log your period
 to start tracking" plus the offer button — on the SAME `cycle` relevance bit as
 the nav entry, so it never reaches a profile the domain does not apply to. The
 sheet's period row is gated on that same bit, server-side as well as in the menu.
@@ -2214,9 +2199,10 @@ the TTC evidence below is what makes a window actionable.
 
 One pure computation (`forecastNextPeriod`, `lib/cycle.ts`) produces the window,
 the confidence tier, and the evidence (cycles used, mean, spread, anchoring
-period), and every surface formats THAT — the Cycle page's "Next period" card and
-the dashboard Cycle-phase tile cannot disagree. The forecast is **informational
-reach only**: it never becomes an Upcoming item and never notifies. It **suspends
+period), and the Cycle page's "Next period" card formats THAT. The dashboard keeps
+phase as a Standing reading and the write control as its own atom; it does not repeat
+the forecast. The forecast is **informational reach only**: it never becomes an
+Upcoming item and never notifies. It **suspends
 entirely** while a pregnancy is recorded, and for a profile whose recorded
 reproductive status is postmenopausal.
 
@@ -2360,13 +2346,13 @@ or from a document-imported score, which carries its item answers — renders a
 **NON-DISMISSIBLE** crisis-resources line (the operator-configured resources,
 plus a gentle "discuss with a clinician" note) — structurally outside the
 dismissal bus, the same standing as a safety dose reminder — and joins the
-**care tier** (Upcoming + the dashboard **Needs attention** hero) for the
+**care tier** (Upcoming + dashboard **Now**) for the
 profile's own on-screen view, but is **NEVER** sent as a notification on any
 channel (Telegram / Web Push / Home Assistant): the app informs on-screen, it
 does not push crisis content to a possibly-shared or locked device. A
 mental-health **appointment** additionally defaults to **minimal detail**
-("Medical appointment") on shared/exported surfaces — the household strip and
-the `.ics` family calendar feed — via the ONE `sharedSurfaceDetail` decision
+("Medical appointment") on shared/exported surfaces — household rollups and the
+`.ics` family calendar feed — via the ONE `sharedSurfaceDetail` decision
 (`lib/appointment-sensitivity.ts`) every shared surface consults, overridable
 per profile; the profile's OWN surfaces always show full detail. Informational,
 a screening instrument, **never a diagnosis**.
@@ -2451,8 +2437,9 @@ target's floor, so substance rows are **excluded** from the floor-semantics
 progress rollup (which would otherwise nag toward MORE) and read by a dedicated
 computation; progress is the calm per-substance "5 of your 7-drink weekly cap
 used" / "…7-use weekly cap…" line, and a week over the cap surfaces ONE
-**coaching-tier** observation per substance (hideable rollup + coaching tab —
-**never** a notification, never the hero). **No gamification is a hard
+**coaching-tier** observation per substance (a dismissible Show-everything
+statement plus the coaching tab — **never** a notification, never dashboard Now).
+**No gamification is a hard
 contract** (the #716/#992 no-streaks law applied deliberately even though
 recovery culture uses chips): no streaks, badges, milestones, or celebratory
 copy — silence is the success state, pinned by a DB-tier structural-exemption

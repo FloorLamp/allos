@@ -1416,9 +1416,9 @@ The same inference feeds the calm "usually a session day" note on the
 protocol/practice cards (rendered surfaces, quiet without a pattern), and the
 nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
 **Every one-tap practice log now records what it shows (#2204, owner ruling).** The
-inline duration stepper is on all four practice affordances — the quick-log
-sheet, the Wellness card, the protocol detail card, and the dashboard's
-Active-protocols widget — each rendering `practiceDurationPrefill` over the
+inline duration stepper is on all three practice affordances — the quick-log
+sheet, the Wellness card, and the protocol detail card — each rendering
+`practiceDurationPrefill` over the
 practice's last LOGGED session. `LogPracticeButton` routes the stepper's render
 and the tap's write through ONE `stepperShown` expression, so no surface can
 post a duration that is not on screen. The expanded modal survives where it
@@ -1961,10 +1961,10 @@ mixed-scope Notifications model. It renders as a third select on the recap row's
 `day-time` control, because it is the same consent as the day and the time: one
 slot, one arrival.
 
-**The dashboard card** follows the setting — the same gather drives card and send
-(#221's identical-numbers invariant), the card on the **in-progress** period and
-the send on the one that **closed**. The persisted widget id stays `weekly-recap`;
-renaming it would silently un-place every saved dashboard layout.
+**Dashboard recap atoms** follow the setting — the same gather drives dashboard
+and send (#221's identical-numbers invariant), the dashboard on the **in-progress**
+period and the send on the one that **closed**. `weekly-recap` remains the stable
+presentation selector; there is no saved dashboard layout.
 
 **Not a fourth cadence.** The annual retrospective (#2179) is a member of
 `RECAP_SCALES` — it is the same engine over a longer window — and deliberately
@@ -2085,7 +2085,7 @@ per-item off-switch (owner ruling 2026-08-01).** `runFollowUpNudges`
 (`lib/notifications/followup.ts`) rides the notify tick (waking-window, assessed
 once per profile-local day — overdue-ness is day-granular, and an escalation
 about something already months late earns no 3am delivery) over the SAME
-`followUpItems` computation the Upcoming page and Needs-attention hero render.
+`followUpItems` computation the Upcoming page and dashboard render.
 The consent question is answered by structure, not by a toggle: the user (or
 their accepted extraction) recorded the follow-up as a tracked care item **with
 a due date**, which is the same declaration shape that lets a `must` medication
@@ -2099,7 +2099,7 @@ happens.
   (`planFollowUpNudges`, `lib/followup-nudge.ts`): ONE send when the follow-up
   crosses overdue, ONE repeat `FOLLOWUP_REPEAT_DAYS` (21 days) later that says
   out loud it is the final message, then nothing further, ever — the finding
-  keeps holding Upcoming and the hero, which never age out. The
+  keeps holding Upcoming and dashboard placement, which never age out. The
   `notify_last_followup_<carePlanItemId>` marker stores the send DATES
   (comma-joined), so the whole cadence state is one value, stamped only on a
   delivered send (#227 discipline) and swept when the follow-up leaves the
@@ -2139,7 +2139,7 @@ toggle, `getProfileSleepDigest` reads absent-means-on, a stored `"0"` still off,
 and the freshness + no-data gates in `gatherDigestSleep` are unchanged so a
 profile with no fresh sleep still sees no section) → **New** (newly-flagged
 biomarkers + documents). The **Today** section is a formatter over
-`collectUpcoming` (the SAME banded aggregation the Upcoming page/hero read): a
+`collectUpcoming` (the SAME banded aggregation Upcoming and dashboard placement read): a
 dose-count glance headline plus the `groupUpcoming` band summaries +
 high-priority "why" highlights (#656), with the `dose` domain excluded from the
 band counts (the headline summarizes them). Because it reads `collectUpcoming`,
@@ -2460,7 +2460,7 @@ BOTH surfaces.
   only AFTER the "is there anything to say?" gate, so a message that would not have
   existed still does not. That is what makes it permissible under the
   contact-consent rule — the same ride-along shape #1670's right-sizing suggestion
-  has on the practice nudge. **Coaching** tier: never Upcoming, never the hero,
+  has on the practice nudge. **Coaching** tier: never Upcoming, never dashboard Now,
   never an escalation, never its own send.
 - **The dismissal is a RATCHET, not an equality test** (`digestTimeSuggestionSuppressed`).
   #2214 measures the p90 moving up to 11 minutes on leave-one-out, so a dismissal at

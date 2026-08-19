@@ -2,7 +2,7 @@
 // it's unit-tested in lib/__tests__ and shared by the hero/card nudge + the DB gather
 // (lib/stale-episode-data.ts). This is a SUGGEST-ONLY signal (never a Finding, never
 // auto-closes — the #560 suggest-only bridge discipline): everything now hangs off an
-// "open" episode (the hero cockpit, coaching suppression, household lines, episode
+// "open" episode (the illness Now cockpit, coaching suppression, household lines, episode
 // durations), so a forgotten-open episode quietly rots the whole surface. After N
 // quiet days (no symptom / temperature / administration logged) the caregiver is
 // OFFERED a one-tap BACKDATED end as of the last activity day — they decide.

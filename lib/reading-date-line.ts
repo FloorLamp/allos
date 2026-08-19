@@ -11,7 +11,7 @@ import { isBiomarkerStale } from "./reference-range";
 // So the date is one line — `2026-06-03 · 2mo` — at BOTH viewports, from one
 // authored tree (no `sm:` branch; the wide table's Date column reads better as one
 // line too). The compact half is the SHARED formatter (#1216's `formatCompactAge`),
-// not a second one, so the dashboard's recent-labs widget and this row can never
+// not a second one, so the dashboard's clinical-result readout and this row can never
 // round the same date into different buckets. The link moved into the row's ⋯ menu.
 //
 // The over-a-year amber treatment travels with the AGE token, because the age is

@@ -1,4 +1,7 @@
 import { db, today } from "../db";
+import { localDayOf } from "../local-day-window";
+import { getLiveNiggles } from "../niggle-store";
+import { niggleLabel, type NiggleCoachingContext } from "../niggle-model";
 import { getMainSleepNightlyMinutes } from "./sleep";
 import { isLastNight } from "../sleep-summary";
 import { getLatestBodyMetricDailyPoints } from "./metrics";
@@ -34,6 +37,7 @@ import {
   getActiveSituations,
   getProfileAge,
   getProfileSetting,
+  getTimezone,
   setProfileSetting,
   type DistanceUnit,
   type TemperatureUnit,
@@ -137,13 +141,13 @@ export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
 }
 
 // Assemble the full coaching input from profile-scoped reads. Used by the
-// dashboard Coaching widget's loader; the Training overview builds the same
+// dashboard coaching atom's loader; the Training overview builds the same
 // bundle inline from data it has already fetched (reusing the two signal
 // readers above). `distanceUnit` is only needed to satisfy getCardioByActivity's
 // signature — the engine reads activity name + last date, not formatted text.
 // The situation-aware coaching context (issue #837): the open flagged-illness
 // episode state + the most-recently-closed episode, read from the ONE
-// illness_episodes derivation (#856) — the SAME rows the illness hero/timeline use,
+// illness_episodes derivation (#856) — the SAME rows the illness Now group/timeline use,
 // never a second engine. A row covering today = an open episode (held); the most
 // recent closed row anchors the ease-back ramp (the pure engine applies the window).
 export function getIllnessCoachingContext(
@@ -178,6 +182,27 @@ export function getConditionConsiderations(
   );
 }
 
+// The LIVE niggles (#3211 part 3) shaped into the coaching tier's input — the ONE gather
+// every surface threads through, so the dashboard card, the Training overview and the
+// Telegram nudge temper the same region and name the same reason (#221).
+//
+// Two boundary conversions happen HERE rather than in the pure core: liveness (the
+// store's derived `now - last_reported_at < NIGGLE_QUIET_DAYS`, so nothing has to run to
+// expire a niggle) and the profile-LOCAL day of the last report (an instant is stored;
+// the day a person would call it is a timezone question, #2205). An expired niggle never
+// reaches the core at all, which is why it cannot temper anything.
+export function getNiggleContext(profileId: number): NiggleCoachingContext[] {
+  const tz = getTimezone(profileId);
+  const todayStr = today(profileId);
+  return getLiveNiggles(profileId).map((n) => ({
+    region: n.region,
+    label: niggleLabel(n),
+    // A stamp we cannot place in the profile's day falls back to today — the disclosure
+    // then reads "from today" rather than printing a raw instant at the user.
+    lastReportedDay: localDayOf(tz, n.lastReportedAt) ?? todayStr,
+  }));
+}
+
 export function gatherCoachingInput(
   profileId: number,
   weightUnit: WeightUnit,
@@ -195,6 +220,11 @@ export function gatherCoachingInput(
     // User-declared injury constraints (#838) + curated condition considerations (#666) —
     // threaded through the ONE gather so every surface excludes/tempers/notes identically.
     injuries: getInjuryConstraints(profileId),
+    // The third and weakest tier (#3211 part 3): a live niggle tempers its region's
+    // targets, never excludes it and never holds. Outranked by the illness hold above
+    // (the pure engine returns the held note before the core runs) and by an active
+    // injury exclusion (the core drops an already-excluded region).
+    niggles: getNiggleContext(profileId),
     considerations: getConditionConsiderations(profileId),
     // Plan-aware cardio arm (#839): the soonest active endurance plan's calm note, with the
     // illness pause (#837) applied here so an open episode holds the nagging note.

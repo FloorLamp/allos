@@ -84,6 +84,14 @@ describe("disclosureOpen", () => {
     );
   });
 
+  it("keeps the single dashboard remainder closed by default", () => {
+    expect(DISCLOSURES["dashboard-all"]).toMatchObject({
+      defaultOpen: false,
+      instanced: false,
+    });
+    expect(disclosureKey("dashboard-all", "ignored")).toBe("dashboard-all");
+  });
+
   it("memory fills the default in both directions", () => {
     expect(disclosureOpen({ "settings-group": 1 }, "settings-group")).toBe(
       true

@@ -7,6 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { openDashboardAll } from "./helpers";
 
 // Cross-item PRN safety counters (issue #1027). The dedicated fixture profile tracks
 // OTC "Ibuprofen" (confirmed 6h interval / max 4) alongside "Ibuprofen 800 mg", whose
@@ -82,6 +83,7 @@ test("the therapeutic-duplication note surfaces on the dashboard coaching rollup
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
+  await openDashboardAll(page);
   const rollup = page.getByTestId("coaching-observations");
   await expect(rollup).toBeVisible();
   await expect(rollup).toContainText(

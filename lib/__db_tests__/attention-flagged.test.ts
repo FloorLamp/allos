@@ -19,18 +19,13 @@ import { shiftDateStr } from "@/lib/date";
 import {
   collectAttentionModel,
   collectSuppressedAttention,
-  attentionCountForProfile,
 } from "@/lib/queries/attention";
 import {
   collectUpcoming,
   dismissFinding,
   restoreFinding,
 } from "@/lib/queries/upcoming";
-import {
-  attentionCardItems,
-  groupAttentionForPage,
-  moreInUpcomingCount,
-} from "@/lib/attention";
+import { attentionBadgeItems, groupAttentionForPage } from "@/lib/attention";
 import {
   digestSince,
   getNewlyFlaggedBiomarkers,
@@ -302,14 +297,12 @@ describe("card ⊂ page — the strict subset invariant (issue #524)", () => {
     );
     const model = collectAttentionModel(pid, td);
     expect(model.map((i) => i.key)).toContain(`appointment:${apptId}`);
-    // …but NOT on the card's act-now subset.
-    const card = attentionCardItems(model, td);
-    expect(card.map((i) => i.key)).not.toContain(`appointment:${apptId}`);
-    // The household badge is the card subset count — it can't count the far-future item.
-    expect(attentionCountForProfile(pid, td)).toBe(card.length);
+    // …but NOT in the current-care app-badge subset.
+    const badge = attentionBadgeItems(model, td);
+    expect(badge.map((i) => i.key)).not.toContain(`appointment:${apptId}`);
   });
 
-  it("card + page agree end-to-end over ONE fixture: flagged HDL on BOTH surfaces, counts reconcile", () => {
+  it("badge + page agree end-to-end over ONE fixture: flagged HDL keeps one identity", () => {
     const pid = createProfile("Attention Test F");
     const td = today(pid);
 
@@ -331,29 +324,24 @@ describe("card ⊂ page — the strict subset invariant (issue #524)", () => {
     ).run(pid, shiftDateStr(td, 40));
 
     const model = collectAttentionModel(pid, td);
-    const card = attentionCardItems(model, td);
+    const badge = attentionBadgeItems(model, td);
     const modelKeys = new Set(model.map((i) => i.key));
     const flagKey = "biomarker-flag:hdl cholesterol";
 
-    // The flagged HDL is on the PAGE (its own "Flagged" group) AND the CARD
-    // ("Needs review") — same analyte, one item, both surfaces (the #524 defect
-    // was it appearing only on the card).
+    // The flagged HDL is on the page and in the care-tier badge subset — same
+    // analyte, one item.
     const pageGroups = groupAttentionForPage(model, td);
     const flaggedGroup = pageGroups.find((g) => g.kind === "flagged");
     expect(flaggedGroup?.items.map((i) => i.key)).toContain(flagKey);
-    expect(card.map((i) => i.key)).toContain(flagKey);
+    expect(badge.map((i) => i.key)).toContain(flagKey);
 
-    // Strict subset: every card key is a page key.
-    for (const item of card) expect(modelKeys.has(item.key)).toBe(true);
+    // Strict subset: every badge key is a page key.
+    for (const item of badge) expect(modelKeys.has(item.key)).toBe(true);
 
-    // Counts reconcile: the card count plus "+N more in Upcoming" equals the page
-    // total, and the far-future physical is exactly the hidden item.
-    const more = moreInUpcomingCount(model, card.length);
-    expect(card.length + more).toBe(model.length);
-    expect(card.map((i) => i.key)).not.toContain(`appointment`);
-    // The overdue follow-up IS on the card (Urgent); the far-future physical is NOT.
-    const cardTitles = card.map((i) => i.title);
-    expect(cardTitles).toContain("Overdue follow-up");
-    expect(cardTitles).not.toContain("Annual physical");
+    expect(badge.map((i) => i.key)).not.toContain(`appointment`);
+    // The overdue follow-up is in the badge subset; the far-future physical is not.
+    const badgeTitles = badge.map((i) => i.title);
+    expect(badgeTitles).toContain("Overdue follow-up");
+    expect(badgeTitles).not.toContain("Annual physical");
   });
 });

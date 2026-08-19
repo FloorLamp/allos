@@ -55,7 +55,7 @@ export const DISCLOSURE_MEMORY_KEY = "allos:disclosure:v1";
  * The disclosures that may remember. Adding one is a deliberate edit with a reason and
  * a test to update, never an inheritance — see the scope rules above.
  */
-export type DisclosureId = "settings-group";
+export type DisclosureId = "settings-group" | "dashboard-all";
 
 export interface DisclosureDeclaration {
   /** Why this fold is ROUTINE — the daily return that makes re-opening it friction. */
@@ -79,6 +79,12 @@ export const DISCLOSURES: Record<DisclosureId, DisclosureDeclaration> = {
       "Settings groups. Returned to repeatedly while configuring one area; instanced per group.",
     defaultOpen: false,
     instanced: true,
+  },
+  "dashboard-all": {
+    reason:
+      "The routine dashboard remainder returns on every visit and may stay open on this device.",
+    defaultOpen: false,
+    instanced: false,
   },
 };
 

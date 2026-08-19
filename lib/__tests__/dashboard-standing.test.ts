@@ -60,6 +60,8 @@ const rank = (candidates: readonly DashboardCandidate[]) =>
   rankDashboardCandidates(candidates, {
     activeProfileId: 7,
     minutesOfDay: 12 * 60,
+    today: "2026-08-19",
+    upcoming: [],
   });
 
 function standingIds(candidates: readonly DashboardCandidate[]): string[] {
@@ -86,6 +88,10 @@ describe("fixed Standing instrument cluster", () => {
       ["longer-view", "outcome-goals", 4],
       ["longer-view", "weekly-targets", 4],
     ]);
+    expect(
+      STANDING_READING_ORDER.find(({ key }) => key === "weekly-targets")
+        ?.memberOrder
+    ).toEqual({ kind: "source", authority: "orderDashboardHabits" });
   });
 
   it("is invariant to gather order and applies only family-local order and caps", () => {
@@ -257,7 +263,7 @@ describe("fixed Standing instrument cluster", () => {
     const other = reading("activity.steps:other", 0, {
       subject: { scope: "profile", profileId: 8 },
     });
-    expect(rank([other])[0].lane).toBe("everything");
+    expect(rank([other])).toEqual([]);
   });
 });
 

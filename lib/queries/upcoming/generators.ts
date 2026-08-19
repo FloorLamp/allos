@@ -183,7 +183,7 @@ import {
 } from "./intake-safety";
 // The `may` availability gather (#1505) is re-exported rather than folded into
 // collectUpcoming on purpose: it is NOT due work, so it must never join the banded
-// set, the total, or the hero. The Upcoming page reads it separately for its
+// set, the total, or dashboard placement. The Upcoming page reads it separately for its
 // collapsed disclosure.
 export { offeredItems } from "./intake-safety";
 // The day's dose progress (#1504) — the denominator behind the Upcoming dose
@@ -279,7 +279,7 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   // dismiss control BESIDE the due item (attached below to actionable
   // assessments only — a rule that is not due has nothing to resolve). The
   // offer never bands, never counts, and never reaches a send: only this
-  // page's row and the dashboard's Everything lane read the field.
+  // page's row and dashboard Show everything read the field.
   const reviewOffersByRule = new Map<
     string,
     NonNullable<UpcomingItem["preventiveReview"]>
@@ -299,7 +299,7 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   // through the SAME adapter and the same suppression bus — a setup row keeps its
   // dedupe key, its "Mark done" fast path and its Book CTA — and the adapter is what
   // decides the framing: `actionable` bands as work, `setup` carries `signalGroup:
-  // "setup"` and is excluded from the hero's bands and the digest.
+  // "setup"` and is excluded from the app badge and the digest.
   return [...summary.actionable, ...summary.setup].map((a) => {
     const item = preventiveAssessmentToUpcomingItem(a, {
       today,
@@ -559,8 +559,8 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
 // band: a visit today lands in Today, tomorrow in This week, and a past-and-still-
 // scheduled one reads as Overdue (a missed/unlogged appointment worth chasing).
 //
-// `shared` (#997) applies the sensitivity-aware detail decision: on the SHARED
-// household strip a mental_health visit shows only "Medical appointment" (no
+// `shared` (#997) applies the sensitivity-aware detail decision: on a SHARED
+// household rollup a mental_health visit shows only "Medical appointment" (no
 // provider/reason) unless the profile owner opted it into full shared detail. The
 // profile's OWN Upcoming page passes shared:false and always sees full detail. The
 // `key` stays `appointment:<id>` in both so a dismissal/suppression matches across

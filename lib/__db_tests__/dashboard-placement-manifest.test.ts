@@ -188,6 +188,10 @@ const standingPresentations = new Map<
   string,
   DashboardPlacementCanvasProps["standingPresentations"]
 >();
+const aheadPresentations = new Map<
+  string,
+  DashboardPlacementCanvasProps["aheadPresentations"]
+>();
 const queryCounts = new Map<string, number>();
 const personaProfileIds = new Map<string, number>();
 let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
@@ -227,6 +231,7 @@ describe("actual atomic dashboard manifests", () => {
         persona.name,
         element.props.standingPresentations
       );
+      aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
       if (persona.name === "household") {
@@ -329,6 +334,85 @@ describe("actual atomic dashboard manifests", () => {
     expect(externalStanding).toBeGreaterThan(0);
   });
 
+  it("keeps Ahead active-profile-only with complete read-only presentations", () => {
+    const seen = new Set<string>();
+    for (const [persona, placements] of manifests) {
+      const profileId = personaProfileIds.get(persona)!;
+      const presentations = aheadPresentations.get(persona)!;
+      for (const placement of placements.filter(
+        (placement) => placement.lane === "ahead"
+      )) {
+        seen.add(placement.aheadBucket);
+        expect(placement.candidate.subject, persona).toEqual({
+          scope: "profile",
+          profileId,
+        });
+        expect(
+          presentations.has(placement.candidate.candidateId),
+          persona
+        ).toBe(true);
+        if (placement.aheadBucket === "later-today") {
+          expect(placement.candidate, persona).toMatchObject({
+            kind: "action",
+            rankReasons: { owed: true, safety: false },
+          });
+          expect(placement.timingDisposition).toEqual({
+            kind: "future-today",
+            opensAt: placement.opensAt,
+          });
+        } else {
+          expect(placement.candidate.candidateId).toBe(
+            `attention.fact:${placement.upcomingKey}`
+          );
+          expect(placement.candidate.factKey).toBe(
+            `upcoming.${placement.upcomingKey}`
+          );
+        }
+      }
+    }
+    expect(seen).toEqual(new Set(["later-today", "horizon"]));
+  });
+
+  it("excludes ordinary other-profile facts and keeps typed illness context", () => {
+    let illnessContext = 0;
+    for (const [persona, placements] of manifests) {
+      const profileId = personaProfileIds.get(persona)!;
+      for (const { candidate } of placements) {
+        if (
+          candidate.subject.scope === "profile" &&
+          candidate.subject.profileId !== profileId
+        ) {
+          expect(
+            candidate.episodeGroup != null ||
+              candidate.dashboardScope === "illness-context",
+            `${persona}:${candidate.candidateId}`
+          ).toBe(true);
+        }
+        expect(
+          candidate.candidateId.startsWith("household.attention:"),
+          persona
+        ).toBe(false);
+        if (candidate.dashboardScope === "illness-context") illnessContext += 1;
+      }
+    }
+    expect(illnessContext).toBeGreaterThan(0);
+  });
+
+  it("orders Show everything by its fixed groups", () => {
+    const order = ["act", "read", "understand", "setup", "active-states"];
+    const seen = new Set<string>();
+    for (const [persona, placements] of manifests) {
+      const groups = placements
+        .filter((placement) => placement.lane === "everything")
+        .map((placement) => {
+          seen.add(placement.everythingGroup);
+          return order.indexOf(placement.everythingGroup);
+        });
+      expect(groups, persona).toEqual(groups.toSorted((a, b) => a - b));
+    }
+    expect(seen).toEqual(new Set(order));
+  });
+
   it("keeps sleep regularity only in its healthspan family", () => {
     for (const placements of manifests.values()) {
       expect(
@@ -336,8 +420,15 @@ describe("actual atomic dashboard manifests", () => {
           candidate.candidateId.startsWith("sleep.regularity:")
         )
       ).toBe(false);
-      for (const placement of placements.filter(({ candidate }) =>
-        candidate.candidateId.includes("sleep-regularity")
+      for (const placement of placements.filter(
+        (
+          placement
+        ): placement is Extract<
+          DashboardPlacementCanvasProps["placements"][number],
+          { lane: "standing" }
+        > =>
+          placement.lane === "standing" &&
+          placement.candidate.candidateId.includes("sleep-regularity")
       )) {
         expect(placement.standingFamilyKey).toBe("healthspan-pillars");
       }

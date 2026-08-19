@@ -9,6 +9,7 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
+import { openDashboardAll } from "./helpers";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
 //
@@ -180,6 +181,7 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
   });
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const bpCandidate = dashboardCandidatePrefix(
       page,
       "vitals.blood-pressure:"
