@@ -10,6 +10,10 @@ import net from "node:net";
 import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
 import {
+  strandedDraftMessage,
+  takeStrandedSharedDrafts,
+} from "./shared-profile-guard";
+import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
   frozenNow,
@@ -73,6 +77,14 @@ export type WorkerApp = {
 
 type WorkerFixtures = {
   workerApp: WorkerApp;
+};
+
+type TestFixtures = {
+  /**
+   * The standing shared-fixture guard (#3173) — automatic, so no spec can opt out
+   * and no new spec has to remember to opt in. See e2e/shared-profile-guard.ts.
+   */
+  noStrandedSharedDraft: void;
 };
 
 const BOOT_TIMEOUT_MS = 120_000;
@@ -211,8 +223,33 @@ async function stopServer(server: ChildProcess): Promise<void> {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export const test = base.extend<{}, WorkerFixtures>({
+export const test = base.extend<TestFixtures, WorkerFixtures>({
+  // NO SPEC MAY STRAND A LIVE DRAFT ON THE SHARED PROFILE (#3173).
+  //
+  // Declared FIRST and `auto`, so it is set up before the test's own fixtures and
+  // therefore torn down after them — the check runs once the page and its context
+  // are gone and the worker's database has stopped moving. Failing from teardown is
+  // what makes the guard name the test that CAUSED the leak; the alternative (a
+  // global teardown) could only name the run, by which point the worker database it
+  // would have to read has been thrown away.
+  //
+  // It depends on `workerApp` for the database this worker actually owns, never on
+  // process.env.ALLOS_DB_PATH — that is the app server's environment, not this
+  // process's. The demo project is exempt: it runs a different seed (scripts/seed.ts
+  // with no e2e event layer) against its own template, and its one spec drives the
+  // demo login rather than acting as the shared admin.
+  noStrandedSharedDraft: [
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    async ({ workerApp }, use) => {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      await use();
+      if (workerApp.demo) return;
+      const stranded = takeStrandedSharedDrafts(workerApp.dbPath);
+      if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
+    },
+    { auto: true },
+  ],
+
   // THE BROWSER RUNS ON THE APP'S FROZEN CLOCK (#1538 follow-up).
   //
   // `ALLOS_TEST_NOW` freezes the SERVER's `now()` for the whole run, but a browser

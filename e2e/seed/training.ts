@@ -48,6 +48,14 @@ import {
   OVERVIEW_NO_ROUTINE_PROFILE,
   E2E_LOGIN_OVERVIEW_REST,
   OVERVIEW_REST_PROFILE,
+  E2E_LOGIN_LADDER_LANES,
+  LADDER_LANES_PROFILE,
+  LADDER_PR_LIFT,
+  LADDER_DECLINED_LIFT,
+  LADDER_FLAT_LIFT,
+  LADDER_MACHINE_PRESS,
+  LADDER_SMITH_MACHINE,
+  LADDER_POWER_RACK,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -1066,5 +1074,94 @@ export function seedOverviewActionStates(): void {
 
   console.log(
     `e2e: seeded Overview standing-action fixtures — profiles ${noRoutineId} and ${restId} (#3062)`
+  );
+}
+
+export function seedStrengthLadderLanes(): void {
+  // The fixture behind e2e/strength-ladder-lanes.spec.ts (#3177) — the browser-tier
+  // half of #3132/#3175. See the constants' header in e2e/logins/training.ts for what
+  // each lift is for and why it gets a profile of its own.
+  //
+  // The shape is the DB tier's own probe (lib/__db_tests__/strength-ladder-lanes
+  // .test.ts), rebuilt as a fixture: a machine set and a bar set on the SAME movement
+  // in the same pre-cutoff window, plus a bar set inside it. The ladder's prior dot is
+  // "the newest free-weight point at or before today − 90", so the pre-cutoff sets sit
+  // 100 days back and the current ones 2 days back — comfortably either side of the
+  // cutoff whatever weekday the frozen clock lands on, and relative, so the fixture
+  // never goes stale.
+  const pid = adultFixtureProfileId(LADDER_LANES_PROFILE);
+  const t = today(pid);
+
+  // The standards tables answer nothing without a sex and a bodyweight, and no dot
+  // can be placed without a standing.
+  setProfileSex(pid, "male");
+  db.prepare(
+    `DELETE FROM exercise_sets WHERE activity_id IN
+       (SELECT id FROM activities WHERE profile_id = ?)`
+  ).run(pid);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 80)`
+  ).run(pid, t);
+
+  const insEquipment = db.prepare(
+    `INSERT INTO equipment (profile_id, name, category) VALUES (?, ?, ?)`
+  );
+  // `Machine` is the ONE registry category that contradicts a free-weight standard
+  // (lib/equipment-availability.ts) — the axis the whole fixture turns on.
+  const chestPressId = Number(
+    insEquipment.run(pid, LADDER_MACHINE_PRESS, "Machine").lastInsertRowid
+  );
+  const smithId = Number(
+    insEquipment.run(pid, LADDER_SMITH_MACHINE, "Machine").lastInsertRowid
+  );
+  const rackId = Number(
+    insEquipment.run(pid, LADDER_POWER_RACK, "Barbell").lastInsertRowid
+  );
+
+  const insAct = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, source)
+     VALUES (?, ?, 'strength', ?, 45, 'manual')`
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets
+       (activity_id, exercise, set_number, weight_kg, reps, equipment_id, warmup)
+     VALUES (?, ?, 1, ?, 5, ?, 0)`
+  );
+  const logSet = (
+    daysAgo: number,
+    title: string,
+    exercise: string,
+    weightKg: number,
+    equipmentId: number
+  ) => {
+    const actId = Number(
+      insAct.run(pid, shiftDateStr(t, -daysAgo), title).lastInsertRowid
+    );
+    insSet.run(actId, exercise, weightKg, equipmentId);
+  };
+
+  // 1. The masked PR. Both implements on the same day 100 back; the bar today.
+  //    Free-weight lane: prior 50 kg × 5 → current 60 kg × 5, so the lift MOVED.
+  //    Unfiltered, the 120 kg machine press is the prior and the PR vanishes.
+  logSet(100, "Machine chest day", LADDER_PR_LIFT, 120, chestPressId);
+  logSet(100, "Bar chest day", LADDER_PR_LIFT, 50, rackId);
+  logSet(2, "Bar chest day", LADDER_PR_LIFT, 60, rackId);
+
+  // 2. The declined prior. Every pre-cutoff set was on the Smith machine, so the
+  //    free-weight lane has nothing to compare against and the row gets ONE dot.
+  logSet(100, "Smith leg day", LADDER_DECLINED_LIFT, 140, smithId);
+  logSet(2, "Bar leg day", LADDER_DECLINED_LIFT, 100, rackId);
+
+  // 3. The control: a real free-weight prior that did not move.
+  logSet(100, "Bar press day", LADDER_FLAT_LIFT, 40, rackId);
+  logSet(2, "Bar press day", LADDER_FLAT_LIFT, 40, rackId);
+
+  seedMemberLogin(E2E_LOGIN_LADDER_LANES, pid, "write");
+  console.log(
+    `e2e: seeded strength-ladder measurement-lane fixture — profile ${pid} (${LADDER_LANES_PROFILE}) (#3177)`
   );
 }

@@ -285,49 +285,62 @@ test("a refused workout capture at close says so and claims no sync", async ({
   // every later page, which is exactly how offline-set-log's dock assertion started
   // failing whenever the shard plan put it after this test. The draft is this
   // test's, so this test disposes of it.
+  //
+  // FROM A `finally`, not from the end of the body (#3173). The watermark is taken
+  // before the first interaction and the disposal is the block's only exit, so a
+  // failure ANYWHERE after the editor opens still reconnects and still drops what
+  // this test caused. The end-of-body version shipped in #3169 skipped both on an
+  // early failure, which is precisely the run where a draft is most likely to be
+  // sitting there — the standing guard in e2e/shared-profile-guard.ts is the
+  // backstop, and this is the disposal it should never have to be.
   const activityWatermark = maxActivityId();
-  await breakIndexedDB(page);
-  await page.goto("/training?tab=log");
-  await hydratedClick(
-    page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
-  );
-  await expect(page.getByTestId("activity-form")).toBeVisible();
-
-  // Reception dies after the editor opens; the close-path flush must try the
-  // queue — and be refused.
-  await context.setOffline(true);
-  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-  await page
-    .getByRole("listbox")
-    .getByRole("button")
-    .filter({ hasText: "Barbell Bench Press" })
-    .first() // first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
-    .click();
-  await page
-    .getByTestId("next-set-card")
-    .getByRole("button", { name: "Use" })
-    .click();
-  await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
-  await page.getByLabel("Activity name").fill(marker);
-
-  await page.keyboard.press("Escape");
-
-  await expectRefusedOnly(page);
-  // And the durable truth agrees with the sentence: no row landed WHILE OFFLINE.
-  // (The reconnect below is a different moment — see the teardown note.)
-  const db = new Database(workerDbPath());
   try {
-    db.pragma("busy_timeout = 5000");
-    const rows = db
-      .prepare("SELECT id FROM activities WHERE title = ?")
-      .all(marker);
-    expect(rows).toEqual([]);
+    await breakIndexedDB(page);
+    await page.goto("/training?tab=log");
+    await hydratedClick(
+      page,
+      page.getByRole("main").getByRole("button", { name: "New activity" })
+    );
+    await expect(page.getByTestId("activity-form")).toBeVisible();
+
+    // Reception dies after the editor opens; the close-path flush must try the
+    // queue — and be refused.
+    await context.setOffline(true);
+    await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    await page
+      .getByRole("listbox")
+      .getByRole("button")
+      .filter({ hasText: "Barbell Bench Press" })
+      .first() // first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
+      .click();
+    await page
+      .getByTestId("next-set-card")
+      .getByRole("button", { name: "Use" })
+      .click();
+    await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
+    await page.getByLabel("Activity name").fill(marker);
+
+    await page.keyboard.press("Escape");
+
+    await expectRefusedOnly(page);
+    // And the durable truth agrees with the sentence: no row landed WHILE OFFLINE.
+    // (The reconnect below is a different moment — see the teardown note.)
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      const rows = db
+        .prepare("SELECT id FROM activities WHERE title = ?")
+        .all(marker);
+      expect(rows).toEqual([]);
+    } finally {
+      db.close();
+    }
   } finally {
-    db.close();
+    // Reconnect FIRST: the close-path flush the editor queued only lands once the
+    // page is back online, and the drop below waits for exactly that write.
+    await context.setOffline(false);
+    await dropActivitiesCreatedAfter(activityWatermark);
   }
-  await context.setOffline(false);
-  await dropActivitiesCreatedAfter(activityWatermark);
 });
 
 test("a refused dose tap settles READY AGAIN — the retry it asks for is not absorbed", async ({
