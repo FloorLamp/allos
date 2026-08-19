@@ -13,14 +13,20 @@ import { fileURLToPath } from "node:url";
 //
 // #3050 gave that card the draws' DATES, which is the closest it has ever come to the
 // hero's material: a reader has to be able to tell whether the result behind the
-// button is from June or from this morning. A date is not the number, and this scan is
-// what keeps the distinction from eroding by increments — it reads the card's own
-// source as TEXT (no DB, no render, so it stays pure) and fails if the file so much as
-// mentions the estimate-bearing helpers.
+// button is from June or from this morning. A date is not the number.
 //
-// The type system holds the same line from the other side: `bioAgeInputsStatus` takes
-// `readonly { date: string }[]`, so the copy layer cannot see a draw's `bioAge` even if
-// someone hands it the whole draw.
+// THIS SCAN IS THE SECOND LINE, NOT THE FIRST. A scan over spellings guards the
+// spelling: while the card still received the full `BioAgeDraw[]`, a review added a
+// block rendering the estimate, the calendar age and the delta, and this file passed —
+// ordinary destructuring names none of the tokens below, and `latest["bioAge"]` walks
+// past them too. The guard that actually holds is a TYPE: the card reads
+// `getBioAgeInputCatalog`, whose `drawDates` carry a date and nothing else, so the
+// number is not in scope to render (`bioAgeInputsStatus` applies the same rule one
+// level in). `lib/__action_tests__/bio-age-inputs-card.render.test.ts` then asserts the
+// rendered card against the very number the hero shows for that profile.
+//
+// What this file still adds is early, cheap and specific: it fails on the IMPORT, at
+// the moment someone reaches for the hero's helpers, with the reason stated.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const CARD = "app/(app)/results/BioAgeInputsCard.tsx";

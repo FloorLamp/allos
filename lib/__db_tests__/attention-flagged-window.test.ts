@@ -42,18 +42,46 @@ import { flagInSql, NOTABLE_FLAGS } from "@/lib/reference-range";
 // The two statements this change is about: the retired now-read, and the heavy
 // DEDUP+LATEST pass the window feeds.
 //
-// The flagged-pass signature is SPELLED FROM the shared tier list rather than typed
-// out, because a hand-typed copy of the predicate is how this pin quietly died once:
-// it read `flag NOT IN ('normal', 'immune')`, #2937 re-spelled that clause as the
-// positive `flag IN (…)` the display tiers use, and a signature that matches nothing
-// satisfies `toBe(0)` vacuously. Built from the same fragment the query emits, it
-// cannot drift again — and the self-check below fails if it ever matches nothing.
+// HOW THIS PIN DIED ONCE, AND WHY IT CANNOT AGAIN. Its only assertion about the heavy
+// pass is `toBe(0)` — so a signature that matches NOTHING satisfies it, and the pin
+// reads as coverage while guarding nothing. That is what happened: the signature was a
+// hand-typed copy of `flag NOT IN ('normal', 'immune')`, #2937 re-spelled that clause
+// as the positive `flag IN (…)` the display tiers use, and the file stayed green.
+//
+// Two changes, because the first alone was not enough. The signature is now BUILT from
+// the same fragment the query emits (`flagInSql`), so a re-tiering cannot drift it —
+// and, since that still says nothing about the SQL the production code really
+// compiles (a whitespace-only re-spelling defeats it, and a self-check written against
+// the same constant only confirms the regex matches its own construction), the file
+// CAPTURES what `collectAttentionModel` compiles and asserts the signature against
+// THAT. A positive match count is the control: "matched nothing" is now red.
 const NOW_READ = /datetime\('now'/;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const FLAGGED_PREDICATE = flagInSql(NOTABLE_FLAGS);
 const FLAGGED_CTE = new RegExp(
   `WITH[\\s\\S]*FROM medical_records[\\s\\S]*${escapeRe(FLAGGED_PREDICATE)}`
 );
+
+// Every SQL text the FIRST gather in this file compiles. That gather is the one that
+// compiles the hoisted statements: lib/db.ts caches them in a WeakMap keyed on the
+// connection HANDLE, and this tier rebinds a fresh handle per file, so the cache
+// starts empty here. Captured in beforeAll, before any test has gathered.
+let compiledByFirstGather: string[] = [];
+
+function captureCompiledSql(gather: () => void): string[] {
+  const captured: string[] = [];
+  const real = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+    captured.push(sql);
+    return real(sql);
+  }) as typeof db.prepare);
+  try {
+    gather();
+  } finally {
+    vi.restoreAllMocks();
+  }
+  return captured;
+}
 
 function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
   const counts = signatures.map(() => 0);
@@ -140,6 +168,31 @@ describe("flagged-biomarker attention window (#2112)", () => {
       collectedDaysAgo: 900,
     });
     // pQuiet has nothing flagged at all.
+
+    // FIRST gather of the file, instrumented: this is where the hoisted statements
+    // are compiled, so it is the only moment their text can be observed.
+    compiledByFirstGather = captureCompiledSql(() =>
+      collectAttentionModel(pWindow, today(pWindow))
+    );
+  });
+
+  it("the flagged-pass signature matches SQL the gather really compiles", () => {
+    // THE CONTROL for the `toBe(0)` assertion below. Without it, a signature that
+    // matches nothing — because a tier was re-spelled, or a clause was rewrapped —
+    // passes that assertion and the pin silently stops pinning.
+    const matched = compiledByFirstGather.filter((sql) =>
+      FLAGGED_CTE.test(sql)
+    );
+    expect(
+      matched.length,
+      `No statement compiled by collectAttentionModel matches the flagged-pass ` +
+        `signature. Either the pass stopped running, or its SQL was re-spelled and ` +
+        `this signature no longer describes it — in which case the zero-compile ` +
+        `assertion below is vacuous. Compiled texts:\n${compiledByFirstGather.join("\n---\n")}`
+    ).toBeGreaterThanOrEqual(1);
+    // …and it is the statement this file means: the profile-scoped flagged read.
+    expect(matched[0]).toContain("profile_id = ?");
+    expect(matched[0]).toContain("category = 'lab'");
   });
 
   it("keeps the 14-day boundary exactly where the SQL round-trip put it", () => {
@@ -171,16 +224,5 @@ describe("flagged-biomarker attention window (#2112)", () => {
     // rather than by a compile count — the two stopped being the same measurement.
     expect(flaggedCte.calls()).toBe(0);
     expect(flagged.map((i) => i.title).join(" | ")).toContain("Ferritin fw");
-  });
-
-  it("self-check: the flagged-pass signature matches the clause the query emits", () => {
-    // A zero compile count means nothing if the signature can never match. This holds
-    // the signature against the production spelling of the same predicate.
-    expect(
-      FLAGGED_CTE.test(
-        `WITH dedup AS (SELECT 1) SELECT flag FROM medical_records
-          WHERE profile_id = ? AND category = 'lab' AND ${FLAGGED_PREDICATE}`
-      )
-    ).toBe(true);
   });
 });

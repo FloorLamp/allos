@@ -267,6 +267,50 @@ describe("inputCompleteness", () => {
     );
   });
 
+  // TWO OF THE NINE CANONICAL NAMES CARRY A COMMA — "Glucose, Fasting" and
+  // "Lymphocytes, Relative" — and a CMP/CBC split that omits exactly those two is an
+  // ordinary panel, not a corner case. Comma-joined, the sentence names four analytes
+  // the reader cannot resolve.
+  it("does not let a comma-bearing analyte name read as two", () => {
+    const c = inputCompleteness(
+      PHENOAGE_INPUT_NAMES.filter(
+        (n) => n !== "Glucose, Fasting" && n !== "Lymphocytes, Relative"
+      )
+    );
+    expect(c.missing).toEqual(["Glucose, Fasting", "Lymphocytes, Relative"]);
+    const msg = completenessChecklistMessage(c);
+    expect(msg).toContain("add Glucose, Fasting; and Lymphocytes, Relative to");
+    expect(msg).not.toContain("Fasting and Lymphocytes");
+  });
+
+  it("steps the whole list up to semicolons, not just the joint", () => {
+    const c = inputCompleteness(
+      PHENOAGE_INPUT_NAMES.filter(
+        (n) =>
+          n !== "Albumin" &&
+          n !== "Glucose, Fasting" &&
+          n !== "Lymphocytes, Relative"
+      )
+    );
+    expect(completenessChecklistMessage(c)).toContain(
+      "add Albumin; Glucose, Fasting; and Lymphocytes, Relative to"
+    );
+  });
+
+  it("leaves a comma-free list exactly as it was", () => {
+    const c = inputCompleteness(
+      PHENOAGE_INPUT_NAMES.filter(
+        (n) =>
+          n !== "Albumin" &&
+          n !== "Creatinine" &&
+          n !== "White Blood Cell Count"
+      )
+    );
+    expect(completenessChecklistMessage(c)).toContain(
+      "add Albumin, Creatinine, and White Blood Cell Count to"
+    );
+  });
+
   it("ignores unrelated analyte names", () => {
     const c = inputCompleteness(["Ferritin", "Vitamin D", "Testosterone"]);
     expect(c.presentCount).toBe(0);
@@ -362,6 +406,24 @@ describe("bioAgeInputsStatus", () => {
     );
     // In PHENOAGE_INPUT_NAMES order, like the checklist's own list.
     expect(s.message).toContain(`missing Albumin and ${CRP}`);
+  });
+
+  it("keeps a comma-bearing pair readable in the newer-panel sentence", () => {
+    // The state this sentence exists for: a re-draw split across CMP and CBC that
+    // came back without the two comma-bearing names. Beside two comma-bearing DATES,
+    // a comma-joined pair here would read as four analytes.
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [
+        panel("2026-06-03"),
+        panel("2026-07-12", ["Glucose, Fasting", "Lymphocytes, Relative"]),
+      ],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.message).toBe(
+      "Your Jul 12, 2026 panel is missing Glucose, Fasting; and Lymphocytes, Relative — your biological age is still from Jun 3, 2026."
+    );
   });
 
   it("stays quiet about a later day that is not a re-draw of the panel", () => {

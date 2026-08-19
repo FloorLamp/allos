@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { getBioAgeReadings } from "@/lib/queries";
+import { getBioAgeInputCatalog, getBioAgeReadings } from "@/lib/queries";
 import { setProfileBirthdate } from "@/lib/settings";
 import {
   bioAgeInputsStatus,
@@ -160,6 +160,27 @@ describe("a draw that DID compute", () => {
     );
 
     expect(card(p).status.kind).toBe("computed");
+  });
+});
+
+describe("the catalog gather the Results card reads (#2367)", () => {
+  it("carries the draw DATES and no estimate at all", () => {
+    const p = newProfile("bioage_catalog");
+    draw(p, "2026-06-03");
+
+    // The hero's gather has the number…
+    const full = getBioAgeReadings(p);
+    expect(full.draws[0].bioAge).toBeGreaterThan(0);
+    expect(full.draws[0].effects.length).toBeGreaterThan(0);
+
+    // …and the card's does not, as a matter of SHAPE rather than of discipline: there
+    // is no bioAge/chronoAge/effects/inputs on anything it returns, so no edit to the
+    // card can put the estimate on that page.
+    const catalog = getBioAgeInputCatalog(p);
+    expect(catalog.drawDates).toEqual([{ date: "2026-06-03" }]);
+    for (const d of catalog.drawDates) expect(Object.keys(d)).toEqual(["date"]);
+    expect(catalog.presentInputs).toEqual(full.presentInputs);
+    expect(catalog.panels).toEqual(full.panels);
   });
 });
 

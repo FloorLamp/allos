@@ -209,11 +209,27 @@ export function inputCompleteness(
 }
 
 // Join names into an Oxford-comma list ("A", "A and B", "A, B, and C").
+//
+// TWO OF THE NINE ANALYTE NAMES CARRY THEIR OWN COMMA — "Glucose, Fasting" and
+// "Lymphocytes, Relative" — and a comma-joined list of them says something the reader
+// cannot parse: "missing Glucose, Fasting and Lymphocytes, Relative" reads as four
+// analytes, in a sentence that already carries two comma-bearing dates. A CMP/CBC
+// split omitting exactly those two is an ordinary panel, not a corner case.
+//
+// So the separator steps up to the semicolon when any item contains a comma — the
+// standard English rule for a list whose elements have internal commas, not an
+// invention — and stays a plain comma otherwise, leaving every existing sentence
+// byte-identical. Both the checklist and the newer-panel line read through here, so
+// both get it.
 function humanizeList(items: readonly string[]): string {
   if (items.length === 0) return "";
   if (items.length === 1) return items[0];
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+  const sep = items.some((i) => i.includes(",")) ? "; " : ", ";
+  if (items.length === 2)
+    return sep === "; "
+      ? `${items[0]}; and ${items[1]}`
+      : `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(sep)}${sep}and ${items[items.length - 1]}`;
 }
 
 // The partial-panel checklist message ("7 of 9 inputs present; add hs-CRP and Albumin

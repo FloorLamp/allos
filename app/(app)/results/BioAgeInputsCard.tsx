@@ -2,7 +2,7 @@ import Link from "next/link";
 import { IconActivityHeartbeat, IconCircleCheck } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs, getProfileAge } from "@/lib/settings";
-import { getBioAgeReadings } from "@/lib/queries";
+import { getBioAgeInputCatalog } from "@/lib/queries";
 import {
   bioAgeInputsStatus,
   bioAgeSurface,
@@ -30,7 +30,7 @@ import { clinicalResultDetailHref } from "@/lib/hrefs";
 // bioAgeSurface call (lib/bio-age.ts) over the same getBioAgeReadings gather the
 // Longevity section makes, and this card shows no estimate of its own.
 //
-// WHAT THE STATUS LINE SAYS (#3050). The gather carries each computed draw's date, so
+// WHAT THE STATUS LINE SAYS (#3050). The catalog gather carries each draw's date, so
 // the card names WHICH draw the result behind the button is from — a reader could not
 // otherwise tell whether it is from June or from this morning. It also carries the
 // dated PANELS, which is what lets the card say that a newer re-draw missed and left
@@ -49,17 +49,23 @@ export default async function BioAgeInputsCard() {
   const age = getProfileAge(profile.id);
   const hiddenForProfile = isBioAgeHiddenForAge(age);
 
-  const { draws, presentInputs, panels } = getBioAgeReadings(profile.id);
+  // getBioAgeInputCatalog, not getBioAgeReadings: the CATALOG half of the same
+  // gather, with the estimate projected out (#2367). `drawDates` carries WHEN each
+  // draw was, and nothing else — the number is not in scope on this page, so no edit
+  // to this file can put it on screen.
+  const { drawDates, presentInputs, panels } = getBioAgeInputCatalog(
+    profile.id
+  );
   const completeness = inputCompleteness(presentInputs);
   const status = bioAgeInputsStatus(
     completeness,
-    draws,
+    drawDates,
     panels,
     getDisplayFormatPrefs(login.id)
   );
   const surface = bioAgeSurface(
     hiddenForProfile,
-    draws.length,
+    drawDates.length,
     completeness.presentCount
   );
   // "hidden" covers the age gate AND a labs-empty profile, for which this card would

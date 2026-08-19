@@ -460,3 +460,38 @@ export function getBioAgeReadings(profileId: number): {
     panels,
   };
 }
+
+// A draw reduced to WHEN it was drawn. Deliberately not `Pick<BioAgeDraw, "date">`:
+// the point is a shape that cannot grow back into the draw, so it is written out.
+export interface BioAgeDrawDate {
+  date: string;
+}
+
+/**
+ * The CATALOG half of the bio-age gather (#3050), for the Results card — the same
+ * getBioAgeReadings computation with the ESTIMATE PROJECTED OUT.
+ *
+ * #2367 put the number, the delta, the pace and the per-input effects on /longevity
+ * and left this page the question of which analytes you have. Handing the card the
+ * full `BioAgeDraw[]` left the whole hero in scope: a source scan over the estimate's
+ * vocabulary pins the SPELLING, and ordinary destructuring — or `latest["bioAge"]` —
+ * walks straight past it, which is how a review demonstrated the card rendering the
+ * estimate, the calendar age and the delta with every guard green.
+ *
+ * So the split is a TYPE, not a convention: what comes back is draw DATES, the
+ * present inputs and the dated panels, and there is no `bioAge` on any of them to
+ * render. Same cache()d computation, no second gather — the same reasoning already
+ * applied one level in, where `bioAgeInputsStatus` takes `readonly {date}[]`.
+ */
+export function getBioAgeInputCatalog(profileId: number): {
+  drawDates: BioAgeDrawDate[];
+  presentInputs: string[];
+  panels: BioAgePanel[];
+} {
+  const { draws, presentInputs, panels } = getBioAgeReadings(profileId);
+  return {
+    drawDates: draws.map((d) => ({ date: d.date })),
+    presentInputs,
+    panels,
+  };
+}

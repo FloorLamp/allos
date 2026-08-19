@@ -97,8 +97,14 @@ const RECONCILABLE_FLAGS = new Set([
 // written by a FUTURE build of this same pass; re-deriving it in the vocabulary this
 // build does have is the only honest answer available. The rule is stated ONCE, here
 // and in reconciledFlag's tail, so the next flag value ships without its author having
-// to think about rollback — its only obligation is to join KNOWN_FLAGS, which the type
-// checker enforces.
+// to think about rollback — its obligations are to join KNOWN_FLAGS, which the type
+// checker enforces, and to bump FLAG_LOGIC_VERSION, which introducing a token already
+// requires. The second is load-bearing HERE and easy to miss: the token is not part of
+// the canonical-flags hash, so it is the version bump that makes the rolled-back
+// build's signature differ and the boot gate fire. A token-introducing build that
+// skipped the bump leaves a row the BOOT pass never reaches — harmless (it reads
+// Normal on every surface and is on no flagged read, by the tier agreement) and
+// repaired by the request path on that row's next import or edit.
 //
 // NO FLAG_LOGIC_VERSION BUMP RIDES WITH THIS, deliberately. The version exists to
 // force stored rows to re-derive when the logic that wrote them changes; here no row a
