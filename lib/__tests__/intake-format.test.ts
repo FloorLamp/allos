@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { plainBody } from "@/lib/notifications/rich-text";
 import {
   renderWindowMessage,
+  renderMergedIntakeMessage,
   intakeWindowNoun,
   intakeItemNoun,
   type WindowDose,
@@ -20,7 +21,8 @@ function item(
   name: string,
   obligation: IntakeObligation = "should",
   kind: IntakeItemKind = "supplement",
-  product: string | null = null
+  product: string | null = null,
+  stack: string | null = null
 ): IntakeItem {
   return {
     id,
@@ -36,7 +38,7 @@ function item(
     situation_id: null,
     pause_situation: null,
     pause_situation_id: null,
-    stack: null,
+    stack,
     critical: 0,
     escalate_after_min: null,
     escalate_chat_id: null,
@@ -109,6 +111,7 @@ function entry(opts: {
   food?: FoodTiming;
   kind?: IntakeItemKind;
   product?: string | null;
+  stack?: string | null;
   adherence?: Partial<AdherenceSummary>;
 }): WindowDose {
   return {
@@ -123,7 +126,8 @@ function entry(opts: {
       opts.name,
       opts.obligation ?? "should",
       opts.kind ?? "supplement",
-      opts.product ?? null
+      opts.product ?? null,
+      opts.stack ?? null
     ),
     taken: opts.taken ?? false,
     skipped: opts.skipped ?? false,
@@ -410,5 +414,148 @@ describe("intakeItemNoun (singular modifier)", () => {
     expect(intakeItemNoun(["medication", "supplement"])).toBe(
       "supplement & med"
     );
+  });
+});
+
+// ── #3098: the reminder clusters by stack and offers per-stack one-taps ──────
+describe("stack clustering and one-taps (#3098)", () => {
+  const DATE = "2026-07-05";
+
+  it("orders body lines by the shared dose-day comparator — stack members cluster", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 14, itemId: 4, name: "Ashwagandha" }),
+      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
+      entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "must" }),
+      entry({ doseId: 11, itemId: 3, name: "Creatine", stack: "AM stack" }),
+    ]);
+    // Obligation first (#297), then STACK — members sit together, unstacked last.
+    expect(msg.body).toBe(
+      ["🔴 Zinc", "• Creatine", "• Magnesium", "• Ashwagandha"].join("\n")
+    );
+  });
+
+  it("offers one button per ≥2-member stack when the slot holds other doses, All stays", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
+      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
+      entry({ doseId: 13, itemId: 3, name: "Glycine", stack: "Longevity" }),
+      entry({ doseId: 14, itemId: 4, name: "NMN", stack: "Longevity" }),
+      entry({ doseId: 15, itemId: 5, name: "Zinc" }),
+    ]);
+    const labels = msg.actions!.map((a) => a.label);
+    expect(labels[0]).toBe("✅ All (5)");
+    expect(labels).toContain("✅ AM stack (2)");
+    expect(labels).toContain("✅ Longevity (2)");
+    // The token carries the member dose ids — an upper bound the handler
+    // re-derives against fresh state.
+    const am = msg.actions!.find((a) => a.label === "✅ AM stack (2)")!;
+    expect(am.data).toBe("stacktake:1:2026-07-05:11,12");
+    const lon = msg.actions!.find((a) => a.label === "✅ Longevity (2)")!;
+    expect(lon.data).toBe("stacktake:1:2026-07-05:13,14");
+    // Stack buttons sit above the per-dose rows.
+    expect(labels.indexOf("✅ AM stack (2)")).toBeLessThan(
+      labels.indexOf("✅ Creatine")
+    );
+  });
+
+  it("relabels the All button when one stack IS the whole pending set — no duplicate sibling", () => {
+    const msg = renderWindowMessage(1, "Bedtime", DATE, [
+      entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
+      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
+    ]);
+    const labels = msg.actions!.map((a) => a.label);
+    expect(labels[0]).toBe("✅ Sleep stack (2)");
+    // Same all: token, same handler — only the label changed.
+    expect(msg.actions![0].data).toBe("all:1:Bedtime:2026-07-05");
+    expect(labels.filter((l) => l.includes("Sleep stack"))).toHaveLength(1);
+    expect(msg.actions!.some((a) => a.data?.startsWith("stacktake:"))).toBe(
+      false
+    );
+  });
+
+  it("a resolved member leaves the rest of the stack as the whole pending set", () => {
+    const msg = renderWindowMessage(1, "Bedtime", DATE, [
+      entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
+      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
+      entry({
+        doseId: 13,
+        itemId: 3,
+        name: "Ashwagandha",
+        stack: "Sleep stack",
+        taken: true,
+      }),
+    ]);
+    // Two still-pending members of one stack = the whole pending set.
+    expect(msg.actions![0].label).toBe("✅ Sleep stack (2)");
+    expect(msg.actions![0].data).toBe("all:1:Bedtime:2026-07-05");
+  });
+
+  it("a one-member stack earns no button — the chip stays page furniture", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
+      entry({ doseId: 12, itemId: 2, name: "Zinc" }),
+    ]);
+    const labels = msg.actions!.map((a) => a.label);
+    expect(labels[0]).toBe("✅ All (2)");
+    expect(labels.some((l) => l.includes("AM stack"))).toBe(false);
+    expect(msg.actions!.some((a) => a.data?.startsWith("stacktake:"))).toBe(
+      false
+    );
+  });
+
+  it("drops — never truncates — a stack button whose ids exceed the callback limit", () => {
+    const members = Array.from({ length: 6 }, (_, i) =>
+      entry({
+        doseId: 90000000 + i,
+        itemId: 30 + i,
+        name: `Member ${i}`,
+        stack: "Big stack",
+      })
+    );
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      ...members,
+      entry({ doseId: 15, itemId: 5, name: "Zinc" }),
+    ]);
+    const labels = msg.actions!.map((a) => a.label);
+    // "stacktake:1:2026-07-05:" + six 8-digit ids does not fit 64 bytes.
+    expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
+    // The slot-wide All and the per-dose rows still stand — an offer may never
+    // name less than the tap would write, so the over-limit offer is absent.
+    expect(labels[0]).toBe("✅ All (7)");
+    expect(labels).toContain("✅ Zinc");
+  });
+
+  it("keeps the slot word on a merged message's renamed All so two stay tellable apart (#531)", () => {
+    const slotOf = (slot: "Morning" | "Bedtime", doses: WindowDose[]) => ({
+      slot,
+      entries: doses,
+    });
+    const msg = renderMergedIntakeMessage(
+      1,
+      [
+        slotOf("Morning", [
+          entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
+          entry({ doseId: 12, itemId: 2, name: "Zinc", stack: "AM stack" }),
+        ]),
+        slotOf("Bedtime", [
+          entry({
+            doseId: 13,
+            itemId: 3,
+            name: "Collagen",
+            stack: "Sleep stack",
+          }),
+          entry({
+            doseId: 14,
+            itemId: 4,
+            name: "Magnesium",
+            stack: "Sleep stack",
+          }),
+        ]),
+      ],
+      DATE
+    );
+    const labels = (msg.actions ?? []).map((a) => a.label);
+    expect(labels).toContain("✅ AM stack Morning (2)");
+    expect(labels).toContain("✅ Sleep stack Bedtime (2)");
   });
 });

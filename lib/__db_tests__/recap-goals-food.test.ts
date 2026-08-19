@@ -89,7 +89,7 @@ describe("recap goal lines key on the achievement, not the deadline (#2394)", ()
     const input = gatherRecapInput(p);
     expect(input.workouts).toEqual([]);
     expect(input.prevWorkouts).toEqual([]);
-    expect(input.prLabels).toEqual([]);
+    expect(input.prs).toEqual([]);
     expect(input.goalsCompleted).toEqual([]);
     expect(input.goalsMissed).toEqual([]);
   });
@@ -117,7 +117,7 @@ describe("recap goal lines key on the achievement, not the deadline (#2394)", ()
 
     const input = gatherRecapInput(p);
     expect(input.workouts).toEqual([{ date: td, type: "cardio" }]);
-    expect(input.prLabels).toEqual([]);
+    expect(input.prs).toEqual([]);
     expect(input.goalsCompleted).toEqual(["Run around the playground"]);
   });
 

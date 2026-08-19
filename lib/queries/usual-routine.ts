@@ -89,6 +89,9 @@ export function getPendingRoutineDoses(
         item.kind === "medication"
           ? formatMedicationDoseProduct(dose.amount, item.product)
           : dose.amount,
+      // The item's stack label (#3098), feeding the label compression in
+      // `usualRoutinePhrase` when the whole rider shares one.
+      stack: item.stack,
     });
   }
   return out;

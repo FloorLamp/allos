@@ -613,3 +613,142 @@ describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
     expect(lastAnswerText()).toBe("All logged ✅");
   });
 });
+
+// ---- The per-stack one-tap (#3098) ----------------------------------------
+//
+// `stacktake:` carries dose ids as an UPPER BOUND. The handler re-derives the
+// pending, notifiable set from current state and writes only the INTERSECTION
+// through markDoseTaken — each guard below is red if that intersection rule is
+// removed: a forged foreign id, a retired dose, a floored `may` dose and an
+// already-resolved dose must all be refused or left alone, with the honest
+// answer, while the still-pending listed doses log.
+describe("stacktake writes only the listed-and-still-pending intersection (#3098)", () => {
+  const STACK_CHAT = "5553098";
+  const FOREIGN_CHAT = "5553099";
+  let sp: SeededProfile;
+  let other: SeededProfile;
+  let itemA: number;
+  let doseA: number;
+  let itemB: number;
+  let doseB: number;
+  let mayItem: number;
+  let mayDose: number;
+  let retiredItem: number;
+  let retiredDose: number;
+  let foreignItem: number;
+  let foreignDose: number;
+
+  const mkItem = (
+    profileId: number,
+    name: string,
+    obligation: string,
+    stack: string | null
+  ) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, stack)
+           VALUES (?, ?, 1, 'supplement', 'daily', ?, ?)`
+        )
+        .run(profileId, name, obligation, stack).lastInsertRowid
+    );
+  const mkDose = (itemId: number, retired = 0) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, retired)
+           VALUES (?, '1 cap', 'morning', 'any', 0, ?)`
+        )
+        .run(itemId, retired).lastInsertRowid
+    );
+
+  beforeAll(() => {
+    sp = seedProfile("TG3098");
+    seedLoginTelegram(sp.profileId, STACK_CHAT);
+    other = seedProfile("TG3098B");
+    seedLoginTelegram(other.profileId, FOREIGN_CHAT);
+    itemA = mkItem(sp.profileId, "TG3098 Stack A", "should", "AM stack");
+    doseA = mkDose(itemA);
+    itemB = mkItem(sp.profileId, "TG3098 Stack B", "should", "AM stack");
+    doseB = mkDose(itemB);
+    // A `may` supplement is behind the #1156 floor: never listed, never bulk-logged.
+    mayItem = mkItem(sp.profileId, "TG3098 May C", "may", "AM stack");
+    mayDose = mkDose(mayItem);
+    retiredItem = mkItem(
+      sp.profileId,
+      "TG3098 Retired D",
+      "should",
+      "AM stack"
+    );
+    retiredDose = mkDose(retiredItem, 1);
+    foreignItem = mkItem(other.profileId, "TG3098 Foreign E", "should", null);
+    foreignDose = mkDose(foreignItem);
+  });
+
+  const logsFor = (doseId: number, date: string) =>
+    db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .all(doseId, date) as { status: string }[];
+
+  it("writes the pending listed doses and refuses everything outside the fresh set", async () => {
+    const date = today(sp.profileId);
+    // The token lists the two real members PLUS a forged foreign id, a retired
+    // dose, and a floored `may` dose — the upper bound a stale or forged token
+    // could carry.
+    const ids = [doseA, doseB, mayDose, retiredDose, foreignDose].join(",");
+    await handleCallbackQuery(
+      cq(`stacktake:${sp.profileId}:${date}:${ids}`, STACK_CHAT)
+    );
+    expect(logsFor(doseA, date).map((r) => r.status)).toEqual(["taken"]);
+    expect(logsFor(doseB, date).map((r) => r.status)).toEqual(["taken"]);
+    // Outside the re-derived pending set: nothing written.
+    expect(logsFor(mayDose, date)).toEqual([]);
+    expect(logsFor(retiredDose, date)).toEqual([]);
+    expect(logsFor(foreignDose, date)).toEqual([]);
+    expect(lastAnswerText()).toBe("Logged ✅");
+  });
+
+  it("a second tap answers nothing-to-log instead of confirming again", async () => {
+    const date = today(sp.profileId);
+    await handleCallbackQuery(
+      cq(`stacktake:${sp.profileId}:${date}:${doseA},${doseB}`, STACK_CHAT)
+    );
+    // Still exactly one log per dose — idempotent, and answered as the standing
+    // state rather than a fresh confirm (#280).
+    expect(logsFor(doseA, date)).toHaveLength(1);
+    expect(logsFor(doseB, date)).toHaveLength(1);
+    expect(lastAnswerText()).toBe("Already logged ✅");
+  });
+
+  it("a token whose every id is outside the current session answers out-of-date", async () => {
+    const date = today(sp.profileId);
+    await handleCallbackQuery(
+      cq(
+        `stacktake:${sp.profileId}:${date}:${retiredDose},${foreignDose}`,
+        STACK_CHAT
+      )
+    );
+    expect(logsFor(retiredDose, date)).toEqual([]);
+    expect(logsFor(foreignDose, date)).toEqual([]);
+    expect(lastAnswerText()).toBe(
+      "Not logged — this reminder is out of date. Open the app."
+    );
+  });
+
+  it("a token minted for another chat's profile writes nothing", async () => {
+    const date = today(sp.profileId);
+    db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
+      doseA,
+      doseB
+    );
+    await handleCallbackQuery(
+      cq(`stacktake:${sp.profileId}:${date}:${doseA},${doseB}`, FOREIGN_CHAT)
+    );
+    expect(logsFor(doseA, date)).toEqual([]);
+    expect(logsFor(doseB, date)).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+});

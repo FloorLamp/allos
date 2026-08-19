@@ -23,6 +23,12 @@
 // definition layer); this answers "what changed among the things that push me".
 
 import type { AdherenceDot } from "./intake-adherence";
+import { weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
+import {
+  formatWeekdayDate,
+  DEFAULT_FORMAT_PREFS,
+  type DisplayFormatPrefs,
+} from "./format-date";
 
 // ---- Window + thresholds --------------------------------------------------
 //
@@ -59,6 +65,13 @@ export interface IntakeDelta {
   // The run length the copy reports: for "missed", how many scheduled occurrences
   // have now been missed in a row; for "resumed", how long the lapse it ended was.
   days: number;
+  // The date of the run's most recent MISSED occurrence (#3033) — for "missed",
+  // the latest miss; for "resumed", the last miss of the lapse the take ended.
+  // Already on the AdherenceDot the classifier walks; carried so a
+  // single-occurrence miss can name its day instead of the ambiguous "for 1 day"
+  // (which counts scheduled occurrences, not calendar days — a weekly item's one
+  // missed Monday is one occurrence, not one day out of seven).
+  date: string;
 }
 
 // One item's slice: its identity plus the ITEM-LEVEL adherence strip (oldest-first)
@@ -124,12 +137,15 @@ export function classifyIntakeDelta(
       itemId: input.itemId,
       name: input.name,
       days: missRun,
+      // The most recent miss is the sequence's last occurrence.
+      date: last.date,
     };
   }
 
   // Trailing take: how long was the lapse immediately before it?
   let i = occ.length - 1;
   while (i >= 0 && isTaken(occ[i])) i--;
+  const lapseEnd = i >= 0 ? occ[i].date : last.date;
   let missRun = 0;
   while (i >= 0 && !isTaken(occ[i])) {
     missRun++;
@@ -141,6 +157,7 @@ export function classifyIntakeDelta(
     itemId: input.itemId,
     name: input.name,
     days: missRun,
+    date: lapseEnd,
   };
 }
 
@@ -170,12 +187,47 @@ export function hasIntakeDeltas(deltas: IntakeDeltas): boolean {
 // has to stay a line.
 export const INTAKE_DELTA_MAX_NAMED = 3;
 
-function half(label: string, items: readonly IntakeDelta[]): string | null {
+// The period a caller is REPORTING ON, when it spans more than a day (#3033).
+// The weekly recap passes its own window; the daily digest and the household card
+// pass nothing. Resolved inside the formatter — deliberately not a per-caller
+// flag, and not a second phrasing: the day is named as a function of the window,
+// because in a day-scale report a one-occurrence miss is almost always yesterday
+// and a weekday would add nothing, while a week-scale reader has seven candidate
+// days and "for 1 day" says nothing about which one.
+export interface IntakeDeltaReportWindow {
+  start: string; // YYYY-MM-DD, inclusive
+  end: string; // YYYY-MM-DD, inclusive
+  // Date-format prefs for a date beyond the window; the notification default
+  // applies where no per-login prefs exist (the recap's own rule, #1218).
+  prefs?: DisplayFormatPrefs;
+}
+
+// How one delta's run reads. A SINGLE-occurrence miss inside a multi-day report
+// window names its day — a weekday for a date inside the window, a "Mon, 4 Aug"-
+// style date beyond it (the delta classifier looks back further than a week) —
+// and everything else keeps the run-length copy.
+function runPhrase(
+  d: IntakeDelta,
+  window: IntakeDeltaReportWindow | null
+): string {
+  if (window != null && window.start < window.end && d.days === 1) {
+    const day =
+      d.date >= window.start && d.date <= window.end
+        ? WEEKDAYS_LONG[weekdayOfDateStr(d.date)]
+        : formatWeekdayDate(d.date, window.prefs ?? DEFAULT_FORMAT_PREFS);
+    return `${d.name} on ${day}`;
+  }
+  return `${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`;
+}
+
+function half(
+  label: string,
+  items: readonly IntakeDelta[],
+  window: IntakeDeltaReportWindow | null
+): string | null {
   if (items.length === 0) return null;
   const named = items.slice(0, INTAKE_DELTA_MAX_NAMED);
-  const parts = named.map(
-    (d) => `${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`
-  );
+  const parts = named.map((d) => runPhrase(d, window));
   const rest = items.length - named.length;
   if (rest > 0) parts.push(`+${rest} more`);
   return `${label}: ${parts.join(", ")}`;
@@ -184,11 +236,16 @@ function half(label: string, items: readonly IntakeDelta[]): string | null {
 // THE headline every digest channel renders — "Missed: Magnesium for 3 days ·
 // Resumed: Vitamin D for 2 days" — or null on a quiet window, which is the signal to
 // omit the line entirely. One formatter so Telegram, the weekly recap and the
-// household card can't drift into three phrasings of the same fact.
-export function intakeDeltaLine(deltas: IntakeDeltas): string | null {
+// household card can't drift into three phrasings of the same fact. `window` is
+// the caller's reporting period (see IntakeDeltaReportWindow): absent for the
+// day-scale surfaces, whose copy is unchanged.
+export function intakeDeltaLine(
+  deltas: IntakeDeltas,
+  window: IntakeDeltaReportWindow | null = null
+): string | null {
   const parts = [
-    half("Missed", deltas.missed),
-    half("Resumed", deltas.resumed),
+    half("Missed", deltas.missed, window),
+    half("Resumed", deltas.resumed, window),
   ].filter((p): p is string => p != null);
   return parts.length ? parts.join(" · ") : null;
 }

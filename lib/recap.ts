@@ -73,6 +73,7 @@ import {
   type FoodHabitObservation,
 } from "./food-habit-observation";
 import { median, robustEndpoints } from "./robust-stats";
+import { prSetClause } from "./lifts";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
 import { sriPresentation } from "./sleep-regularity";
@@ -220,6 +221,30 @@ export interface RecapNutrientDays {
   days: number;
 }
 
+// A personal record set inside the window (#3033) — the label plus, for a strength
+// record, the SET it was performed with. The set is what #1722's defect class was
+// about: `recentPRs` computes e1rm/weight/reps/kind and the recap kept only the
+// name. A cardio record carries no `set` — its value lives on a distance/pace
+// boundary this line does not cross yet, so it keeps its name alone.
+export interface RecapPR {
+  /** Display label, already load-context-composed ("Bench Press (Home rack)"). */
+  label: string;
+  set?: {
+    kind: "1rm" | "weight";
+    weightKg: number;
+    reps: number;
+    bodyweight: boolean;
+  } | null;
+}
+
+// One PR as the recap states it — "Romanian Deadlift (Rep Trap Bar) at 100 kg × 5"
+// — through the SAME `prSetClause` the PR finding renders, so the summary and the
+// celebration can never spell one record two ways. Used by the PR line's notes AND
+// the headline's PR slot, which is what "never phrased by a second path" means.
+function recapPrPhrase(pr: RecapPR, wu: WeightUnit): string {
+  return pr.set ? `${pr.label} ${prSetClause(pr.set, wu)}` : pr.label;
+}
+
 // The window's food coverage and shape — never a serving total (#2396/#2178).
 export interface RecapFood {
   /** Distinct days inside the window with any food logged. */
@@ -265,9 +290,11 @@ export interface RecapInput {
   // Workouts (one per activity) in the current and previous periods.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
-  // Personal records (strength + cardio) dated within the current window; labels
-  // are short display names ("Bench press", "Running") for the summary line.
-  prLabels: string[];
+  // Personal records (strength + cardio) dated within the current window, in
+  // `recentPRs` order (newest first, strength before cardio). Labels are short
+  // display names ("Bench press", "Running"); a strength record also carries the
+  // set it was performed with (#3033) so the line can state it.
+  prs: RecapPR[];
   // IntakeItem/medication adherence over the window, or null when nothing was
   // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
   adherence: { taken: number; skipped: number; due: number } | null;
@@ -386,6 +413,7 @@ export type RecapLineKey =
   | "adherence-pattern"
   | "targets"
   | "food"
+  | "nutrient-missed"
   | "food-habits"
   | "caps"
   | "weight"
@@ -445,6 +473,10 @@ export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
     // summary, never a score to beat". The variety and the nutrient days are notes for
     // the same reason. What the week ate is reported; how it ranks is not.
     food: "none",
+    // A tracked nutrient on target 0 of N days (#3033). A declared threshold, not a
+    // per-week judgement — and uncompared for the food line's own reason: the
+    // yardstick (the nutrient target) is already inside the value.
+    "nutrient-missed": "none",
     // A SHARE of the period's logged days (#2397). A period-over-period comparison is
     // the run-shaped streak #1955 retired, wearing a nutrient's clothes: it would turn
     // "12 of 26 days" into a thing to keep up, with a cliff, over a behaviour the app
@@ -542,6 +574,10 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
   food: {
     scales: ["week"],
     why: "Days logged and group variety are WEEK facts that do not exist at day scale, and they were the profile's most consistent logging behaviour with no line at all (#2396). Week ONLY, for two reasons: a month's coverage rate says nothing a week's did not, and the nutrient half is a per-day gather — bounded at seven days it rides beside the adherence walk, over ninety it would be a scan on the dashboard's own render path.",
+  },
+  "nutrient-missed": {
+    scales: ["week"],
+    why: "A tracked nutrient that landed on target 0 of N positioned days (#3033). At any other count it stays a note in the Food tail; at zero it is a whole-period fact whose head must not read as success — 'Food: 7/7 days' with a total failure in its third note was the head saying one thing and the tail its opposite. Week only, exactly as the food line it lifts the case out of: the per-day nutrient gather is bounded at seven days by the same declaration.",
   },
   "food-habits": {
     scales: ["month"],
@@ -656,6 +692,18 @@ export function recapMessageLine(line: RecapLine): MessageLine {
 export function recapLineAnnotation(line: RecapLine): string | undefined {
   const parts = messageLineQualifiers(recapMessageLine(line));
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+// The per-line IDENTITY a keyed surface uses — the widget's React key, the
+// dashboard's per-line candidate id. `key` alone was that identity until #3033
+// added the ONE key that can legitimately appear once per nutrient
+// (`nutrient-missed`), so that key is qualified by its label; every other line's
+// id stays byte-identical to its pre-#3033 value. One helper, so no keyed
+// consumer can collide a second time.
+export function recapLineId(line: RecapLine): string {
+  return line.key === "nutrient-missed"
+    ? `${line.key}.${line.label.toLowerCase()}`
+    : line.key;
 }
 
 export interface Recap {
@@ -926,16 +974,21 @@ export function buildRecap(input: RecapInput): Recap {
     });
   }
 
-  // Personal records set this week.
-  if (input.prLabels.length > 0) {
-    const shown = input.prLabels.slice(0, 3).join(", ");
-    const extra = input.prLabels.length - 3;
+  // Personal records set this week — each one AS PERFORMED (#3033): the set was
+  // computed by `recentPRs` and thrown away at the gather, which was #1722's own
+  // defect class on the recap's most-read line. One note per record (the
+  // homogeneous repeating tail, #2391), through the shared `prSetClause`, so an
+  // e1RM record reads as its weight × reps set, a bodyweight lift as reps alone,
+  // and a top-weight record is labelled as the top set it is.
+  if (input.prs.length > 0) {
+    const named = input.prs.slice(0, 3).map((p) => recapPrPhrase(p, wu));
+    const extra = input.prs.length - 3;
     push({
       key: "prs",
       label: "PRs",
-      value: `${input.prLabels.length}`,
+      value: `${input.prs.length}`,
       comparison: NO_COMPARISON,
-      notes: [extra > 0 ? `${shown} +${extra} more` : shown],
+      notes: [...named, extra > 0 ? `+${extra} more` : null],
     });
   }
 
@@ -965,6 +1018,15 @@ export function buildRecap(input: RecapInput): Recap {
     const intended = due - skipped;
     if (intended > 0) {
       const p = Math.round((taken / intended) * 100);
+      // THE NOTES NAME WHAT WAS COUNTED (#3033). "58/62 doses" beside a delta line
+      // reading "Missed: X for 1 day" left the reader four misses to reconcile with
+      // one named item. The notes now speak the delta line's own vocabulary —
+      // misses — so the number the reader can check is the number they just read.
+      // The two lines still report different populations by design (#1505: the
+      // delta line names state CHANGES, the percentage counts every miss); sharing
+      // the word is what makes the difference legible. The missed clause drops at
+      // zero; a deliberate skip stays its own count (#232).
+      const missed = intended - taken;
       push({
         key: "adherence",
         label: "Adherence",
@@ -972,7 +1034,7 @@ export function buildRecap(input: RecapInput): Recap {
         comparison: NO_COMPARISON,
         // Two independent facts, declared as two notes: the grammar punctuates them.
         notes: [
-          `${taken}/${intended} doses`,
+          missed > 0 ? `${missed} missed` : null,
           skipped > 0 ? `${skipped} skipped` : null,
         ],
       });
@@ -1025,6 +1087,14 @@ export function buildRecap(input: RecapInput): Recap {
   // NO COMPARISON, on purpose — see RECAP_COMPARISON_KINDS. A week-over-week
   // days-logged delta is the streak line #1935 cut, wearing a nutrient's clothes.
   const food = input.food ?? null;
+  // A nutrient on target 0 of N positioned days (#3033, owner decision): a total
+  // miss must never be a subordinate clause under a head that reads as success, so
+  // it is LIFTED out of the Food tail onto its own line below. A declared
+  // threshold (exactly zero), not a per-week judgement — at 1 of N it stays in the
+  // tail as before.
+  const missedNutrients =
+    food?.nutrients.filter((n) => n.onTarget === 0 && n.days > 0) ?? [];
+  const missedSet = new Set(missedNutrients.map((n) => n.nutrient));
   if (food && food.daysLogged > 0) {
     push({
       key: "food",
@@ -1038,14 +1108,28 @@ export function buildRecap(input: RecapInput): Recap {
         // One note per nutrient — the homogeneous tail the grammar's repeating group is
         // for (#2391), so the `·` between protein and fibre is the formatter's and the
         // per-nutrient denominators stay attached to their own figures.
-        ...food.nutrients.map(
-          (n) =>
-            `${NUTRIENT_LABELS[n.nutrient]} on target ${n.onTarget} of ${n.days} day${
-              n.days === 1 ? "" : "s"
-            }`
-        ),
+        ...food.nutrients
+          .filter((n) => !missedSet.has(n.nutrient))
+          .map(
+            (n) =>
+              `${NUTRIENT_LABELS[n.nutrient]} on target ${n.onTarget} of ${n.days} day${
+                n.days === 1 ? "" : "s"
+              }`
+          ),
       ],
     });
+    // One line per totally-missed nutrient, right under the coverage line it was
+    // lifted out of. Every 0/N nutrient gets its line; only the FIRST enters the
+    // headline (source order — NUTRIENT_KEYS — settles a multi-nutrient week).
+    for (const n of missedNutrients) {
+      const label = NUTRIENT_LABELS[n.nutrient];
+      push({
+        key: "nutrient-missed",
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+        value: `0 of ${n.days} day${n.days === 1 ? "" : "s"} on target`,
+        comparison: NO_COMPARISON,
+      });
+    }
   }
 
   // MONTHLY FOOD HABITS (#2397) — "Fatty fish 12 days, a source of Omega-3", over the
@@ -1338,53 +1422,71 @@ export function buildRecap(input: RecapInput): Recap {
     (food == null || food.daysLogged === 0) &&
     foodHabits.length === 0;
 
-  // Headline: the two facts most worth leading with, else a quiet fallback. It obeys
-  // the same declaration the lines do — a scale that does not speak the workout COUNT
-  // must not smuggle it back in through the headline, so it leads with the rate its
-  // own line reports instead.
+  // THE HEADLINE (#3033, owner ruling 2026-08-18): a fixed registry, never a score,
+  // at most three facts in a declared order — one main-activity fact (the first
+  // applicable fallback), one PR detail, one whole-period concern. It states what
+  // happened and must be able to lead with a good week; line order, domain grouping
+  // and every declared comparison below it stay exactly as they are. It obeys the
+  // same scale declaration the lines do — a scale that does not speak the workout
+  // COUNT must not smuggle it back in through the headline.
+  //
+  // An illness/recovery fact OVERRIDES the three-slot pattern and is the whole
+  // headline: a sick week reads as a sick week, not as a graded one. An empty recap
+  // keeps an empty headline (and sends nothing).
   const headParts: string[] = [];
-  if (lineSpeaksAt("workouts", scale) && workoutCount > 0)
-    headParts.push(`${workoutCount} workout${workoutCount === 1 ? "" : "s"}`);
-  if (lineSpeaksAt("training-mix", scale) && mix)
-    headParts.push(`${mix.perWeek.toFixed(1)} sessions/week`);
-  if (lineSpeaksAt("prs", scale) && input.prLabels.length > 0)
-    headParts.push(
-      `${input.prLabels.length} PR${input.prLabels.length === 1 ? "" : "s"}`
-    );
-  if (
-    headParts.length === 0 &&
-    lineSpeaksAt("weight-trajectory", scale) &&
-    trend != null
-  )
-    headParts.push(`${signedWeight(trend, wu)} body weight`);
-  if (
-    headParts.length === 0 &&
-    lineSpeaksAt("adherence", scale) &&
-    input.adherence
-  ) {
-    const intended = input.adherence.due - input.adherence.skipped;
-    if (intended > 0) {
-      const p = Math.round((input.adherence.taken / intended) * 100);
-      headParts.push(`${p}% adherence`);
-    }
-  }
-  // A period whose logging was concentrated in food leads with food rather than with
-  // nothing (#2396) — the training-shaped headline had no fallback for the domain the
-  // person actually used. Coverage, never a serving total.
-  if (
-    headParts.length === 0 &&
-    lineSpeaksAt("food", scale) &&
-    food &&
-    food.daysLogged > 0
-  )
-    headParts.push(`food logged on ${food.daysLogged} of ${windowDays} days`);
-  // A week with nothing else to lead with but a logged illness leads with recovery,
-  // so the headline names the episode instead of reading as an empty/failed week.
-  if (headParts.length === 0 && illnessDays > 0)
+  if (illnessDays > 0) {
     headParts.push(
       `recovering — sick ${illnessDays} day${illnessDays === 1 ? "" : "s"}`
     );
-  const headline = headParts.join(", ");
+  } else {
+    // Slot 1 — the main activity fact: the FIRST applicable of the existing
+    // fallbacks, in the declared order (workout count, training-mix rate, food
+    // coverage, adherence, body-weight change).
+    if (lineSpeaksAt("workouts", scale) && workoutCount > 0) {
+      headParts.push(`${workoutCount} workout${workoutCount === 1 ? "" : "s"}`);
+    } else if (lineSpeaksAt("training-mix", scale) && mix) {
+      headParts.push(`${mix.perWeek.toFixed(1)} sessions/week`);
+    } else if (lineSpeaksAt("food", scale) && food && food.daysLogged > 0) {
+      // Coverage, never a serving total (#2396).
+      headParts.push(`food logged on ${food.daysLogged} of ${windowDays} days`);
+    } else if (
+      lineSpeaksAt("adherence", scale) &&
+      input.adherence &&
+      input.adherence.due - input.adherence.skipped > 0
+    ) {
+      const intended = input.adherence.due - input.adherence.skipped;
+      headParts.push(
+        `${Math.round((input.adherence.taken / intended) * 100)}% adherence`
+      );
+    } else if (lineSpeaksAt("weight-trajectory", scale) && trend != null) {
+      headParts.push(`${signedWeight(trend, wu)} body weight`);
+    }
+    // Slot 2 — one PR detail: the FIRST record in the existing `recentPRs` order,
+    // rendered as performed through the same `prSetClause` its line note uses
+    // (one path for the set). Omitted when no PR exists. At a scale where the PR
+    // line is a COUNT kept as a record (#2179's commemorative exemption — the year),
+    // the headline states the count too: "12 PRs" is the retrospective's genre, and
+    // one named set would under-report a year.
+    if (lineSpeaksAt("prs", scale) && input.prs.length > 0) {
+      const pr = input.prs[0];
+      headParts.push(
+        countsAsRecordAt("prs", scale)
+          ? `${input.prs.length} PR${input.prs.length === 1 ? "" : "s"}`
+          : `a ${pr.label} PR${pr.set ? ` ${prSetClause(pr.set, wu)}` : ""}`
+      );
+    }
+    // Slot 3 — one whole-period concern, from the declared concern registry. Its
+    // only entry today is a tracked nutrient at 0 of N days, in the existing
+    // nutrient order — so source order, not severity, settles a multi-nutrient
+    // week. Adding another concern requires its own declared binary condition;
+    // there is deliberately no generic "worst line" comparator.
+    if (missedNutrients.length > 0) {
+      headParts.push(
+        `${NUTRIENT_LABELS[missedNutrients[0].nutrient]} missed all ${noun}`
+      );
+    }
+  }
+  const headline = isEmpty ? "" : headParts.join(", ");
 
   return { scale, start: win.start, end: win.end, headline, lines, isEmpty };
 }
@@ -1456,11 +1558,20 @@ export function renderRecapMessage(
   // the breakdown and the comparison beneath it: precisely the shape formatEmphasizedLine
   // was written for. A stored NARRATIVE (#421) replaces the bullets with prose and takes
   // no emphasis: it is one paragraph with no head to mark.
+  // THE HEADLINE LEADS (#3033): the one-line factual standout the model already
+  // carried, rendered above the lines through the shared grammar (a bare head takes
+  // no invented punctuation). Bullet path only — a stored narrative's opener
+  // already reads over the same headline, so rendering both would say it twice.
   const lines: MessageBody[] = narr
     ? [narr]
-    : recap.lines.map((l) =>
-        formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })
-      );
+    : [
+        ...(recap.headline
+          ? [formatMessageLine({ head: recap.headline })]
+          : []),
+        ...recap.lines.map((l) =>
+          formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })
+        ),
+      ];
   // The range label is the recap's one structural header — the digest's section headings
   // one surface over — so it carries the same weight they do.
   const body = joinBody(

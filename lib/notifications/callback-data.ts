@@ -68,6 +68,52 @@ export function parseAllCallback(data: unknown): AllCallback | null {
   return { profileId, window: window as IntakeSendSlot, date };
 }
 
+// ---- The per-stack one-tap (issue #3098) -----------------------------------
+//
+// A profile's own stack name ("Sleep stack") is free text and cannot ride
+// Telegram's 64-byte callback limit, so the button carries DOSE IDS — the same
+// currency `take:` uses. The id list is an UPPER BOUND: the handler re-derives the
+// pending, notifiable set fresh (the parseAllCallback → handler posture) and
+// writes only the intersection through markDoseTaken, so a stale, forged or
+// replayed token cannot write outside what currently stands. When the ids do not
+// fit the limit the button is DROPPED at compose time, never truncated — an offer
+// may never name less than the tap would write (#2460's rule, inherited verbatim).
+
+// Telegram's hard cap on a button's callback_data, in bytes.
+export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
+
+export interface StackTakeCallback {
+  profileId: number;
+  date: string;
+  doseIds: number[];
+}
+
+// The single source of truth for the token shape (the reminder keyboard mints it,
+// the parser reads it): "stacktake:<profileId>:<date>:<doseId,doseId,…>".
+export function stackTakeCallback(
+  profileId: number,
+  date: string,
+  doseIds: readonly number[]
+): string {
+  return `stacktake:${profileId}:${date}:${doseIds.join(",")}`;
+}
+
+// Parse a stacktake token. Malformed (wrong prefix, bad ids, missing date, empty
+// id list) → null. The profile id is a cross-check like every other tap token —
+// the handler re-resolves the acting profile from the chat, and every write is
+// re-verified against the dose → item → profile chain.
+export function parseStackTakeCallback(
+  data: unknown
+): StackTakeCallback | null {
+  if (typeof data !== "string" || !data.startsWith("stacktake:")) return null;
+  const [, profStr, date, idsStr] = data.split(":");
+  const profileId = Number(profStr);
+  if (!profileId || !date || !idsStr) return null;
+  const doseIds = idsStr.split(",").map(Number);
+  if (doseIds.length === 0 || doseIds.some((id) => !id)) return null;
+  return { profileId, date, doseIds };
+}
+
 // Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
 // keyboard: every dose id a surviving take/skip button carries, plus every slot a
 // per-slot "✅ All" token names. The rebuild paths feed these to
@@ -85,6 +131,9 @@ export function keyboardDoseFootprint(rows: InlineKeyboard): {
         parseTakeCallback(b.callback_data) ??
         parseSkipCallback(b.callback_data);
       if (tap) doseIds.add(tap.doseId);
+      // A per-stack one-tap (#3098) names its member doses too.
+      const stack = parseStackTakeCallback(b.callback_data);
+      if (stack) for (const id of stack.doseIds) doseIds.add(id);
       const all = parseAllCallback(b.callback_data);
       if (all) slots.add(all.window);
     }

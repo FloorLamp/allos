@@ -237,6 +237,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
       itemId: i + 1,
       name,
       days: 1,
+      date: "2026-07-08",
     })),
     resumed: [],
   });
@@ -276,7 +277,13 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         intakeDeltas: {
           missed: [],
           resumed: [
-            { kind: "resumed", itemId: 1, name: "Vitamin D (test)", days: 2 },
+            {
+              kind: "resumed",
+              itemId: 1,
+              name: "Vitamin D (test)",
+              days: 2,
+              date: "2026-07-07",
+            },
           ],
         },
         adherence: { taken: 8, skipped: 0, due: 9 },

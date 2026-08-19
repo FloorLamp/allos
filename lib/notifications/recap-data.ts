@@ -60,6 +60,7 @@ import {
   type RecapFood,
   type RecapInput,
   type RecapLineKey,
+  type RecapPR,
   type RecapWorkout,
   type WorkoutType,
 } from "../recap";
@@ -316,21 +317,35 @@ export function gatherRecapInput(
           withinDays
         )
       : [];
-  const prLabels: string[] = [];
+  // Carried WITH the set each record was performed with (#3033) — `recentPRs`
+  // computes e1rmKg/weightKg/reps/kind and the gather used to keep only the label,
+  // which was #1722's milestone-detail-thrown-away class on the recap's most-read
+  // line. A cardio PR keeps its name alone (its value lives on a distance/pace
+  // unit boundary this line does not cross).
+  const prs: RecapPR[] = [];
   const seen = new Set<string>();
   for (const p of strengthPRs) {
     // Named by load context (#1610): two machines' records are two labels, and one
-    // implement's two record kinds still collapse to a single mention.
+    // implement's two record kinds still collapse to a single mention — the
+    // FIRST-SEEN record (recentPRs order) keeps its set.
     const label = loadContextLabel(p.exercise, p.equipment);
     if (!seen.has(label)) {
       seen.add(label);
-      prLabels.push(label);
+      prs.push({
+        label,
+        set: {
+          kind: p.kind,
+          weightKg: p.weightKg,
+          reps: p.reps,
+          bodyweight: p.bodyweight,
+        },
+      });
     }
   }
   for (const p of cardioPRs) {
     if (!seen.has(p.activity)) {
       seen.add(p.activity);
-      prLabels.push(p.activity);
+      prs.push({ label: p.activity });
     }
   }
 
@@ -407,15 +422,18 @@ export function gatherRecapInput(
     completed,
     workouts,
     prevWorkouts,
-    prLabels,
+    prs,
     adherence: adh?.total ?? null,
     adherenceDays: adh?.days ?? [],
     // The pushed tier's state changes (#1505 part 3), from the ONE shared classifier
     // the morning digest and the household card also read — so the recap can never
     // report a different "what changed" than they do. Week scale only: the shared line
     // is itself a few-day delta, and a monthly recap must not present it as a month's.
+    // The recap's own window rides along (#3033) so a single-occurrence miss names
+    // its day — a week-scale reader has seven candidate days, where the digest's
+    // reader has one.
     intakeDeltaLine: speaks("intake-deltas")
-      ? getIntakeDeltaLine(profileId, td)
+      ? getIntakeDeltaLine(profileId, td, { start: win.start, end: win.end })
       : null,
     weights,
     prevWeights,

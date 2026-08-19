@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { IconChartBar } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
-import { recapLineAnnotation, recapRangeLabel, type Recap } from "@/lib/recap";
+import {
+  recapLineAnnotation,
+  recapLineId,
+  recapRangeLabel,
+  type Recap,
+} from "@/lib/recap";
 import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -61,7 +66,9 @@ export default function WeeklyRecapWidget({
               const annotation = recapLineAnnotation(l);
               return (
                 <div
-                  key={l.key}
+                  // The shared per-line identity (#3033): the nutrient-missed key
+                  // can legitimately appear once per totally-missed nutrient.
+                  key={recapLineId(l)}
                   className="flex items-baseline justify-between gap-3 text-sm"
                 >
                   {/* A bare line is already self-labelled (#1935) — its label stays
