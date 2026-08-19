@@ -288,6 +288,28 @@ export function messagePointerIdAt(
   return row?.id ?? null;
 }
 
+// The FULL pointer at one delivered-message location, version witness included —
+// what the #947/#1719 rotation reads so its strip can claim through the same
+// compare-and-swap vocabulary the sweep and the #1898 supersede use (#2827).
+// Profile-scoped like every other statement here; null when no pointer was
+// recorded (best-effort bookkeeping failed at send time), it was pruned, or a
+// close already claimed it — the three states in which there is nothing to claim.
+export function messagePointerAt(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): MessagePointer | null {
+  const row = db
+    .prepare(
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
+              receipt_keyboard, title, body_hash, sent_at
+         FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+    )
+    .get(profileId, String(chatId), messageId) as PointerRow | undefined;
+  return row ? pointerFromRow(row) : null;
+}
+
 // The delivered message kind at one callback location. Used only for legacy token
 // disambiguation: old redose notices reused the otherwise-additive `prn:` prefix, so
 // the pointer is the durable fact that this particular button belonged to a spent

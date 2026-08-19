@@ -53,29 +53,28 @@
 // Different profiles keep their own chains: they share no marker and have no
 // reason to wait on each other.
 //
-// THE RESIDUAL, stated rather than implied away (#3021 asked for this). The chain
-// serializes what goes THROUGH it, and two callers do not:
+// THE RESIDUAL #3021 STATED HERE IS NOW CLOSED BY #3058. The chain serializes
+// what goes THROUGH it, and two callers never did: another process (a
+// web-process timer and the notify tick), and the dispatch core called DIRECTLY
+// in this same process (the tick's flagship runs `runPostWorkoutForActivity`
+// without the queue). Both are now decided by the durable per-activity dispatch
+// claim inside the core itself (lib/notifications/post-workout-claim.ts): the
+// unique-key election picks one dispatcher across processes and connections, so
+// this chain is a LATENCY/ORDER optimization — it keeps the common same-push
+// case from ever reaching a claim contest, and keeps one profile's sends
+// ordered — never the correctness boundary. Correctness may not depend on it
+// (the #3058 owner ruling).
 //
-//   - Another process. A web-process timer and the notify tick are separate
-//     processes and nothing here spans them.
-//   - The dispatch core called DIRECTLY, in this same process.
-//     `runPostWorkoutForActivity` is the shared core, and the tick's flagship
-//     (`runPostWorkoutFinish` → scripts/notify.ts) calls it without the queue —
-//     inside the same tickProfile that ran `syncIntegrations`, which is what arms
-//     these timers. A dispatch held on a slow send while the flagship runs the
-//     twin row is two sends with both markers stamped, in one process. It is
-//     narrower than the same-push race (it needs the two paths to overlap, not
-//     just two rows in one push) and it is not new, but it is not closed.
-//
-// So the documented at-least-once posture stands: a rare duplicate is still
-// possible, and closing it needs a DB-level claim over the marker, which is out
-// of scope. What is gone is the SAME-PUSH race, which was not rare: it was every
-// multi-row ingest.
+// What at-least-once still means after #3058: the crash window between a
+// provider ACCEPTING a message and the local `sent` commit remains open — no
+// transport shares a transactional idempotency key with this database — so a
+// rare duplicate contact is still possible there, never a lost one.
 //
 // The alternative — stamping the marker before sending — was rejected: it would
 // close the window and break the property the run() comment below depends on
 // (stamp only on successful delivery), trading a duplicate contact for a lost
-// one.
+// one. The #3058 claim keeps that property: a total failure releases the claim,
+// so nothing is lost.
 //
 // ── Why a queued run is BOUNDED ────────────────────────────────────────────
 //

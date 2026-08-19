@@ -205,6 +205,7 @@ import { migration as mDocumentSyncProvenance } from "./20260816-document-sync-p
 import { migration as mRetireTrainingAgeSetting } from "./20260817-retire-training-age-setting";
 import { migration as mRetireDashboardLayout } from "./20260818-retire-dashboard-layout";
 import { migration as mPreventiveRecordDecisions } from "./20260819-preventive-record-decisions";
+import { migration as mPostWorkoutDispatchClaims } from "./20260819-post-workout-dispatch-claims";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -419,6 +420,7 @@ export const MIGRATIONS: Migration[] = [
   mRetireTrainingAgeSetting,
   mRetireDashboardLayout,
   mPreventiveRecordDecisions,
+  mPostWorkoutDispatchClaims,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

@@ -64,6 +64,7 @@ import {
   claimMessagePointerClose,
   forgetMessagePointerAt,
   liveMessagePointersForKind,
+  messagePointerAt,
   recordMessagePointer,
   restoreMessagePointer,
   syncMessagePointerKeyboard,
@@ -347,6 +348,28 @@ async function closeSuperseded(
   }
 }
 
+// How one rotation's STRIP leg resolved (#2827). Typed so a claim loss is a stated
+// no-op rather than a swallowed string, and so the barrier fixture
+// (lib/__db_tests__/food-rotation-claim.test.ts) can pin each arm.
+export type PointerStripOutcome =
+  // No rotation happened at all: the send yielded no pointer of this family.
+  | "skip"
+  // Rotated with nothing live to strip (first send, or the same message again).
+  | "recorded"
+  // Rotated; the predecessor's keyboard was removed and its pointer row is gone.
+  | "stripped"
+  // Another writer (the sweep, a concurrent supersede) moved the row between the
+  // rotation's read and its claim: the loser performs NO edit (#1788).
+  | "claim-lost"
+  // Transient strip failure: the keyboard is still live, the pointer row was
+  // restored, and the next sweep — or the next send — retries (#1885).
+  | "deferred"
+  // Permanent strip failure: the message is gone for good, and the pointer row
+  // with it — retired in this same call, never retried (#2827 part B).
+  | "retired"
+  // Unexpected bookkeeping failure, swallowed (delivery already succeeded).
+  | "error";
+
 // Rotate ONE per-profile "last live keyboard" pointer: strip the message the pointer
 // currently names and record the just-sent one in its place. Shared by the food nudge
 // (#947) and the household round (#1719) because they are the same mechanism, and
@@ -363,25 +386,71 @@ async function closeSuperseded(
 // throw therefore takes the strip down with it (neither happens, the previous keyboard
 // stays live and correct), and a strip failure lands on a pointer that is already right.
 //
-// Best-effort throughout: Telegram refuses edits on messages older than ~48 h and the
-// message may be gone, so every failure is swallowed at log level and NEVER re-thrown —
+// CLAIM-FIRST (#2827 part A), the same compare-and-swap `closeSuperseded` and the
+// sweep use: the strip used to be a blind edit plus a blind row DELETE, so a rotation
+// landing while the sweep's claimed edit was in flight deleted the row out from under
+// it, and the sweep's food re-render then put a live keyboard back on the message the
+// rotation had just closed — with no pointer row left, NOTHING could ever strip it,
+// and its tokens carry their send-time date (the wrong-day tap #947 exists to
+// prevent; the barrier fixture proves the interleaving reachable). The rotation now
+// reads the row's witness and claims through `claimMessagePointerClose` before
+// touching the network: whoever claims makes the call, and a rotation that lost the
+// row to a writer that moved it in between performs no edit at all. A strip target
+// with NO row (best-effort bookkeeping failed at send time) is still stripped blind —
+// for that message the settings pointer is the only closer there has ever been, and
+// skipping it would strand a keyboard no sweep can reach. The residual is the one
+// `closeSuperseded` documents: a claim taken while another claimant's edit is already
+// in flight on the network cannot be seen by either side's witness — both vocabularies
+// share that window, and it stays inside the #1788 convergence posture.
+//
+// FAILURE IS CLASSIFIED, NEVER ASSUMED (#2827 part B / #1885): a failed strip goes
+// through `classifyTelegramFailure` exactly as the sweep's close arm and
+// `closeSuperseded` do — permanent (message deleted, too old, chat gone) retires the
+// pointer row in this same call instead of leaving it for three days of doomed
+// retries; transient (rate limit, 5xx, network, timeout) RESTORES the claimed row so
+// the next sweep or the next send retries, bounded by the pointer's own retention
+// horizon. One classifier, one retention interpretation, no rotate-specific string
+// matching.
+//
+// Best-effort throughout: every failure is swallowed at log level and NEVER re-thrown —
 // delivery already succeeded, and notify_last_error means delivery is broken, which it
-// isn't.
-async function rotatePointer<P extends PointerTarget>(
+// isn't. Exported for the #2827 barrier fixture; production callers are the two
+// wrappers below.
+export async function rotatePointer<P extends PointerTarget>(
   label: string,
   profileId: number,
   extract: () => P | null,
   readPrev: () => PointerTarget | null,
   writeNext: (pointer: P) => void
-): Promise<void> {
+): Promise<PointerStripOutcome> {
   try {
     // No pointer for this send: nothing has superseded the stored one, so the stored
     // one is not even read. This is the guard the food rotation lacked.
     const next = extract();
     const plan = planPointerRotation(next ? readPrev() : null, next);
-    if (plan.action === "skip") return;
+    if (plan.action === "skip") return "skip";
+    // The strip target's row and version witness, read BEFORE the settings write so
+    // any sweep claim that lands from here on loses us the claim below — the widest
+    // window the compare-and-swap vocabulary can cover.
+    const target = plan.strip
+      ? messagePointerAt(profileId, plan.strip.chatId, plan.strip.messageId)
+      : null;
     writeNext(plan.record);
-    if (!plan.strip) return;
+    if (!plan.strip) return "recorded";
+    // CLAIM (see the header). The claim IS the row delete (#1788): winning both
+    // wins the race and forgets the pointer, so a stripped message can never be
+    // re-closed; losing performs no edit — the winner's own transient/permanent
+    // handling decides the row's fate.
+    if (
+      target &&
+      !claimMessagePointerClose(profileId, target.id, target.version)
+    ) {
+      log.info(`${label}: previous keyboard strip skipped (claim lost)`, {
+        profile: profileId,
+        chat: plan.strip.chatId,
+      });
+      return "claim-lost";
+    }
     // Strip the old keyboard in place (text untouched) through the guarded primitive.
     // A "message is not modified" is already swallowed inside it; a "message to edit
     // not found" / "message can't be edited" (too old) throws and is caught here — the
@@ -393,29 +462,33 @@ async function rotatePointer<P extends PointerTarget>(
         []
       );
     } catch (e) {
-      // The keyboard is STILL LIVE in the chat, so the pointer that names it stays —
-      // the sweep goes on reconciling it and closes it at rollover, which is the only
-      // thing that can still close it.
-      log.info(`${label}: previous keyboard strip failed (ignored)`, {
-        profile: profileId,
-        err: e instanceof Error ? e.message : String(e),
-      });
-      return;
+      const permanent = classifyTelegramFailure(e) === "permanent";
+      // Transient: the keyboard is STILL LIVE in the chat, and the claim already
+      // deleted the row — the only record of it. Put it back, so the next sweep (or
+      // the next send of this family) retries; retries stay bounded by the pointer's
+      // retention horizon. Permanent: the message is unreachable forever, so the
+      // claim's delete stands as the retirement — nothing is left to reconcile, and
+      // the pointer is removed in this same call rather than after three days of
+      // hourly failures (#2827 part B).
+      if (!permanent && target) restoreMessagePointer(target);
+      log.info(
+        permanent
+          ? `${label}: previous keyboard strip failed, pointer retired`
+          : `${label}: previous keyboard strip deferred (transient, pointer kept)`,
+        {
+          profile: profileId,
+          chat: plan.strip.chatId,
+          err: e instanceof Error ? e.message : String(e),
+        }
+      );
+      return permanent ? "retired" : "deferred";
     }
-    // THE STRIP IS ONLY HALF DONE UNTIL THE POINTER AGREES (#2749). The rotation
-    // removed the keyboard from the chat but left the #1779 pointer row describing
-    // the buttons the SEND had put there — and the sweep reasons entirely from that
-    // blob. For the food family that is not merely stale bookkeeping: its reconciler
-    // RE-RENDERS from the same builder and edits whenever the render differs, so the
-    // first count change after a strip puts a live food keyboard back on the message
-    // the rotation just closed, carrying its SEND-TIME date in the tokens — the
-    // wrong-day tap #947 exists to prevent. Until then it is the hourly edit per stale
-    // duplicate that #1898 exists to stop paying.
-    //
-    // Closing IS forgetting, exactly as `closeMessage` and the sweep's own close arm
-    // say: a message with no buttons left makes no claim for a later tick to
-    // reconcile. Only after a SUCCEEDING strip — see the catch above.
-    forgetMessagePointerAt(profileId, plan.strip.chatId, plan.strip.messageId);
+    // THE STRIP IS ONLY HALF DONE UNTIL THE POINTER AGREES (#2749). The claim above
+    // already deleted the row when one existed — closing IS forgetting, exactly as
+    // `closeMessage` and the sweep's own close arm say: a message with no buttons
+    // left makes no claim for a later tick to reconcile. (When no row existed there
+    // is nothing to forget: the strip was the blind best-effort arm.)
+    return "stripped";
   } catch (e) {
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
@@ -423,6 +496,7 @@ async function rotatePointer<P extends PointerTarget>(
       profile: profileId,
       err: e instanceof Error ? e.message : String(e),
     });
+    return "error";
   }
 }
 
