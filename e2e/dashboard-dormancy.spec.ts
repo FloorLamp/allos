@@ -126,7 +126,6 @@ test("a profile whose domains are current collapses nothing (#2652)", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard", level: 1 })
   ).toBeVisible();
-  await expect(page.getByTestId("widget-dormant")).toHaveCount(0);
   await expect(
     page.locator('[data-testid="dashboard-candidate"][data-presence="dormant"]')
   ).toHaveCount(0);

@@ -48,7 +48,7 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 // under your thumb:
 //
 //   • the composed morning one-tap (#2458) — the SAME <UsualRoutineControl> the
-//     dashboard's nutrition widget renders, over the SAME server-resolved offer.
+//     dashboard's usual-routine atom renders, over the SAME server-resolved offer.
 //     Not a copy: the component, the props and the write core are one each.
 //   • doses due now — names from `collectDueDosesNow`, the arrived-slot slice of
 //     the app's shared scheduled-dose computation. The chip OPENS the existing
@@ -111,7 +111,7 @@ export default function QuickLogSheet({
   open: boolean;
   onClose: () => void;
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
-  // gating the Cycle nav entry and the dashboard phase widget (#1892).
+  // gating the Cycle nav entry and dashboard control atom (#1892).
   cycleRelevant?: boolean;
   // Days-logged per segment over the trailing quarter (#2709), resolved once by
   // the shell. Consulted on the DASHBOARD only; null means "not gathered".

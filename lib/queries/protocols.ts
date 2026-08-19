@@ -46,20 +46,13 @@ import {
   isCadenceScopeKind,
   type CadenceSource,
 } from "../cadence";
-import type { FrequencyPace } from "../frequency-targets";
-import {
-  protocolPracticeLabel,
-  protocolPracticeNoun,
-} from "../protocol-practice";
+import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
 import {
-  getPracticeDayCount,
-  getPracticeSessions,
   getPracticeSpellingsMap,
   isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "./wellness";
-import { practiceDurationPrefill } from "../practice";
 import {
   clinicalResultOutcomeOption,
   type OutcomeOption,
@@ -1045,7 +1038,7 @@ export function getProtocolOutcomePickerData(
   };
 }
 
-// A compact summary of one ONGOING protocol for the dashboard widget (issue #660):
+// A compact summary of one ONGOING protocol for the dashboard presentation (issue #660):
 // days elapsed, this-week practice adherence, and the primary outcome's during-
 // window trend. Every field is a FORMATTER over the SAME computations the detail
 // page uses (getProtocolComparison / getProtocolAdherence / getProtocolPractice) —
@@ -1056,44 +1049,17 @@ export interface ActiveProtocolSummary {
   href: AppRoute;
   daysElapsed: number;
   adherence: {
-    count: number;
-    perWeek: number;
-    // The optional weekly ceiling (#1259) — a range; null for a bare floor.
-    perWeekMax: number | null;
-    // The THREE-state weekly verdict (#748): behind / on-pace / met, prorated by how
-    // much of the week has elapsed. `met` alone is a two-state answer, and rendering
-    // it as "Behind" is the pre-#748 bug — carry the pace through so the dashboard
-    // widget renders the SAME verdict as the wellness card and the detail page
-    // (#2008).
-    pace: FrequencyPace;
-    // At/above the ceiling — the calm "that's plenty" state (#1259).
-    atCeiling: boolean;
     label: string;
-    // The counting noun for this scope ("day"/"serving"/"session").
-    noun: string;
   } | null;
-  // All three practice scopes are actionable (#1584). The dashboard passes this
-  // same model to ProtocolLogButton as the detail page.
-  practice: ProtocolPractice | null;
-  practiceTodayCount: number;
+  practiceName: string | null;
   // Whether today is one of the wellness practice's inferred rhythm days (#2188)
   // — the calm "usually a session day" note beside the log button. Always false
   // for non-practice scopes and whenever no rhythm exists (#558: no pattern
   // renders nothing). Data, not dueness (#1505).
   practiceUsuallyToday: boolean;
-  // Where the widget's inline duration stepper STARTS (#2204) — `practiceDurationPrefill`
-  // over the identity's last logged session, the same pure resolution the Wellness card,
-  // the quick sheet, and the protocol detail page read. Null for a non-practice scope and
-  // for a practice with no history: blank is a real answer, and the app does not invent a
-  // duration. The widget mounts the SAME ProtocolLogButton the detail page does, so
-  // leaving this out would have left the dashboard's one-tap the last log that discards
-  // what it never showed.
-  practicePreviousDurationMin: number | null;
   primaryOutcome: {
     label: string;
-    betterness: Betterness;
     framing: string;
-    insufficient: boolean;
   } | null;
 }
 
@@ -1109,7 +1075,6 @@ export function getActiveProtocolSummaries(
     profileId
   )
 ): ActiveProtocolSummary[] {
-  const spellingsByIdentity = getPracticeSpellingsMap(profileId);
   const progressByTargetId = new Map(
     frequencyProgress.map((progress) => [progress.target.id, progress])
   );
@@ -1150,49 +1115,17 @@ export function getActiveProtocolSummaries(
       adherence:
         practice && adherenceProgress
           ? {
-              count: adherenceProgress.count,
-              perWeek: practice.perWeek,
-              perWeekMax: adherenceProgress.per_week_max,
-              pace: adherenceProgress.pace,
-              atCeiling: adherenceProgress.atCeiling,
               label: protocolPracticeLabel(practice.scopeKind, practice.value),
-              noun: protocolPracticeNoun(practice.scopeKind),
             }
           : null,
-      practice,
-      practiceTodayCount:
-        practice?.scopeKind === "practice"
-          ? getPracticeDayCount(
-              profileId,
-              practice.value,
-              today,
-              practiceSpellingsFor(spellingsByIdentity, practice.value)
-            )
-          : 0,
+      practiceName: practice?.value ?? null,
       practiceUsuallyToday:
         practice?.scopeKind === "practice" &&
         isPredictedPracticeDay(profileId, practice.value, today) === true,
-      // One LIMIT-1 indexed read per practice-scoped active protocol, over the
-      // spellings this gather already resolved — the same bounded shape as the
-      // today-count beside it.
-      practicePreviousDurationMin:
-        practice?.scopeKind === "practice"
-          ? practiceDurationPrefill(
-              getPracticeSessions(
-                profileId,
-                practice.value,
-                1,
-                undefined,
-                practiceSpellingsFor(spellingsByIdentity, practice.value)
-              )
-            )
-          : null,
       primaryOutcome: primary
         ? {
             label: primary.label,
-            betterness: primary.betterness,
             framing: primary.framing,
-            insufficient: primary.insufficient,
           }
         : null,
     };

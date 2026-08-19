@@ -129,7 +129,7 @@ export function intakeHistoryWindowStart(today: string, days: number): string {
 // tier's state changes over the delta window, ready for `intakeDeltaLine`.
 //
 // Every digest channel calls THIS — the Telegram morning digest, the weekly recap
-// (and therefore the dashboard recap widget), and the household card — so none of
+// (and therefore the dashboard recap atoms), and the household card — so none of
 // them can compute its own variant of "what changed" (#221). The tier is chosen by
 // the SAME `isPushedIntake` predicate part 1 gates the push surfaces with, which is
 // what makes the digest's news exactly the set of obligations it is allowed to push

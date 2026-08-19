@@ -1,5 +1,5 @@
-import WidgetHeader from "@/components/dashboard/WidgetHeader";
-import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
+import CardSectionHeader from "@/components/CardSectionHeader";
+import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
@@ -13,42 +13,14 @@ import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
 
-// Dashboard quick-log widget for PRN (as-needed) medications (#797). The one-tap
+// PRN (as-needed) medication quick-log content (#797). The one-tap
 // retro-entry home: each active PRN med gets a "Taken now" button plus an "Earlier
 // dose" statement — an absolute time today via the shared WhenControl (#2236).
 // The per-day count + last time is computed here
 // (server, with the profile tz) and passed down so the client control stays a thin
-// formatter over one server computation. Rendered only when the profile has active
-// PRN meds — the empty state is the data-aware onboarding CTA (page.tsx).
-export default function QuickLogPrnWidget({
-  meds,
-  tz,
-  profileId,
-  timeFormat,
-}: {
-  meds: PrnMedForQuickLog[];
-  tz: string;
-  // The cross-profile write target (issue #879) — when this widget hosts a household
-  // member's episode page, each PRN log posts it so the action gates on THAT profile
-  // (requireProfileWriteAccess). Absent on the dashboard/active-profile mounts.
-  profileId?: number;
-  timeFormat?: TimeFormat;
-}) {
-  return (
-    <div className="card">
-      <QuickLogPrnContent
-        meds={meds}
-        tz={tz}
-        profileId={profileId}
-        timeFormat={timeFormat}
-      />
-    </div>
-  );
-}
-
-// The dashboard owns the standalone card above. Other pages can compose the
-// same dose controls inside a grouped card without a one-off styling flag.
-export function QuickLogPrnContent({
+// formatter over one server computation. Dashboard candidates and illness context
+// compose the same dose controls inside their own card/group shells.
+export default function QuickLogPrnContent({
   meds,
   tz,
   title = "Log a dose",
@@ -91,12 +63,12 @@ export function QuickLogPrnContent({
   const now = nowIso ? new Date(nowIso) : clockNow();
   // The redose status line (#798), when the med has a confirmed interval and
   // something's been logged. Same redoseCardLabel the medications card uses (one
-  // computation, so the widget and card never disagree). Marker-agnostic — the card
+  // computation, so the shared surfaces never disagree). Marker-agnostic — the card
   // always shows current window state regardless of the one-shot notification marker.
   // Family-widened window math (#1027): the clock/count/max span the ingredient
   // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
   // "across N items" tail marking a cross-item counter.
-  // The window math is the shared prnQuickLogRedoseStatus (#221): the widget, the
+  // The window math is the shared prnQuickLogRedoseStatus (#221): this content, the
   // medications list and the Telegram `/dose` list all read one gate, so "the
   // interval alone answers when the next dose is OK" can't drift between them.
   const redoseStatusFor = (m: PrnMedForQuickLog) =>
@@ -137,7 +109,7 @@ export function QuickLogPrnContent({
 
   return (
     <div data-testid="quick-log-prn">
-      <WidgetHeader
+      <CardSectionHeader
         title={title}
         href="/medications"
         variant={headingVariant}

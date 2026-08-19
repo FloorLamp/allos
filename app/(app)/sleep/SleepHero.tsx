@@ -19,7 +19,7 @@ import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 // ALL of the MAIN overnight session (#1118). Naps have their own detailed card
 // below, so this hero stays exclusively about the night. Deliberately factual,
 // never scored (no invented sleep score — the pillars-not-a-composite stance).
-// Formatter only over the shared lastNightSummary model the dashboard tile reads.
+// Formatter only over the shared lastNightSummary model the dashboard sleep presentation reads.
 
 const STAGE_META: {
   key: keyof NonNullable<LastNightSummary["stages"]>;

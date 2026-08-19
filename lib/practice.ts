@@ -3,7 +3,7 @@
 // RANGE, logged one-tap into practice_logs. No DB/network — unit-tested in
 // lib/__tests__/practice.test.ts. The DB seam (the write core + week counting) lives in
 // lib/practice-log.ts; the range/pace/nudge DECISIONS live here so every surface (the
-// protocol adherence card, the Active-protocols widget, Upcoming, the Telegram nudge)
+// protocol adherence card, the goal/habit atoms, Upcoming, and the Telegram nudge)
 // keys on the SAME computation (the "one question, one computation" rule, #221).
 
 import { WEEKDAYS_SHORT } from "./date";

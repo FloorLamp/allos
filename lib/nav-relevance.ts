@@ -30,7 +30,7 @@ import type { ReproductiveStatus, Sex } from "./types";
 //   - `sleep` — a nav gate for the dedicated Sleep entry (#1066), between Trends
 //     and Upcoming. Pure data presence (has any recorded sleep session), exactly
 //     like vision/dental: no life-stage logic, and the page stays reachable by URL
-//     (the pillar deep-link and dashboard tile both link it) even when hidden.
+//     (the pillar deep-link and dashboard healthspan readout both link it) even when hidden.
 //   - `wellness` — a nav gate for the dedicated Wellness entry (#1620), beside
 //     Longevity. True when any practice target OR practice log exists; the
 //     command palette remains the always-visible first-practice creation path.

@@ -1,7 +1,7 @@
 // Period-recap narrative (issue #20). Pure, no DB/network.
 //
 // The AI period narrative narrates over the SAME rule-based Recap
-// the dashboard widget and Telegram digest already compute (lib/recap.ts)
+// the dashboard presentation and Telegram digest already compute (lib/recap.ts)
 // — so the AI read is grounded in the exact facts the rest of the app shows, the
 // prompt is compact (a handful of pre-computed lines, not a raw data dump), and
 // the offline fallback degrades to a deterministic prose rendering of those same

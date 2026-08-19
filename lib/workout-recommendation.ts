@@ -6,7 +6,7 @@
 // engine (lib/coaching.ts — all-time aggregates, routine-gap driven). Same
 // morning they could disagree by construction. This module is the ONE pure core
 // both surfaces now consume; each surface only formats the result (Telegram copy
-// vs the CoachingWidget/Training-overview Recommendation cards).
+// vs the CoachingRecommendationAtom/Training-overview Recommendation cards).
 //
 // The core folds together the strongest parts of both: the Telegram engine's
 // bounded window + recovery exclusion + weekday habit + frequency-ranked exercise

@@ -12,7 +12,7 @@ import {
 
 // #797 PRN administration ledger: a PRN (as-needed) medication can be logged
 // multiple times a day with real times, and both the Medications-page card and the
-// dashboard "Log a PRN dose" widget surface the day's administrations. The seed
+// dashboard "Log a PRN dose" atom surface the day's administrations. The seed
 // (e2e/seed-events.ts) ships "PRN Quicklog Med (e2e)" — active, as_needed, with TWO
 // administrations already logged earlier today.
 //

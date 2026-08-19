@@ -109,7 +109,7 @@ History section can backfill and edit a taken dose at any past date in the
 recorded medication course; scheduled doses retain one-per-day semantics, PRN
 doses retain multiple-administration semantics, amount and formulation are
 snapshotted, and changing current supply is explicit. **Entrypoints:** the
-dashboard **Log a PRN dose** widget (`quick-log-prn`, `dataAware`) with time
+dashboard **Log a PRN dose** atom (`quick-log-prn`) with time
 offsets (now / 30m / 1h / custom time — the retro-entry home) and the Telegram
 **`/dose`** command (lists the chat's active PRN meds as one-tap "💊 <med>"
 buttons through the ONE chokepoint; the callback carries a dedup token and
@@ -781,7 +781,7 @@ occurrences just broken) and **resumed** (taken again after a miss run of ≥2),
 a 14-day window nested strictly inside the demotion window so the two engines can't
 fire off the same evidence (test-pinned). `intakeDeltaLine` is the ONE formatter and
 `getIntakeDeltaLine` the ONE server entry point; the Telegram morning digest, the
-weekly recap (and so the dashboard recap widget) and the Household card all render
+weekly recap (and so the dashboard recap atoms) and the Household card all render
 that single result. Quiet windows produce no line; the fraction — now over must+should
 only — demotes to secondary detail. A caller reporting on a MULTI-DAY window (the
 weekly recap) passes that window, and a single-occurrence miss then names its day

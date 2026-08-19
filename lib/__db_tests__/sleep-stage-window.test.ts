@@ -137,7 +137,7 @@ describe("getSleepStageComposition is bounded by the window it is asked for (#25
 // The FIFTH instance of the same class (#2551). `getLastNightSummary` calls
 // getSleepStageDailyTotals directly and was left out of #2546's sweep, so it kept
 // running on the function's own 180-day default — to read a single key out of the
-// map it builds. It backs the dashboard's sleep tile and the /sleep hero, both
+// map it builds. It backs the dashboard sleep presentation and /sleep hero, both
 // uncached on every render, which makes it the most expensive place in the app to
 // have left unbounded.
 describe("getLastNightSummary reads only the nights it needs (#2551)", () => {

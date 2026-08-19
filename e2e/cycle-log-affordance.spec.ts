@@ -70,7 +70,7 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     // the assertion that would catch it in the browser.
     await page.goto("/");
     await openDashboardAll(page);
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
+    const card = page.getByRole("main").getByTestId("cycle-control-atom");
     await settledClick(page, card.getByTestId("period-started-button"));
     await expect(card.getByTestId("period-ended-button")).toBeVisible({
       timeout: 20_000,
@@ -89,7 +89,7 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     // yesterday. Here a second tab opens a period behind this page's back.
     await page.goto("/");
     await openDashboardAll(page);
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
+    const card = page.getByRole("main").getByTestId("cycle-control-atom");
     await expect(card.getByTestId("period-started-button")).toBeVisible();
 
     const other = await page.context().newPage();

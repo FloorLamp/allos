@@ -1,6 +1,6 @@
 // Longevity pillars — the "healthspan pillars" of issue #161, renamed after the
 // surface they serve in #1638 (route /longevity, nav label "Longevity"); the domain
-// concept is still healthspan, and the persisted dashboard widget id stays
+// concept is still healthspan, and the persisted dashboard presentation id stays
 // `healthspan-pillars`. PURE — no DB, no network. Assembles a small set
 // of evidence-backed longevity PILLARS, each CONSUMING an already-merged pure
 // computation rather than re-deriving it (the "one question, one computation"
@@ -217,7 +217,7 @@ export function bareOptimalHitRate(
 }
 
 // The pillar's detail line (#2023) — the ONE place the ratio's context is phrased, so the
-// dashboard widget and the Longevity page section say the same thing. Named the panel's
+// dashboard presentation and the Longevity page section say the same thing. Named the panel's
 // size and its retest state; never a second computation, just a formatting of the model
 // above. Freshness we could not read at all keeps the pre-#2023 copy rather than
 // asserting anything about recency.
@@ -377,7 +377,7 @@ export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
 // The text twin of each tone's color (WCAG 1.4.1, issue #1220): a pillar's
 // good/warn/bad judgment must never travel by COLOR ALONE, so every judging tone
-// carries a short label that both pillar surfaces (the dashboard widget and the
+// carries a short label that both pillar surfaces (the dashboard presentation and the
 // Longevity page's PillarStat) render as a visible badge next to the colored
 // value — the ONE mapping (#221), so a new pillar or surface can't ship
 // color-only again. `neutral` is deliberately null: it makes no judgment (its

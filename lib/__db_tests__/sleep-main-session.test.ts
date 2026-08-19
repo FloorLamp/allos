@@ -178,7 +178,7 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     ]);
   });
 
-  // Issue #1066: the Sleep-page hero + dashboard tile share getLastNightSummary,
+  // Issue #1066: the Sleep-page hero + dashboard sleep presentation share getLastNightSummary,
   // which MUST pick the main overnight (not the latest/nap session) for the latest
   // wake-day. This pins the exact defect CI caught in the #1066 branch (the hero
   // rendered the 90-min nap instead of the 300-min night).

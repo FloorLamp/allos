@@ -88,6 +88,10 @@ describe("fixed Standing instrument cluster", () => {
       ["longer-view", "outcome-goals", 4],
       ["longer-view", "weekly-targets", 4],
     ]);
+    expect(
+      STANDING_READING_ORDER.find(({ key }) => key === "weekly-targets")
+        ?.memberOrder
+    ).toEqual({ kind: "source", authority: "orderDashboardHabits" });
   });
 
   it("is invariant to gather order and applies only family-local order and caps", () => {

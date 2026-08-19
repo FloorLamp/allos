@@ -140,7 +140,7 @@ describe("flagLabel", () => {
   });
 
   // The bug the issue reports: the two former copies disagreed on the catch-all
-  // (attention.ts → "Non-optimal", RecentLabsWidget → "Normal"). The unified map
+  // (attention.ts → "Non-optimal", RecentLabReadout → "Normal"). The unified map
   // uses the tone-consistent "Normal" — we never label an unflagged/unknown value
   // as a mild "Non-optimal" false alarm.
   it("uses one deliberate 'Normal' fallback for unknown/absent flags", () => {

@@ -134,7 +134,7 @@ export const getFrequencyTargetProgress = snapshotCached(
 //
 // Counting is untouched: this filters the rows the rollup already computed, so a target
 // that still renders has a byte-identical count, pace, ceiling and verdict. Cross-domain
-// surfaces (/upcoming, the digest, the dashboard's goals-habits widget) deliberately
+// surfaces (/upcoming, the digest, the dashboard's goal/habit atoms) deliberately
 // keep calling `getFrequencyTargetProgress` — completeness is their charter (#2578).
 export function getFrequencyTargetProgressForHome(
   profileId: number,

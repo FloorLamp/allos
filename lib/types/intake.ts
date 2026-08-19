@@ -315,7 +315,7 @@ export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
 // Outcome of logging one PRN (as-needed) ADMINISTRATION (logAdministration, issue
 // #797). Unlike markDoseTaken — which enforces one-per-day for a SCHEDULED dose —
 // a PRN med can be given several times a day, so each successful log is a NEW row.
-// The typed result lets the dashboard widget and the Telegram tap answer honestly
+// The typed result lets the dashboard presentation and the Telegram tap answer honestly
 // (the markDoseTaken contract) instead of unconditionally confirming a non-
 // idempotent write:
 //   logged     — a fresh administration row was written; `count` is the item's

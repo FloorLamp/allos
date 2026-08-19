@@ -18,7 +18,6 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getTrainingLogWeekSummary,
-  getDashboardStats,
   getOutcomeGoals,
   getBodyMetrics,
   getWeights,
@@ -89,14 +88,10 @@ describe("training reads", () => {
     expect(run!.totalDistanceKm).toBe(5);
   });
 
-  it("getTrainingLogWeekSummary + getDashboardStats aggregate the fixture", () => {
+  it("getTrainingLogWeekSummary aggregates the fixture", () => {
     const wk = getTrainingLogWeekSummary(fx.profileId);
     expect(wk.sessions).toBe(2);
     expect(wk.activeDays).toBeGreaterThanOrEqual(1); // trained today
-    const dash = getDashboardStats(fx.profileId);
-    expect(dash.activityCount).toBe(2);
-    expect(dash.activeGoals).toBe(1);
-    expect(dash.latestWeight?.value).toBe(fx.weightKg);
   });
 
   it("getOutcomeGoals returns the seeded active goal", () => {

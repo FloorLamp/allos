@@ -1,4 +1,4 @@
-import WidgetHeader from "@/components/dashboard/WidgetHeader";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
@@ -43,7 +43,7 @@ export default function SymptomLogCard({
     episode && episode.id != null ? episodeHref(episode.id) : "/timeline";
   return (
     <div className="card">
-      <WidgetHeader title="Symptoms" href={episodeLink} />
+      <CardSectionHeader title="Symptoms" href={episodeLink} />
       {episode ? (
         <p
           className="mb-3 text-xs font-medium text-slate-600 dark:text-slate-300"

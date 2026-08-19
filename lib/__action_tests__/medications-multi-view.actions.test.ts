@@ -68,7 +68,7 @@ function isActive(itemId: number): number {
 }
 
 // A caregiver MEMBER login granted: home (write, acting), kid (write), readonly (read),
-// and a stranger (not granted). Mirrors the illness-hero cross-profile fixture.
+// and a stranger (not granted). Mirrors the illness Now-group cross-profile fixture.
 function seedCaregiver() {
   const login = createLogin({ role: "member" });
   const home = createProfile("MV Home", login.id);

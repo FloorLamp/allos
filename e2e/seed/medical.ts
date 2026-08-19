@@ -447,7 +447,7 @@ export function seedDataQualityGaps(): void {
   }
 
   // (A) A GAPPY sole profile: no birthdate, no sex, one failed-extraction document, and a
-  // name-only active medication → the dashboard "Data quality" widget shows birthdate,
+  // name-only active medication → the dashboard Data quality atom shows birthdate,
   // sex, RxCUI, and failed-doc gaps (leverage-ranked). The dismiss test resets its own
   // data-quality dismissals first (below), so its write never sticks across repeats.
   const dqGappyId = fixtureProfileId(DQ_GAPPY_PROFILE);
@@ -505,7 +505,7 @@ export function seedDataQualityGaps(): void {
   // PARTIAL PhenoAge panel (one Albumin lab → first missing analyte is Creatinine) —
   // and its CTAs must deep-link the exact forms. The same profile hosts the
   // dashboard-deeplinks #1219 fixtures: a target-less goal (bare title row → goals
-  // link) and FOUR ongoing protocols + a layout that shows the active-protocols widget
+  // link) and FOUR ongoing protocols for the dashboard's atomic protocol facts
   // (cap 3 → "+1 more" overflow link). Idempotent; synthetic values only.
   {
     const dqAdultId = fixtureProfileId(DQ_ADULT_PROFILE);

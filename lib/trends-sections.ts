@@ -33,7 +33,7 @@ export type TrendsLandingSection = (typeof TRENDS_LANDING_SECTIONS)[number];
 
 // A deep link INTO one part of the landing surface — the successor to every
 // `/trends?tab=body` literal (#1644). A rule-carrying helper in the #285 sense: the
-// anchor id is the section id, and one edit here re-points every dashboard tile,
+// anchor id is the section id, and one edit here re-points every dashboard link,
 // finding CTA, palette action and integration link at once.
 //
 // There is no `?tab=` in it and no shim behind it: the census these links used to

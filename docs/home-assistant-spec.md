@@ -142,7 +142,7 @@ model**:
   `due | taken | skipped` so the card can pair each row with `/dose` actuation).
   **Status honesty note:** the Upcoming bus deliberately drops resolved doses,
   so the doses domain is served from the **morning-digest dose model** (the same
-  shared computation the dashboard's today-actions widget renders — due doses +
+  shared computation the dashboard's today-action candidates renders — due doses +
   logged status via the digest's reads); the other domains come from the banded
   Upcoming model. Two existing computations, no new engine — the convention
   holds because both payloads mirror models other surfaces already render.

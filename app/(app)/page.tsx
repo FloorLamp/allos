@@ -36,11 +36,7 @@ import {
   getCustomSymptomNames,
   getSymptomLogOrder,
 } from "@/lib/queries";
-import {
-  getCycleForecast,
-  getForecastSuspension,
-  listCyclePeriods,
-} from "@/lib/cycle-store";
+import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import {
@@ -82,7 +78,7 @@ import {
   getProfileHomeAssistant,
   getLoginTelegram,
   getRecentlyResolvedDismissed,
-  getIllnessHeroUi,
+  getIllnessNowUi,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
@@ -112,7 +108,7 @@ import {
   coachingObservationFindings,
   dashboardHabitDomain,
   isDataQualityDashboardFinding,
-  summarizeDashboardHabits,
+  orderDashboardHabits,
 } from "@/lib/dashboard-presentation";
 import {
   localTimeWindow,
@@ -152,9 +148,9 @@ import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAto
 import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
 import type { DashboardAheadPresentation } from "@/components/dashboard/DashboardPlacementCanvas";
-import IllnessHero, {
-  type HeroCockpit,
-} from "@/components/dashboard/IllnessHero";
+import IllnessNowGroup, {
+  type IllnessContextCockpit,
+} from "@/components/dashboard/IllnessNowGroup";
 import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
 import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
 import RecentlyResolvedReopen, {
@@ -180,32 +176,37 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
+import DashboardSetupAtom from "@/components/dashboard/DashboardSetupAtom";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
-import WeightQuickAddWidget from "@/components/dashboard/WeightQuickAddWidget";
-import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
-import CoachingWidget from "@/components/dashboard/CoachingWidget";
+import WeightQuickAddAtom from "@/components/dashboard/WeightQuickAddAtom";
+import {
+  GoalProgressAtom,
+  HabitProgressAtom,
+} from "@/components/dashboard/ProgressAtoms";
+import CoachingRecommendationAtom from "@/components/dashboard/CoachingRecommendationAtom";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
-import DataQualityWidget from "@/components/dashboard/DataQualityWidget";
-import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
-import RecentLabsWidget, {
+import DataQualityAtom from "@/components/dashboard/DataQualityAtom";
+import RecapLineAtom from "@/components/dashboard/RecapLineAtom";
+import RecentLabReadout, {
   type RecentLabRow,
-} from "@/components/dashboard/RecentLabsWidget";
-import NextAppointmentWidget, {
+} from "@/components/dashboard/RecentLabReadout";
+import NextAppointmentAtom, {
   type NextAppointment,
-} from "@/components/dashboard/NextAppointmentWidget";
+} from "@/components/dashboard/NextAppointmentAtom";
 import {
   PillarToneBadge,
   TrendArrow,
 } from "@/components/dashboard/HealthspanPillarPresentation";
-import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
-import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
+import SleepWaitingAtom from "@/components/dashboard/SleepWaitingAtom";
+import NapAtom from "@/components/dashboard/NapAtom";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
-import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
-import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
-import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
-import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
+import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
+import {
+  ProteinTodayAtom,
+  UsualRoutineAtom,
+} from "@/components/dashboard/NutritionAtoms";
+import CycleControlAtom from "@/components/dashboard/CycleControlAtom";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
@@ -214,7 +215,7 @@ import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
-import { dismissRecentlyResolved, saveIllnessHeroState } from "./actions";
+import { dismissRecentlyResolved, saveIllnessNowState } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
@@ -421,13 +422,13 @@ async function renderDashboard(
   );
 
   // Disambiguate every cockpit patient's name together (#531/#534 on-element identity).
-  const heroProfiles = [
+  const cockpitProfiles = [
     ...(activeEpisodes.length > 0 ? [profile] : []),
     ...new Map(otherSick.map((x) => [x.p.id, x.p])).values(),
   ];
-  const heroNames = disambiguateProfileNames(heroProfiles);
+  const cockpitNames = disambiguateProfileNames(cockpitProfiles);
   const nameFor = (p: { id: number; name: string }) =>
-    heroNames.get(p.id) ?? p.name;
+    cockpitNames.get(p.id) ?? p.name;
 
   const orderedCockpits = orderIllnessCockpits([
     ...activeEpisodes.map((episode, episodeOrder) => ({
@@ -485,7 +486,7 @@ async function renderDashboard(
       cockpitModelByEpisode.set(episodeId, model);
   }
 
-  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => {
+  const illnessCockpits: IllnessContextCockpit[] = orderedCockpits.map((c) => {
     const presentation = presentationCockpitByEpisode.get(c.episode.id);
     if (!presentation)
       throw new Error(`Missing dashboard illness presentation ${c.episode.id}`);
@@ -582,12 +583,12 @@ async function renderDashboard(
       ),
     };
   });
-  const heroUi = getIllnessHeroUi(profile.id);
+  const illnessUi = getIllnessNowUi(profile.id);
 
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
   // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
-  // aware like the hero (#858) — each row reopens that member's episode via its
+  // aware like the illness Now group (#858) — each row reopens that member's episode via its
   // profileId. Calm/dismissible, never dashboard Now (#449). Names disambiguated
   // across the accessible set (#531).
   //
@@ -625,7 +626,7 @@ async function renderDashboard(
   );
 
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
-  // link that surfaces near the illness hero when any accessible member is currently or
+  // link that surfaces near the illness Now group when any accessible member is currently or
   // recently sick, and recedes once the house is well. Only for a multi-profile login
   // (a single-profile login has no household to merge). Reads the LITERAL SAME rows the
   // illness context and reopen facts read — one gather, three derivations (#2115); the comment
@@ -641,15 +642,13 @@ async function renderDashboard(
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
-  // day and disagree with the body census this widget links to. Windowed by DATE
+  // day and disagree with the body census this dashboard presentation links to. Windowed by DATE
   // (a deliberate trailing-90-day glance) rather than the old undisclosed 60-row cap.
   const weightTrendSince = shiftDateStr(on, -(WEIGHT_TREND_WINDOW_DAYS - 1));
   // The UNWINDOWED series is kept: its newest day is the weight domain's last record,
   // which is what separates "never weighed" from "stopped weighing" below (#2652). The
   // card and the dormancy verdict therefore read one computation, not two (#221).
-  const weightSeries = true
-    ? getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS)
-    : [];
+  const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
   const latestWeightPoint = weightSeries.at(-1) ?? null;
   const weightSource = latestWeightPoint
     ? getBodyMetricSeriesBySource(profile.id, "weight", 1).find((series) =>
@@ -675,28 +674,25 @@ async function renderDashboard(
     ? getHealthspanPillars(profile.id)
     : [];
 
-  // sleep-last-night (issue #1066): the morning "how did I sleep" tile — the SAME
-  // lastNightSummary model the /sleep hero reads (one question, one computation),
-  // with the SRI alongside as the second figure. Null summary → the data-aware CTA.
-  const sleepSummary = true ? getLastNightSummary(profile.id) : null;
+  // Sleep candidates and the Sleep page share the same last-night summary.
+  const sleepSummary = getLastNightSummary(profile.id);
   const sleepPresentation = sleepSummary
     ? sleepRecordPresentation(sleepSummary.wakeDay, on, formatPrefs)
     : null;
-  // The morning waiting window (#2097). When it is open, the tile names the state
+  // The morning waiting window (#2097). When it is open, the atom names the state
   // INSTEAD of showing a headline duration for a night nobody asked about — the
   // recorded night drops to a quiet secondary line and stays one tap away on /sleep.
   // Null (the common case) leaves every existing branch exactly as it was.
-  const sleepWaiting = true
-    ? getSleepWaitingState(profile.id, sleepSummary?.wakeDay ?? null)
-    : null;
+  const sleepWaiting = getSleepWaitingState(
+    profile.id,
+    sleepSummary?.wakeDay ?? null
+  );
   const typicalWakeMinutes = sleepWaiting ? typicalWakeTime(profile.id) : null;
   const sleepPreviousNightLabel =
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
       : null;
-  // naps-today: the detailed nap model the Sleep page also renders. A normal
-  // no-nap day self-hides this contextual widget; once a nap syncs, every window
-  // and the combined duration appear without changing the main-sleep card.
+  // Today's nap candidates reuse the detailed model the Sleep page renders.
   const todayNaps = getNapHistory(profile.id, 1).today;
 
   // Recent clinical results: rank every canonical member in the shared
@@ -791,22 +787,15 @@ async function renderDashboard(
   const goals = trainingRelevant
     ? getOutcomeGoals(profile.id).filter((g) => isGoalLive(g))
     : [];
-  const goalProgress = true
-    ? getOutcomeGoalProgressMap(profile.id, goals)
-    : new Map();
+  const goalProgress = getOutcomeGoalProgressMap(profile.id, goals);
 
-  const freqTargets = true
-    ? getFrequencyTargetProgress(profile.id).filter(
-        ({ target }) =>
-          (trainingRelevant ||
-            dashboardHabitDomain(target.scope_kind) !== "training") &&
-          (strengthTrainingAvailable || !isStrengthProgrammingScope(target))
-      )
-    : [];
-  const orderedFreqTargets = [
-    ...summarizeDashboardHabits(freqTargets).open,
-    ...freqTargets.filter((progress) => progress.met),
-  ];
+  const freqTargets = getFrequencyTargetProgress(profile.id).filter(
+    ({ target }) =>
+      (trainingRelevant ||
+        dashboardHabitDomain(target.scope_kind) !== "training") &&
+      (strengthTrainingAvailable || !isStrengthProgrammingScope(target))
+  );
+  const orderedFreqTargets = orderDashboardHabits(freqTargets);
 
   // coaching: ranked, rule-based recommendations from the profile's own history
   // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
@@ -870,17 +859,11 @@ async function renderDashboard(
 
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
-  // through the SAME findings-bus store — so a dismiss on either widget (or a tab)
+  // through the SAME findings-bus store — so a dismiss on either atom (or a tab)
   // drops the finding out for free.
   //
-  // They render DISJOINT slices of it (#1533). The data-quality widget is that
-  // family's dedicated dashboard home (FINDING_DASHBOARD_HOME); the rollup is the
-  // catch-all for families that have no dashboard home of their own — which is
-  // exactly its #449 charter, "reach for findings that render only on their own
-  // tabs". So the two cards can never show the same gap twice, and the rollup's
-  // relevance set is computed over what it actually renders. Hiding the Data quality
-  // widget drops its family back into the rollup, where the same declared relevance
-  // floor decides whether it has earned reach.
+  // Data-quality and coaching observations become separate atomic statements. Both
+  // retain the same shared finding identity, dismissal, and routine-fatigue policy.
   //
   // DISMISSAL FATIGUE (#2386). The dashboard is the ROUTINE surface for these — the
   // place a finding leads without being asked for — so it is where repeat dismissal is
@@ -889,40 +872,31 @@ async function renderDashboard(
   // behind everything unfatigued, and a topic declined across four leaves this surface
   // entirely. Nothing is silenced — every one of them still renders on its own tab,
   // which is where the user goes looking, and the shared bus is untouched.
-  const activeCoaching = true
-    ? routineOrder(
-        activeFindings(
-          collectCoachingFindings(
-            profile.id,
-            on,
-            units.weightUnit,
-            formatPrefs
-          ),
-          coachingSuppressions,
-          on
-        ).filter((finding) => {
-          const strengthTrainingFinding =
-            finding.domain === "training-strength" ||
-            finding.domain === "training-obs" ||
-            finding.domain === "muscle-volume" ||
-            finding.domain === "fitness-check";
-          return (
-            !strengthTrainingFinding ||
-            (trainingRelevant && strengthTrainingAvailable)
-          );
-        }),
-        coachingSuppressions
-      )
-    : [];
+  const activeCoaching = routineOrder(
+    activeFindings(
+      collectCoachingFindings(profile.id, on, units.weightUnit, formatPrefs),
+      coachingSuppressions,
+      on
+    ).filter((finding) => {
+      const strengthTrainingFinding =
+        finding.domain === "training-strength" ||
+        finding.domain === "training-obs" ||
+        finding.domain === "muscle-volume" ||
+        finding.domain === "fitness-check";
+      return (
+        !strengthTrainingFinding ||
+        (trainingRelevant && strengthTrainingAvailable)
+      );
+    }),
+    coachingSuppressions
+  );
   const coachingObservations = coachingObservationFindings(activeCoaching);
   const dataQualityFindings = activeCoaching.filter(
     isDataQualityDashboardFinding
   );
 
-  // weekly-recap — the last period at the profile's chosen recap cadence (#2178),
-  // rule-based (no AI). Same gather as the recap notification, so the card and the
-  // message always agree. The widget id stays `weekly-recap`: it is a persisted
-  // dashboard-layout key, and renaming it would silently un-place every saved layout.
+  // The recap gather is shared with the notification; each line becomes an atomic
+  // dashboard statement with the stable `weekly-recap` presentation selector.
   const weeklyRecap = trainingRelevant
     ? getRecapCard(profile.id, units.weightUnit)
     : null;
@@ -937,10 +911,10 @@ async function renderDashboard(
   // THE COMPOSED MORNING ONE-TAP (#2458) — the food half of the "your usual <window>"
   // offer plus the doses this profile DECLARED for that window and still owes today.
   //
-  // Relevance is TRANSIENT and computed here, like the other `available` gates: it is a
+  // Relevance is transient and computed here: it is a
   // pure function of today's state, so it collapses the moment everything it names is
   // logged and comes back if the servings are undone. Nothing about it is persisted and
-  // it never reaches the hidden set.
+  // it never creates persisted presentation state.
   //
   // The window is `currentFoodSlot` — the FOOD-slot clock, deliberately not
   // `currentTimeBucket` (the divergence is documented at lib/food-slot.ts:11): this
@@ -993,26 +967,9 @@ async function renderDashboard(
   // Null components self-omit; an all-null model is the data-aware CTA.
   const vitalsModel = getVitalsLatestModel(profile.id, on);
 
-  // cycle-phase (#1221): "Cycle day N · <phase>". Relevance-gated in the registry. Since
-  // #1679 the tile also carries the PROJECTED next-period window — the SAME
-  // getCycleForecast the Cycle surface reads, so the tile and the page can never show
-  // different windows.
-  //
-  // Since #1892 the tile no longer self-hides when no phase is derivable: that was the
-  // state of someone who has not logged day 1 yet, so it hid exactly when logging
-  // mattered most. It is now DATA-AWARE — the CTA variant of the same card — and it
-  // carries the ONE cycle offer, resolved here ONCE (`cycleControlState`) and handed
-  // down as data. The Cycle page control and the quick-log sheet render that same
-  // state; none of the three re-derives it.
-  //
-  // Since #2801 the DAY AND PHASE arrive on that same control state rather than from a
-  // second pair of calls here. The tile syndicated "Cycle day 141 · Follicular" to a
-  // profile 20 weeks pregnant precisely because those calls were the ones nobody handed
-  // the suspension to — the tile's forecast line honoured it and silently vanished, so
-  // the tile went on making the stronger claim after the weaker one had withdrawn.
+  // Cycle phase is a Standing reading. The separate write candidate reuses the one
+  // cycle control state shared with the Cycle page and quick-log sheet (#1892/#2801).
   const cyclePeriods = cycleApplicable ? listCyclePeriods(profile.id) : [];
-  const cycleForecast =
-    cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
   const cycleControl = cycleApplicable
     ? cycleControlState(cyclePeriods, on, getForecastSuspension(profile.id))
     : null;
@@ -1022,7 +979,7 @@ async function renderDashboard(
       : null;
 
   // symptom-log meds branch (#1221): the folded PRN quick-log. Shown ONLY on a WELL day
-  // with active PRN meds — when illness is active the hero cockpit above already embeds
+  // with active PRN meds — when illness is active its Now cockpit already embeds
   // the SAME logger (so we omit the branch to avoid the duplicate the old availability
   // gate hand-managed), and a profile with no active PRN meds gets no branch at all.
   const checkinPrnMeds = !activeSick
@@ -1031,14 +988,13 @@ async function renderDashboard(
 
   // symptom-log well-day entry (#1300): a compact SymptomLogBar behind the check-in card's
   // Report reveal, so a well user (severe cramps, a headache) can log symptoms with NO
-  // illness required. Shown ONLY on a WELL day — while illness is active the hero cockpit
+  // illness required. Shown ONLY on a WELL day — while illness is active its Now cockpit
   // above owns symptom logging (so we omit it to avoid the duplicate). Same store + the
   // suggest-only illness bridge as the Timeline bar (no temperature/day-toggle here).
   const showWellSymptoms = !activeSick;
 
-  // active-protocols (issue #660): the ongoing N-of-1 experiments, each a formatter
-  // over the SAME detail-page computations (comparison + adherence). Opt-in widget;
-  // self-hides (available=false below) when nothing is ongoing.
+  // Ongoing N-of-1 protocols reuse the same detail-page computations (comparison,
+  // adherence, outcome, and practice) before each fact becomes its own candidate.
   const activeProtocols = adultContentApplicable
     ? getActiveProtocolSummaries(profile.id, on, units.weightUnit, freqTargets)
     : [];
@@ -1158,7 +1114,7 @@ async function renderDashboard(
     );
   }
 
-  for (const cockpit of heroCockpits) {
+  for (const cockpit of illnessCockpits) {
     const key = cockpit.episodeKey;
     const href = cockpit.episodeHref ?? "/timeline";
     const groupKey = `illness.episode:${key}`;
@@ -1541,7 +1497,7 @@ async function renderDashboard(
         rec.id,
         `coaching.${coachingDedupeKey(rec.id)}`
       ),
-      <CoachingWidget recs={[rec]} />
+      <CoachingRecommendationAtom recommendation={rec} />
     )
   );
   sourceOrder += coachingRecs.length;
@@ -1554,13 +1510,10 @@ async function renderDashboard(
         goal.id,
         outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
       ),
-      <GoalsHabitsWidget
-        goals={[goal]}
-        goalProgress={goalProgress}
-        freqTargets={[]}
+      <GoalProgressAtom
+        goal={goal}
+        progress={goalProgress.get(goal.id)}
         today={on}
-        trainingRelevant={trainingRelevant}
-        showLogActions={false}
       />,
       {
         label: goal.title,
@@ -1580,14 +1533,7 @@ async function renderDashboard(
         !progress.met,
         weeklyTargetStateChanged(progress, progress.previous ?? null)
       ),
-      <GoalsHabitsWidget
-        goals={[]}
-        goalProgress={new Map()}
-        freqTargets={[progress]}
-        today={on}
-        trainingRelevant={trainingRelevant}
-        showLogActions={false}
-      />,
+      <HabitProgressAtom progress={progress} />,
       {
         label: frequencyScopeLabel(
           progress.target.scope_kind,
@@ -1679,7 +1625,7 @@ async function renderDashboard(
           href={protocol.href}
         />
       );
-    if (protocol.practice && protocol.practiceUsuallyToday && canWrite)
+    if (protocol.practiceName && protocol.practiceUsuallyToday && canWrite)
       add(
         progressCandidates.protocol(
           {
@@ -1692,7 +1638,7 @@ async function renderDashboard(
           protocol.practiceUsuallyToday
         ),
         <DashboardAtomCard
-          title={`Log ${protocol.practice.value}`}
+          title={`Log ${protocol.practiceName}`}
           href={protocol.href}
           actionLabel="Open"
         />
@@ -1708,7 +1654,7 @@ async function renderDashboard(
         finding.dedupeKey,
         `finding.${finding.dedupeKey}`
       ),
-      <DataQualityWidget findings={[finding]} />
+      <DataQualityAtom finding={finding} />
     );
   }
 
@@ -1724,7 +1670,7 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      <NutritionTodayWidget today={proteinToday} routine={null} />,
+      <ProteinTodayAtom today={proteinToday} />,
       {
         value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
         detail: [
@@ -1766,7 +1712,7 @@ async function renderDashboard(
         on,
         mealTimeWindows(nowMealAnchors)
       ),
-      <NutritionTodayWidget today={null} routine={routineControl} />
+      <UsualRoutineAtom {...routineControl} />
     );
 
   if (stepsSummary)
@@ -1934,11 +1880,7 @@ async function renderDashboard(
         },
         on
       ),
-      <CyclePhaseWidget
-        forecast={cycleForecast}
-        control={cycleControl}
-        showReading={false}
-      />
+      <CycleControlAtom control={cycleControl} />
     );
 
   if (nextAppt)
@@ -1951,7 +1893,7 @@ async function renderDashboard(
         },
         nextAppt.href
       ),
-      <NextAppointmentWidget appointment={nextAppt} />
+      <NextAppointmentAtom appointment={nextAppt} />
     );
 
   labRows.forEach((row, index) => {
@@ -1968,7 +1910,7 @@ async function renderDashboard(
         row.name,
         labPromotions.get(row.name)
       ),
-      <RecentLabsWidget rows={[row]} today={on} />,
+      <RecentLabReadout row={row} today={on} />,
       {
         label: row.name,
         value: (
@@ -2002,7 +1944,7 @@ async function renderDashboard(
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <WidgetEmpty
+      <DashboardSetupAtom
         title="Clinical results"
         icon={IconFlask}
         message="No clinical results yet."
@@ -2098,7 +2040,7 @@ async function renderDashboard(
         },
         on
       ),
-      <WeightQuickAddWidget
+      <WeightQuickAddAtom
         latest={latestWeight ?? null}
         weightUnit={units.weightUnit}
         today={on}
@@ -2125,7 +2067,7 @@ async function renderDashboard(
           (typicalWakeMinutes ?? 420) + 180
         )
       ),
-      <SleepWaitingWidget
+      <SleepWaitingAtom
         state={sleepWaiting}
         formatPrefs={formatPrefs}
         previousNightLabel={sleepPreviousNightLabel}
@@ -2170,7 +2112,7 @@ async function renderDashboard(
         },
         on
       ),
-      <WidgetEmpty
+      <DashboardSetupAtom
         title="Sleep"
         icon={IconMoon}
         message="No sleep recorded last night."
@@ -2243,7 +2185,7 @@ async function renderDashboard(
         engagementFromSource(nap.source),
         nowMinutes - nap.endMinutes
       ),
-      <NapsTodayWidget naps={[nap]} timeFormat={formatPrefs.timeFormat} />
+      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />
     )
   );
   if (todayNaps.length > 0)
@@ -2324,8 +2266,9 @@ async function renderDashboard(
         weeklyRecap.start,
         weeklyRecap.end
       ),
-      <WeeklyRecapWidget
-        recap={{ ...weeklyRecap, lines: [line], isEmpty: false }}
+      <RecapLineAtom
+        recap={weeklyRecap}
+        line={line}
         formatPrefs={formatPrefs}
       />
     )
@@ -2338,8 +2281,8 @@ async function renderDashboard(
     upcoming,
   });
   const illnessGroupKeys = orderedIllnessGroupKeys(dashboardPlacements);
-  const heroByGroupKey = new Map(
-    heroCockpits.map((cockpit) => [cockpit.stateIdentity!.groupKey, cockpit])
+  const illnessByGroupKey = new Map(
+    illnessCockpits.map((cockpit) => [cockpit.stateIdentity!.groupKey, cockpit])
   );
   const placedEpisodeCandidateIds = new Set(
     dashboardPlacements
@@ -2349,8 +2292,8 @@ async function renderDashboard(
       )
       .map((placement) => placement.candidate.candidateId)
   );
-  const placedHeroCockpits = illnessGroupKeys.map((groupKey) => {
-    const cockpit = heroByGroupKey.get(groupKey);
+  const placedIllnessCockpits = illnessGroupKeys.map((groupKey) => {
+    const cockpit = illnessByGroupKey.get(groupKey);
     if (!cockpit)
       throw new Error(`Missing dashboard illness group ${groupKey}`);
     const stateIdentity = placedEpisodeCandidateIds.has(
@@ -2407,12 +2350,12 @@ async function renderDashboard(
       aheadPresentations={aheadPresentations}
       attentionBadgeCount={attentionBadgeCount}
       illnessGroupNode={
-        placedHeroCockpits.length > 0 ? (
-          <IllnessHero
-            cockpits={placedHeroCockpits}
-            initialCollapsedActive={heroUi.collapsedActive}
-            initialOpenOtherKey={heroUi.openOtherKey}
-            saveState={saveIllnessHeroState}
+        placedIllnessCockpits.length > 0 ? (
+          <IllnessNowGroup
+            cockpits={placedIllnessCockpits}
+            initialCollapsedActive={illnessUi.collapsedActive}
+            initialOpenOtherKey={illnessUi.openOtherKey}
+            saveState={saveIllnessNowState}
           />
         ) : undefined
       }

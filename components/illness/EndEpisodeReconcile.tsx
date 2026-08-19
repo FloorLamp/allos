@@ -8,7 +8,7 @@ import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { endEpisodeWithMedsAction } from "@/app/(app)/medical/episodes/actions";
 
 // End-episode medication reconciliation (issue #880). The shared trigger for EVERY
-// end-episode surface — the episode page's "Feeling better", the hero cockpit, and the
+// end-episode surface — the episode page's "Feeling better", the illness Now cockpit, and the
 // stale-nudge's backdated end — so the checklist logic lives in ONE place. When the
 // episode has associated meds, ending opens a checklist: OTC/PRN meds used during the
 // illness are pre-checked ("Also stop?"), an Rx course started mid-illness is listed

@@ -542,7 +542,7 @@ export function isNonOptimal(flag: string | null | undefined): boolean {
 // into three display tiers — out-of-range (clinical, red/"bad"), non-optimal
 // (amber/"warn"), and everything else (neutral/"default"). This predicate + the
 // label + the tone below are the ONE source of truth; every surface (dashboard
-// hero, Recent-labs widget, timeline, biomarker cells, attention strip,
+// illness Now group, clinical-result readout, timeline, biomarker cells, dashboard placement,
 // supplement suggestions) routes through them instead of re-deriving the same
 // three-way split by hand. Re-tiering a flag (or adding one) is a single edit here.
 // ---------------------------------------------------------------------------

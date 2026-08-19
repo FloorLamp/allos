@@ -125,7 +125,7 @@ test("a long dose detail never costs the medication its name (#2940)", async ({
 });
 
 // Both row BRANCHES: the medications page links the name to the med detail page, the
-// dashboard's quick-log widget renders the same pair unlinked. Both VARIANTS (inset,
+// dashboard's PRN atom renders the same pair unlinked. Both VARIANTS (inset,
 // embedded) render on those two surfaces. The claim here is that nothing was paid for
 // the fix: a pair that FITS its cell is still rendered whole, name and detail alike —
 // which is the "identical to today" half of the change.

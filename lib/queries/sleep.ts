@@ -146,7 +146,7 @@ export function hasSleepData(profileId: number): boolean {
 // The stage window "last night" needs (#2551). `lastNightSummary` reads exactly ONE
 // key out of the map below — the latest wake-day — so the read that fills it was
 // answering about one night by attributing half a year of stage rows, on the two
-// most-visited pages in the app (the dashboard tile and the /sleep hero), uncached,
+// most-visited pages in the app (the dashboard sleep presentation and /sleep hero), uncached,
 // on every render. This is the fifth instance of #2520's class and takes its fix:
 // the window reaches the READ, as the stage-day scan's SQL LIMIT.
 //
@@ -161,7 +161,7 @@ export const LAST_NIGHT_STAGE_DAYS = 7;
 
 // The "last night" summary — the MAIN overnight session (#1118) reduced to the
 // hero/tile facts, over the trailing-30-night baseline. The /sleep hero AND the
-// dashboard tile read THIS, so the two surfaces agree ("one question, one
+// dashboard sleep presentation read THIS, so the two surfaces agree ("one question, one
 // computation", #221). Stages come from the same daily-totals read the Trends
 // stage chart uses, keyed by wake-day.
 export function getLastNightSummary(
@@ -749,7 +749,7 @@ export function getSleepArrivalLagMinutes(
 
 // The profile's morning waiting state, or null when the ordinary surfaces have
 // something true to say. Gathers; the decision itself is the pure sleepWaitingState
-// so the dashboard tile, the /sleep hero and the Now strip cannot disagree (#221).
+// so the dashboard sleep presentation, /sleep hero and Now strip cannot disagree (#221).
 export function getSleepWaitingState(
   profileId: number,
   summaryWakeDay: string | null

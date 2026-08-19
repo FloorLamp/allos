@@ -1538,7 +1538,7 @@ describe("nutrient-missed line (#3033)", () => {
 
 // ── #3033: the per-line identity every keyed surface shares ──────────────────
 //
-// The dashboard mints one candidate per recap line and the widget keys its rows;
+// The dashboard mints one candidate per recap line and the atom keys its row;
 // both used the bare line key, and `nutrient-missed` is the ONE key that can
 // appear once per nutrient — two 0-of-N nutrients then crashed the dashboard
 // with a duplicate candidate id. Red if the disambiguation is removed.

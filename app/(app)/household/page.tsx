@@ -127,8 +127,8 @@ export default async function HouseholdPage() {
         ).length
       : 0;
 
-    // Current weight = the primary-source-aware value the dashboard QuickStats
-    // shows (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
+    // Current weight = the primary-source-aware canonical value
+    // (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
     // can disagree with every other "current weight" surface. The trend arrow
     // compares the two newest DAYS of the deduped one-source-per-day series so it
     // measures change over time, not two devices reporting the same day.
@@ -167,7 +167,7 @@ export default async function HouseholdPage() {
     // Structural data-quality gaps (issue #1045), bus-filtered so a member's own
     // dismissal silences the line here too (dismiss once, silence everywhere). Kids'
     // profiles are where birthdate/sex gaps cluster and the caregiver is who can fix
-    // them — the same ranked gap model the dashboard widget formats, condensed.
+    // them — the same ranked gap model the dashboard presentation formats, condensed.
     const dataQuality = householdDataQualityLine(
       activeByKey(
         collectDataQualityGaps(pid),
@@ -217,7 +217,7 @@ export default async function HouseholdPage() {
       oorBiomarkers,
       goals: goalHighlights(goals, goalProgress, day, 2),
       // An open illness episode surfaces as a "sick day N" chip (issue #801) — the
-      // same assembly the dashboard illness hero (#858) formats over.
+      // same assembly the dashboard illness Now group (#858) formats over.
       sick: (() => {
         const ep = currentEpisodeForProfile(pid);
         if (!ep) return null;

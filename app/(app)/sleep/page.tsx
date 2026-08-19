@@ -57,7 +57,7 @@ export default async function SleepPage() {
   const summaryPresentation = summary
     ? sleepRecordPresentation(summary.wakeDay, todayStr, formatPrefs)
     : null;
-  // The morning waiting window (#2097) — the SAME pure decision the dashboard tile
+  // The morning waiting window (#2097) — the SAME pure decision the dashboard sleep presentation
   // and the Now strip read, so the three cannot disagree about whether this profile
   // is waiting. When it is open the hero's figures would be a different night's, so
   // the state replaces them and that night drops to a quiet line beneath.

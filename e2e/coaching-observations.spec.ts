@@ -15,7 +15,7 @@ const DISMISS_PRESS = "E2E Dismiss Press";
 // body-metric hygiene, goal pacing, adherence patterns) render only on their own
 // tabs. The dashboard "Coaching observations" rollup gives them REACH WITHOUT NOISE:
 // the SAME findings (one computation, collectCoachingFindings) surface as a calm,
-// hideable dashboard widget, and a dismiss there silences the finding on its origin
+// hideable dashboard presentation, and a dismiss there silences the finding on its origin
 // tab too (shared findings bus). The seed + e2e fixtures ship a plateaued Skullcrusher,
 // a 92 kg weight glitch, and off-pace weight goals, so the rollup has content on the
 // seeded DB.

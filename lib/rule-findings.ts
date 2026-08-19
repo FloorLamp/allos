@@ -395,7 +395,7 @@ export function buildMedicationDuplicationFindings(
 // — never behavioral nagging (the hard boundary in lib/data-quality's header). No owned
 // SQL is added here (reads through profile-scoped queries), so the scoping guard holds.
 // The ONE gather → detect for a profile's structural gaps, leverage-ranked. Shared by
-// the dashboard widget/coaching finding (buildDataQualityFindings) and the household
+// the dashboard presentation/coaching finding (buildDataQualityFindings) and the household
 // rollup (household/page.tsx), so every surface keys on the SAME gap model (one
 // question, one computation). No owned SQL added (reads through profile-scoped queries).
 export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
@@ -499,11 +499,9 @@ export function collectCoachingFindings(
     ...buildTtcWorkupFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
     // set (so a decline rides the shared bus and silences every surface), behind the
-    // observational domains. NOTE (#1533): the order is no longer load-bearing for the
-    // dashboard rollup — the rollup now excludes families that have their own dashboard
-    // widget (FINDING_DASHBOARD_HOME), so gaps don't render there at all while the Data
-    // quality widget is on. This order still shapes the coaching TAB, which is the
-    // legitimate catch-all and shows everything.
+    // observational domains. The dashboard page maps these gaps to their own statement
+    // candidates and excludes them from coaching-observation candidates (#1533). This
+    // order still shapes the coaching tab, which shows the complete finding census.
     ...buildDataQualityFindings(profileId),
   ];
 }

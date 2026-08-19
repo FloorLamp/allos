@@ -114,12 +114,12 @@ export function seedCycleAndDerived(): void {
   // Two dedicated adult FEMALE profiles, cycle-relevant by LIFE STAGE (sex +
   // premenopausal status) rather than by data — which is the only way to reach the
   // state this issue is about: a profile the domain applies to that has logged
-  // nothing yet. Before #1892 that state hid the dashboard card entirely.
+  // nothing yet. Before #1892 that state hid the dashboard cycle control entirely.
   //
-  //   CTA — no cycle rows. The card is the offer ("Period started today"). The spec
+  //   CTA — no cycle rows. The control atom offers "Period started today". The spec
   //         OWNS its mutations and clears the profile's cycles before each test.
   //   GAP — one period ended 5 days ago: past the reopen window, short of the
-  //         plausible gap, so the card shows the derived phase and NO button. The
+  //         plausible gap, so Standing shows the phase and the control has no button. The
   //         spec is read-only here, so it survives --repeat-each untouched.
   //
   // Dates are relative to each profile's own today. Synthetic, no PHI.

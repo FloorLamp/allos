@@ -1,9 +1,8 @@
 import { test, expect } from "./fixtures";
 import { openDashboardAll, settledSelectSave } from "./helpers";
-// Issue #32: the Weekly-recap dashboard card and a milestone Timeline entry.
-// The e2e seed (e2e/seed-events.ts) pins a dashboard layout that makes the
-// weekly-recap widget visible for profile 1 and plants a "50 workouts logged"
-// milestone so both surfaces have deterministic content.
+// Issue #32: dashboard recap-line atoms and a milestone Timeline entry. The e2e
+// seed plants recap input plus a "50 workouts logged" milestone so both surfaces
+// have deterministic content.
 test.describe("Weekly recap + milestones (#32)", () => {
   // #2389 item 1, in the browser: the card renders the line's `value` and the ONE
   // shared annotation beside it, so a value carrying its own parenthetical put two

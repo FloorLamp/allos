@@ -8,7 +8,7 @@ import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { dismissStaleNudgeAction } from "@/app/(app)/medical/episodes/actions";
 
 // The SUGGEST-ONLY stale-open-episode nudge (issue #859 item 1). Shown on the episode
-// page + hero cockpit when an open episode has gone quiet for N days. Offers a one-tap
+// page + illness Now cockpit when an open episode has gone quiet for N days. Offers a one-tap
 // BACKDATED end (as of the last activity day) or a "Keep open" dismissal — it NEVER
 // auto-closes (#560). Carries the episode id AND, for a household member's cockpit, the
 // target profileId so the actions gate on THAT profile (requireProfileWriteAccess). The
