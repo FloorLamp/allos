@@ -193,9 +193,20 @@ describe("overlay motion chokepoint", () => {
         offenders.push(`${rel} (listed but not on disk)`);
         continue;
       }
-      // Referenced by NAME in a className, not merely imported — an import the
-      // file never applies is exactly the state this is meant to rule out.
-      if (!/\$\{OVERLAY_SCRIM\}/.test(text)) offenders.push(rel);
+      // The identifier must be USED, not merely imported — an import the file
+      // never applies is exactly the state this rules out. Matched on the bare
+      // name outside the import statements, deliberately NOT on one spelling of
+      // how it is applied: pinning `${OVERLAY_SCRIM}` failed a refactor to
+      // `clsx(OVERLAY_SCRIM, …)` that is entirely correct, and a guard that
+      // checks a SPELLING rather than the property is the failure that created
+      // #3172 in the first place.
+      //
+      // `\b` does the work of telling the token apart from its siblings: after
+      // `OVERLAY_SCRIM` in `OVERLAY_SCRIM_TINT` comes `_`, a word character, so
+      // the boundary does not match there — a file that dressed its backdrop
+      // with only the tint would still be reported.
+      const body = text.replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "");
+      if (!/\bOVERLAY_SCRIM\b/.test(body)) offenders.push(rel);
     }
     expect(
       offenders,
