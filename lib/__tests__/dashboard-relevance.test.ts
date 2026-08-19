@@ -70,7 +70,7 @@ describe("atomic dashboard placement", () => {
   it("partitions every applicable candidate exactly once", () => {
     const placements = rank([
       action("owed", "must", { owed: true }),
-      reading("standing"),
+      reading("activity.steps:standing"),
       statementCandidate({
         candidateId: "update",
         factKey: "fact.update",
@@ -83,7 +83,7 @@ describe("atomic dashboard placement", () => {
     ]);
     expect(
       placements.map((placement) => placement.candidate.candidateId)
-    ).toEqual(["owed", "standing", "update"]);
+    ).toEqual(["owed", "activity.steps:standing", "update"]);
     expect(placements.map((placement) => placement.lane)).toEqual([
       "now",
       "standing",
@@ -172,34 +172,43 @@ describe("atomic dashboard placement", () => {
   });
 
   it("keeps household readings out of the acting profile Standing lane", () => {
-    const placements = rank([reading("self"), reading("member", 8)]);
+    const placements = rank([
+      reading("activity.steps:self"),
+      reading("activity.steps:member", 8),
+    ]);
     expect(placements.map((placement) => placement.lane)).toEqual([
       "standing",
       "everything",
     ]);
   });
 
-  it("keeps manual readings standing and sends external-only readings to Everything", () => {
-    const manual = reading("manual");
+  it("keeps manual and external readings in the fixed Standing lane", () => {
+    const manual = reading("activity.steps:manual");
     const external = {
-      ...reading("external"),
+      ...reading("nutrition.protein:external"),
       relevance: profileDataRelevance("current", "external"),
     };
     expect(rank([external, manual]).map((placement) => placement.lane)).toEqual(
-      ["standing", "everything"]
+      ["standing", "standing"]
     );
   });
 
-  it("rejects duplicate presentation and fact identity", () => {
-    const one = reading("one");
+  it("rejects duplicate presentation identity and resolves duplicate facts", () => {
+    const one = reading("activity.steps:one");
     expect(() => rank([one, { ...one }])).toThrow(/candidateId/);
-    expect(() =>
-      rank([one, { ...reading("two"), factKey: one.factKey }])
-    ).toThrow(/factKey/);
+    const duplicateFact = {
+      ...reading("nutrition.protein:two"),
+      factKey: one.factKey,
+    };
+    expect(
+      rank([duplicateFact, one]).filter(
+        (placement) => placement.candidate.factKey === one.factKey
+      )
+    ).toHaveLength(1);
   });
 
   it("rejects duplicate identity even when one candidate is inapplicable", () => {
-    const one = reading("latent");
+    const one = reading("activity.steps:latent");
     expect(() => rank([one, { ...one, applicable: false }])).toThrow(
       /candidateId/
     );

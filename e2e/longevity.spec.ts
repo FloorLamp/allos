@@ -7,12 +7,12 @@ import {
 } from "./fixture-logins";
 
 // The Longevity page (#1042 phase 4): the expanded formatter over the SAME
-// healthspan-pillar model the dashboard widget compact-renders.
+// healthspan-pillar model the dashboard Standing cluster compact-renders.
 //   1. Every section renders for seeded profile 1 (it owns a complete PhenoAge
 //      panel, a VO2 Max reading, nightly sleep sessions, labs with curated
 //      ranges, and two guided fitness checks) — including the absorbed
 //      #protocols hub (collapsed add form).
-//   2. The dashboard widget's pillar cards deep-link to /longevity#<anchor> —
+//   2. The dashboard Standing pillar facts deep-link to /longevity#<anchor> —
 //      except the strength pillar, whose destination is DATA (#1921): it names a
 //      lift, so its tap lands on the Analyze panel for THAT lift.
 //   3. Absent pillars don't render: the activity-free EMPTY_TRAINING fixture
@@ -111,19 +111,23 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
 // the tap has to produce the EVIDENCE for that claim rather than the pillar's own
 // explainer anchor. Landing on a generic index the reader then searches would be the
 // defect restated, so this drives the whole hop and asserts what arrives.
-test("the strength pillar card lands on the panel for the lift it names", async ({
+test("the Standing strength fact lands on the panel for the lift it names", async ({
   page,
 }) => {
   await page.goto("/");
-  const card = page
+  const fact = page
     .getByRole("main")
-    .getByTestId("healthspan-pillars-widget")
-    .getByTestId("pillar-strength");
-  await expect(card).toBeVisible();
+    .locator('[data-standing-family="healthspan-pillars"]')
+    .locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id="healthspan.pillar:strength"]'
+    );
+  await expect(fact).toBeVisible();
+  await expect(fact).toHaveAttribute("data-lane", "standing");
   // The claim: a level, for a named lift. Both come off one computation.
-  await expect(card).toContainText("Intermediate");
-  await expect(card).toContainText("Deadlift");
-  await expect(card).toHaveAttribute(
+  await expect(fact).toContainText("Intermediate");
+  await expect(fact).toContainText("Deadlift");
+  const link = fact.getByRole("link");
+  await expect(link).toHaveAttribute(
     "href",
     "/training?tab=analyze&kind=strength&item=Deadlift"
   );
@@ -138,7 +142,7 @@ test("the strength pillar card lands on the panel for the lift it names", async 
   // goes, so the separate toHaveURL is redundant.
   await followLink(
     page,
-    card,
+    link,
     /\/training\?tab=analyze&kind=strength&item=Deadlift$/
   );
   const main = page.getByRole("main");

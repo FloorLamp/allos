@@ -27,7 +27,7 @@ interface Policy {
   relevance?: DashboardRelevancePolicy;
   timing?: DashboardTiming;
   rankReasons?: DashboardRankReasons;
-  defaultPlacement?: "standing" | "everything";
+  standingEligible?: boolean;
 }
 
 const applicable = (ctx: DomainCandidateContext) => ctx.applicable ?? true;

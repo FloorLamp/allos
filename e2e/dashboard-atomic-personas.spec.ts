@@ -126,3 +126,32 @@ test("retired dashboard fixtures resolve to their atomic facts", async ({
     "session.recap:"
   );
 });
+
+test("segmented sleep composes in one fixed family without regularity duplication", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_SLEEP_SEGMENTED,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const family = page.locator('[data-standing-family="last-night-sleep"]');
+    const ids = await family
+      .getByTestId("dashboard-candidate")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-candidate-id"))
+      );
+    expect(ids.map((id) => id?.split(":", 1)[0])).toEqual([
+      "sleep.duration",
+      "sleep.bed-time",
+      "sleep.wake-time",
+    ]);
+    await expect(family).toContainText("8h");
+    await expect(
+      page.locator('[data-candidate-id^="sleep.regularity:"]')
+    ).toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});

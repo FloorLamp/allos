@@ -23,11 +23,11 @@ import { workerDbPath, frozenNow } from "./worker-env";
 //     card now shows that reading, labelled "Today's reading" rather than dressed
 //     up as an average. A GAP is not day one: a profile with a stale weigh-in has
 //     complete-day history, so its 7-day window stays empty.
-//   • THE NUTRITION LABEL. The dashboard's Nutrition card printed "7-day average"
-//     over a week-to-date figure that included a partial today. The fixture logs
-//     the SAME protein on every complete day in the window and a very different
-//     amount today, so the rendered number is one exact value if — and only if —
-//     the window is a trailing seven complete days.
+//   • THE NUTRITION LABEL. The dashboard's Protein today fact printed "7-day
+//     average" over a week-to-date figure that included a partial today. The
+//     fixture logs the SAME protein on every complete day in the window and a very
+//     different amount today, so the rendered number is one exact value if — and
+//     only if — the window is a trailing seven complete days.
 //
 // Fixture-OWNED (#868): the dedicated Day One profile is seeded with no readings
 // at all; this spec writes every row it asserts on and clears them first, so
@@ -153,17 +153,21 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
     );
   });
 
-  test("the Nutrition card's '7-day average' covers seven complete days", async () => {
-    // Day one for protein too: today's intake only. The card declines the day-one
-    // fallback — today's protein is already its headline — so no average line.
+  test("the Standing protein fact's '7-day average' covers seven complete days", async () => {
+    // Day one for protein too: today's intake only. The fact declines the day-one
+    // fallback — today's protein is already its value — so no average detail.
     logProtein(0, DAY_ONE_PROTEIN_TODAY);
     await page.goto("/");
-    const card = page.getByRole("main").getByTestId("nutrition-today-widget");
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId("nutrition-today-protein")).toContainText(
-      `${DAY_ONE_PROTEIN_TODAY} g`
-    );
-    await expect(card.getByTestId("nutrition-trailing-average")).toHaveCount(0);
+    const protein = page
+      .getByRole("main")
+      .locator('[data-standing-family="protein-today"]')
+      .locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="nutrition.protein:"]'
+      );
+    await expect(protein).toBeVisible();
+    await expect(protein).toHaveAttribute("data-lane", "standing");
+    await expect(protein).toContainText(`${DAY_ONE_PROTEIN_TODAY} g`);
+    await expect(protein).not.toContainText("7-day average");
 
     // Now a full week of complete days, every one of them the same figure. The
     // average is that figure — and NOT the week-to-date number, which would be
@@ -172,8 +176,8 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
       logProtein(ago, DAY_ONE_PROTEIN_COMPLETE_DAY);
     }
     await page.goto("/");
-    await expect(card.getByTestId("nutrition-trailing-average")).toHaveText(
-      `7-day average · ${DAY_ONE_PROTEIN_COMPLETE_DAY} g/day`
+    await expect(protein).toContainText(
+      `7-day average ${DAY_ONE_PROTEIN_COMPLETE_DAY} g/day`
     );
   });
 });

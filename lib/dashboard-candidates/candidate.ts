@@ -7,12 +7,11 @@ import type {
 
 type CandidateBaseInput = Omit<
   DashboardCandidateBase,
-  "relevance" | "rankReasons" | "timing" | "defaultPlacement"
+  "relevance" | "rankReasons" | "timing"
 > & {
   relevance?: DashboardRelevancePolicy;
   rankReasons?: DashboardCandidateBase["rankReasons"];
   timing?: DashboardCandidateBase["timing"];
-  defaultPlacement?: DashboardCandidateBase["defaultPlacement"];
 };
 
 const defaults = {
@@ -32,7 +31,6 @@ function base(input: CandidateBaseInput): DashboardCandidateBase {
     relevance: input.relevance ?? defaults.relevance,
     rankReasons: input.rankReasons ?? { ...defaults.rankReasons },
     timing: input.timing ?? defaults.timing,
-    defaultPlacement: input.defaultPlacement ?? "everything",
   };
 }
 
@@ -45,13 +43,7 @@ export function actionCandidate(
 export function readingCandidate(
   input: CandidateBaseInput
 ): DashboardCandidate {
-  return {
-    ...base({
-      ...input,
-      defaultPlacement: input.defaultPlacement ?? "standing",
-    }),
-    kind: "reading",
-  };
+  return { ...base(input), kind: "reading" };
 }
 
 export function statementCandidate(
