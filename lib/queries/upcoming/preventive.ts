@@ -7,6 +7,7 @@
 // (enforced by lib/__tests__/profile-scoping.test.ts).
 
 import { db, hoistedStatement, writeTx } from "../../db";
+import { isRealIsoDate } from "../../date";
 import { cache } from "../../request-cache";
 import { tickCached } from "../../tick-cache";
 import { clearPreventiveDismissal } from "./suppressions";
@@ -25,6 +26,7 @@ import {
 import { inferScreeningResultSatisfactions } from "../../preventive-screening-result";
 import {
   derivePreventiveReviewCandidates,
+  offeredPreventiveReviewCandidates,
   preventiveEvidenceRecord,
   type PreventiveReviewCandidate,
   type PreventiveReviewSource,
@@ -327,10 +329,12 @@ export function getPreventiveRecordDecisions(
 }
 
 // The OFFERED review candidates for a profile: every derived candidate (a
-// valueless report whose title matches exactly one screening rule) that has no
-// stored decision yet. Confirmed pairs are answered (and now satisfy through the
-// projection below); dismissed pairs are answered too — the dismissal suppresses
-// exactly this candidate and nothing else. Profile-scoped.
+// valueless report whose title matches exactly one screening rule), collapsed
+// to ONE offer per identical-content group (#2919 triplicate exports — see
+// offeredPreventiveReviewCandidates) and dropped once ANY group member carries
+// a stored decision. Confirmed pairs are answered (and now satisfy through the
+// projection below); dismissed pairs are answered too — the dismissal
+// suppresses exactly this candidate and nothing else. Profile-scoped.
 export function getPreventiveReviewOffers(
   profileId: number
 ): PreventiveReviewCandidate[] {
@@ -343,8 +347,9 @@ export function getPreventiveReviewOffers(
         .map((ruleKey) => `${r.id}:${ruleKey}`)
     )
   );
-  return derivePreventiveReviewCandidates(rows).filter(
-    (c) => !decided.has(`${c.recordId}:${c.ruleKey}`)
+  return offeredPreventiveReviewCandidates(
+    derivePreventiveReviewCandidates(rows),
+    (recordId, ruleKey) => decided.has(`${recordId}:${ruleKey}`)
   );
 }
 
@@ -381,7 +386,11 @@ export function confirmPreventiveRecordDecision(
   ruleKey: string,
   confirmedDate: string
 ): PreventiveReviewDecisionOutcome {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(confirmedDate)) return "invalid-date";
+  // A REAL calendar day, not just the ISO shape: "2024-02-31" written here
+  // would project verbatim into the satisfaction stream, where a lexically-late
+  // nonsense day shadows real dates and addMonths normalizes it into a
+  // fabricated next-due.
+  if (!isRealIsoDate(confirmedDate)) return "invalid-date";
   if (!isDerivableCandidate(profileId, recordId, ruleKey))
     return "not-a-candidate";
   writeTx(() => {

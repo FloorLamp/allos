@@ -255,6 +255,22 @@ describe("write validation (#3025)", () => {
     expect(getPreventiveRecordDecisions(p)).toEqual([]);
   });
 
+  it("a calendar-invalid date that fits the ISO shape writes nothing", () => {
+    // The adversarial reproduction: "2024-02-31" passes a bare \d{4}-\d{2}-\d{2}
+    // regex and sorts lexically after every real February date; written, it
+    // would project verbatim into the satisfaction stream and addMonths would
+    // normalize it into a fabricated next-due. isRealIsoDate refuses it.
+    const { p, papId } = screenedProfile("Impossible Date");
+    expect(confirmPreventiveRecordDecision(p, papId, RULE, "2024-02-31")).toBe(
+      "invalid-date"
+    );
+    expect(confirmPreventiveRecordDecision(p, papId, RULE, "2024-13-45")).toBe(
+      "invalid-date"
+    );
+    expect(getPreventiveRecordDecisions(p)).toEqual([]);
+    expect(getConfirmedPreventiveRecordSatisfactions(p)).toEqual([]);
+  });
+
   it("a value-bearing or edited-away record stops being a candidate target", () => {
     const { p, papDate, papId } = screenedProfile("Edited Record");
     // The record acquires a value — it is a result now, not a document to review.
@@ -316,12 +332,76 @@ describe("lifecycle (#3025)", () => {
   it("the candidate is absent from the digest send transcript", () => {
     const { p } = screenedProfile("Digest Silent");
     const model = buildDigest(gatherDigestInput(p, "Digest Silent"));
-    if (model) {
-      const msg = renderDigestMessage(model);
-      const text = `${msg.title} ${msg.body} ${JSON.stringify(msg)}`;
-      expect(text).not.toContain(PAP_NAME);
-      expect(text).not.toContain("Does this record show");
-    }
+    // The profile has due preventive work, so the digest MUST have something to
+    // say — a null model here would make the clean-transcript assertions
+    // vacuous instead of observed.
+    expect(model).not.toBeNull();
+    const msg = renderDigestMessage(model!);
+    const text = `${msg.title} ${msg.body} ${JSON.stringify(msg)}`;
+    expect(text).not.toContain(PAP_NAME);
+    expect(text).not.toContain("Does this record show");
+  });
+
+  it("triplicate identical reports offer ONE candidate; answering it ends the group (#2919)", () => {
+    // The production shape behind this issue: the same Pap cytology row written
+    // three times by triplicated portal exports. The inference path reads the
+    // deduped snapshot; the offer gather must not ask three times either.
+    const { p, now, papDate, papId } = screenedProfile("Triplicate Pap");
+    const siblings = [1, 2].map(() =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, loinc)
+             VALUES (?, ?, 'report', ?, NULL, '33717-0')`
+          )
+          .run(p, papDate, PAP_NAME).lastInsertRowid
+      )
+    );
+    const newestId = Math.max(papId, ...siblings);
+
+    // ONE candidate, carried by the newest record id.
+    const offers = getPreventiveReviewOffers(p);
+    expect(offers).toHaveLength(1);
+    expect(offers[0]).toEqual({
+      recordId: newestId,
+      ruleKey: RULE,
+      recordName: PAP_NAME,
+      recordDate: papDate,
+    });
+    const item = collectUpcoming(p, now).find((i) => i.key === SIGNAL);
+    expect(item?.preventiveReview).toHaveLength(1);
+
+    // Confirming the one offer satisfies the rule, and NO sibling candidate
+    // re-surfaces for the identical group.
+    expect(confirmPreventiveRecordDecision(p, newestId, RULE, papDate)).toBe(
+      "written"
+    );
+    expect(cervicalActionable(p, now)).toBe(false);
+    expect(getPreventiveReviewOffers(p)).toEqual([]);
+
+    // Dismissal answers the whole group too, not just the carrier: a fresh
+    // identical trio with the decision on a NON-carrier sibling offers nothing.
+    const other = femaleProfile("Triplicate Dismiss");
+    const otherNow = today(other);
+    const otherDate = shiftDateStr(otherNow, -PAP_DAYS_AGO);
+    const ids = [0, 1, 2].map(() =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, loinc)
+             VALUES (?, ?, 'report', ?, NULL, '33717-0')`
+          )
+          .run(other, otherDate, PAP_NAME).lastInsertRowid
+      )
+    );
+    expect(dismissPreventiveRecordCandidate(other, ids[0], RULE)).toBe(
+      "written"
+    );
+    expect(getPreventiveReviewOffers(other)).toEqual([]);
+    // ...and dismissal wrote no satisfaction — it only silenced the ask.
+    expect(getConfirmedPreventiveRecordSatisfactions(other)).toEqual([]);
   });
 });
 

@@ -1,5 +1,9 @@
 import type { MedicalCategory } from "./types";
-import { matchRuleKeys, type InferenceRecord } from "./preventive-inference";
+import {
+  matchRuleKeys,
+  normalizeMatchText,
+  type InferenceRecord,
+} from "./preventive-inference";
 import { preventiveRuleByKey } from "./preventive-catalog";
 
 // Preventive evidence policy for medical-record rows (issue #3025).
@@ -193,6 +197,45 @@ export function derivePreventiveReviewCandidates(
     });
   }
   return out;
+}
+
+// Collapse identical-content candidates into ONE offer per rule (#2919). The
+// triplicate portal exports behind this very issue write the same report row
+// three times; deriving per record would render three identical confirm
+// controls, and answering one would leave two offered. An identical-content
+// GROUP is (ruleKey, record date, whole-word-normalized title); the NEWEST
+// record id carries the group's one offer, and a decision on ANY member —
+// including one whose sibling was since re-imported under a newer id — answers
+// the whole group, so no sibling candidate re-surfaces. Only OFFERS collapse:
+// decision rows, their unique key, and the FK cascade stay per-record, and
+// write revalidation stays per-record derivation (a stale form naming an older
+// sibling still records a true answer).
+export function offeredPreventiveReviewCandidates(
+  candidates: PreventiveReviewCandidate[],
+  isDecided: (recordId: number, ruleKey: string) => boolean
+): PreventiveReviewCandidate[] {
+  interface Group {
+    carrier: PreventiveReviewCandidate;
+    decided: boolean;
+  }
+  const groups = new Map<string, Group>();
+  const order: string[] = [];
+  for (const c of candidates) {
+    const key = `${c.ruleKey}|${c.recordDate}|${normalizeMatchText(c.recordName)}`;
+    const decided = isDecided(c.recordId, c.ruleKey);
+    const g = groups.get(key);
+    if (!g) {
+      groups.set(key, { carrier: c, decided });
+      order.push(key);
+    } else {
+      if (c.recordId > g.carrier.recordId) g.carrier = c;
+      g.decided = g.decided || decided;
+    }
+  }
+  return order
+    .map((key) => groups.get(key)!)
+    .filter((g) => !g.decided)
+    .map((g) => g.carrier);
 }
 
 // The candidate's stable fact key — `preventive-review:<recordId>:<ruleKey>` —

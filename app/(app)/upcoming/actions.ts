@@ -16,6 +16,7 @@ import {
   logPracticeByTargetId,
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
+import { isRealIsoDate } from "@/lib/date";
 import { carePlanDoneResult } from "@/lib/care-plan-upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore, settleFollowUpCore } from "@/lib/followup-write";
@@ -194,7 +195,10 @@ export async function confirmPreventiveRecord(
   const date = String(formData.get("confirmed_date") ?? "").trim();
   if (!recordId || !ruleKey || !preventiveRuleByKey(ruleKey))
     return formError("Couldn't find that suggestion.");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today(pid))
+  // A REAL calendar day (isRealIsoDate — "2024-13-45" passes a bare shape
+  // regex, and the string compare against today misses month 13 in a past
+  // year), no later than the item-profile's today.
+  if (!isRealIsoDate(date) || date > today(pid))
     return formError("Enter a valid date (today or earlier).");
   const outcome = confirmPreventiveRecordDecision(pid, recordId, ruleKey, date);
   if (outcome === "invalid-date")

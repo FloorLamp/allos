@@ -5,11 +5,13 @@ import { inferPreventiveSatisfactions } from "@/lib/preventive-inference";
 import {
   PREVENTIVE_EVIDENCE_CENSUS,
   derivePreventiveReviewCandidates,
+  offeredPreventiveReviewCandidates,
   preventiveEvidenceClass,
   preventiveEvidenceRecord,
   preventiveReviewFactKey,
   preventiveReviewQuestion,
   type PreventiveEvidenceObservation,
+  type PreventiveReviewCandidate,
   type PreventiveReviewSource,
 } from "@/lib/preventive-review";
 import { preventiveReviewCandidate } from "@/lib/dashboard-candidates/attention";
@@ -262,6 +264,63 @@ describe("review candidate derivation", () => {
     expect(preventiveRuleByKey("cervical_cancer")?.name).toBe(
       "Cervical cancer screening"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Offer dedupe: identical-content groups ask once (#2919)
+// ---------------------------------------------------------------------------
+describe("offer dedupe", () => {
+  const trip = (ids: number[]): PreventiveReviewCandidate[] =>
+    ids.map((id) => ({
+      recordId: id,
+      ruleKey: "cervical_cancer",
+      recordName: "Cytology, Gyn-PAP Test (AP)",
+      recordDate: "2024-09-20",
+    }));
+  const none = () => false;
+
+  it("triplicate identical candidates collapse to ONE offer, newest id carrying it", () => {
+    expect(offeredPreventiveReviewCandidates(trip([7, 9, 8]), none)).toEqual(
+      trip([9])
+    );
+  });
+
+  it("a decision on ANY group member answers the whole group", () => {
+    // Confirmed/dismissed on the carrier — nothing re-surfaces...
+    expect(
+      offeredPreventiveReviewCandidates(trip([7, 9, 8]), (id) => id === 9)
+    ).toEqual([]);
+    // ...and on a NON-carrier sibling (e.g. re-imported under a newer id) too.
+    expect(
+      offeredPreventiveReviewCandidates(trip([7, 9, 8]), (id) => id === 7)
+    ).toEqual([]);
+  });
+
+  it("different content stays separate: another date or title is its own offer", () => {
+    const earlier = {
+      recordId: 3,
+      ruleKey: "cervical_cancer",
+      recordName: "Cytology, Gyn-PAP Test (AP)",
+      recordDate: "2023-03-28",
+    };
+    const offers = offeredPreventiveReviewCandidates(
+      [...trip([7, 8]), earlier],
+      none
+    );
+    expect(offers).toEqual([...trip([8]), earlier]);
+  });
+
+  it("normalizes the title for grouping (punctuation/case variants collapse)", () => {
+    const variant = {
+      recordId: 10,
+      ruleKey: "cervical_cancer",
+      recordName: "CYTOLOGY GYN PAP TEST (AP)",
+      recordDate: "2024-09-20",
+    };
+    expect(
+      offeredPreventiveReviewCandidates([...trip([7]), variant], none)
+    ).toEqual([variant]);
   });
 });
 
