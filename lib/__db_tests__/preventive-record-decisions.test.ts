@@ -15,10 +15,7 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { addMonths } from "@/lib/preventive-status";
 import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
-import {
-  getProfileSetting,
-  setProfileSetting,
-} from "@/lib/settings";
+import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
@@ -105,7 +102,12 @@ describe("the owner-reported Pap scenario (#3025)", () => {
 
     // ...and exactly one review candidate is offered for the (record, rule) pair.
     expect(getPreventiveReviewOffers(p)).toEqual([
-      { recordId: papId, ruleKey: RULE, recordName: PAP_NAME, recordDate: papDate },
+      {
+        recordId: papId,
+        ruleKey: RULE,
+        recordName: PAP_NAME,
+        recordDate: papDate,
+      },
     ]);
 
     // The candidate rides BESIDE the due item on Upcoming, which stays banded
@@ -113,7 +115,12 @@ describe("the owner-reported Pap scenario (#3025)", () => {
     const item = collectUpcoming(p, now).find((i) => i.key === SIGNAL);
     expect(item?.signalGroup).toBeUndefined();
     expect(item?.preventiveReview).toEqual([
-      { recordId: papId, ruleKey: RULE, recordName: PAP_NAME, recordDate: papDate },
+      {
+        recordId: papId,
+        ruleKey: RULE,
+        recordName: PAP_NAME,
+        recordDate: papDate,
+      },
     ]);
   });
 
@@ -198,7 +205,9 @@ describe("the owner-reported Pap scenario (#3025)", () => {
   });
 
   it("a dismissed candidate can still be confirmed later (the pair still derives)", () => {
-    const { p, now, papDate, papId } = screenedProfile("Pap Dismiss Then Confirm");
+    const { p, now, papDate, papId } = screenedProfile(
+      "Pap Dismiss Then Confirm"
+    );
     dismissPreventiveRecordCandidate(p, papId, RULE);
     expect(confirmPreventiveRecordDecision(p, papId, RULE, papDate)).toBe(
       "written"
@@ -273,10 +282,9 @@ describe("lifecycle (#3025)", () => {
     confirmPreventiveRecordDecision(p, papId, RULE, papDate);
     expect(cervicalActionable(p, now)).toBe(false);
 
-    db.prepare("DELETE FROM medical_records WHERE id = ? AND profile_id = ?").run(
-      papId,
-      p
-    );
+    db.prepare(
+      "DELETE FROM medical_records WHERE id = ? AND profile_id = ?"
+    ).run(papId, p);
 
     expect(getPreventiveRecordDecisions(p)).toEqual([]);
     expect(getConfirmedPreventiveRecordSatisfactions(p)).toEqual([]);

@@ -30,9 +30,7 @@ function obs(
 
 function satisfiedRules(o: PreventiveEvidenceObservation): string[] {
   const rec = preventiveEvidenceRecord(o);
-  return rec
-    ? inferPreventiveSatisfactions([rec]).map((s) => s.ruleKey)
-    : [];
+  return rec ? inferPreventiveSatisfactions([rec]).map((s) => s.ruleKey) : [];
 }
 
 function report(

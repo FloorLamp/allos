@@ -73,7 +73,8 @@ export const PREVENTIVE_EVIDENCE_CENSUS: Record<
   },
   reference: {
     evidence: "excluded",
-    reason: "immutable reference facts (blood type…) are not events on a timeline",
+    reason:
+      "immutable reference facts (blood type…) are not events on a timeline",
   },
 };
 
