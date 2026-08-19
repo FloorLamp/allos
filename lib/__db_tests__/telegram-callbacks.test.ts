@@ -253,6 +253,41 @@ describe("escalation buttons (caregiver two-way)", () => {
     expect(lastAnswerText()).toMatch(/not marked taken/i);
   });
 
+  it("👍 carrying a forged non-date is refused before it can persist a garbage marker (#3120)", async () => {
+    clearDoseLogs();
+    db.prepare(
+      `DELETE FROM profile_settings WHERE profile_id = ? AND key = ?`
+    ).run(p.profileId, escalationMarkerKey(criticalDoseId));
+    await handleCallbackQuery(
+      cq(
+        `escack:${p.profileId}:${criticalDoseId}:${criticalSuppId}:banana`,
+        CARE_CHAT
+      )
+    );
+    // The marker is compared to the dose's DAY by equality (escalate.ts), so a
+    // stored "banana" would silently void the acknowledgement while the caregiver
+    // was told the chase had stopped — and the escalation would keep re-firing.
+    expect(
+      getProfileSetting(p.profileId, escalationMarkerKey(criticalDoseId))
+    ).toBeFalsy();
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+
+  it("✅ Confirmed-taken carrying a forged non-date writes no dose log (#3120)", async () => {
+    clearDoseLogs();
+    await handleCallbackQuery(
+      cq(
+        `esctake:${p.profileId}:${criticalDoseId}:${criticalSuppId}:2026-02-30`,
+        CARE_CHAT
+      )
+    );
+    const rows = db
+      .prepare(`SELECT 1 FROM intake_item_logs WHERE dose_id = ?`)
+      .all(criticalDoseId);
+    expect(rows).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+
   it("👍 on an already-taken dose reports it confirmed, not a fresh ack", async () => {
     clearDoseLogs();
     const date = today(p.profileId);

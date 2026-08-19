@@ -25,7 +25,13 @@ import {
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
-import { resolveDerivedSituations } from "@/lib/queries/derived-situations";
+import {
+  getDerivedSituationLines,
+  getEffectiveActiveSituations,
+  resolveDerivedSituations,
+} from "@/lib/queries/derived-situations";
+import { getReportedBurden } from "@/lib/queries/reported-burden";
+import { resolveSituationId } from "@/lib/settings/profile-attrs";
 import {
   dismissFinding,
   getFindingSuppressions,
@@ -71,6 +77,26 @@ function seedRoughNight(profileId: number): void {
     sessions.push(night(shiftDateStr(anchor, -i), 480));
   sessions.push(night(anchor, 300));
   upsertMetricSamples(profileId, sessions, "health-connect");
+}
+
+// A situational supplement keyed to `situation`, so `getDerivedSituationLines` has
+// something to acknowledge and takes its resolver path rather than the early-out.
+function keyItem(profileId: number, name: string, situation: string): number {
+  const sid = resolveSituationId(profileId, situation)!;
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, condition, obligation, situation, situation_id, active)
+         VALUES (?, ?, 'supplement', 'situational', 'should', ?, ?, 1)`
+      )
+      .run(profileId, name, situation, sid).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '1 cap', 'evening', 'any', 0)`
+  ).run(itemId);
+  return itemId;
 }
 
 describe("resolveDerivedSituations under a tick scope (#2724)", () => {
@@ -136,6 +162,74 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
         expect(resolveDerivedSituations(b, td).poorSleep.on).toBe(false);
       },
       { profileId: a }
+    );
+  });
+
+  it("keys by DATE too — one day's snapshot never answers another day's", async () => {
+    const profileId = newProfile("Memo Key Date");
+    seedRoughNight(profileId);
+    const td = today(profileId);
+    const yd = shiftDateStr(td, -1);
+    // The override is DATE-SCOPED (`poor-sleep-override:<date>`), which is exactly
+    // what makes the two days differ on otherwise identical inputs: today is
+    // overridden, yesterday's key was never written.
+    dismissFinding(profileId, poorSleepOverrideKey(td));
+
+    await runInTickScope(
+      async () => {
+        expect(resolveDerivedSituations(profileId, td).poorSleep.on).toBe(
+          false
+        );
+        // A key that projected only the profile would hand today's answer back
+        // here. `tickCached` warns that `keyOf` must project EVERY argument that
+        // can change the answer; this is the half a profile-only guard misses.
+        expect(resolveDerivedSituations(profileId, yd).poorSleep).toMatchObject(
+          {
+            on: true,
+            basis: "measured",
+          }
+        );
+      },
+      { profileId }
+    );
+  });
+
+  it("no consumer mutates the memoized object — the snapshot survives every reader", async () => {
+    const profileId = newProfile("Memo Shared Object");
+    seedRoughNight(profileId);
+    keyItem(profileId, "Memo Magnesium", BUILTIN_POOR_SLEEP_SITUATION);
+    const td = today(profileId);
+
+    await runInTickScope(
+      async () => {
+        const snapshot = resolveDerivedSituations(profileId, td);
+        expect(snapshot.derivedNames.has(BUILTIN_POOR_SLEEP_SITUATION)).toBe(
+          true
+        );
+        const before = [...snapshot.derivedNames].sort();
+
+        // Every in-repo consumer of the resolver, run against the SAME scope: the
+        // dueness seam, the state lines, and the reported-burden gather. The memo
+        // hands each of them one shared object, so a consumer that mutated
+        // `derivedNames` (adding to the union in place, say) would poison every
+        // later reader in the tick.
+        const effective = getEffectiveActiveSituations(profileId, td);
+        effective.add("Caller Scribble");
+        getDerivedSituationLines(profileId, td);
+        getReportedBurden(profileId, td);
+
+        expect(
+          [...resolveDerivedSituations(profileId, td).derivedNames].sort()
+        ).toEqual(before);
+        // …and the union the dueness seam returns is the caller's own Set, so even
+        // a caller that writes to it cannot reach the memoized names.
+        expect(
+          resolveDerivedSituations(profileId, td).derivedNames.has(
+            "Caller Scribble"
+          )
+        ).toBe(false);
+      },
+      { profileId }
     );
   });
 });

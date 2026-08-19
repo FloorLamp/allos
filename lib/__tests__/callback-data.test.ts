@@ -458,6 +458,15 @@ describe("parseEscalationCallback", () => {
     expect(parseEscalationCallback("take:3:7:10:2026-07-11")).toBeNull();
     expect(parseEscalationCallback(undefined)).toBeNull();
   });
+
+  it("rejects a forged non-date date at parse time (#3120)", () => {
+    // An `escack:` PERSISTS its date as the escalation marker, which escalate.ts
+    // compares by equality — a stored non-date silently voids the acknowledgement
+    // while the caregiver is told the chase has stopped.
+    expect(parseEscalationCallback("escack:3:7:10:banana")).toBeNull();
+    expect(parseEscalationCallback("esctake:3:7:10:2026-02-30")).toBeNull();
+    expect(parseEscalationCallback("escskip:3:7:10:2026-13-45")).toBeNull();
+  });
 });
 
 // AUTHORIZATION (#233): a tap is authorized when its chat is the profile's own

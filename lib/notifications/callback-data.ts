@@ -489,7 +489,13 @@ export interface EscalationCallback {
 }
 
 // Parse an "esctake:…" / "escskip:…" / "escack:…" token (same field layout as a dose
-// token). Malformed (wrong prefix, bad ids, missing date) → null.
+// token). Malformed (wrong prefix, bad ids, missing or non-date date — #3120) → null.
+//
+// THE DATE IS NOT ONLY A WRITE KEY HERE. An `escack:` PERSISTS its date as the
+// escalation's acknowledgement marker, and lib/notifications/escalate.ts compares that
+// marker to the dose's day by EQUALITY — so a token carrying a non-date once stored a
+// garbage marker that could never match, silently voiding the acknowledgement while the
+// caregiver was told "we'll hold off" and the escalation kept re-firing.
 export function parseEscalationCallback(
   data: unknown
 ): EscalationCallback | null {
@@ -502,7 +508,7 @@ export function parseEscalationCallback(
   const [, profStr, doseStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const doseId = Number(doseStr);
-  if (!profileId || !doseId || !date) return null;
+  if (!profileId || !doseId || !isRealIsoDate(date)) return null;
   return {
     profileId,
     doseId,

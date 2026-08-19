@@ -93,16 +93,33 @@ export interface DerivedSituations {
 //     tick path writes situations, cycle rows, sleep samples or the weather cache after
 //     `syncIntegrations`, which runs before the scope's first read (the same claim the
 //     other tickCached gathers rest on).
-//   • CROSS-PROCESS, the web override action can dismiss today's poor-sleep key while a
-//     scope sits open across an awaited dispatch. The memo bounds that staleness to one
-//     profile's tick — the identical, already-accepted exposure of the tickCached
-//     medication-family gather — and buys the four readers a CONSISTENT verdict where
-//     they previously could disagree mid-gather.
+//   • CROSS-PROCESS, the web surfaces move this key in BOTH directions while a scope
+//     sits open across an awaited dispatch, and the two directions are not equally
+//     harmless. A DISMISS mid-scope leaves the memo saying "not overridden", so a
+//     situational dose stays due for the rest of that tick — the conservative way. The
+//     UN-DISMISS is the one to state plainly: `poor-sleep-override:` is a labelled,
+//     RESTORABLE row with a one-tap Restore on Upcoming, and a restore landing mid-scope
+//     leaves the memo answering "still overridden", so the item stays NOT DUE for the
+//     rest of that profile's tick. That is #2674's own sentence — a snapshot "reads as
+//     still silenced, and that is a safety direction" — bounded here to one profile's
+//     tick rather than refused, because the prize is ~5 ms rather than ~23 µs and the
+//     window is one tick of a context the user has just been editing by hand.
+//
+// SAME SHAPE AS THE OTHER TICK MEMOS, NOT THE SAME BUS. The staleness window is the
+// medication-family gather's (one profile's tick, closed by the scope), but this is the
+// FIRST tick-memoized gather that reads `upcoming_dismissals` at all — the bus #2674
+// fenced off — so it is a first of its kind rather than one more of a kind.
+//
+// WHAT IS AND IS NOT SNAPSHOTTED. `getActiveSituations` is read inside here, so the
+// DECLARED set is snapshotted with everything else. The dueness seam survives that only
+// because `getEffectiveActiveSituations` unions a FRESH `getActiveSituations` read with
+// this resolver's memoized DERIVED names — so a situation toggled mid-tick still lands,
+// and the memo's blast radius is the derived half alone.
 //
 // This memoizes the RESOLVER, not `getFindingSuppressions`: the bus read itself stays
 // unmemoized (#2674 stands; lib/__db_tests__/tick-suppression-freshness.test.ts pins it).
-// The scope boundary is pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts,
-// which fails if the memo is widened beyond the tick scope or dropped.
+// The scope boundary, BOTH halves of the key, and the fact that no consumer mutates the
+// returned object are pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts.
 export const resolveDerivedSituations = tickCached(
   "derived-situations.resolve",
   (profileId: number, today: string) => `${profileId}:${today}`,
@@ -265,6 +282,12 @@ export function getDerivedSituationLines(
 // while its derived context holds. Declared ∪ derived (idempotent — a declared toggle
 // is already present). Replaces `new Set(getActiveSituations(profileId))` at the
 // dueness-surfacing call sites.
+//
+// THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read here on
+// every call, and only the DERIVED half comes out of the tick-scoped snapshot — so a
+// situation toggled by hand mid-tick reaches this seam immediately, and the memo can
+// only ever hold the derived names stale. The returned Set is this function's own, so a
+// caller mutating it cannot reach the memoized object behind `derivedNames`.
 export function getEffectiveActiveSituations(
   profileId: number,
   date: string
