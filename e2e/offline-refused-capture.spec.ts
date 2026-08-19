@@ -50,6 +50,55 @@ async function breakIndexedDB(page: Page): Promise<void> {
 
 const SAVED_OFFLINE = /saved offline/i;
 
+// The highest activity id profile 1 currently owns — the fixture watermark for the
+// workout test below, which cannot name the row it will create.
+function maxActivityId(): number {
+  const db = new Database(workerDbPath(), { readonly: true });
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare("SELECT MAX(id) AS id FROM activities WHERE profile_id = 1")
+      .get() as { id: number | null };
+    return row.id ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+// Delete every profile-1 activity created after `since`, once the reconnect flush
+// has had its chance to land one (#3163).
+//
+// WHY A WATERMARK AND NOT THE TITLE. The row this test leaves behind is written by
+// the RECONNECT, after the test's own "no row landed" assertion has already run and
+// passed — so at deletion time the title may not be the marker yet, and matching on
+// it deletes nothing. The id watermark names "whatever this test caused", which is
+// the thing that must not outlive it. Playwright runs a worker's tests serially
+// against that worker's own database, so nothing else can be writing profile-1
+// activities in this window.
+//
+// The poll is what makes the cleanup deterministic rather than a race: it waits for
+// the write to appear before removing it, so the test cannot delete first and have
+// the row land afterwards. A window that stays empty is fine — nothing was created,
+// nothing to drop.
+async function dropActivitiesCreatedAfter(since: number): Promise<void> {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const created = db.prepare(
+      "SELECT id FROM activities WHERE profile_id = 1 AND id > ?"
+    );
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (created.all(since).length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    db.prepare("DELETE FROM activities WHERE profile_id = 1 AND id > ?").run(
+      since
+    );
+  } finally {
+    db.close();
+  }
+}
+
 async function expectRefusedOnly(page: Page): Promise<void> {
   await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible({
     timeout: 15_000,
@@ -228,6 +277,15 @@ test("a refused workout capture at close says so and claims no sync", async ({
   context,
 }) => {
   const marker = `Refused session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  // FIXTURE OWNERSHIP (#3163). Closing the editor here leaves a STARTED, UNENDED
+  // session on profile 1 — which is the app working as designed (an abandoned live
+  // draft is kept, not discarded, so the dock can offer "finish or discard"), but
+  // profile 1 is shared with every other spec on this worker. Left behind, workout
+  // presence reads that draft as an ACTIVE workout and the app-wide dock haunts
+  // every later page, which is exactly how offline-set-log's dock assertion started
+  // failing whenever the shard plan put it after this test. The draft is this
+  // test's, so this test disposes of it.
+  const activityWatermark = maxActivityId();
   await breakIndexedDB(page);
   await page.goto("/training?tab=log");
   await hydratedClick(
@@ -256,7 +314,8 @@ test("a refused workout capture at close says so and claims no sync", async ({
   await page.keyboard.press("Escape");
 
   await expectRefusedOnly(page);
-  // And the durable truth agrees with the sentence: no row landed.
+  // And the durable truth agrees with the sentence: no row landed WHILE OFFLINE.
+  // (The reconnect below is a different moment — see the teardown note.)
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -268,6 +327,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     db.close();
   }
   await context.setOffline(false);
+  await dropActivitiesCreatedAfter(activityWatermark);
 });
 
 test("a refused dose tap settles READY AGAIN — the retry it asks for is not absorbed", async ({
