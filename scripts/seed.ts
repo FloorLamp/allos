@@ -21,6 +21,7 @@ import {
 import { getTimezone, setGlobalCrisisResources } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
 import { saveFitnessEntry } from "../lib/fitness-assessment";
+import { recordGlucoseTrace } from "../lib/glucose-trace-db";
 import { mobilityMoveName } from "../lib/mobility-moves";
 import {
   completeOnboardingState,
@@ -129,6 +130,7 @@ if (PERSONA_SELECTION.kind === "found") {
     },
     reconcileFlags,
     saveFitnessEntry,
+    recordGlucoseTrace,
     seedStandardMetricSaves: (profileId) =>
       seedStandardMetricSaves(db, profileId),
     diffSituations,

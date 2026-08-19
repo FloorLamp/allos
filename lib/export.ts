@@ -954,6 +954,23 @@ export const DATASETS: ExportDataset[] = [
        FROM hr_minutes WHERE profile_id = ? ORDER BY ts DESC`,
     countSql: `SELECT COUNT(*) AS n FROM hr_minutes WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // The continuous-glucose trace (#2810). Same posture as hr_minutes one row
+    // above, for the same two reasons: the key is (profile_id, ts, source) with no
+    // single `id`, and a continuously worn sensor writes ~105k rows a year, so the
+    // bounded page read is what keeps the browse affordable. Browse/export-only —
+    // a trace point has no per-row delete path, so it is absent from the manage
+    // delete policy and from TOMBSTONE_TABLES alike. The DAILY derivations are
+    // exported by the metric_samples dataset, where they live.
+    key: "glucose_trace",
+    label: "Glucose (continuous trace)",
+    table: "glucose_trace",
+    deletable: false,
+    columns: ["ts", "mgdl", "source"],
+    select: `SELECT ts, mgdl, source
+       FROM glucose_trace WHERE profile_id = ? ORDER BY ts DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM glucose_trace WHERE profile_id = ?`,
+  }),
   // ── Clinical passport domains that used to be absent from the full export (#465).
   // Each was in OWNED_TABLES with a dedicated page but no dataset/FHIR resource, so a
   // family migrating off an instance silently lost the whole domain. The binding test
