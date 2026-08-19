@@ -6,7 +6,7 @@
 // never diverge on WHICH items are due. Every read here is profile-scoped
 // (enforced by lib/__tests__/profile-scoping.test.ts).
 
-import { db, writeTx } from "../../db";
+import { db, hoistedStatement, writeTx } from "../../db";
 import { cache } from "../../request-cache";
 import { tickCached } from "../../tick-cache";
 import { clearPreventiveDismissal } from "./suppressions";
@@ -284,15 +284,26 @@ export function recordPreventiveDone(
 // deleted. A DISMISSED row suppresses ONLY this candidate; it asserts nothing
 // about the screening and never suppresses the preventive item itself.
 
-// The report rows a review candidate can be derived from. Profile-scoped.
-function getReviewSourceReports(profileId: number): PreventiveReviewSource[] {
-  return db
-    .prepare(
-      `SELECT id, category, name, date, value
-         FROM medical_records
-        WHERE profile_id = ? AND category = 'report'`
-    )
-    .all(profileId) as PreventiveReviewSource[];
+// The report rows a review candidate can be derived from, each carrying the
+// rule keys already decided for it (comma-joined — catalog keys are snake_case,
+// never containing commas). ONE statement, hoisted: collectUpcoming runs this
+// per profile on the household fan-outs, and folding the decisions in as a
+// correlated subselect keeps the gather a single read inside the dashboard's
+// query budget. Profile-scoped on both tables.
+const REVIEW_REPORTS_STMT = hoistedStatement(
+  `SELECT id, category, name, date, value,
+          (SELECT GROUP_CONCAT(d.rule_key)
+             FROM preventive_record_decisions d
+            WHERE d.profile_id = medical_records.profile_id
+              AND d.medical_record_id = medical_records.id) AS decidedRules
+     FROM medical_records
+    WHERE profile_id = ? AND category = 'report'`
+);
+
+type ReviewSourceRow = PreventiveReviewSource & { decidedRules: string | null };
+
+function getReviewSourceRows(profileId: number): ReviewSourceRow[] {
+  return REVIEW_REPORTS_STMT.all(profileId) as ReviewSourceRow[];
 }
 
 export interface PreventiveRecordDecision {
@@ -323,14 +334,18 @@ export function getPreventiveRecordDecisions(
 export function getPreventiveReviewOffers(
   profileId: number
 ): PreventiveReviewCandidate[] {
+  const rows = getReviewSourceRows(profileId);
   const decided = new Set(
-    getPreventiveRecordDecisions(profileId).map(
-      (d) => `${d.medicalRecordId}:${d.ruleKey}`
+    rows.flatMap((r) =>
+      (r.decidedRules ?? "")
+        .split(",")
+        .filter(Boolean)
+        .map((ruleKey) => `${r.id}:${ruleKey}`)
     )
   );
-  return derivePreventiveReviewCandidates(
-    getReviewSourceReports(profileId)
-  ).filter((c) => !decided.has(`${c.recordId}:${c.ruleKey}`));
+  return derivePreventiveReviewCandidates(rows).filter(
+    (c) => !decided.has(`${c.recordId}:${c.ruleKey}`)
+  );
 }
 
 export type PreventiveReviewDecisionOutcome =
@@ -347,9 +362,9 @@ function isDerivableCandidate(
   recordId: number,
   ruleKey: string
 ): boolean {
-  return derivePreventiveReviewCandidates(
-    getReviewSourceReports(profileId)
-  ).some((c) => c.recordId === recordId && c.ruleKey === ruleKey);
+  return derivePreventiveReviewCandidates(getReviewSourceRows(profileId)).some(
+    (c) => c.recordId === recordId && c.ruleKey === ruleKey
+  );
 }
 
 // Confirm a review candidate: "yes, this record shows the screening was
