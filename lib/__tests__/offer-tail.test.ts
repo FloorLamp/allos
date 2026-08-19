@@ -225,6 +225,37 @@ describe("the collapsed tail pairs with ⚙️ Tune (#2890)", () => {
 });
 
 describe("the expanded tail", () => {
+  // #2858 review pass 2, R1. Every button here logs an administration, so two
+  // reading alike over two different item ids is a wrong-subject tap. Resolved
+  // over the offered set this keyboard renders.
+  it("never labels two offer buttons alike", () => {
+    const actions = expandedOfferActions(
+      7,
+      "2026-07-29",
+      [
+        { itemId: 11, name: "Coenzyme Q10", detail: null, countToday: 0 },
+        { itemId: 12, name: "Ubiquinone", detail: null, countToday: 0 },
+      ],
+      () => "tok"
+    );
+    const labels = actions
+      .filter((a) => a.data?.startsWith("prn:"))
+      .map((a) => a.label);
+    expect(labels).toEqual(["💊 Coenzyme Q10", "💊 Ubiquinone"]);
+  });
+
+  it("still shortens a lone offer button", () => {
+    const actions = expandedOfferActions(
+      7,
+      "2026-07-29",
+      [{ itemId: 11, name: "Coenzyme Q10", detail: null, countToday: 0 }],
+      () => "tok"
+    );
+    expect(actions.find((a) => a.data?.startsWith("prn:"))!.label).toBe(
+      "💊 CoQ10"
+    );
+  });
+
   const items = [
     { itemId: 11, name: "Magnesium (test)", detail: "200 mg", countToday: 0 },
     { itemId: 12, name: "Aspirin (test)", detail: null, countToday: 2 },

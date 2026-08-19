@@ -51,7 +51,10 @@ export type QuickLogIcon =
   | "sparkles"
   | "droplet"
   | "mood"
-  | "document";
+  | "document"
+  // Stool form (#2785). Its own key rather than reusing "droplet": one concept, one
+  // glyph, and the sheet renders the two rows side by side under Body.
+  | "toilet";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
 // overlay host owns the form→component map; this stays a serializable key so the
@@ -67,8 +70,17 @@ export type QuickLogIcon =
 // `mood` is the daily check-in's face row + backfill day chips (#2130/#2128) —
 // the SAME MoodValencePicker and `logMood` action the dashboard card runs, in a
 // second mounting context.
+// `stool` is the Bristol form picker (#2785): seven icon buttons over the published
+// scale, writing one metric_samples row per tap through the shared write core.
 export type QuickEntryForm =
-  "food" | "measurements" | "dose" | "practice" | "cycle" | "mood" | "document";
+  | "food"
+  | "measurements"
+  | "dose"
+  | "practice"
+  | "cycle"
+  | "mood"
+  | "stool"
+  | "document";
 
 // What the CALLER's context implies about the form it opens (#2014): the vitals
 // card's "Log reading" opens Vitals, a palette pick named "Log weight" opens the
@@ -112,6 +124,7 @@ export const QUICK_LOG_IDS = [
   "log-practice",
   "log-mood",
   "log-period",
+  "log-stool",
   "add-document",
 ] as const;
 
@@ -235,6 +248,18 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     cycle: true,
   },
   {
+    id: "log-stool",
+    label: "Log stool form",
+    hint: "Bristol type 1-7, one tap",
+    icon: "toilet",
+    // Bristol stool form (#2785). The overlay mounts a seven-button picker over the
+    // published scale — icon, type number and a short label on the button, the
+    // scale's own description in the aria-label — and each tap writes one
+    // metric_samples row at its own instant. Several a day is ordinary, so the sheet
+    // stays open after a tap the way the food bar does.
+    target: { kind: "overlay", form: "stool" },
+  },
+  {
     id: "add-document",
     label: "Add document",
     hint: "Lab report, visit summary, or a photo of one",
@@ -325,6 +350,7 @@ export const QUICK_LOG_DOMAIN_CENSUS = {
   practice: "log-practice",
   period: "log-period",
   mood: "log-mood",
+  stool: "log-stool",
   symptom: arguedExclusion(
     "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the hero cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
   ),

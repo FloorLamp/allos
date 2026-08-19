@@ -214,6 +214,62 @@ describe("collectDueDosesNow (#2744)", () => {
       },
     ]);
   });
+
+  // #2858 review, R1/R2: the short label is a CONTROL label on surfaces whose tap
+  // WRITES a dose, so two rows sharing one is a wrong-subject hazard — the wrong
+  // item logged, the wrong supply decremented, the intended dose left open. The
+  // gather is where that has to be impossible: a renderer holds one row and can
+  // never see the sibling it collides with.
+  it("never gives two due rows the same short label, falling back to full names", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    // The curated map aliases these two names onto "CoQ10" deliberately.
+    mkTimedDose(mkItem(profileId, "Coenzyme Q10"), "Morning");
+    mkTimedDose(mkItem(profileId, "Ubiquinone"), "Morning");
+
+    const rows = collectDueDosesNow(profileId, day, "08:00");
+    expect(rows.map((r) => r.shortLabel).sort()).toEqual([
+      "Coenzyme Q10",
+      "Ubiquinone",
+    ]);
+    expect(new Set(rows.map((r) => r.shortLabel)).size).toBe(rows.length);
+  });
+
+  // The set is the PROFILE's items, not the rows a surface happens to render: an
+  // item that is not due today still owns its label, or the same supplement would
+  // be called two different things on two screens (and on two days).
+  it("resolves the collision against items that are not due today", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    mkTimedDose(mkItem(profileId, "Coenzyme Q10"), "Morning");
+    // Present and active, but its only dose is retired, so it is on no due list.
+    const quiet = mkItem(profileId, "Ubiquinone");
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, retired)
+       VALUES (?, '1 cap', 'morning', 'any', 0, 1)`
+    ).run(quiet);
+
+    expect(
+      collectDueDosesNow(profileId, day, "08:00").map((r) => r.shortLabel)
+    ).toEqual(["Coenzyme Q10"]);
+  });
+
+  // Neither side of the collision needs a curated entry of its own: most short
+  // forms are plausible names, so an item literally named "Creatine" collides with
+  // the one that shortens to it — and THAT side had no fallback copy at all.
+  it("resolves a shortened name colliding with an item literally named that", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    mkTimedDose(mkItem(profileId, "Creatine Monohydrate"), "Morning");
+    mkTimedDose(mkItem(profileId, "Creatine"), "Morning");
+
+    const rows = collectDueDosesNow(profileId, day, "08:00");
+    expect(rows.map((r) => r.shortLabel).sort()).toEqual([
+      "Creatine",
+      "Creatine Monohydrate",
+    ]);
+  });
 });
 
 describe("collectMultiProfileDoseProgress (#1504 × #1096)", () => {

@@ -155,6 +155,12 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "outcome-toast",
     why: "Multi-session days are legitimate, but a practice is a ~daily thing: the second tap of a day is worth one question.",
   },
+  "stool-form": {
+    repeat: "additive",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "Each tap records ONE bowel movement at its own instant (#2785) — several a day is ordinary, and the metric_samples natural key resolves to the second, so a deliberate second tap is a second observation rather than a correction of the first. The two mechanisms are sized to line up: the cooldown below is two seconds and the key's resolution is one, so a tap this ledger absorbs and a tap the key collapses are the same tap. Additive with no expected interval, like prn-dose — there is no cadence a repeat could violate, so a confirm here would only ask people to justify their digestion.",
+  },
   "medication-refill": {
     repeat: "cadenced",
     expectedInterval: "supply-cycle",

@@ -2465,6 +2465,55 @@ export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
     direction: "in_range",
     note: "White blood cells (leukocytes) seen on stool microscopy, per high-power field. Their presence suggests an inflammatory or invasive cause of diarrhea rather than a secretory one.",
   },
+  // ── The modern gut panel (#2787) ────────────────────────────────────────────
+  // The classic stool panel above is qualitative microscopy. These three are the
+  // analytes a current stool workup actually orders, and each states its bands in
+  // the shape the registry already has for a THREE-band analyte: the reference
+  // bound is the clinically abnormal cut, the optimal bound is the reassuring one,
+  // so the middle band derives `non-optimal-*` rather than a blunt high/low. That
+  // is the Lipoprotein(a) / Homocysteine idiom on the lower_better side and the
+  // HDL / eGFR idiom on the higher_better side — not a new convention.
+  //
+  // Microbiome relative abundances are deliberately absent: taxa × abundance with
+  // lab-proprietary ranges is a different data shape, not a registry row (#2789).
+  {
+    name: "Fecal Calprotectin",
+    category: "lab",
+    unit: "ug/g",
+    // >120 raised (NICE DG11's referral band); the 50–120 grey zone derives
+    // non-optimal-high, which is what an equivocal calprotectin is.
+    ref_low: null,
+    ref_high: 120,
+    optimal_low: null,
+    optimal_high: 50,
+    direction: "lower_better",
+    note: "Calprotectin in stool — a neutrophil protein that rises with bowel inflammation, used to separate inflammatory bowel disease from irritable bowel syndrome. Under 50 ug/g is normal, 50–120 is a borderline band labs usually repeat, and above 120 is raised. NSAIDs, proton-pump inhibitors and a recent gut infection all push it up.",
+  },
+  {
+    name: "Pancreatic Elastase-1, Stool",
+    category: "lab",
+    // LOW is the abnormal direction here — the pancreas making too little enzyme.
+    // ref_low is the SEVERE cut and optimal_low the sufficiency cut, so 100–200
+    // derives non-optimal-low (moderate) and below 100 derives low (severe).
+    unit: "ug/g",
+    ref_low: 100,
+    ref_high: null,
+    optimal_low: 200,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "Pancreatic elastase-1 measured in stool — how much digestive enzyme the pancreas is putting out. Low is the abnormal direction: above 200 ug/g is sufficient, 100–200 ug/g indicates moderate exocrine insufficiency, and below 100 ug/g severe. A watery sample dilutes the result and can read falsely low.",
+  },
+  {
+    name: "H. pylori Stool Antigen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Helicobacter pylori antigen in stool, a test for current infection. Qualitative (Positive/Negative). No numeric band. Proton-pump inhibitors, antibiotics and bismuth taken shortly before the sample can turn it falsely negative.",
+  },
   {
     name: "Atypical Lymphocytes",
     category: "lab",

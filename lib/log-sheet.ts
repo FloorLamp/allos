@@ -67,6 +67,9 @@ export const LOG_SEGMENT_CENSUS = {
   // "something my body did", not something I took or practised.
   "log-measurements": "body",
   "log-period": "body",
+  // The third thing the body itself reports (#2785), beside the measurements
+  // sitting and the period offer.
+  "log-stool": "body",
   // Care is what you ADMINISTER to yourself and what you FILE about it: a dose,
   // a tracked practice, a check-in, a document. Doses lead it because they are
   // the segment's daily verb.
@@ -196,6 +199,8 @@ export const LOG_DAY_SOURCES = {
   // under-count a blood-pressure logger without that third store.
   "log-measurements": ["body_metrics", "metric_samples", "medical_records"],
   "log-period": ["cycles"],
+  // A Bristol tap is one hand-entered metric_samples row (#2785).
+  "log-stool": ["metric_samples"],
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
   // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing

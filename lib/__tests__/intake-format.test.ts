@@ -7,6 +7,7 @@ import {
   intakeItemNoun,
   type WindowDose,
 } from "../notifications/intake-format";
+import { renderPostWorkoutFinishMessage } from "../notifications/workout-presence";
 import type { IntakeItemKind } from "../types";
 import type { AdherenceSummary } from "../intake-adherence";
 import type {
@@ -137,6 +138,32 @@ function entry(opts: {
 
 describe("renderWindowMessage", () => {
   const DATE = "2026-07-05";
+
+  // #2858 review pass 2, R1. A ✅ button WRITES a dose, so two buttons in one
+  // message reading alike over two different dose tokens is a wrong-subject tap.
+  // The curated map aliases these two names onto "CoQ10" on purpose, so the pair
+  // must keep its full names — resolved over the message's own pending set.
+  it("never labels two take buttons alike in one message", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
+      entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
+    ]);
+    const takes = msg.actions!.filter((a) => a.data?.startsWith("take:"));
+    expect(takes.map((a) => a.label)).toEqual([
+      "✅ Coenzyme Q10",
+      "✅ Ubiquinone",
+    ]);
+    expect(new Set(takes.map((a) => a.label)).size).toBe(takes.length);
+  });
+
+  it("still shortens a take button with nothing to collide with", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
+    ]);
+    expect(msg.actions!.find((a) => a.data?.startsWith("take:"))!.label).toBe(
+      "✅ CoQ10"
+    );
+  });
 
   it("keeps a medication formulation beside its scheduled dose", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
@@ -557,5 +584,35 @@ describe("stack clustering and one-taps (#3098)", () => {
     const labels = (msg.actions ?? []).map((a) => a.label);
     expect(labels).toContain("✅ AM stack Morning (2)");
     expect(labels).toContain("✅ Sleep stack Bedtime (2)");
+  });
+});
+
+// The post-workout finish reminder renders the SAME dose-button contract from the
+// SAME WindowDose shape as the slot reminder above, so its ✅ buttons are pinned
+// here beside them rather than through a duplicate fixture builder elsewhere.
+describe("renderPostWorkoutFinishMessage take buttons", () => {
+  const DATE = "2026-07-05";
+
+  // #2858 review pass 2, R1: a ✅ button writes a dose, so two alike in one
+  // message is a wrong-subject tap.
+  it("never labels two take buttons alike in one message", () => {
+    const msg = renderPostWorkoutFinishMessage(1, DATE, [
+      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
+      entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
+    ]);
+    const takes = msg!.actions!.filter((a) => a.data?.startsWith("take:"));
+    expect(takes.map((a) => a.label)).toEqual([
+      "✅ Coenzyme Q10",
+      "✅ Ubiquinone",
+    ]);
+  });
+
+  it("still shortens a take button with nothing to collide with", () => {
+    const msg = renderPostWorkoutFinishMessage(1, DATE, [
+      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
+    ]);
+    expect(msg!.actions!.find((a) => a.data?.startsWith("take:"))!.label).toBe(
+      "✅ CoQ10"
+    );
   });
 });

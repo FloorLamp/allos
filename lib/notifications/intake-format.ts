@@ -20,7 +20,7 @@ import {
   foodTimingCheckNote,
   type FoodTimingCheck,
 } from "../food-timing-check";
-import { intakeItemShortLabel } from "../intake-short-name";
+import { intakeShortLabels } from "../intake-short-name";
 import { compareDoseDay, type DoseDayEntry } from "../dose-order";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type {
@@ -409,13 +409,19 @@ function doseSessionActions(
       });
     }
   }
-  for (const { dose, item, demotable, stoppable } of pending) {
+  // Resolved over THIS MESSAGE's pending set, never per item in isolation (#2858
+  // review): the buttons a reader chooses between are these, and two ✅ buttons
+  // reading alike over two different dose tokens is a wrong-subject tap — the
+  // curated map aliases ("Coenzyme Q10" and "Ubiquinone" both give "CoQ10"), so
+  // any pair that would collide keeps its full name instead.
+  const buttonLabels = intakeShortLabels(pending.map((e) => e.item));
+  for (const [i, { dose, item, demotable, stoppable }] of pending.entries()) {
     const row = `dose:${dose.id}`;
     // The button carries the short label (curated form, or a supplement's own
     // shorter product name); the body line above it keeps the full name — a
     // button has a width budget, a line has a grammar.
     actions.push({
-      label: `${GLYPH.done} ${intakeItemShortLabel(item)}`,
+      label: `${GLYPH.done} ${buttonLabels[i]}`,
       data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });

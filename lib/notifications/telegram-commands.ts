@@ -163,6 +163,9 @@ export const TELEGRAM_DOMAIN_CENSUS = {
   period: arguedExclusion(
     "The period affordance is ONE offer rendered from server state with typed refusals (#1892). A chat keyboard is stale by construction — the #2018 live-keyboard problem — so the verb on the button cannot be trusted to name the write it performs. Deliberately app-only."
   ),
+  stool: arguedExclusion(
+    "Sensitive by delivery, not by content (#2785): a chat message naming a bowel movement can surface on a lock screen or a shared device, which is the same reach-policy argument that keeps `substance` off this vocabulary. And the affordance IS the seven-icon picker over the published scale — a one-line `/stool 6` would either drop the descriptions people pick against or reprint them as a wall of chat text. App-only, where the icons are."
+  ),
   substance: arguedExclusion(
     "Deliberate-access, sensitive domain: the tap must render beside its #998 cap verdict, and chat delivery can surface on lock screens and shared devices. Off the chat vocabulary by reach policy (docs/internals/findings.md)."
   ),

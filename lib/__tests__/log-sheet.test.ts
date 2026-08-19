@@ -49,10 +49,13 @@ describe("logSheetSegments", () => {
   });
 
   it("keeps the Body segment when the cycle bit is off", () => {
-    // The period entry is cycle-gated; measurements is not, so the segment
-    // survives with one fewer row.
+    // The period entry is cycle-gated; measurements and stool are not, so the
+    // segment survives with one fewer row.
     const body = logSheetSegments(false).find((s) => s.id === "body");
-    expect(body?.items.map((i) => i.id)).toEqual(["log-measurements"]);
+    expect(body?.items.map((i) => i.id)).toEqual([
+      "log-measurements",
+      "log-stool",
+    ]);
   });
 
   it("orders the track Train · Food · Body · Care", () => {
