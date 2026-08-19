@@ -353,6 +353,16 @@ ${nodeLine}
   do not assume the brief checked. #2657 was briefed as untouched when its fold and
   month rollup had shipped hours earlier in #2685; the agent found it, and only
   because it looked.
+- WHEN YOU INTRODUCE A BOUNDARY, EVERY EXISTING FIXTURE HAS A POSITION RELATIVE TO
+  IT. Before you add a threshold, a floor, or a new state, find the fixtures that
+  already sit near it and work out which side each one lands on. A fixture that
+  silently crosses your new boundary STOPS TESTING WHAT IT CLAIMS while still going
+  green, so nothing turns red and nobody finds out. #3226 added a 365-day dormancy
+  floor and found a shipped dashboard-vitals-recency fixture sitting at 1600 days —
+  left alone it would have been swallowed by the new state and the #2303 age-label
+  guarantee it existed for would have gone untested. This is not \"audit your
+  neighbours\"; it is one checkable question you can only ask while the boundary is
+  fresh in your hand.
 - A CENSUS MEANT TO BE EXHAUSTIVE MUST PASS ripgrep's \`--binary\` (\`-a\`). Several
   source files carry a deliberate NUL as a composite-key separator, so rg calls them
   BINARY and skips them: a plain \`rg <pattern>\` reports a clean sweep it never took.
