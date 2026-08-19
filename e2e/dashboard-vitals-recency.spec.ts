@@ -9,11 +9,7 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
-import {
-  openDashboardAll,
-  openMeasurementGroup,
-  settledClick,
-} from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import { dormantRecordSince } from "@/lib/domain-dormancy";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
@@ -369,7 +365,15 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     const body = page.getByTestId("quick-entry-body");
     await expect(body).toHaveAttribute("data-form", "measurements");
     const form = body.getByTestId("measurements-quick-add");
-    await openMeasurementGroup(page, form, "vitals");
+    // The button opens the form ON the vitals group (#2014), resolved at the form's
+    // FIRST render rather than in an effect — so the fields are already disclosed and
+    // there is nothing to toggle. Reaching for `openMeasurementGroup` here is what a
+    // reader expects to see, and it is wrong: its visibility probe can lose the race
+    // with the modal's mount, and the click it then makes CLOSES the group it was
+    // meant to open. Asserting the disclosure instead also pins the deep link itself.
+    await expect(
+      form.locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
     await body.locator("#m-systolic").fill("117");
     await body.locator("#m-diastolic").fill("74");
     await settledClick(
