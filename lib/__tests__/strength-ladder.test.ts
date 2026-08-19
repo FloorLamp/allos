@@ -83,8 +83,16 @@ describe("strengthLadderRows", () => {
           currentE1rmKg: 60,
           points: points(60, 60),
         },
-        { exercise: "Bench Press", currentE1rmKg: 100, points: points(70, 100) },
-        { exercise: "Back Squat", currentE1rmKg: 140, points: points(135, 140) },
+        {
+          exercise: "Bench Press",
+          currentE1rmKg: 100,
+          points: points(70, 100),
+        },
+        {
+          exercise: "Back Squat",
+          currentE1rmKg: 140,
+          points: points(135, 140),
+        },
       ],
       CUTOFF,
       "male",

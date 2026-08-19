@@ -127,7 +127,14 @@ beforeAll(() => {
   );
   const onlyRack = addEquipment(machineOnlyPriorId, "Power rack", "Barbell");
   const ot = today(machineOnlyPriorId);
-  addSet(machineOnlyPriorId, shiftDateStr(ot, -100), BENCH, 120, 5, onlyMachine);
+  addSet(
+    machineOnlyPriorId,
+    shiftDateStr(ot, -100),
+    BENCH,
+    120,
+    5,
+    onlyMachine
+  );
   addSet(machineOnlyPriorId, shiftDateStr(ot, -2), BENCH, 60, 5, onlyRack);
 
   // 3. The overwhelmingly common case: no equipment rows at all. Restricting the
@@ -142,7 +149,9 @@ describe("the free-weight-restricted e1RM series (#3132)", () => {
   it("drops a machine set's point, keeping the free-weight best of that day", () => {
     const free = getExerciseE1rmSeries(mixedId, undefined, undefined, {
       freeWeightOnly: true,
-    }).find((r) => exerciseHistoryKey(r.exercise) === exerciseHistoryKey(BENCH));
+    }).find(
+      (r) => exerciseHistoryKey(r.exercise) === exerciseHistoryKey(BENCH)
+    );
     const priorPoint = free!.points.at(0)!;
     expect(priorPoint.value).toBeCloseTo(estimate1RM(50, 5), 6);
     expect(priorPoint.value).not.toBeCloseTo(estimate1RM(120, 5), 6);
@@ -167,9 +176,11 @@ describe("the free-weight-restricted e1RM series (#3132)", () => {
     // …while the default lane still carries it: a machine press is a real set and a
     // real plateau, and plateau detection reads that history unchanged.
     expect(
-      getExerciseE1rmSeries(machineOnly).find(
-        (r) => exerciseHistoryKey(r.exercise) === exerciseHistoryKey(BENCH)
-      )?.points.at(-1)?.value
+      getExerciseE1rmSeries(machineOnly)
+        .find(
+          (r) => exerciseHistoryKey(r.exercise) === exerciseHistoryKey(BENCH)
+        )
+        ?.points.at(-1)?.value
     ).toBeCloseTo(estimate1RM(120, 5), 6);
   });
 
