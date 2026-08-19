@@ -1,7 +1,3 @@
-import {
-  customizableWidgetDefs,
-  type DashboardLayout,
-} from "./dashboard-widgets";
 import { MEDICATIONS_HREF, type AppRoute } from "./hrefs";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
@@ -25,8 +21,8 @@ export const ONBOARDING_FOCUSES = [
 export type OnboardingFocus = (typeof ONBOARDING_FOCUSES)[number];
 export type OnboardingStatus = "not_started" | "in_progress" | "complete";
 export type OnboardingProfilePath = "self" | "caregiving";
-export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export const ONBOARDING_STEP_COUNT = 7;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6;
+export const ONBOARDING_STEP_COUNT = 6;
 
 export const ONBOARDING_NOTIFICATION_INTENTS = [
   "safety-only",
@@ -94,7 +90,6 @@ export interface OnboardingState {
   focuses: OnboardingFocus[];
   basicsComplete: boolean;
   dataReviewed: boolean;
-  layoutReviewed: boolean;
   notificationIntent: OnboardingNotificationIntent | null;
   notificationsReviewed: boolean;
   checklistDismissed: boolean;
@@ -173,7 +168,6 @@ export function initialOnboardingState(): OnboardingState {
     focuses: [],
     basicsComplete: false,
     dataReviewed: false,
-    layoutReviewed: false,
     notificationIntent: null,
     notificationsReviewed: false,
     checklistDismissed: false,
@@ -205,7 +199,6 @@ export function parseOnboardingState(
       ),
       basicsComplete: value.basicsComplete === true,
       dataReviewed: value.dataReviewed === true,
-      layoutReviewed: value.layoutReviewed === true,
       notificationIntent: isOnboardingNotificationIntent(
         value.notificationIntent
       )
@@ -237,9 +230,8 @@ export function nextOnboardingStep(
   if (state.focuses.length === 0) return 2;
   if (!state.basicsComplete) return 3;
   if (!state.dataReviewed && !hasFirstValue) return 4;
-  if (!state.layoutReviewed) return 5;
-  if (!state.notificationsReviewed) return 6;
-  return 7;
+  if (!state.notificationsReviewed) return 5;
+  return 6;
 }
 
 export function resolveOnboardingStep(
@@ -307,7 +299,6 @@ export function onboardingWithFocuses(
     ...state,
     focuses: normalizeOnboardingFocuses(focuses),
     dataReviewed: false,
-    layoutReviewed: false,
     ...onboardingProgressFields(state, now),
   };
 }
@@ -352,17 +343,6 @@ export function onboardingWithDataReviewed(
   return {
     ...state,
     dataReviewed: true,
-    ...onboardingProgressFields(state, now),
-  };
-}
-
-export function onboardingWithLayout(
-  state: OnboardingState,
-  now: string
-): OnboardingState {
-  return {
-    ...state,
-    layoutReviewed: true,
     ...onboardingProgressFields(state, now),
   };
 }
@@ -543,52 +523,4 @@ export function hasOnboardingFirstValue(
   presence: OnboardingDataPresence
 ): boolean {
   return focuses.some((focus) => focusHasFirstValue(focus, presence));
-}
-
-// Outcome selection seeds the dashboard without permanently disabling anything:
-// Customize can restore every hidden widget later. Needs attention is pinned and
-// therefore absent from this saved layout by design.
-const ONBOARDING_WIDGETS = customizableWidgetDefs();
-const ONBOARDING_WIDGET_ORDER = ONBOARDING_WIDGETS.map((widget) => widget.id);
-const ONBOARDING_DEFAULT_WIDGETS = ONBOARDING_WIDGETS.filter(
-  (widget) => widget.defaultOn
-).map((widget) => widget.id);
-
-// These cards self-hide until their context exists, so leaving them enabled does
-// not clutter a new dashboard and ensures a later illness becomes discoverable. (The
-// former `sick-household` contextual widget folded into the illness hero — #858 — which
-// is pinned above the grid and so never part of a saved layout.)
-const CONTEXTUAL_ONBOARDING_WIDGETS = ["symptom-log"];
-
-const FOCUS_WIDGETS: Record<OnboardingFocus, readonly string[]> = {
-  "medical-records": ["recent-labs", "next-appointment", "healthspan-pillars"],
-  // PRN logging folded into the "How are you today?" check-in as its "Take any meds?"
-  // branch (#1221), so a medications-focused onboarding prioritizes that check-in card
-  // (which owns med logging now) alongside the labs/observations cards.
-  medications: ["recent-labs", "coaching-observations", "symptom-log"],
-  fitness: ["coaching", "goals-habits", "weight-trend", "weekly-recap"],
-  "metrics-labs": ["weight-trend", "recent-labs", "healthspan-pillars"],
-  "preventive-care": ["next-appointment", "recent-labs"],
-  caregiving: ["next-appointment", "recent-labs"],
-  explore: ONBOARDING_DEFAULT_WIDGETS,
-};
-
-export function onboardingDashboardLayout(
-  focuses: readonly OnboardingFocus[]
-): DashboardLayout {
-  const normalized = normalizeOnboardingFocuses(focuses);
-  const focused = new Set(
-    normalized.flatMap((focus) => [...FOCUS_WIDGETS[focus]])
-  );
-  const visible = new Set([...focused, ...CONTEXTUAL_ONBOARDING_WIDGETS]);
-  const focusedOrder = ONBOARDING_WIDGET_ORDER.filter((id) => focused.has(id));
-  const contextualOrder = ONBOARDING_WIDGET_ORDER.filter(
-    (id) => visible.has(id) && !focused.has(id)
-  );
-  return {
-    order: focusedOrder
-      .concat(contextualOrder)
-      .concat(ONBOARDING_WIDGET_ORDER.filter((id) => !visible.has(id))),
-    hidden: ONBOARDING_WIDGET_ORDER.filter((id) => !visible.has(id)),
-  };
 }

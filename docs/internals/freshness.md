@@ -176,7 +176,7 @@ carrying an OBLIGATION never collapses: doses, refills and care follow-ups reach
 dashboard through the pinned attention hero, which is not data-aware and so cannot be
 flagged dormant by construction.
 
-**Tenants.** The dashboard's data-aware widget band (`lib/dashboard-widgets.ts`).
+**Tenants.** The dashboard's atomic candidate builders (`lib/dashboard-candidates/`).
 Every `dataAware` widget either declares a `dormancyDomain` or is named in
 `DORMANCY_EXEMPT_WIDGETS` with its reason. `widgetDisplayState` owns the precedence —
 dormant outranks empty, and a widget that declares neither capability can be flagged

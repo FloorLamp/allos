@@ -58,7 +58,7 @@ an attention slot) always does. A cold-start state must never newly page anyone.
 **One dashboard home per finding family (#1533).** The rollup's charter is reach
 for findings that would otherwise render only on their own tab, so a family that
 has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`
-in `lib/dashboard-widgets.ts` maps a dedupeKey prefix to that widget id, and the
+in `lib/dashboard-candidates/` maps each finding to an atomic candidate, and the
 page splits `activeCoaching` into the homed slice and the rollup's eligible
 residual. The two rendered sets are disjoint. Hiding the home widget returns its
 family to the residual, where the same relevance floor decides whether it has

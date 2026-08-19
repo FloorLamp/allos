@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_PREVENTIVE,
@@ -55,41 +56,6 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     await lapsed.close();
   });
 
-  test("the cold-start dashboard hero carries ONE collapsed setup line, not red rows", async () => {
-    test.slow();
-    await cold.goto("/");
-    const main = cold.getByRole("main");
-
-    // The whole point: one line, closed, carrying the count.
-    const setup = main.getByTestId("attention-setup");
-    await expect(setup).toBeVisible();
-    const count = Number(
-      (await main.getByTestId("attention-setup-count").innerText()).replace(
-        /\D/g,
-        ""
-      )
-    );
-    expect(count).toBeGreaterThan(0);
-    // Closed by default — the vertical cost of a to-do list is opt-in.
-    await expect(setup).not.toHaveAttribute("open", /.*/);
-
-    // Not one preventive row in the hero's attention bands, and no accusation
-    // anywhere on the dashboard.
-    await expect(
-      main.locator('[data-testid^="attention-item-visit:"]')
-    ).toHaveCount(0);
-    await expect(
-      main.locator('[data-testid^="attention-item-screening:"]')
-    ).toHaveCount(0);
-    await expect(main.getByText("none on record")).toHaveCount(0);
-    await expect(main.getByText(/Overdue/)).toHaveCount(0);
-
-    // Expanding it reveals the rules themselves, each still one tap from its form.
-    await setup.getByText("Set up your screening history").click();
-    const rows = main.locator('[data-testid^="attention-setup-item-"]');
-    await expect(rows).toHaveCount(count);
-  });
-
   test("the cold-start Upcoming page groups them under setup, never Overdue", async () => {
     test.slow();
     await cold.goto("/upcoming");
@@ -127,7 +93,7 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     ).toBeVisible();
   });
 
-  test("a RECORDED history that lapsed still bands Overdue and still reaches the hero", async () => {
+  test("a RECORDED history that lapsed still bands Overdue and reaches Now", async () => {
     test.slow();
     await lapsed.goto("/upcoming");
     const main = lapsed.getByRole("main");
@@ -152,15 +118,14 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
         .getByTestId("upcoming-item-screening:blood_pressure")
     ).toBeVisible();
 
-    // And it is loud where it should be: on the hero, in a band, in the count.
+    // And it remains prominent on the atomic dashboard rather than being reduced
+    // to setup metadata or omitted with the retired composite hero.
     await lapsed.goto("/");
-    const dash = lapsed.getByRole("main");
-    await expect(
-      dash.getByTestId("attention-item-visit:dental_cleaning")
-    ).toBeVisible();
-    const heroCount = Number(
-      await dash.getByTestId("attention-count").innerText()
+    const dentalAttention = dashboardCandidatePrefix(
+      lapsed,
+      "attention.fact:visit:dental_cleaning"
     );
-    expect(heroCount).toBeGreaterThan(0);
+    await expect(dentalAttention).toBeVisible();
+    await expect(dentalAttention).toHaveAttribute("data-lane", "now");
   });
 });

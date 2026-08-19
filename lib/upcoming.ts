@@ -10,6 +10,7 @@ import type { DistanceUnit, TemperatureUnit } from "./settings";
 import type { Reason } from "./reasons";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import type { WriteTarget } from "./multi-view";
+import type { IntakeObligation } from "./types/intake";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -352,6 +353,10 @@ export interface UpcomingItem {
   // This is presentation data carried on the shared model so Dashboard and
   // Upcoming never have to infer different actions from the same domain.
   actionLabel?: string;
+  // The source model's declared obligation when this fact is backed by an intake
+  // item. Dashboard placement must carry this value through; it must not infer a
+  // stronger obligation from the fact merely being due or actionable.
+  obligation?: IntakeObligation;
   // A SECOND destination, when the item's problem has two honest fixes and naming only
   // one would hide the better of them (#2176). The records-recency ask deep-links the
   // upload flow through `href` AND the portal connect flow through this, because

@@ -53,27 +53,6 @@ async function expectTonesBadged(
   }
 }
 
-test("dashboard healthspan pillars pair every tone with a text badge (#1220)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const widget = page
-    .getByRole("main")
-    .getByTestId("healthspan-pillars-widget");
-  await expect(widget).toBeVisible();
-
-  // Seed profile 1 owns judged labs, so the optimal-biomarkers pillar renders —
-  // and it is never neutral (a zero-denominator pillar hides instead), so a badge
-  // is guaranteed without depending on WHICH verdict the seed lands on.
-  const optimal = widget.getByTestId("pillar-optimal-biomarkers");
-  await expect(optimal).toBeVisible();
-  await expect(optimal.getByTestId("pillar-tone-badge")).toHaveText(
-    /^(Good|Fair|Poor)$/
-  );
-
-  await expectTonesBadged(widget.locator("[data-tone]"));
-});
-
 test("the Longevity page's pillar stats carry the same tone badges (#1220)", async ({
   page,
 }) => {
@@ -90,37 +69,4 @@ test("the Longevity page's pillar stats carry the same tone badges (#1220)", asy
   await expectTonesBadged(
     main.locator('[data-testid^="longevity-pillar-"][data-tone]')
   );
-});
-
-test("recent-lab carets carry a visible severity label, announced once (#1220/#2315)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const recentLabs = page
-    .getByRole("main")
-    .getByTestId("dashboard-widget-recent-labs");
-  await expect(recentLabs).toBeVisible();
-
-  // The seeded profile has directional (high/low) flags among its recent labs.
-  // Each caret is decorative (aria-hidden) and pairs with the severity WORD —
-  // "High" vs "Above optimal" is text, not just red-vs-amber.
-  //
-  // #2315 folded the widget's own parallel label into MedicalValue, so the word is
-  // rendered ONCE (visibly) instead of twice (visible + an sr-only twin): the
-  // labels below are the whole set this widget draws, and every one of them is a
-  // VISIBLE one.
-  const labels = recentLabs.getByTestId("medical-flag-text");
-  await expect(labels).not.toHaveCount(0);
-  for (const t of await labels.allTextContents()) {
-    expect(STATUS_LABELS).toContain(t.trim());
-  }
-  const visible = recentLabs.locator(
-    '[data-testid="medical-flag-text"][data-visible="true"]'
-  );
-  expect(await visible.count()).toBe(await labels.count());
-  expect(
-    (await visible.allTextContents()).filter((s) =>
-      DIRECTIONAL_LABELS.includes(s.trim())
-    ).length
-  ).toBeGreaterThan(0);
 });

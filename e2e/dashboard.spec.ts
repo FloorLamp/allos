@@ -1,577 +1,98 @@
 import { test, expect } from "./fixtures";
-import Database from "better-sqlite3";
-import { followLink } from "./nav";
-import { hydratedClick, settledBoxes, settledClick } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-const DB_PATH = workerDbPath();
-const AVAILABILITY_APPOINTMENT = "E2E dashboard availability visit";
-const TIMED_APPOINTMENT = "E2E timed clinic visit";
-
-// #1215: plant/clean a profile-2 appointment carrying an explicit wall-clock time,
-// so the Next appointment card has a deterministic time to render. Profile 2
-// (Riley) owns no other appointments, so this one is unambiguously the pick.
-function cleanupTimedAppointmentFixture() {
-  const handle = new Database(DB_PATH);
-  try {
-    handle
-      .prepare("DELETE FROM appointments WHERE title = ? AND profile_id = 2")
-      .run(TIMED_APPOINTMENT);
-    handle
-      .prepare(
-        "DELETE FROM profile_settings WHERE profile_id = 2 AND key = 'dashboard_layout'"
-      )
-      .run();
-  } finally {
-    handle.close();
-  }
-}
-
-function cleanupAvailabilityFixture() {
-  const handle = new Database(DB_PATH);
-  try {
-    handle
-      .prepare("DELETE FROM appointments WHERE title = ? AND profile_id = 2")
-      .run(AVAILABILITY_APPOINTMENT);
-    handle
-      .prepare(
-        "DELETE FROM profile_settings WHERE profile_id = 2 AND key = 'dashboard_layout'"
-      )
-      .run();
-  } finally {
-    handle.close();
-  }
-}
-
-// Dashboard redesign (issue #171): the Tier-1 "Needs attention" hero, the Tier-2
-// household strip, and the data-aware onboarding empty state. Runs against the
-// seeded DB as the bootstrap admin (storageState), who reaches every profile — so
-// the household strip renders and a data-less profile (Sam Rivers, id 2: supplements
-// only, no labs/appointments) exercises the empty-state CTA. Locators are scoped to
-// <main> since the app shell (sidebar + mobile drawer) can double-render nav.
-//
-// Read-only by design where it counts: the hero/strip specs assert presence without
-// mutating profile 1's suppression store (other specs read it). The empty-state spec
-// switches the active profile in an ISOLATED, cookie-less context with its own fresh
-// session, so it never touches the shared admin session other specs depend on.
-
-test("the Needs attention hero renders with the seeded profile's items", async ({
+test("the atomic dashboard uses one reading order and no editor", async ({
   page,
 }) => {
   await page.goto("/");
   const main = page.getByRole("main");
-  const hero = main.getByTestId("needs-attention");
-  await expect(hero).toBeVisible();
 
-  // Profile 1 has structural attention (an overdue appointment, low supply, care
-  // plan) that no other spec suppresses, so the count badge and at least one item
-  // are present — the hero is not in its "all clear" state.
-  await expect(hero.getByTestId("attention-count")).toBeVisible();
-  await expect(
-    hero.locator('[data-testid^="attention-item-"]').first() // first-ok: asserts at least one attention item renders (hero not all-clear, see comment) — order-agnostic
-  ).toBeVisible();
-  await expect(
-    hero.getByRole("link", { name: "View all needs attention" })
-  ).toContainText("View all");
-});
-
-test("dashboard card-header navigation uses one visible convention", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const links = page.getByRole("main").getByTestId("widget-header-nav");
-  const count = await links.count();
-  expect(count).toBeGreaterThan(2);
-  for (let i = 0; i < count; i += 1) {
-    const link = links.nth(i);
-    await expect(link).toContainText("View all");
-    await expect(link).toHaveAttribute("aria-label", /^View all .+/);
-  }
-});
-
-test("the streamlined grid combines goals and habits", async ({ page }) => {
-  await page.goto("/");
-  const main = page.getByRole("main");
-
-  const goalsHabits = main.getByTestId("goals-habits");
-  await expect(goalsHabits).toBeVisible();
-  await expect(goalsHabits.getByText("Active goals")).toBeVisible();
-  await expect(goalsHabits.getByText("Still to do this week")).toBeVisible();
-  await expect(
-    goalsHabits.getByTestId("goals-habits-sections")
-  ).toHaveAttribute("data-layout", "split");
-  await expect(
-    goalsHabits.getByRole("link", { name: "View all goals and habits" })
-  ).toHaveAttribute("href", "/training?tab=goals");
-  await expect(
-    goalsHabits.getByRole("link", { name: "Manage food habits →" })
-  ).toHaveAttribute("href", "/nutrition");
-});
-
-test("recent labs keeps dates intact and makes every result direction explicit", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const recentLabs = page
-    .getByRole("main")
-    .getByTestId("dashboard-widget-recent-labs");
-
-  await expect(recentLabs).toHaveClass(/lg:col-span-3/);
-  // Each flagged row carries the severity WORD as visible text rather than an
-  // icon-level aria-label — the #1220 non-color channel, owned by MedicalValue
-  // itself since #2315 (one label, not a visible one plus an sr-only twin).
-  await expect(recentLabs.getByTestId("medical-flag-text")).not.toHaveCount(0);
-  await expect(
-    recentLabs
-      .locator('[data-testid="medical-flag-text"][data-visible="true"]')
-      .filter({ hasText: "Abnormal" })
-  ).toHaveCount(1);
-  const firstDate = recentLabs.getByTestId("recent-lab-date").first(); // first-ok: the most-recent lab date (list is newest-first) — asserts format, order-agnostic
-  await expect(firstDate).toBeVisible();
-  expect(
-    await firstDate.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("nowrap");
-  // #1216: the age column must stay visible at phone width — the mobile viewport
-  // is exactly where a years-old lab reading as "current" is the honesty risk. Its
-  // compact form ("2w"/"3y") fits where the full date column doesn't. Reuse the
-  // existing single-row locator (re-queried after the reload) rather than a new one.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-  await expect(firstDate).toBeVisible();
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(
-    page.getByRole("main").getByTestId("dashboard-widget-healthspan-pillars")
-  ).toHaveClass(/lg:col-span-3/);
-  await expect(
-    page.getByRole("main").getByTestId("dashboard-widget-weight-trend")
-  ).toHaveClass(/lg:col-span-3/);
-});
-
-test("attention review signals expose an explicit primary action", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const hero = page.getByRole("main").getByTestId("needs-attention");
-
-  // The seeded newly-flagged result is the review-band representative under the
-  // total cap. Its next step is explicit rather than inferred from the title.
-  await expect(
-    hero.getByRole("link", { name: "Review result", exact: true })
-  ).toBeVisible();
-});
-
-test("attention rows move status and actions below content on mobile", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-  const row = page
-    .getByRole("main")
-    .getByTestId("needs-attention")
-    .locator('[data-testid^="attention-item-"]')
-    .first(); // first-ok: any attention item; asserts its row structure (detail/actions), order-agnostic
-  const title = row.getByRole("link").first(); // first-ok: the title link within that scoped row
-  const detail = row.getByTestId("attention-item-detail");
-  const actions = row.getByTestId("attention-item-actions");
-  await expect(detail).toBeVisible();
-  await expect(actions).toBeVisible();
-
-  expect(
-    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("normal");
-  expect(
-    await title.evaluate((element) => getComputedStyle(element).textOverflow)
-  ).not.toBe("ellipsis");
-  expect(
-    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("normal");
-  expect(
-    await detail.evaluate((element) => getComputedStyle(element).textOverflow)
-  ).not.toBe("ellipsis");
-
-  const [titleBox, actionsBox] = await settledBoxes([title, actions]);
-  expect(actionsBox.y).toBeGreaterThan(titleBox.y);
-
-  // Tablet widths still have limited horizontal room; truncation starts only at
-  // the desktop breakpoint.
-  await page.setViewportSize({ width: 768, height: 1024 });
-  expect(
-    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("normal");
-  expect(
-    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("normal");
-
-  await page.setViewportSize({ width: 1280, height: 800 });
-  expect(
-    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("nowrap");
-  expect(
-    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
-  ).toBe("nowrap");
-});
-
-test("the card is a strict act-now subset: this-week + later scheduled items live only on Upcoming (issue #524)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const hero = page.getByRole("main").getByTestId("needs-attention");
-  await expect(hero).toBeVisible();
-
-  // The card is the triage glance — overdue + due-today + the "something's off"
-  // signals only. The seeded +4-day "Echocardiogram" (This week) and +45-day
-  // "Physical exam" (Later) are scheduled work with runway, so they are NOT on the
-  // card (the old hero pulled in the This-week band; #524 narrows it to act-now).
-  await expect(
-    hero.getByRole("link", { name: "Echocardiogram", exact: true })
-  ).toHaveCount(0);
-  await expect(
-    hero.getByRole("link", { name: "Physical exam", exact: true })
-  ).toHaveCount(0);
-
-  // Both still live on the Upcoming page (the planning view is complete + date-
-  // ordered), under their calendar bands — the card is a strict subset of it, so a
-  // remainder link points the way. Its copy names what it HIDES ("scheduled
-  // later"), not a bare "+N more in Upcoming", so it can't be confused with a
-  // per-band cap-overflow link (issue #538).
-  const remainder = hero.getByTestId("attention-more-upcoming");
-  await expect(remainder).toBeVisible();
-  await expect(remainder).toContainText("scheduled later");
-  await page.goto("/upcoming");
-  const main = page.getByRole("main");
-  await expect(
-    main.getByRole("link", { name: "Echocardiogram", exact: true })
-  ).toBeVisible();
-  await expect(
-    main.getByRole("link", { name: "Physical exam", exact: true })
-  ).toBeVisible();
-});
-
-test("a goal deadline item links to the Training → Goals tab, not the removed /goals route (issue #283)", async ({
-  page,
-}) => {
-  // Click from the Upcoming page: the hero shows the same item with the same
-  // href (one computation), but its per-severity cap makes WHICH rows render
-  // seed-dependent, while Upcoming lists every item uncapped.
-  await page.goto("/upcoming");
-  const goalLink = page
-    .getByRole("main")
-    .getByRole("link", { name: "Reach 74 kg", exact: true });
-  // The retired goals name redirects to its canonical Plan URL (#2892), so the
-  // FINAL location carries tab=plan#goals — the goals section, anchor included.
-  await followLink(page, goalLink, /\/training\?tab=plan#goals/);
-
-  // Lands on the real Training hub with the goals section anchored — a real
-  // page, not the pageless /goals directory that 404'd.
-  await expect(page).toHaveURL(/\/training\?tab=plan#goals/);
-  await expect(
-    page.getByRole("main").getByText("Reach 74 kg").first() // first-ok: asserts the seeded "Reach 74 kg" goal renders on the goals tab — order-agnostic
-  ).toBeVisible();
-});
-
-test("the next-appointment card renders the visit's clock time and links to the visit surface (#1215)", async ({
-  browser,
-}) => {
-  // Fresh, cookie-less context + its own admin session so switching the active
-  // profile here can't disturb the shared storageState session other specs use —
-  // the same isolation the availability spec uses.
-  const ctx = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
-  });
-  const page = await ctx.newPage();
-  cleanupTimedAppointmentFixture();
-  const handle = new Database(DB_PATH);
-  try {
-    handle
-      .prepare(
-        `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
-         VALUES (2, '2026-12-15', '14:30', ?, 'Downtown Clinic', 'scheduled')`
-      )
-      .run(TIMED_APPOINTMENT);
-    handle.close();
-
-    await page.goto("/login");
-    await page.fill('input[name="username"]', "admin");
-    await page.fill('input[name="password"]', "e2e-admin-pass");
-    await page.click('button[type="submit"]');
-    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-      timeout: 20_000,
-    });
-
-    // Switch to profile 2 (Riley) — it now owns exactly one scheduled visit, so it
-    // is the pick. Wait on the identity bar naming the new profile (the definitive
-    // switch signal — we're already on "/").
-    await page.goto("/");
-    // settledClick, not a bare click: the chip is a `<form action={switchProfileAction}>`
-    // submit whose POST + revalidate + redirect re-renders the DASHBOARD, the heaviest
-    // page in the app, so a bare click leaves the assertion racing that render. Same
-    // named ceiling family-helpers' switchToProfile uses for the same reason.
-    await settledClick(
-      page,
-      page.getByRole("main").getByTestId("household-chip-2")
-    );
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      "Riley (child)",
-      { timeout: 20_000 }
-    );
-
-    const widget = page
-      .getByRole("main")
-      .getByTestId("dashboard-widget-next-appointment");
-    await expect(widget).toBeVisible();
-    await expect(widget).toContainText(TIMED_APPOINTMENT);
-    // The clock time renders (default 24h prefs → "14:30") — a 9am and a 4pm visit
-    // are no longer indistinguishable. Regression: the page used to slice to a date.
-    await expect(widget).toContainText("14:30");
-
-    // The content links to the visit surface (no encounter yet → the visits list),
-    // matching the every-row-links convention of the sibling widgets.
-    const link = widget.getByTestId("next-appointment-link");
-    await expect(link).toHaveAttribute("href", "/records/history/visits");
-    await followLink(page, link, /\/records\/history\/visits/);
-    await expect(page).toHaveURL(/\/records\/history\/visits/);
-  } finally {
-    await ctx.close();
-    cleanupTimedAppointmentFixture();
-  }
-});
-
-test("the household strip shows the caregiver's other profiles", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const strip = page.getByRole("main").getByTestId("household-strip");
-  // The bootstrap admin reaches 2+ profiles, so the strip renders (single-profile
-  // logins never see it — same gate as the Household nav entry).
-  await expect(strip).toBeVisible();
-  // Profile 2 is "Riley (child)" (scripts/seed.ts creates it before
-  // e2e/seed-events.ts runs, so its guarded "Sam Rivers" insert at id 2 is a
-  // no-op) — a chip links through to switch-and-view it.
-  await expect(strip.getByTestId("household-chip-2")).toBeVisible();
-});
-
-test("temporary appointment absence never becomes a saved hidden preference", async ({
-  browser,
-}) => {
-  // Fresh, cookie-less context + its own admin session, so switching the active
-  // profile here can't disturb the shared storageState session other specs use.
-  const ctx = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
-  });
-  const page = await ctx.newPage();
-  cleanupAvailabilityFixture();
-  try {
-    await page.goto("/login");
-    await page.fill('input[name="username"]', "admin");
-    await page.fill('input[name="password"]', "e2e-admin-pass");
-    await page.click('button[type="submit"]');
-    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-      timeout: 20_000,
-    });
-
-    // Switch to profile 2 — "Riley (child)" (growth data only, no labs or
-    // appointments; the seed-events "Sam Rivers" insert is a no-op because
-    // scripts/seed.ts's Riley already owns id 2) — via its household chip. The
-    // Next appointment widget then stays out of the grid instead of rendering a
-    // blank card. Wait on the identity bar
-    // naming the new profile — the definitive switch signal (we're already on
-    // "/", so a URL wait could resolve before the action round-trips).
-    await page.goto("/");
-    // settledClick, not a bare click: the chip is a `<form action={switchProfileAction}>`
-    // submit whose POST + revalidate + redirect re-renders the DASHBOARD, the heaviest
-    // page in the app, so a bare click leaves the assertion racing that render. Same
-    // named ceiling family-helpers' switchToProfile uses for the same reason.
-    await settledClick(
-      page,
-      page.getByRole("main").getByTestId("household-chip-2")
-    );
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      "Riley (child)",
-      { timeout: 20_000 }
-    );
-
-    await expect(
-      page.getByRole("main").getByTestId("dashboard-widget-next-appointment")
-    ).toHaveCount(0);
-
-    // Customize still knows about the temporarily-unavailable widget, but labels
-    // it as empty instead of folding that state into the user's hidden choices.
-    const main = page.getByRole("main");
-    // "Edit dashboard" is `onClick={enterEdit}` — a pure client state flip with no
-    // POST — but the dashboard is the heaviest page in the app, so a tap landing in
-    // the pre-hydration window (#500/#830) is swallowed with nothing to await and
-    // the next assertion just times out. hydratedClick, not a retry loop: this
-    // TOGGLES editing, so a second tap would undo the first.
-    await hydratedClick(
-      page,
-      main.getByRole("button", { name: "Edit dashboard" })
-    );
-    const unavailable = main.getByTestId("dashboard-widget-next-appointment");
-    await expect(unavailable).toBeVisible();
-    await expect(unavailable).toContainText("Nothing to show right now");
-    // #1947: this was a bare `.click()`, and it raced the Server Action against the
-    // next 5s expect — the failure snapshot showed the page still in customize mode
-    // with "Saving" up and Save disabled. Save is `onClick={save}` →
-    // `startTransition(() => saveAction(...))`, so it posts a correlated action;
-    // settledClick awaits it, matching what line ~393 of this same spec already does
-    // for the household chip. `setEditing(false)` then runs client-side on the next
-    // tick, which the assertion's own retry absorbs — so this is settledClick, not
-    // settledClickApplied: "Edit dashboard" is client state, not a server render, and
-    // would prove nothing about an applied tree.
-    await settledClick(
-      page,
-      main.getByRole("button", { name: "Save", exact: true })
-    );
-    await expect(
-      main.getByRole("button", { name: "Edit dashboard" })
-    ).toBeVisible();
-
-    // Once data exists, the same preference makes the widget reappear. This is
-    // the regression: the old save path persisted an absent appointment as hidden.
-    await page.goto("/records/history/visits");
-    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
-    const visitDialog = page.getByRole("dialog", { name: "Add visit" });
-    // Uncontrolled (`defaultValue`), so a raw fill is correct here — #1941 is about
-    // controlled inputs, and settledFill on an uncontrolled field buys nothing.
-    await visitDialog
-      .getByLabel("Reason / title")
-      .fill(AVAILABILITY_APPOINTMENT);
-    // Same #1947 shape as Save above: `<form action={handle}>` posts a Server Action
-    // and the "Appointment saved" toast is only raised after it resolves, so a bare
-    // click left that toast racing a 5s expect.
-    await settledClick(
-      page,
-      visitDialog.getByRole("button", { name: "Add", exact: true })
-    );
-    await expect(page.getByText("Appointment saved")).toBeVisible();
-
-    await page.goto("/");
-    const appointmentWidget = page
-      .getByRole("main")
-      .getByTestId("dashboard-widget-next-appointment");
-    await expect(appointmentWidget).toBeVisible();
-    await expect(appointmentWidget).toContainText(AVAILABILITY_APPOINTMENT);
-  } finally {
-    await ctx.close();
-    cleanupAvailabilityFixture();
-  }
-});
-
-// The dashboard's Customize drag, after #1485 C moved its DndContext, sensors and
-// list math into the SHARED components/SortableOrder.tsx that Trends Overview's
-// tiles now also lift with. One reorder mechanism, two consumers — so the
-// established one needs a test proving it still reorders, not just that Customize
-// still renders.
-//
-// Fixture hygiene (#868): NOTHING is written. The drag is asserted in edit state
-// and then CANCELLED, which restores the pre-edit order — so this perturbs no
-// neighbour and is repeat-safe on the shared admin profile.
-test("Customize still drags a widget to a new slot (the shared reorder core, #1485 C)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const main = page.getByRole("main");
-  // Client toggle on the app's heaviest page — hydratedClick for the same reason as
-  // the sibling test above (a pre-hydration tap is swallowed; a retry would undo it).
-  await hydratedClick(
-    page,
-    main.getByRole("button", { name: "Edit dashboard" })
+  await expect(main.getByTestId("now-strip")).toBeVisible();
+  await expect(main.getByTestId("dashboard-standing")).toBeVisible();
+  await expect(main.getByTestId("dashboard-everything")).toBeVisible();
+  await expect(main.getByTestId("dashboard-standing")).toHaveClass(
+    /grid-cols-1/
   );
-
-  // At `lg`+ the editor keeps the IN-PLACE cards (#1891). Spans and adjacency are
-  // visible on a six-column canvas and are part of what is being edited there, so
-  // the compact reorder rows are the phone's answer only — see
-  // e2e/dashboard-reorder.mobile.spec.ts for the other side of the same switch.
-  await expect(main.getByTestId("dashboard-customize")).toHaveAttribute(
-    "data-presentation",
-    "cards"
-  );
-
-  const widgets = main.locator("[data-testid^='dashboard-widget-']");
-  await expect(widgets.first()).toBeVisible(); // first-ok: the editor's leading slot IS the subject — "does the top widget move?"
-  const idsBefore = await widgets.evaluateAll((els) =>
-    els.map((e) => e.getAttribute("data-testid") ?? "")
-  );
-  expect(
-    idsBefore.length,
-    "Customize should list several widgets"
-  ).toBeGreaterThan(2);
-
-  // The grid starts well below the fold, and a mouse gesture is viewport-relative
-  // — so bring the pair on screen and measure THEN, or every coordinate lands
-  // outside the window and nothing moves.
-  await main.getByTestId(idsBefore[0]).scrollIntoViewIfNeeded();
-
-  // Lift by the grip handle (this surface's lift mode) and drop on the next slot.
-  const handle = main
-    .getByTestId(idsBefore[0])
-    .getByRole("button", { name: /^Drag / });
-  const target = main.getByTestId(idsBefore[1]);
-  const from = await handle.boundingBox();
-  const to = await target.boundingBox();
-  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(
-    from!.x + from!.width / 2 + 12,
-    from!.y + from!.height / 2,
-    {
-      steps: 4,
-    }
-  );
-  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, {
-    steps: 12,
-  });
-
-  // STILL HOLDING the card. The slots sliding out of the way carry the sorting
-  // strategy's transform on their inline style, and that style is where #1891's
-  // distortion actually lived: `CSS.Transform.toString` emits
-  // `translate3d(…) scaleX(…) scaleY(…)`, and on a grid whose cards differ wildly
-  // in height those scale factors are not 1 — the moving card visibly squashed and
-  // stretched as it crossed shorter and taller neighbours. `CSS.Translate.toString`
-  // emits the translate3d alone.
-  //
-  // This is a PROXY for the distortion, not the distortion itself — a rendered
-  // transform is the cause, not the appearance — but it is an honest one: it reads
-  // the real inline style of a real mid-drag DOM, and it FAILS against the pre-fix
-  // component (verified) because that style carried `scaleX(`.
-  await expect
-    .poll(async () =>
-      widgets.evaluateAll((els) =>
-        els.map((e) => e.getAttribute("style") ?? "")
-      )
-    )
-    .toEqual(expect.arrayContaining([expect.stringContaining("translate3d")]));
-  const midDragStyles = await widgets.evaluateAll((els) =>
-    els.map((e) => e.getAttribute("style") ?? "")
-  );
-  for (const style of midDragStyles) {
-    expect(
-      style,
-      "a sortable slot must translate, never scale (#1891)"
-    ).not.toContain("scale");
-  }
-
-  await page.mouse.up();
-
-  await expect
-    .poll(async () =>
-      widgets.evaluateAll((els) => els[0]?.getAttribute("data-testid") ?? "")
-    )
-    .toBe(idsBefore[1]);
-
-  // Cancel restores the pre-edit order — and leaves the saved layout untouched.
-  // `onClick={cancel}` writes nothing: it is a client toggle, and the button is
-  // already hydrated by now (the drag above went through React), so hydratedClick
-  // is a no-cost statement of which kind of click this is.
-  await hydratedClick(page, main.getByRole("button", { name: "Cancel" }));
   await expect(
     main.getByRole("button", { name: "Edit dashboard" })
-  ).toBeVisible();
-  await expect
-    .poll(async () =>
-      main
-        .locator("[data-testid^='dashboard-widget-']")
-        .evaluateAll((els) => els[0]?.getAttribute("data-testid") ?? "")
-    )
-    .toBe(idsBefore[0]);
+  ).toHaveCount(0);
+  await expect(main.getByText("Customize", { exact: true })).toHaveCount(0);
+});
+
+test("attention facts render as separate atoms", async ({ page }) => {
+  await page.goto("/");
+  const facts = page.locator(
+    '[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:"]'
+  );
+  const count = await facts.count();
+
+  expect(count).toBeGreaterThan(1);
+  await expect(facts.nth(0)).toBeVisible();
+  for (let index = 0; index < Math.min(count, 5); index += 1) {
+    await expect(
+      facts.nth(index).getByTestId("dashboard-attention-atom")
+    ).toHaveCount(1);
+  }
+});
+
+test("lab readings render individually", async ({ page }) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+  const rows = main.getByTestId("recent-lab-row");
+  const headings = main.getByText("Recent labs", { exact: true });
+
+  expect(await rows.count()).toBeGreaterThan(1);
+  await expect(headings).toHaveCount(await rows.count());
+});
+
+test("household access renders one fact per other profile", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const facts = page.locator(
+    '[data-testid="dashboard-candidate"][data-candidate-id^="household.attention:"]'
+  );
+  expect(await facts.count()).toBeGreaterThan(0);
+  const ids = await facts.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("data-candidate-id"))
+  );
+  expect(new Set(ids).size).toBe(ids.length);
+});
+
+test("manual and external readings receive different placement", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DAILY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const manual = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="weight.latest:"]'
+    );
+    const external = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="activity.steps:"]'
+    );
+
+    await expect(manual).toHaveAttribute("data-engagement", "manual");
+    await expect(manual).toHaveAttribute("data-lane", "standing");
+    await expect(external).toHaveAttribute("data-engagement", "external");
+    await expect(external).toHaveAttribute("data-lane", "everything");
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("every applicable fact appears in exactly one atomic lane", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const candidates = page.getByRole("main").getByTestId("dashboard-candidate");
+  const factKeys = await candidates.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("data-fact-key"))
+  );
+  expect(factKeys.every(Boolean)).toBe(true);
+  expect(new Set(factKeys).size).toBe(factKeys.length);
 });

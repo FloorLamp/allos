@@ -5,21 +5,14 @@ import type { ReactNode } from "react";
 // two; safety surfaces are deliberately uncapped.
 //
 // This component is a PLACER, not a renderer. Each entry's `node` is the SAME
-// server-rendered widget node the grid would have used; the strip never builds a
+// server-rendered candidate node the page would have used; the strip never builds a
 // bespoke "compact" variant of a card, because a second rendering of the same
-// widget is exactly the drift the one-question-one-computation rule forbids one
+// fact is exactly the drift the one-question-one-computation rule forbids one
 // level down. What the strip owns is position and the band's layout — nothing
 // about what a card SAYS.
 //
-// Layout: two cards share a row from `sm` up, and STACK below it (issue #1547). The
-// two-up band is what makes this a compact band rather than a takeover on a screen
-// wide enough to hold both — but on a phone a half-width column is the NARROWEST
-// column the dashboard has, while the very same widgets render full width in the grid
-// below. That inverted the strip's own claim: the moment's most relevant card got the
-// least room. A lone card takes the full width at every width (a half-width card
-// beside dead space reads as a broken grid, not as emphasis). Existing contextual
-// cards are half-span widgets already; generic placement entries use the same
-// responsive column contract.
+// Atomic placement has one reading order at every viewport, so Now is one column
+// just like Standing and Everything.
 //
 // Renders NOTHING (not even a wrapper) when nothing is firing — the strip's zero
 // state is zero height, never a filler card. See lib/dashboard-relevance.ts for why.
@@ -55,11 +48,7 @@ export default function NowStrip({
           {dateLabel}
         </div>
       )}
-      <div
-        className={`grid min-w-0 items-start gap-3 sm:gap-6 ${
-          cards.length > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-        }`}
-      >
+      <div className="grid min-w-0 grid-cols-1 items-start gap-3">
         {cards.map((c) => (
           <div
             key={c.id}

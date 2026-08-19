@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 //      opinion about what the icon should say.
 //   2. That module derives nothing — it imports no query/attention layer, so the
 //      count can only have arrived as a prop.
-//   3. Its only mount is the hero, which is where the shared count lives. A
+//   3. Its only mount is the placement canvas, which receives the shared count. A
 //      badge mounted anywhere else would be reading some OTHER number (the
 //      nav's `reviewCount` is a different set entirely) or forcing a new query.
 //
@@ -31,8 +31,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const BADGE_CALLS = ["setAppBadge", "clearAppBadge"];
 
 const CHOKEPOINT = "components/AppBadge.tsx";
-// The one mount: the component that owns the shared count.
-const MOUNT = "components/dashboard/NeedsAttentionHero.tsx";
+// The one mount: the aggregate placement canvas, including the zero-count render.
+const MOUNT = "components/dashboard/DashboardPlacementCanvas.tsx";
+const SOURCE = "app/(app)/page.tsx";
 
 const SCAN_DIRS = ["lib", "app", "components", "scripts"];
 
@@ -144,18 +145,13 @@ describe("app-badge chokepoint", () => {
     ).toEqual([MOUNT]);
   });
 
-  it("the mount passes the SAME local the hero's visible badge uses", () => {
-    const src = code(MOUNT);
-    expect(src).toContain(
-      "const count = attentionCardItems(items, today).length"
+  it("the canvas receives the aggregate attention count and always mounts it", () => {
+    const source = code(SOURCE);
+    const mount = code(MOUNT);
+    expect(source).toContain(
+      "const attentionBadgeCount = attentionCardItems(attention, on).length"
     );
-    // Both branches — including all-clear, where the badge must CLEAR. Without
-    // the zero mount a resolved user keeps a stale number on their home screen.
-    const mounts = src.match(/<AppBadge count=\{count\} \/>/g) ?? [];
-    expect(
-      mounts.length,
-      `<AppBadge count={count} /> must appear on BOTH hero branches: the card ` +
-        `branch to SET the badge and the all-clear branch to CLEAR it.`
-    ).toBe(2);
+    expect(source).toContain("attentionBadgeCount={attentionBadgeCount}");
+    expect(mount).toContain("<AppBadge count={attentionBadgeCount} />");
   });
 });

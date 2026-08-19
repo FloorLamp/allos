@@ -107,22 +107,6 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   ).toHaveAttribute("href", "/wellness");
 });
 
-test("dashboard pillar cards deep-link to the Longevity anchors", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const widget = page
-    .getByRole("main")
-    .getByTestId("healthspan-pillars-widget");
-  await expect(widget).toBeVisible();
-  // Seed profile 1 has labs, so the optimal-biomarkers pillar is available; its
-  // card must land on the page section that expands it (pillarHref).
-  await expect(widget.getByTestId("pillar-optimal-biomarkers")).toHaveAttribute(
-    "href",
-    "/longevity#biomarkers"
-  );
-});
-
 // #1921 — the strength pillar is the one whose destination is DATA: it names a lift, and
 // the tap has to produce the EVIDENCE for that claim rather than the pillar's own
 // explainer anchor. Landing on a generic index the reader then searches would be the

@@ -319,16 +319,4 @@ test.describe("protocols recovery-gear filter (#592)", () => {
   });
 });
 
-test.describe("healthspan pillars widget (issue #161)", () => {
-  test("renders the pillars widget with available pillars", async ({
-    page,
-  }) => {
-    test.slow();
-    await page.goto("/");
-    const main = page.getByRole("main");
-    const widget = main.getByTestId("healthspan-pillars-widget");
-    await expect(widget).toBeVisible();
-    // Seed profile 1 has labs, so the optimal-biomarkers pillar is available.
-    await expect(widget.getByTestId("pillar-optimal-biomarkers")).toBeVisible();
-  });
-});
+test.describe("healthspan pillars widget (issue #161)", () => {});

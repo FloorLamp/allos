@@ -9,7 +9,6 @@ import {
 } from "@/lib/auth";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
-import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
   completeOnboardingState,
@@ -18,11 +17,9 @@ import {
   isOnboardingNotificationIntent,
   onboardingNotificationSchedule,
   onboardingDeferred,
-  onboardingDashboardLayout,
   onboardingWithBasics,
   onboardingWithDataReviewed,
   onboardingWithFocuses,
-  onboardingWithLayout,
   onboardingWithNotificationIntent,
   onboardingWithProfilePath,
   type OnboardingProfilePath,
@@ -46,7 +43,6 @@ import {
   getProfileSex,
   getProfileAge,
   isValidTimezone,
-  setDashboardLayout,
   setOnboardingState,
   setNotifySchedule,
   setStoredAge,
@@ -182,7 +178,6 @@ export async function saveOnboardingFocuses(formData: FormData) {
 
   writeTx(() => {
     setOnboardingState(profile.id, next);
-    setDashboardLayout(profile.id, onboardingDashboardLayout(next.focuses));
     // Fitness focus seeds the protein goal EXPLICITLY (#1503). The band engine reads
     // `training_goal` and falls back to "active" when it is unset — writing the same
     // value here makes the default a stored, editable pick (Settings → Nutrition)
@@ -195,54 +190,6 @@ export async function saveOnboardingFocuses(formData: FormData) {
   revalidateRoute("/");
   revalidateRoute("/onboarding");
   redirect(`/onboarding?step=${state.basicsComplete ? 4 : 3}`);
-}
-
-export async function saveOnboardingDashboard(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const state = getOnboardingState(profile.id);
-  if (!state || !state.basicsComplete || state.focuses.length === 0) {
-    onboardingError("Finish the earlier setup steps first.", 5);
-  }
-  if (!state.dataReviewed && !(await selectedOnboardingDataExists(state))) {
-    onboardingError("Review the data step before shaping your dashboard.", 4);
-  }
-
-  const eligible = customizableWidgetDefs({
-    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
-  });
-  const eligibleIds = new Set(eligible.map((widget) => widget.id));
-  const requested = new Set(formData.getAll("widget").map(String));
-  const visible = eligible
-    .filter((widget) => requested.has(widget.id))
-    .map((widget) => widget.id);
-  if (visible.length === 0) {
-    onboardingError("Keep at least one dashboard card visible.", 5);
-  }
-
-  const recommended = onboardingDashboardLayout(state.focuses);
-  const recommendedOrder = [
-    ...recommended.order.filter((id) => eligibleIds.has(id)),
-    ...eligible
-      .map((widget) => widget.id)
-      .filter((id) => !recommended.order.includes(id)),
-  ];
-  const order = [
-    ...recommendedOrder.filter((id) => visible.includes(id)),
-    ...recommendedOrder.filter((id) => !visible.includes(id)),
-  ];
-  const nextState = onboardingWithLayout(state, utcInstant());
-  writeTx(() => {
-    setDashboardLayout(profile.id, {
-      order,
-      hidden: eligible
-        .map((widget) => widget.id)
-        .filter((id) => !visible.includes(id)),
-    });
-    setOnboardingState(profile.id, nextState);
-  });
-  revalidateRoute("/");
-  revalidateRoute("/onboarding");
-  redirect("/onboarding?step=6");
 }
 
 export async function continueOnboardingData() {
@@ -263,13 +210,16 @@ export async function continueOnboardingData() {
 export async function saveOnboardingNotifications(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const state = getOnboardingState(profile.id);
-  if (!state || !state.layoutReviewed) {
-    onboardingError("Review the dashboard layout first.", 6);
+  if (!state || !state.basicsComplete || state.focuses.length === 0) {
+    onboardingError("Finish the earlier setup steps first.", 5);
+  }
+  if (!state.dataReviewed && !(await selectedOnboardingDataExists(state))) {
+    onboardingError("Review the data step before notifications.", 4);
   }
 
   const intent = formData.get("notification_intent");
   if (!isOnboardingNotificationIntent(intent)) {
-    onboardingError("Choose a notification preference.", 6);
+    onboardingError("Choose a notification preference.", 5);
   }
   writeTx(() => {
     setNotifySchedule(
@@ -287,7 +237,7 @@ export async function saveOnboardingNotifications(formData: FormData) {
   });
   revalidateRoute("/");
   revalidateRoute("/onboarding");
-  redirect("/onboarding?step=7");
+  redirect("/onboarding?step=6");
 }
 
 export async function saveOnboardingBasics(formData: FormData) {
@@ -373,10 +323,9 @@ export async function completeOnboarding() {
     !state.profilePath ||
     state.focuses.length === 0 ||
     !state.basicsComplete ||
-    !state.layoutReviewed ||
     !state.notificationsReviewed
   ) {
-    onboardingError("Finish the outcome and profile steps first.", 7);
+    onboardingError("Finish the outcome and profile steps first.", 6);
   }
 
   if (!state.dataReviewed && !(await selectedOnboardingDataExists(state))) {

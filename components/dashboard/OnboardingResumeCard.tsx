@@ -23,11 +23,9 @@ export default function OnboardingResumeCard({
         ? "Add the profile basics that shape ranges and reminders"
         : !hasFirstValue
           ? onboardingFocusDef(state.focuses[0]).actionLabel
-          : !state.layoutReviewed
-            ? "Review the recommended dashboard layout"
-            : !state.notificationsReviewed
-              ? "Choose what notifications should mean for this profile"
-              : "Review setup and open your personalized dashboard";
+          : !state.notificationsReviewed
+            ? "Choose what notifications should mean for this profile"
+            : "Review setup and open your dashboard";
 
   return (
     <section

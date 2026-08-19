@@ -67,7 +67,6 @@ function ctxFor(profileId: number): PersonaContext {
             profilePath,
             focuses: normalizeOnboardingFocuses(focuses),
             basicsComplete: true,
-            layoutReviewed: true,
             notificationIntent: "later",
             notificationsReviewed: true,
             checklistDismissed: true,

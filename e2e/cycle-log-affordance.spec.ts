@@ -65,61 +65,6 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     await page.close();
   });
 
-  test("a cycle-relevant profile with NO data gets the log CTA, not an empty dashboard", async () => {
-    await page.goto("/");
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
-    // The regression: this card used to render nothing at all here.
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId("cycle-phase-empty")).toContainText(
-      /log your period to start tracking/i
-    );
-    // Nothing is derived, so nothing is claimed — and certainly nothing forecast.
-    await expect(card.getByTestId("cycle-phase-value")).toHaveCount(0);
-    await expect(card.getByTestId("cycle-phase-forecast")).toHaveCount(0);
-    // And the verb names the write it will perform.
-    await expect(card.getByTestId("period-started-button")).toHaveText(
-      "Period started today"
-    );
-  });
-
-  test("start → end → reopen: the card offers one verb per state, and only ever the true one", async () => {
-    test.slow();
-    await page.goto("/");
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
-
-    // Day 1, logged from the dashboard.
-    await settledClick(page, card.getByTestId("period-started-button"));
-    await expect(card.getByTestId("cycle-phase-value")).toContainText(
-      /Cycle day 1 · Menstrual/,
-      { timeout: 20_000 }
-    );
-    // The offer has flipped to the write that is now true.
-    await expect(card.getByTestId("period-ended-button")).toHaveText(
-      "Period ended today"
-    );
-    await expect(card.getByTestId("period-started-button")).toHaveCount(0);
-
-    // End it. The pre-#1681 control flipped straight back to "Period started today",
-    // whose tap minted a back-to-back period; the offer here is the RECOVERY.
-    await settledClick(page, card.getByTestId("period-ended-button"));
-    await expect(card.getByTestId("period-reopen-button")).toHaveText(
-      "Still bleeding",
-      { timeout: 20_000 }
-    );
-    // The start offer is suppressed inside the plausible-gap window — the button
-    // self-suppresses exactly where a tap would record something implausible.
-    await expect(card.getByTestId("period-started-button")).toHaveCount(0);
-
-    // The recovery works, and reopens rather than duplicating.
-    await settledClick(page, card.getByTestId("period-reopen-button"));
-    await expect(card.getByTestId("period-ended-button")).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(card.getByTestId("cycle-phase-value")).toContainText(
-      /Cycle day 1 · Menstrual/
-    );
-  });
-
   test("the card and the Cycle page always agree about the verb on offer", async () => {
     // One state, two renderers. If the widget ever grew its own derivation, this is
     // the assertion that would catch it in the browser.
@@ -177,23 +122,5 @@ test.describe("cycle offer inside the plausible-gap window (#1892)", () => {
 
   test.afterAll(async () => {
     await page.close();
-  });
-
-  test("shows the derived phase and offers NOTHING — the silence is the feature", async () => {
-    await page.goto("/");
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
-    await expect(card).toBeVisible();
-    // The fixture's period ended 5 days ago: derivable phase, no plausible write.
-    await expect(card.getByTestId("cycle-phase-value")).toContainText(
-      /Cycle day \d+ · (Follicular|Luteal)/
-    );
-    await expect(card.getByTestId("period-started-button")).toHaveCount(0);
-    await expect(card.getByTestId("period-reopen-button")).toHaveCount(0);
-    await expect(card.getByTestId("period-ended-button")).toHaveCount(0);
-    // The dated form on the Cycle page owns this exception, and the card still links
-    // there — reach narrows, it never grows a nudge.
-    await expect(
-      card.getByRole("link", { name: /View all cycle phase/i })
-    ).toHaveAttribute("href", "/medical/cycles");
   });
 });

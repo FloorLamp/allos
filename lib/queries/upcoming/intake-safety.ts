@@ -322,6 +322,7 @@ function doseRowToItem({ item, dose }: ScheduledDoseRow): UpcomingItem {
       name: item.name,
     }),
     doseId: dose.id,
+    obligation: item.obligation,
   };
 }
 
@@ -386,6 +387,7 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
       // which days it was meant for.
       dueText: ["Available", offerHint].filter(Boolean).join(" · "),
       offerHint,
+      obligation: item.obligation,
       // The item's FIRST active dose (#2419), so the row can carry the same one-tap
       // "Mark taken" the due rows already render. Dueness gates NUDGING, never
       // LOGGING: an offered item is by definition not due, and the doctrine still

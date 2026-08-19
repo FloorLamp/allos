@@ -354,7 +354,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
 // ── #1485 C: reorder converges on drag ──────────────────────────────────────
 //
 // The tiles' order used to move ONLY through per-tile up/down arrows — a second
-// reorder language beside DashboardGrid's drag. It is now the same lift-and-drop,
+// reorder language beside the former dashboard editor. It is now the same lift-and-drop,
 // through the shared components/SortableOrder.tsx, with the arrows kept inside the
 // ⋯ menu as the non-pointer fallback. Both halves need a browser: the drag is
 // pointer physics, and the fallback's whole point is that it moves the tile within

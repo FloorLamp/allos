@@ -57,8 +57,8 @@ shared model. A flagged lab carries a verb ("Review HDL Cholesterol") and
 deep-links to its series, never a dead-end "flagged result". Snooze or dismiss
 any eligible item right there (it stays hidden on Upcoming and in the digest
 too), and an empty banner collapses to a quiet one-line "all clear". Below it, a
-login that reaches more than one profile gets a **household strip** of their
-other people with a per-profile attention count, one tap to switch and view.
+login that reaches more than one profile gets one household fact for each other
+person, with a direct path to the Household view.
 
 Just after an illness, the dashboard keeps the household's leftovers to **one
 band at a time**. Each member whose episode is still inside its seven-day reopen
@@ -66,81 +66,27 @@ window gets a calm **"Recently resolved — reopen?"** line, and dismissing one
 **stays dismissed** across reloads for that reader: the hide is a per-login
 viewing preference, so another caregiver with access to the same person still
 sees the line, and it never changes the episode or its reopen window. The link
-to the household's illness history rides along inside whichever band is already
-on screen — the reopen band's last row while those lines are showing, otherwise
-the household strip's label row — instead of standing alone between them.
+to the household's illness history rides with the reopen facts while those are
+showing and otherwise appears with the household facts.
 
-### Customizable overview
+### Atomic overview
 
-The customizable grid keeps only distinct overview questions: **recent labs**,
-**next appointment**, a focused coaching suggestion (its secondary "Next:"
-recommendation is a compact link to its own action), a compact two-item
-**Coaching observations** preview (the rest reachable in place behind a "Show N
-more" disclosure — the Data quality widget's top-3 overflows the same way, and
-the opt-in Active protocols widget caps at three rows with a "+N more" link to
-Longevity › Protocols; each finding family has exactly ONE dashboard home, so a
-family with its own widget never also fills the rollup, and the rollup's count
-is always what it renders), **weight trend**, combined **Goals and habits**,
-**Healthspan pillars**, and the unified **"How are you today?"** daily check-in
-— a one-tap 5-point mood log (expand for energy, calm, factor chips, and a note;
-one entry per day, never range-checked, never gamified) composed with the
-illness front door's quiet "Not feeling well?" branch, which keeps offering the
-mood tap while an illness episode's cockpit is up in the hero; the **Recap** card
-(weekly, monthly or quarterly, following the cadence set in Settings →
-Notifications) remains opt-in. Standalone cards for quick stats, care-plan due, starred
-biomarkers, biological age, recent activity, immunizations, today's insight,
-streak, low supply, active goals, and weekly routine were retired because Needs
-attention/Upcoming or a richer remaining card already answers them. Legacy saved
-layouts discard those ids safely. Empty data-aware widgets still show a one-tap
-setup CTA — and where the thing that fills a domain is a LOG rather than a
-pipeline, that CTA opens the log in place and **stays on the card once data
-exists** (#1892). Latest vitals keeps a small **"Log reading"** action in its
-populated state, opening the same measurements quick-entry its empty CTA opens:
-the affordance used to vanish the moment the first reading landed, so the person
-who logs blood pressure weekly — the one who actually opens that card — had
-none. Both glance cards carry a **recency floor**: Recent labs age-labels a result
-older than a year, and Latest vitals does the same for a blood pressure older than
-six months or a resting heart rate older than two weeks — the value stays exactly
-where it was, the date line becomes an age ("4 years ago") in amber, and the trend
-arrow drops, because an arrow is a claim about now. Readings taken in one sitting
-(three sequential cuff readings at a clinic visit) never draw an arrow between
-each other at any age. Saved clinical results remain available in Clinical results as
-personal pins—what someone wants to follow even while normal—and are deliberately
-separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
-standard, sleep regularity, biological age, and biomarkers in optimal range as
-separate signals, never one invented score.
+The dashboard renders facts and actions as separate atoms in one column at every
+viewport. A protocol state, its adherence reading, its primary outcome, and a due
+practice are distinct entries; the same applies to individual labs, findings,
+goals, naps, and household people. No card can hide an unrelated fact.
 
-The default order is **actionable first**: the cards you are meant to act on
-today lead — the **"How are you today?"** check-in, the coaching train/rest call,
-**Goals and habits**, **Data quality**'s one-time fixes, and today's nutrition
-and steps gaps (plus **Active protocols** when you opt in, since its rows carry
-pending log actions) — followed by the two cards whose tap writes on a longer
-cadence, **Latest vitals** and **Cycle phase**. Then the glance cards you read
-and move on from: next appointment, recent labs, last night's sleep, weight
-trend, healthspan pillars. **Coaching observations** closes the list, which is
-what its own charter asks for — FYIs, not alerts — and the opt-in **Weekly
-recap** stays last. What makes a card actionable is what its **populated** body
-offers, not what its empty state offers: a one-time setup CTA that disappears
-after the first reading is onboarding, while a log button that stays on the card
-you already check every week is an action — which is why latest vitals and cycle
-phase sit in the acting band and recent labs and weight trend do not. Each card
-declares whether it is actionable, and a registry test keeps the split honest as
-new widgets arrive, so a glance card cannot quietly take a prime slot. This is
-the order a **fresh** dashboard starts in; a dashboard you have already arranged
-keeps exactly the order you gave it, and a card added by a later release joins in
-its default position.
+Placement is derived on every request. **Now** contains every safety item plus at
+most two ordinary items whose obligation, window, or changed state makes them
+current. **Standing** contains the acting profile's ongoing readings. **Everything**
+contains the exact remainder, grouped as actions, statements, states, and readings.
+Expanding Everything never performs another query.
 
-**Edit dashboard** opens Customize, where every eligible widget — visible,
-hidden, and temporarily without data — can be reordered by its grip and shown or
-hidden by its eye, with Save persisting the layout and Cancel restoring the
-state you entered with. On a wide screen you edit the live cards **in place**,
-because there the grid really is six columns and spans and adjacency are part of
-what you are arranging. On a phone the grid is a single column already and a
-live card is half the screen, so Customize collapses each widget to a **compact
-reorder row** — grip, label, eye, about 48px — which puts the whole list on one
-screen and makes a move a flick instead of several screens of autoscroll. It is
-the same editor either way: same order, same hidden set, same Save/Cancel, same
-keyboard path on the grip.
+There is no dashboard editor, saved order, or hidden set. Old saved layouts are
+removed during upgrade, and onboarding no longer asks anyone to arrange a dashboard.
+Data-aware setup and dormant-domain actions remain available as their own atoms, so
+a missing or old reading has a clear path back to the domain without replacing live
+facts from another area.
 
 ### Data quality
 
@@ -3184,10 +3130,9 @@ saved-view, and event-overlay controls.
 Starred metric tiles lead with the latest value, support touch drag reordering,
 and retain menu-based move actions for keyboard users. A dragged tile or card
 **translates**, it never rescales — a reorder moves an item, it does not resize
-it — and the dashboard lifts the card you are carrying into a size-locked ghost
-above the list. The dashboard's Customize shows compact reorder rows on a phone
-and in-place cards on a wide screen. Responsive spacing and all drawer, sheet,
-and toolbar animation honor the operating system's reduced-motion preference.
+it. Dashboard atoms use the same one-column reading order on phones and wide
+screens. Responsive spacing and all drawer, sheet, and toolbar animation honor
+the operating system's reduced-motion preference.
 
 The proposed native companion is a separate future surface; see
 [the mobile companion specification](mobile-companion-spec.md). This section

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { ALL_ROWS } from "../trends";
 import { cache } from "../request-cache";
+import { snapshotCached } from "../read-snapshot";
 import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
@@ -299,7 +300,7 @@ export function getBodyMetricsOnDate(
 //
 // Strict mode (#1642) removes both fallbacks: only the chosen source's rows are
 // read, and an empty result stays empty rather than reverting to all sources.
-export function getMetricDailyTotals(
+function getMetricDailyTotalsUncached(
   profileId: number,
   metric: string,
   limitDays = 180
@@ -380,6 +381,12 @@ export function getMetricDailyTotals(
       .reverse()
   );
 }
+export const getMetricDailyTotals = snapshotCached(
+  "metrics.daily-totals",
+  (profileId: number, metric: string, limitDays = 180) =>
+    `${profileId}:${metric}:${limitDays}`,
+  getMetricDailyTotalsUncached
+);
 
 // The most recent value for a point metric (e.g. 'height_cm'), or null.
 // The most recent metric_samples reading with its measured date (the ended_at's
@@ -1384,7 +1391,7 @@ export function getLatestBodyMetric(
 // day keeps ONE source's reading (primary source first — issue #14); several
 // same-day rows from the kept source (possible for manual rows, whose NULL
 // source is exempt from the unique key) are averaged.
-export function getBodyMetricDailySeries(
+function getBodyMetricDailySeriesUncached(
   profileId: number,
   metric: BodyMetricKind,
   limit = 365
@@ -1399,6 +1406,12 @@ export function getBodyMetricDailySeries(
     .all(profileId, limit) as BodyMetricRow[];
   return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
 }
+export const getBodyMetricDailySeries = snapshotCached(
+  "metrics.body-daily-series",
+  (profileId: number, metric: BodyMetricKind, limit = 365) =>
+    `${profileId}:${metric}:${limit}`,
+  getBodyMetricDailySeriesUncached
+);
 
 interface BodyMetricRow {
   date: string;

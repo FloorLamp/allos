@@ -4,9 +4,9 @@
 // onboarding flake).
 //
 // The wizard is a one-way, stateful flow: its first step flips the fixture
-// profile's onboarding state not_started→in_progress, and completing it writes
-// records (a baseline body metric, a starter routine, a dashboard layout) and
-// stamps the state complete — after which the dashboard no longer auto-redirects
+// profile's onboarding state not_started→in_progress, and completing it may write
+// records (a baseline body metric or starter routine) and stamps the state complete
+// — after which the dashboard no longer auto-redirects
 // to /onboarding, so a second run of the same test against the same DB starts in
 // the wrong world. This module re-creates the seeded starting state on demand.
 //
@@ -46,8 +46,8 @@ type DbHandle = Pick<InstanceType<typeof Database>, "prepare">;
 // Delete every row the onboarding wizard (or the fixture's prior run) can have
 // written for this profile, returning it to "truly empty". This is the wizard's
 // whole write surface: the metrics path records a baseline weight, the fitness
-// path creates a starter routine, the dashboard step writes a layout, and the
-// finish stamps goals/targets — plus the belt-and-suspenders tables a future
+// path creates a starter routine, and the finish stamps goals/targets — plus the
+// belt-and-suspenders tables a future
 // wizard step could plausibly touch (same list the boot-time seed always used).
 export function resetOnboardingProfileRows(
   db: DbHandle,
@@ -81,9 +81,6 @@ export function resetOnboardingProfileRows(
     WHERE routine_id IN (SELECT id FROM routines WHERE profile_id = ?)`
   ).run(profileId);
   db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(profileId);
-  db.prepare(
-    `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'dashboard_layout'`
-  ).run(profileId);
 }
 
 // Stamp the profile back to the wizard's entry state (not_started, version 1,

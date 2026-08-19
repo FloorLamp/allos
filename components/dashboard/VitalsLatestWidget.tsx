@@ -111,11 +111,13 @@ function ProvenanceLine({
 export default function VitalsLatestWidget({
   model,
   today,
+  showLogAction = true,
 }: {
   model: VitalsLatestModel;
   // The PROFILE-local day the ages are measured against — required, so the server's
   // local day can never age a profile's reading (#1186, as RecentLabsWidget takes it).
   today: string;
+  showLogAction?: boolean;
 }) {
   const { bp, restingHr } = model;
   return (
@@ -123,7 +125,7 @@ export default function VitalsLatestWidget({
       <WidgetHeader
         title="Latest vitals"
         href="/trends#body"
-        action={<LogReadingButton />}
+        action={showLogAction ? <LogReadingButton /> : undefined}
       />
       <div className="flex items-start gap-3">
         <IconHeartbeat

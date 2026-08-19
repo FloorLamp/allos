@@ -8,7 +8,7 @@ import { dismissCoachingObservation } from "@/app/(app)/actions";
 // patterns) render only on their own tabs; a finding a user never opens that tab for
 // is indistinguishable from one that never fired. This calm rollup gives them
 // dashboard REACH WITHOUT NOISE — no notification, no non-hideable hero slot (it's a
-// hideable Customize widget) — surfacing the SAME findings (one computation:
+// dashboard observation surface) — surfacing the SAME findings (one computation:
 // lib/rule-findings collectCoachingFindings) with their SAME dedupeKeys, so a dismiss
 // here silences the origin tab too and vice-versa, through the shared findings bus.
 // Renders through the shared FindingsList so its rows can't drift from the tab cards;

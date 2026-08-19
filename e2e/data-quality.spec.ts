@@ -11,6 +11,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { dashboardCandidateWithText } from "./dashboard-candidate";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // dedicated dashboard widget (top-3 by leverage, no score — a count and a list), the
@@ -54,7 +55,11 @@ test("the dashboard Data quality widget renders top gaps with fix-it CTAs (#1045
   });
   await page.goto("/");
 
-  const widget = page.getByRole("main").getByTestId("data-quality");
+  const widget = dashboardCandidateWithText(
+    page,
+    "data-quality.finding:",
+    "Set a birthdate"
+  );
   await expect(widget).toBeVisible();
   // The highest-leverage gap (no birthdate → age unknown) leads, and each row carries
   // a fix-it CTA link (an EXISTING explicit-entry surface, never an auto-fix).
@@ -100,7 +105,11 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
 
   // The Data quality widget is this family's dedicated dashboard home, so it owns
   // the gap…
-  const widget = main.getByTestId("data-quality");
+  const widget = dashboardCandidateWithText(
+    page,
+    "data-quality.finding:",
+    "Set a birthdate"
+  );
   await expect(widget).toBeVisible();
   await expect(
     widget
@@ -116,9 +125,7 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   ).toHaveCount(0);
   // One row on the whole dashboard, not two — counted across BOTH cards' rows.
   const gapRows = main
-    .locator(
-      '[data-testid="data-quality-item"], [data-testid="coaching-observations-item"]'
-    )
+    .getByTestId("dashboard-candidate")
     .filter({ hasText: "Set a birthdate" });
   await expect(gapRows).toHaveCount(1);
 
@@ -131,47 +138,6 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
       .getByTestId("data-quality-dismiss")
   );
   await expect(gapRows).toHaveCount(0);
-
-  await page.context().close();
-});
-
-test("hiding the Data quality widget hands its gaps back to the rollup (#1533)", async ({
-  browser,
-}) => {
-  test.slow();
-  resetDataQualityDismissals(DQ_GAPPY_PROFILE);
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DQ_GAPPY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  const main = page.getByRole("main");
-  await page.goto("/");
-
-  // Hide the dedicated home from Customize (eye toggle → Save).
-  await main.getByRole("button", { name: "Edit dashboard" }).click();
-  await main.getByRole("button", { name: "Hide Data quality" }).click();
-  await settledClick(
-    page,
-    main.getByRole("button", { name: "Save", exact: true })
-  );
-  await expect(main.getByTestId("data-quality")).toHaveCount(0);
-
-  // The gaps fall back into the rollup (the catch-all) rather than losing their
-  // dashboard reach entirely — hiding a card never silently drops a finding.
-  await expect(
-    main
-      .getByTestId("coaching-observations-item")
-      .filter({ hasText: "Set a birthdate" })
-  ).toBeVisible();
-
-  // Restore the default layout so neighboring specs see the seeded dashboard.
-  await main.getByRole("button", { name: "Edit dashboard" }).click();
-  await main.getByRole("button", { name: "Show Data quality" }).click();
-  await settledClick(
-    page,
-    main.getByRole("button", { name: "Save", exact: true })
-  );
-  await expect(main.getByTestId("data-quality")).toBeVisible();
 
   await page.context().close();
 });

@@ -10,6 +10,7 @@ import {
   type ItemCadence,
 } from "../../intake-cadence";
 import { db, hoistedStatement } from "../../db";
+import { snapshotCached } from "../../read-snapshot";
 import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
@@ -70,9 +71,14 @@ const INTAKE_ITEMS_STMT = hoistedStatement(
 // (and it stays in lockstep with getActiveSituations, which reads the same table);
 // the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
 // alias comes last, so it wins over intake_items.* on the duplicate column name.
-export function getIntakeItems(profileId: number): IntakeItem[] {
+function getIntakeItemsUncached(profileId: number): IntakeItem[] {
   return INTAKE_ITEMS_STMT.all(profileId) as IntakeItem[];
 }
+export const getIntakeItems = snapshotCached(
+  "intake.items",
+  (profileId: number) => String(profileId),
+  getIntakeItemsUncached
+);
 
 // Kind-specific adapters are intentionally named after the subset they return.
 // Shared scheduling, adherence, and safety code reads getIntakeItems instead.
@@ -148,12 +154,17 @@ const INTAKE_DOSES_STMT = hoistedStatement(
     WHERE s.profile_id = ? AND d.retired = 0
     ORDER BY d.item_id, d.sort, d.id`
 );
-export function getIntakeDoses(profileId: number): IntakeDose[] {
+function getIntakeDosesUncached(profileId: number): IntakeDose[] {
   return withScheduleVersions(
     profileId,
     INTAKE_DOSES_STMT.all(profileId) as IntakeDose[]
   );
 }
+export const getIntakeDoses = snapshotCached(
+  "intake.doses",
+  (profileId: number) => String(profileId),
+  getIntakeDosesUncached
+);
 
 // Every dose's effective-dated schedule history (#1973, migration 151), oldest first,
 // keyed by dose id. Scoped through the parent item's profile_id like every other read in

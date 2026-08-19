@@ -8,6 +8,7 @@ import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { setFixtureTimezone } from "./fixture-timezones";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
 //
@@ -179,15 +180,23 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
   });
   try {
     await page.goto("/");
-    const card = page.getByRole("main").getByTestId("vitals-latest-widget");
-    await expect(card).toBeVisible();
+    const bpCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.blood-pressure:"
+    );
+    const hrCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.resting-heart-rate:"
+    );
+    await expect(bpCandidate).toBeVisible();
+    await expect(hrCandidate).toBeVisible();
 
-    const bp = card.getByTestId("vitals-latest-bp");
+    const bp = bpCandidate.getByTestId("vitals-latest-bp");
     // The VALUE stays — the newest of the visit's three readings, at full prominence.
     await expect(bp).toContainText("128/84");
     // ...and the raw ISO date is replaced by an age that reads as an age, amber, with a
     // title explaining the tint (the treatment #1216 established on Recent labs).
-    const bpAge = card.getByTestId("vitals-latest-bp-age");
+    const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
     await expect(bpAge).toHaveText("4 years ago");
     await expect(bpAge).toHaveAttribute("data-stale", "true");
     await expect(bpAge).toHaveAttribute(
@@ -198,9 +207,9 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     await expect(bp).not.toContainText("versus previous blood pressure");
 
     // The fresh row is unaffected: plain date, no tint, and its arrow intact.
-    const hr = card.getByTestId("vitals-latest-resting-hr");
+    const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hr).toContainText("61");
-    const hrAge = card.getByTestId("vitals-latest-resting-hr-age");
+    const hrAge = hrCandidate.getByTestId("vitals-latest-resting-hr-age");
     await expect(hrAge).toHaveText(day(1));
     await expect(hrAge).not.toHaveAttribute("data-stale", "true");
     await expect(hr).toContainText("up versus previous resting heart rate");
@@ -208,16 +217,19 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     // Nothing is hidden and nothing is emptied: the header still says "Latest vitals"
     // (latest is a fact; current was the claim removed) and #1892's action is still the
     // obvious next move.
-    await expect(card).toContainText("Latest vitals");
-    await expect(card.getByTestId("vitals-log-reading")).toBeVisible();
+    await expect(
+      dashboardCandidatePrefix(page, "vitals.manual-log").getByTestId(
+        "vitals-log-reading"
+      )
+    ).toBeVisible();
 
     // #2332: the other glance card on the same dashboard, saying the same thing the
     // same way. Its column is narrow, so the age is compact rather than spelled out —
     // that is the one thing the surface declares — but the amber, the data-stale hook
     // and the hover SENTENCE are the shared decision, naming this card's own floor.
-    const labs = page
-      .getByRole("main")
-      .getByTestId("dashboard-widget-recent-labs");
+    const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
+      hasText: "LDL Cholesterol",
+    });
     await expect(labs).toBeVisible();
     const labAge = labs.getByTestId("recent-lab-date");
     await expect(labAge).toHaveText("4y");

@@ -86,6 +86,8 @@ beforeAll(() => stubTelegramSends());
 
 const answer = vi.mocked(answerCallbackQuery);
 const editText = vi.mocked(editMessageTextRaw);
+const FILE_NOW_ISO = "2026-08-05T12:00:00Z"; // 14:00 in Berlin
+let priorFileNow: string | undefined;
 
 function makeProfile(name: string, tz = "Europe/Berlin"): number {
   const id = Number(
@@ -135,7 +137,14 @@ function lastLogId(profileId: number): number {
 }
 
 beforeEach(() => {
+  priorFileNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = FILE_NOW_ISO;
   answer.mockClear();
+});
+
+afterEach(() => {
+  if (priorFileNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorFileNow;
 });
 
 describe("a practice tap can be re-timed", () => {

@@ -6,11 +6,7 @@ import {
   requireSession,
   requireWriteAccess,
 } from "@/lib/auth";
-import {
-  setAttentionHeroCollapsed,
-  setDashboardLayout,
-  setIllnessHeroUi,
-} from "@/lib/settings";
+import { setAttentionHeroCollapsed, setIllnessHeroUi } from "@/lib/settings";
 import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -58,20 +54,10 @@ export type UsualRoutineResult =
     }
   | { ok: false; error: string };
 
-// Persist the active profile's dashboard customization: the widget
-// display order and the set of hidden widget ids. Profile-scoped like the other
-// per-profile settings; the layout is merged defensively against the registry on
-// read, so ids aren't validated here.
-export async function saveDashboardLayout(order: string[], hidden: string[]) {
-  const { profile } = await requireWriteAccess();
-  setDashboardLayout(profile.id, { order, hidden });
-  revalidateRoute("/");
-}
-
 // Persist the acting profile's illness-hero collapse/expand state (issue #858): whether
 // its own cockpit is collapsed to the one-line headline and which OTHER accessible
-// profile's accordion is expanded. A per-viewer UI preference (like the dashboard
-// layout), so it's gated on the active profile's write access and stored under it. No
+// profile's accordion is expanded. It is gated on the active profile's write access
+// and stored under it. No
 // revalidation — the client already reflects the toggle; this only survives a reload.
 export async function saveIllnessHeroState(
   collapsedActive: boolean,

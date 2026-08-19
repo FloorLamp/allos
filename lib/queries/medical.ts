@@ -1,5 +1,6 @@
 import { db, hoistedStatement, writeTx } from "../db";
 import { cache } from "../request-cache";
+import { snapshotCached } from "../read-snapshot";
 import { biomarkerFamily } from "../canonical-name";
 import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
 import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
@@ -406,12 +407,17 @@ const getObservationsCached = cache(function getObservationsCached(
     )
     .all(profileId, profileId, profileId, ...args) as ClinicalObservation[];
 });
+const getObservationsSnapshot = snapshotCached(
+  "medical.observations",
+  (profileId: number, filtersKey: string) => `${profileId}:${filtersKey}`,
+  getObservationsCached
+);
 
 export function getClinicalObservations(
   profileId: number,
   filters: ClinicalObservationFilters = {}
 ): ClinicalObservation[] {
-  return getObservationsCached(profileId, observationFiltersKey(filters));
+  return getObservationsSnapshot(profileId, observationFiltersKey(filters));
 }
 
 // HOW MANY observations a filter set selects, without hydrating one (#2116). The

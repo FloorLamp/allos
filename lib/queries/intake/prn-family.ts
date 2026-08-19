@@ -24,6 +24,7 @@
 
 import { db } from "../../db";
 import { cache } from "../../request-cache";
+import { snapshotCached } from "../../read-snapshot";
 import { tickCached } from "../../tick-cache";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import {
@@ -172,12 +173,17 @@ export function redoseWindowState(
 // revalidates, and the next render is a new request with a new memo — and a tick
 // scope contains no dose write at all (taps land in the webhook route or the sidecar's
 // separate `poll` mode, never in `tick()`).
-export const getMedicationFamilyStates = cache(
+const getMedicationFamilyStatesForRequest = cache(
   tickCached(
     "getMedicationFamilyStates",
     (profileId: number, date: string) => `${profileId}:${date}`,
     getMedicationFamilyStatesUncached
   )
+);
+export const getMedicationFamilyStates = snapshotCached(
+  "intake.medication-family-states",
+  (profileId: number, date: string) => `${profileId}:${date}`,
+  getMedicationFamilyStatesForRequest
 );
 
 function getMedicationFamilyStatesUncached(

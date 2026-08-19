@@ -30,6 +30,9 @@ const VISION_ROWS = hoistedStatement(
 const DENTAL_ROWS = hoistedStatement(
   `SELECT 1 FROM dental_procedures WHERE profile_id = ? LIMIT 1`
 );
+const CYCLE_ROWS = hoistedStatement(
+  `SELECT 1 FROM cycles WHERE profile_id = ? LIMIT 1`
+);
 
 /** Whether a profile has any optical prescription — the Vision pane's data gate. */
 function hasVisionRows(profileId: number): boolean {
@@ -50,10 +53,6 @@ function hasDentalRows(profileId: number): boolean {
 // gone). Skin and Mental health carry no bit — their /records sections render
 // unconditionally because their in-page forms are the only creation path.
 export function getNavRelevance(profileId: number): NavRelevance {
-  const hasCycleRows =
-    db
-      .prepare(`SELECT 1 FROM cycles WHERE profile_id = ? LIMIT 1`)
-      .get(profileId) != null;
   const hasPracticeTargets =
     db
       .prepare(
@@ -67,12 +66,7 @@ export function getNavRelevance(profileId: number): NavRelevance {
       .prepare(`SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1`)
       .get(profileId) != null;
   return {
-    cycle: cycleTrackingRelevant({
-      hasCycleRows,
-      sex: getProfileSex(profileId),
-      reproductiveStatus: getProfileReproductiveStatus(profileId),
-      age: getProfileAge(profileId),
-    }),
+    cycle: getCycleTrackingRelevance(profileId),
     vision: hasVisionRows(profileId),
     dental: hasDentalRows(profileId),
     // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
@@ -88,6 +82,19 @@ export function getNavRelevance(profileId: number): NavRelevance {
       hasPracticeLogs,
     }),
   };
+}
+
+/** The cycle bit without gathering unrelated navigation domains. */
+export function getCycleTrackingRelevance(
+  profileId: number,
+  age: number | null = getProfileAge(profileId)
+): boolean {
+  return cycleTrackingRelevant({
+    hasCycleRows: CYCLE_ROWS.get(profileId) != null,
+    sex: getProfileSex(profileId),
+    reproductiveStatus: getProfileReproductiveStatus(profileId),
+    age,
+  });
 }
 
 // The Records › Specialty section-visibility bitset (#1079 + #1174/#1175 + #2807).

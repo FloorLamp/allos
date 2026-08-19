@@ -3,6 +3,10 @@ import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import { plateauSignalKey } from "@/lib/training-observations";
+import {
+  dashboardCandidatePrefix,
+  dashboardCandidateWithText,
+} from "./dashboard-candidate";
 
 // The dedicated plateaued lift seeded for this spec (e2e/seed/findings.ts).
 const DISMISS_PRESS = "E2E Dismiss Press";
@@ -47,7 +51,11 @@ test("the dashboard surfaces tab-only coaching observations (#449)", async ({
   resetCoachingObservationDismissals();
   await page.goto("/");
 
-  const rollup = page.getByRole("main").getByTestId("coaching-observations");
+  const rollup = dashboardCandidateWithText(
+    page,
+    "coaching.observation:",
+    "Skullcrusher"
+  );
   await expect(rollup).toBeVisible();
   // The plateaued Skullcrusher lives on Training → Overview; here it's reachable
   // from the dashboard without opening that tab.
@@ -60,7 +68,11 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   resetCoachingObservationDismissals();
   await page.goto("/");
 
-  const rollup = page.getByRole("main").getByTestId("coaching-observations");
+  const rollup = dashboardCandidateWithText(
+    page,
+    "coaching.observation:",
+    DISMISS_PRESS
+  );
   await expect(rollup).toBeVisible();
 
   // Target the DEDICATED "E2E Dismiss Press" plateau (seed-events.ts), NOT the
@@ -80,9 +92,7 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   // Dismiss writes to the shared suppression store, so THIS finding is gone from
   // the rollup after the re-render.
   await expect(
-    rollup
-      .getByTestId("coaching-observations-item")
-      .filter({ hasText: "E2E Dismiss Press" })
+    dashboardCandidateWithText(page, "coaching.observation:", DISMISS_PRESS)
   ).toHaveCount(0);
 });
 
@@ -122,26 +132,23 @@ test("repeat dismissal eventually retires a coaching topic (#2386)", async ({
 }) => {
   resetCoachingObservationDismissals();
 
-  const rollup = page.getByRole("main").getByTestId("coaching-observations");
-  const lead = rollup.getByTestId("coaching-observations-item");
+  const observations = dashboardCandidatePrefix(page, "coaching.observation:");
+  const lead = observations.filter({ hasText: DISMISS_PRESS });
 
   // Never declined: it is raised routinely.
   await page.goto("/");
-  await expect(rollup).toBeVisible();
-  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(1);
+  await expect(lead).toHaveCount(1);
 
   // Two separate raisings declined → it is quieter in ordering, but the thresholded
   // widget does not hide it behind a capped overflow.
   declinePastRaisings(2);
   await page.goto("/");
-  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(1);
-  await expect(rollup.getByTestId("coaching-observations-more")).toHaveCount(0);
+  await expect(lead).toHaveCount(1);
 
   // Four → retired from the routine surface altogether.
   declinePastRaisings(4);
   await page.goto("/");
-  await expect(rollup).toBeVisible();
-  await expect(rollup).not.toContainText(DISMISS_PRESS);
+  await expect(lead).toHaveCount(0);
 
   // …and still reachable where the user goes looking. Nothing was silenced: the
   // finding renders in full on Training → Overview, its own tab.

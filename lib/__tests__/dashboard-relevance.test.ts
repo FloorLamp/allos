@@ -1,473 +1,254 @@
 import { describe, expect, it } from "vitest";
 import {
-  DASHBOARD_ZONES,
-  NO_DASHBOARD_RANK_REASONS,
-  NOW_CARD_IDS,
-  compareDashboardPlacements,
-  dashboardTimingActive,
-  rankDashboard,
-  visibleDashboardPlacements,
-  type DashboardNowSignals,
-  type DashboardTiming,
-  type RankableDashboardSurface,
+  rankDashboardCandidates,
+  type DashboardCandidate,
 } from "../dashboard-relevance";
+import {
+  actionCandidate,
+  attentionCandidates,
+  engagementFromSource,
+  profileDataRelevance,
+  readingCandidate,
+  stateCandidate,
+  statementCandidate,
+} from "../dashboard-candidates";
+import type { UpcomingItem } from "../upcoming";
 
-const MIN = (hour: number, minute = 0) => hour * 60 + minute;
+const subject = { scope: "profile" as const, profileId: 7 };
+let order = 0;
 
-function now(
-  overrides: Partial<DashboardNowSignals> = {}
-): DashboardNowSignals {
-  return {
-    minutesOfDay: MIN(15),
-    wakeMinutes: MIN(7),
-    freshSleepSummary: false,
-    sleepWaiting: false,
-    napEndedMinAgo: null,
-    workoutFinishedMinAgo: null,
-    mealAnchors: [MIN(8), MIN(13), MIN(20)],
-    eveningAnchor: MIN(20),
-    checkInDone: false,
-    ...overrides,
-  };
-}
-
-function surface(
-  placementId: string,
-  currentPlacement: RankableDashboardSurface["currentPlacement"],
-  currentOrder: number,
-  overrides: Partial<RankableDashboardSurface> = {}
-): RankableDashboardSurface {
-  return {
-    placementId,
-    nodeKey: placementId,
+function reading(id: string, profileId = 7): DashboardCandidate {
+  return readingCandidate({
+    candidateId: id,
+    factKey: `fact.${id}`,
     groupKey: null,
-    subject: { scope: "profile", profileId: 7 },
-    visible: true,
-    available: true,
-    promotable: false,
-    rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-    timing: { kind: "always" },
-    currentPlacement,
-    currentOrder,
-    ...overrides,
-  };
+    subject: { scope: "profile", profileId },
+    applicable: true,
+    relevance: profileDataRelevance("current", "manual"),
+    sourceOrder: order++,
+  });
 }
 
-function matrixSurfaces(): RankableDashboardSurface[] {
-  return [
-    surface("needs-attention", "priority", 1),
-    surface("illness-hero", "priority", 0, {
-      subject: { scope: "household" },
-    }),
-    surface("recently-resolved", "pre-grid", 0),
-    surface("session-recap", "pre-grid", 2, {
-      promotable: true,
-      timing: { kind: "since-event", ageMinutes: 0, maxMinutes: 60 },
-    }),
-    surface("symptom-log", "grid", 0, {
-      promotable: true,
-    }),
-    surface("nutrition-today", "grid", 1, {
-      promotable: true,
-    }),
-    surface("sleep-last-night", "grid", 2, {
-      promotable: true,
-      timing: {
-        kind: "local-time",
-        opensAt: MIN(7),
-        closesAt: MIN(10),
-        wrapsMidnight: false,
-      },
-    }),
-    surface("naps-today", "grid", 3, {
-      promotable: true,
-      timing: { kind: "since-event", ageMinutes: 0, maxMinutes: 180 },
-    }),
-    surface("recent-labs", "grid", 4),
-  ];
+function action(
+  id: string,
+  obligation: "must" | "should" | "may",
+  reasons: Partial<DashboardCandidate["rankReasons"]> = {}
+): DashboardCandidate {
+  return actionCandidate({
+    candidateId: id,
+    factKey: `fact.${id}`,
+    groupKey: null,
+    subject,
+    applicable: true,
+    relevance: { kind: "event" },
+    obligation,
+    rankReasons: {
+      safety: false,
+      owed: false,
+      windowOpen: false,
+      changed: false,
+      ...reasons,
+    },
+    sourceOrder: order++,
+  });
 }
 
-const compact = (surfaces: RankableDashboardSurface[], signals = now()) =>
-  rankDashboard(surfaces, { now: signals }).map((placement) =>
-    [placement.placementId, placement.zone, placement.visibility].join(":")
-  );
-
-describe("rankDashboard characterization manifest (#3080)", () => {
-  it("preserves priority, pre-grid and saved grid order when no Now signal fires", () => {
-    expect(compact(matrixSurfaces())).toEqual([
-      "illness-hero:priority:visible",
-      "needs-attention:priority:visible",
-      "recently-resolved:pre-grid:visible",
-      "session-recap:pre-grid:visible",
-      "symptom-log:grid:visible",
-      "nutrition-today:grid:visible",
-      "sleep-last-night:grid:visible",
-      "naps-today:grid:visible",
-      "recent-labs:grid:visible",
-    ]);
+const rank = (candidates: DashboardCandidate[]) =>
+  rankDashboardCandidates(candidates, {
+    activeProfileId: 7,
+    minutesOfDay: 12 * 60,
   });
 
-  it.each([
-    {
-      label: "wake",
-      signals: now({ minutesOfDay: MIN(9, 1), freshSleepSummary: true }),
-      promoted: ["sleep-last-night"],
-      reason: "windowOpen" as const,
-    },
-    {
-      label: "meal",
-      signals: now({ minutesOfDay: MIN(13) }),
-      promoted: ["nutrition-today"],
-      reason: "windowOpen" as const,
-    },
-    {
-      label: "post-workout",
-      signals: now({ workoutFinishedMinAgo: 5 }),
-      promoted: ["session-recap"],
-      reason: "changed" as const,
-    },
-    {
-      label: "evening check-in",
-      signals: now({ minutesOfDay: MIN(21) }),
-      promoted: ["symptom-log", "nutrition-today"],
-      reason: "owed" as const,
-    },
-  ])(
-    "moves the existing node into Now inside the $label window",
-    ({ signals, promoted, reason }) => {
-      const placements = rankDashboard(matrixSurfaces(), { now: signals });
-      expect(
-        visibleDashboardPlacements(placements, "now").map(
-          (placement) => placement.placementId
-        )
-      ).toEqual(promoted);
-      for (const id of promoted) {
-        expect(
-          placements.filter((placement) => placement.nodeKey === id)
-        ).toHaveLength(1);
-      }
-      expect(
-        placements.find((placement) => placement.placementId === promoted[0])
-          ?.rankReasons[reason]
-      ).toBe(true);
-    }
-  );
-
-  it("keeps a saved custom grid order as the home-order tie-break", () => {
-    const surfaces = matrixSurfaces().map((candidate) =>
-      candidate.placementId === "recent-labs"
-        ? { ...candidate, currentOrder: -1 }
-        : candidate
-    );
-    expect(
-      visibleDashboardPlacements(
-        rankDashboard(surfaces, { now: now() }),
-        "grid"
-      ).map((placement) => placement.placementId)
-    ).toEqual([
-      "recent-labs",
-      "symptom-log",
-      "nutrition-today",
-      "sleep-last-night",
-      "naps-today",
-    ]);
+describe("atomic dashboard placement", () => {
+  it("treats stored null provenance as manual engagement", () => {
+    expect(engagementFromSource(null)).toBe("manual");
+    expect(engagementFromSource("manual")).toBe("manual");
+    expect(engagementFromSource("oura")).toBe("external");
+    expect(engagementFromSource(undefined)).toBe("unknown");
   });
 
-  it("never promotes hidden, unavailable, empty or dormant surfaces", () => {
-    const surfaces = matrixSurfaces().map((candidate) => {
-      if (candidate.placementId === "sleep-last-night") {
-        return { ...candidate, visible: false };
-      }
-      if (candidate.placementId === "nutrition-today") {
-        return { ...candidate, available: false };
-      }
-      if (candidate.placementId === "symptom-log") {
-        return { ...candidate, promotable: false };
-      }
-      return candidate;
-    });
-    const placements = rankDashboard(surfaces, {
-      now: now({
-        minutesOfDay: MIN(20),
-        wakeMinutes: MIN(18),
-        freshSleepSummary: true,
+  it("partitions every applicable candidate exactly once", () => {
+    const placements = rank([
+      action("owed", "must", { owed: true }),
+      reading("standing"),
+      statementCandidate({
+        candidateId: "update",
+        factKey: "fact.update",
+        groupKey: null,
+        subject,
+        applicable: true,
+        relevance: { kind: "event" },
+        sourceOrder: order++,
       }),
-    });
-    expect(visibleDashboardPlacements(placements, "now")).toEqual([]);
+    ]);
     expect(
-      placements.find(
-        (placement) => placement.placementId === "sleep-last-night"
-      )?.visibility
-    ).toBe("hidden");
-    expect(
-      placements.find(
-        (placement) => placement.placementId === "nutrition-today"
-      )?.visibility
-    ).toBe("unavailable");
-  });
-
-  it("keeps silence as a valid answer", () => {
-    expect(
-      visibleDashboardPlacements(
-        rankDashboard(matrixSurfaces(), { now: now() }),
-        "now"
-      )
-    ).toEqual([]);
-  });
-});
-
-describe("orthogonal rank reasons", () => {
-  it("never treats an open-window may action as owed or promotes it", () => {
-    const offered = surface("stream-offer", "pre-grid", 0, {
-      promotable: true,
-      obligation: "may",
-      rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        windowOpen: true,
-      },
-      timing: {
-        kind: "local-time",
-        opensAt: MIN(8),
-        closesAt: MIN(9),
-        wrapsMidnight: false,
-      },
-    });
-    const [placement] = rankDashboard([offered], {
-      now: now({ minutesOfDay: MIN(8, 30) }),
-    });
-    expect(placement.zone).toBe("pre-grid");
-    expect(placement.rankReasons.owed).toBe(false);
-  });
-
-  it("also blocks a legacy window card when it is classified may", () => {
-    const nutrition = surface("nutrition-today", "grid", 0, {
-      promotable: true,
-      obligation: "may",
-      rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        windowOpen: true,
-      },
-    });
-    const [placement] = rankDashboard([nutrition], {
-      now: now({ minutesOfDay: MIN(13) }),
-    });
-    expect(placement.zone).toBe("grid");
-  });
-
-  it("lets every safety surface through while the ordinary cap remains two", () => {
-    const surfaces = [
-      ...["safety-a", "safety-b", "safety-c"].map((id, order) =>
-        surface(id, "grid", order, {
-          promotable: true,
-          rankReasons: {
-            ...NO_DASHBOARD_RANK_REASONS,
-            safety: true,
-          },
-        })
-      ),
-      ...["owed-a", "owed-b", "owed-c"].map((id, order) =>
-        surface(id, "grid", order + 3, {
-          promotable: true,
-          obligation: "must",
-          rankReasons: {
-            ...NO_DASHBOARD_RANK_REASONS,
-            owed: true,
-          },
-        })
-      ),
-    ];
-    const nowIds = visibleDashboardPlacements(
-      rankDashboard(surfaces, { now: now() }),
-      "now"
-    ).map((placement) => placement.placementId);
-    expect(nowIds).toEqual([
-      "safety-a",
-      "safety-b",
-      "safety-c",
-      "owed-a",
-      "owed-b",
+      placements.map((placement) => placement.candidate.candidateId)
+    ).toEqual(["owed", "standing", "update"]);
+    expect(placements.map((placement) => placement.lane)).toEqual([
+      "now",
+      "standing",
+      "everything",
     ]);
   });
 
-  it("does not make unavailable safety content renderable", () => {
-    const unavailable = surface("safety", "pre-grid", 0, {
-      available: false,
-      promotable: true,
-      rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        safety: true,
-      },
-    });
-    const [placement] = rankDashboard([unavailable], { now: now() });
-    expect(placement.zone).toBe("pre-grid");
-    expect(placement.visibility).toBe("unavailable");
+  it("keeps may actions out of Now for owed or open-window reasons", () => {
+    const placements = rank([
+      action("may", "may", { owed: true, windowOpen: true }),
+    ]);
+    expect(placements[0].lane).toBe("everything");
   });
 
-  it("promotes visible safety content even when its timing is inactive", () => {
-    const safety = surface("closed-window-safety", "grid", 0, {
-      promotable: false,
-      timing: {
-        kind: "local-time",
-        opensAt: MIN(8),
-        closesAt: MIN(9),
-        wrapsMidnight: false,
-      },
-      rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        safety: true,
-      },
-    });
-    const [placement] = rankDashboard([safety], {
-      now: now({ minutesOfDay: MIN(15) }),
-    });
-    expect(placement.zone).toBe("now");
+  it("keeps every safety candidate beyond the ordinary cap", () => {
+    const placements = rank([
+      action("safe-a", "must", { safety: true }),
+      action("safe-b", "must", { safety: true }),
+      action("safe-c", "must", { safety: true }),
+      action("ordinary-a", "must", { owed: true }),
+      action("ordinary-b", "should", { owed: true }),
+      action("ordinary-c", "should", { owed: true }),
+    ]);
+    expect(
+      placements.filter((placement) => placement.lane === "now")
+    ).toHaveLength(5);
+    expect(
+      placements
+        .filter((placement) => placement.lane === "now")
+        .map((placement) => placement.candidate.candidateId)
+    ).toEqual(["safe-a", "safe-b", "safe-c", "ordinary-a", "ordinary-b"]);
   });
 
-  it("centrally strips owed from may and blocks the legacy symptom path", () => {
-    const symptom = surface("symptom-log", "grid", 0, {
-      promotable: true,
-      obligation: "may",
+  it("keeps active illness in ordinary Now ahead of owed actions", () => {
+    const illness = stateCandidate({
+      candidateId: "illness.state:7:open",
+      factKey: "illness.episode:7:open",
+      groupKey: "illness.episode:7:open",
+      subject,
+      applicable: true,
+      relevance: { kind: "state" },
       rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        owed: true,
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: true,
       },
+      sourceOrder: order++,
     });
-    const [placement] = rankDashboard([symptom], {
-      now: now({ minutesOfDay: MIN(21) }),
-    });
-    expect(placement.zone).toBe("grid");
-    expect(placement.rankReasons.owed).toBe(false);
+    const placements = rank([
+      action("owed-a", "must", { owed: true }),
+      action("owed-b", "must", { owed: true }),
+      illness,
+    ]);
+    expect(
+      placements
+        .filter((placement) => placement.lane === "now")
+        .map((placement) => placement.candidate.candidateId)
+    ).toEqual(["illness.state:7:open", "owed-a"]);
   });
 
-  it("moves a generic pre-grid safety placement by its stable identity", () => {
-    const generic = surface("interaction-warning", "pre-grid", 4, {
-      nodeKey: "interaction-warning-node",
-      promotable: true,
-      rankReasons: {
-        ...NO_DASHBOARD_RANK_REASONS,
-        safety: true,
-      },
-    });
-    const [placement] = rankDashboard([generic], { now: now() });
-    expect(placement).toMatchObject({
-      placementId: "interaction-warning",
-      nodeKey: "interaction-warning-node",
-      zone: "now",
-      visibility: "visible",
-    });
-  });
-});
-
-describe("manifest integrity", () => {
-  it("uses a strict total placement comparator", () => {
-    const decomposed = "e\u0301";
-    const composed = "\u00e9";
-    const placements = rankDashboard(
-      [
-        surface("priority-b", "priority", 1),
-        surface("priority-a", "priority", 1),
-        surface("pre-grid", "pre-grid", 0),
-        surface("grid-b", "grid", 1),
-        surface("grid-a", "grid", 1),
-        surface(decomposed, "grid", 1),
-        surface(composed, "grid", 1),
-        surface("safety", "grid", 9, {
-          promotable: true,
-          rankReasons: {
-            ...NO_DASHBOARD_RANK_REASONS,
-            safety: true,
-          },
-        }),
-      ],
-      { now: now() }
+  it("censuses future and setup attention facts without promoting them", () => {
+    const item = (
+      key: string,
+      over: Partial<UpcomingItem> = {}
+    ): UpcomingItem =>
+      ({
+        key,
+        domain: "appointment",
+        title: key,
+        href: "/appointments",
+        dueDate: "2026-09-01",
+        ...over,
+      }) as UpcomingItem;
+    const candidates = attentionCandidates(
+      subject,
+      [item("future"), item("setup", { signalGroup: "setup", dueDate: null })],
+      "2026-08-18"
     );
-    const sign = (value: number) => Math.sign(value);
-
-    for (const a of placements) {
-      expect(compareDashboardPlacements(a, a)).toBe(0);
-      for (const b of placements) {
-        const ab = compareDashboardPlacements(a, b);
-        const ba = compareDashboardPlacements(b, a);
-        if (ab === 0 || ba === 0) expect(ab).toBe(ba);
-        else expect(sign(ab)).toBe(-sign(ba));
-        if (a.placementId !== b.placementId) expect(ab).not.toBe(0);
-        for (const c of placements) {
-          const bc = compareDashboardPlacements(b, c);
-          if (ab <= 0 && bc <= 0) {
-            expect(compareDashboardPlacements(a, c)).toBeLessThanOrEqual(0);
-          }
-        }
-      }
-    }
-  });
-
-  it("is invariant to input order and terminates ties on placementId", () => {
-    const decomposed = "e\u0301";
-    const composed = "\u00e9";
-    const surfaces = [
-      surface("charlie", "grid", 0),
-      surface("alpha", "grid", 0),
-      surface("bravo", "grid", 0),
-      surface(composed, "grid", 0),
-      surface(decomposed, "grid", 0),
-    ];
-    const forward = rankDashboard(surfaces, { now: now() });
-    const shuffled = rankDashboard(
-      [surfaces[3], surfaces[2], surfaces[4], surfaces[0], surfaces[1]],
-      { now: now() }
-    );
-    expect(forward).toEqual(shuffled);
-    expect(forward.map((placement) => placement.placementId)).toEqual([
-      "alpha",
-      "bravo",
-      "charlie",
-      decomposed,
-      composed,
+    expect(candidates).toHaveLength(2);
+    expect(candidates[1].relevance).toEqual({ kind: "setup" });
+    expect(rank(candidates).map((placement) => placement.lane)).toEqual([
+      "everything",
+      "everything",
     ]);
   });
 
-  it("rejects duplicate placement identities rather than rendering twice", () => {
-    const duplicate = surface("same", "grid", 0);
+  it("keeps household readings out of the acting profile Standing lane", () => {
+    const placements = rank([reading("self"), reading("member", 8)]);
+    expect(placements.map((placement) => placement.lane)).toEqual([
+      "standing",
+      "everything",
+    ]);
+  });
+
+  it("keeps manual readings standing and sends external-only readings to Everything", () => {
+    const manual = reading("manual");
+    const external = {
+      ...reading("external"),
+      relevance: profileDataRelevance("current", "external"),
+    };
+    expect(rank([external, manual]).map((placement) => placement.lane)).toEqual(
+      ["standing", "everything"]
+    );
+  });
+
+  it("rejects duplicate presentation and fact identity", () => {
+    const one = reading("one");
+    expect(() => rank([one, { ...one }])).toThrow(/candidateId/);
     expect(() =>
-      rankDashboard([duplicate, { ...duplicate }], { now: now() })
-    ).toThrow("Duplicate dashboard placementId: same");
+      rank([one, { ...reading("two"), factKey: one.factKey }])
+    ).toThrow(/factKey/);
   });
 
-  it("declares every supported zone and timing shape without reading a clock", () => {
-    expect(DASHBOARD_ZONES).toEqual(["priority", "now", "pre-grid", "grid"]);
-    const timings: DashboardTiming[] = [
-      { kind: "always" },
-      {
-        kind: "local-time",
-        opensAt: MIN(23),
-        closesAt: MIN(1),
-        wrapsMidnight: true,
-      },
-      {
-        kind: "local-time-windows",
-        windows: [
-          {
-            opensAt: MIN(12),
-            closesAt: MIN(14),
-            wrapsMidnight: false,
-          },
-        ],
-      },
-      { kind: "since-event", ageMinutes: 5, maxMinutes: 60 },
-      { kind: "local-days", ageDays: 2, maxDays: 7 },
-      { kind: "until-signal", active: true },
-    ];
-    expect(timings.map((timing) => timing.kind)).toEqual([
-      "always",
-      "local-time",
-      "local-time-windows",
-      "since-event",
-      "local-days",
-      "until-signal",
-    ]);
-    expect(dashboardTimingActive(timings[1], MIN(0))).toBe(true);
-    expect(dashboardTimingActive(timings[2], MIN(13))).toBe(true);
-    expect(dashboardTimingActive(timings[3], MIN(13))).toBe(true);
-    expect(NOW_CARD_IDS).toHaveLength(5);
+  it("rejects duplicate identity even when one candidate is inapplicable", () => {
+    const one = reading("latent");
+    expect(() => rank([one, { ...one, applicable: false }])).toThrow(
+      /candidateId/
+    );
+  });
+
+  it("keeps read-only attention facts and carries source obligation", () => {
+    const item = {
+      key: "dose:42",
+      domain: "dose" as const,
+      title: "Dose",
+      href: "/medications" as const,
+      dueDate: null,
+      doseId: 42,
+      obligation: "should" as const,
+      suppressionPolicy: "safety-ungated" as const,
+    };
+    const [candidate] = attentionCandidates(subject, [item], "2026-08-18");
+    expect(candidate).toMatchObject({
+      applicable: true,
+      kind: "action",
+      obligation: "should",
+      rankReasons: { safety: true },
+    });
+  });
+
+  it("keeps preventive affordances actionable in the placement manifest", () => {
+    const item = {
+      key: "visit:dental_cleaning",
+      domain: "visit" as const,
+      title: "Dental cleaning",
+      href: "/records/history/visits" as const,
+      dueDate: "2026-01-01",
+      preventiveRuleKey: "dental_cleaning",
+    };
+    const [candidate] = attentionCandidates(subject, [item], "2026-08-18");
+    expect(candidate).toMatchObject({
+      kind: "action",
+      obligation: "should",
+      rankReasons: { owed: true },
+    });
+    expect(rank([candidate])[0].lane).toBe("now");
+  });
+
+  it("does not let grouping change rank", () => {
+    const candidate = action("grouped", "must", { owed: true });
+    const without = rank([{ ...candidate, groupKey: null }]);
+    const withGroup = rank([{ ...candidate, groupKey: "semantic" }]);
+    expect(withGroup.map(({ lane, laneOrder }) => [lane, laneOrder])).toEqual(
+      without.map(({ lane, laneOrder }) => [lane, laneOrder])
+    );
   });
 });

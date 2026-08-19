@@ -5,12 +5,12 @@ import type { ActiveProtocolSummary } from "@/lib/queries/protocols";
 import {
   ACTIVE_PROTOCOLS_CAP,
   capActionableDashboardList,
-} from "@/lib/dashboard-widgets";
+} from "@/lib/dashboard-presentation";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
 import ProtocolLogButton from "@/app/(app)/protocols/ProtocolLogButton";
 import { dedupeProtocolAdherenceLabel } from "@/lib/protocol-practice";
 
-// Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
+// Active protocols (issue #660). Each ongoing N-of-1
 // experiment as a compact row: days elapsed, this-week practice adherence, and the
 // primary outcome's during-window verdict — every value a FORMATTER over the same
 // detail-page computations (getActiveProtocolSummaries), never a second engine. The

@@ -1,18 +1,17 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { followLink } from "./helpers";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_DQ_ADULT,
   E2E_LOGIN_DQ_GAPPY,
   DQ_ADULT_PROFILE,
   DQ_GAPPY_PROFILE,
-  E2E_LOGIN_REST,
-  REST_CARD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { dashboardCandidateWithText } from "./dashboard-candidate";
 
 // Issues #1146 + #1219 — every dashboard signal carries its affordance, and every
 // data-quality CTA deep-links the exact form that fixes the gap (the #1083
@@ -24,7 +23,7 @@ import { workerDbPath } from "./worker-env";
 //     Coaching observations renders its complete threshold-clearing set (#3090);
 //   • coaching's secondary rec renders as a link, a target-less goal row links to
 //     the goals surface, and the active-protocols widget caps + overflows (#1219).
-// Fixtures: the dedicated DQ_ADULT_PROFILE / DQ_GAPPY_PROFILE / REST_CARD_PROFILE
+// Fixtures: the dedicated DQ_ADULT_PROFILE / DQ_GAPPY_PROFILE
 // members (e2e/seed-events.ts) — no shared-profile writes in this spec.
 
 // Clear a fixture profile's data-quality dismissals so the widgets are populated
@@ -50,27 +49,6 @@ function resetDataQualityDismissals(profileName: string): void {
   }
 }
 
-// Clear the rest-card profile's coaching snoozes so the card leads with the rest
-// rec and its secondary is present (the coaching-rest-card.spec reset, scoped the
-// same way). BLAST RADIUS: only `coaching:%` dismissals on that fixture profile.
-function resetCoachingSnoozes(profileName: string): void {
-  const dbPath = workerDbPath();
-  const db = new Database(dbPath);
-  try {
-    db.pragma("busy_timeout = 5000");
-    const row = db
-      .prepare("SELECT id FROM profiles WHERE name = ?")
-      .get(profileName) as { id: number } | undefined;
-    if (row) {
-      db.prepare(
-        "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'coaching:%'"
-      ).run(row.id);
-    }
-  } finally {
-    db.close();
-  }
-}
-
 test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
   test("smoking / risk / PhenoAge CTAs land on the concrete forms, not browse pages", async ({
     browser,
@@ -82,13 +60,9 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
-      const widget = page.getByRole("main").getByTestId("data-quality");
-      await expect(widget).toBeVisible();
-
       const ctaFor = (label: string) =>
-        widget
+        dashboardCandidateWithText(page, "data-quality.finding:", label)
           .getByTestId("data-quality-item")
-          .filter({ hasText: label })
           .getByRole("link", { name: "Fix it →" });
 
       // Each CTA names the exact target (asserted before navigating).
@@ -144,10 +118,12 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
-      const widget = page.getByRole("main").getByTestId("data-quality");
-      const cta = widget
+      const cta = dashboardCandidateWithText(
+        page,
+        "data-quality.finding:",
+        "Confirm 1 RxNorm match"
+      )
         .getByTestId("data-quality-item")
-        .filter({ hasText: "Confirm 1 RxNorm match" })
         .getByRole("link", { name: "Fix it →" });
       await expect(cta).toHaveAttribute(
         "href",
@@ -206,141 +182,6 @@ test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", 
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await expect(form.getByLabel("Height", { exact: true })).toBeFocused();
-  } finally {
-    await page.context().close();
-  }
-});
-
-test.describe("dashboard list reach (#1219, #3090)", () => {
-  test("the Data quality widget reveals gaps beyond the cap via 'Show N more'", async ({
-    browser,
-  }) => {
-    resetDataQualityDismissals(DQ_GAPPY_PROFILE);
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_DQ_GAPPY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/");
-      const widget = page.getByRole("main").getByTestId("data-quality");
-      await expect(widget).toBeVisible();
-      // Gappy fixture fires 4 gaps (birthdate/med-rxcui/sex/failed-doc); cap 3.
-      await expect(widget.getByTestId("data-quality-item")).toHaveCount(3);
-      const more = widget.getByTestId("data-quality-more");
-      await expect(more).toBeVisible();
-      await more.getByText("Show 1 more").click();
-      const hiddenRow = widget
-        .getByTestId("data-quality-more-item")
-        .filter({ hasText: "Reprocess 1 failed document" });
-      await expect(hiddenRow).toBeVisible();
-      // The revealed row carries the same affordances: a CTA link + a dismiss.
-      await expect(
-        hiddenRow.getByRole("link", { name: "Fix it →" })
-      ).toHaveAttribute("href", "/data?section=review");
-      await expect(
-        hiddenRow.getByTestId("data-quality-more-dismiss")
-      ).toBeVisible();
-    } finally {
-      await page.context().close();
-    }
-  });
-
-  test("Coaching observations renders every relevant finding without a withheld count", async ({
-    browser,
-  }) => {
-    test.slow();
-    resetDataQualityDismissals(DQ_GAPPY_PROFILE);
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_DQ_GAPPY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/");
-      const main = page.getByRole("main");
-      // This fixture's only coaching findings are its four structural gaps, and since
-      // #1533 those live in their dedicated Data quality widget rather than doubling
-      // into the rollup. Hiding that widget hands them back to the rollup (the
-      // catch-all), which gives this relevance-floor test a deterministic, spec-owned
-      // set of four rows instead of an exact count of shared seed findings.
-      await main.getByRole("button", { name: "Edit dashboard" }).click();
-      await main.getByRole("button", { name: "Hide Data quality" }).click();
-      await settledClick(
-        page,
-        main.getByRole("button", { name: "Save", exact: true })
-      );
-      await expect(main.getByTestId("data-quality")).toHaveCount(0);
-
-      const rollup = main.getByTestId("coaching-observations");
-      await expect(rollup).toBeVisible();
-      await expect(
-        rollup.getByTestId("coaching-observations-item")
-      ).toHaveCount(4);
-      await expect(
-        rollup
-          .getByTestId("coaching-observations-item")
-          .filter({ hasText: "Set a biological sex" })
-      ).toBeVisible();
-      await expect(
-        rollup.getByTestId("coaching-observations-more")
-      ).toHaveCount(0);
-      await expect(rollup).toContainText("Patterns worth reviewing.");
-      await expect(rollup).not.toContainText(/\d+ of \d+/);
-
-      // Restore the default layout for neighboring specs on this fixture profile.
-      await main.getByRole("button", { name: "Edit dashboard" }).click();
-      await main.getByRole("button", { name: "Show Data quality" }).click();
-      await settledClick(
-        page,
-        main.getByRole("button", { name: "Save", exact: true })
-      );
-      await expect(main.getByTestId("data-quality")).toBeVisible();
-    } finally {
-      await page.context().close();
-    }
-  });
-
-  test("the Active protocols widget caps at 3 with a '+N more' overflow link", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_DQ_ADULT,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/");
-      const widget = page.getByRole("main").getByTestId("active-protocols");
-      await expect(widget).toBeVisible();
-      // The fixture seeds FOUR ongoing protocols; the cap shows the 3 newest.
-      await expect(widget.locator("ul > li")).toHaveCount(3);
-      const moreLink = widget.getByTestId("active-protocols-more");
-      await expect(moreLink).toContainText("+1 more protocol");
-      await expect(moreLink).toHaveAttribute("href", "/longevity#protocols");
-      // Hash optional in the URL match (fragment can commit a beat late).
-      await followLink(page, moreLink, /\/longevity(#protocols)?$/);
-    } finally {
-      await page.context().close();
-    }
-  });
-});
-
-test("coaching's secondary recommendation renders as a link to its action (#1219)", async ({
-  browser,
-}) => {
-  resetCoachingSnoozes(REST_CARD_PROFILE);
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_REST,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    // The rest-card fixture leads with the rest rec; the training rec rides as
-    // the compact "Next:" secondary — now a link carrying its actionHref.
-    const secondary = page.getByRole("main").getByTestId("coaching-secondary");
-    await expect(secondary).toBeVisible();
-    const link = secondary.getByRole("link");
-    await expect(link).toBeVisible();
-    const href = await link.getAttribute("href");
-    expect(href).toMatch(/^\/training/);
   } finally {
     await page.context().close();
   }

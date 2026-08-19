@@ -10,9 +10,6 @@ import { db, writeTx } from "../db";
 const cache: typeof React.cache =
   (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
 import { isValidTimezone, resolveTimezone } from "../timezone";
-// Type-only import so lib/settings ↔ lib/dashboard-widgets stays a compile-time
-// edge (no runtime cycle: dashboard-widgets imports nothing back from settings).
-import type { DashboardLayout } from "../dashboard-widgets";
 import {
   getSetting,
   getProfileSetting,
@@ -242,51 +239,10 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // cleanup entry — with zero writers there is nothing stored to move or prune, and
 // the read path is simply gone.
 
-// Per-profile dashboard customization — the widget order + hidden
-// set, stored as a JSON blob (same key/value precedent as active situations).
-// Read defensively: any malformed/legacy shape returns null so the page falls
-// back to the registry defaults rather than throwing. The layout is merged
-// against the live registry by resolveWidgets, so ids are not validated here.
-export function getDashboardLayout(profileId: number): DashboardLayout | null {
-  const v = getProfileSetting(profileId, "dashboard_layout");
-  if (!v) return null;
-  try {
-    const parsed = JSON.parse(v);
-    if (!parsed || typeof parsed !== "object") return null;
-    const order = Array.isArray(parsed.order)
-      ? parsed.order.filter((x: unknown): x is string => typeof x === "string")
-      : [];
-    const hidden = Array.isArray(parsed.hidden)
-      ? parsed.hidden.filter((x: unknown): x is string => typeof x === "string")
-      : [];
-    return { order, hidden };
-  } catch {
-    return null;
-  }
-}
-
-// Persist the layout, trimming/deduping both lists so a corrupt post can't bloat
-// the blob. Ids aren't validated against the registry (resolveWidgets merges
-// defensively), so a client on an older/newer catalog never wipes the rest.
-export function setDashboardLayout(
-  profileId: number,
-  layout: DashboardLayout
-): void {
-  const clean = (ids: string[]): string[] => [
-    ...new Set(ids.map((s) => s.trim()).filter(Boolean)),
-  ];
-  const normalized: DashboardLayout = {
-    order: clean(layout.order),
-    hidden: clean(layout.hidden),
-  };
-  setProfileSetting(profileId, "dashboard_layout", JSON.stringify(normalized));
-}
-
 // Per-viewer illness-hero UI state (issue #858): whether the acting profile's own
 // cockpit is collapsed to its one-line headline, and which OTHER accessible profile's
 // accordion cockpit is expanded (one at a time). Stored per acting profile in the same
-// key/value store as the dashboard layout (a sibling UI-state blob, kept out of the
-// order/hidden layout so the registry's defensive merge stays focused). The hero is
+// key/value store as other profile presentation preferences. The hero is
 // COLLAPSIBLE, never hideable — this only remembers open/closed, never removes a cockpit
 // while an episode is open. Read defensively: a malformed blob falls back to defaults.
 export interface IllnessHeroUiState {

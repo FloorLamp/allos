@@ -1,4 +1,5 @@
 import { db, hoistedStatement } from "../db";
+import { snapshotCached } from "../read-snapshot";
 import { REPRESENTATIVE_SPECS, representativeIds } from "../representative-ids";
 import { getClinicalObservations } from "./medical";
 import {
@@ -46,7 +47,7 @@ import type {
 // otherwise both show and be counted in the "Recorded allergies (N)" manager,
 // unlike Conditions/Procedures/Visits which hide theirs (#134/#384). The
 // representative subquery's profile_id bind comes after the main WHERE's.
-export function getAllergies(profileId: number): Allergy[] {
+function getAllergiesUncached(profileId: number): Allergy[] {
   // provider_name joins the documenting clinician for display + for the edit form's
   // loaded value (#1526) — the same correlated-subquery shape getSkinLesions uses, so
   // `SELECT *` keeps carrying every stored column.
@@ -59,6 +60,11 @@ export function getAllergies(profileId: number): Allergy[] {
     a.reactions = composeAllergyReactions(a, byAllergy.get(a.id) ?? []);
   return rows;
 }
+export const getAllergies = snapshotCached(
+  "clinical.allergies",
+  (profileId: number) => String(profileId),
+  getAllergiesUncached
+);
 
 // Every allergy_reactions row for a profile, keyed by allergy id. A CHILD table with
 // no profile_id of its own — scoped through the JOIN to its parent, per the
@@ -325,7 +331,7 @@ const CARE_PLAN_ITEMS_STMT = hoistedStatement(
 // the matching-status rows — a resolved same-name twin can't hide an active one, and
 // an active-filtered view is never emptied. The status bind (when present) follows
 // the subquery's profile_id bind.
-export function getConditions(
+function getConditionsUncached(
   profileId: number,
   opts: { status?: ConditionStatus } = {}
 ): Condition[] {
@@ -337,6 +343,12 @@ export function getConditions(
     opts.status != null ? CONDITIONS_STMT.byStatus : CONDITIONS_STMT.unfiltered;
   return stmt.all(...args) as Condition[];
 }
+export const getConditions = snapshotCached(
+  "clinical.conditions",
+  (profileId: number, opts: { status?: ConditionStatus } = {}) =>
+    `${profileId}:${opts.status ?? "all"}`,
+  getConditionsUncached
+);
 
 // Whether the profile has an IMPORTED social-history smoking condition (#188) — the
 // "ever smoked, details unknown" FALLBACK for the smoking-history resolver (#83)
@@ -352,9 +364,14 @@ const IMPORTED_SMOKING_STMT = hoistedStatement(
      WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'
      LIMIT 1`
 );
-export function hasImportedSmokingHistory(profileId: number): boolean {
+function hasImportedSmokingHistoryUncached(profileId: number): boolean {
   return IMPORTED_SMOKING_STMT.get(profileId) != null;
 }
+export const hasImportedSmokingHistory = snapshotCached(
+  "clinical.imported-smoking",
+  (profileId: number) => String(profileId),
+  hasImportedSmokingHistoryUncached
+);
 
 export function getCondition(
   profileId: number,
@@ -377,9 +394,14 @@ export function getProcedures(profileId: number): Procedure[] {
 // table — a genomic result is a durable fact (it never goes stale, never nags for
 // retest, never flags abnormal), so there is no representative-id dedup here.
 // Predictive variants are returned factually; no risk interpretation is derived.
-export function getGenomicVariants(profileId: number): GenomicVariant[] {
+function getGenomicVariantsUncached(profileId: number): GenomicVariant[] {
   return GENOMIC_VARIANTS_STMT.all(profileId) as GenomicVariant[];
 }
+export const getGenomicVariants = snapshotCached(
+  "clinical.genomic-variants",
+  (profileId: number) => String(profileId),
+  getGenomicVariantsUncached
+);
 
 // Structured imaging studies (#702), newest study first. De-duplicated across
 // documents via IMAGING_REPRESENTATIVE_IDS (#2919): three overlapping portal exports
@@ -627,9 +649,14 @@ export function getIopFollowUps(profileId: number): ReadingFollowUpSummary[] {
 // unknown relation sort last. De-duplicated across documents via
 // FAMILY_HISTORY_REPRESENTATIVE_IDS (the subquery's profile_id bind comes after the
 // main WHERE's).
-export function getFamilyHistory(profileId: number): FamilyHistory[] {
+function getFamilyHistoryUncached(profileId: number): FamilyHistory[] {
   return FAMILY_HISTORY_STMT.all(profileId, profileId) as FamilyHistory[];
 }
+export const getFamilyHistory = snapshotCached(
+  "clinical.family-history",
+  (profileId: number) => String(profileId),
+  getFamilyHistoryUncached
+);
 
 // Care plan items — planned / ordered future care, soonest planned date first
 // (undated last). The ordering clinician's name is joined from the shared providers
@@ -639,9 +666,14 @@ export function getFamilyHistory(profileId: number): FamilyHistory[] {
 // here, in Upcoming, and everywhere else that counts open plan items. Follow-up chain
 // nodes never collapse (see the registry). The subquery's profile_id bind comes after
 // the main WHERE's. NB: distinct from the user's own fitness `goals`.
-export function getCarePlanItems(profileId: number): CarePlanItem[] {
+function getCarePlanItemsUncached(profileId: number): CarePlanItem[] {
   return CARE_PLAN_ITEMS_STMT.all(profileId, profileId) as CarePlanItem[];
 }
+export const getCarePlanItems = snapshotCached(
+  "clinical.care-plan-items",
+  (profileId: number) => String(profileId),
+  getCarePlanItemsUncached
+);
 
 // Care goals — clinical targets from the record, soonest target date first
 // (undated last). NB: DISTINCT from the `goals` table (the user's own fitness/body

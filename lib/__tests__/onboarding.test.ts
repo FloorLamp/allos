@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DIGEST_DEFAULT_MINUTE } from "@/lib/notifications/digest-schedule";
-import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
 import {
   completeOnboardingState,
   focusHasFirstValue,
   hasOnboardingFirstValue,
   initialOnboardingState,
   normalizeOnboardingFocuses,
-  onboardingDashboardLayout,
   onboardingDeferred,
   onboardingNeedsSetup,
   onboardingNotificationSchedule,
@@ -15,7 +13,6 @@ import {
   onboardingWithBasics,
   onboardingWithDataReviewed,
   onboardingWithFocuses,
-  onboardingWithLayout,
   onboardingWithNotificationIntent,
   onboardingWithProfilePath,
   parseOnboardingState,
@@ -58,6 +55,17 @@ describe("onboarding state", () => {
     });
   });
 
+  it("ignores the retired dashboard-choice marker in historical state", () => {
+    const historical = JSON.stringify({
+      ...initialOnboardingState(),
+      layoutReviewed: true,
+    });
+    const parsed = parseOnboardingState(historical);
+
+    expect(parsed).toEqual(initialOnboardingState());
+    expect(serializeOnboardingState(parsed!)).not.toContain("layoutReviewed");
+  });
+
   it("normalizes one or two outcomes and makes explore exclusive", () => {
     expect(
       normalizeOnboardingFocuses([
@@ -96,14 +104,12 @@ describe("onboarding state", () => {
     expect(basics.basicsComplete).toBe(true);
     expect(basics.startedAt).toBe(started.startedAt);
 
-    const layout = onboardingWithLayout(basics, "2026-07-15T10:02:00.000Z");
     const notifications = onboardingWithNotificationIntent(
-      layout,
+      basics,
       "later",
       "2026-07-15T10:02:30.000Z"
     );
     expect(notifications).toMatchObject({
-      layoutReviewed: true,
       notificationIntent: "later",
       notificationsReviewed: true,
     });
@@ -134,7 +140,6 @@ describe("onboarding state", () => {
     for (const revisited of [
       onboardingWithBasics(complete, "2026-07-16T08:00:00.000Z"),
       onboardingWithDataReviewed(complete, "2026-07-16T08:00:00.000Z"),
-      onboardingWithLayout(complete, "2026-07-16T08:00:00.000Z"),
       onboardingWithNotificationIntent(
         complete,
         "safety-only",
@@ -201,7 +206,7 @@ describe("onboarding wizard steps", () => {
 
     const basics = { ...focused, basicsComplete: true };
     expect(nextOnboardingStep(basics, false)).toBe(4);
-    expect(resolveOnboardingStep("7", basics, false)).toBe(4);
+    expect(resolveOnboardingStep("6", basics, false)).toBe(4);
     expect(resolveOnboardingStep("2", basics, false)).toBe(2);
 
     const skippedData = onboardingWithDataReviewed(
@@ -210,13 +215,12 @@ describe("onboarding wizard steps", () => {
     );
     expect(nextOnboardingStep(skippedData, false)).toBe(5);
 
-    const withValue = { ...basics, layoutReviewed: true };
-    expect(nextOnboardingStep(withValue, true)).toBe(6);
+    expect(nextOnboardingStep(basics, true)).toBe(5);
 
-    const reviewed = { ...withValue, notificationsReviewed: true };
-    expect(nextOnboardingStep(reviewed, true)).toBe(7);
-    expect(resolveOnboardingStep(undefined, reviewed, true)).toBe(7);
-    expect(resolveOnboardingStep("not-a-step", reviewed, true)).toBe(7);
+    const reviewed = { ...basics, notificationsReviewed: true };
+    expect(nextOnboardingStep(reviewed, true)).toBe(6);
+    expect(resolveOnboardingStep(undefined, reviewed, true)).toBe(6);
+    expect(resolveOnboardingStep("not-a-step", reviewed, true)).toBe(6);
   });
 });
 
@@ -321,53 +325,5 @@ describe("onboarding first value", () => {
     ).toBe(true);
     expect(hasOnboardingFirstValue(["medications"], presence)).toBe(false);
     expect(focusHasFirstValue("explore", presence)).toBe(true);
-  });
-});
-
-describe("onboarding dashboard layout", () => {
-  it("fitness prioritizes training surfaces without permanently removing others", () => {
-    const layout = onboardingDashboardLayout(["fitness"]);
-    // The focused set is sequenced by REGISTRY order, so this list moves with the
-    // catalog's default order — which #1890 made actionable-first: the train/rest
-    // call and this week's targets now lead the passive weight chart.
-    expect(layout.order.slice(0, 4)).toEqual([
-      "coaching",
-      "goals-habits",
-      "weight-trend",
-      "weekly-recap",
-    ]);
-    expect(layout.hidden).toContain("recent-labs");
-    expect(layout.hidden).not.toContain("coaching");
-    expect(layout.hidden).not.toContain("symptom-log");
-    // A non-fitness default widget (the #1221 nutrition card) is hidden by the fitness
-    // focus but stays in the catalog (re-enableable), not permanently removed.
-    expect(layout.hidden).toContain("nutrition-today");
-    expect(layout.order).toContain("recent-labs");
-  });
-
-  it("combines two outcomes and leaves explore broad", () => {
-    const combined = onboardingDashboardLayout([
-      "medical-records",
-      "metrics-labs",
-    ]);
-    expect(combined.hidden).not.toContain("recent-labs");
-    expect(combined.hidden).not.toContain("weight-trend");
-    expect(combined.hidden).toContain("coaching");
-
-    const explore = onboardingDashboardLayout(["explore"]);
-    // The off-by-default widgets (weekly-recap + the #660 active-protocols widget),
-    // in registry order, are the only ones the broad "explore" layout hides.
-    expect(explore.hidden).toEqual(["active-protocols", "weekly-recap"]);
-    expect(explore.order).toEqual(
-      expect.arrayContaining(["nutrition-today", "symptom-log"])
-    );
-  });
-
-  it("keeps the onboarding catalog synchronized with dashboard widgets", () => {
-    const layout = onboardingDashboardLayout(["metrics-labs"]);
-    const customizableIds = customizableWidgetDefs().map((widget) => widget.id);
-
-    expect(layout.order).toEqual(expect.arrayContaining(customizableIds));
-    expect(layout.order).toHaveLength(customizableIds.length);
   });
 });

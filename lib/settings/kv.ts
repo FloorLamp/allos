@@ -1,18 +1,95 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db, hoistedStatement, invalidateTimezoneMemo } from "../db";
+
+interface SettingReadCache {
+  global: Map<string, string | undefined>;
+  profile: Map<string, string | undefined>;
+  login: Map<string, string | undefined>;
+  globalLoaded: boolean;
+  loadedProfiles: Set<number>;
+  loadedLogins: Set<number>;
+}
+
+const settingReadCache = new AsyncLocalStorage<SettingReadCache>();
+
+/** Deduplicate scalar setting reads inside one server operation. */
+export function withSettingReadCache<T>(fn: () => T): T {
+  return settingReadCache.run(
+    {
+      global: new Map(),
+      profile: new Map(),
+      login: new Map(),
+      globalLoaded: false,
+      loadedProfiles: new Set(),
+      loadedLogins: new Set(),
+    },
+    fn
+  );
+}
+
+const ALL_SETTINGS_STMT = hoistedStatement("SELECT key, value FROM settings");
+const ALL_PROFILE_SETTINGS_STMT = hoistedStatement(
+  "SELECT key, value FROM profile_settings WHERE profile_id = ?"
+);
+const ALL_LOGIN_SETTINGS_STMT = hoistedStatement(
+  "SELECT key, value FROM login_settings WHERE login_id = ?"
+);
+
+/** Prime every scalar setting used by a read-heavy server operation. */
+export function preloadGlobalSettings(): void {
+  const scope = settingReadCache.getStore();
+  if (!scope || scope.globalLoaded) return;
+  const rows = ALL_SETTINGS_STMT.all() as { key: string; value: string }[];
+  for (const row of rows) scope.global.set(row.key, row.value);
+  scope.globalLoaded = true;
+}
+
+/** Prime one query per authorized profile instead of one query per setting key. */
+export function preloadProfileSettings(profileIds: readonly number[]): void {
+  const scope = settingReadCache.getStore();
+  if (!scope) return;
+  for (const profileId of new Set(profileIds)) {
+    if (scope.loadedProfiles.has(profileId)) continue;
+    const rows = ALL_PROFILE_SETTINGS_STMT.all(profileId) as {
+      key: string;
+      value: string;
+    }[];
+    for (const row of rows)
+      scope.profile.set(`${profileId}:${row.key}`, row.value);
+    scope.loadedProfiles.add(profileId);
+  }
+}
+
+/** Prime every scalar setting for one authenticated login. */
+export function preloadLoginSettings(loginId: number): void {
+  const scope = settingReadCache.getStore();
+  if (!scope || scope.loadedLogins.has(loginId)) return;
+  const rows = ALL_LOGIN_SETTINGS_STMT.all(loginId) as {
+    key: string;
+    value: string;
+  }[];
+  for (const row of rows) scope.login.set(`${loginId}:${row.key}`, row.value);
+  scope.loadedLogins.add(loginId);
+}
 
 // Generic key/value access over the global settings table, for simple scalar
 // app-wide prefs. Statement hoisted for the same reason as
 // LOGIN_SETTING_GET_STMT below: an instance setting is read many times per
 // render, and preparing it inline pays SQL COMPILATION on each one. NOT
-// cache()-wrapped — a request may
-// write via setSetting then re-read, and hoisting caches the compiled statement,
-// never the value.
+// globally cached. Callers may opt into the operation-scoped read cache below;
+// writes update that scope so write-then-read remains current.
 const SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM settings WHERE key = ?"
 );
 export function getSetting(key: string): string | undefined {
+  const scope = settingReadCache.getStore();
+  const cache = scope?.global;
+  if (cache?.has(key)) return cache.get(key);
+  if (scope?.globalLoaded) return undefined;
   const row = SETTING_GET_STMT.get(key) as { value?: string } | undefined;
-  return row?.value;
+  const value = row?.value;
+  cache?.set(key, value);
+  return value;
 }
 
 export function setSetting(key: string, value: string): void {
@@ -20,6 +97,7 @@ export function setSetting(key: string, value: string): void {
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(key, value);
+  settingReadCache.getStore()?.global.set(key, value);
   // The instance-default timezone is the fallback for every profile without its
   // own, so a change invalidates the resolved-zone memo for all of them.
   if (key === "timezone") invalidateTimezoneMemo();
@@ -27,6 +105,7 @@ export function setSetting(key: string, value: string): void {
 
 export function deleteSetting(key: string): void {
   db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  settingReadCache.getStore()?.global.set(key, undefined);
 }
 
 // Every GLOBAL settings key starting with `prefix`. The instance-tier twin of
@@ -46,7 +125,7 @@ export function getSettingKeysWithPrefix(prefix: string): string[] {
 // most-executed read in the app (~1100 times per `/` render, ~10,600 on
 // /household, where the per-member checks fan out across every accessible
 // profile). Inline, each of those compiled its own copy of the SQL. Value
-// semantics are unchanged — only the compiled statement is reused.
+// semantics are unchanged outside an explicit operation-scoped read cache.
 const PROFILE_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
 );
@@ -54,9 +133,16 @@ export function getProfileSetting(
   profileId: number,
   key: string
 ): string | undefined {
+  const scope = settingReadCache.getStore();
+  const cache = scope?.profile;
+  const cacheKey = `${profileId}:${key}`;
+  if (cache?.has(cacheKey)) return cache.get(cacheKey);
+  if (scope?.loadedProfiles.has(profileId)) return undefined;
   const row = PROFILE_SETTING_GET_STMT.get(profileId, key) as
     { value?: string } | undefined;
-  return row?.value;
+  const value = row?.value;
+  cache?.set(cacheKey, value);
+  return value;
 }
 
 export function setProfileSetting(
@@ -68,6 +154,7 @@ export function setProfileSetting(
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
      ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
   ).run(profileId, key, value);
+  settingReadCache.getStore()?.profile.set(`${profileId}:${key}`, value);
   // Keep the resolved-zone memo (lib/db) in sync when this profile's timezone
   // changes, so today()/streaks/windows reflect it on the next call.
   if (key === "timezone") invalidateTimezoneMemo(profileId);
@@ -77,6 +164,7 @@ export function deleteProfileSetting(profileId: number, key: string): void {
   db.prepare(
     "DELETE FROM profile_settings WHERE profile_id = ? AND key = ?"
   ).run(profileId, key);
+  settingReadCache.getStore()?.profile.set(`${profileId}:${key}`, undefined);
 }
 
 // Every profile_settings key for `profileId` starting with `prefix`. Used by the
@@ -101,8 +189,8 @@ export function getProfileSettingKeysWithPrefix(
 
 // Generic per-login key/value access (login_settings table). Statement hoisted to
 // module scope: getUnitPrefs (and others) read login settings on effectively
-// every request. NOT cache()-wrapped — a request may write via setLoginSetting
-// then re-read, so this must always hit the DB.
+// every request. The operation-scoped cache updates on writes and deletes, so a
+// caller that opts in still sees write-then-read changes.
 const LOGIN_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM login_settings WHERE login_id = ? AND key = ?"
 );
@@ -110,9 +198,16 @@ export function getLoginSetting(
   loginId: number,
   key: string
 ): string | undefined {
+  const scope = settingReadCache.getStore();
+  const cache = scope?.login;
+  const cacheKey = `${loginId}:${key}`;
+  if (cache?.has(cacheKey)) return cache.get(cacheKey);
+  if (scope?.loadedLogins.has(loginId)) return undefined;
   const row = LOGIN_SETTING_GET_STMT.get(loginId, key) as
     { value?: string } | undefined;
-  return row?.value;
+  const value = row?.value;
+  cache?.set(cacheKey, value);
+  return value;
 }
 
 export function setLoginSetting(
@@ -124,6 +219,7 @@ export function setLoginSetting(
     `INSERT INTO login_settings (login_id, key, value) VALUES (?, ?, ?)
      ON CONFLICT(login_id, key) DO UPDATE SET value = excluded.value`
   ).run(loginId, key, value);
+  settingReadCache.getStore()?.login.set(`${loginId}:${key}`, value);
 }
 
 export function deleteLoginSetting(loginId: number, key: string): void {
@@ -131,4 +227,5 @@ export function deleteLoginSetting(loginId: number, key: string): void {
     loginId,
     key
   );
+  settingReadCache.getStore()?.login.set(`${loginId}:${key}`, undefined);
 }

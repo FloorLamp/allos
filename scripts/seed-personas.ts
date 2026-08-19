@@ -81,6 +81,11 @@ export interface SeedPersona {
   routes: readonly string[];
   /** Known app gaps the persona is designed to make visible, if any. */
   gaps?: readonly string[];
+  /** Stable semantic candidate ids expected on, or absent from, the dashboard. */
+  dashboard: {
+    expect: readonly string[];
+    absent: readonly string[];
+  };
   apply(ctx: PersonaContext): void;
 }
 
@@ -779,6 +784,10 @@ const bodybuilder: SeedPersona = {
     "/longevity",
     "/results/clinical-results",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "nutrition.protein"],
+    absent: ["cycle.control"],
+  },
   apply(ctx) {
     setAttrs(ctx, {
       name: "Marcus",
@@ -1080,6 +1089,10 @@ const marathonRunner: SeedPersona = {
     "/integrations",
     "/data",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "activity.steps"],
+    absent: ["weight.bootstrap"],
+  },
   apply(ctx) {
     setAttrs(ctx, {
       name: "Elena",
@@ -1806,6 +1819,10 @@ const household: SeedPersona = {
       "the members' own pages need an acting-profile switch the harness's " +
       "profiles journey does not yet parameterize.",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "household.attention"],
+    absent: ["cycle.control"],
+  },
   apply(ctx) {
     seedDaveMidlife(ctx);
 
@@ -1892,6 +1909,10 @@ const pregnant: SeedPersona = {
     "No perinatal instrument (EPDS): PHQ-9 is the only depression screen the " +
       "instrument flow offers a pregnant user.",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "cycle.control"],
+    absent: ["weight.bootstrap"],
+  },
   apply(ctx) {
     setAttrs(ctx, {
       name: "Sofia",
@@ -2222,6 +2243,10 @@ const diabeticCgm: SeedPersona = {
       "no CGM integration exists, so CGM data can only land as discrete " +
       "medical_records vitals rows (#2810).",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "vitals.resting-heart-rate"],
+    absent: ["weight.bootstrap"],
+  },
   apply(ctx) {
     setAttrs(ctx, {
       name: "Ray",
@@ -2548,6 +2573,10 @@ const biohacker: SeedPersona = {
     "No fasting model: time-restricted eating has no first-class surface, so " +
       "the habit can only be represented as a freeform goal.",
   ],
+  dashboard: {
+    expect: ["checkin.mood", "healthspan.pillar"],
+    absent: ["weight.bootstrap"],
+  },
   apply(ctx) {
     setAttrs(ctx, {
       name: "Kai",

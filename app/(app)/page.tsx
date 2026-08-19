@@ -16,12 +16,12 @@ import {
   getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
+  getBodyMetricSeriesBySource,
   getClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
   collectAttentionModel,
-  attentionCountForProfile,
   getHealthspanPillars,
   getLastNightSummary,
   getSleepWaitingState,
@@ -36,20 +36,13 @@ import {
   getProteinToday,
   getMetricDailyTotals,
   getVitalsLatestModel,
-  getNavRelevance,
-  getSituationalDueCount,
-  getDerivedSituationLines,
-  isAnxietyScaleRelevant,
-  getSymptomsOnDate,
+  getCycleTrackingRelevance,
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
   getCustomSymptomNames,
   getSymptomLogOrder,
+  attentionCountForProfile,
 } from "@/lib/queries";
-import {
-  nonIllnessSituationOptions,
-  situationActivationLine,
-} from "@/lib/situations";
 import {
   getCycleForecast,
   getForecastSuspension,
@@ -86,7 +79,6 @@ import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
-  getDashboardLayout,
   getOnboardingState,
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -94,9 +86,6 @@ import {
   getEmergencyCardEnabled,
   getProfileHomeAssistant,
   getLoginTelegram,
-  getSituations,
-  getActiveSituations,
-  getAttentionHeroCollapsed,
   getRecentlyResolvedDismissed,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
@@ -104,7 +93,11 @@ import { hasConnectedDataSource } from "@/lib/integrations/connections";
 import { dispWeight } from "@/lib/units";
 import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
-import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
+import {
+  formatClockMinutes,
+  formatLongDate,
+  daysRemainingLabel,
+} from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import {
   DORMANCY_DOMAINS,
@@ -117,36 +110,41 @@ import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
 import { freshnessAgeDays } from "@/lib/freshness";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import {
-  findingsForDashboardHome,
+  coachingObservationFindings,
   dashboardHabitDomain,
-  resolveWidgetList,
-  rollupCoachingFindings,
-  widgetDisplayState,
-} from "@/lib/dashboard-widgets";
+  isDataQualityDashboardFinding,
+} from "@/lib/dashboard-presentation";
 import {
-  NO_DASHBOARD_RANK_REASONS,
-  isNowCardId,
-  rankDashboard,
-  timingForNowCard,
+  localTimeWindow,
+  mealTimeWindows,
+  rankDashboardCandidates,
+  type DashboardCandidate,
   type DashboardTiming,
-  type RankableDashboardSurface,
 } from "@/lib/dashboard-relevance";
+import {
+  attentionCandidates,
+  careCandidates,
+  dailyCandidates,
+  engagementFromSource,
+  progressCandidates,
+  setupCandidates,
+  sleepCandidates,
+} from "@/lib/dashboard-candidates";
+import { attentionCardItems } from "@/lib/attention";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getStreamLifecycleOffers } from "@/lib/queries/stream-lifecycle";
-import { getIllnessHeroUi } from "@/lib/settings";
 import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
-import { isMoodCheckinPaused, MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
-import { onboardingNeedsSetup } from "@/lib/onboarding";
+import { isMoodCheckinPaused } from "@/lib/mood";
+import {
+  hasOnboardingFirstValue,
+  nextOnboardingStep,
+  ONBOARDING_STEP_COUNT,
+  onboardingNeedsSetup,
+} from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
-import type { GridWidget } from "@/components/dashboard/DashboardGrid";
-import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
+import { DashboardAttentionAtom } from "@/components/dashboard/NeedsAttentionHero";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
-import HouseholdStrip, {
-  type HouseholdStripEntry,
-} from "@/components/dashboard/HouseholdStrip";
-import IllnessHero, {
-  type HeroCockpit,
-} from "@/components/dashboard/IllnessHero";
+import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
 import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
@@ -155,7 +153,6 @@ import {
   episodeStatesForProfiles,
   reopenEligibleFromState,
 } from "@/lib/illness-episode-store";
-import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
   currentEpisodeFromState,
   openEpisodeFromState,
@@ -199,36 +196,64 @@ import StepsTodayWidget from "@/components/dashboard/StepsTodayWidget";
 import VitalsLatestWidget from "@/components/dashboard/VitalsLatestWidget";
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
-import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
+import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
-import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import {
-  dismissRecentlyResolved,
-  saveAttentionHeroCollapsed,
-  saveDashboardLayout,
-  saveIllnessHeroState,
-} from "./actions";
+import HouseholdStrip from "@/components/dashboard/HouseholdStrip";
+import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
+import { dismissRecentlyResolved } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
+import {
+  preloadGlobalSettings,
+  preloadLoginSettings,
+  preloadProfileSettings,
+  withSettingReadCache,
+} from "@/lib/settings/kv";
+import { withReadSnapshot } from "@/lib/read-snapshot";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const { login, profile, access } = await requireSession();
+  return withSettingReadCache(async () => {
+    const session = await requireSession();
+    preloadGlobalSettings();
+    preloadLoginSettings(session.login.id);
+    preloadProfileSettings([session.profile.id]);
+    const profileAge = getProfileAge(session.profile.id);
+    if (isTrainingRelevant(profileAge)) {
+      void withAiLogContext(
+        { loginId: session.login.id, profileId: session.profile.id },
+        () =>
+          runRecommendation(session.profile.id, {
+            trigger: "scheduled",
+            loginId: session.login.id,
+          })
+      );
+    }
+    return withReadSnapshot(() => renderDashboard(session, profileAge));
+  });
+}
+
+async function renderDashboard(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  profileAge: ReturnType<typeof getProfileAge>
+) {
+  const { login, profile, access } = session;
+  const canWrite = access === "write";
   const storedOnboarding = getOnboardingState(profile.id);
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
   }
-  const profileAge = getProfileAge(profile.id);
   const trainingRelevant = isTrainingRelevant(profileAge);
   const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const on = today(profile.id);
+  const timezone = getTimezone(profile.id);
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
 
@@ -250,20 +275,6 @@ export default async function Dashboard() {
     finishedRecap != null &&
     finishedRecap.totalWorkingSets > 0;
 
-  // Lazy scheduled AI recommendation run (issue #424). The dashboard is the
-  // natural landing surface, so it's where a due scheduled run kicks off —
-  // fire-and-forget, never blocking render, and a hard no-op unless the profile's
-  // cadence is a calendar one AND its period has elapsed AND the inputs changed.
-  // Wrapped in the AI-log context so the run's events carry the acting ids.
-  if (trainingRelevant) {
-    void withAiLogContext({ loginId: login.id, profileId: profile.id }, () =>
-      runRecommendation(profile.id, {
-        trigger: "scheduled",
-        loginId: login.id,
-      })
-    );
-  }
-
   // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
   // unconditionally (outside the customizable grid). Renders the act-now SUBSET of
   // the ONE unified attention model (lib/attention.ts) the Upcoming page renders in
@@ -271,8 +282,6 @@ export default async function Dashboard() {
   // model shares its underlying reads with the Telegram digest and the Upcoming list.
   // The login's unit prefs ride along (#1019) so a measurement-carrying item (the
   // temperature red-flag, an endurance event distance) renders in the viewer's unit.
-  const attention = collectAttentionModel(profile.id, on, units);
-
   // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
   // profile attention count for their OTHER profiles (same gate as the Household
   // nav entry). Each chip's number is a WHOLE attention model for that member —
@@ -293,6 +302,9 @@ export default async function Dashboard() {
   // chip. lib/__db_tests__/household-attention-count.test.ts pins both halves —
   // the integer and the one-compile-per-connection claim.
   const accessible = await getAccessibleProfiles();
+  preloadProfileSettings(
+    accessible.map((accessibleProfile) => accessibleProfile.id)
+  );
   // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
   // name the subject when the login is acting as someone OTHER than its own profile,
   // so a weigh-in never silently lands on the wrong person's record. Null (no naming)
@@ -331,47 +343,25 @@ export default async function Dashboard() {
           countPushSubscriptionsForLogin(login.id) > 0,
       }
     : null;
-  // Bounded (lib/household-fanout.ts): an admin reaches every profile on the
-  // instance, and attentionCountForProfile is the whole attention model per
-  // profile — unbounded, that is the dominant cost of this page.
-  const householdEntries: HouseholdStripEntry[] =
-    accessible.length > 1
-      ? householdFanoutProfiles(accessible, profile.id)
-          .map((p) => ({
-            profile: p,
-            count: attentionCountForProfile(p.id, today(p.id)),
-          }))
-          .filter((entry) => entry.count > 0)
-      : [];
-
-  // Resolve the eligible widget set (visible + hidden) for this profile first,
-  // then fetch only the data those widgets need — a net win over the old
-  // unconditional fetching. Every eligible widget is rendered server-side so
-  // Customize mode can preview/re-enable a hidden one without a round-trip.
-  // Per-profile widget gate (issue #1221): the dashboard twin of the nav's per-entry
-  // gating. Nutrition-today drops for an infant profile (the SAME isFoodLoggingRelevant
-  // bit as the Nutrition nav entry, #591); Cycle-phase drops unless cycle tracking is
-  // relevant (the SAME getNavRelevance().cycle bit as the Cycle nav entry, #1042) — so a
-  // card can never disagree with its nav twin about applicability.
-  const widgetGate = {
-    foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
-    cycle: getNavRelevance(profile.id).cycle,
-    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
-    training: trainingRelevant,
+  const householdProfiles = householdFanoutProfiles(accessible, profile.id);
+  const { attention, householdAttention } = {
+    attention: collectAttentionModel(profile.id, on, units),
+    householdAttention: householdProfiles
+      .map((householdProfile) => ({
+        profile: householdProfile,
+        count: attentionCountForProfile(
+          householdProfile.id,
+          today(householdProfile.id)
+        ),
+      }))
+      .filter((entry) => entry.count > 0),
   };
-  const list = resolveWidgetList(
-    getDashboardLayout(profile.id),
-    undefined,
-    widgetGate
-  );
-  const eligible = new Set(list.map((w) => w.def.id));
-  const has = (id: string) => eligible.has(id);
-  // Eligibility is not visibility: `list` deliberately carries the widgets the profile
-  // has toggled OFF too, so Customize can preview one without a round-trip. Anything
-  // that asks "is this card actually on the person's dashboard right now?" — e.g. the
-  // #1533 finding-home split — must read the saved `visible` flag, not `has`.
-  const shown = new Set(list.filter((w) => w.visible).map((w) => w.def.id));
-  const showsWidget = (id: string) => shown.has(id);
+
+  // Applicability belongs to each candidate and is never inferred from missing data.
+  // These bits reuse the same life-stage/navigation decisions as the owning routes.
+  const foodLoggingApplicable = isFoodLoggingRelevant(profileAge);
+  const cycleApplicable = getCycleTrackingRelevance(profile.id, profileAge);
+  const adultContentApplicable = isLongevityRelevant(profileAge);
 
   // Illness hero (issue #858): every accessible OPEN illness episode as a per-patient
   // cockpit, over the SAME #801 assembly the timeline/detail/share surfaces use (one
@@ -406,7 +396,7 @@ export default async function Dashboard() {
   const activeEpisode = activeSick
     ? openEpisodeFromState(stateFor(profile.id))
     : null;
-  const otherSick = householdFanoutProfiles(accessible, profile.id)
+  const otherSick = householdProfiles
     .map((p) => ({ p, ep: currentEpisodeFromState(stateFor(p.id)) }))
     .filter(
       (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
@@ -443,7 +433,7 @@ export default async function Dashboard() {
     })),
   ]);
 
-  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => {
+  const heroCockpits = orderedCockpits.map((c) => {
     const schoolReturn = schoolReturnStatusFor(c.profileId, c.episode);
     return {
       profileId: c.profileId,
@@ -468,17 +458,8 @@ export default async function Dashboard() {
           }
         : null,
       episodeHref: c.episode.id != null ? episodeHref(c.episode.id) : null,
-      body: (
-        <IllnessCockpitBody
-          profileId={c.profileId}
-          loginId={login.id}
-          episode={c.episode}
-          crossProfile={!c.isActive}
-        />
-      ),
     };
   });
-  const heroUi = getIllnessHeroUi(profile.id);
 
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
@@ -541,10 +522,6 @@ export default async function Dashboard() {
   //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
   const promoteHouseholdHistory =
     accessible.length > 1 && isHouseholdRecentlySickFromStates(episodeStates);
-  const promoInReopenBand =
-    promoteHouseholdHistory && recentlyResolved.length > 0;
-  const promoInHouseholdStrip =
-    promoteHouseholdHistory && recentlyResolved.length === 0;
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -554,9 +531,20 @@ export default async function Dashboard() {
   // The UNWINDOWED series is kept: its newest day is the weight domain's last record,
   // which is what separates "never weighed" from "stopped weighing" below (#2652). The
   // card and the dormancy verdict therefore read one computation, not two (#221).
-  const weightSeries = has("weight-trend")
+  const weightSeries = true
     ? getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS)
     : [];
+  const latestWeightPoint = weightSeries.at(-1) ?? null;
+  const weightSource = latestWeightPoint
+    ? getBodyMetricSeriesBySource(profile.id, "weight", 1).find((series) =>
+        series.data.some(
+          (point) =>
+            point.date === latestWeightPoint.date &&
+            point.value === latestWeightPoint.value
+        )
+      )?.source
+    : null;
+  const weightEngagement = engagementFromSource(weightSource);
   const bodyMetrics = weightSeries
     .filter((p) => p.date >= weightTrendSince)
     .map((p) => ({
@@ -567,30 +555,27 @@ export default async function Dashboard() {
   // healthspan-pillars (issue #161): the visible longevity pillars, each consuming
   // its already-merged source computation. buildPillars omits an absent pillar, so
   // an empty array means no pillar has data yet (the data-aware CTA below).
-  const pillars = has("healthspan-pillars")
+  const pillars = adultContentApplicable
     ? getHealthspanPillars(profile.id)
     : [];
 
   // sleep-last-night (issue #1066): the morning "how did I sleep" tile — the SAME
   // lastNightSummary model the /sleep hero reads (one question, one computation),
   // with the SRI alongside as the second figure. Null summary → the data-aware CTA.
-  const sleepSummary = has("sleep-last-night")
-    ? getLastNightSummary(profile.id)
-    : null;
+  const sleepSummary = true ? getLastNightSummary(profile.id) : null;
   const sleepPresentation = sleepSummary
     ? sleepRecordPresentation(sleepSummary.wakeDay, on, formatPrefs)
     : null;
   const sleepSri =
-    has("sleep-last-night") && sleepSummary != null
-      ? (getSleepRegularity(profile.id)?.sri ?? null)
-      : null;
+    sleepSummary != null ? (getSleepRegularity(profile.id)?.sri ?? null) : null;
   // The morning waiting window (#2097). When it is open, the tile names the state
   // INSTEAD of showing a headline duration for a night nobody asked about — the
   // recorded night drops to a quiet secondary line and stays one tap away on /sleep.
   // Null (the common case) leaves every existing branch exactly as it was.
-  const sleepWaiting = has("sleep-last-night")
+  const sleepWaiting = true
     ? getSleepWaitingState(profile.id, sleepSummary?.wakeDay ?? null)
     : null;
+  const typicalWakeMinutes = sleepWaiting ? typicalWakeTime(profile.id) : null;
   const sleepPreviousNightLabel =
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
@@ -598,13 +583,13 @@ export default async function Dashboard() {
   // naps-today: the detailed nap model the Sleep page also renders. A normal
   // no-nap day self-hides this contextual widget; once a nap syncs, every window
   // and the combined duration appear without changing the main-sleep card.
-  const todayNaps = has("naps-today") ? getNapHistory(profile.id, 1).today : [];
+  const todayNaps = getNapHistory(profile.id, 1).today;
 
   // recent-labs (medical): the current reading per lab marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
   // policy is the shared recentLabHighlights (issue #313).
   let labRows: RecentLabRow[] = [];
-  if (has("recent-labs")) {
+  {
     labRows = recentLabHighlights(
       getClinicalObservations(profile.id, { current: true }),
       undefined,
@@ -618,7 +603,7 @@ export default async function Dashboard() {
   // policy is overdue-first: a still-scheduled past visit outranks a future one.
   let nextAppt: NextAppointment | null = null;
   let hasScheduledAppt = false;
-  if (has("next-appointment")) {
+  {
     // getScheduledAppointments already orders by date ASC, time_of_day ASC, id ASC,
     // so the picker's same-day tie-break lands on the earliest slot — matching the
     // household card, which feeds the same source ordering.
@@ -656,17 +641,16 @@ export default async function Dashboard() {
   }
 
   // goals-and-habits: one combined overview of outcomes + weekly behaviors.
-  const goals =
-    has("goals-habits") && trainingRelevant
-      ? getOutcomeGoals(profile.id)
-          .filter((g) => isGoalLive(g))
-          .slice(0, 4)
-      : [];
-  const goalProgress = has("goals-habits")
+  const goals = trainingRelevant
+    ? getOutcomeGoals(profile.id)
+        .filter((g) => isGoalLive(g))
+        .slice(0, 4)
+    : [];
+  const goalProgress = true
     ? getOutcomeGoalProgressMap(profile.id, goals)
     : new Map();
 
-  const freqTargets = has("goals-habits")
+  const freqTargets = true
     ? getFrequencyTargetProgress(profile.id).filter(
         ({ target }) =>
           (trainingRelevant ||
@@ -679,30 +663,30 @@ export default async function Dashboard() {
   // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
   // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
   // on the top rec surfaces the next-ranked one until the snooze expires.
-  const coachingRecs =
-    has("coaching") && trainingRelevant
-      ? activeByKey(
-          recommendCoaching(
-            strengthAppropriateCoachingInput(
-              gatherCoachingInput(
-                profile.id,
-                units.weightUnit,
-                units.distanceUnit,
-                // The login's temperature scale (#1967): a °F reader sees the weather-parking
-                // figure in °F here. The notification path keeps canonical °C.
-                units.temperatureUnit
-              ),
-              strengthTrainingAvailable
-            )
-          ).filter(
-            (recommendation) =>
-              strengthTrainingAvailable || recommendation.kind !== "strength"
-          ),
-          (r) => coachingDedupeKey(r.id),
-          getFindingSuppressions(profile.id),
-          on
-        )
-      : [];
+  const coachingSuppressions = getFindingSuppressions(profile.id);
+  const coachingRecs = trainingRelevant
+    ? activeByKey(
+        recommendCoaching(
+          strengthAppropriateCoachingInput(
+            gatherCoachingInput(
+              profile.id,
+              units.weightUnit,
+              units.distanceUnit,
+              // The login's temperature scale (#1967): a °F reader sees the weather-parking
+              // figure in °F here. The notification path keeps canonical °C.
+              units.temperatureUnit
+            ),
+            strengthTrainingAvailable
+          )
+        ).filter(
+          (recommendation) =>
+            strengthTrainingAvailable || recommendation.kind !== "strength"
+        ),
+        (r) => coachingDedupeKey(r.id),
+        coachingSuppressions,
+        on
+      )
+    : [];
 
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
@@ -725,52 +709,48 @@ export default async function Dashboard() {
   // behind everything unfatigued, and a topic declined across four leaves this surface
   // entirely. Nothing is silenced — every one of them still renders on its own tab,
   // which is where the user goes looking, and the shared bus is untouched.
-  const coachingSuppressions = getFindingSuppressions(profile.id);
-  const activeCoaching =
-    has("coaching-observations") || has("data-quality")
-      ? routineOrder(
-          activeFindings(
-            collectCoachingFindings(
-              profile.id,
-              on,
-              units.weightUnit,
-              formatPrefs
-            ),
-            coachingSuppressions,
-            on
-          ).filter((finding) => {
-            const strengthTrainingFinding =
-              finding.domain === "training-strength" ||
-              finding.domain === "training-obs" ||
-              finding.domain === "muscle-volume" ||
-              finding.domain === "fitness-check";
-            return (
-              !strengthTrainingFinding ||
-              (trainingRelevant && strengthTrainingAvailable)
-            );
-          }),
-          coachingSuppressions
-        )
-      : [];
-  const coachingObservations = has("coaching-observations")
-    ? rollupCoachingFindings(activeCoaching, showsWidget)
+  const activeCoaching = true
+    ? routineOrder(
+        activeFindings(
+          collectCoachingFindings(
+            profile.id,
+            on,
+            units.weightUnit,
+            formatPrefs
+          ),
+          coachingSuppressions,
+          on
+        ).filter((finding) => {
+          const strengthTrainingFinding =
+            finding.domain === "training-strength" ||
+            finding.domain === "training-obs" ||
+            finding.domain === "muscle-volume" ||
+            finding.domain === "fitness-check";
+          return (
+            !strengthTrainingFinding ||
+            (trainingRelevant && strengthTrainingAvailable)
+          );
+        }),
+        coachingSuppressions
+      )
     : [];
-  const dataQualityFindings = has("data-quality")
-    ? findingsForDashboardHome(activeCoaching, "data-quality")
-    : [];
+  const coachingObservations = coachingObservationFindings(activeCoaching);
+  const dataQualityFindings = activeCoaching.filter(
+    isDataQualityDashboardFinding
+  );
 
   // weekly-recap — the last period at the profile's chosen recap cadence (#2178),
   // rule-based (no AI). Same gather as the recap notification, so the card and the
   // message always agree. The widget id stays `weekly-recap`: it is a persisted
   // dashboard-layout key, and renaming it would silently un-place every saved layout.
-  const weeklyRecap = has("weekly-recap")
+  const weeklyRecap = trainingRelevant
     ? getRecapCard(profile.id, units.weightUnit)
     : null;
 
   // nutrition-today (#1221): today's protein against the goal band + the weekly average
   // — the SAME getProteinToday model the Food-tab gauge and the food-nudge read (#221).
   // Null when there's no target (no bodyweight) or no protein data → the data-aware CTA.
-  const proteinToday = has("nutrition-today")
+  const proteinToday = foodLoggingApplicable
     ? getProteinToday(profile.id)
     : null;
 
@@ -793,7 +773,7 @@ export default async function Dashboard() {
   // but offering a caregiver-view a button that can only refuse is worse than offering
   // nothing.
   const routineWindow =
-    has("nutrition-today") && access === "write"
+    foodLoggingApplicable && access === "write"
       ? currentFoodSlot(profile.id)
       : null;
   const routineOffer =
@@ -818,9 +798,7 @@ export default async function Dashboard() {
   // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
   // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
   // Empty series → the data-aware CTA (connect a source).
-  const stepsRows = has("steps-today")
-    ? getMetricDailyTotals(profile.id, "steps")
-    : [];
+  const stepsRows = getMetricDailyTotals(profile.id, "steps");
   const stepsSummary =
     stepsRows.length > 0 ? summarizeStepsToday(stepsRows, on) : null;
 
@@ -829,9 +807,7 @@ export default async function Dashboard() {
   // latestTrend helper and framed by the per-quantity presentation floor (#2303) — the
   // whole model is `getVitalsLatestModel` (#221), which the DB tier pins end to end.
   // Null components self-omit; an all-null model is the data-aware CTA.
-  const vitalsModel = has("vitals-latest")
-    ? getVitalsLatestModel(profile.id, on)
-    : null;
+  const vitalsModel = getVitalsLatestModel(profile.id, on);
 
   // cycle-phase (#1221): "Cycle day N · <phase>". Relevance-gated in the registry. Since
   // #1679 the tile also carries the PROJECTED next-period window — the SAME
@@ -850,10 +826,10 @@ export default async function Dashboard() {
   // profile 20 weeks pregnant precisely because those calls were the ones nobody handed
   // the suspension to — the tile's forecast line honoured it and silently vanished, so
   // the tile went on making the stronger claim after the weaker one had withdrawn.
-  const cyclePeriods = has("cycle-phase") ? listCyclePeriods(profile.id) : [];
+  const cyclePeriods = cycleApplicable ? listCyclePeriods(profile.id) : [];
   const cycleForecast =
     cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
-  const cycleControl = has("cycle-phase")
+  const cycleControl = cycleApplicable
     ? cycleControlState(cyclePeriods, on, getForecastSuspension(profile.id))
     : null;
   const cycleModel =
@@ -865,26 +841,22 @@ export default async function Dashboard() {
   // with active PRN meds — when illness is active the hero cockpit above already embeds
   // the SAME logger (so we omit the branch to avoid the duplicate the old availability
   // gate hand-managed), and a profile with no active PRN meds gets no branch at all.
-  const checkinPrnMeds =
-    has("symptom-log") && !activeSick
-      ? getPrnMedicationsForQuickLog(profile.id)
-      : [];
+  const checkinPrnMeds = !activeSick
+    ? getPrnMedicationsForQuickLog(profile.id)
+    : [];
 
   // symptom-log well-day entry (#1300): a compact SymptomLogBar behind the check-in card's
   // Report reveal, so a well user (severe cramps, a headache) can log symptoms with NO
   // illness required. Shown ONLY on a WELL day — while illness is active the hero cockpit
   // above owns symptom logging (so we omit it to avoid the duplicate). Same store + the
   // suggest-only illness bridge as the Timeline bar (no temperature/day-toggle here).
-  const showWellSymptoms = has("symptom-log") && !activeSick;
-  const wellSymptomCount = showWellSymptoms
-    ? getSymptomsOnDate(profile.id, on).length
-    : 0;
+  const showWellSymptoms = !activeSick;
 
   // active-protocols (issue #660): the ongoing N-of-1 experiments, each a formatter
   // over the SAME detail-page computations (comparison + adherence). Opt-in widget;
   // self-hides (available=false below) when nothing is ongoing.
-  const activeProtocols = has("active-protocols")
-    ? getActiveProtocolSummaries(profile.id, on, units.weightUnit)
+  const activeProtocols = adultContentApplicable
+    ? getActiveProtocolSummaries(profile.id, on, units.weightUnit, freqTargets)
     : [];
 
   // symptom-log (#799/#843/#858 → #992): the widget slot is now the unified "How are
@@ -894,461 +866,12 @@ export default async function Dashboard() {
   // cockpit surfaces in the hero on the next render). When illness is ACTIVE the
   // cockpit lives in the hero above the grid, so the card defers to it with a quiet
   // note — and still offers the mood tap (mood during illness is signal, #992).
-  // Hideable from Customize like any other widget.
-  const todayMood = has("symptom-log") ? getMoodOnDate(profile.id, on) : null;
+  // Keep observations as individual facts so placement never hides siblings.
+  const todayMood = getMoodOnDate(profile.id, on);
 
-  // The #2128 backfill window for the check-in card's day chips: each recent day
-  // with its logged check-in (if any), nearest first, so the card can offer
-  // "Yesterday" without a second gather and mirror what that day already holds.
-  const moodBackfillDays = has("symptom-log")
-    ? Array.from({ length: MOOD_LOG_DATE_WINDOW_DAYS }, (_, i) => {
-        const day = shiftDateStr(on, -(i + 1));
-        const logged = getMoodOnDate(profile.id, day);
-        return {
-          date: day,
-          mood: logged
-            ? {
-                valence: logged.valence,
-                energy: logged.energy,
-                anxiety: logged.anxiety,
-                factors: logged.factors,
-                notes: logged.notes,
-              }
-            : null,
-        };
-      })
-    : [];
-
-  // symptom-log "Anything going on?" situations entrypoint (#1221 part 6): the NON-clinical
-  // situation chips (illness types excluded — that lifecycle is the illness door's) over the
-  // SAME merged option set the Supplements bar renders (nonIllnessSituationOptions), each with
-  // its active state, plus the shared #662 activation line from the SAME dueness count the bar
-  // uses (getSituationalDueCount → countSituationalDue). Null when the card isn't eligible.
-  const checkinSituations = has("symptom-log")
-    ? (() => {
-        const activeSet = new Set(getActiveSituations(profile.id));
-        // The DERIVED-context state lines (#1292/#1298): the SAME basis-aware lines the
-        // Supplements bar + digest render, shown here so the check-in disclosure
-        // surfaces the auto-on context (#1221 item 6). "Not today" (poor-sleep only,
-        // when derived) rides the shared override action.
-        const derived = getDerivedSituationLines(profile.id, on);
-        return {
-          options: nonIllnessSituationOptions(getSituations(profile.id)).map(
-            (o) => ({ name: o.name, active: activeSet.has(o.name) })
-          ),
-          activationLine: situationActivationLine(
-            getSituationalDueCount(profile.id)
-          ),
-          derivedLines: [derived.poorSleep, derived.period].filter(
-            (l): l is string => l != null
-          ),
-          poorSleepOverridable: derived.poorSleepOverridable,
-        };
-      })()
-    : null;
-
-  // The check-in Calm (anxiety) scale relevance gate (issue #1313): the SILENT
-  // six-signal resolver (prior use, GAD-7/PHQ-9 on record, an anxiety condition/med, a
-  // protocol outcome, or the Settings opt-in). Only computed when the card renders.
-  const checkinAnxietyRelevant = has("symptom-log")
-    ? isAnxietyScaleRelevant(profile.id)
-    : false;
-
-  // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
-  // yet renders an onboarding CTA instead of a blank card. Computed from the same
-  // reads the widget consumes, so the CTA shows exactly when the widget would be
-  // empty.
-  const emptyIds = new Set<string>();
-  if (has("recent-labs") && labRows.length === 0) emptyIds.add("recent-labs");
-  if (has("weight-trend") && bodyMetrics.length === 0)
-    emptyIds.add("weight-trend");
-  if (has("healthspan-pillars") && pillars.length === 0)
-    emptyIds.add("healthspan-pillars");
-  // The card is empty only when it has NEITHER number nor offer: the morning tap can
-  // legitimately stand for a profile with no protein target, and swapping it for a
-  // "log food" CTA would replace the fast path with a link to it.
-  if (has("nutrition-today") && proteinToday == null && routineControl == null)
-    emptyIds.add("nutrition-today");
-  if (has("steps-today") && stepsSummary == null) emptyIds.add("steps-today");
-  if (has("vitals-latest") && vitalsModel == null)
-    emptyIds.add("vitals-latest");
-  if (
-    has("sleep-last-night") &&
-    sleepWaiting == null &&
-    (sleepSummary == null || sleepPresentation?.freshness === "stale")
-  )
-    emptyIds.add("sleep-last-night");
-  // cycle-phase (#1892): "empty" is "no phase is derivable yet" — the state that used
-  // to HIDE the card. The CTA it renders is the card itself with the offer button and
-  // no derived line, so the widget stays one component in both states.
-  if (has("cycle-phase") && cycleModel == null) emptyIds.add("cycle-phase");
-
-  // ── DORMANCY (#2652 behavior 2) ────────────────────────────────────────────────
-  // A domain that HAS recorded and then went quiet past its declared interval
-  // (lib/domain-dormancy.ts) collapses to one line stating how long, carrying the fix.
-  // Distinct from `emptyIds` above in the only way that matters: emptiness is "nothing
-  // was ever recorded" and says so, dormancy is "it stopped" and says THAT. Before
-  // this the second state rendered the first state's onboarding copy — the weight card
-  // told a returning weigh-in logger "No weigh-ins yet", because its own window is 90
-  // days and an empty window read as an empty domain.
-  //
-  // Only two domains are collapsible, and the registry says why: a card still showing a
-  // stale VALUE under a presentation floor is never collapsed, because that would hide
-  // what the floor deliberately keeps on screen.
-  const lastRecordByDomain: Record<DormancyDomain, string | null> = {
-    // Read off the UNWINDOWED series the card already fetched, so the card and the
-    // verdict are one computation (#221).
-    weight: weightSeries.reduce<string | null>(
-      (newest, p) => (newest == null || p.date > newest ? p.date : newest),
-      null
-    ),
-    // The one read no card makes — see lib/queries/domain-dormancy.ts for why the
-    // card's own "last night" model cannot answer this question.
-    sleep: has("sleep-last-night") ? getLastSleepRecordDate(profile.id) : null,
-  };
-  const dormantIds = new Set<string>();
-  for (const w of list) {
-    const domain = w.def.dormancyDomain;
-    if (!domain || !has(w.def.id)) continue;
-    if (
-      dormancyState({
-        lastRecordDate: lastRecordByDomain[domain],
-        today: on,
-        domain,
-      }) === "dormant"
-    )
-      dormantIds.add(w.def.id);
-  }
-
-  // The collapsed line for a dormant widget. Same fix affordance the card's onboarding
-  // CTA offers — compression changes height, never reach.
-  function dormantNode(id: string, domain: DormancyDomain): ReactNode {
-    const ageDays =
-      freshnessAgeDays(lastRecordByDomain[domain], on) ??
-      DORMANCY_DOMAINS[domain].collapseAfterDays;
-    const line = dormantRecordLine(domain, ageDays);
-    switch (id) {
-      case "weight-trend":
-        return (
-          <WidgetDormant
-            title="Weight trend"
-            icon={IconScale}
-            line={line}
-            ctaLabel="Body metrics"
-            ctaHref="/trends"
-          />
-        );
-      case "sleep-last-night":
-        return (
-          <WidgetDormant
-            title="Sleep"
-            icon={IconMoon}
-            line={line}
-            ctaLabel="Sync a source"
-            ctaHref="/data"
-          />
-        );
-      default:
-        return null;
-    }
-  }
-
-  // The onboarding CTA for a data-aware widget whose domain is empty — the
-  // dashboard doubling as the setup checklist, each empty widget pointing at the
-  // pipeline that fills it.
-  function emptyNode(id: string): ReactNode {
-    switch (id) {
-      case "recent-labs":
-        return (
-          <WidgetEmpty
-            title="Recent labs"
-            icon={IconFlask}
-            message="No lab results yet. Import a lab report or connect a portal to track your biomarkers."
-            ctaLabel="Import labs"
-            ctaHref="/data"
-          />
-        );
-      case "weight-trend":
-        return (
-          <WidgetEmpty
-            title="Weight trend"
-            icon={IconScale}
-            message="No weigh-ins yet. Connect Health Connect or log your weight to see the trend."
-            ctaLabel="Connect Health Connect"
-            ctaHref="/integrations/health-connect"
-          />
-        );
-      case "healthspan-pillars":
-        return (
-          <WidgetEmpty
-            title="Healthspan pillars"
-            icon={IconFlask}
-            message="No pillar data yet. Import labs, log sleep, or record a VO₂ Max to light up your longevity signals."
-            ctaLabel="Import health data"
-            ctaHref="/data"
-          />
-        );
-      case "nutrition-today":
-        return (
-          <WidgetEmpty
-            title="Nutrition today"
-            icon={IconSalad}
-            message="No food logged yet. Log today's food or set your body weight to track protein against your goal."
-            ctaLabel="Log food"
-            ctaHref="/nutrition"
-          />
-        );
-      case "steps-today":
-        return (
-          <WidgetEmpty
-            title="Steps today"
-            icon={IconWalk}
-            message="No step data yet. Connect Health Connect to sync your daily steps automatically."
-            ctaLabel="Connect a source"
-            ctaHref="/integrations/health-connect"
-          />
-        );
-      case "vitals-latest":
-        // #1892: the CTA opens the SAME measurements quick-entry the non-empty card's
-        // "Log reading" action opens, so the affordance does not disappear the moment
-        // the domain stops being empty — which is when a weekly BP logger needs it.
-        return (
-          <WidgetEmpty
-            title="Latest vitals"
-            icon={IconHeartbeat}
-            message="No blood pressure or resting heart rate yet. Log a reading to see it here at a glance."
-            cta={<LogReadingButton label="Log a reading" />}
-          />
-        );
-      case "cycle-phase":
-        // #1892: the former self-hide. Same component, CTA variant — it carries the
-        // ONE cycle offer, so the person who has not logged day 1 has a one-tap path
-        // on the surface they are already looking at.
-        return cycleControl ? (
-          <CyclePhaseWidget forecast={null} control={cycleControl} />
-        ) : null;
-      case "sleep-last-night":
-        return (
-          <WidgetEmpty
-            title="Sleep"
-            icon={IconMoon}
-            message="No sleep recorded last night. Sync Health Connect, Oura, or Withings to refresh your sleep data."
-            ctaLabel="Sync a source"
-            ctaHref="/data"
-          />
-        );
-      default:
-        return null;
-    }
-  }
-
-  // Map a widget id to its server-rendered node. Kept a plain switch so the
-  // registry stays pure (no JSX in lib/).
-  function renderWidget(id: string): ReactNode {
-    switch (id) {
-      case "recent-labs":
-        return <RecentLabsWidget rows={labRows} today={on} />;
-      case "next-appointment":
-        return <NextAppointmentWidget appointment={nextAppt} />;
-      case "healthspan-pillars":
-        return <HealthspanPillarsWidget pillars={pillars} />;
-      case "sleep-last-night":
-        if (sleepWaiting)
-          return (
-            <SleepWaitingWidget
-              state={sleepWaiting}
-              formatPrefs={formatPrefs}
-              previousNightLabel={sleepPreviousNightLabel}
-            />
-          );
-        return sleepSummary && sleepPresentation ? (
-          <SleepLastNightWidget
-            summary={sleepSummary}
-            sri={sleepSri}
-            timeFormat={formatPrefs.timeFormat}
-            presentation={sleepPresentation}
-          />
-        ) : null;
-      case "naps-today":
-        return todayNaps.length > 0 ? (
-          <NapsTodayWidget
-            naps={todayNaps}
-            timeFormat={formatPrefs.timeFormat}
-          />
-        ) : null;
-      case "weight-trend":
-        return (
-          <WeightTrendWidget
-            data={bodyMetrics}
-            weightUnit={units.weightUnit}
-            formatPrefs={formatPrefs}
-            today={on}
-            subjectName={actingSubjectName}
-          />
-        );
-      case "goals-habits":
-        return (
-          <GoalsHabitsWidget
-            goals={goals}
-            goalProgress={goalProgress}
-            freqTargets={freqTargets}
-            today={on}
-            trainingRelevant={trainingRelevant}
-          />
-        );
-      case "coaching":
-        return <CoachingWidget recs={coachingRecs} />;
-      case "coaching-observations":
-        return coachingObservations.length ? (
-          <CoachingObservations findings={coachingObservations} />
-        ) : null;
-      case "data-quality":
-        return dataQualityFindings.length ? (
-          <DataQualityWidget findings={dataQualityFindings} />
-        ) : null;
-      case "weekly-recap":
-        return weeklyRecap ? (
-          <WeeklyRecapWidget recap={weeklyRecap} formatPrefs={formatPrefs} />
-        ) : null;
-      case "nutrition-today":
-        return proteinToday || routineControl ? (
-          <NutritionTodayWidget today={proteinToday} routine={routineControl} />
-        ) : null;
-      case "steps-today":
-        return stepsSummary ? (
-          <StepsTodayWidget summary={stepsSummary} />
-        ) : null;
-      case "vitals-latest":
-        return vitalsModel ? (
-          <VitalsLatestWidget model={vitalsModel} today={on} />
-        ) : null;
-      case "cycle-phase":
-        return cycleControl ? (
-          <CyclePhaseWidget forecast={cycleForecast} control={cycleControl} />
-        ) : null;
-      case "active-protocols":
-        return activeProtocols.length ? (
-          <ActiveProtocolWidget protocols={activeProtocols} today={on} />
-        ) : null;
-      case "symptom-log":
-        // The unified daily check-in (#992): mood tap always; the illness branch is
-        // the front door when well, a defer-to-hero note while the cockpit is up.
-        return (
-          <HowAreYouCard
-            date={on}
-            mood={
-              todayMood
-                ? {
-                    valence: todayMood.valence,
-                    energy: todayMood.energy,
-                    anxiety: todayMood.anxiety,
-                    factors: todayMood.factors,
-                    notes: todayMood.notes,
-                  }
-                : null
-            }
-            activeEpisode={activeSick}
-            earlierDays={moodBackfillDays}
-            // The evening reminder's auto-pause, surfaced (#1668) — derived from the
-            // same ignored streak shouldSendMoodCheckin reads, never a stored flag.
-            checkinsPaused={isMoodCheckinPaused({
-              enabled: getProfileMoodCheckin(profile.id),
-              ignoredCount: getMoodCheckinIgnored(profile.id),
-            })}
-            medsSlot={
-              checkinPrnMeds.length > 0 ? (
-                <QuickLogPrnContent
-                  meds={checkinPrnMeds}
-                  tz={getTimezone(profile.id)}
-                  timeFormat={formatPrefs.timeFormat}
-                  title="Log a dose"
-                  headingVariant="section"
-                  compact
-                  rowVariant="embedded"
-                  showPageLink={false}
-                />
-              ) : null
-            }
-            medsCount={checkinPrnMeds.length}
-            situations={checkinSituations}
-            anxietyRelevant={checkinAnxietyRelevant}
-            symptomCount={wellSymptomCount}
-            symptomSlot={
-              showWellSymptoms ? (
-                <SymptomLogBar
-                  date={on}
-                  initial={getSymptomSeveritiesOnDate(profile.id, on)}
-                  initialNotes={getSymptomNotesOnDate(profile.id, on)}
-                  symptoms={PICKER_SYMPTOMS}
-                  customNames={getCustomSymptomNames(profile.id)}
-                  rankedKeys={getSymptomLogOrder(profile.id)}
-                  suggestActivateIllness={
-                    !hasActiveIllnessSituation(profile.id)
-                  }
-                  showTitle={false}
-                  temperatureUnit={units.temperatureUnit}
-                  textIntakeEnabled={isTaskConfigured("symptom-map")}
-                />
-              ) : null
-            }
-          />
-        );
-      default:
-        return null;
-    }
-  }
-
-  const gridWidgets: GridWidget[] = list.map(({ def, visible }) => ({
-    id: def.id,
-    label: def.label,
-    span: def.span,
-    // `visible` is only the saved user preference. Availability is transient and
-    // must not leak into DashboardGrid's persisted hidden-id set.
-    visible,
-    available:
-      (def.id !== "next-appointment" || hasScheduledAppt) &&
-      (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
-      (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
-      (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "active-protocols" || activeProtocols.length > 0) &&
-      (def.id !== "naps-today" || todayNaps.length > 0),
-    // symptom-log is the unified "How are you today?" card (#992): the mood tap is
-    // always offered, so the slot stays available in both illness states. Its folded
-    // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well
-    // day with active PRN meds), which removes the old standalone-widget availability
-    // special case entirely.
-    // Three states, one precedence, declared once in lib/dashboard-widgets.ts: a
-    // dormant domain outranks an empty one (they cannot both be true), and a widget
-    // that declares neither capability can be flagged for neither.
-    node: (() => {
-      switch (
-        widgetDisplayState(def, {
-          empty: emptyIds.has(def.id),
-          dormant: dormantIds.has(def.id),
-        })
-      ) {
-        case "dormant":
-          return dormantNode(def.id, def.dormancyDomain!);
-        case "empty":
-          return emptyNode(def.id);
-        default:
-          return renderWidget(def.id);
-      }
-    })(),
-  }));
-
-  // ── The "Now" strip (issue #1413, section A) ────────────────────────────────
-  // A RANKER over signals other features already compute (#221) — nothing below
-  // reads a new health fact. Every window is minute-of-day in the PROFILE's
-  // timezone (#1186/#450), resolved once here rather than in the client.
-  const nowMinutes = hhmmToMinutes(
-    zonedDateParts(getTimezone(profile.id), clockNow()).hhmm
-  );
-  const latestNapEndMinutes = todayNaps.reduce<number | null>(
-    (latest, nap) =>
-      latest == null || nap.endMinutes > latest ? nap.endMinutes : latest,
-    null
-  );
+  // Candidate builders below format only models already gathered above. No builder
+  // performs SQL, reads auth, or imports React.
+  const nowMinutes = hhmmToMinutes(zonedDateParts(timezone, clockNow()).hhmm);
   // The existing mealtime-shaped anchors: the profile's intake reminder slots.
   // NOT the food log — `food_log_events.recorded_at` is TAP time, documented as
   // explicitly not eating time, so deriving a meal distribution from it would be
@@ -1364,287 +887,985 @@ export default async function Dashboard() {
     nowSlots.Evening,
   ].filter((m): m is number => m != null);
 
-  // What the strip is ALLOWED to promote: a grid widget the user still has visible
-  // AND that has something to render, or the standalone recap card under the same
-  // gate the page already uses for it. The clock never overrides a hide preference.
-  //
-  // `emptyIds` is excluded deliberately: a data-aware widget with no data yet is
-  // still "available" — it renders an ONBOARDING CTA rather than content — and
-  // promoting that would put a "connect a source" prompt at the top of the page
-  // every mealtime. That is precisely the filler card dashboard-relevance refuses.
-  // A DORMANT widget is excluded for the same reason (#2652): its card is one line
-  // saying the domain went quiet, which is the opposite of a card worth promoting to
-  // the top of the page at a mealtime.
-  const gridPromotable = new Set(
-    gridWidgets
-      .filter(
-        (w) =>
-          w.visible &&
-          w.available &&
-          !emptyIds.has(w.id) &&
-          !dormantIds.has(w.id)
-      )
-      .map((w) => w.id)
-  );
-  // Eligibility only excludes the EMPTY case above, and the widget's empty gate
-  // tolerates lag up to the relabel window — so it can still be showing a night
-  // from several days ago. The "how did you sleep" card is a claim about THIS
-  // morning, so it needs the strict last-night freshness, not merely a rendered
-  // widget (the wakeDay-vs-today comparison NowSignals.freshSleepSummary asks for).
-  const nowFreshSleep =
-    gridPromotable.has("sleep-last-night") &&
-    sleepPresentation?.freshness === "last-night";
-  // …and the waiting state is the other thing the sleep card can legitimately say
-  // this morning (#2097). It is a real answer to "how did I sleep", not filler, so
-  // it earns the same promotion — the strip's own `since >= 0` gate still keeps the
-  // pre-wake in-progress state off the top of the page.
-  const nowSleepWaiting =
-    gridPromotable.has("sleep-last-night") && sleepWaiting != null;
-  const nowSignals = {
-    minutesOfDay: nowMinutes,
-    // Only computed when sleep is actually in play — it is a 28-night regularity
-    // pass, not worth running on an evening render that can't use it.
-    wakeMinutes:
-      nowFreshSleep || nowSleepWaiting ? typicalWakeTime(profile.id) : null,
-    freshSleepSummary: nowFreshSleep,
-    sleepWaiting: nowSleepWaiting,
-    napEndedMinAgo:
-      latestNapEndMinutes == null ? null : nowMinutes - latestNapEndMinutes,
-    workoutFinishedMinAgo: showRecapCard
-      ? (finishedPresence?.sinceMin ?? null)
-      : null,
-    mealAnchors: nowMealAnchors,
-    eveningAnchor: nowSlots.Evening,
-    checkInDone: todayMood != null,
-  };
-  // One placement manifest (#3080). The page still owns gathering and JSX;
-  // every already-built surface is adapted once, and the pure ranker owns its
-  // zone, order, hide/availability state, and Now promotion.
   const profileSubject = { scope: "profile" as const, profileId: profile.id };
-  const activeTiming = (active: boolean): DashboardTiming => ({
-    kind: "until-signal",
-    active,
-  });
-  const staticSurfaces: RankableDashboardSurface[] = [
-    {
-      placementId: "illness-hero",
-      nodeKey: "illness-hero",
-      groupKey: "priority",
-      subject: { scope: "household" },
-      visible: heroCockpits.length > 0,
-      available: heroCockpits.length > 0,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(heroCockpits.length > 0),
-      currentPlacement: "priority",
-      currentOrder: 0,
-    },
-    {
-      placementId: "needs-attention",
-      nodeKey: "needs-attention",
-      groupKey: "priority",
-      subject: profileSubject,
-      visible: true,
-      available: true,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: { kind: "always" },
-      currentPlacement: "priority",
-      currentOrder: 1,
-    },
-    {
-      placementId: "recently-resolved",
-      nodeKey: "recently-resolved",
-      groupKey: null,
-      subject: { scope: "household" },
-      visible: recentlyResolved.length > 0,
-      available: recentlyResolved.length > 0,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(recentlyResolved.length > 0),
-      currentPlacement: "pre-grid",
-      currentOrder: 0,
-    },
-    {
-      placementId: "stream-lifecycle-offers",
-      nodeKey: "stream-lifecycle-offers",
-      groupKey: null,
-      subject: profileSubject,
-      visible: streamLifecycleOffers.length > 0,
-      available: streamLifecycleOffers.length > 0,
-      promotable: false,
-      obligation: "may",
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(streamLifecycleOffers.length > 0),
-      currentPlacement: "pre-grid",
-      currentOrder: 1,
-    },
-    {
-      placementId: "session-recap",
-      nodeKey: "session-recap",
-      groupKey: null,
-      subject: profileSubject,
-      visible: showRecapCard,
-      available: showRecapCard,
-      promotable: showRecapCard,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: timingForNowCard("session-recap", nowSignals),
-      currentPlacement: "pre-grid",
-      currentOrder: 2,
-    },
-    {
-      placementId: "onboarding-resume",
-      nodeKey: "onboarding-resume",
-      groupKey: null,
-      subject: profileSubject,
-      visible: onboardingState != null && onboardingPresence != null,
-      available: onboardingState != null && onboardingPresence != null,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(
-        onboardingState != null && onboardingPresence != null
-      ),
-      currentPlacement: "pre-grid",
-      currentOrder: 3,
-    },
-    {
-      placementId: "onboarding-checklist",
-      nodeKey: "onboarding-checklist",
-      groupKey: null,
-      subject: profileSubject,
-      visible:
-        onboardingChecklist != null && onboardingChecklistCompletion != null,
-      available:
-        onboardingChecklist != null && onboardingChecklistCompletion != null,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(
-        onboardingChecklist != null && onboardingChecklistCompletion != null
-      ),
-      currentPlacement: "pre-grid",
-      currentOrder: 4,
-    },
-    {
-      placementId: "household-strip",
-      nodeKey: "household-strip",
-      groupKey: null,
-      subject: { scope: "household" },
-      visible: householdEntries.length > 0 || promoInHouseholdStrip,
-      available: householdEntries.length > 0 || promoInHouseholdStrip,
-      promotable: false,
-      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-      timing: activeTiming(
-        householdEntries.length > 0 || promoInHouseholdStrip
-      ),
-      currentPlacement: "pre-grid",
-      currentOrder: 5,
-    },
-  ];
-  const widgetSurfaces: RankableDashboardSurface[] = gridWidgets.map(
-    (widget, currentOrder) => {
-      return {
-        placementId: widget.id,
-        nodeKey: widget.id,
-        groupKey: null,
-        subject: profileSubject,
-        visible: widget.visible,
-        available: widget.available,
-        promotable: gridPromotable.has(widget.id),
-        rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
-        timing: isNowCardId(widget.id)
-          ? timingForNowCard(widget.id, nowSignals)
-          : { kind: "always" },
-        currentPlacement: "grid",
-        currentOrder,
-      };
-    }
-  );
-  const dashboardPlacements = rankDashboard(
-    [...staticSurfaces, ...widgetSurfaces],
-    { now: nowSignals }
-  );
+  const candidates: DashboardCandidate[] = [];
+  const candidateNodes = new Map<string, ReactNode>();
+  const add = (candidate: DashboardCandidate, node: ReactNode) => {
+    candidates.push(candidate);
+    candidateNodes.set(candidate.candidateId, node);
+  };
+  let sourceOrder = 0;
 
-  // Each node is constructed once. Placements reference nodeKey; a promotion
-  // changes the zone and the grid skips that same id in normal mode.
-  const placementNodes = new Map<string, ReactNode>();
-  placementNodes.set(
-    "illness-hero",
-    <IllnessHero
-      cockpits={heroCockpits}
-      initialCollapsedActive={heroUi.collapsedActive}
-      initialOpenOtherId={heroUi.openOtherId}
-      saveState={saveIllnessHeroState}
-    />
-  );
-  placementNodes.set(
-    "needs-attention",
-    <NeedsAttentionHero
-      items={attention}
-      today={on}
-      formatPrefs={formatPrefs}
-      preferCollapsed={getAttentionHeroCollapsed(login.id)}
-      saveCollapsed={saveAttentionHeroCollapsed}
-    />
-  );
-  placementNodes.set(
-    "recently-resolved",
-    <RecentlyResolvedReopen
-      items={recentlyResolved}
-      showHouseholdPromo={promoInReopenBand}
-      dismissAction={dismissRecentlyResolved}
-    />
-  );
-  placementNodes.set(
-    "stream-lifecycle-offers",
-    <StreamLifecycleOffers
-      profileId={profile.id}
-      canWrite={access === "write"}
-      offers={streamLifecycleOffers}
-    />
-  );
-  placementNodes.set(
-    "session-recap",
-    finishedRecap ? (
-      <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
-    ) : null
-  );
-  placementNodes.set(
-    "onboarding-resume",
-    onboardingState && onboardingPresence ? (
-      <OnboardingResumeCard
-        state={onboardingState}
-        presence={onboardingPresence}
+  const attentionBadgeCount = attentionCardItems(attention, on).length;
+  const attentionItems = [...attention];
+  for (const candidate of attentionCandidates(
+    profileSubject,
+    attentionItems,
+    on
+  )) {
+    const item = attentionItems.find(
+      (entry) => `attention.fact:${entry.key}` === candidate.candidateId
+    )!;
+    add(
+      candidate,
+      <DashboardAttentionAtom
+        item={item}
+        today={on}
+        formatPrefs={formatPrefs}
+        canWrite={canWrite}
       />
-    ) : null
-  );
-  placementNodes.set(
-    "onboarding-checklist",
-    onboardingChecklist && onboardingChecklistCompletion ? (
+    );
+  }
+  sourceOrder += attentionItems.length;
+
+  for (const cockpit of heroCockpits.toSorted(
+    (a, b) =>
+      Number(b.isActive) - Number(a.isActive) || a.profileId - b.profileId
+  )) {
+    const key = `${cockpit.profileId}:${cockpit.episodeHref ?? "open"}`;
+    const href = cockpit.episodeHref ?? "/timeline";
+    const stateDetail = [
+      cockpit.status.worsening ? "Symptoms worsening" : null,
+      cockpit.feverFree?.label ?? null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    add(
+      careCandidates.illnessState(
+        {
+          subject: { scope: "profile", profileId: cockpit.profileId },
+          sourceOrder: sourceOrder++,
+        },
+        key
+      ),
+      <DashboardAtomCard
+        title={`${cockpit.displayName} is sick`}
+        value={cockpit.status.dayLabel}
+        detail={stateDetail}
+        href={href}
+      />
+    );
+    if (cockpit.status.temperature) {
+      add(
+        careCandidates.illnessReading(
+          {
+            subject: { scope: "profile", profileId: cockpit.profileId },
+            sourceOrder: sourceOrder++,
+          },
+          "temperature",
+          key
+        ),
+        <DashboardAtomCard
+          title={`${cockpit.displayName}'s latest temperature`}
+          value={cockpit.status.temperature.value}
+          detail={cockpit.status.temperature.when}
+          href={href}
+        />
+      );
+    }
+    if (cockpit.status.lastMeds) {
+      const medication = cockpit.status.lastMeds;
+      add(
+        careCandidates.illnessReading(
+          {
+            subject: { scope: "profile", profileId: cockpit.profileId },
+            sourceOrder: sourceOrder++,
+          },
+          "medication",
+          key
+        ),
+        <DashboardAtomCard
+          title={`${cockpit.displayName}'s latest illness medicine`}
+          value={[medication.name, medication.dose].filter(Boolean).join(" · ")}
+          detail={medication.when}
+          href={href}
+        />
+      );
+    }
+    add(
+      careCandidates.illnessOpen(
+        {
+          subject: { scope: "profile", profileId: cockpit.profileId },
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        key
+      ),
+      <DashboardAtomCard
+        title={`Update ${cockpit.displayName}'s illness care`}
+        href={href}
+        actionLabel="Open"
+      />
+    );
+  }
+
+  for (const item of recentlyResolved) {
+    const key = `${item.profileId}:${item.episodeId}`;
+    add(
+      careCandidates.illnessReopen(
+        {
+          subject: { scope: "profile", profileId: item.profileId },
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        key
+      ),
+      <RecentlyResolvedReopen
+        items={[item]}
+        showHouseholdPromo={false}
+        dismissAction={dismissRecentlyResolved}
+      />
+    );
+  }
+  if (promoteHouseholdHistory) {
+    add(
+      careCandidates.householdHistory({
+        subject: { scope: "login" },
+        sourceOrder: sourceOrder++,
+      }),
+      <div className="card">
+        <HouseholdHistoryPromoLink />
+      </div>
+    );
+  }
+
+  for (const offer of streamLifecycleOffers) {
+    add(
+      setupCandidates.streamOffer(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        offer.key
+      ),
+      <StreamLifecycleOffers
+        profileId={profile.id}
+        canWrite={access === "write"}
+        offers={[offer]}
+      />
+    );
+  }
+
+  const finishedActivityId = finishedPresence?.activityId;
+  if (showRecapCard && finishedRecap && finishedActivityId != null) {
+    const recapFacts = [
+      ["sets", `${finishedRecap.totalWorkingSets} working sets`],
+      ["volume", `${Math.round(finishedRecap.totalVolumeKg)} kg volume`],
+      ...finishedRecap.exercises.map((exercise, index) => [
+        `exercise-${index}`,
+        exercise.exercise,
+      ]),
+    ] as const;
+    recapFacts.forEach(([key, value], index) =>
+      add(
+        setupCandidates.sessionRecap(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          finishedActivityId,
+          key,
+          finishedPresence?.sinceMin ?? -1
+        ),
+        <DashboardAtomCard
+          title="Session complete"
+          value={value}
+          href="/training"
+        />
+      )
+    );
+    sourceOrder += recapFacts.length;
+  }
+
+  if (onboardingState && onboardingPresence) {
+    const firstRemainingStep = nextOnboardingStep(
+      onboardingState,
+      hasOnboardingFirstValue(onboardingState.focuses, onboardingPresence)
+    );
+    const stepLabels = [
+      "Choose who this profile is for",
+      "Choose what matters most",
+      "Add profile basics",
+      "Add a first health value",
+      "Choose notification preferences",
+      "Finish profile setup",
+    ] as const;
+    for (
+      let step = firstRemainingStep;
+      step <= ONBOARDING_STEP_COUNT;
+      step += 1
+    ) {
+      add(
+        setupCandidates.onboardingStep(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          step
+        ),
+        <DashboardAtomCard
+          title={stepLabels[step - 1]}
+          detail={`Setup step ${step} of ${ONBOARDING_STEP_COUNT}`}
+          href={`/onboarding?step=${step}` as AppRoute}
+          actionLabel="Continue"
+        />
+      );
+    }
+    add(
+      setupCandidates.onboardingProgress(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "wizard"
+      ),
+      <DashboardAtomCard
+        title="Profile setup progress"
+        value={`${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`}
+        href="/onboarding"
+      />
+    );
+  }
+  if (onboardingChecklist && onboardingChecklistCompletion) {
+    add(
+      setupCandidates.onboardingProgress(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "checklist"
+      ),
       <OnboardingChecklist
         focuses={onboardingChecklist.focuses}
         completion={onboardingChecklistCompletion}
       />
-    ) : null
+    );
+  }
+
+  householdAttention.forEach((entry) =>
+    add(
+      setupCandidates.householdAttention(
+        {
+          subject: { scope: "profile", profileId: entry.profile.id },
+          sourceOrder: sourceOrder++,
+        },
+        entry.count
+      ),
+      <HouseholdStrip entries={[entry]} />
+    )
   );
-  placementNodes.set(
-    "household-strip",
-    <HouseholdStrip
-      entries={householdEntries}
-      showHouseholdPromo={promoInHouseholdStrip}
+
+  add(
+    dailyCandidates.moodCheckin(
+      {
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      },
+      on,
+      nowSlots.Evening == null
+        ? { kind: "always" }
+        : localTimeWindow(nowSlots.Evening, 1439),
+      todayMood == null
+    ),
+    <DashboardQuickEntryAction
+      title={todayMood ? "Update today's mood" : "Log today's mood"}
+      detail={
+        isMoodCheckinPaused({
+          enabled: getProfileMoodCheckin(profile.id),
+          ignoredCount: getMoodCheckinIgnored(profile.id),
+        })
+          ? "Daily reminders are paused."
+          : undefined
+      }
+      form="mood"
     />
   );
-  for (const widget of gridWidgets) {
-    placementNodes.set(widget.id, widget.node);
+
+  if (todayMood) {
+    const moodReadings = [
+      ["valence", "Mood", `${todayMood.valence} of 5`],
+      [
+        "energy",
+        "Energy",
+        todayMood.energy == null ? null : `${todayMood.energy} of 5`,
+      ],
+      [
+        "calm",
+        "Calm",
+        todayMood.anxiety == null ? null : `${6 - todayMood.anxiety} of 5`,
+      ],
+    ] as const;
+    moodReadings.forEach(([key, title, value], index) => {
+      if (value == null) return;
+      add(
+        dailyCandidates.moodReading(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          key,
+          on
+        ),
+        <DashboardAtomCard title={title} value={value} href="/trends#body" />
+      );
+    });
+    sourceOrder += moodReadings.length;
   }
+
+  checkinPrnMeds.forEach((med, index) =>
+    add(
+      dailyCandidates.prn(
+        {
+          subject: profileSubject,
+          applicable: canWrite && !activeSick,
+          sourceOrder: sourceOrder + index,
+        },
+        med.id
+      ),
+      <div className="card">
+        <QuickLogPrnContent
+          meds={[med]}
+          tz={timezone}
+          timeFormat={formatPrefs.timeFormat}
+          title="Log a dose"
+          compact
+          showPageLink={false}
+        />
+      </div>
+    )
+  );
+  sourceOrder += checkinPrnMeds.length;
+
+  if (showWellSymptoms) {
+    add(
+      dailyCandidates.symptomLog(
+        {
+          subject: profileSubject,
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        on
+      ),
+      <div className="card">
+        <SymptomLogBar
+          date={on}
+          initial={getSymptomSeveritiesOnDate(profile.id, on)}
+          initialNotes={getSymptomNotesOnDate(profile.id, on)}
+          symptoms={PICKER_SYMPTOMS}
+          customNames={getCustomSymptomNames(profile.id)}
+          rankedKeys={getSymptomLogOrder(profile.id)}
+          suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
+          temperatureUnit={units.temperatureUnit}
+          textIntakeEnabled={isTaskConfigured("symptom-map")}
+        />
+      </div>
+    );
+  }
+
+  coachingRecs.forEach((rec, index) =>
+    add(
+      progressCandidates.statement(
+        {
+          subject: profileSubject,
+          applicable: trainingRelevant,
+          sourceOrder: sourceOrder + index,
+        },
+        "coaching.recommendation",
+        rec.id,
+        `coaching.${coachingDedupeKey(rec.id)}`
+      ),
+      <CoachingWidget recs={[rec]} />
+    )
+  );
+  sourceOrder += coachingRecs.length;
+
+  goals.forEach((goal, index) =>
+    add(
+      progressCandidates.goal(
+        { subject: profileSubject, sourceOrder: sourceOrder + index },
+        goal.id
+      ),
+      <GoalsHabitsWidget
+        goals={[goal]}
+        goalProgress={goalProgress}
+        freqTargets={[]}
+        today={on}
+        trainingRelevant={trainingRelevant}
+        showLogActions={false}
+      />
+    )
+  );
+  sourceOrder += goals.length;
+  freqTargets.forEach((progress, index) => {
+    const id = progress.target.id;
+    add(
+      progressCandidates.targetProgress(
+        { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
+        id
+      ),
+      <GoalsHabitsWidget
+        goals={[]}
+        goalProgress={new Map()}
+        freqTargets={[progress]}
+        today={on}
+        trainingRelevant={trainingRelevant}
+        showLogActions={false}
+      />
+    );
+    add(
+      progressCandidates.targetLog(
+        {
+          subject: profileSubject,
+          applicable: canWrite && !progress.met,
+          sourceOrder: sourceOrder + index * 2 + 1,
+        },
+        id,
+        on,
+        progress.pace === "behind",
+        !progress.met
+      ),
+      <DashboardAtomCard
+        title={`Log ${progress.target.scope_value}`}
+        detail={`${progress.count} of ${progress.per_week} this week`}
+        href={
+          dashboardHabitDomain(progress.target.scope_kind) === "food"
+            ? "/nutrition"
+            : "/training"
+        }
+        actionLabel="Log"
+      />
+    );
+  });
+  sourceOrder += freqTargets.length * 2;
+
+  activeProtocols.forEach((protocol, index) => {
+    add(
+      progressCandidates.protocol(
+        {
+          subject: profileSubject,
+          applicable: adultContentApplicable,
+          sourceOrder: sourceOrder + index * 4,
+        },
+        "state",
+        protocol.id
+      ),
+      <DashboardAtomCard
+        title={protocol.name}
+        value={`${protocol.daysElapsed} days`}
+        href={protocol.href}
+      />
+    );
+    if (protocol.adherence)
+      add(
+        progressCandidates.protocol(
+          {
+            subject: profileSubject,
+            sourceOrder: sourceOrder + index * 4 + 1,
+          },
+          "adherence",
+          protocol.id
+        ),
+        <DashboardAtomCard
+          title={`${protocol.name} adherence`}
+          value={protocol.adherence.label}
+          href={protocol.href}
+        />
+      );
+    if (protocol.primaryOutcome)
+      add(
+        progressCandidates.protocol(
+          {
+            subject: profileSubject,
+            sourceOrder: sourceOrder + index * 4 + 2,
+          },
+          "outcome",
+          protocol.id
+        ),
+        <DashboardAtomCard
+          title={protocol.primaryOutcome.label}
+          value={protocol.primaryOutcome.framing}
+          href={protocol.href}
+        />
+      );
+    if (protocol.practice && protocol.practiceUsuallyToday && canWrite)
+      add(
+        progressCandidates.protocol(
+          {
+            subject: profileSubject,
+            sourceOrder: sourceOrder + index * 4 + 3,
+          },
+          "practice",
+          protocol.id,
+          on,
+          protocol.practiceUsuallyToday
+        ),
+        <DashboardAtomCard
+          title={`Log ${protocol.practice.value}`}
+          href={protocol.href}
+          actionLabel="Open"
+        />
+      );
+  });
+  sourceOrder += activeProtocols.length * 4;
+
+  for (const finding of dataQualityFindings) {
+    add(
+      progressCandidates.statement(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "data-quality.finding",
+        finding.dedupeKey,
+        `finding.${finding.dedupeKey}`
+      ),
+      <DataQualityWidget findings={[finding]} />
+    );
+  }
+
+  if (proteinToday)
+    add(
+      dailyCandidates.protein(
+        {
+          subject: profileSubject,
+          applicable: foodLoggingApplicable,
+          sourceOrder: sourceOrder++,
+        },
+        on,
+        proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
+        mealTimeWindows(nowMealAnchors)
+      ),
+      <NutritionTodayWidget today={proteinToday} routine={null} />
+    );
+  else if (foodLoggingApplicable)
+    add(
+      dailyCandidates.nutritionBootstrap({
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      }),
+      <WidgetEmpty
+        title="Nutrition"
+        icon={IconSalad}
+        message="No food logged yet."
+        ctaLabel="Log food"
+        ctaHref="/nutrition"
+      />
+    );
+  if (routineControl)
+    add(
+      dailyCandidates.usualRoutine(
+        {
+          subject: profileSubject,
+          applicable: foodLoggingApplicable,
+          sourceOrder: sourceOrder++,
+        },
+        routineControl.window,
+        on,
+        mealTimeWindows(nowMealAnchors)
+      ),
+      <NutritionTodayWidget today={null} routine={routineControl} />
+    );
+
+  if (stepsSummary)
+    add(
+      dailyCandidates.steps(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        on
+      ),
+      <StepsTodayWidget summary={stepsSummary} />
+    );
+  else
+    add(
+      dailyCandidates.stepsBootstrap({
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      }),
+      <WidgetEmpty
+        title="Steps"
+        icon={IconWalk}
+        message="No step data yet."
+        ctaLabel="Connect a source"
+        ctaHref="/integrations/health-connect"
+      />
+    );
+
+  if (vitalsModel?.bp)
+    add(
+      dailyCandidates.vital(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "blood-pressure",
+        vitalsModel.bp.date
+      ),
+      <VitalsLatestWidget
+        model={{ bp: vitalsModel.bp, restingHr: null }}
+        today={on}
+        showLogAction={false}
+      />
+    );
+  if (vitalsModel?.restingHr)
+    add(
+      dailyCandidates.vital(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "resting-heart-rate",
+        vitalsModel.restingHr.date
+      ),
+      <VitalsLatestWidget
+        model={{ bp: null, restingHr: vitalsModel.restingHr }}
+        today={on}
+        showLogAction={false}
+      />
+    );
+  add(
+    dailyCandidates.vitalLog(
+      {
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      },
+      on,
+      Boolean(vitalsModel)
+    ),
+    <div className="card">
+      <LogReadingButton label="Log a vital" />
+    </div>
+  );
+
+  if (cycleModel)
+    add(
+      dailyCandidates.cyclePhase(
+        {
+          subject: profileSubject,
+          applicable: cycleApplicable,
+          sourceOrder: sourceOrder++,
+        },
+        on
+      ),
+      <DashboardAtomCard
+        title={`Cycle day ${cycleModel.day}`}
+        value={cycleModel.phase}
+        href="/medical/cycles"
+      />
+    );
+  if (cycleControl)
+    add(
+      dailyCandidates.cycleControl(
+        {
+          subject: profileSubject,
+          applicable: cycleApplicable && canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        on
+      ),
+      <CyclePhaseWidget
+        forecast={cycleForecast}
+        control={cycleControl}
+        showReading={false}
+      />
+    );
+
+  if (nextAppt)
+    add(
+      careCandidates.appointment(
+        {
+          subject: profileSubject,
+          applicable: hasScheduledAppt,
+          sourceOrder: sourceOrder++,
+        },
+        nextAppt.href
+      ),
+      <NextAppointmentWidget appointment={nextAppt} />
+    );
+
+  labRows.forEach((row, index) =>
+    add(
+      careCandidates.lab(
+        { subject: profileSubject, sourceOrder: sourceOrder + index },
+        row.name
+      ),
+      <RecentLabsWidget rows={[row]} today={on} />
+    )
+  );
+  sourceOrder += labRows.length;
+  if (labRows.length === 0)
+    add(
+      careCandidates.labBootstrap({
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      }),
+      <WidgetEmpty
+        title="Labs"
+        icon={IconFlask}
+        message="No lab results yet."
+        ctaLabel="Import labs"
+        ctaHref="/data"
+      />
+    );
+
+  const lastWeightRecord = weightSeries.at(-1)?.date ?? null;
+  const weightDormant =
+    dormancyState({
+      lastRecordDate: lastWeightRecord,
+      today: on,
+      domain: "weight",
+    }) === "dormant";
+  if (lastWeightRecord == null)
+    add(
+      progressCandidates.weightBootstrap({
+        subject: profileSubject,
+        applicable: canWrite,
+        sourceOrder: sourceOrder++,
+      }),
+      <WidgetEmpty
+        title="Weight"
+        icon={IconScale}
+        message="No weigh-ins yet."
+        ctaLabel="Log weight"
+        ctaHref="/trends"
+      />
+    );
+  else if (weightDormant) {
+    const ageDays =
+      freshnessAgeDays(lastWeightRecord, on) ??
+      DORMANCY_DOMAINS.weight.collapseAfterDays;
+    add(
+      progressCandidates.weightDormant(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        lastWeightRecord
+      ),
+      <WidgetDormant
+        title="Weight"
+        icon={IconScale}
+        line={dormantRecordLine("weight", ageDays)}
+        ctaLabel="Body metrics"
+        ctaHref="/trends"
+      />
+    );
+  } else {
+    const latestWeight = bodyMetrics.at(-1);
+    if (latestWeight)
+      add(
+        progressCandidates.weightLatest(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          latestWeight.date,
+          weightEngagement
+        ),
+        <DashboardAtomCard
+          title="Latest weight"
+          value={`${latestWeight.value} ${units.weightUnit}`}
+          href="/trends"
+        />
+      );
+    add(
+      progressCandidates.weightTrend(
+        {
+          subject: profileSubject,
+          applicable: bodyMetrics.length > 1,
+          sourceOrder: sourceOrder++,
+        },
+        weightTrendSince,
+        on,
+        weightEngagement
+      ),
+      <WeightTrendWidget
+        data={bodyMetrics}
+        weightUnit={units.weightUnit}
+        formatPrefs={formatPrefs}
+        today={on}
+        subjectName={actingSubjectName}
+      />
+    );
+  }
+
+  const lastSleepRecord =
+    sleepSummary?.wakeDay ?? getLastSleepRecordDate(profile.id);
+  const sleepDormant =
+    dormancyState({
+      lastRecordDate: lastSleepRecord,
+      today: on,
+      domain: "sleep",
+    }) === "dormant";
+  if (sleepWaiting)
+    add(
+      sleepCandidates.waiting(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        on,
+        localTimeWindow(
+          typicalWakeMinutes ?? 420,
+          (typicalWakeMinutes ?? 420) + 180
+        )
+      ),
+      <SleepWaitingWidget
+        state={sleepWaiting}
+        formatPrefs={formatPrefs}
+        previousNightLabel={sleepPreviousNightLabel}
+      />
+    );
+  else if (lastSleepRecord == null)
+    add(
+      sleepCandidates.bootstrap({
+        subject: profileSubject,
+        sourceOrder: sourceOrder++,
+      }),
+      <WidgetEmpty
+        title="Sleep"
+        icon={IconMoon}
+        message="No sleep recorded yet."
+        ctaLabel="Sync a source"
+        ctaHref="/data"
+      />
+    );
+  else if (sleepDormant) {
+    const ageDays =
+      freshnessAgeDays(lastSleepRecord, on) ??
+      DORMANCY_DOMAINS.sleep.collapseAfterDays;
+    add(
+      sleepCandidates.dormant(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        lastSleepRecord
+      ),
+      <WidgetDormant
+        title="Sleep"
+        icon={IconMoon}
+        line={dormantRecordLine("sleep", ageDays)}
+        ctaLabel="Sync a source"
+        ctaHref="/data"
+      />
+    );
+  } else if (sleepPresentation?.freshness === "stale") {
+    add(
+      sleepCandidates.refresh(
+        {
+          subject: profileSubject,
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        on
+      ),
+      <WidgetEmpty
+        title="Sleep"
+        icon={IconMoon}
+        message="No sleep recorded last night."
+        ctaLabel="Sync a source"
+        ctaHref="/data"
+      />
+    );
+  } else if (sleepSummary) {
+    const sleepTiming = localTimeWindow(
+      sleepSummary.wakeMinutes ?? 420,
+      (sleepSummary.wakeMinutes ?? 420) + 180
+    );
+    const values = [
+      ["duration", "Sleep duration", formatHm(sleepSummary.durationMin)],
+      [
+        "bed-time",
+        "Bed time",
+        sleepSummary.bedMinutes == null
+          ? "—"
+          : formatClockMinutes(formatPrefs.timeFormat, sleepSummary.bedMinutes),
+      ],
+      [
+        "wake-time",
+        "Wake time",
+        sleepSummary.wakeMinutes == null
+          ? "—"
+          : formatClockMinutes(
+              formatPrefs.timeFormat,
+              sleepSummary.wakeMinutes
+            ),
+      ],
+      [
+        "regularity",
+        "Sleep regularity",
+        sleepSri == null ? "—" : `${Math.round(sleepSri)}%`,
+      ],
+    ] as const;
+    values.forEach(([key, title, value], index) =>
+      add(
+        sleepCandidates.reading(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          key,
+          sleepSummary.wakeDay,
+          engagementFromSource(sleepSummary.source),
+          sleepTiming
+        ),
+        <DashboardAtomCard title={title} value={value} href="/sleep" />
+      )
+    );
+    sourceOrder += values.length;
+  }
+
+  todayNaps.forEach((nap, index) =>
+    add(
+      sleepCandidates.nap(
+        { subject: profileSubject, sourceOrder: sourceOrder + index },
+        nap.date,
+        nap.startMinutes,
+        engagementFromSource(nap.source),
+        nowMinutes - nap.endMinutes
+      ),
+      <NapsTodayWidget naps={[nap]} timeFormat={formatPrefs.timeFormat} />
+    )
+  );
+  if (todayNaps.length > 1)
+    add(
+      sleepCandidates.napTotal(
+        {
+          subject: profileSubject,
+          sourceOrder: sourceOrder + todayNaps.length,
+        },
+        on
+      ),
+      <DashboardAtomCard
+        title="Nap total"
+        value={formatHm(
+          todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
+        )}
+        href="/sleep#naps"
+      />
+    );
+  sourceOrder += todayNaps.length + 1;
+
+  pillars.forEach((pillar, index) =>
+    add(
+      progressCandidates.healthspan(
+        {
+          subject: profileSubject,
+          applicable: adultContentApplicable,
+          sourceOrder: sourceOrder + index,
+        },
+        pillar.key
+      ),
+      <HealthspanPillarsWidget pillars={[pillar]} />
+    )
+  );
+  sourceOrder += pillars.length;
+
+  coachingObservations.forEach((finding, index) =>
+    add(
+      progressCandidates.statement(
+        { subject: profileSubject, sourceOrder: sourceOrder + index },
+        "coaching.observation",
+        finding.dedupeKey,
+        `finding.${finding.dedupeKey}`
+      ),
+      <CoachingObservations findings={[finding]} />
+    )
+  );
+  sourceOrder += coachingObservations.length;
+
+  weeklyRecap?.lines.forEach((line, index) =>
+    add(
+      progressCandidates.recap(
+        {
+          subject: profileSubject,
+          applicable: trainingRelevant,
+          sourceOrder: sourceOrder + index,
+        },
+        line.key,
+        weeklyRecap.start,
+        weeklyRecap.end
+      ),
+      <WeeklyRecapWidget
+        recap={{ ...weeklyRecap, lines: [line], isEmpty: false }}
+        formatPrefs={formatPrefs}
+      />
+    )
+  );
+
+  const dashboardPlacements = rankDashboardCandidates(candidates, {
+    activeProfileId: profile.id,
+    minutesOfDay: nowMinutes,
+  });
 
   return (
     <DashboardPlacementCanvas
-      profileId={profile.id}
       dateLabel={formatLongDate(on, formatPrefs)}
       placements={dashboardPlacements}
-      placementNodes={placementNodes}
-      gridWidgets={gridWidgets}
-      saveAction={saveDashboardLayout}
+      candidateNodes={candidateNodes}
+      attentionBadgeCount={attentionBadgeCount}
     />
   );
 }

@@ -3,6 +3,7 @@ import type { FrequencyPace } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import type { FrequencyTarget } from "../types";
 import { getCadenceLedger } from "./cadence-ledger";
+import { snapshotCached } from "../read-snapshot";
 
 // The active-target list moved to the ledger (#2034) — it IS the ledger's tenant
 // roll — and is re-exported here so every existing `@/lib/queries` import site is
@@ -56,7 +57,7 @@ export interface FrequencyTargetProgress {
 // render "2 of 7 — 5 to go" and nudge toward MORE consumption. `direction: "floor"`
 // is that exclusion stated positively; lib/queries/substance.ts reads the cap side of
 // the same ledger.
-export function getFrequencyTargetProgress(
+function getFrequencyTargetProgressUncached(
   profileId: number
 ): FrequencyTargetProgress[] {
   return getCadenceLedger(profileId, {
@@ -86,6 +87,11 @@ export function getFrequencyTargetProgress(
     };
   });
 }
+export const getFrequencyTargetProgress = snapshotCached(
+  "frequency-targets.progress",
+  (profileId: number) => String(profileId),
+  getFrequencyTargetProgressUncached
+);
 
 // The same rollup, narrowed to the targets that LIVE on one domain page (#2888).
 //
