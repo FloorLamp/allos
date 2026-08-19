@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  touchSwipe,
+  touchSwipeFrom,
+} from "./helpers";
 
 // The #2774 convergence, from the outside: ModalShell's consumers now render the
 // ONE responsive dialog primitive, so on a phone they are sheets that OWN THE
@@ -79,6 +84,57 @@ async function restingPanelTop(dialog: Locator): Promise<number> {
     })
     .toBe(true);
   return panelTop(dialog);
+}
+
+// Tap the scrim, and PROVE WHERE THE TOUCH LANDED (#2714's rule, applied to a
+// tap).
+//
+// The y is a constant, and that is the fix rather than an accident. The panel is
+// capped at `max-h-[85dvh]`, so on this 844px viewport its top can never sit
+// above ~127px: the top band of the screen is scrim BY CONSTRUCTION, whatever
+// the form's height does. A point computed from a measured panel top is not —
+// it is "a fact about the past from the instant it is returned", and a
+// bottom-anchored panel that gathers content grows UPWARD into it. The touch
+// then lands on the panel, the scrim's handler never runs, and NOTHING HAPPENS,
+// SILENTLY: dialog still mounted, form still dirty, no confirm. That is exactly
+// the state CI reported, and it is why a 20x CPU throttle stayed green here — a
+// throttle slows the race, not one side of it.
+//
+// Proving the landing is the second half. `touchSwipeFrom` re-aims and checks
+// the touchstart target for the same reason; without it a miss is invisible and
+// reads as a broken feature.
+async function tapScrim(page: Page): Promise<void> {
+  // WAIT FOR THE SCRIM TO BE LIVE BEFORE AIMING AT IT (#2742). A tap that lands
+  // before React has claimed the node is swallowed with no error at all:
+  // Playwright's actionability is satisfied, because the element is genuinely
+  // there and genuinely hittable, and the click simply reaches no handler. CI
+  // reported exactly that — `hit: modal-shell-backdrop`, form still dirty, no
+  // confirm, dialog still open — three runs running, while the same tap from a
+  // standing start passed on the same shard. The difference is that here a
+  // confirm has just unmounted over this surface.
+  await awaitHydrated(page.getByTestId("modal-shell-backdrop"));
+  await page.evaluate(() => {
+    const store = window as unknown as Record<string, unknown>;
+    store.__scrimTapTarget = null;
+    document.addEventListener(
+      "touchstart",
+      (e) => {
+        store.__scrimTapTarget = e.target;
+      },
+      { capture: true, once: true, passive: true }
+    );
+  });
+  await page.touchscreen.tap(195, 60);
+  const landedOn = await page.evaluate(() => {
+    const target = (window as unknown as Record<string, unknown>)
+      .__scrimTapTarget;
+    if (!(target instanceof Element)) return "nothing";
+    return target.getAttribute("data-testid") ?? target.tagName;
+  });
+  expect(
+    landedOn,
+    "the tap must reach the scrim — if the panel has grown up into this point, the touch lands on the form and the dismissal silently does nothing"
+  ).toBe("modal-shell-backdrop");
 }
 
 /** Drag downward from high on the screen — with a sheet open, that is its scrim. */
@@ -246,7 +302,7 @@ test("a scrim tap on a dirty form asks first too", async ({ page }) => {
   await expect(title).toBeVisible();
   await title.fill(DRAFT);
 
-  await page.touchscreen.tap(195, 90);
+  await tapScrim(page);
   const confirm = page.getByTestId("confirm-dialog");
   await expect(confirm).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
@@ -319,22 +375,25 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
     })
     .toBe(atRest);
 
-  const tapY = Math.round(atRest / 2);
-  await page.touchscreen.tap(195, tapY);
+  // The tap NAMES THE SCRIM and proves it landed there. It used to aim at
+  // `atRest / 2` — a point derived from a boundingBox taken before the flick —
+  // which is the #2714 trap: the panel is bottom-anchored, so anything that
+  // grows it upward slides the form under a coordinate a settled measurement had
+  // just certified, and the touch lands on the form instead of the scrim.
+  await tapScrim(page);
 
-  // WHAT THE PAGE LOOKED LIKE AT THE TAP, carried into the failure message.
-  //
-  // This sequence fails only in CI — never here, not in 10 runs, not at 20x CPU
-  // throttling — so CI is the only place the evidence exists, and a bare "element
-  // not found" from it is a symptom with no mechanism attached. Reading the hit
-  // target, the dirty count and the panel's position at the moment of the
-  // assertion turns the next red into a description of what actually happened.
-  // Costs one evaluate on a path that is green everywhere else.
-  const atTap = await page.evaluate((y) => {
-    const el = document.elementFromPoint(195, y);
+  // WHAT THE PAGE LOOKED LIKE AT THE TAP, carried into the failure message. This
+  // sequence has never failed here — not in ten runs, not at 20x CPU throttling —
+  // so CI is the only place the evidence exists, and a bare "element not found"
+  // from it is a symptom with no mechanism attached. If the landing proof above
+  // passes and this still goes red, the touch reached the scrim and the surface
+  // did not answer, which is a different bug and this says so.
+  const atTap = await page.evaluate(() => {
     const panel = document.querySelector("[data-sheet-panel]");
     return {
-      hit: el?.getAttribute("data-testid") ?? el?.tagName ?? "nothing",
+      hit:
+        document.elementFromPoint(195, 60)?.getAttribute("data-testid") ??
+        "nothing",
       dirty:
         document
           .querySelector('[data-testid="dirty-form-registry"]')
@@ -344,7 +403,7 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
         '[data-testid="confirm-dialog"]'
       ).length,
     };
-  }, tapY);
+  });
 
   // ORDERED TO DIAGNOSE. If the guard failed OPEN, the dialog is already gone and
   // the typing with it — a dirty form silently discarded by a scrim tap, which is
@@ -357,7 +416,7 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   ).toHaveCount(1);
   await expect(
     confirm,
-    `a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused (tapped y=${tapY}; at that moment: ${JSON.stringify(
+    `a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused (at that moment: ${JSON.stringify(
       atTap
     )})`
   ).toBeVisible();
@@ -382,7 +441,7 @@ test("a dialog stacked over a sheet leaves the page held until the last one clos
   expect(await bodyOverflow(page)).toBe("hidden");
 
   // The discard confirm opens a SECOND surface over the first.
-  await page.touchscreen.tap(195, 90);
+  await tapScrim(page);
   const confirm = page.getByTestId("confirm-dialog");
   await expect(confirm).toBeVisible();
   expect(await bodyOverflow(page)).toBe("hidden");

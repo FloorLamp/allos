@@ -189,7 +189,17 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
 // tree with handlers on it, and it is the signal `hydratedClick` gates on. Kept in
 // one place so a second caller cannot invent a slightly different probe — this is a
 // TRUTH about React's DOM, and two spellings of it would drift.
-async function awaitHydrated(el: Locator, timeout: number): Promise<void> {
+// Wait until React has claimed this node — the probe behind hydratedClick.
+//
+// Exported because a coordinate TAP cannot go through hydratedClick: that clicks
+// an element's centre, and a full-viewport scrim's centre is covered by the panel
+// it dims, so the click would be refused for interception. The wait is the half
+// that matters (#2742: a tap landing before the handler is live is swallowed with
+// no error), so it is shared rather than copied into the spec.
+export async function awaitHydrated(
+  el: Locator,
+  timeout = 10_000
+): Promise<void> {
   await expect(el).toBeVisible();
   await expect(async () => {
     const hydrated = await el.evaluate((node) =>
