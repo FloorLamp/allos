@@ -129,6 +129,17 @@ const unofferedText = (p: CorrectionPrefixes) =>
 // far back is for.
 const OUT_OF_RANGE_TEXT =
   "That's as far back as the chips go — tap the row for an exact time.";
+// The binding, re-checked at TAP time (#3092 follow-up). Provenance is mutable between
+// render and tap: the pointer prune/close lifecycle deletes `notify_messages` rows
+// routinely, and `ON DELETE SET NULL` flips the ledger rows that message stamped to
+// unattributed — so by tap time the burst a token anchors on can have merged into the
+// null partition with taps this message never showed (a web one-tap logged since), and
+// a chip that wrote through it would restamp an administration from a message that
+// never mentioned it. #2264's rule fails CLOSED: a message may only CORRECT a burst it
+// may SHOW, decided by the same two functions the render used, and a tap the binding
+// refuses writes nothing and says so.
+const notBoundText = (p: CorrectionPrefixes) =>
+  `This message can't correct those entries any more — nothing was changed. Fix it in ${p.appSurface}.`;
 
 async function resolve(
   cq: TelegramCallbackQuery,
@@ -166,6 +177,18 @@ async function resolve(
   // below admits with (#2875).
   if (!isBurstFresh(burst, now)) {
     await answerCallbackQuery(cq.id, lapsedText(prefixes), { alert });
+    return null;
+  }
+  // The SAME binding rule the renderer applied, re-derived at tap time — see
+  // `notBoundText`. Checked for every step, the pure keyboard edits included: opening
+  // the picker on a burst this message may no longer show would render offers whose
+  // writes this same check is about to refuse.
+  const bound = burstsForMessage(
+    [burst],
+    correctionMessageBinding(profileId, prefixes.kind, { chatId, messageId })
+  );
+  if (bound.length === 0) {
+    await answerCallbackQuery(cq.id, notBoundText(prefixes), { alert });
     return null;
   }
   return {
@@ -463,7 +486,7 @@ function doseCorrectionParts(
   const bound = burst
     ? burstsForMessage(
         [burst],
-        correctionMessageBinding(r.profileId, "dose", {
+        correctionMessageBinding(r.profileId, DOSE_TIME_PREFIXES.kind, {
           chatId: r.chatId,
           messageId: r.messageId,
         })

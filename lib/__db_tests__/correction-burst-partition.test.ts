@@ -15,7 +15,15 @@
 // the real callback dispatcher and the real builders, with only the raw Telegram
 // transport stubbed — a renderer-only fix fails the write-isolation cases.
 
-import { beforeAll, beforeEach, afterEach, describe, expect, it } from "vitest";
+import {
+  beforeAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -27,6 +35,7 @@ import {
   withDoseCorrections,
 } from "@/lib/notifications/intake";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
 import {
   liveMessagePointers,
   messagePointerIdAt,
@@ -36,7 +45,10 @@ import { keyboardTokens } from "@/lib/notifications/reconcile-core";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
 import { now as clockNow } from "@/lib/clock";
 import { parseUtcSql } from "@/lib/date";
-import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
+import {
+  getDoseCorrectionBursts,
+  markDoseTaken,
+} from "@/lib/queries/intake/adherence";
 import {
   getFoodCorrectionBursts,
   getPracticeCorrectionBursts,
@@ -482,5 +494,158 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
       .all(pid) as { id: number; time: string }[];
     expect(after[0].time).not.toBe(logs[0].time);
     expect(after[1].time).toBe(logs[1].time);
+  });
+});
+
+// ---- the binding, re-checked at tap time ------------------------------------
+
+describe("the binding is re-checked at tap time (#3092 follow-up)", () => {
+  const answer = vi.mocked(answerCallbackQuery);
+
+  // Provenance is MUTABLE between render and tap: the pointer prune/close lifecycle
+  // deletes `notify_messages` rows routinely, and `ON DELETE SET NULL` flips the ledger
+  // rows that message stamped to unattributed. From there the partition itself cannot
+  // protect the write — the tapped log has merged into the null partition, possibly
+  // with a web one-tap the keyboard never showed. So the handler re-checks the SAME
+  // binding rule the renderer applied, at tap time, and fails closed (#2264): a message
+  // may only correct a burst it may still show.
+  it("a chip from a pruned-pointer message refuses; the merged null partition is not written", async () => {
+    const pid = newProfile("Prune Petra");
+    const chatId = "5730905";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    const evening = seedDose(pid, "Evening Tab");
+    const web = seedDose(pid, "Water Tab");
+
+    // The reminder goes out for real and is answered from its own message.
+    const reminderA = buildIntakeReminderForSlots(pid, ["Evening"])!.message;
+    await dispatch(pid, reminderA);
+    const pointerA = liveMessagePointers(pid).find((p) => p.kind === "dose")!;
+    setNow("2026-08-05T05:35:00Z");
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointerA.messageId,
+        `take:${pid}:${evening.doseId}:${evening.itemId}:${date}`,
+        pointerA.keyboard
+      )
+    );
+    const chatLog = doseLogs(pid)[0];
+    expect(chatLog.messageRef).toBe(pointerA.id);
+    stampDoseTap(chatLog.id, "2026-08-05T05:35:00Z");
+
+    // A newer dose pointer exists, so message A is no longer the newest of its kind…
+    const reminderB = buildIntakeReminderForSlots(pid, ["Evening"])!.message;
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9966,
+      kind: "dose",
+      date,
+      keyboard: messageKeyboard(reminderB),
+      title: reminderB.title,
+    });
+    // …and a WEB one-tap logs another dose five minutes after the chat confirm —
+    // honestly unattributed, and never shown on message A.
+    markDoseTaken(pid, web.doseId, web.itemId, date);
+    const webLog = doseLogs(pid)[1];
+    expect(webLog.messageRef).toBeNull();
+    stampDoseTap(webLog.id, "2026-08-05T05:40:00Z");
+    setNow("2026-08-05T05:45:00Z");
+
+    // At render time message A carries exactly its own row — the keyboard a stale chat
+    // still shows.
+    const base = {
+      title: "💊 test",
+      body: "b",
+      actions: [],
+      kind: "dose" as const,
+    };
+    const onA = withDoseCorrections(pid, base, {
+      ref: { chatId, messageId: pointerA.messageId },
+    });
+    const onATokens = dosetimeTokens(onA);
+    expect(onATokens).toContain(`dosetime:${pid}:${chatLog.id}:30`);
+    expect(onATokens.some((t) => t.includes(`:${webLog.id}:`))).toBe(false);
+
+    // The prune: message A's pointer row is deleted (pruneMessagePointers' 3-day
+    // retention, dropMessagePointer). The FK flips the chat log to NULL, merging it
+    // into the web tap's partition.
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(pointerA.id);
+    expect(doseLogs(pid)[0].messageRef).toBeNull();
+
+    // The tap the stale keyboard still offers. Without the tap-time binding re-check
+    // the core would restamp the MERGED burst — moving the web administration falsely
+    // 30 minutes earlier and opening its PRN redose window early.
+    const before = doseLogs(pid);
+    answer.mockClear();
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointerA.messageId,
+        `dosetime:${pid}:${chatLog.id}:30`,
+        messageKeyboard(onA)
+      )
+    );
+    const after = doseLogs(pid);
+    // Nothing was written — not the tapped log (all-or-nothing, fail closed)…
+    expect(after[0].occurredAt).toBe(before[0].occurredAt);
+    // …and above all not the web administration the message never mentioned.
+    expect(after[1].occurredAt).toBe(before[1].occurredAt);
+    // And the refusal is SPOKEN, as a dismissed alert — this is a medication ledger.
+    expect(answer).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("can't correct"),
+      { alert: true }
+    );
+  });
+
+  it("the guard is domain-blind: a pruned food nudge's chip refuses instead of writing", async () => {
+    const pid = newProfile("Prune Fila");
+    const chatId = "5730906";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+
+    await dispatch(pid, buildFoodNudge(pid, "Morning", date)!);
+    const pointer = liveMessagePointers(pid)[0];
+    setNow("2026-08-05T05:31:00Z");
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointer.messageId,
+        `food:${pid}:Morning:${date}:berries`,
+        pointer.keyboard
+      )
+    );
+    const [event] = foodEvents(pid);
+    setNow("2026-08-05T05:40:00Z");
+    const rendered = buildFoodNudge(pid, "Morning", date, undefined, {
+      ref: { chatId, messageId: pointer.messageId },
+    })!;
+    expect(foodtimeTokens(rendered)).toContain(
+      `foodtime:${pid}:${event.id}:30`
+    );
+
+    // A newer food pointer appears, then the tapped message's pointer is pruned.
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9977,
+      kind: "food",
+      date,
+      keyboard: [],
+      title: "🍽️ newer",
+    });
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(pointer.id);
+
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointer.messageId,
+        `foodtime:${pid}:${event.id}:30`,
+        messageKeyboard(rendered)
+      )
+    );
+    expect(foodEvents(pid)[0].occurredAt).toBe(event.occurredAt);
   });
 });

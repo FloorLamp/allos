@@ -739,6 +739,38 @@ describe("message attribution (#2264, #3092)", () => {
     expect(fresh).toHaveLength(1);
     expect(fresh[0].fromId).toBe(10);
   });
+
+  it("an unattributed rider never displaces the message's own burst under the cap (#3092)", () => {
+    // The message's own tap, then two web taps — three fresh bursts against a cap of
+    // two. A plain newest-first cap would seat the two riders and drop the one claim
+    // this message is actually about.
+    const events = [
+      tapFrom(1, "2026-08-05T19:00:00Z", 55),
+      tapFrom(10, "2026-08-05T19:05:00Z", null),
+      tapFrom(20, "2026-08-05T19:22:00Z", null),
+    ];
+    const rows = correctionBursts(events, NOW, {
+      messageRef: 55,
+      isNewest: true,
+    });
+    // The own burst keeps its row, the newest rider fills the other, and the seated
+    // set still renders newest first.
+    expect(rows.map((b) => b.fromId)).toEqual([20, 1]);
+  });
+
+  it("riders fill only the rows the message's own bursts leave", () => {
+    const events = [
+      tapFrom(1, "2026-08-05T18:50:00Z", 55),
+      // 20 minutes later: past the gap, so a second own burst.
+      tapFrom(2, "2026-08-05T19:10:00Z", 55),
+      tapFrom(10, "2026-08-05T19:15:00Z", null),
+    ];
+    const rows = correctionBursts(events, NOW, {
+      messageRef: 55,
+      isNewest: true,
+    });
+    expect(rows.map((b) => b.fromId)).toEqual([2, 1]);
+  });
 });
 
 // ---- #2264 bug 1: the body states the stored time ----------------------------

@@ -366,18 +366,30 @@ export function burstsForMessage(
 // collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
 // The ROW SET IS A QUERY over ledger state — never a memory of what some earlier message
 // rendered — which is why the rows survive a rebuild, a pointer rotation and a restart.
-// The binding filters BEFORE the cap, so a foreign burst can never push a message's own
-// burst off its keyboard. No binding means no message filter — the pre-#2264 profile-wide
-// set, which only a caller that is not rendering a message may ask for.
+// The binding filters BEFORE the cap, and THE CAP SEATS THE MESSAGE'S OWN BURSTS FIRST
+// (#3092 follow-up) — so no burst that is not this message's own can ever push its own
+// burst off its keyboard. With bursts partitioned by message, the newest live message
+// also carries the unattributed riders, and two web one-taps landing after its own tap
+// would otherwise displace the one claim the message is actually about. The message's
+// own bursts claim their rows first, newest first; riders fill only the rows left; and
+// the seated set renders newest first regardless of class. No binding means no message
+// filter and a plain newest-first cap — the pre-#2264 profile-wide set, which only a
+// caller that is not rendering a message may ask for.
 export function correctionBursts(
   events: readonly TapEvent[],
   now: Date,
   binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
   const fresh = collapseBursts(events).filter((b) => isBurstFresh(b, now));
-  return (binding ? burstsForMessage(fresh, binding) : fresh)
-    .reverse()
-    .slice(0, MAX_CORRECTION_ROWS);
+  if (!binding) return fresh.reverse().slice(0, MAX_CORRECTION_ROWS);
+  const mine = burstsForMessage(fresh, binding).reverse();
+  const seated = [
+    ...mine.filter((b) => b.messageRef != null),
+    ...mine.filter((b) => b.messageRef == null),
+  ].slice(0, MAX_CORRECTION_ROWS);
+  return seated.sort(
+    (a, b) => ms(b.startAt) - ms(a.startAt) || b.fromId - a.fromId
+  );
 }
 
 // Re-derive ONE burst from the ledger, given the id its token was anchored on. The tap
