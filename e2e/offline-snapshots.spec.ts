@@ -34,10 +34,17 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const DB = "allos-offline";
 const STORE = "snapshots";
 
+// Signed in through the real login form (not loginAs) because every test here
+// starts from an empty storageState and ends by logging out.
+const creds = {
+  username: E2E_LOGIN_OFFLINE_SNAPSHOTS,
+  password: E2E_MEMBER_PASSWORD,
+};
+
 async function login(page: Page) {
   await page.goto("/login");
-  await page.fill('input[name="username"]', E2E_LOGIN_OFFLINE_SNAPSHOTS);
-  await page.fill('input[name="password"]', E2E_MEMBER_PASSWORD);
+  await page.fill('input[name="username"]', creds.username);
+  await page.fill('input[name="password"]', creds.password);
   await page.click('button[type="submit"]');
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
     timeout: 20_000,
