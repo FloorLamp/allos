@@ -251,7 +251,7 @@ export default function ProtocolControls({
         <ModalShell
           title="Edit protocol"
           onClose={() => setEditing(false)}
-          size="lg"
+          size="md"
         >
           <ProtocolForm
             action={updateAction}

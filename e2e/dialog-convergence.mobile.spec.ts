@@ -156,6 +156,9 @@ test("the page behind an open quick-entry sheet does not move either", async ({
     await scrollY(page),
     "the dashboard must not move under the sheet"
   ).toBe(before);
+  expect(before, "a held page cannot be scrolled away from its parked 0").toBe(
+    0
+  );
 });
 
 test("a dirty converged form confirms before a gesture discards it; a clean one goes in one gesture", async ({

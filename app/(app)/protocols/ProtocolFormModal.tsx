@@ -29,7 +29,7 @@ export default function ProtocolFormModal(props: CreateProtocolFormProps) {
         <ModalShell
           title="New protocol"
           onClose={() => setOpen(false)}
-          size="lg"
+          size="md"
         >
           <ProtocolForm {...props} onDone={() => setOpen(false)} />
         </ModalShell>

@@ -227,15 +227,29 @@ export default function BottomSheet({
   // Bottom-anchored surfaces square off against the screen edge and clear the
   // home indicator; a centred card floats, so it rounds all the way round and
   // owes the home indicator nothing.
+  //
+  // WHO SCROLLS, at each width. Below `md` a sheet is bottom-anchored and
+  // bounded, so the PANEL is the scroller — the same contract every sheet in the
+  // app has always had. From `md` up the responsive dialog is a centred card
+  // with no reason to be bounded, so the CONTAINER scrolls and the panel clips
+  // NOTHING. That second half is not cosmetic: an `overflow` of any kind
+  // establishes a clip whether or not it is currently scrolling, and the forms
+  // behind this host open comboboxes and date pickers that must be allowed to
+  // paint past the panel's edge. Bounding the panel at desktop cut the practice
+  // picker's listbox off mid-list, which is what e2e/wellness-practices.spec.ts
+  // caught. Exactly one scroller at each width, and both contain their
+  // overscroll.
   const containerAnchor = asCentered
-    ? "items-center p-4"
+    ? "items-start overflow-y-auto overscroll-contain p-4 sm:p-8"
     : asDialog
-      ? "items-end md:items-center md:p-4"
+      ? "items-end md:items-start md:overflow-y-auto md:overscroll-contain md:p-8"
       : "items-end";
   const panelShape = asCentered
     ? "max-h-[85dvh] rounded-2xl border px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5"
     : `max-h-[85dvh] border-t px-4 pt-1 sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_SAFE_BOTTOM} ${
-        asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
+        asDialog
+          ? "md:max-h-none md:overflow-visible md:rounded-2xl md:border md:px-6 md:pt-5 md:pb-5"
+          : ""
       }`;
   const titleClass = titleHidden
     ? "sr-only"
@@ -319,7 +333,9 @@ export default function BottomSheet({
           </p>
         )}
         <div
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+          className={`mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${
+            asDialog ? "md:overflow-visible" : ""
+          }`}
           data-sheet-content
         >
           {children}
