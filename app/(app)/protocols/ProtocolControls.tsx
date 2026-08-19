@@ -37,6 +37,7 @@ export default function ProtocolControls({
   resumeAction,
   runAgainAction,
   deleteAction,
+  canRevise = true,
   asOf,
 }: {
   protocol: Protocol;
@@ -53,6 +54,12 @@ export default function ProtocolControls({
   deleteAction: (
     formData: FormData
   ) => Promise<FormResult & { redirectTo?: "/longevity#protocols" }>;
+  // Whether the record-REWRITING controls are offered (#3133, the #2993 line):
+  // Edit, Resume, and "Run again" are adult-only content and their actions
+  // refuse for a minor or unknown-age profile, so the page withholds them
+  // rather than render forms the server would refuse. "End now" and Delete can
+  // only close or remove the record and are always offered.
+  canRevise?: boolean;
   asOf: string;
 }) {
   const formatPrefs = useFormatPrefs();
@@ -169,18 +176,20 @@ export default function ProtocolControls({
               >
                 {({ close }) => (
                   <>
-                    <button
-                      type="button"
-                      className={MENU_ITEM}
-                      disabled={busy}
-                      data-testid="protocol-edit"
-                      onClick={() => {
-                        close();
-                        setEditing(true);
-                      }}
-                    >
-                      Edit
-                    </button>
+                    {canRevise && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM}
+                        disabled={busy}
+                        data-testid="protocol-edit"
+                        onClick={() => {
+                          close();
+                          setEditing(true);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )}
                     {ongoing && (
                       <button
                         type="button"
@@ -191,7 +200,7 @@ export default function ProtocolControls({
                         End now
                       </button>
                     )}
-                    {reopen.kind === "eligible" && (
+                    {canRevise && reopen.kind === "eligible" && (
                       <button
                         type="button"
                         className={MENU_ITEM}
@@ -203,7 +212,7 @@ export default function ProtocolControls({
                         Resume
                       </button>
                     )}
-                    {reopen.kind === "expired" && (
+                    {canRevise && reopen.kind === "expired" && (
                       <button
                         type="button"
                         className={MENU_ITEM}

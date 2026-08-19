@@ -89,3 +89,11 @@ export const SITUATION_IMPACT_PROFILE = "Situation Impact (e2e)";
 // TTC spec taps observation buttons whose rows it owns. Synthetic, no PHI.
 export const E2E_LOGIN_TTC = "e2e_ttc";
 export const TTC_PROFILE = "Trying To Conceive (e2e)";
+
+// The toddler-owned protocol record (#3133). "Riley (child)"'s ONE recorded, long-ended
+// protocol, so the lifestage spec can observe both halves of the protocol line on one
+// page: the record's own detail page renders at an ineligible age (a profile's own data
+// is never filtered from that profile, #3067), while "Run again" — the create affordance
+// an expired record would offer an adult — stays withheld. Named here so the seeder and
+// the spec agree on the row. Synthetic, no PHI.
+export const TODDLER_PROTOCOL_NAME = "Imported Rest Routine (e2e)";

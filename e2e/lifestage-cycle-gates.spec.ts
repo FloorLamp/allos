@@ -1,9 +1,13 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
+import { workerDbPath } from "./worker-env";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_CYCLE_PREGNANT,
   E2E_MEMBER_PASSWORD,
+  TODDLER_PROTOCOL_NAME,
 } from "./fixture-logins";
 
 // Life-stage and cycle-state gating (issues #2801 / #2807). Two bugs of one shape: a
@@ -57,7 +61,17 @@ test.describe("a recorded pregnancy suspends the cycle state (#2801)", () => {
 });
 
 test.describe("life-stage gates past substance use (#2807)", () => {
-  test("a toddler cannot reach Longevity or a protocol by direct URL (#3065)", async ({
+  // #3065 gated the Longevity surfaces; #3133 drew the finer line #3067's ruling
+  // requires on the case #3065 did not anticipate — a protocol record the profile
+  // OWNS (the supersede-in-prose pattern #3092 used on #2264). The HUB half of
+  // #3065 stands: Longevity is adult-only CONTENT, so the route and its nav entry
+  // stay unreachable at any ineligible age. But the profile's own recorded
+  // experiment is a data fact, never filtered from that profile — its detail page
+  // renders READ-ONLY plus end/delete (#2993's fasting line: closing or removing
+  // one's own record is always allowed; creating, editing, and resuming are
+  // adult-gated, so their affordances are withheld rather than rendering forms
+  // the server refuses).
+  test("a toddler cannot reach the Longevity hub, but its own protocol record renders (#3065/#3133)", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -65,6 +79,7 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      // The hub: redirected away, no fitness section, no nav entry.
       await page.goto("/longevity");
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByTestId("longevity-fitness")).toHaveCount(0);
@@ -72,8 +87,48 @@ test.describe("life-stage gates past substance use (#2807)", () => {
         0
       );
 
+      // A protocol that is NOT this profile's record is still nothing — the
+      // (profile, id) scope 404s a guessed id rather than redirecting, exactly
+      // as it does for an adult.
       await page.goto("/protocols/999999");
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByTestId("app-not-found")).toBeVisible();
+
+      // The record the toddler OWNS (seeded ended, past the reopen window — the
+      // state where an adult WOULD be offered "Run again"): its page renders by
+      // direct URL instead of redirecting.
+      const handle = new Database(workerDbPath(), { readonly: true });
+      let ownProtocolId: number;
+      try {
+        ownProtocolId = (
+          handle
+            .prepare(
+              `SELECT p.id FROM protocols p
+                 JOIN profiles pr ON pr.id = p.profile_id
+                WHERE pr.name = 'Riley (child)' AND p.name = ?`
+            )
+            .get(TODDLER_PROTOCOL_NAME) as { id: number }
+        ).id;
+      } finally {
+        handle.close();
+      }
+      await page.goto(`/protocols/${ownProtocolId}`);
+      await expect(page.getByTestId("protocol-detail-page")).toBeVisible();
+      await expect(page.getByTestId("protocol-header")).toContainText(
+        TODDLER_PROTOCOL_NAME
+      );
+
+      // Delete (record-following) stands; Edit and "Run again" (record-
+      // rewriting / creating — their actions refuse at this age) are withheld.
+      await hydratedClick(
+        page,
+        page.getByRole("button", { name: "More protocol actions" })
+      );
+      const menu = page.getByRole("menu");
+      await expect(menu.getByRole("button", { name: "Delete" })).toBeVisible();
+      await expect(menu.getByTestId("protocol-edit")).toHaveCount(0);
+      await expect(menu.getByRole("button", { name: "Run again" })).toHaveCount(
+        0
+      );
     } finally {
       await page.context().close();
     }

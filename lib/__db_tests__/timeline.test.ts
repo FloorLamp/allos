@@ -490,13 +490,13 @@ describe("getTimelineDates — tz-correct created-at fallback (#619)", () => {
   });
 });
 
-describe("protocol timeline life-stage boundary", () => {
-  function profileWithProtocol(name: string, age: number): number {
+describe("protocol timeline events follow the record at every age (#3133)", () => {
+  function profileWithProtocol(name: string, age: number | null): number {
     const id = Number(
       db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
         .lastInsertRowid
     );
-    setStoredAge(id, age);
+    if (age != null) setStoredAge(id, age);
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
        VALUES (?, 'Synthetic protocol', '2026-01-01', '[]')`
@@ -504,15 +504,17 @@ describe("protocol timeline life-stage boundary", () => {
     return id;
   }
 
-  it("shows adult protocol events and hides them for a minor", () => {
-    const adult = profileWithProtocol("timeline-adult-protocol", 30);
-    const minor = profileWithProtocol("timeline-minor-protocol", 10);
-
+  // A recorded protocol is the profile's OWN data, and a profile's own data is
+  // never filtered from that profile (#3067). Re-wrapping lib/timeline.ts's
+  // protocols read in isLongevityRelevant reds the minor and unknown-age cases.
+  it.each([
+    ["adult", 30],
+    ["minor", 10],
+    ["unknown-age", null],
+  ] as const)("shows a %s profile's own protocol events", (label, age) => {
+    const id = profileWithProtocol(`timeline-${label}-protocol`, age);
     expect(
-      getTimelineEvents(adult).some((event) => event.category === "protocol")
+      getTimelineEvents(id).some((event) => event.category === "protocol")
     ).toBe(true);
-    expect(
-      getTimelineEvents(minor).some((event) => event.category === "protocol")
-    ).toBe(false);
   });
 });

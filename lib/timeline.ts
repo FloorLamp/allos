@@ -23,8 +23,7 @@ import {
 } from "./reference-range";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./training-log-format";
-import { getProfileAge, getTimezone, type UnitPrefs } from "./settings";
-import { isLongevityRelevant } from "./life-stage";
+import { getTimezone, type UnitPrefs } from "./settings";
 import {
   compactList,
   countTone,
@@ -724,24 +723,27 @@ function collectEvents(
   // Ended event on end_date. Two-sided like medication courses, so no date-bound
   // clause here — the pure shaper emits both dates and pushLimited filters each
   // against the window. Ordered by the freshest boundary.
-  if (isLongevityRelevant(getProfileAge(profileId))) {
-    const protocolRows = db
-      .prepare(
-        `SELECT id, name, start_date, end_date
-           FROM protocols
-          WHERE profile_id = ?
-          ORDER BY COALESCE(end_date, start_date) DESC, id DESC
-          LIMIT ?`
-      )
-      .all(profileId, perTableLimit) as {
-      id: number;
-      name: string;
-      start_date: string;
-      end_date: string | null;
-    }[];
-    for (const event of protocolTimelineEvents(protocolRows)) {
-      pushLimited(events, event, options);
-    }
+  //
+  // Deliberately NOT behind isLongevityRelevant (#3133): a recorded protocol is
+  // the profile's own data fact, and a profile's own data is never filtered from
+  // that profile (#3067). The adult-only line gates protocol CREATION, not reads
+  // of records that already exist.
+  const protocolRows = db
+    .prepare(
+      `SELECT id, name, start_date, end_date
+         FROM protocols
+        WHERE profile_id = ?
+        ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, perTableLimit) as {
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string | null;
+  }[];
+  for (const event of protocolTimelineEvents(protocolRows)) {
+    pushLimited(events, event, options);
   }
 
   const immunizationBounds = exact("date");

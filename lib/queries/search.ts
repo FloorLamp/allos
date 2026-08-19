@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import { getProfileAge } from "../settings";
-import { isLongevityRelevant, isTrainingRelevant } from "../life-stage";
+import { isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
@@ -1170,7 +1170,6 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   if (query.length < 1) return [];
   const like = likePattern(query);
   const age = getProfileAge(profileId);
-  const longevityRelevant = isLongevityRelevant(age);
   const trainingRelevant = isTrainingRelevant(age);
   const hits: SearchHit[] = [
     ...clinicalResultHits(profileId, like),
@@ -1188,7 +1187,10 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...dentalHits(profileId, like),
     ...skinHits(profileId, query),
     ...supplementHits(profileId, like),
-    ...(longevityRelevant ? protocolHits(profileId, like) : []),
+    // Own recorded protocols always match (#3133): a profile's own data is
+    // never filtered from that profile (#3067) — the adult-only line gates
+    // protocol creation, not this read.
+    ...protocolHits(profileId, like),
     ...practiceHits(profileId, query),
     ...equipmentHits(profileId, like),
     ...familyHistoryHits(profileId, like),

@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { IconArrowLeft, IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -59,10 +59,19 @@ export default async function ProtocolDetailPage(props: {
 }) {
   const params = await props.params;
   const { login, profile } = await requireSession();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) redirect("/");
   const id = Number(params.id);
   const protocol = id ? getProtocol(profile.id, id) : null;
   if (!protocol) notFound();
+
+  // No age redirect here (#3133): this page is the record of the profile's OWN
+  // experiment, and a profile's own data is never filtered from that profile
+  // (#3067) — it stays readable, endable, and deletable at every age and at
+  // unknown age. The adult-only content line follows the fasting precedent
+  // (#2993, see actions.ts): the record-REWRITING controls — Edit, Resume,
+  // "Run again" — are withheld below (their actions refuse server-side) when
+  // the profile is not longevity-relevant, so the page renders read-only plus
+  // end/delete rather than forms the server would refuse.
+  const canRevise = isLongevityRelevant(getProfileAge(profile.id));
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
@@ -187,6 +196,7 @@ export default async function ProtocolDetailPage(props: {
             resumeAction={resumeProtocol}
             runAgainAction={runProtocolAgain}
             deleteAction={deleteProtocol}
+            canRevise={canRevise}
             asOf={todayStr}
           />
         </SituationOptionsProvider>

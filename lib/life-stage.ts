@@ -113,9 +113,19 @@ export function isAdultForClinical(
 }
 
 // Longevity and protocol experiments are an adult-only content class. Unlike a
-// presentation tweak, the whole route stands down for both a known minor and an
-// unknown age, so callers never expose adult-population healthspan claims without
-// a known adult age. This named predicate is the single route/nav/section answer.
+// presentation tweak, the route/nav/section and protocol CREATION stand down for
+// both a known minor and an unknown age, so callers never expose adult-population
+// healthspan claims without a known adult age. This named predicate is the single
+// route/nav/creation answer.
+//
+// It is a CONTENT gate, not a data-retention rule (#3067/#3133): a protocol the
+// profile already recorded is that profile's own data and is NEVER filtered from
+// it — timeline, search, the record's detail page, and trend overlays read the
+// record at every age and at unknown age, ungated. On the write side the line
+// follows the fasting precedent (#2993): ending and deleting the record are
+// always allowed (they only close or remove), while creating, editing, and
+// resuming take this predicate — see app/(app)/protocols/actions.ts and the
+// ADULT_ONLY_WRITE_CORES entry that enforces it.
 export function isLongevityRelevant(
   age: number | null | undefined
 ): age is number {

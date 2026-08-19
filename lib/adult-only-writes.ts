@@ -90,6 +90,20 @@ export const ADULT_ONLY_WRITE_CORES: readonly AdultOnlyWriteCore[] = [
     ],
     why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The two exemptions above are the ruling's deliberate asymmetry, not gaps: the criterion is whether a core can leave the profile with MORE RECORDED FASTING than it had, and both of them can only shrink the interval the row represents. `reopenFast` fails that criterion — clearing `ended_at` turns a fixed interval back into a growing one — so it is gated alongside `startFast`. So is `editFast` (#2993), and it is the case that shows why the criterion is stated over the INTERVAL rather than as a count of active rows: correcting a recorded fast leaves the active count untouched at zero and still rewrites what this profile is recorded as having done, with the instants arriving from a form. THE COST OF THAT GATE IS REAL AND IS RECORDED RATHER THAN WAVED OFF: a profile that becomes restricted mid-fast and takes the mandated close-out on a fast the clock grew past FAST_MAX_HOURS keeps a permanent over-long row that no core will now correct for it, with only the generic row delete left — the remedy #2993's ruling overruled. Ungating the edit or drawing history on the close-out surface would each undo a #2756 ruling, so that residue is an IA decision for the owner and is pinned by a test in lib/__db_tests__/fasting-lifecycle.test.ts rather than described as nothing.",
   },
+  {
+    file: "app/(app)/protocols/actions.ts",
+    gate: "protocolAdultOnlyRefusal",
+    // The #2993 asymmetry, applied to protocols (#3133): the criterion is whether a
+    // core can leave the profile with MORE RECORDED EXPERIMENT than it had. delete
+    // only removes; it is this module's discardFast.
+    exempt: [
+      {
+        fn: "deleteProtocol",
+        why: "#3133, the discardFast reasoning (#2756): deleting a protocol removes the record entirely, so refusing it for an ineligible profile would keep the very content the gate exists to withhold and leave the profile with no path to remove its own row — the exact harm #3133 fixed. Every write inside it (the row DELETE, the owned-target cleanup, the situation deactivation) strictly shrinks what the profile is recorded as running; no input can make it record more. endProtocol is the same shape but carries none of this scan's mutation markers (its writes live in the registered endProtocolCore, #2135), so it needs no entry here.",
+      },
+    ],
+    why: "#3133: protocols are adult-only CONTENT (#3091), but a profile's own recorded experiment is never filtered from that profile (#3067) — so the reads are all ungated and the line lives in the write cores, on #2993's fasting criterion: can the core leave the profile with MORE RECORDED EXPERIMENT than it had? createProtocol and runProtocolAgain start one; updateProtocol and updateProtocolOutcomes accept the identical field set creation does (omitting end_date flips an ended row back to ongoing with no window check, reactivates its situation, and can mint a frequency target — executed proof on PR #3134 that an ungated edit reproduces creation); resumeProtocol clears end_date, turning a fixed interval back into a growing one (the reopenFast shape). All five ask protocolAdultOnlyRefusal(), which refuses a known minor and an unknown age per isLongevityRelevant. endProtocol and deleteProtocol only close or remove the record and stay ungated (the endFast/discardFast asymmetry).",
+  },
 ];
 
 // Markers that make an exported function a WRITE for the scan's purposes. A function
