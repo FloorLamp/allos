@@ -375,6 +375,50 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
     })
     .toBe(atRest);
 
+  // ── THE THREE-WAY PROBE (#2774) ───────────────────────────────────────────
+  //
+  // CI says the touch lands on a hydrated scrim with the form dirty and nothing
+  // happens. That is inferred from the ABSENCE of both effects, which cannot
+  // tell "the handler never ran" from "the handler ran and did nothing". These
+  // four readings separate every case that survives a code read:
+  //
+  //   no click logged at all          -> the browser never dispatched one, and
+  //                                      this is gesture arbitration, not us
+  //   click logged, handler present   -> React had the prop and did not route it
+  //   handler prop MISSING at tap     -> the node was replaced between the
+  //                                      hydration wait and the dispatch
+  //   a page error                    -> the handler ran and threw, which looks
+  //                                      exactly like never running from outside
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e.message ?? e)));
+  const handlerBefore = await page
+    .getByTestId("modal-shell-backdrop")
+    .evaluate((node) => {
+      const key = Object.keys(node).find((k) => k.startsWith("__reactProps$"));
+      const props = key
+        ? (node as unknown as Record<string, { onClick?: unknown }>)[key]
+        : undefined;
+      return props ? typeof props.onClick : "no-react-props";
+    });
+  await page.evaluate(() => {
+    const store = window as unknown as Record<string, unknown>;
+    store.__clickLog = [];
+    document.addEventListener(
+      "click",
+      (e) => {
+        const t = e.target;
+        (store.__clickLog as unknown[]).push({
+          target:
+            t instanceof Element
+              ? (t.getAttribute("data-testid") ?? t.tagName)
+              : "none",
+          defaultPrevented: e.defaultPrevented,
+        });
+      },
+      { capture: true }
+    );
+  });
+
   // The tap NAMES THE SCRIM and proves it landed there. It used to aim at
   // `atRest / 2` — a point derived from a boundingBox taken before the flick —
   // which is the #2714 trap: the panel is bottom-anchored, so anything that
@@ -391,6 +435,7 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   const atTap = await page.evaluate(() => {
     const panel = document.querySelector("[data-sheet-panel]");
     return {
+      clicks: (window as unknown as Record<string, unknown>).__clickLog,
       hit:
         document.elementFromPoint(195, 60)?.getAttribute("data-testid") ??
         "nothing",
@@ -416,9 +461,9 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   ).toHaveCount(1);
   await expect(
     confirm,
-    `a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused (at that moment: ${JSON.stringify(
-      atTap
-    )})`
+    `a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused (onClick before the tap: ${handlerBefore}; page errors: ${JSON.stringify(
+      pageErrors
+    )}; at that moment: ${JSON.stringify(atTap)})`
   ).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
   await expect(dialog).toHaveCount(0);
