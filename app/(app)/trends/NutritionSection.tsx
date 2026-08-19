@@ -170,8 +170,8 @@ export default async function NutritionSection({
   const shortByItemId = new Map(
     doseItems.map((item, i) => [item.itemId, shortNames[i]])
   );
-  const doseShortLabels = disambiguate(
-    (item) => shortByItemId.get(item.itemId)!
+  const doseShortLabels = disambiguate((item) =>
+    shortByItemId.get(item.itemId)!
   );
   const doseGroups = doseItems.map((item) => ({
     key: String(item.itemId),
