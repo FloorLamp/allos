@@ -353,6 +353,10 @@ ${nodeLine}
   do not assume the brief checked. #2657 was briefed as untouched when its fold and
   month rollup had shipped hours earlier in #2685; the agent found it, and only
   because it looked.
+- A CENSUS MEANT TO BE EXHAUSTIVE MUST PASS ripgrep's \`--binary\` (\`-a\`). Ten source
+  files carry a deliberate NUL as a composite-key separator, so rg calls them BINARY
+  and skips them: a plain \`rg <pattern>\` reports a clean sweep it never took. They are
+  listed in lib/__tests__/nul-byte-census.test.ts (#3206).
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
