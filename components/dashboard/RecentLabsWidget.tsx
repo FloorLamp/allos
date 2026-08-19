@@ -62,7 +62,7 @@ export default function RecentLabsWidget({
               >
                 <Link
                   href={r.href}
-                  className="min-w-0 grow basis-40 truncate text-sm font-medium text-slate-700 hover:text-brand-700 hover:underline dark:text-slate-200 dark:hover:text-brand-400"
+                  className="min-w-0 grow basis-40 break-words text-sm font-medium text-slate-700 hover:text-brand-700 hover:underline dark:text-slate-200 dark:hover:text-brand-400"
                 >
                   {r.name}
                 </Link>
