@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
 
 // The #2774 convergence, from the outside: ModalShell's consumers now render the
@@ -52,6 +52,33 @@ async function pageOffset(page: Page): Promise<number> {
     "the landmark must be laid out to measure the page's place"
   ).not.toBeNull();
   return box!.y;
+}
+
+/** The dialog panel's top edge — where the sheet actually sits right now. */
+async function panelTop(dialog: Locator): Promise<number> {
+  const box = await dialog.boundingBox();
+  expect(
+    box,
+    "the panel must be laid out to measure where it sits"
+  ).not.toBeNull();
+  return Math.round(box!.y);
+}
+
+// …once the panel has stopped moving. It SLIDES IN on open, so a reading taken
+// the moment the dialog appears is a number it is still on its way past: this
+// baseline read 180 and 194 on two runs whose true resting top was 172, and the
+// comparison below then failed by the width of one animation frame. Asking the
+// element whether it has any running animations left is exact — it covers the
+// enter keyframe and the drag's settle transition alike, and under reduced
+// motion there are none, so it returns at once.
+async function restingPanelTop(dialog: Locator): Promise<number> {
+  await expect
+    .poll(() => dialog.evaluate((el) => el.getAnimations().length === 0), {
+      message:
+        "the panel must stop animating before its resting place can be measured",
+    })
+    .toBe(true);
+  return panelTop(dialog);
 }
 
 /** Drag downward from high on the screen — with a sheet open, that is its scrim. */
@@ -158,6 +185,9 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
   const title = dialog.getByLabel(TITLE_FIELD);
   await expect(title).toBeVisible();
   await title.fill(DRAFT);
+  // Measured after the typing as well as after the animation: what has to come
+  // back is the panel as it stands when the flick starts.
+  const atRest = await restingPanelTop(dialog);
 
   // A flick on the handle is the sheet's discard gesture (#1428). Right for a
   // half-typed weight; wrong for a form somebody has been filling in — so it
@@ -168,18 +198,30 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
   const confirm = page.getByTestId("confirm-dialog");
   await expect(confirm).toBeVisible();
 
-  // Keeping the edit leaves the form exactly as it was — the typing survives,
-  // which is the whole point of asking.
+  // KEEPING THE EDIT PUTS THE FORM BACK — all of it, not just the text. The
+  // flick has already dragged the panel most of the way off the bottom edge by
+  // the time the question is asked, so a dismissal that is refused has to bring
+  // it home; the first version of this feature did not, and left the dialog
+  // parked at translateY(672px) with the typing safe inside a surface nobody
+  // could see. Asserted as GEOMETRY because the obvious assertion does not catch
+  // that: `toBeVisible()` passes on a panel with 0.06px left on screen.
   await hydratedClick(
     page,
     confirm.getByRole("button", { name: "Keep editing" })
   );
   await expect(confirm).toBeHidden();
-  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() => panelTop(dialog), {
+      message:
+        "keeping the edit must settle the form back to rest, not leave it parked off the bottom edge",
+    })
+    .toBe(atRest);
   await expect(title).toHaveValue(DRAFT);
 
-  // The scrim is the other accidental dismissal, and it asks too.
-  await page.touchscreen.tap(195, 90);
+  // The scrim is the other accidental dismissal, and it asks too. Aimed from the
+  // panel's SETTLED top edge rather than at a fixed y: the scrim is whatever is
+  // above the panel, and where that starts depends on how tall the form renders.
+  await page.touchscreen.tap(195, Math.round(atRest / 2));
   await expect(confirm).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
   await expect(dialog).toHaveCount(0);

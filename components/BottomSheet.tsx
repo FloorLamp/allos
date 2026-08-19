@@ -148,7 +148,12 @@ export default function BottomSheet({
   // consequence B). A consumer hosting a form that may hold five typed minutes of
   // family history routes them through a confirm; a transactional quick-entry
   // sheet leaves this unset and keeps its one-flick discard (#1428).
-  onGestureDismiss?: () => void;
+  //
+  // Returning `false` REFUSES the dismissal: the panel settles back to rest
+  // rather than leaving, which is what a consumer that has just raised a confirm
+  // over itself needs — the form is staying, so the surface holding it must stay
+  // too. See useOverlayDrag's `onOutcome`.
+  onGestureDismiss?: () => void | boolean;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const { mounted, phase } = usePresence(open, motionMs("sheet", reduceMotion));
@@ -271,7 +276,12 @@ export default function BottomSheet({
     >
       <div
         className={`${OVERLAY_SCRIM} ${backdropMotion}`}
-        onClick={dismissByGesture}
+        onClick={() => {
+          // Discard the refusal signal here: a scrim tap moves no panel, so
+          // there is nothing to put back, and React gives a handler's return
+          // value no meaning.
+          dismissByGesture();
+        }}
         aria-hidden
         data-testid={`${testId}-backdrop`}
       />

@@ -96,6 +96,11 @@ export default function ModalShell({
     }).then((ok) => {
       if (ok) onClose();
     });
+    // REFUSED, for now. The dialog is staying open behind the confirm, so the
+    // panel must come back to rest — without this a flick leaves the form parked
+    // off the bottom edge, and "Keep editing" keeps the typing and loses the
+    // surface it was typed into.
+    return false;
   }, [confirm, hasUnsavedInputWithin, onClose]);
 
   return (
