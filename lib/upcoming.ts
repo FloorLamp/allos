@@ -392,6 +392,21 @@ export interface UpcomingItem {
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors
   // doseId's inline fast path.
   preventiveRuleKey?: string;
+  // Preventive REVIEW CANDIDATES riding beside a DUE visit/screening item
+  // (issue #3025): valueless imported reports whose title matched exactly this
+  // one rule through the whole-word concept map. Prose never satisfies on its
+  // own, so each entry only ASKS — the row renders a confirm-the-date /
+  // dismiss control per candidate (fact key `preventive-review:<recordId>:
+  // <ruleKey>`). Rendered ONLY on the opened surfaces (the Upcoming row and the
+  // dashboard's exhaustive Everything lane); the digest, the nudge, and every
+  // other send never read this field, and dismissing a candidate suppresses
+  // only itself — never the preventive item. Absent for every other item.
+  preventiveReview?: {
+    recordId: number;
+    ruleKey: string;
+    recordName: string;
+    recordDate: string;
+  }[];
   // Preventive items only (issue #85): the prefilled new-appointment URL for the
   // "Book" CTA (title + kind + suggested date as query params). Absent once a
   // matching visit is already scheduled.

@@ -1320,6 +1320,27 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  preventive_record_decisions: [
+    {
+      column: "confirmed_date",
+      semantic: "day",
+      grain: "day",
+      convention: "n/a",
+      note: "The person-confirmed completion day for a confirmed decision (#3025) — prefilled from the record date, edited before writing. NULL exactly when decision = 'dismissed' (schema CHECK).",
+    },
+    {
+      column: "created_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "bare",
+    },
+    {
+      column: "updated_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+  ],
   procedures: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {

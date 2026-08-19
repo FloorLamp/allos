@@ -182,6 +182,9 @@ describe("migration child-link registries name real columns (#2444)", () => {
     expect(links.sort()).toEqual([
       "instrument_responses.medical_record_id cascade",
       "medical_record_revisions.record_id cascade",
+      // Preventive review decisions (#3025): a confirmed decision is the explicit
+      // record↔rule link, so deleting the source record must retract it.
+      "preventive_record_decisions.medical_record_id cascade",
     ]);
   });
 

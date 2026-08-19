@@ -329,6 +329,9 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `preventive_events` | `date` | day | day | n/a |  |
 | `preventive_events` | `created_at` | record | instant | bare |  |
 | `preventive_overrides` | `created_at` | record | instant | bare |  |
+| `preventive_record_decisions` | `confirmed_date` | day | day | n/a | The person-confirmed completion day for a confirmed decision (#3025) — prefilled from the record date, edited before writing. NULL exactly when decision = 'dismissed' (schema CHECK). |
+| `preventive_record_decisions` | `created_at` | record | instant | bare |  |
+| `preventive_record_decisions` | `updated_at` | bookkeeping | instant | bare |  |
 | `procedures` | `date` | day | day | n/a |  |
 | `procedures` | `created_at` | record | instant | bare |  |
 | `profile_share_links` | `expires_at` | planned | instant | bare |  |
