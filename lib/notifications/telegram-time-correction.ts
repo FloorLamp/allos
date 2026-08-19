@@ -104,6 +104,15 @@ interface Resolved {
   // The live message's own text, so a CLOSE can keep its title (#2875). Only the practice
   // path reads it — its rebuild is the one that can legitimately come back with nothing.
   text?: string;
+  // The tap-time binding predicate (#3092 follow-up), built once here and consulted at
+  // BOTH doors: `resolve` applies it for the spoken refusal, and every write path hands
+  // it to its core to re-evaluate INSIDE the write transaction. The `await` between the
+  // two doors is a real gap — a concurrent handler's synchronous pointer delete
+  // (`closeMessage` → `forgetMessagePointerAt`, `dropMessagePointer`) landing in it
+  // flips the anchor's provenance to null and re-merges it with taps this message never
+  // showed — and the in-transaction evaluation is what closes it: the predicate reads
+  // `notify_messages` at write time, against the burst the transaction itself derived.
+  stillBound: (burst: CorrectionBurst) => boolean;
 }
 
 // Refusals, each naming what actually happened. "This burst is gone" is the common one
@@ -140,6 +149,22 @@ const OUT_OF_RANGE_TEXT =
 // refuses writes nothing and says so.
 const notBoundText = (p: CorrectionPrefixes) =>
   `This message can't correct those entries any more — nothing was changed. Fix it in ${p.appSurface}.`;
+
+// The binding predicate, built ONCE per tap and consulted at both doors — see
+// `Resolved.stillBound`. Exported for the DB tier, which pins the write-transaction
+// door by deleting the pointer after the handler door has already passed.
+export function correctionWriteBinding(
+  profileId: number,
+  prefixes: CorrectionPrefixes,
+  chatId: number | string,
+  messageId: number
+): (burst: CorrectionBurst) => boolean {
+  return (burst) =>
+    burstsForMessage(
+      [burst],
+      correctionMessageBinding(profileId, prefixes.kind, { chatId, messageId })
+    ).length > 0;
+}
 
 async function resolve(
   cq: TelegramCallbackQuery,
@@ -182,12 +207,15 @@ async function resolve(
   // The SAME binding rule the renderer applied, re-derived at tap time — see
   // `notBoundText`. Checked for every step, the pure keyboard edits included: opening
   // the picker on a burst this message may no longer show would render offers whose
-  // writes this same check is about to refuse.
-  const bound = burstsForMessage(
-    [burst],
-    correctionMessageBinding(profileId, prefixes.kind, { chatId, messageId })
+  // writes this same check is about to refuse. The write cores evaluate the same
+  // predicate AGAIN inside their transaction — see `Resolved.stillBound`.
+  const stillBound = correctionWriteBinding(
+    profileId,
+    prefixes,
+    chatId,
+    messageId
   );
-  if (bound.length === 0) {
+  if (!stillBound(burst)) {
     await answerCallbackQuery(cq.id, notBoundText(prefixes), { alert });
     return null;
   }
@@ -199,6 +227,7 @@ async function resolve(
     burst,
     now,
     tz: getTimezone(profileId),
+    stillBound,
     ...(typeof cq.message?.text === "string" ? { text: cq.message.text } : {}),
   };
 }
@@ -270,8 +299,11 @@ export async function handleFoodTimeChip(
 ): Promise<void> {
   const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
-  const outcome = restampFoodEventsCore(r.profileId, token.fromId, (row) =>
-    chipTarget(row, token.minutesBack, r.now)
+  const outcome = restampFoodEventsCore(
+    r.profileId,
+    token.fromId,
+    (row) => chipTarget(row, token.minutesBack, r.now),
+    r.stillBound
   );
   await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome));
   await rebuildFood(r);
@@ -285,6 +317,7 @@ function foodRestampOutcomeText(
 ): string {
   if (outcome.kind === "no-burst") return NO_BURST_TEXT;
   if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  if (outcome.kind === "not-bound") return notBoundText(FOOD_TIME_PREFIXES);
   return foodRestampText(outcome.count, outcome.movedDays, hhmm);
 }
 
@@ -340,7 +373,8 @@ export async function handleFoodTimeAt(
   const outcome = restampFoodEventsCore(
     r.profileId,
     token.fromId,
-    () => instant
+    () => instant,
+    r.stillBound
   );
   await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome, hhmm));
   await rebuildFood(r);
@@ -513,8 +547,11 @@ export async function handleDoseTimeChip(
     true
   );
   if (!r) return;
-  const outcome = restampDoseLogsCore(r.profileId, token.fromId, (row) =>
-    chipTarget(row, token.minutesBack, r.now)
+  const outcome = restampDoseLogsCore(
+    r.profileId,
+    token.fromId,
+    (row) => chipTarget(row, token.minutesBack, r.now),
+    r.stillBound
   );
   await answerCallbackQuery(cq.id, doseRestampText(outcome), {
     alert: doseRestampRefused(outcome),
@@ -577,7 +614,12 @@ export async function handleDoseTimeAt(
     });
     return;
   }
-  const outcome = restampDoseLogsCore(r.profileId, token.fromId, () => instant);
+  const outcome = restampDoseLogsCore(
+    r.profileId,
+    token.fromId,
+    () => instant,
+    r.stillBound
+  );
   await answerCallbackQuery(cq.id, doseRestampText(outcome, hhmm), {
     alert: doseRestampRefused(outcome),
   });
@@ -601,6 +643,7 @@ function doseRestampRefused(outcome: DoseRestampOutcome): boolean {
 function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
   if (outcome.kind === "no-burst") return NO_BURST_TEXT;
   if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  if (outcome.kind === "not-bound") return notBoundText(DOSE_TIME_PREFIXES);
   const what = outcome.count === 1 ? "1 dose" : `${outcome.count} doses`;
   const when = hhmm ? ` to ${hhmm}` : " back";
   const day = outcome.crossedMidnight
@@ -669,6 +712,7 @@ function practiceRestampOutcomeText(
   if (outcome.kind === "no-burst") return NO_BURST_TEXT;
   if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
   if (outcome.kind === "crosses-day") return CROSSES_DAY_TEXT;
+  if (outcome.kind === "not-bound") return notBoundText(PRACTICE_TIME_PREFIXES);
   const what = outcome.count === 1 ? "1 session" : `${outcome.count} sessions`;
   const when = hhmm ? ` to ${hhmm}` : " back";
   return `Session time updated${when} for ${what} ${GLYPH.eventTime}`;
@@ -687,8 +731,11 @@ export async function handlePracticeTimeChip(
     PRACTICE_TIME_PREFIXES
   );
   if (!r) return;
-  const outcome = restampPracticeLogsCore(r.profileId, token.fromId, (row) =>
-    chipTarget(row, token.minutesBack, r.now)
+  const outcome = restampPracticeLogsCore(
+    r.profileId,
+    token.fromId,
+    (row) => chipTarget(row, token.minutesBack, r.now),
+    r.stillBound
   );
   await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome));
   await rebuildPractice(r);
@@ -751,7 +798,8 @@ export async function handlePracticeTimeAt(
   const outcome = restampPracticeLogsCore(
     r.profileId,
     token.fromId,
-    () => instant
+    () => instant,
+    r.stillBound
   );
   await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome, hhmm));
   await rebuildPractice(r);

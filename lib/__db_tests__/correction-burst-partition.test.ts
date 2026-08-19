@@ -47,14 +47,24 @@ import { now as clockNow } from "@/lib/clock";
 import { parseUtcSql } from "@/lib/date";
 import {
   getDoseCorrectionBursts,
+  getRecentDoseTaps,
   markDoseTaken,
+  restampDoseLogsCore,
 } from "@/lib/queries/intake/adherence";
 import {
   getFoodCorrectionBursts,
   getPracticeCorrectionBursts,
   logPracticeByTargetId,
 } from "@/lib/queries";
+import { restampFoodEventsCore } from "@/lib/food-log-write";
 import { restampPracticeLogsCore } from "@/lib/practice-log";
+import { burstFrom, chipTarget } from "@/lib/correction-time";
+import { correctionWriteBinding } from "@/lib/notifications/telegram-time-correction";
+import {
+  DOSE_TIME_PREFIXES,
+  FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
+} from "@/lib/notifications/correction-rows";
 import { practiceIdentity } from "@/lib/practice";
 import { seedLoginTelegram } from "./fixtures";
 
@@ -647,5 +657,198 @@ describe("the binding is re-checked at tap time (#3092 follow-up)", () => {
       )
     );
     expect(foodEvents(pid)[0].occurredAt).toBe(event.occurredAt);
+  });
+});
+
+// ---- the binding, re-evaluated INSIDE the write transaction -----------------
+
+describe("the write transaction re-binds for itself (#3092 follow-up, check-to-write gap)", () => {
+  // The handler's binding check and the core's write are separated by an `await`, and
+  // in webhook mode a concurrent handler's synchronous pointer delete can land in that
+  // gap: the anchor's provenance flips to NULL, the burst the core re-derives merges
+  // with taps the message never showed, and the handler's already-passed check protects
+  // nothing. So each core re-evaluates the SAME predicate inside its own transaction.
+  // These tests pin that door: the handler door PASSES first, the pointer delete lands,
+  // and the core — called with the very predicate the handler had built — must refuse.
+
+  it("dose: the core refuses when the pointer died between check and write", async () => {
+    const pid = newProfile("Race Rada");
+    const chatId = "5730907";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    const evening = seedDose(pid, "Evening Tab");
+    const web = seedDose(pid, "Water Tab");
+
+    const reminderA = buildIntakeReminderForSlots(pid, ["Evening"])!.message;
+    await dispatch(pid, reminderA);
+    const pointerA = liveMessagePointers(pid).find((p) => p.kind === "dose")!;
+    setNow("2026-08-05T05:35:00Z");
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointerA.messageId,
+        `take:${pid}:${evening.doseId}:${evening.itemId}:${date}`,
+        pointerA.keyboard
+      )
+    );
+    const chatLog = doseLogs(pid)[0];
+    stampDoseTap(chatLog.id, "2026-08-05T05:35:00Z");
+    // A newer pointer, and a web administration five minutes after the chat confirm.
+    const reminderB = buildIntakeReminderForSlots(pid, ["Evening"])!.message;
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9988,
+      kind: "dose",
+      date,
+      keyboard: messageKeyboard(reminderB),
+      title: reminderB.title,
+    });
+    markDoseTaken(pid, web.doseId, web.itemId, date);
+    stampDoseTap(doseLogs(pid)[1].id, "2026-08-05T05:40:00Z");
+    setNow("2026-08-05T05:45:00Z");
+
+    // The handler door: the predicate the handler builds, passing against the burst it
+    // derived — the state the real handler carries across its `await`.
+    const guard = correctionWriteBinding(
+      pid,
+      DOSE_TIME_PREFIXES,
+      chatId,
+      pointerA.messageId
+    );
+    const checked = burstFrom(getRecentDoseTaps(pid, clockNow()), chatLog.id)!;
+    expect(guard(checked)).toBe(true);
+
+    // The interleaved delete lands in the gap…
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(pointerA.id);
+
+    // …and the write transaction, re-deriving the now-merged burst, refuses it.
+    const before = doseLogs(pid);
+    const out = restampDoseLogsCore(
+      pid,
+      chatLog.id,
+      (row) => chipTarget(row, 30, clockNow()),
+      guard
+    );
+    expect(out).toEqual({ kind: "not-bound" });
+    const after = doseLogs(pid);
+    expect(after[0].occurredAt).toBe(before[0].occurredAt);
+    // The web administration the message never mentioned — the PRN redose instant.
+    expect(after[1].occurredAt).toBe(before[1].occurredAt);
+  });
+
+  it("food: the core refuses when the pointer died between check and write", async () => {
+    const pid = newProfile("Race Fen");
+    const chatId = "5730908";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    await dispatch(pid, buildFoodNudge(pid, "Morning", date)!);
+    const pointer = liveMessagePointers(pid)[0];
+    setNow("2026-08-05T05:31:00Z");
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        pointer.messageId,
+        `food:${pid}:Morning:${date}:berries`,
+        pointer.keyboard
+      )
+    );
+    const [event] = foodEvents(pid);
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9989,
+      kind: "food",
+      date,
+      keyboard: [],
+      title: "🍽️ newer",
+    });
+    setNow("2026-08-05T05:40:00Z");
+
+    const guard = correctionWriteBinding(
+      pid,
+      FOOD_TIME_PREFIXES,
+      chatId,
+      pointer.messageId
+    );
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(pointer.id);
+    const out = restampFoodEventsCore(
+      pid,
+      event.id,
+      (row) => chipTarget(row, 30, clockNow()),
+      guard
+    );
+    expect(out).toEqual({ kind: "not-bound" });
+    expect(foodEvents(pid)[0].occurredAt).toBe(event.occurredAt);
+  });
+
+  it("practice: the core refuses when the pointer died between check and write", async () => {
+    const pid = newProfile("Race Pax");
+    const chatId = "5730909";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', ?, ?, 3)`
+        )
+        .run(pid, "Sauna", practiceIdentity("Sauna")).lastInsertRowid
+    );
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 4410,
+      kind: "practice",
+      date,
+      keyboard: [],
+    });
+    const messageRow = messagePointerIdAt(pid, chatId, 4410)!;
+    setNow("2026-08-05T12:00:00Z");
+    logPracticeByTargetId(pid, targetId, messageRow);
+    const logId = (
+      db
+        .prepare(
+          "SELECT id, time FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(pid) as { id: number; time: string }
+    ).id;
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 4420,
+      kind: "practice",
+      date,
+      keyboard: [],
+    });
+    setNow("2026-08-05T12:10:00Z");
+
+    const guard = correctionWriteBinding(
+      pid,
+      PRACTICE_TIME_PREFIXES,
+      chatId,
+      4410
+    );
+    const timeBefore = (
+      db.prepare("SELECT time FROM practice_logs WHERE id = ?").get(logId) as {
+        time: string;
+      }
+    ).time;
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(messageRow);
+    const out = restampPracticeLogsCore(
+      pid,
+      logId,
+      (row) => chipTarget(row, 30, clockNow()),
+      guard
+    );
+    expect(out).toEqual({ kind: "not-bound" });
+    expect(
+      (
+        db.prepare("SELECT time FROM practice_logs WHERE id = ?").get(logId) as {
+          time: string;
+        }
+      ).time
+    ).toBe(timeBefore);
   });
 });

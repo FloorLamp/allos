@@ -9,7 +9,11 @@ import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import { daysBetweenDateStr, isRealIsoDate, zonedDateParts } from "./date";
 import { sqlNow } from "./clock";
-import { burstFrom, type TapEvent } from "./correction-time";
+import {
+  burstFrom,
+  type CorrectionBurst,
+  type TapEvent,
+} from "./correction-time";
 import { eventInstant, recordInstant } from "./row-instants";
 import { getTimezone } from "./settings";
 import { normalizePracticeName } from "./practice";
@@ -322,11 +326,15 @@ export function renamePracticeSessions(
 //   crosses-day  — the answer lands on a DIFFERENT profile-local day. See below.
 // The last three are ALL-OR-NOTHING: a burst is one error, so moving part of it would
 // leave the ledger in a state no tap asked for.
+// A fifth refusal joined them (#3092 follow-up): not-bound — the caller's `stillBound`
+// guard refused the re-derived burst, which by write time no longer belongs to the
+// message the tap came from. Nothing written.
 export type PracticeRestampOutcome =
   | { kind: "restamped"; count: number }
   | { kind: "no-burst" }
   | { kind: "out-of-range" }
-  | { kind: "crosses-day" };
+  | { kind: "crosses-day" }
+  | { kind: "not-bound" };
 
 // Re-stamp a whole burst's session time (issue #2875).
 //
@@ -359,7 +367,15 @@ export type PracticeRestampOutcome =
 export function restampPracticeLogsCore(
   profileId: number,
   fromLogId: number,
-  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null
+  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
+  // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
+  // The handler's own check runs before its write call, but an `await` separates the
+  // two, and a concurrent handler's pointer delete landing in that gap re-merges the
+  // anchor into the null partition — so the burst the transaction re-derives is the one
+  // the binding must hold FOR. The caller builds this from the SAME predicate its
+  // renderer used (`burstsForMessage` + `correctionMessageBinding`); a chat-less caller
+  // passes nothing and keeps the unguarded behavior.
+  stillBound?: (burst: CorrectionBurst) => boolean
 ): PracticeRestampOutcome {
   const tz = getTimezone(profileId);
   return writeTx(() => {
@@ -406,6 +422,7 @@ export function restampPracticeLogsCore(
     }
     const burst = burstFrom(events, fromLogId);
     if (!burst) return { kind: "no-burst" as const };
+    if (stillBound && !stillBound(burst)) return { kind: "not-bound" as const };
 
     // RESOLVE AND DECOMPOSE EVERY ROW BEFORE WRITING ANY. One refusal — the chip floor,
     // or a day boundary — refuses the whole burst.
