@@ -1350,12 +1350,25 @@ export default function IntakeItemForm({
                     </button>
                   )}
                 </div>
+                {/* One-line explainer (#851 item 5); the fuller confirm-discipline
+                    text lives behind the disclosure. A <details> can't nest in a <p>. */}
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Reminds you when the minimum interval has passed — these are
-                  YOUR confirmed numbers, pre-filled from the label as a
-                  suggestion. Leave them blank for no reminder.
-                  {prnDefaults && ` Label source: ${prnDefaults.source}.`}
+                  Reminds you when the minimum interval has passed — set from
+                  the label.
                 </p>
+                <details className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <summary className="cursor-pointer text-brand-700 hover:underline dark:text-brand-400">
+                    How it works
+                  </summary>
+                  <p className="mt-1">
+                    After a dose is logged you get a one-time reminder when the
+                    minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of
+                    4 today{`"`}). These are YOUR confirmed numbers — pre-filled
+                    from the label as a suggestion, never applied on their own;
+                    leave them blank for no reminder.
+                    {prnDefaults && ` Label source: ${prnDefaults.source}.`}
+                  </p>
+                </details>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label" htmlFor={`redose-interval-${fid}`}>
@@ -1649,6 +1662,11 @@ export default function IntakeItemForm({
             <div>
               <label className="label" htmlFor={`intake-started-on-${fid}`}>
                 {obligation === "may" ? "Using since" : "Started on"}
+                {obligation === "may" && (
+                  <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
+                    (optional)
+                  </span>
+                )}
               </label>
               <DateField
                 id={`intake-started-on-${fid}`}
@@ -1658,7 +1676,13 @@ export default function IntakeItemForm({
                   setStartedOnTouched(true);
                 }}
                 max={todayStr}
+                required={obligation !== "may"}
               />
+              {obligation === "may" && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Leave blank if you don’t know when you started using it.
+                </p>
+              )}
             </div>
             {s && (
               <div>
