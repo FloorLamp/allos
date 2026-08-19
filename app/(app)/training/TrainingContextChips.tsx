@@ -28,9 +28,7 @@ export default function TrainingContextChips({
   // Live niggles (#3211 part 3) — the third and weakest tier. Their chips are SEPARATE
   // from the injury chips (which deep-link to #injuries): a niggle is deliberately not an
   // injury, has no record to link to, and must not read as one.
-  const niggleLabels = [
-    ...new Set(context.niggleTempers.map((t) => t.label)),
-  ];
+  const niggleLabels = [...new Set(context.niggleTempers.map((t) => t.label))];
   const hasContext =
     uniqueInjuryLabels.length > 0 ||
     niggleLabels.length > 0 ||
@@ -115,7 +113,10 @@ export default function TrainingContextChips({
               </p>
             ))}
             {context.niggleTempers.map((t) => (
-              <p key={`niggle-${t.region}-${t.label}`} data-testid="niggle-temper-note">
+              <p
+                key={`niggle-${t.region}-${t.label}`}
+                data-testid="niggle-temper-note"
+              >
                 {t.note}.
               </p>
             ))}
