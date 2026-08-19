@@ -9,7 +9,8 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
-import { openDashboardAll } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
+import { dormantRecordSince } from "@/lib/domain-dormancy";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
 //
@@ -32,15 +33,45 @@ import { openDashboardAll } from "./helpers";
 // age label, and used to say it two ways. Both now read one decision (lib/glance-age),
 // and the assertions below check the pair rather than each card alone — which is the
 // review the two cards never got.
+//
+// ── AND WHERE THAT TREATMENT STOPS (issue #3226) ────────────────────────────────────
+//
+// The age label is honest but it is PERMANENTLY amber: a reading that stopped arriving
+// years ago can never improve on its own, and a number in that state, read daily, turns
+// into wallpaper. So past a YEAR the row stops rendering a value at all and states the
+// gap instead — the dormant line #3077's three-state doctrine calls for.
+//
+// The two spans are tested separately below because the whole point is that they are
+// different spans, and each one's test would pass under the other's implementation if
+// they shared a fixture age:
+//   • BP_STALE_DAYS — past the 180-day floor, inside the year. The #2303 treatment, and
+//     the reason this is not "collapse anything old".
+//   • BP_DORMANT_DAYS — the owner's real shape, a cuff reading four and a half years
+//     back. The dormant line, with the resting HR beside it untouched.
+//
+// The dormant test does NOT stop at the absence of the number: it logs a blood pressure
+// through the real quick-entry form and watches the row come back as a value. That is
+// what makes the absence assertion mean something — the same selector that must find
+// nothing while the domain is quiet has to find the value once it is not.
 
 const DB_PATH = workerDbPath();
 const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 const TODAY = frozenNow().toISOString().slice(0, 10);
 const day = (back: number) => shiftDateStr(TODAY, -back);
 
+// Past the blood-pressure presentation floor (180 days) and comfortably INSIDE the year
+// at which the row goes dormant: the span the age label owns, and the one #2303 is about.
+const BP_STALE_DAYS = 300;
+
 // Deep enough that the relative label rounds to whole years — the reported card's blood
-// pressure was four and a half years old.
-const BP_DAYS_AGO = 1600;
+// pressure was four and a half years old. Past the year floor, so this is the dormant
+// shape rather than the amber one.
+const BP_DORMANT_DAYS = 1600;
+
+// The lab reading is always seeded at the deep age, in BOTH fixtures: its own floor is a
+// year (RECENT_LAB_STALE_DAYS), so it is the stale-labelled card #2332 pairs with
+// regardless of what the blood pressure is doing.
+const LAB_DAYS_AGO = 1600;
 
 interface VitalsFixture {
   username: string;
@@ -48,11 +79,14 @@ interface VitalsFixture {
   profileId: number;
 }
 
-function createVitalsFixture(testInfo: TestInfo): VitalsFixture {
+function createVitalsFixture(
+  testInfo: TestInfo,
+  { bpDaysAgo, tag }: { bpDaysAgo: number; tag: string }
+): VitalsFixture {
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
   try {
-    const suffix = `${process.pid}-${testInfo.repeatEachIndex}`;
+    const suffix = `${tag}-${process.pid}-${testInfo.repeatEachIndex}`;
     const username = `e2e_vitals_age_${suffix}`;
     let loginId = 0;
     let profileId = 0;
@@ -92,7 +126,7 @@ function createVitalsFixture(testInfo: TestInfo): VitalsFixture {
           [124, 80],
           [128, 84],
         ] as const) {
-          const visit = day(BP_DAYS_AGO);
+          const visit = day(bpDaysAgo);
           bp.run(
             profileId,
             visit,
@@ -120,7 +154,7 @@ function createVitalsFixture(testInfo: TestInfo): VitalsFixture {
              VALUES (?, ?, 'lab', 'LDL Cholesterol', '118', 'mg/dL',
                      'LDL Cholesterol', 118)`
           )
-          .run(profileId, day(BP_DAYS_AGO));
+          .run(profileId, day(LAB_DAYS_AGO));
 
         // A resting HR from yesterday, with a prior reading on a DIFFERENT day so it
         // legitimately carries a direction.
@@ -171,10 +205,13 @@ function destroyVitalsFixture(fixture: VitalsFixture): void {
   }
 }
 
-test("a years-old blood pressure is age-labeled and loses its arrow, while yesterday's resting HR is untouched", async ({
+test("a months-old blood pressure is age-labeled and loses its arrow, while yesterday's resting HR is untouched", async ({
   browser,
 }, testInfo) => {
-  const fixture = createVitalsFixture(testInfo);
+  const fixture = createVitalsFixture(testInfo, {
+    bpDaysAgo: BP_STALE_DAYS,
+    tag: "stale",
+  });
   const page = await loginAs(browser, {
     username: fixture.username,
     password: E2E_MEMBER_PASSWORD,
@@ -199,7 +236,7 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     // ...and the raw ISO date is replaced by an age that reads as an age, amber, with a
     // title explaining the tint (the treatment #1216 established on Recent labs).
     const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
-    await expect(bpAge).toHaveText("4 years ago");
+    await expect(bpAge).toHaveText("10 months ago");
     await expect(bpAge).toHaveAttribute("data-stale", "true");
     await expect(bpAge).toHaveAttribute(
       "title",
@@ -207,6 +244,9 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     );
     // No arrow: the direction it used to claim was between two readings of one sitting.
     await expect(bp).not.toContainText("versus previous blood pressure");
+    // Still a READING, not a dormant line: inside the year floor the value stays, which
+    // is the boundary #3226 was careful not to move (#2303 stands).
+    await expect(bpCandidate).toHaveAttribute("data-presence", "current");
 
     // The fresh row is unaffected: plain date, no tint, and its arrow intact.
     const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
@@ -242,6 +282,120 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     );
     // The value is not hidden here either — the fix is what the card claims.
     await expect(labs).toContainText("118");
+  } finally {
+    await page.context().close();
+    destroyVitalsFixture(fixture);
+  }
+});
+
+test("a blood pressure past the year floor states its gap instead of a number, the resting HR beside it is untouched, and one logged reading brings the value back", async ({
+  browser,
+}, testInfo) => {
+  const fixture = createVitalsFixture(testInfo, {
+    bpDaysAgo: BP_DORMANT_DAYS,
+    tag: "dormant",
+  });
+  const page = await loginAs(browser, {
+    username: fixture.username,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const bpCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.blood-pressure:"
+    );
+    const hrCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.resting-heart-rate:"
+    );
+    await expect(bpCandidate).toBeVisible();
+
+    // THE ROW IS DORMANT, and it says so structurally — the three-state field the whole
+    // dashboard reads, not a class name or a colour.
+    await expect(bpCandidate).toHaveAttribute("data-presence", "dormant");
+
+    // The SENTENCE is the dormancy substrate's, rendered for THIS row's source date.
+    // Built from `dormantRecordSince` rather than typed out here: a hand-copied clause
+    // would keep passing after the substrate's own copy changed underneath it, and the
+    // wording itself is pinned in the pure tier. What this asserts is that the row shows
+    // that domain's statement, dated by the reading actually seeded above.
+    const statement = dormantRecordSince(
+      "blood-pressure",
+      day(BP_DORMANT_DAYS)
+    );
+    expect(statement).not.toBeNull();
+    await expect(bpCandidate).toContainText(statement!);
+    // …and the statement genuinely CARRIES a date. Asserting the substrate's output
+    // alone cannot see a mutant that drops the date from every line at once — the
+    // expectation would move with it — so the seeded year is checked on its own.
+    await expect(bpCandidate).toContainText(day(BP_DORMANT_DAYS).slice(0, 4));
+
+    // The number is retired, not merely re-styled. (This absence is only worth
+    // asserting because the same locator is required to find the value further down,
+    // once a reading exists.)
+    await expect(bpCandidate.getByTestId("vitals-latest-bp")).toHaveCount(0);
+    await expect(bpCandidate).not.toContainText("128/84");
+
+    // REACH IS UNCHANGED — the dormant line is still one tap from the vitals history.
+    await expect(bpCandidate.getByRole("link")).toHaveAttribute(
+      "href",
+      "/trends#body"
+    );
+
+    // PER MEMBER, NOT PER FAMILY: the neighbour is a live row with its value, its plain
+    // date and its arrow. A family-level collapse would have taken this with it.
+    await expect(hrCandidate).toBeVisible();
+    await expect(hrCandidate).toHaveAttribute("data-presence", "current");
+    const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
+    await expect(hr).toContainText("61");
+    await expect(
+      hrCandidate.getByTestId("vitals-latest-resting-hr-age")
+    ).toHaveText(day(1));
+    await expect(hr).toContainText("up versus previous resting heart rate");
+
+    // The write that ends the dormancy is still sitting beside the row (#1892).
+    const logCandidate = dashboardCandidatePrefix(page, "vitals.manual-log");
+    const logReading = logCandidate.getByTestId("vitals-log-reading");
+    await expect(logReading).toBeVisible();
+
+    // ── One logged reading, through the real form ──────────────────────────────────
+    await logReading.click();
+    const body = page.getByTestId("quick-entry-body");
+    await expect(body).toHaveAttribute("data-form", "measurements");
+    const form = body.getByTestId("measurements-quick-add");
+    // The button opens the form ON the vitals group (#2014), resolved at the form's
+    // FIRST render rather than in an effect — so the fields are already disclosed and
+    // there is nothing to toggle. Reaching for `openMeasurementGroup` here is what a
+    // reader expects to see, and it is wrong: its visibility probe can lose the race
+    // with the modal's mount, and the click it then makes CLOSES the group it was
+    // meant to open. Asserting the disclosure instead also pins the deep link itself.
+    await expect(
+      form.locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
+    await body.locator("#m-systolic").fill("117");
+    await body.locator("#m-diastolic").fill("74");
+    await settledClick(
+      page,
+      body.getByRole("button", { name: "Save measurements" })
+    );
+    await expect(page.getByText("Measurements saved")).toBeVisible();
+
+    // …and on the next render the row is a VALUE again. Nothing had to be dismissed:
+    // dormancy is a statement about the record, so a new record ends it.
+    await page.reload();
+    await openDashboardAll(page);
+    await expect(bpCandidate).toHaveAttribute("data-presence", "current");
+    await expect(bpCandidate.getByTestId("vitals-latest-bp")).toContainText(
+      "117/74"
+    );
+    await expect(bpCandidate).not.toContainText(statement!);
+    // Today's reading is inside the floor, so it carries a plain date rather than an
+    // amber age — the row is all the way back, not merely un-collapsed.
+    const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
+    await expect(bpAge).toHaveText(TODAY);
+    await expect(bpAge).not.toHaveAttribute("data-stale", "true");
   } finally {
     await page.context().close();
     destroyVitalsFixture(fixture);

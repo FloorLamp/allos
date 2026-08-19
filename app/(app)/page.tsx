@@ -97,6 +97,7 @@ import {
   WEIGHT_TREND_WINDOW_DAYS,
   dormancyState,
   dormantRecordLine,
+  dormantRecordSince,
   type DormancyDomain,
 } from "@/lib/domain-dormancy";
 import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
@@ -1766,7 +1767,31 @@ async function renderDashboard(
       }
     );
 
-  if (vitalsModel?.bp)
+  // Each vital row resolves its OWN state before it renders: a year-quiet quantity takes
+  // the dormant seat, a live one is untouched. The branch is per row rather than per
+  // family precisely so a 2022 blood pressure cannot collapse this morning's resting
+  // heart rate (#3226).
+  if (vitalsModel?.bp?.dormant)
+    addStandingOnly(
+      dailyCandidates.vitalDormant(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "blood-pressure",
+        vitalsModel.bp.date
+      ),
+      {
+        detail:
+          dormantRecordSince("blood-pressure", vitalsModel.bp.date) ??
+          dormantRecordLine(
+            "blood-pressure",
+            freshnessAgeDays(vitalsModel.bp.date, on) ??
+              DORMANCY_DOMAINS["blood-pressure"].collapseAfterDays
+          ),
+        href: "/trends#body",
+        actionLabel: "Vitals history",
+        presence: "dormant",
+      }
+    );
+  else if (vitalsModel?.bp)
     addStandingOnly(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -1807,7 +1832,27 @@ async function renderDashboard(
         presence: "current",
       }
     );
-  if (vitalsModel?.restingHr)
+  if (vitalsModel?.restingHr?.dormant)
+    addStandingOnly(
+      dailyCandidates.vitalDormant(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        "resting-heart-rate",
+        vitalsModel.restingHr.date
+      ),
+      {
+        detail:
+          dormantRecordSince("resting-hr", vitalsModel.restingHr.date) ??
+          dormantRecordLine(
+            "resting-hr",
+            freshnessAgeDays(vitalsModel.restingHr.date, on) ??
+              DORMANCY_DOMAINS["resting-hr"].collapseAfterDays
+          ),
+        href: "/trends#body",
+        actionLabel: "Vitals history",
+        presence: "dormant",
+      }
+    );
+  else if (vitalsModel?.restingHr)
     addStandingOnly(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },

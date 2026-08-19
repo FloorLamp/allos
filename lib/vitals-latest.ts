@@ -21,6 +21,7 @@
 // staleness decision and this module supplies only what is genuinely its own: which
 // interval applies per quantity.
 
+import { dormancyState } from "./domain-dormancy";
 import {
   freshnessAgeDays,
   freshnessState,
@@ -72,6 +73,26 @@ export function vitalPresentationFreshness(
   );
 }
 
+// Has this quantity stopped arriving altogether? A DIFFERENT question from the floor
+// above, asked over the same date, and the two are ordered: the floor withdraws the
+// currency claim while the value stays on screen, and dormancy — a year later — retires
+// the value itself. The decision is `dormancyState`'s and the interval is the registry's
+// (`lib/domain-dormancy.ts`); the quantity keys are the domain keys deliberately, so the
+// two rows go quiet independently and one cannot collapse the other.
+export function vitalDormant(
+  quantity: VitalQuantity,
+  date: string | null | undefined,
+  today: string | null | undefined
+): boolean {
+  return (
+    dormancyState({
+      lastRecordDate: date,
+      today: today ?? "",
+      domain: quantity,
+    }) === "dormant"
+  );
+}
+
 // A trend arrow is a claim about NOW ("up versus previous"), so it may only ride a
 // reading the card is still presenting as current. `not-applicable` (an undatable
 // reading) withholds it too: no age is knowable, so no claim either way.
@@ -89,6 +110,10 @@ export interface VitalsLatestRow {
   date: string;
   freshness: FreshnessState;
   direction: TrendDirection | null;
+  // Past the year floor: the row renders the dormancy statement instead of the number
+  // (#3226). Per ROW, like `freshness` and for the same reason — the two quantities age
+  // independently.
+  dormant: boolean;
 }
 
 export interface VitalsLatestModel {
@@ -99,7 +124,9 @@ export interface VitalsLatestModel {
 // Build the card's model from the reduced series. Returns null when neither quantity has
 // a reading at all — the page's data-aware CTA state. A row that is `due` is KEPT at full
 // prominence: the fix is what the card CLAIMS, never what it hides (the freshness
-// doctrine, and #1216's precedent one card over).
+// doctrine, and #1216's precedent one card over). That holds for the whole span the floor
+// governs; only `dormant` — a year past the floor — retires the number, and it does so by
+// saying when the record stops, which is the one fact the aged value was standing in for.
 export function vitalsLatestModel(
   systolic: LatestTrend | null,
   diastolic: LatestTrend | null,
@@ -122,6 +149,7 @@ export function vitalsLatestModel(
             date: systolic.date,
             freshness,
             direction: presentedDirection(systolic.direction, freshness),
+            dormant: vitalDormant("blood-pressure", systolic.date, today),
           };
         })()
       : null;
@@ -137,6 +165,7 @@ export function vitalsLatestModel(
           date: restingHr.date,
           freshness,
           direction: presentedDirection(restingHr.direction, freshness),
+          dormant: vitalDormant("resting-hr", restingHr.date, today),
         };
       })()
     : null;

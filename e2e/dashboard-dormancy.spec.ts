@@ -20,6 +20,11 @@ import { dashboardCandidatePrefix } from "./dashboard-candidate";
 //      Recent labs (400 days old) and Latest vitals (200) keep their full cards and
 //      their numbers under their declared presentation floors — the fix is what a card
 //      claims, never what it hides (#1216/#2303).
+//      #3226 moved where that stop SITS for vitals without moving the rule: a vitals
+//      row now does collapse, but only past a YEAR, which is the point past which it
+//      renders no value and so has nothing left to hide. 200 days is inside that floor,
+//      so this profile still pins the stated claim — and pins it at an age that is
+//      unambiguously stale, which is the part that matters.
 //   4. A profile whose domains are current collapses nothing.
 //
 // The fixture profile is read-only by contract (e2e/seed/dashboard.ts:
@@ -103,6 +108,11 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   // sleep just collapsed. Both cards declare a presentation floor that keeps the value
   // on screen with an age label (#1216/#2303), and dormancy may not undo that — so
   // these stay full cards, with their numbers and their write.
+  //
+  // The blood pressure here is 20 days past its own 180-day floor and 165 short of the
+  // year at which #3226 retires it: the exact span where the row is stale AND still a
+  // number. A dormancy rule that fired on staleness rather than on the year floor would
+  // turn this row dormant and redden this test.
   const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
     hasText: "Glucose",
   });
