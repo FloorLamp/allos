@@ -28,6 +28,7 @@ import {
   dayHistoryWindow,
 } from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
+import { intakeItemShortLabel } from "@/lib/intake-short-name";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
@@ -137,9 +138,22 @@ export default async function NutritionSection({
       const base = duplicateName ? `${item.name} · ${qualifier}` : item.name;
       const occurrence = (labelCounts.get(base) ?? 0) + 1;
       labelCounts.set(base, occurrence);
+      // The dense form for the filter chips, the matrix row gutter and the day
+      // panel (#2858) — the SAME `short` seam the food groups already use, so a
+      // 20-item dose vocabulary fits its chip run instead of truncating every
+      // label to "Coenzyme…". Everything that identifies the row — the
+      // disambiguating qualifier a duplicate name earns, the occurrence ordinal —
+      // survives the shortening, because those are what tell two rows apart;
+      // `label` stays the full record name in the tooltips and aria copy.
+      const shortName = intakeItemShortLabel(item);
+      const shortBase = duplicateName
+        ? `${shortName} · ${qualifier}`
+        : shortName;
+      const suffix = occurrence > 1 ? ` ${occurrence}` : "";
       return {
         key: String(item.itemId),
-        label: occurrence > 1 ? `${base} ${occurrence}` : base,
+        label: `${base}${suffix}`,
+        short: `${shortBase}${suffix}`,
       };
     });
 

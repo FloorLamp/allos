@@ -572,7 +572,9 @@ export function getProtocolUsageByDayMap(
   if (intakes.length > 0) {
     const itemIds = [
       ...new Set(
-        intakes.map((r) => (r.scope as { kind: "intake"; itemId: number }).itemId)
+        intakes.map(
+          (r) => (r.scope as { kind: "intake"; itemId: number }).itemId
+        )
       ),
     ];
     const span = spanOf(intakes);

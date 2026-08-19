@@ -147,12 +147,17 @@ function Stat({
 function AttentionRow({
   Icon,
   title,
+  titleFull,
   detail,
   action,
   testid,
 }: {
   Icon: typeof IconPill;
   title: string;
+  // The unabbreviated form when `title` is a curated short name (#2858) — the
+  // truncating line's hover title, so the whole name is always retrievable on a row
+  // that has no link of its own. Absent when the title already IS the whole thing.
+  titleFull?: string;
   detail?: string | null;
   action?: React.ReactNode;
   testid?: string;
@@ -165,7 +170,10 @@ function AttentionRow({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+        <div
+          className="truncate text-sm font-medium text-slate-700 dark:text-slate-200"
+          title={titleFull}
+        >
           {title}
         </div>
         {detail && (
@@ -204,10 +212,17 @@ function DueDoseRow({
 }) {
   const detail =
     [item.dueText, item.detail].filter(Boolean).join(" · ") || null;
+  // A caregiver's card is a GLANCE at up to a dozen of these rows, each one an
+  // icon + a truncating name + a Confirm button in a card-width column, so the name
+  // here is the control form (#2858) — the abbreviation buys the slot name beside it
+  // room to survive the truncation. The record's full name stays on the hover title
+  // and inside the confirm's accessible name below; a medication is never shortened.
+  const shortTitle = item.shortLabel ?? item.title;
   return (
     <AttentionRow
       Icon={IconPill}
-      title={item.title}
+      title={shortTitle}
+      titleFull={shortTitle === item.title ? undefined : item.title}
       detail={detail}
       testid="household-due-dose"
       action={

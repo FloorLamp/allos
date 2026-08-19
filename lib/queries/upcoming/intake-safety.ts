@@ -183,6 +183,8 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 export interface DueDoseNowItem extends UpcomingItem {
   doseId: number;
   // Compact CONTROL label only. `title` remains the record's full display name.
+  // Narrowed to REQUIRED here (every dose row carries one from doseRowToItem), so
+  // the sheet's name list needs no fallback.
   shortLabel: string;
 }
 
@@ -208,11 +210,7 @@ export function doseItemsNow(
         !row.taken &&
         timeBucketHasArrived(timeBucket(row.dose.time_of_day), currentBucket)
     )
-    .map((row) => ({
-      ...doseRowToItem(row),
-      doseId: row.dose.id,
-      shortLabel: intakeItemShortLabel(row.item),
-    }));
+    .map((row) => ({ ...doseRowToItem(row), doseId: row.dose.id }));
 }
 
 // One dose the day's schedule asks for, plus whether it is already logged taken.
@@ -278,7 +276,10 @@ export function doseDayProgress(
   };
 }
 
-function doseRowToItem({ item, dose }: ScheduledDoseRow): UpcomingItem {
+function doseRowToItem({
+  item,
+  dose,
+}: ScheduledDoseRow): UpcomingItem & { shortLabel: string } {
   const detail = [
     item.kind === "medication" ? "Medication" : null,
     item.kind === "medication"
@@ -299,6 +300,10 @@ function doseRowToItem({ item, dose }: ScheduledDoseRow): UpcomingItem {
     key: `dose:${dose.id}`,
     domain: "dose",
     title: item.name,
+    // The chip/control form of the same name (#2858), resolved HERE from the item's
+    // own kind + product so every dose-row renderer reads one answer. `title` is
+    // still the record.
+    shortLabel: intakeItemShortLabel(item),
     detail: detail || null,
     reasons: reasons.length ? reasons : undefined,
     href: intakeHref(item.kind),
@@ -377,6 +382,9 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
       key: offeredSignalKey(item.id),
       domain: "available",
       title: item.name,
+      // Upcoming renders an offer as a CHIP whose text is the name (#2579-F), so the
+      // name it renders is a control label and takes the curated short form (#2858).
+      shortLabel: intakeItemShortLabel(item),
       detail:
         item.kind === "medication" ? "Medication · as needed" : "As needed",
       href: intakeHref(item.kind),

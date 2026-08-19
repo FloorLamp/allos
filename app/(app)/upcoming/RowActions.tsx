@@ -47,16 +47,22 @@ const ACTION_ICON: Record<string, TablerIcon> = {
   "clipboard-plus": IconClipboardPlus,
 };
 
+// A chip whose VISIBLE label is an abbreviation states the unabbreviated form here
+// (#2858): it becomes the control's accessible name and its hover title, so a
+// shortened supplement name is never the only form the chip can be read as. Absent
+// on every chip whose label already IS the whole thing.
+type FullLabel = { fullLabel?: string };
+
 export type RowAction =
-  | {
+  | ({
       id: string;
       kind: "link";
       label: string;
       href: AppRoute;
       icon?: keyof typeof ACTION_ICON;
       testId?: string;
-    }
-  | {
+    } & FullLabel)
+  | ({
       id: string;
       kind: "submit";
       label: string;
@@ -71,7 +77,7 @@ export type RowAction =
       // BOTH presentations instead of the row silently re-rendering unchanged, and a
       // success may carry outcome-named wording. `void` keeps the additive default.
       action: (formData: FormData) => Promise<MenuActionResult>;
-    };
+    } & FullLabel);
 
 const CHIP =
   "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
@@ -136,6 +142,8 @@ export function RowActionChips({
               href={a.href}
               data-testid={a.testId}
               className={CHIP}
+              title={a.fullLabel}
+              aria-label={a.fullLabel}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
               {a.label}
@@ -153,6 +161,8 @@ export function RowActionChips({
               pendingLabel="…"
               data-testid={a.testId}
               className={CHIP}
+              title={a.fullLabel}
+              aria-label={a.fullLabel}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
               {a.label}
@@ -179,6 +189,10 @@ function RowActionMenuItems({
     <div className="border-b border-black/5 pb-1 sm:hidden dark:border-white/5">
       {actions.map((a) => {
         const Icon = a.icon ? ACTION_ICON[a.icon] : null;
+        // A menu item is a full-width row with no width budget, so it spends it on
+        // the WHOLE name when the chip abbreviated one (#2858). Same descriptor,
+        // two presenters — the abbreviation is a property of the narrow one.
+        const label = a.fullLabel ?? a.label;
         if (a.kind === "link") {
           return (
             <Link
@@ -188,7 +202,7 @@ function RowActionMenuItems({
               className={`${MENU_ITEM} flex items-center gap-1.5`}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {a.label}
+              {label}
             </Link>
           );
         }
@@ -201,7 +215,7 @@ function RowActionMenuItems({
               className={`${MENU_ITEM} flex items-center gap-1.5`}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {a.label}
+              {label}
             </button>
           </form>
         );
