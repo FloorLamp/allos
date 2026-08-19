@@ -67,7 +67,11 @@ describe("strengthLadderRows", () => {
     expect(row.placement.moved).toBe(false);
   });
 
-  it("ranks moved lifts first, then by how far they moved, then by name", () => {
+  // Movement is what ranks the rows, so a lift whose prior came from the wrong lane
+  // is not merely mislabelled — it loses its place. (The comparator's leading
+  // `moved` term is redundant with the delta below it, since `moved` is exactly
+  // "delta > 0"; both are kept as #3089 wrote them.)
+  it("ranks by how far a lift moved, non-movers last, ties by name", () => {
     const points = (prior: number, cur: number) => [
       { date: "2026-01-10", value: prior },
       { date: "2026-08-01", value: cur },
