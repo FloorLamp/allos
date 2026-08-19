@@ -322,9 +322,10 @@ export default function ActivityForm({
       (editData?.source != null && editData.imported_metrics != null) ||
       editData?.route_polyline != null
   );
-  const revealMoreDetails = useCallback(() => setMoreDetailsOpen(true), [
-    setMoreDetailsOpen,
-  ]);
+  const revealMoreDetails = useCallback(
+    () => setMoreDetailsOpen(true),
+    [setMoreDetailsOpen]
+  );
 
   const isEdit = !!editData;
   // Live workout mode (issue #340). No longer create-only (#2870 step 3):
