@@ -41,11 +41,15 @@ export function fiberSymptomPanelDates(today: string): string[] {
 // The GI subset of the symptom vocabulary this panel marks. A DECLARED list, not a
 // domain filter: `SymptomDomain` is an order-only lever by its own contract (bloating
 // sits under `cycle`), so reusing it here would cut against that contract and miss the
-// members. Constipation joins when #2783 lands; Bristol 6–7 days (#2785) are a natural
-// second marker once that observation exists. The panel test pins that every member
-// resolves to a curated symptom slug, so a vocabulary rename cannot silently drop one.
+// members. Bristol 6–7 days (#2785) are a natural second marker now that the
+// observation exists. The panel test pins that every member resolves to a curated
+// symptom slug, so a vocabulary rename cannot silently drop one.
 export const GI_PANEL_SYMPTOMS: readonly string[] = [
   "diarrhea",
+  // Constipation (#2783) — the counterpart this list named as pending. Without it the
+  // panel marked one direction of dysfunction only, so a fiber rise that traded
+  // constipation for looser stools read as GI symptom days APPEARING out of nowhere.
+  "constipation",
   "bloating",
   "abdominal_pain",
 ];

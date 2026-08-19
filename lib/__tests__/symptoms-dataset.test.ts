@@ -34,6 +34,31 @@ describe("symptoms.json dataset", () => {
     }
   });
 
+  it("gives each concept its OWN glyph — no two symptoms share one (#2783)", () => {
+    // The one-concept-one-glyph rule. A picker is a grid of icons, so a shared glyph
+    // makes two rows indistinguishable at a tap, and the pair it fails on first is
+    // always the near-synonyms — which is exactly where constipation sits, beside
+    // diarrhea. Structural, not a spelling check: it fails on whatever the duplicate is.
+    const icons = SYMPTOMS.flatMap((s) => (s.icon ? [s.icon] : []));
+    expect(new Set(icons).size, icons.join(" ")).toBe(icons.length);
+  });
+
+  it("carries constipation as diarrhea's counterpart (#2783)", () => {
+    // The catalog held six GI symptoms and only ONE direction of bowel dysfunction, so
+    // every GI picture it could produce was one-sided. Pinned AGAINST diarrhea rather
+    // than against a literal, so a later domain re-tag has to move the pair together.
+    const diarrhea = SYMPTOMS.find((s) => s.slug === "diarrhea");
+    const constipation = SYMPTOMS.find((s) => s.slug === "constipation");
+    expect(constipation).toBeTruthy();
+    expect(constipation!.domain).toBe(diarrhea!.domain);
+    expect(constipation!.icon).toBeTruthy();
+    // An everyday one-tap symptom on the ordinary 1–4 severity: no scale of its own,
+    // and not hidden from the generic picker (#1680 is for observations that have a
+    // dedicated entry point, which this is not).
+    expect(constipation!.scale).toBeUndefined();
+    expect(constipation!.pickerHidden).toBeUndefined();
+  });
+
   it("tags every curated symptom with a valid domain (issue #714)", () => {
     for (const s of SYMPTOMS) {
       expect(SYMPTOM_DOMAINS, s.slug).toContain(s.domain);
