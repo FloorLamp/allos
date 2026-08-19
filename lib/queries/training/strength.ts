@@ -308,6 +308,10 @@ export interface ExerciseCompareSession {
   // kilo regression (#3009 review).
   bodyweightBaseKg: number;
   e1rmKg: number | null;
+  // Reps on the set backing e1rmKg. The all-history strength aggregate uses
+  // more reps to break an equal-e1RM tie, so historical PR classification must
+  // carry the same tie-breaker.
+  e1rmReps: number | null;
   summary: string;
 }
 
@@ -540,6 +544,7 @@ export function getExerciseComparison(
     let topWeightKg: number | null = null;
     let topReps: number | null = null;
     let e1rmKg: number | null = null;
+    let e1rmReps: number | null = null;
 
     for (const r of s.rows) {
       const sides: { weight: number; reps: number }[] = [];
@@ -562,9 +567,10 @@ export function getExerciseComparison(
         if (
           e1rmKg == null ||
           estimate > e1rmKg ||
-          (estimate === e1rmKg && side.reps > (topReps ?? 0))
+          (estimate === e1rmKg && side.reps > (e1rmReps ?? 0))
         ) {
           e1rmKg = estimate;
+          e1rmReps = side.reps;
         }
       }
     }
@@ -582,6 +588,7 @@ export function getExerciseComparison(
       e1rmKg,
       bodyweightBaseKg: baseKg,
       summary: summarizeExercise(s.rows, unit).text,
+      e1rmReps,
     };
   });
 }

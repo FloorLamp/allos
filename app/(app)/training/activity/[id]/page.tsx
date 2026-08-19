@@ -3,10 +3,15 @@ import PageContainer from "@/components/PageContainer";
 import ActivityIcon from "@/components/ActivityIcon";
 import { PageHeader } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
-import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import ActivityMediaStrip from "@/components/activity/ActivityMediaStrip";
 import NotesText from "@/components/NotesText";
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { accessForProfile, requireSession } from "@/lib/auth";
+import {
+  accessForProfile,
+  getAccessibleProfiles,
+  requireSession,
+} from "@/lib/auth";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -37,26 +42,39 @@ import SessionComparisonCard from "@/components/SessionComparisonCard";
 import CardGroup from "@/components/CardGroup";
 import { sessionComparisonChartMetrics } from "@/lib/session-comparison-view";
 import { formatLongDate } from "@/lib/format-date";
-import { activityComponentSportNames } from "@/lib/activity-icon";
+import {
+  activityComponentSportNames,
+  activityComponentsHaveCompositeIconIdentity,
+} from "@/lib/activity-icon";
 import { cyclingActivityName } from "@/lib/cycling-activity";
+import { CYCLING_OVERVIEW_HREF, cyclingOverviewHref } from "@/lib/hrefs";
+import {
+  coverageContributions,
+  coverageFromSets,
+  coverageList,
+} from "@/lib/muscle-coverage";
+import MuscleCoverageCard from "../../MuscleCoverageCard";
+import MuscleCoverageDisclosure from "../../MuscleCoverageDisclosure";
+import type { MuscleId } from "@/lib/lifts";
+import { parseSubjectParam } from "@/lib/subject-param";
 import CyclingActivityDetail, { cyclingLens } from "./CyclingActivityDetail";
 import {
   ActivityDetailActions,
   ActivityDetailControlsProvider,
+  ActivityInProgressBanner,
   ActivityOverlapBanner,
 } from "./ActivityDetailControls";
 import {
   ActivityDetailSectionHeading,
-  ActivityDetailSectionNavigation,
+  ActivityDetailSectionNav,
 } from "./ActivityDetailSection";
 
 export const dynamic = "force-dynamic";
 
-// One activity's canonical page (#2870 step 1): the record, at its own URL.
-// The record IS the Training Log card — rendered whole (sets, statuses, notes,
-// clips, provenance, fault warnings, the full menu with same-day merge
-// targets), so every surface that used to anchor into the log list lands on a
-// page that can do everything the card could. Heart rate renders LAST
+// One activity's canonical page (#2870 step 1): the complete record at its own
+// URL. It shares the session-value renderer with the log domain but owns its page
+// identity, actions, navigation, and section layout—there is no card nested inside
+// the page. Heart rate renders LAST
 // (owner-ruled: a strength record leads with the work; HR is its appendix),
 // through the same window → minutes → zones pipeline the ride page uses.
 // Cycling is a tenant of this same page; its richer metrics feed the shared
@@ -70,17 +88,47 @@ export default async function TrainingActivityPage(props: {
   if (!Number.isInteger(id) || id <= 0) notFound();
 
   const { login, profile } = await requireSession();
+  const searchParams = await props.searchParams;
+  const requestedSubjectId =
+    parseSubjectParam(searchParams?.subject) ?? profile.id;
+  const subjectProfile =
+    requestedSubjectId === profile.id
+      ? profile
+      : (await getAccessibleProfiles()).find(
+          (candidate) => candidate.id === requestedSubjectId
+        );
+  if (!subjectProfile) notFound();
+  const subjectProfileId = subjectProfile.id;
+  const crossProfile = subjectProfileId !== profile.id;
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
-  const data = getActivityDetailData(profile.id, id, units, formatPrefs);
-  if (!data) notFound();
+  const trainingRelevant = isTrainingRelevant(getProfileAge(subjectProfileId));
+  const detail = getActivityDetailData(
+    subjectProfileId,
+    id,
+    units,
+    formatPrefs
+  );
+  if (!detail) notFound();
+  // The profile selector is authorized above at the request boundary. Stamp the
+  // subject onto the edit model so every write from this page targets the row's
+  // owner while Duplicate still deliberately creates for the acting profile.
+  const data = crossProfile
+    ? {
+        ...detail,
+        card: {
+          ...detail.card,
+          activity: {
+            ...detail.card.activity,
+            subjectProfileId,
+          },
+        },
+      }
+    : detail;
 
   const card = data.card;
   const cycling = isCyclingActivity(data.row);
-  const parsedCyclingLens = cycling
-    ? cyclingLens(await props.searchParams)
-    : null;
+  const parsedCyclingLens = cycling ? cyclingLens(searchParams) : null;
   const rideLens = parsedCyclingLens
     ? {
         ...parsedCyclingLens,
@@ -90,16 +138,34 @@ export default async function TrainingActivityPage(props: {
           undefined,
       }
     : null;
+  const cyclingName = cyclingActivityName(data.row) ?? "Cycling";
+  const cyclingOverviewLink =
+    cycling && !crossProfile
+      ? {
+          href: rideLens
+            ? cyclingOverviewHref(rideLens)
+            : cyclingName.trim().toLowerCase() === "cycling"
+              ? CYCLING_OVERVIEW_HREF
+              : cyclingOverviewHref({
+                  metric: "distance",
+                  range: "all",
+                  activity: cyclingName,
+                }),
+          label: `${cyclingName} overview`,
+        }
+      : null;
   const canWrite =
-    accessForProfile(login.id, login.role, profile.id) === "write";
+    accessForProfile(login.id, login.role, subjectProfileId) === "write";
 
   // The session's live/draft state (#2870 step 3). While presence says THIS
   // activity is the running session, the page is the record-in-progress; a
   // zero-content row that is NOT running is a draft — this page is its only
   // address (the feed hides it), so it says so and offers the discard.
-  const presence = getWorkoutPresence(profile.id);
+  const presence = getWorkoutPresence(subjectProfileId);
   const liveActive =
-    presence.state === "active" && presence.activityId === data.row.id;
+    !crossProfile &&
+    presence.state === "active" &&
+    presence.activityId === data.row.id;
   const heartRateSeries = sessionHeartRateSeries(
     data.heartRate.window,
     data.heartRate.minutes
@@ -123,17 +189,44 @@ export default async function TrainingActivityPage(props: {
     data.telemetry.splits.length > 0 ||
     heartRateSeries.length > 0 ||
     comparisonMetrics.length > 0;
-  const nonCyclingSections = [
-    { id: "overview", label: "Overview" },
-    ...(hasPerformanceDetail ? [{ id: "effort", label: "Effort" }] : []),
-    ...(card.routePolyline ||
+  const hasRecordDetails =
+    Boolean(card.fault) ||
+    Boolean(card.activity.notes) ||
+    card.media.length > 0;
+  const hasCourseDetail =
+    Boolean(card.routePolyline) ||
     data.course.laps.length > 0 ||
-    data.course.segmentEfforts.length > 0
-      ? [{ id: "course", label: "Course" }]
+    data.course.segmentEfforts.length > 0;
+  const activityCoverageSets = card.activity.sets.map((set) => ({
+    exercise: set.exercise,
+    date: card.activity.date,
+    warmup: set.warmup,
+    activityId: card.activity.id,
+  }));
+  const activityMuscleCoverage = coverageList(
+    coverageFromSets(activityCoverageSets, card.activity.date)
+  );
+  const activityMuscleContributions = coverageContributions(
+    activityCoverageSets,
+    card.activity.date
+  );
+  const activityMusclesByExercise: Record<string, MuscleId[]> = {};
+  for (const [muscle, contributions] of activityMuscleContributions) {
+    for (const contribution of contributions) {
+      const key = contribution.exercise.trim().toLowerCase();
+      const muscles = activityMusclesByExercise[key] ?? [];
+      if (!muscles.includes(muscle)) muscles.push(muscle);
+      activityMusclesByExercise[key] = muscles;
+    }
+  }
+  const optionalSections = [
+    ...(hasPerformanceDetail ? [{ id: "effort", label: "Effort" }] : []),
+    ...(hasCourseDetail ? [{ id: "course", label: "Course" }] : []),
+    ...(activityMuscleCoverage.length > 0
+      ? [{ id: "muscles", label: "Muscles" }]
       : []),
-    { id: "details", label: "Details" },
+    ...(hasRecordDetails ? [{ id: "details", label: "Details" }] : []),
   ];
-
   return (
     <ActivityDetailControlsProvider>
       <PageContainer
@@ -143,33 +236,43 @@ export default async function TrainingActivityPage(props: {
       >
         <PageHeader
           title={data.row.title}
+          leading={
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700 sm:h-14 sm:w-14 dark:bg-brand-950/35 dark:text-brand-300">
+              <ActivityIcon
+                type={data.card.activity.type}
+                title={data.row.title}
+                sportNames={activityComponentSportNames(
+                  data.card.activity.components
+                )}
+                composite={activityComponentsHaveCompositeIconIdentity(
+                  data.card.activity.components
+                )}
+                className="h-6 w-6 sm:h-8 sm:w-8"
+                stroke={1.6}
+              />
+            </span>
+          }
           subtitle={
             <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="inline-flex items-center gap-1.5">
-                <ActivityIcon
-                  type={data.card.activity.type}
-                  title={data.row.title}
-                  sportNames={activityComponentSportNames(
-                    data.card.activity.components
-                  )}
-                  className="h-4 w-4"
-                />
-                {formatLongDate(data.row.date, formatPrefs)}
-              </span>
-              {card.timeText ? <span>· {card.timeText}</span> : null}
+              <span>{formatLongDate(data.row.date, formatPrefs)}</span>
+              {card.timeText ? (
+                <span data-testid="activity-page-time">· {card.timeText}</span>
+              ) : null}
             </span>
           }
           action={
             <ActivityDetailActions
               activity={card.activity}
-              siblings={data.siblings}
+              mergeCandidates={data.siblings}
               keeperLabel={card.provenance.label}
               foldValues={card.foldValues}
-              editLocked={card.provenance.editLocked}
+              editLocked={!crossProfile && card.provenance.editLocked}
               units={units}
               canWrite={canWrite}
+              trainingRelevant={trainingRelevant}
             />
           }
+          stackActionBelowSm
           className="mb-3!"
         />
 
@@ -180,17 +283,13 @@ export default async function TrainingActivityPage(props: {
           olderId={data.olderId}
           newerId={data.newerId}
           lens={rideLens}
+          subjectProfileId={crossProfile ? subjectProfileId : undefined}
           trainingRelevant={trainingRelevant}
+          contextLink={cyclingOverviewLink}
         />
 
         {liveActive ? (
-          <p
-            data-testid="session-in-progress"
-            className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-          >
-            Workout in progress — this page is the session&rsquo;s record and
-            fills in as you log.
-          </p>
+          <ActivityInProgressBanner />
         ) : data.isDraft ? (
           <div
             data-testid="draft-banner"
@@ -200,354 +299,379 @@ export default async function TrainingActivityPage(props: {
               Draft — this workout was started but nothing was logged. It
               appears only here and expires on its own.
             </span>
-            {canWrite && <DiscardDraftButton activityId={data.row.id} />}
+            {canWrite && (
+              <DiscardDraftButton
+                activityId={data.row.id}
+                subjectProfileId={crossProfile ? subjectProfileId : undefined}
+              />
+            )}
           </div>
         ) : null}
         <ActivityOverlapBanner
           overlapping={data.overlappingSiblings}
           canWrite={canWrite}
+          subjectProfileId={crossProfile ? subjectProfileId : undefined}
         />
 
-        {cycling ? (
-          <CyclingActivityDetail
-            activityId={id}
-            profileId={profile.id}
-            units={units}
-            formatPrefs={formatPrefs}
-            rideLens={rideLens}
-            base={data}
-          />
-        ) : (
-          <>
-            <ActivityDetailSectionNavigation sections={nonCyclingSections} />
-            <section
-              id="overview"
-              className="scroll-mt-4"
-              data-testid="activity-section-overview"
-            >
-              <ActivityDetailSectionHeading first>
-                Overview
-              </ActivityDetailSectionHeading>
-              {/* Keyed by activity: ‹older/newer› must remount the record so an
+        <MuscleCoverageDisclosure>
+          {cycling ? (
+            <CyclingActivityDetail
+              activityId={id}
+              profileId={subjectProfileId}
+              units={units}
+              formatPrefs={formatPrefs}
+              rideLens={rideLens}
+              base={data}
+              showMuscles={activityMuscleCoverage.length > 0}
+              showDetails={hasRecordDetails}
+              subjectProfileId={crossProfile ? subjectProfileId : undefined}
+            />
+          ) : (
+            <>
+              <section
+                id="overview"
+                className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
+                data-testid="activity-section-overview"
+              >
+                {/* Keyed by activity: ‹older/newer› must remount the record so an
           edit of the previous activity cannot stay open over the new one. */}
-              <ActivityRecord
-                key={data.card.activity.id}
-                card={data.card}
-                siblings={data.siblings}
-                units={units}
-                canWrite={canWrite}
-                partDeltas={data.partDeltas}
-              />
+                <ActivityRecord
+                  key={data.card.activity.id}
+                  card={data.card}
+                  partDeltas={data.partDeltas}
+                  partRecords={data.partRecords}
+                  highlightMusclesByExercise={activityMusclesByExercise}
+                  drillInsVisible={!crossProfile}
+                />
+                <ActivityDetailSectionNav sections={optionalSections} />
 
-              {/* A session whose source answered with nothing says so (#3009). The page
+                {/* A session whose source answered with nothing says so (#3009). The page
           is allowed to be short — a hand-entered walk IS a total and a title —
           but it is not allowed to be silent about being short, which reads as
           something failing to load. Only stated when the source has actually
           answered: never asked is a different fact, and claiming otherwise
           would be a guess. */}
-              {data.telemetry.answered &&
-                data.telemetry.traces.length === 0 &&
-                heartRateSeries.length === 0 && (
-                  <p
-                    data-testid="activity-totals-only"
-                    className="mt-3 rounded-lg border border-black/5 bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:border-white/5 dark:bg-ink-850 dark:text-slate-400"
-                  >
-                    {card.provenance.label} recorded totals for this session —
-                    no second-by-second detail, and no heart rate during it.
-                  </p>
-                )}
-            </section>
+                {data.telemetry.answered &&
+                  data.telemetry.traces.length === 0 &&
+                  heartRateSeries.length === 0 && (
+                    <p
+                      data-testid="activity-totals-only"
+                      className="mt-3 rounded-lg border border-black/5 bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:border-white/5 dark:bg-ink-850 dark:text-slate-400"
+                    >
+                      {card.provenance.label} recorded session totals, but no
+                      second-by-second sensor series.
+                    </p>
+                  )}
+              </section>
 
-            {hasPerformanceDetail ? (
-              <section
-                id="effort"
-                className="scroll-mt-4"
-                data-testid="activity-section-effort"
-              >
-                <ActivityDetailSectionHeading>
-                  Effort
-                </ActivityDetailSectionHeading>
+              {hasPerformanceDetail ? (
+                <section
+                  id="effort"
+                  className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
+                  data-testid="activity-section-effort"
+                >
+                  <ActivityDetailSectionHeading>
+                    Effort
+                  </ActivityDetailSectionHeading>
 
-                {/* Both charts share one crosshair, the way the ride page's do: the
+                  {/* Both charts share one crosshair, the way the ride page's do: the
           provider is what links them, and the hook is inert without it, so a
           page that grows a second chart opts in by mounting this. */}
-                <SessionChartLinkProvider>
-                  {data.telemetry.traces.length > 0 && (
-                    <div className="card" data-testid="activity-traces">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                          Session traces
-                        </h3>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {card.provenance.label}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        What the recording device measured second by second.
-                        Pick a measure to see it across the session.
-                      </p>
-                      <div className="mt-4">
-                        <SessionTelemetryChart traces={data.telemetry.traces} />
-                      </div>
-                    </div>
-                  )}
-
-                  {data.telemetry.splits.length > 0 && (
-                    <div className="card mt-4" data-testid="activity-splits">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                          {splitLabel} splits
-                        </h3>
-                        {data.telemetry.decouplingPercent != null && (
-                          <span
-                            data-testid="activity-decoupling"
-                            title="Pace per heartbeat, second half against first"
-                            className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                          >
-                            {data.telemetry.decouplingPercent > 0
-                              ? `${data.telemetry.decouplingPercent}% slower per beat late on`
-                              : data.telemetry.decouplingPercent < 0
-                                ? `${Math.abs(data.telemetry.decouplingPercent)}% faster per beat late on`
-                                : "Even pace per beat throughout"}
+                  <SessionChartLinkProvider>
+                    {data.telemetry.traces.length > 0 && (
+                      <CardGroup
+                        title="Recorded metrics"
+                        tooltip="Shows sensor data recorded across the session. Choose a metric to see how it changed over time."
+                        data-testid="activity-traces"
+                        action={
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {card.provenance.label}
                           </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        Cut from the recorded distance, not from the totals.
-                      </p>
-                      <ResponsiveTable className="mt-4 w-full border-collapse text-sm">
-                        <thead>
-                          <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-                            <th className="th">Split</th>
-                            <th className="th text-right">Distance</th>
-                            <th className="th text-right">Time</th>
-                            <th className="th text-right">Speed</th>
-                            <th className="th text-right">Heart rate</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.telemetry.splits.map((split) => (
-                            <tr
-                              key={split.index}
-                              className="border-b border-black/5 last:border-0 dark:border-white/5"
-                            >
-                              <Td
-                                slot="title"
-                                className="py-2.5 pr-3 font-medium"
-                              >
-                                {split.index}
-                              </Td>
-                              <Td
-                                slot="value"
-                                label="Distance"
-                                className="px-3 py-2.5 text-right tabular-nums"
-                              >
-                                {fmtDistance(
-                                  split.distanceM / 1000,
-                                  units.distanceUnit
-                                )}
-                              </Td>
-                              <Td
-                                slot="meta"
-                                label="Time"
-                                className="px-3 py-2.5 text-right tabular-nums"
-                              >
-                                {formatElapsed(split.timeSec)}
-                              </Td>
-                              <Td
-                                slot="meta"
-                                label="Speed"
-                                className="px-3 py-2.5 text-right tabular-nums"
-                              >
-                                {fmtKmh(
-                                  split.averageSpeedKmh,
-                                  units.distanceUnit
-                                )}
-                              </Td>
-                              <Td
-                                slot="meta"
-                                label="Heart rate"
-                                className="px-3 py-2.5 text-right tabular-nums"
-                              >
-                                {split.averageHeartrate == null
-                                  ? "—"
-                                  : `${Math.round(split.averageHeartrate)} bpm`}
-                              </Td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </ResponsiveTable>
-                    </div>
-                  )}
+                        }
+                      >
+                        <SessionTelemetryChart traces={data.telemetry.traces} />
+                      </CardGroup>
+                    )}
 
-                  {heartRateSeries.length > 0 && (
-                    // Not `activity-heart-rate`: the record card above already carries that
-                    // id on its summary's ♥ chip, and two of them on one page is the
-                    // hidden-twin trap (#2305) — a scoped read would get whichever came
-                    // first in the DOM, which is the 16px chip, not this block.
-                    <div className="card mt-4" data-testid="activity-hr-chart">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                          Heart rate
-                        </h3>
-                        <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                          {data.heartRate.minutes.length} recorded min
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        One-minute readings recorded during this session. A
-                        break in the line is a gap in wear.
-                      </p>
-                      <div className="mt-4">
-                        <SessionHeartRateChart
-                          data={heartRateSeries}
-                          activityDate={data.row.date}
-                          zoneModel={data.heartRate.zoneModel}
-                        />
-                      </div>
-                      {zoneTotal > 0 && (
-                        <div
-                          className="mt-4"
-                          data-testid="activity-heart-rate-zones"
-                        >
-                          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                            Time in zones
+                    {data.telemetry.splits.length > 0 && (
+                      <div className="card mt-4" data-testid="activity-splits">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                            {splitLabel} splits
                           </h3>
-                          <div
-                            className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800"
-                            aria-hidden
-                          >
-                            {zoneRows.map((zone, index) =>
-                              zone.minutes > 0 ? (
-                                <span
-                                  key={zone.id}
-                                  style={{
-                                    width: `${(zone.minutes / zoneTotal) * 100}%`,
-                                    backgroundColor: ZONE_COLORS[index],
-                                  }}
-                                />
-                              ) : null
-                            )}
-                          </div>
-                          <ul className="mt-3 space-y-2">
-                            {zoneRows.map((zone, index) => (
-                              <li
-                                key={zone.id}
-                                data-testid={`activity-zone-${zone.id}`}
-                                className="flex items-center justify-between gap-4 text-sm"
+                          {data.telemetry.decouplingPercent != null && (
+                            <span
+                              data-testid="activity-decoupling"
+                              title="Pace per heartbeat, second half against first"
+                              className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                            >
+                              {data.telemetry.decouplingPercent > 0
+                                ? `${data.telemetry.decouplingPercent}% slower per beat late on`
+                                : data.telemetry.decouplingPercent < 0
+                                  ? `${Math.abs(data.telemetry.decouplingPercent)}% faster per beat late on`
+                                  : "Even pace per beat throughout"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          Cut from the recorded distance, not from the totals.
+                        </p>
+                        <ResponsiveTable className="mt-4 w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
+                              <th className="th">Split</th>
+                              <th className="th text-right">Distance</th>
+                              <th className="th text-right">Time</th>
+                              <th className="th text-right">Speed</th>
+                              <th className="th text-right">Heart rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.telemetry.splits.map((split) => (
+                              <tr
+                                key={split.index}
+                                className="border-b border-black/5 last:border-0 dark:border-white/5"
                               >
-                                <span className="inline-flex min-w-0 items-center gap-2">
+                                <Td
+                                  slot="title"
+                                  className="py-2.5 pr-3 font-medium"
+                                >
+                                  {split.index}
+                                </Td>
+                                <Td
+                                  slot="value"
+                                  label="Distance"
+                                  className="px-3 py-2.5 text-right tabular-nums"
+                                >
+                                  {fmtDistance(
+                                    split.distanceM / 1000,
+                                    units.distanceUnit
+                                  )}
+                                </Td>
+                                <Td
+                                  slot="meta"
+                                  label="Time"
+                                  className="px-3 py-2.5 text-right tabular-nums"
+                                >
+                                  {formatElapsed(split.timeSec)}
+                                </Td>
+                                <Td
+                                  slot="meta"
+                                  label="Speed"
+                                  className="px-3 py-2.5 text-right tabular-nums"
+                                >
+                                  {fmtKmh(
+                                    split.averageSpeedKmh,
+                                    units.distanceUnit
+                                  )}
+                                </Td>
+                                <Td
+                                  slot="meta"
+                                  label="Heart rate"
+                                  className="px-3 py-2.5 text-right tabular-nums"
+                                >
+                                  {split.averageHeartrate == null
+                                    ? "—"
+                                    : `${Math.round(split.averageHeartrate)} bpm`}
+                                </Td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </ResponsiveTable>
+                      </div>
+                    )}
+
+                    {heartRateSeries.length > 0 && (
+                      // Not `activity-heart-rate`: the record card above already carries that
+                      // id on its summary's ♥ chip, and two of them on one page is the
+                      // hidden-twin trap (#2305) — a scoped read would get whichever came
+                      // first in the DOM, which is the 16px chip, not this block.
+                      <div
+                        className="card mt-4"
+                        data-testid="activity-hr-chart"
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <div className="inline-flex items-center gap-1.5">
+                            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                              Heart rate
+                            </h3>
+                            <InfoTooltipIcon label="Shows one-minute heart-rate readings from this session. Gaps mean no reading was recorded." />
+                          </div>
+                          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                            {data.heartRate.minutes.length} recorded min
+                          </span>
+                        </div>
+                        <div className="mt-4">
+                          <SessionHeartRateChart
+                            data={heartRateSeries}
+                            activityDate={data.row.date}
+                            zoneModel={data.heartRate.zoneModel}
+                          />
+                        </div>
+                        {zoneTotal > 0 && (
+                          <div
+                            className="mt-4"
+                            data-testid="activity-heart-rate-zones"
+                          >
+                            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                              Time in zones
+                            </h3>
+                            <div
+                              className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800"
+                              aria-hidden
+                            >
+                              {zoneRows.map((zone, index) =>
+                                zone.minutes > 0 ? (
                                   <span
-                                    aria-hidden
-                                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                    key={zone.id}
                                     style={{
+                                      width: `${(zone.minutes / zoneTotal) * 100}%`,
                                       backgroundColor: ZONE_COLORS[index],
                                     }}
                                   />
-                                  <span className="font-medium text-slate-700 dark:text-slate-200">
-                                    {zone.name}
+                                ) : null
+                              )}
+                            </div>
+                            <ul className="mt-3 space-y-2">
+                              {zoneRows.map((zone, index) => (
+                                <li
+                                  key={zone.id}
+                                  data-testid={`activity-zone-${zone.id}`}
+                                  className="flex items-center justify-between gap-4 text-sm"
+                                >
+                                  <span className="inline-flex min-w-0 items-center gap-2">
+                                    <span
+                                      aria-hidden
+                                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                      style={{
+                                        backgroundColor: ZONE_COLORS[index],
+                                      }}
+                                    />
+                                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                                      {zone.name}
+                                    </span>
+                                    <span className="truncate text-slate-500 dark:text-slate-400">
+                                      {zone.label}
+                                    </span>
                                   </span>
-                                  <span className="truncate text-slate-500 dark:text-slate-400">
-                                    {zone.label}
+                                  <span className="shrink-0 tabular-nums text-slate-600 dark:text-slate-300">
+                                    {zone.minutes} min · {zone.percent}%
                                   </span>
-                                </span>
-                                <span className="shrink-0 tabular-nums text-slate-600 dark:text-slate-300">
-                                  {zone.minutes} min · {zone.percent}%
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </SessionChartLinkProvider>
+
+                  {data.comparison && comparisonMetrics.length > 0 && (
+                    <SessionComparisonCard
+                      comparison={data.comparison}
+                      testId="activity-comparison"
+                    >
+                      <SessionComparisonChart
+                        metrics={comparisonMetrics}
+                        testIdPrefix="activity-comparison"
+                      />
+                    </SessionComparisonCard>
                   )}
-                </SessionChartLinkProvider>
+                </section>
+              ) : null}
 
-                {data.comparison && comparisonMetrics.length > 0 && (
-                  <SessionComparisonCard
-                    comparison={data.comparison}
-                    testId="activity-comparison"
-                  >
-                    <SessionComparisonChart
-                      metrics={comparisonMetrics}
-                      testIdPrefix="activity-comparison"
-                    />
-                  </SessionComparisonCard>
-                )}
-              </section>
-            ) : null}
+              {hasCourseDetail ? (
+                <section
+                  id="course"
+                  className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
+                  data-testid="activity-section-course"
+                >
+                  <ActivityDetailSectionHeading>
+                    Course
+                  </ActivityDetailSectionHeading>
+                  {card.routePolyline ? (
+                    <CardGroup title="Route" data-testid="activity-route">
+                      <SessionRouteMap
+                        polyline={card.routePolyline}
+                        timedRoute={[]}
+                        title={`${data.row.title} route`}
+                        className="mt-4 h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
+                      />
+                    </CardGroup>
+                  ) : null}
+                  <SessionCourseTables
+                    laps={data.course.laps}
+                    segmentEfforts={data.course.segmentEfforts}
+                    distanceUnit={units.distanceUnit}
+                  />
+                </section>
+              ) : null}
+            </>
+          )}
 
-            {card.routePolyline ||
-            data.course.laps.length > 0 ||
-            data.course.segmentEfforts.length > 0 ? (
-              <section
-                id="course"
-                className="scroll-mt-4"
-                data-testid="activity-section-course"
-              >
-                <ActivityDetailSectionHeading>
-                  Course
-                </ActivityDetailSectionHeading>
-                {card.routePolyline ? (
-                  <CardGroup title="Route" data-testid="activity-route">
-                    <SessionRouteMap
-                      polyline={card.routePolyline}
-                      timedRoute={[]}
-                      title={`${data.row.title} route`}
-                      className="mt-4 h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
-                    />
-                  </CardGroup>
-                ) : null}
-                <SessionCourseTables
-                  laps={data.course.laps}
-                  segmentEfforts={data.course.segmentEfforts}
-                  distanceUnit={units.distanceUnit}
-                />
-              </section>
-            ) : null}
-          </>
-        )}
-
-        <section
-          id="details"
-          className="scroll-mt-4"
-          data-testid="activity-section-details"
-        >
-          <ActivityDetailSectionHeading>Details</ActivityDetailSectionHeading>
-          {card.fault ? (
-            <div className="card flex items-start gap-2 text-sm text-rose-600 dark:text-rose-400">
-              <IconAlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
-              <p>Can&rsquo;t be saved as-is — {card.fault}</p>
-            </div>
-          ) : null}
-          {card.activity.notes ? (
-            <CardGroup
-              title="Notes"
-              className={card.fault ? "mt-4" : undefined}
-              data-testid="activity-notes-card"
+          {activityMuscleCoverage.length > 0 ? (
+            <section
+              id="muscles"
+              className="mt-7 scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
             >
-              <NotesText
-                notes={card.activity.notes}
-                as="p"
-                data-testid="activity-notes"
-                className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-200"
+              <MuscleCoverageCard
+                scope="activity"
+                coverage={activityMuscleCoverage}
+                contributions={activityMuscleContributions}
+                drillInsVisible={!crossProfile}
               />
-            </CardGroup>
+            </section>
           ) : null}
-          {card.videos.length > 0 ? (
-            <CardGroup
-              title="Form check"
-              className="mt-4"
-              data-testid="activity-form-check"
+
+          {hasRecordDetails ? (
+            <section
+              id="details"
+              className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
+              data-testid="activity-section-details"
             >
-              <ActivityVideoStrip
-                activityId={card.activity.id}
-                videos={card.videos}
-                canWrite={canWrite}
-                compact
-              />
-            </CardGroup>
+              <ActivityDetailSectionHeading>
+                Details
+              </ActivityDetailSectionHeading>
+              {card.fault ? (
+                <div className="card flex items-start gap-2 text-sm text-rose-600 dark:text-rose-400">
+                  <IconAlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+                  <p>Can&rsquo;t be saved as-is — {card.fault}</p>
+                </div>
+              ) : null}
+              {card.activity.notes ? (
+                <CardGroup
+                  title="Notes"
+                  className={card.fault ? "mt-4" : undefined}
+                  data-testid="activity-notes-card"
+                >
+                  <NotesText
+                    notes={card.activity.notes}
+                    as="p"
+                    data-testid="activity-notes"
+                    className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-200"
+                  />
+                </CardGroup>
+              ) : null}
+              {card.media.length > 0 ? (
+                <CardGroup
+                  title="Media"
+                  className="mt-4"
+                  data-testid="activity-media"
+                >
+                  <ActivityMediaStrip
+                    activityId={card.activity.id}
+                    media={card.media}
+                    canWrite={canWrite}
+                    compact
+                    subjectProfileId={
+                      crossProfile ? subjectProfileId : undefined
+                    }
+                  />
+                </CardGroup>
+              ) : null}
+            </section>
           ) : null}
+
           <ActivityProvenance
             label={card.provenance.label}
             createdAt={card.provenance.createdAt}
@@ -556,9 +680,9 @@ export default async function TrainingActivityPage(props: {
               card.provenance.editLocked ? card.activity.id : undefined
             }
             variant="quiet"
-            className="mt-4"
+            className="mt-7"
           />
-        </section>
+        </MuscleCoverageDisclosure>
       </PageContainer>
     </ActivityDetailControlsProvider>
   );

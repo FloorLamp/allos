@@ -20,7 +20,7 @@
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
-import { intakeItemShortLabel } from "../intake-short-name";
+import { intakeShortLabels } from "../intake-short-name";
 import type { IntakeItemKind } from "../types";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
@@ -159,17 +159,24 @@ function confirmActions(
 ): NotificationAction[] {
   const actions: NotificationAction[] = [];
   for (const section of sections) {
-    for (const dose of section.doses) {
+    // Resolved PER MEMBER (#2858 review): this button confirms a dose for someone
+    // else, and two of one member's items that read alike is a dose marked taken on
+    // their behalf that they never took. Two DIFFERENT members may of course share
+    // an item label — the member's own name leads every button here.
+    const itemLabels = intakeShortLabels(
+      section.doses.map((dose) => ({
+        name: dose.itemName,
+        kind: dose.itemKind,
+        product: dose.product,
+      }))
+    );
+    for (const [i, dose] of section.doses.entries()) {
       actions.push({
         // The tightest button of all (member + item + amount), so the item takes
         // its short label; the body section above keeps the full name.
         label: `${GLYPH.done} ${section.name} · ${householdDoseLabel({
           ...dose,
-          itemName: intakeItemShortLabel({
-            name: dose.itemName,
-            kind: dose.itemKind,
-            product: dose.product,
-          }),
+          itemName: itemLabels[i],
         })}`,
         data: householdDoseCallback({
           receiverProfileId,

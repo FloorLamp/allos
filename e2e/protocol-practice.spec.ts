@@ -364,7 +364,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await expect(
     activityForm.getByRole("button", { name: "Cardio", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
-  await activityForm.getByRole("button", { name: "Close" }).click();
+  await activityForm.getByRole("button", { name: "Done" }).click();
 
   // Ending removes both the live weekly badge and every new-data action while
   // preserving the lifecycle menu and historical usage (#1592).

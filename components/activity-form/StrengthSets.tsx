@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -745,17 +745,11 @@ export default function StrengthSets({
             + Equipment
           </button>
         )}
-        {/* Full management stays on /equipment, opened in a NEW TAB so the workout
-            is never interrupted — the same door ActivityEquipmentPicker renders for
-            non-strength activities (#592). */}
-        <Link
-          href="/equipment"
-          target="_blank"
-          data-testid="strength-equipment-link"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
+        {/* Full management stays on /equipment — the same same-app door
+            ActivityEquipmentPicker renders for non-strength activities (#592). */}
+        <EquipmentRegistryLink testId="strength-equipment-link">
           {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
-        </Link>
+        </EquipmentRegistryLink>
       </div>
       {addingEquipment && (
         <EquipmentQuickAdd

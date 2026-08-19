@@ -280,3 +280,20 @@ export const chartFiberPanelMarks = {
   bar: { class: "bg-sky-600", hex: chartSeries.sky },
   symptomDot: { class: "bg-amber-600", hex: chartSeries.amber },
 } as const;
+
+// ── Bristol stool-form panel (#2785) ─────────────────────────────────────────
+//
+// ONE hue for all seven types, deliberately. The categorical set has five members
+// and the scale has seven, so a per-type color would have to invent two — but the
+// deeper reason is that the types are ORDINAL, not categorical: they are one axis
+// from hard to liquid, and seven identities would say they are seven unrelated
+// things. Height (the distribution) and vertical position (the strip) carry the
+// scale; color carries only "this is a Bristol mark".
+//
+// Violet because the panel sits in the Body census beside the sky fiber series and
+// the amber symptom dots, and a third surface reaching for either of those hues
+// would claim a relationship none of them has.
+export const chartBristolMarks = {
+  bar: { class: "bg-violet-500", hex: chartSeries.violet },
+  dot: { class: "bg-violet-500", hex: chartSeries.violet },
+} as const;

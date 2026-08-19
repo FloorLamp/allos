@@ -102,6 +102,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "the symptom-clip serve route (#1696): the ONE lookup that RESOLVES which profile a clip belongs to so the handler can gate on THAT profile (canAccessProfile — the grants set), matching the episode page that renders the strip and resolves it across ACCESSIBLE profiles (#879). Filtering by profile_id here would presuppose the answer, and pinning it to the ACTIVE profile is the bug: a caregiver's clips 404'd. The gate is the protection, not the filter (the app/(app)/gate-item.ts shape) — nothing about the row is observable before it, and an inaccessible profile's clip is refused identically to a nonexistent id",
   },
   {
+    file: "app/api/activity-video/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, poster_path, mime_type FROM activity_videos WHERE id = ?",
+    why: "the activity-media serve route resolves the clip owner before gating it with canAccessProfile, matching the cross-profile activity detail page reached from Training Log multi-view; inaccessible and nonexistent rows receive the same 404",
+  },
+  {
     file: "app/api/symptom-photo/[id]/route.ts",
     includes:
       "SELECT profile_id, stored_path, mime_type FROM symptom_photos WHERE id = ?",

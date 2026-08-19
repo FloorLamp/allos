@@ -1,12 +1,11 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledBoxes } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the
 // figure is additive, never replacing the accessible list). Assertions are
 // structural (stable data-testid / per-muscle data-muscle + data-state
-// attributes), with bounding-box checks only for the activity-card layout this
-// spec owns. Read-only against the shared seeded DB.
+// attributes). Read-only against the shared seeded DB.
 
 test("per-exercise anatomy renders in the detail panel guide section (#737)", async ({
   page,
@@ -52,128 +51,112 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   );
 });
 
-test("per-session anatomy renders on a strength session's training log card, absent for a custom-only session (#789)", async ({
+test("activity detail reuses muscle coverage scoped to that workout and omits untagged sessions (#789)", async ({
   page,
 }) => {
-  // /training defaults to the Log tab — slim rows since #2897, with the full
-  // record card in the desktop reading pane once its row is selected. The seeded
-  // "Push day" strength session (Bench Press, Overhead Press, Lateral Raise,
-  // Tricep Pushdown — all catalog lifts) resolves to tagged muscles, so its card
-  // carries the per-session figure. Multiple weeks exist; the newest is on page one.
   await page.goto("/training?tab=log");
 
   const pushRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
-  // The row is a pure client toggle; hydratedClick closes the pre-hydration window.
-  await hydratedClick(page, pushRow);
-  const pane = page.getByTestId("training-log-reading-pane");
-  const pushCard = pane.locator(".card", { hasText: "Push day" });
+  await pushRow
+    .getByTestId("training-log-strength-row")
+    .filter({ hasText: "Barbell Bench Press" })
+    .getByRole("button", { name: "Chest", exact: true })
+    .click();
+  await expect(page.getByTestId("training-log-tag-filter")).toHaveText("Chest");
+  await expect(pushRow).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await followLink(
+    page,
+    pushRow.getByRole("link", { name: "Push day", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
+  const pushCard = page.getByTestId("training-activity-page");
   await expect(pushCard).toBeVisible();
 
-  const visualBox = pushCard.getByTestId("activity-visuals");
-  await expect(visualBox).toBeVisible();
-  await expect(visualBox).toHaveClass(/rounded-lg/);
-  await expect(visualBox).toHaveClass(/border/);
-  const [visualBounds, detailBounds] = await settledBoxes([
-    visualBox,
-    pushCard.getByTestId("activity-parts"),
-  ]);
-  expect(visualBounds.x).toBeGreaterThan(detailBounds.x);
-  expect(visualBounds.width).toBeLessThan(detailBounds.width);
-  expect(detailBounds.y).toBeLessThan(visualBounds.y + visualBounds.height);
-
-  // The shared right-hand slot starts at the same card-top baseline for a
-  // muscle figure and for a richer Strava card whose summary wraps differently —
-  // both render in the pane's one slot, so swap the pane and compare offsets.
-  // Each pair is read via settledBoxes (one settled layout per snapshot — a
-  // relative-layout assertion built from separate boundingBox round-trips can
-  // describe a layout that never existed, per the e2e-hygiene doctrine).
-  const [pushBounds, pushVisualBounds] = await settledBoxes([
-    pushCard,
-    visualBox,
-  ]);
-  const stravaRow = page
-    .getByTestId("training-log-row")
-    .filter({ hasText: "Strava morning ride" });
-  await stravaRow.click();
-  const stravaCard = pane.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  await expect(stravaCard).toBeVisible();
-  const [stravaBounds, stravaVisualBounds] = await settledBoxes([
-    stravaCard,
-    stravaCard.getByTestId("activity-visuals"),
-  ]);
-  expect(pushVisualBounds.y - pushBounds.y).toBeCloseTo(
-    stravaVisualBounds.y - stravaBounds.y,
-    0
+  // The detail host promotes the same coverage card used by Overview instead
+  // of leaving a second compact diagram beside the exercise rows.
+  const coverage = pushCard.getByTestId("activity-muscle-coverage");
+  await expect(coverage).toBeVisible();
+  await expect(coverage).toContainText("Muscles worked");
+  const coverageInfo = coverage.getByTestId("muscle-coverage-info");
+  await coverageInfo.click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    /Working sets from this workout/
   );
+  await page.keyboard.press("Escape");
+  await expect(
+    pushCard.getByTestId("activity-record-body").getByTestId("activity-visuals")
+  ).toHaveCount(0);
 
-  // Back to the push session for its figure.
-  await pushRow.click();
-  const session = visualBox.getByTestId("session-muscles");
-  await expect(session).toBeVisible();
-
-  const figure = session.getByTestId("muscle-anatomy");
+  const figure = coverage.getByTestId("muscle-anatomy");
   await expect(figure).toBeVisible();
-  await expect(figure).toHaveAttribute("data-mode", "session");
+  await expect(figure).toHaveAttribute("data-mode", "coverage");
   await expect(figure).toHaveAttribute(
     "aria-label",
-    /muscles this session worked/
+    /muscles worked in this workout/
   );
-  await expect(figure.locator("text")).toHaveCount(0);
-  // Bench Press works the chest; the figure marks it as worked this session.
+  await expect(figure.locator("text")).toHaveCount(2);
   await expect(figure.locator('[data-muscle="chest"]')).toHaveAttribute(
     "data-state",
-    "worked"
+    "trained"
   );
-  // A muscle no Push-day lift touches stays neutral.
   await expect(figure.locator('[data-muscle="calves"]')).toHaveAttribute(
     "data-state",
-    "none"
+    "untrained"
   );
+  await expect(coverage.getByTestId("muscle-coverage-verdict")).toHaveCount(0);
+  await expect(coverage.getByText("What counts?", { exact: true })).toHaveCount(
+    0
+  );
+  await expect(
+    coverage.locator("summary").first() // first-ok: asserts any workout-scoped muscle disclosure exposes its accessible toggle label
+  ).toHaveAttribute("aria-label", /Show or hide what counts for/);
 
-  // On a phone the pane doesn't exist — tapping the row expands the full card
-  // in place, where the same visual box renders as a shallow strip.
-  await page.setViewportSize({ width: 390, height: 844 });
-  // Wait for the width mode to settle: the row advertises aria-expanded only
-  // once expand-in-place is its live affordance (a click landing before the
-  // settle hits the desktop branch and deselects instead).
-  await expect(pushRow).toHaveAttribute("aria-expanded", "false");
-  await pushRow.click();
-  const mobileCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the one Push day card expanded in place (rows are not .card)
-  await expect(mobileCard).toBeVisible();
-  const mobileVisualBounds = await mobileCard
-    .getByTestId("activity-visuals")
-    .boundingBox();
-  const mobileFigureBounds = await mobileCard
-    .getByTestId("muscle-anatomy")
-    .boundingBox();
-  expect(mobileVisualBounds).not.toBeNull();
-  expect(mobileFigureBounds).not.toBeNull();
-  expect(mobileVisualBounds!.height).toBeCloseTo(128, 0);
-  expect(mobileFigureBounds!.height).toBeLessThanOrEqual(112);
+  const benchRow = pushCard.getByTestId("training-log-strength-row").filter({
+    has: page.getByRole("link", {
+      name: "Barbell Bench Press",
+      exact: true,
+    }),
+  });
+  const chest = figure.locator('[data-muscle-target="coverage-chest"]');
+  await chest.locator("path").first().hover(); // first-ok: either bilateral chest path bubbles to the same muscle highlight target
+  await expect(benchRow).toHaveAttribute("data-highlighted", "true");
 
-  // The custom-only strength session (its only lift is a made-up, non-catalog
-  // name) resolves to no tagged muscles, so its card renders NO session figure —
-  // the gate degrades to nothing rather than an empty diagram.
+  await benchRow.hover();
+  await expect(chest).toHaveAttribute("data-highlighted", "true");
+  // Highlighting stays visual: the row keeps its stable category text instead
+  // of swapping in a longer muscle list and reflowing under the pointer.
+  await expect(benchRow.getByText("Chest", { exact: true })).toBeVisible();
+  await expect(
+    pushCard
+      .getByTestId("training-log-strength-row")
+      .filter({ hasText: "Overhead Press" })
+  ).not.toHaveAttribute("data-highlighted", "true");
+
+  await page.goto("/training?tab=log");
   const customRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Custom-only lift day (e2e)" })
     .first(); // first-ok: the session row THIS spec created (unique name)
-  await customRow.click();
+  await customRow
+    .getByRole("link", { name: "Custom-only lift day (e2e)", exact: true })
+    .click();
   const customCard = page
-    .locator(".card", { hasText: "Custom-only lift day (e2e)" })
-    .first(); // first-ok: the session card THIS spec created (unique name)
+    .getByTestId("training-activity-page")
+    .filter({ hasText: "Custom-only lift day (e2e)" });
   await expect(customCard).toBeVisible();
-  await expect(customCard.getByTestId("session-muscles")).toHaveCount(0);
+  await expect(customCard.getByTestId("activity-muscle-coverage")).toHaveCount(
+    0
+  );
 });
 
 test("coverage anatomy renders beside the list on Training → Overview (#737)", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=overview");
   const coverage = page.getByRole("main").getByTestId("muscle-coverage");
   await expect(coverage).toBeVisible();
@@ -192,6 +175,22 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
     "data-state",
     "trained"
   );
+  // Use the final evidence row: unlike the first row, it is genuinely below the
+  // phone viewport when the diagram is at the top of the screen.
+  const furthestRow = coverage.locator('li[id^="coverage-"]').last(); // last-ok: the assertion is specifically about the row furthest from the diagram
+  const furthestDisclosure = furthestRow.getByTestId("muscle-coverage-row");
+  const targetId = (await furthestRow.getAttribute("id"))!;
+  await expect(furthestDisclosure).not.toHaveAttribute("open");
+  await figure.evaluate((element) =>
+    element.scrollIntoView({ block: "start" })
+  );
+  await expect(furthestRow).not.toBeInViewport();
+  await hydratedClick(
+    page,
+    figure.locator(`[data-muscle-target="${targetId}"] path`).first() // first-ok: either bilateral path bubbles to the same muscle disclosure target
+  );
+  await expect(furthestDisclosure).toHaveAttribute("open", "");
+  await expect(furthestRow).toBeInViewport();
   // No catalog lift tags the neck, so it is always the neutral empty tint.
   await expect(figure.locator('[data-muscle="neck"]')).toHaveAttribute(
     "data-state",

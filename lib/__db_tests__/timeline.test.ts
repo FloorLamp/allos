@@ -133,7 +133,7 @@ describe("getTimelineEvents", () => {
     );
     expect(strength?.detailItems).toContainEqual({
       label: "Back Squat",
-      value: "220.5lb × 5 × 2",
+      value: "220.5 lb × 5 × 2",
     });
   });
 

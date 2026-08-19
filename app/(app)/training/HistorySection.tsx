@@ -1,37 +1,15 @@
-import {
-  getStrengthByExercise,
-  getCardioByActivity,
-  getSportByActivity,
-  getOutcomeGoals,
-  getOutcomeGoalProgressMap,
-  getLatestBodyMetric,
-  getTrainingLogWeekSummary,
-  getRecentByExercise,
-  getActiveDaysStrip,
-} from "@/lib/queries";
-import {
-  getUnitPrefs,
-  getProfileSex,
-  getProfileAge,
-  getDisplayFormatPrefs,
-} from "@/lib/settings";
+import { getTrainingLogWeekSummary, getActiveDaysStrip } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { EMPTY_TRAINING_LOG_FILTERS } from "@/lib/training-log-filters";
 import { resolveTrainingLogFeedContext } from "./training-log-feed-resolve";
 import TrainingLogView from "./TrainingLogView";
-import {
-  isAdultForClinical,
-  isStrengthTrainingRelevant,
-} from "@/lib/life-stage";
 
 export default async function HistorySection({
   initialCreateDate,
 }: {
   initialCreateDate?: string;
 }) {
-  const { login, profile } = await requireSession();
-  const units = getUnitPrefs(login.id);
-  const wu = units.weightUnit;
+  const { profile } = await requireSession();
 
   // The feed's FIRST page under NO filters (issues #451, #1634): the newest window
   // of day-grouped cards, not the whole history. Older windows — and, when a filter
@@ -46,26 +24,10 @@ export default async function HistorySection({
   // and the activity-editor wiring — from ever mounting, leaving first-run users
   // with no way to log their first activity. TrainingLogView now renders a dedicated
   // first-run empty variant (action row prominent, filters/search hidden); the
-  // stats/goals queries below are cheap and empty for a fresh profile.
+  // summary queries below are cheap and empty for a fresh profile.
   const feed = await resolveTrainingLogFeedContext(EMPTY_TRAINING_LOG_FILTERS);
 
-  // Per-exercise recent sessions (last 10) for the exercise detail pane.
-  const recentByExercise = getRecentByExercise(
-    profile.id,
-    wu,
-    getDisplayFormatPrefs(login.id)
-  );
-
   const summary = getTrainingLogWeekSummary(profile.id);
-  const goals = getOutcomeGoals(profile.id).filter(
-    (goal) =>
-      isStrengthTrainingRelevant(getProfileAge(profile.id)) ||
-      goal.kind !== "exercise"
-  );
-  // Map → plain object so it can cross the server/client boundary.
-  const goalProgress = Object.fromEntries(
-    getOutcomeGoalProgressMap(profile.id, goals)
-  );
   return (
     <TrainingLogView
       initialCreateDate={initialCreateDate}
@@ -73,30 +35,12 @@ export default async function HistorySection({
       initialCursor={feed.cursor}
       sourceOptions={feed.sourceOptions}
       faultCount={feed.faultCount}
-      exerciseStats={getStrengthByExercise(profile.id)}
-      cardioStats={getCardioByActivity(
-        profile.id,
-        units.distanceUnit,
-        getDisplayFormatPrefs(login.id)
-      )}
-      sportStats={getSportByActivity(
-        profile.id,
-        getDisplayFormatPrefs(login.id)
-      )}
-      goals={goals}
-      goalProgress={goalProgress}
-      bodyweightKg={getLatestBodyMetric(profile.id, "weight")}
-      units={units}
-      recentByExercise={recentByExercise}
       weekSummary={{
         sessions: summary.sessions,
         activeDays: summary.activeDays,
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
-      sex={getProfileSex(profile.id)}
-      adultClinicalContent={isAdultForClinical(getProfileAge(profile.id))}
-      canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined
       }

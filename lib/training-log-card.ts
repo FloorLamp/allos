@@ -6,10 +6,10 @@
 // it here (like lib/activity-form-model.ts did for form parsing) makes the whole
 // derivation unit-testable and keeps HistorySection a thin data-fetch + render.
 //
-// The header's durationText/distanceText/speedText and a single cardio part's
-// `detail` string are now BOTH produced here from the SAME activity, so the "one
-// question, one computation" rule holds — a folded single cardio/sport effort
-// surfaces as a clickable row and its now-redundant header meta is suppressed.
+// The header's durationText/distanceText/speedText and cardio part detail are
+// produced here from the SAME activity, so the "one question, one computation"
+// rule holds. A lone pure cardio/sport component is folded into the header instead
+// of repeating a second row beneath the activity title.
 
 import type { Activity, ExerciseSet, ActivityComponent } from "./types";
 import { parseComponents } from "./types";
@@ -48,10 +48,10 @@ import {
 import { zoneForBpm, type ZoneModel } from "./training-zones";
 import type { ActivityVideoRow } from "./activity-video-write";
 
-// A form-check video clip attached to an activity (#1224), in the SERIALIZABLE
-// shape the card renders — booleans/numbers only, so it crosses the server/client
-// boundary into TrainingLogCard. Built from the ActivityVideoRow the feed gathers.
-export interface TrainingLogCardVideo {
+// A media clip attached to an activity (#1224), in the SERIALIZABLE
+// shape the activity detail page renders — booleans/numbers only, so it crosses
+// the server/client boundary. Built from the ActivityVideoRow the feed gathers.
+export interface TrainingLogCardMedia {
   id: number;
   exercise: string | null;
   caption: string | null;
@@ -103,8 +103,11 @@ export interface TrainingLogCardData {
   // Measured active energy, or an explicitly approximate fallback when it is
   // missing, belongs with the primary summary rather than the rich-metrics row.
   calorieText: string | null;
-  // Compact chips for richer imported metrics (HR, elevation, power, etc.).
+  // Compact labels for richer imported metrics and session context.
   metrics: string[];
+  // Context that still belongs beside the common summary when a specialized
+  // detail view renders imported measurements in its own structured section.
+  contextMetrics: string[];
   // Session-level gear name (issue #342), e.g. "Road Bike" for a ride — resolved
   // from activity.equipment_id via the equipmentNames map (retired gear still
   // labels), or null when the activity has no gear linked.
@@ -133,9 +136,9 @@ export interface TrainingLogCardData {
   // tile-free SVG route thumbnail on the card; only imported outdoor activities with
   // a captured route carry one.
   routePolyline: string | null;
-  // Form-check video clips attached to this activity (#1224), newest first (empty
-  // when none). Rendered as the card's "Form check" strip.
-  videos: TrainingLogCardVideo[];
+  // Media clips attached to this activity (#1224), newest first (empty when none).
+  // Rendered as the card's Media strip.
+  media: TrainingLogCardMedia[];
 }
 
 export interface DayGroup {
@@ -221,7 +224,7 @@ export interface BuildTrainingLogCardsInput {
   // The active profile's canonical HR-zone model. The zone is resolved once per
   // activity and carried by ActivityEditData into both card and form renderers.
   zoneModel?: ZoneModel | null;
-  // activityId -> its form-check video clips (#1224), for the card's "Form check"
+  // activityId -> its attached media clips (#1224), for the card's Media
   // strip. Optional (defaults to none) so pure-test call sites need no clip data.
   activityVideos?: Map<number, ActivityVideoRow[]>;
   // date -> the cached daily weather for the profile's home location (#1728). Used to
@@ -265,8 +268,6 @@ export function activityMetrics(
     const value = byKey.get(key);
     if (value) m.push(value);
   }
-  const effort = byKey.get("relative_effort");
-  if (effort) m.push(`Effort ${effort}`);
   return m;
 }
 
@@ -407,9 +408,9 @@ export function buildTrainingLogCards({
     } else {
       allParts = exOrder.map(strengthLine);
     }
-    // A pure cardio/sport activity keeps its canonical component as a clickable
-    // row (so it opens detail, like strength exercises do), but its measurements
-    // belong in the scan-first header summary rather than being repeated here.
+    // A pure cardio/sport activity is already named by its clickable activity
+    // title, and its measurements live in the scan-first header summary. Repeating
+    // its lone component below would produce rows like "Walking" under "Walking".
     const multi = allParts.length > 1;
     const single = allParts.length === 1 ? allParts[0] : null;
     const singlePureEffort =
@@ -417,7 +418,7 @@ export function buildTrainingLogCards({
       (single.kind === "cardio" || single.kind === "sport") &&
       (a.type === "cardio" || a.type === "sport");
     const parts = singlePureEffort
-      ? [{ ...single, detail: "" }]
+      ? []
       : allParts.filter((p) => p.kind === "strength" || multi);
 
     const calorieDisplay = activityCalorieDisplay(
@@ -506,6 +507,7 @@ export function buildTrainingLogCards({
       metrics: stamp
         ? [stamp, ...activityMetrics(a, units.distanceUnit)]
         : activityMetrics(a, units.distanceUnit),
+      contextMetrics: stamp ? [stamp] : [],
       gear:
         a.equipment_id != null
           ? (equipmentNames.get(a.equipment_id) ?? null)
@@ -530,8 +532,8 @@ export function buildTrainingLogCards({
       foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
       // GPS route polyline for the tile-free SVG thumbnail (issue #569), or null.
       routePolyline,
-      // Form-check video clips (#1224), mapped to the serializable card shape.
-      videos: (activityVideos?.get(a.id) ?? []).map((v) => ({
+      // Attached media clips (#1224), mapped to the serializable card shape.
+      media: (activityVideos?.get(a.id) ?? []).map((v) => ({
         id: v.id,
         exercise: v.exercise,
         caption: v.caption,

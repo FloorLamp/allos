@@ -43,30 +43,12 @@ async function expectStandingActions(page: Page): Promise<void> {
 }
 
 async function closeEmptyLiveWorkout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  const closeAnyway = page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Close anyway" });
-  await closeAnyway
-    .waitFor({ state: "visible", timeout: 3000 })
-    .catch(() => {});
-  if (await closeAnyway.isVisible().catch(() => false))
-    await closeAnyway.click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
-
-  const abandoned = await page
-    .waitForURL(/\/training(?:\?.*)?$/, { timeout: 5000 })
-    .then(() => true)
-    .catch(() => false);
-  if (abandoned) return;
-
-  await page.getByTestId("activity-page-edit").click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toBeHidden();
 }
 
 test("a no-routine Overview answers first and keeps both logging doors (#3062)", async ({

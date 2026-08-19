@@ -42,8 +42,10 @@ export interface AnatomyCoverageEntry {
 interface AnatomyDisplayProps {
   className?: string;
   showCaptions?: boolean;
-  /** Optional in-page drill-in destinations for interactive coverage hosts. */
-  muscleHrefs?: Partial<Record<MuscleId, string>>;
+  /** Override the figure's accessible name when a shared mode has a narrower host scope. */
+  ariaLabel?: string;
+  /** Optional disclosure targets for interactive coverage hosts. */
+  muscleTargets?: Partial<Record<MuscleId, string>>;
 }
 
 type MuscleAnatomyModeProps =
@@ -183,11 +185,11 @@ const CAPTION_SIZE = viewBoxFontSize(CAPTION_SCALE);
 function BodyView({
   view,
   plan,
-  muscleHrefs,
+  muscleTargets,
 }: {
   view: AnatomyView;
   plan: Map<MuscleId, MuscleRender>;
-  muscleHrefs?: Partial<Record<MuscleId, string>>;
+  muscleTargets?: Partial<Record<MuscleId, string>>;
 }) {
   const outline = BODY_OUTLINE[view];
   return (
@@ -223,11 +225,18 @@ function BodyView({
             ))}
           </g>
         );
-        const href = muscleHrefs?.[m];
-        return href ? (
-          <a key={m} href={href} aria-label={`Open ${r.title}`}>
+        const target = muscleTargets?.[m];
+        return target ? (
+          <g
+            key={m}
+            role="button"
+            tabIndex={0}
+            data-muscle-target={target}
+            aria-label={`Show details for ${r.title}`}
+            className="cursor-pointer outline-hidden data-[highlighted=true]:[&_path]:stroke-brand-700 data-[highlighted=true]:[&_path]:stroke-[1.5] focus-visible:[&_path]:stroke-brand-700 focus-visible:[&_path]:stroke-[1.5] dark:data-[highlighted=true]:[&_path]:stroke-brand-300 dark:focus-visible:[&_path]:stroke-brand-300"
+          >
             {group}
-          </a>
+          </g>
         ) : (
           group
         );
@@ -249,17 +258,23 @@ export default function MuscleAnatomy(props: MuscleAnatomyProps) {
   return (
     <svg
       viewBox={`0 0 ${width} ${VIEW_H + (showCaptions ? CAPTION_H : 0)}`}
-      role="img"
-      aria-label={`Muscle diagram (front and back): ${modeLabel}`}
+      role={props.muscleTargets ? "group" : "img"}
+      aria-label={
+        props.ariaLabel ?? `Muscle diagram (front and back): ${modeLabel}`
+      }
       data-testid="muscle-anatomy"
       data-mode={props.mode}
       className={props.className}
     >
       <g>
-        <BodyView view="front" plan={plan} muscleHrefs={props.muscleHrefs} />
+        <BodyView
+          view="front"
+          plan={plan}
+          muscleTargets={props.muscleTargets}
+        />
       </g>
       <g transform={`translate(${VIEW_W + VIEW_GAP},0)`}>
-        <BodyView view="back" plan={plan} muscleHrefs={props.muscleHrefs} />
+        <BodyView view="back" plan={plan} muscleTargets={props.muscleTargets} />
       </g>
       {showCaptions && (
         <>

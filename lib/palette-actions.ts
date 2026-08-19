@@ -291,6 +291,9 @@ export const PALETTE_DOMAIN_CENSUS = {
     "The palette has no relevance threading: the sheet's menu gates its period row on the #1042 cycle bit, and #1892's rule is that the row may never leak into a surface of a profile the domain does not apply to. Until the palette carries that bit, a period action here would show for every profile; the sheet row + server-gated overlay remain the quick doors."
   ),
   mood: "log-mood",
+  stool: arguedExclusion(
+    "The palette is a keyboard surface for a desk; a stool log is a phone-in-hand moment and its whole affordance is the seven icons, which a text-matched command row cannot carry (#2785). The sheet row + overlay are the door, and nothing in the palette would be faster than them."
+  ),
   symptom: arguedExclusion(
     "Same argument as the sheet census (lib/quick-log.ts): symptom capture is a state-routed pair (well-day bar vs illness cockpit), and #1860 owns reshaping it; a context-free palette entry would freeze one half."
   ),

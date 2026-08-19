@@ -1,6 +1,22 @@
 import type { DistanceUnit } from "./settings";
 import { kmTo, round } from "./units";
 
+export function relativeEffortPresentation(
+  value: number,
+  providerLabel?: string | null
+): { label: string; help: string } {
+  const provider = providerLabel?.replace(/\s*·\s*edited$/, "").trim();
+  const knownProvider = provider && provider !== "Manual" ? provider : null;
+  return {
+    label: knownProvider
+      ? `${knownProvider} effort ${value}`
+      : `Effort ${value}`,
+    help: knownProvider
+      ? `${knownProvider} calls this Relative Effort: an estimate of cardiovascular load from heart-rate intensity and duration, not a 1–10 rating.`
+      : "An estimate of cardiovascular load based on heart-rate intensity and duration. It is not a 1–10 effort rating.",
+  };
+}
+
 // Provider-owned measurements stored on an activity. They are displayed in the
 // editor but deliberately stay outside its editable/save payload.
 export interface ImportedActivityMetrics {

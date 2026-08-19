@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
-import { chartSeries } from "@/lib/chart-colors";
+import { chartNeutral, chartSeries } from "@/lib/chart-colors";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import type { SessionTrace, SessionTraceKey } from "@/lib/cycling-analytics";
 import type { CardioMetric } from "@/lib/analyze-view";
@@ -22,6 +22,13 @@ const TRACE_COLORS: Record<SessionTraceKey, string> = {
   grade_smooth: CYCLING_METRICS.elevation.color,
   temp: chartSeries.amber,
 };
+
+function hasOnlyZeroValues(trace: SessionTrace): boolean {
+  const values = trace.points.flatMap((point) =>
+    point.value == null ? [] : [point.value]
+  );
+  return values.length > 0 && values.every((value) => value === 0);
+}
 
 export default function SessionTelemetryChart({
   traces,
@@ -49,27 +56,39 @@ export default function SessionTelemetryChart({
   const selected =
     traces.find((trace) => trace.key === selectedKey) ?? traces[0];
   if (!selected) return null;
+  const selectedIsZeroOnly = hasOnlyZeroValues(selected);
 
   return (
     <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
         <div
           className="flex flex-wrap gap-1"
-          aria-label="Session trace"
+          aria-label="Recorded metrics"
           role="group"
         >
           {traces.map((trace) => {
             const active = trace.key === selected.key;
+            const zeroOnly = hasOnlyZeroValues(trace);
             return (
               <button
                 key={trace.key}
                 type="button"
                 aria-pressed={active}
+                aria-label={
+                  zeroOnly
+                    ? `${trace.shortLabel}, all recorded values are 0`
+                    : undefined
+                }
+                title={zeroOnly ? "All recorded values are 0" : undefined}
                 onClick={() => setSelectedKey(trace.key)}
                 className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
                   active
-                    ? "bg-brand-600 text-white"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                    ? zeroOnly
+                      ? "bg-slate-200 text-slate-500 dark:bg-ink-750 dark:text-slate-400"
+                      : "bg-brand-600 text-white"
+                    : zeroOnly
+                      ? "text-slate-400 hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-ink-750"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
                 }`}
               >
                 {trace.shortLabel}
@@ -85,7 +104,7 @@ export default function SessionTelemetryChart({
           label={selected.label}
           unit={selected.unit}
           decimals={selected.decimals}
-          color={TRACE_COLORS[selected.key]}
+          color={selectedIsZeroOnly ? chartNeutral : TRACE_COLORS[selected.key]}
           showDots={false}
           connectNulls={false}
           heightClass="h-64"

@@ -531,6 +531,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/training/activity-actions.ts",
+    fn: "discardWorkout",
+    why: "multi-view (#1330): discards the ITEM's live activity on its subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); an acting-profile requireWriteAccess() would authorize the wrong profile",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/training/activity-actions.ts",
     fn: "deleteActivity",
     why: "multi-view (#1330): deletes the ITEM's activity on its subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
@@ -539,6 +545,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "mergeActivities",
     why: "multi-view (#1330): folds a same-profile same-day pair on the ITEM's subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); cross-profile pairs are refused by the AND profile_id re-check",
   },
+  ...[
+    "uploadActivityVideoAction",
+    "updateActivityVideoCaptionAction",
+    "deleteActivityVideoAction",
+  ].map((fn) => ({
+    file: "app/(app)/training/video-actions.ts",
+    fn,
+    why: "multi-view activity-media write: gateItemProfile() gates the posted subject profile with requireProfileWriteAccess(), or falls back to requireWriteAccess() for an acting-profile form",
+    gate: "gateItemProfile",
+  })),
   // --- Tier-1b bespoke lists (issue #1359) — the flat SUB-lists of the Visits and
   // Immunizations surfaces adopt multi-view (Past encounters / All recorded doses);
   // their edit/delete gate the ROW's own profile through the same gateItemProfile()

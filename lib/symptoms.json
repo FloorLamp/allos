@@ -60,6 +60,12 @@
       "domain": "general"
     },
     {
+      "slug": "constipation",
+      "label": "Constipation",
+      "icon": "🧱",
+      "domain": "general"
+    },
+    {
       "slug": "loss_of_appetite",
       "label": "Loss of appetite",
       "icon": "🍽️",

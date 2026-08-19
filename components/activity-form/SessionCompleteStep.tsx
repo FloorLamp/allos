@@ -31,7 +31,7 @@ export default function SessionCompleteStep({
   notes: string;
   onNotes: (v: string) => void;
   onBack: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
 }) {
   return (
     <div className="space-y-5" data-testid="session-complete-step">

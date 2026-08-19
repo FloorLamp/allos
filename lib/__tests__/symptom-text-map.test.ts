@@ -12,6 +12,7 @@ import {
   parseSymptomMapping,
   type SymptomVocabulary,
 } from "@/lib/symptom-text-map";
+import { SYMPTOMS, symptomSlugs } from "@/lib/symptoms";
 
 const VOCAB: SymptomVocabulary = {
   slugs: ["fever", "cough", "poor_appetite", "sore_throat", "headache"],
@@ -140,5 +141,42 @@ describe("buildSymptomVocabPrompt", () => {
     const p = buildSymptomVocabPrompt(VOCAB);
     expect(p).toContain("fever — Fever");
     expect(p).toContain("tummy ache");
+  });
+});
+
+describe("the mapper's vocabulary is the CATALOG, not a second list (#2783)", () => {
+  // The issue asks that the fixed-vocabulary mapper gain constipation "in the same
+  // change". It does — but not because anything in the mapper was edited: the server
+  // action builds `slugs` from symptomSlugs() and `labels` from SYMPTOMS, so the
+  // catalog IS the mapper's vocabulary and a hand-kept second list would be the defect.
+  // This reconstructs that vocabulary exactly as app/(app)/symptom-actions.ts does and
+  // pins the PROPERTY, so a later refactor to a literal list fails here.
+  const live: SymptomVocabulary = {
+    slugs: symptomSlugs(),
+    labels: Object.fromEntries(SYMPTOMS.map((s) => [s.slug, s.label])),
+    customNames: [],
+  };
+
+  it("offers every curated slug to the model, constipation included", () => {
+    const prompt = buildSymptomVocabPrompt(live);
+    for (const s of SYMPTOMS) expect(prompt, s.slug).toContain(`- ${s.slug} —`);
+    expect(prompt).toContain("- constipation — Constipation");
+  });
+
+  it("keeps a constipation suggestion through the parse as a CURATED slug", () => {
+    // "backed up" / "couldn't go" is the plain language the issue names; the model
+    // returns the slug, and the parser's job is to recognize it as curated rather than
+    // coining a per-profile custom that would never join a curated series.
+    const m = parseSymptomMapping(
+      { symptoms: [{ slug: "constipation", severity: 2, note: "backed up" }] },
+      live
+    );
+    expect(m.symptoms).toHaveLength(1);
+    expect(m.symptoms[0]).toMatchObject({
+      slug: "constipation",
+      label: "Constipation",
+      severity: 2,
+      isCustom: false,
+    });
   });
 });

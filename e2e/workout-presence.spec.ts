@@ -74,12 +74,19 @@ test("the workout dock hydrates for an in-progress session, suppressed on the tr
     await expect(page.getByTestId("workout-dock")).toBeVisible();
 
     // Back on the dashboard, tapping the bar reopens the live editor (the minimize
-    // affordance proves the live overlay is up), and minimizing collapses it back.
+    // affordance proves the live overlay is up) without navigating away, and
+    // minimizing collapses it back.
     await page.goto("/");
     await expect(dock).toBeVisible();
+    const dashboardUrl = page.url();
     await page.getByTestId("workout-dock-open").click();
-    await expect(page.getByTestId("minimize-workout")).toBeVisible();
-    await page.getByTestId("minimize-workout").click();
+    const minimize = page.getByRole("button", {
+      name: "Minimize workout",
+      exact: true,
+    });
+    await expect(minimize).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
+    await minimize.click();
     await expect(page.getByTestId("workout-dock")).toBeVisible();
   } finally {
     await page.context().close();
@@ -107,7 +114,9 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   ).toBeVisible();
 
   // Minimize → the app-wide bar appears carrying elapsed time.
-  await page.getByTestId("minimize-workout").click();
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
   await expect(page.getByTestId("workout-dock")).toBeVisible();
 
   // A full reload while active re-hydrates the dock from the presence gather.
@@ -125,7 +134,7 @@ test("a live workout raises the dock, and discarding it removes the dock", async
     page.getByRole("button", { name: "Delete", exact: true })
   );
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   // Wait on the "Activity deleted." toast, NOT just the vanishing bar. Closing the

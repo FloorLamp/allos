@@ -1,6 +1,8 @@
-import type { ActivityType } from "./types";
-import type { DayGroup, DisplayPart } from "./training-log-card";
-import { activityComponentSportNames } from "./activity-icon";
+import type {
+  DayGroup,
+  DisplayPart,
+  TrainingLogCardData,
+} from "./training-log-card";
 import { trainingActivityPageHref, type AppRoute } from "./hrefs";
 
 // WHAT YOU DID (#2566) — the Training Overview's missing half.
@@ -34,17 +36,13 @@ export const RECENT_SESSION_PART_LIMIT = 5;
 
 export interface RecentSessionRow {
   id: number;
-  title: string;
-  type: ActivityType;
-  // Structured component/sport names, so an imported ride icons as a bike
-  // exactly as it does on its Log card.
-  sportNames: string[];
+  // Preserve the Training Log's complete presentation input. The overview
+  // chooses how many cards and parts fit; it does not flatten those values into
+  // a second summary model and rebuild their rendering independently.
+  card: TrainingLogCardData;
   // The day group's own label ("Today" / "Yesterday" / a long date) — the Log's
   // wording, not a second date vocabulary.
   dayLabel: string;
-  // Clock time, duration, distance, speed, heart rate, calories — whichever the
-  // card resolved, in the card's own reading order.
-  meta: string[];
   parts: DisplayPart[];
   // Parts beyond the cap, stated rather than dropped.
   moreParts: number;
@@ -97,31 +95,14 @@ function toRow(entry: {
   card: DayGroup["cards"][number];
 }): RecentSessionRow {
   const { card } = entry;
-  const meta = [
-    card.timeText,
-    card.durationText,
-    card.distanceText,
-    card.speedText,
-    card.heartRateText,
-    card.calorieText,
-  ].filter((v): v is string => Boolean(v));
   return {
     id: card.activity.id,
-    title: card.activity.title,
-    type: card.activity.type,
-    sportNames: activityComponentSportNames(card.activity.components),
+    card,
     dayLabel: entry.label,
-    meta,
     parts: card.parts.slice(0, RECENT_SESSION_PART_LIMIT),
     moreParts: Math.max(0, card.parts.length - RECENT_SESSION_PART_LIMIT),
     // The SAME resolver every other surface uses (#2870/#3061), so every
     // session opens the one canonical activity page it has.
     href: trainingActivityPageHref(card.activity.id),
   };
-}
-
-// The one line of a part, in the same reading order the Log card uses: name,
-// then its compact description.
-export function recentSessionPartText(part: DisplayPart): string {
-  return part.kind === "strength" ? part.text : part.detail;
 }

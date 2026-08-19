@@ -580,7 +580,12 @@ test("R3e — a draft's autosave debounce does not land a half-typed record afte
     .fill("Gate probe: half-typed workout");
 
   await holdLogoutPost(page);
-  await page.getByRole("button", { name: "Log out" }).click();
+  // The activity workspace correctly makes the sidebar inert. Invoke the real
+  // logout button programmatically so this lifecycle test can keep the pending
+  // draft mounted while exercising the button's wipe-then-logout handler.
+  await page
+    .getByRole("button", { name: "Log out" })
+    .evaluate((button: HTMLButtonElement) => button.click());
   await page.waitForURL(/\/login/, { timeout: 30_000 });
   // Outlast the debounce several times over: this asserts an ABSENCE, and an empty store
   // read before the write would have landed proves nothing.

@@ -434,6 +434,26 @@ const CANONICAL_ALIASES: [string, string][] = [
   //    fraction, so an alias would land two distinct same-date percentages on one
   //    series and silently drop one. Each has its OWN canonical entry instead.
 
+  // The modern gut panel (#2787). `normalizeCanonicalKey` folds word ORDER, so
+  // "H. pylori Antigen, Stool" already reaches the entry and needs no route; what
+  // needs one is a WORD synonym — the genus spelled out, or "fecal"/"stool" standing
+  // in for the entry's own qualifier.
+  ["Calprotectin", "Fecal Calprotectin"],
+  ["Stool Calprotectin", "Fecal Calprotectin"],
+  ["Fecal Elastase", "Pancreatic Elastase-1, Stool"],
+  ["Fecal Elastase-1", "Pancreatic Elastase-1, Stool"],
+  ["Stool Elastase", "Pancreatic Elastase-1, Stool"],
+  ["Pancreatic Elastase", "Pancreatic Elastase-1, Stool"],
+  ["Elastase-1, Stool", "Pancreatic Elastase-1, Stool"],
+  ["Helicobacter pylori Stool Antigen", "H. pylori Stool Antigen"],
+  ["H pylori Stool Antigen", "H. pylori Stool Antigen"],
+  // NOT aliased, on purpose:
+  //  • bare "Elastase" — NEUTROPHIL elastase is a different analyte in a different
+  //    specimen, so an unqualified spelling must coin its own entry (the §2 trap).
+  //  • bare "H. pylori" / "H. pylori Antibody" — the serology answers PAST exposure
+  //    where the stool antigen answers current infection, and the urea breath test is
+  //    a third assay again. Routing an unqualified spelling here would merge them.
+
   // NB: a "Full Name (ABBR)" entry does NOT need its bare abbreviation or bare full
   // name listed here — buildCanonicalIndex auto-derives both (see FULL_ABBR_RE). Only
   // WORD synonyms of such an entry (SGPT→ALT, Bicarbonate→Carbon Dioxide) need a

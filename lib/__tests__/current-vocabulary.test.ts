@@ -95,7 +95,6 @@ describe("Training Log vocabulary (#2486)", () => {
   it("uses Training Log names for the current activity surface", () => {
     const currentFiles = [
       "app/(app)/training/TrainingLogView.tsx",
-      "app/(app)/training/TrainingLogCard.tsx",
       "app/(app)/training/training-log-feed-resolve.ts",
       "components/TrainingLogCalendar.tsx",
       "lib/training-log-card.ts",

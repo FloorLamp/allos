@@ -4,7 +4,7 @@ Status: shipped (phase 1 — upload-only)
 
 The upload → sniff → store → serve/browse stack every video-carrying domain uses
 (issue #1224, phase 1). The **symptom / episode clip** domain (`symptom_videos`)
-and the **training form-check** domain (`activity_videos`) are its first two
+and the **training activity-media** domain (`activity_videos`) are its first two
 tenants. It is the deliberate **sibling of the #1119 photo core** — same
 per-profile store conventions, same strictest-privacy tier — with the parts
 video needs that photos don't: container sniffing, duration/creation-time
@@ -88,8 +88,9 @@ shape.
 The two routes differ in **which** profiles they accept, because their surfaces
 do:
 
-- `/api/activity-video/[id]` is scoped `id AND profile_id` — the training
-  surfaces that render it are active-profile pages.
+- `/api/activity-video/[id]` resolves the clip's owning profile and gates the
+  session against that profile. Activity detail can be opened from a household
+  multi-view without switching the acting profile.
 - `/api/symptom-video/[id]` resolves the clip's **owning** profile from the row
   and gates the session against **that** profile (`canAccessProfile`, #1696).
   The episode page that renders the strip resolves the episode across the
@@ -111,32 +112,22 @@ their domain's actions:
 - `components/illness/SymptomVideoStrip.tsx` — on the episode page
   (`/medical/episodes/[id]`), cross-profile gated (`profileId` → the household
   member), the `SymptomPhotoStrip` twin.
-- `components/activity/ActivityVideoStrip.tsx` — the training tenant,
-  active-profile scoped. It renders in **two placements**, split by `showAdd`
-  (#1457):
-  - **Training Log card** (`/training`, no `showAdd`) — a READ surface: playback,
-    caption edit, delete, privacy note, threaded through the training log feed
-    (`buildTrainingLogFeedPage` → `TrainingLogCardData.videos`). It renders **only when
-    clips exist**. Until #1457 it rendered for every writable activity
-    regardless of type or content, so a Strava easy run, a walk, and an imported
-    swim each carried a "Form check" heading, a "No clips…" line, and a button —
-    permanent vertical cost on every card (the #1416/#1455 density concern) for
-    an affordance that was loudest where it was least useful.
-  - **Activity editor** (`components/activity-form/ActivityFormCheck.tsx` inside
-    `ActivityMoreDetails`, `showAdd`) — the WRITE surface, where a clip is
-    attached. It always renders, empty state included. **Edit mode only**, and
-    that is a data constraint: `activity_videos` needs an `activityId`, which
-    the editor's create mode has none of until save, so during first-time
-    logging the block appears once the activity is saved and reopened. Deferred
-    upload (hold the file client-side until save) was weighed and rejected — a
-    client-held-blob lifecycle (navigation loss, size limits, retry semantics)
-    for a marginal flow; in-session capture, if ever wanted, rides the live
-    editor's own id timing (#924). There is **no activity-type gate** (owner
-    call): a clip on a run is unusual but legitimate, and a heuristic would be
-    one more thing to maintain. Unlike the card it is not handed clips by a
-    server component — the editor is a client component opened from several
-    entry points, so it reads them through `listActivityVideosAction` and
-    re-reads after an upload/delete.
+- `components/activity/ActivityMediaStrip.tsx` — the training tenant. It renders
+  in **two placements**, split by `showAdd` (#1457):
+  - **Activity detail page** (`/training/activity/[id]`, no `showAdd`) — the READ
+    surface for playback, caption edit, delete, and the privacy note. The detail
+    loader supplies `TrainingLogCardData.media`, and the section renders only
+    when media exists; compact Training Log rows stay focused on browsing.
+  - **Activity editor** (`components/activity-form/ActivityFormMedia.tsx` inside
+    `ActivityMoreDetails`, `showAdd`) — the WRITE surface where a video or audio
+    clip is attached. It always renders once an activity row exists, including
+    its empty state. This is not edit-only: the create form passes its autosaved
+    row id as soon as the first save creates it, so media can be added without a
+    close-and-reopen round trip. Before that id exists there is intentionally no
+    upload block; holding a large file in client state through save and retry
+    remains an unnecessary lifecycle. There is **no activity-type gate**: media
+    on a run is unusual but legitimate. The client editor reads through
+    `listActivityMediaAction` and re-reads after upload or deletion.
 
 ## Row-ops side-state (#199/#200/#201/#212)
 

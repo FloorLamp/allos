@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   INTAKE_SHORT_NAMES,
   intakeItemShortLabel,
+  intakeShortLabels,
   intakeShortName,
   normalizeIntakeName,
 } from "@/lib/intake-short-name";
@@ -148,5 +149,113 @@ describe("intakeItemShortLabel", () => {
     expect(intakeItemShortLabel({ name: "Custom Blend", product: "  " })).toBe(
       "Custom Blend"
     );
+  });
+});
+
+// The set-aware entry point. Shortening is MANY-TO-ONE, so the single-item resolver
+// cannot see the sibling it lands on top of — and two identical labels over two
+// different dose ids is a wrong-subject hazard on any control whose tap writes.
+describe("intakeShortLabels", () => {
+  const supp = (name: string, product?: string) => ({
+    name,
+    kind: "supplement" as const,
+    product: product ?? null,
+  });
+
+  it("shortens freely when nothing collides", () => {
+    expect(
+      intakeShortLabels([supp("Coenzyme Q10"), supp("Creatine Monohydrate")])
+    ).toEqual(["CoQ10", "Creatine"]);
+  });
+
+  it("drops BOTH sides of a curated alias collision back to the full name", () => {
+    // The map aliases these deliberately — same substance, one short form.
+    expect(
+      intakeShortLabels([supp("Coenzyme Q10"), supp("Ubiquinone")])
+    ).toEqual(["Coenzyme Q10", "Ubiquinone"]);
+  });
+
+  it("resolves a shortened name colliding with an item literally named that", () => {
+    // The wider class: most short forms are plausible names on their own, so a
+    // collision needs only ONE of the pair to have been shortened.
+    expect(
+      intakeShortLabels([supp("Creatine Monohydrate"), supp("Creatine")])
+    ).toEqual(["Creatine Monohydrate", "Creatine"]);
+  });
+
+  it("resolves a product-derived collision, which needs no curated entry", () => {
+    expect(
+      intakeShortLabels([
+        supp("Astaxanthin/Lutein/Zeaxanthin", "Eye Health+"),
+        supp("Bilberry & Lutein Complex", "Eye Health+"),
+      ])
+    ).toEqual(["Astaxanthin/Lutein/Zeaxanthin", "Bilberry & Lutein Complex"]);
+  });
+
+  it("compares in the lookup's own normalization, so case is not an escape", () => {
+    expect(intakeShortLabels([supp("Coenzyme Q10"), supp("coq10")])).toEqual([
+      "Coenzyme Q10",
+      "coq10",
+    ]);
+  });
+
+  it("only lengthens the colliding pair, never the whole set", () => {
+    expect(
+      intakeShortLabels([
+        supp("Coenzyme Q10"),
+        supp("Ubiquinone"),
+        supp("Creatine Monohydrate"),
+      ])
+    ).toEqual(["Coenzyme Q10", "Ubiquinone", "Creatine"]);
+  });
+
+  it("leaves an identical-FULL-name pair identical — a state it neither makes nor fixes", () => {
+    // Two separately managed items with the same name are already qualified by the
+    // dose detail beside them on every intake surface; falling back cannot help.
+    expect(
+      intakeShortLabels([supp("Magnesium Citrate"), supp("Magnesium Citrate")])
+    ).toEqual(["Magnesium Citrate", "Magnesium Citrate"]);
+  });
+
+  it("counts a medication's untouched name as a collidable label", () => {
+    // A medication is never shortened, so it collides as its own full name — and
+    // the SUPPLEMENT beside it is the side that must lengthen.
+    expect(
+      intakeShortLabels([
+        { name: "Creatine", kind: "medication", product: null },
+        supp("Creatine Monohydrate"),
+      ])
+    ).toEqual(["Creatine", "Creatine Monohydrate"]);
+  });
+
+  // #2858 review pass 2, R2. A full name can BE another item's surviving short
+  // form, so one count-and-substitute pass can hand back the collision it just
+  // resolved. The product pair lengthens onto "CoQ10", which the third item was
+  // still wearing; only running to a fixed point separates all three.
+  it("re-resolves a collision its own fallback creates", () => {
+    expect(
+      intakeShortLabels([
+        { name: "CoQ10", kind: "supplement", product: "Ubi" },
+        { name: "Astaxanthin Complex", kind: "supplement", product: "Ubi" },
+        { name: "Coenzyme Q10", kind: "supplement", product: null },
+      ])
+    ).toEqual(["CoQ10", "Astaxanthin Complex", "Coenzyme Q10"]);
+  });
+
+  it("leaves no two labels equal on the case its own fallback broke", () => {
+    // The property the surfaces actually depend on, stated as a property: after
+    // resolution NOTHING in the set shares a label with anything else.
+    const labels = intakeShortLabels([
+      { name: "CoQ10", kind: "supplement", product: "Ubi" },
+      { name: "Astaxanthin Complex", kind: "supplement", product: "Ubi" },
+      { name: "Coenzyme Q10", kind: "supplement", product: null },
+    ]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("is positional and total — one label per input, empty in, empty out", () => {
+    expect(intakeShortLabels([])).toEqual([]);
+    const items = [supp("Coenzyme Q10"), supp("Ubiquinone"), supp("Zinc")];
+    expect(intakeShortLabels(items)).toHaveLength(items.length);
   });
 });

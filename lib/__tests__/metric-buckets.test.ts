@@ -27,6 +27,9 @@ describe("metric bucket membership", () => {
   it("is exactly the set of averaged metrics (no accidental additions)", () => {
     expect([...AVERAGED_METRICS].sort()).toEqual(
       [
+        // #2785 — a FLOOR against the additive default, not a claim that a mean
+        // Bristol type means anything. See the comment on the set itself.
+        "bristol_stool_type",
         "bmr_kcal",
         "body_water_kg",
         "bone_mass_kg",

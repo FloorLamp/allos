@@ -468,7 +468,6 @@ const MENU_TRIGGER_OK_MARKER = "hydrated-ok";
 // illness-episode-followups, intake-lifecycle, offline-dose-confirm, saved-star.mobile,
 // trends-default-range and trends-overview-curated.mobile, six of which reached zero.
 const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
-  "activity-equipment.spec.ts": 1,
   "appointments.spec.ts": 2,
   "biomarker-picker-rank.spec.ts": 1,
   "care-plan.spec.ts": 1,
@@ -505,7 +504,6 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "skin.spec.ts": 2,
   "substance-use.spec.ts": 2,
   "training-log-merge.spec.ts": 1,
-  "training-log-provenance.spec.ts": 2,
   "trends-card-pin.spec.ts": 1,
   "undo-delete.spec.ts": 1,
   "upcoming-aggregate.spec.ts": 2,

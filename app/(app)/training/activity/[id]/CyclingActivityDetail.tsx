@@ -1,21 +1,19 @@
 // Cycling's declared extras on the canonical activity detail page.
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IconArrowLeft } from "@tabler/icons-react";
 import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { StatBox } from "@/components/StatBox";
+import ActivityMetricsLine from "@/components/activity/ActivityMetricsLine";
+import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
 import { activityTiming } from "@/lib/activity-timing";
 import {
   importedActivityStats,
   type ImportedActivityStat,
 } from "@/lib/activity-import-details";
-import { formatActivityCalories } from "@/lib/calorie-estimate";
-import { speedKmh } from "@/lib/coaching/cardio";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import {
-  CYCLING_OVERVIEW_HREF,
   cyclingOverviewHref,
   cyclingRideHref,
   equipmentHref,
@@ -35,7 +33,7 @@ import {
   wattsPerKg,
 } from "@/lib/session-detail";
 import type { DistanceUnit, UnitPrefs } from "@/lib/settings";
-import { ZONE_COLORS, zonePresentation } from "@/lib/training-zones";
+import { ZONE_COLORS } from "@/lib/training-zones";
 import { fmtDistance, fmtKmh, kmTo, round } from "@/lib/units";
 import { SessionChartLinkProvider } from "./SessionChartLink";
 import SessionHeartRateChart from "./SessionHeartRateChart";
@@ -49,7 +47,7 @@ import SessionHighlights from "@/components/SessionHighlights";
 import SessionComparisonCard from "@/components/SessionComparisonCard";
 import {
   ActivityDetailSectionHeading,
-  ActivityDetailSectionNavigation,
+  ActivityDetailSectionNav,
 } from "./ActivityDetailSection";
 
 export const dynamic = "force-dynamic";
@@ -247,6 +245,9 @@ export default async function CyclingActivityDetail(props: {
   formatPrefs: DisplayFormatPrefs;
   rideLens: CyclingLens | null;
   base: ActivityDetailData;
+  showMuscles: boolean;
+  showDetails: boolean;
+  subjectProfileId?: number;
 }) {
   const { activityId: id, profileId, units, formatPrefs, base } = props;
   const splitDistanceM = units.distanceUnit === "mi" ? 5 * 1609.344 : 5 * 1000;
@@ -284,10 +285,7 @@ export default async function CyclingActivityDetail(props: {
         ),
       }
     : importedRaw;
-  const importedSpeed = imported.primary.some((stat) => stat.key === "speed");
-  const derivedSpeed = speedKmh(data.row.distance_km, data.row.duration_min);
   const averageWattsPerKg = wattsPerKg(data.row.avg_power_w, data.bodyweightKg);
-  const averageHeartRateZone = zonePresentation(data.activity.heart_rate_zone);
   const primaryStats = imported.primary.map((stat) => {
     if (stat.key === "power" && averageWattsPerKg != null) {
       return {
@@ -297,24 +295,15 @@ export default async function CyclingActivityDetail(props: {
           .join(" · "),
       };
     }
-    if (stat.key === "heart_rate" && averageHeartRateZone) {
-      return {
-        ...stat,
-        detail: [`Average falls in ${averageHeartRateZone.name}`, stat.detail]
-          .filter(Boolean)
-          .join(" · "),
-      };
-    }
     return stat;
   });
-  const recordedStats = [...primaryStats, ...imported.secondary];
-  const energyAlreadyShown = imported.secondary.some(
-    (stat) => stat.key === "active_kcal"
+  const detailStats = [...primaryStats, ...imported.secondary].filter(
+    (stat) =>
+      stat.key !== "speed" &&
+      stat.key !== "heart_rate" &&
+      stat.key !== "relative_effort" &&
+      stat.key !== "active_kcal"
   );
-  const fallbackEnergy =
-    !energyAlreadyShown && data.calorieDisplay
-      ? formatActivityCalories(data.calorieDisplay)
-      : null;
   const comparisonByKey = new Map(
     data.comparison?.metrics.map((metric) => [metric.key, metric]) ?? []
   );
@@ -417,156 +406,151 @@ export default async function CyclingActivityDetail(props: {
       data.distanceSplits.length > 0 ||
       data.laps.length > 0 ||
       data.segmentEfforts.length > 0);
-  const rideSections = [
-    { id: "overview", label: "Overview" },
-    ...(hasEffort ? [{ id: "effort", label: "Effort" }] : []),
-    ...(hasCourse ? [{ id: "course", label: "Course" }] : []),
-    { id: "details", label: "Details" },
-  ];
   const hasLinkedEffortCharts =
     telemetryTraces.length > 0 && heartRateSeries.length > 0;
   const hasTimedRoute =
     !data.indoorOnly && !!data.routePolyline && data.timedRoute.length > 1;
   const effortHoverHint = hasLinkedEffortCharts
     ? hasTimedRoute
-      ? " Hover either effort chart to inspect the same moment and route position."
-      : " Hover either effort chart to inspect the same moment."
+      ? " Hover either chart to inspect the same point in time and its route position."
+      : " Hover either chart to inspect the same point in time."
     : hasTimedRoute
-      ? " Hover the chart to follow the route position."
+      ? " Hover the chart to follow its route position."
       : "";
+  const hasPausedTime =
+    timing.activeMin != null &&
+    timing.elapsedMin != null &&
+    timing.elapsedMin > timing.activeMin;
+  const hasPrimarySummary =
+    base.card.durationText != null ||
+    base.card.distanceText != null ||
+    base.card.speedText != null ||
+    base.card.heartRateText != null ||
+    base.card.activity.imported_metrics?.relative_effort != null ||
+    base.card.calorieText != null ||
+    base.card.activity.intensity != null;
+  const hasRecordedMeasurements =
+    hasPausedTime ||
+    detailStats.length > 0 ||
+    data.activity.imported_metrics?.max_hr != null ||
+    data.activity.imported_metrics?.max_speed_kmh != null;
+  const hasRideDetails =
+    hasPrimarySummary ||
+    base.card.contextMetrics.length > 0 ||
+    data.equipment != null ||
+    hasRecordedMeasurements ||
+    highlights.length > 0;
+  const sectionLinks = [
+    ...(hasEffort ? [{ id: "effort", label: "Effort" }] : []),
+    ...(hasCourse ? [{ id: "course", label: "Course" }] : []),
+    ...(props.showMuscles ? [{ id: "muscles", label: "Muscles" }] : []),
+    ...(props.showDetails ? [{ id: "details", label: "Details" }] : []),
+  ];
   return (
     <>
-      <Link
-        href={
-          rideLens
-            ? cyclingOverviewHref(rideLens)
-            : data.activityName.trim().toLowerCase() === "cycling"
-              ? CYCLING_OVERVIEW_HREF
-              : cyclingOverviewHref({
-                  metric: "distance",
-                  range: "all",
-                  activity: data.activityName,
-                })
-        }
-        data-testid="ride-cycling-overview-link"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-      >
-        <IconArrowLeft className="h-4 w-4" stroke={1.75} />
-        {data.activityName} overview
-      </Link>
-
-      <ActivityDetailSectionNavigation sections={rideSections} />
-
       <SessionChartLinkProvider>
+        <ActivityDetailSectionNav sections={sectionLinks} />
         <section
           id="overview"
-          className="scroll-mt-4"
+          className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4"
           data-testid="activity-section-overview"
         >
-          <ActivityDetailSectionHeading first>
-            Overview
-          </ActivityDetailSectionHeading>
-
-          <CardGroup
-            title={`${activityNoun === "ride" ? "Ride" : "Session"} summary`}
-            data-testid="ride-summary"
-          >
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {timing.activeMin != null ? (
-                <StatBox
-                  label="Active time"
-                  value={`${timing.activeMin} min`}
-                  sub={
-                    timing.elapsedMin != null
-                      ? `${timing.elapsedMin} min elapsed${
-                          timing.restMin
-                            ? ` · ${timing.restMin} min paused`
-                            : ""
-                        }`
-                      : null
-                  }
-                  data-testid="ride-stat-active-time"
-                />
+          {hasRideDetails ? (
+            <CardGroup
+              title={`${activityNoun === "ride" ? "Ride" : "Session"} details`}
+              data-testid="ride-summary"
+            >
+              {hasPrimarySummary ? (
+                <div className="mt-4">
+                  <ActivitySummaryLine
+                    timeText={null}
+                    durationText={base.card.durationText}
+                    distanceText={base.card.distanceText}
+                    speedText={base.card.speedText}
+                    heartRateText={base.card.heartRateText}
+                    relativeEffort={
+                      base.card.activity.imported_metrics?.relative_effort
+                    }
+                    relativeEffortProvider={base.card.provenance.label}
+                    calorieText={base.card.calorieText}
+                    intensity={base.card.activity.intensity}
+                    heartRateZone={base.card.activity.heart_rate_zone}
+                    density="detail"
+                    testId="ride-summary-line"
+                    metricDetails={{
+                      speed: summaryStatSub("speed"),
+                      heartRate: summaryStatSub("heart_rate"),
+                      relativeEffort: summaryStatSub("relative_effort"),
+                    }}
+                  />
+                </div>
               ) : null}
-              {data.row.distance_km != null ? (
-                <StatBox
-                  label="Distance"
-                  value={fmtDistance(data.row.distance_km, units.distanceUnit)}
-                  data-testid="ride-stat-distance"
-                />
-              ) : null}
-              {!importedSpeed && derivedSpeed != null ? (
-                <StatBox
-                  label="Average speed"
-                  value={fmtKmh(derivedSpeed, units.distanceUnit)}
-                  sub={summaryStatSub("speed")}
-                  data-testid="ride-stat-speed"
-                />
-              ) : null}
-              {data.row.intensity ? (
-                <StatBox
-                  label="Intensity"
-                  value={data.row.intensity.replace(/^\w/, (value) =>
-                    value.toUpperCase()
-                  )}
-                  data-testid="ride-stat-intensity"
-                />
-              ) : null}
-              {data.equipment ? (
-                <StatBox
-                  label="Bike"
-                  value={data.equipment.name}
-                  href={equipmentHref(data.equipment.id)}
-                  data-testid="ride-stat-bike"
-                />
-              ) : null}
-            </dl>
-            <SessionHighlights
-              highlights={highlights}
-              title={`${activityNoun === "ride" ? "Ride" : "Session"} highlights`}
-            />
-            {recordedStats.length > 0 || fallbackEnergy ? (
-              <CardGroupSection className="max-sm:border-t-0">
+              <ActivityMetricsLine
+                metrics={base.card.contextMetrics}
+                gear={
+                  data.equipment
+                    ? {
+                        label: data.equipment.name,
+                        href:
+                          props.subjectProfileId == null
+                            ? equipmentHref(data.equipment.id)
+                            : undefined,
+                      }
+                    : null
+                }
+                className="mt-3"
+              />
+              {hasRecordedMeasurements ? (
                 <dl
-                  className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                  className="mt-4 grid gap-x-8 gap-y-4 border-b border-black/5 pb-4 sm:grid-cols-2 dark:border-white/10"
                   data-testid="ride-recorded-measurements"
                 >
-                  {recordedStats.map((stat) => (
+                  {hasPausedTime ? (
+                    <StatBox
+                      label="Elapsed time"
+                      value={`${timing.elapsedMin} min`}
+                      sub={`${timing.restMin ?? 0} min paused`}
+                      variant="plain"
+                      data-testid="ride-stat-active-time"
+                    />
+                  ) : null}
+                  {data.activity.imported_metrics?.max_speed_kmh != null ? (
+                    <StatBox
+                      label="Top speed"
+                      value={fmtKmh(
+                        data.activity.imported_metrics.max_speed_kmh,
+                        units.distanceUnit
+                      )}
+                      variant="plain"
+                      data-testid="ride-stat-max-speed"
+                    />
+                  ) : null}
+                  {data.activity.imported_metrics?.max_hr != null ? (
+                    <StatBox
+                      label="Max heart rate"
+                      value={`${data.activity.imported_metrics.max_hr} bpm`}
+                      variant="plain"
+                      data-testid="ride-stat-max-heart-rate"
+                    />
+                  ) : null}
+                  {detailStats.map((stat) => (
                     <StatBox
                       key={stat.key}
                       label={stat.label}
                       value={stat.value}
-                      valueStyle={
-                        stat.key === "heart_rate" && averageHeartRateZone
-                          ? { color: averageHeartRateZone.color }
-                          : undefined
-                      }
-                      valueTitle={
-                        stat.key === "heart_rate"
-                          ? averageHeartRateZone?.title
-                          : undefined
-                      }
                       sub={summaryStatSub(stat.key, stat.detail)}
-                      subClass={
-                        stat.key === "heart_rate" && averageHeartRateZone
-                          ? "font-medium text-slate-600 dark:text-slate-300"
-                          : undefined
-                      }
+                      variant="plain"
                       data-testid={statTestId(stat)}
                     />
                   ))}
-                  {fallbackEnergy ? (
-                    <StatBox
-                      label="Energy"
-                      value={fallbackEnergy}
-                      data-testid="ride-stat-energy"
-                    />
-                  ) : null}
                 </dl>
-              </CardGroupSection>
-            ) : null}
-          </CardGroup>
-
+              ) : null}
+              <SessionHighlights
+                highlights={highlights}
+                title={`${activityNoun === "ride" ? "Ride" : "Session"} highlights`}
+              />
+            </CardGroup>
+          ) : null}
           {data.comparison ? (
             <SessionComparisonCard
               comparison={data.comparison}
@@ -586,15 +570,15 @@ export default async function CyclingActivityDetail(props: {
         {hasEffort ? (
           <section
             id="effort"
-            className="scroll-mt-4 [&>div+section]:mt-0"
+            className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4 [&>div+section]:mt-0"
             data-testid="activity-section-effort"
           >
             <ActivityDetailSectionHeading>Effort</ActivityDetailSectionHeading>
 
             {telemetryTraces.length > 0 ? (
               <CardGroup
-                title={`${activityNoun === "ride" ? "Ride" : "Session"} traces`}
-                description={`Recorded sensor data over elapsed ${activityNoun} time.${effortHoverHint}`}
+                title="Recorded metrics"
+                tooltip={`Shows sensor data recorded across the ${activityNoun}. Choose a metric to see how it changed over time.${effortHoverHint}`}
                 className="mt-4"
                 data-testid="ride-traces"
               >
@@ -608,7 +592,7 @@ export default async function CyclingActivityDetail(props: {
             {heartRateSeries.length > 0 ? (
               <CardGroup
                 title="Heart rate"
-                description={`One-minute readings recorded during this ${activityNoun}. A break in the line is a gap in wear.${effortHoverHint}`}
+                tooltip={`Shows one-minute heart-rate readings from this ${activityNoun}. Gaps mean no reading was recorded.${effortHoverHint}`}
                 className="mt-4"
                 data-testid="session-heart-rate"
                 action={
@@ -684,7 +668,7 @@ export default async function CyclingActivityDetail(props: {
             {data.dynamics ? (
               <CardGroup
                 title="Ride analysis"
-                description="Derived from the recorded moving, power, grade, and heart-rate streams."
+                tooltip="Shows movement, coasting, climbing, and power-to-heart-rate drift calculated from the ride’s recorded data."
                 className="mt-4"
                 data-testid="ride-analysis"
               >
@@ -740,7 +724,7 @@ export default async function CyclingActivityDetail(props: {
             {hasPowerProfile ? (
               <CardGroup
                 title="Power profile"
-                description="Best rolling efforts and FTP-relative load from this ride’s recorded power."
+                tooltip="Shows the ride’s best rolling power efforts and training load relative to FTP."
                 className="mt-4"
                 data-testid="ride-power-profile"
               >
@@ -840,7 +824,7 @@ export default async function CyclingActivityDetail(props: {
         {hasCourse ? (
           <section
             id="course"
-            className="scroll-mt-4 [&>div+section]:mt-0"
+            className="scroll-mt-[calc(var(--shell-chrome-h)+1rem)] sm:scroll-mt-4 [&>div+section]:mt-0"
             data-testid="activity-section-course"
           >
             <ActivityDetailSectionHeading>Course</ActivityDetailSectionHeading>
@@ -872,10 +856,12 @@ export default async function CyclingActivityDetail(props: {
                           rideLens
                             ? cyclingRideHref(
                                 data.routeHistory.fastest.id,
-                                rideLens
+                                rideLens,
+                                props.subjectProfileId
                               )
                             : trainingActivityPageHref(
-                                data.routeHistory.fastest.id
+                                data.routeHistory.fastest.id,
+                                props.subjectProfileId
                               )
                         }
                         className="font-medium text-brand-700 hover:underline dark:text-brand-300"
@@ -900,7 +886,7 @@ export default async function CyclingActivityDetail(props: {
             {data.distanceSplits.length > 0 ? (
               <CardGroup
                 title={`${units.distanceUnit === "mi" ? "5 mi" : "5 km"} splits`}
-                description="Automatic distance splits derived from the recorded stream."
+                tooltip="Breaks the ride into equal-distance splits using the recorded activity data. The final split may be shorter."
                 className="mt-4"
                 data-testid="ride-distance-splits"
               >

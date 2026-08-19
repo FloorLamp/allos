@@ -409,6 +409,16 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["CRP", "C-Reactive Protein"],
       ["LDL-C", "LDL Cholesterol"],
       ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
+      // The modern gut panel (#2787). Each of these is a WORD synonym of the entry's
+      // own qualifier, which normalizeCanonicalKey's order-folding cannot reach.
+      ["Calprotectin", "Fecal Calprotectin"],
+      ["Stool Calprotectin", "Fecal Calprotectin"],
+      ["Fecal Elastase", "Pancreatic Elastase-1, Stool"],
+      ["Pancreatic Elastase", "Pancreatic Elastase-1, Stool"],
+      ["Helicobacter pylori Stool Antigen", "H. pylori Stool Antigen"],
+      // No curated route needed for this one — the token set already folds word ORDER,
+      // which is why it is pinned HERE rather than added to the alias table.
+      ["H. pylori Antigen, Stool", "H. pylori Stool Antigen"],
     ];
     for (const [spelling, canonical] of expectations) {
       expect(snapCanonicalName(spelling, index)).toBe(canonical);

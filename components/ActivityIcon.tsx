@@ -73,6 +73,7 @@ export default function ActivityIcon({
   type,
   title,
   sportNames,
+  composite = false,
   className = "h-5 w-5",
   stroke = 1.75,
 }: {
@@ -82,10 +83,13 @@ export default function ActivityIcon({
   // matched before the free-text title so an imported "Morning Ride" icons as a
   // bike rather than falling back to the generic cardio (run) icon.
   sportNames?: string[];
+  composite?: boolean;
   className?: string;
   stroke?: number;
 }) {
-  const key = pickActivityIconKey(type, title, sportNames);
+  const key = composite
+    ? "activity"
+    : pickActivityIconKey(type, title, sportNames);
   const Icon = KEY_ICONS[key];
   return (
     <Icon
@@ -94,6 +98,7 @@ export default function ActivityIcon({
       aria-hidden
       data-testid="activity-icon"
       data-icon={key}
+      data-composite={composite || undefined}
     />
   );
 }

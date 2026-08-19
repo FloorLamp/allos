@@ -67,11 +67,13 @@ export default function OverflowMenu({
   open,
   onOpenChange,
   children,
+  panelClassName = "w-40",
 }: {
   label: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: (helpers: MenuHelpers) => ReactNode;
+  panelClassName?: string;
 }) {
   const toast = useToast();
   const confirmOpen = useConfirmOpen();
@@ -157,6 +159,13 @@ export default function OverflowMenu({
     };
   }, [open, reposition]);
 
+  // Some menu flows expand into a wider picker while staying open. Re-anchor
+  // after that width changes so the panel remains aligned with its trigger and
+  // clamped inside the viewport.
+  useLayoutEffect(() => {
+    if (open) reposition();
+  }, [open, panelClassName, reposition]);
+
   // A DECISION opened over this menu ends it (#2599).
   //
   // A menu item that awaits `useConfirm()` hands the interaction to a modal
@@ -227,7 +236,7 @@ export default function OverflowMenu({
                 left: pos?.left ?? 0,
                 visibility: pos ? "visible" : "hidden",
               }}
-              className="z-50 w-40 overflow-hidden rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10"
+              className={`z-50 overflow-hidden rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${panelClassName}`}
             >
               {children({ close, runAction, anchorRef: triggerRef })}
             </div>

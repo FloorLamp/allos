@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   pickActivityIconKey,
   activityComponentSportNames,
+  activityIconIdentitiesAreComposite,
+  activityComponentsHaveCompositeIconIdentity,
 } from "@/lib/activity-icon";
 
 describe("pickActivityIconKey", () => {
@@ -103,5 +105,24 @@ describe("activityComponentSportNames", () => {
         activityComponentSportNames(json)
       )
     ).toBe("bike");
+  });
+});
+
+describe("composite activity icon identity", () => {
+  it("keeps several lifts under one strength identity", () => {
+    expect(
+      activityIconIdentitiesAreComposite([
+        { type: "strength", title: "Bench Press" },
+        { type: "strength", title: "Barbell Row" },
+      ])
+    ).toBe(false);
+  });
+
+  it("uses a composite identity when components resolve to different activities", () => {
+    const components = JSON.stringify([
+      { name: "Cycling", type: "cardio" },
+      { name: "Running", type: "cardio" },
+    ]);
+    expect(activityComponentsHaveCompositeIconIdentity(components)).toBe(true);
   });
 });

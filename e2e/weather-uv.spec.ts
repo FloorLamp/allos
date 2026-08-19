@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { WEATHER_PROFILE } from "./logins/findings";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
@@ -254,17 +254,18 @@ test.describe("Weather & UV integration (#1172)", () => {
       // The seeded RIDE is outdoor-flagged, so its training log record carries the
       // conditions it happened in. The seeded walk is not outdoor-flagged and
       // carries none — the catalog flag decides, not the availability of data.
-      // The feed is slim rows (#2897): select the ride's row into the reading
-      // pane, where the full record card renders its metrics.
+      // The feed is slim rows: follow the ride to its canonical page for metrics.
       await member.goto("/training?tab=log");
       const rideRow = member
         .getByTestId("training-log-row")
         .filter({ hasText: "Cycling" })
         .first(); // first-ok: fixture-owned single seeded ride
-      await hydratedClick(member, rideRow);
-      const rideCard = member
-        .getByTestId("training-log-reading-pane")
-        .locator(".card", { hasText: "Cycling" });
+      await followLink(
+        member,
+        rideRow.getByRole("link", { name: "Cycling", exact: true }),
+        /\/training\/activity\/\d+$/
+      );
+      const rideCard = member.getByTestId("training-activity-page");
       await expect(rideCard).toBeVisible();
       // Rendered in the LOGIN's scale (the fixture login reads Fahrenheit), which is
       // the point: the stamp is a display concern over a canonical °C reading.

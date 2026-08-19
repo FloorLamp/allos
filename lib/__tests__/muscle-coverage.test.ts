@@ -60,6 +60,11 @@ describe("coverageContributions — drill-in evidence", () => {
         {
           exercise: "Incline Bench Press",
           date: TODAY,
+          activityId: 42,
+        },
+        {
+          exercise: "Incline Bench Press",
+          date: TODAY,
           activityId: 43,
           warmup: 1,
         },
@@ -78,12 +83,14 @@ describe("coverageContributions — drill-in evidence", () => {
         exercise: "Incline Bench Press",
         credit: 1,
         role: "primary",
+        count: 2,
       }),
     ]);
     expect(rows.get("front-delts")?.[0]).toMatchObject({
       activityId: 42,
       credit: SECONDARY_CREDIT,
       role: "secondary",
+      count: 2,
     });
   });
 });

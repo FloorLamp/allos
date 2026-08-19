@@ -81,6 +81,10 @@ describe("quickLogMenu", () => {
       // time-sensitive log (both the phase derivation and the regularity data
       // depend on catching it), and the sheet had no entry for it at all.
       "log-period",
+      // #2785 — Bristol stool form, the third thing the body itself reports. Its
+      // seven-button picker is the entry surface AND the vocabulary guard: the
+      // number is never typed, so a 0 or an 8 has nowhere to come from.
+      "log-stool",
       // #1525 — the one non-log row: filing a document, the in-app twin of the
       // share target. Last, because it is the odd verb out.
       "add-document",
@@ -101,6 +105,7 @@ describe("quickLogMenu", () => {
       "log-measurements",
       "log-practice",
       "log-mood",
+      "log-stool",
       "add-document",
     ]);
   });
@@ -163,6 +168,7 @@ describe("the registry itself", () => {
       "practice",
       "mood",
       "cycle",
+      "stool",
       "document",
     ]);
   });

@@ -36,6 +36,11 @@ export const LOGGABLE_DOMAINS = [
   "temperature",
   "practice",
   "period",
+  // Stool form (#2785). Its own domain rather than a corner of "vitals": the grain
+  // rule above is that a domain splits wherever a census distinguishes it, and this
+  // one is distinguished everywhere — a different store, a different form, a seven-
+  // button vocabulary, and no overlap with anything the measurements sitting asks.
+  "stool",
   "mood",
   "symptom",
   "substance",

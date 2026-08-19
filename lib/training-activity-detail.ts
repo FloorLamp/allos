@@ -40,8 +40,12 @@ import {
 } from "./session-detail";
 import { isSameActivityKind } from "./cycling-activity";
 import { getExerciseComparison } from "./queries/training/strength";
-import { equipmentLoadLane } from "./lifts";
+import { equipmentLoadLane, isBodyweight } from "./lifts";
 import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
+import {
+  strengthSessionRecords,
+  type StrengthSessionRecords,
+} from "./coaching";
 import {
   distanceSplits,
   parseActivityStreams,
@@ -68,6 +72,7 @@ import {
   type SessionLap,
   type SessionSegmentEffort,
 } from "./queries/training/session-course";
+import { strengthAnalyzeHref, type AppRoute } from "./hrefs";
 
 // Structurally identical to the card menu's MergeSibling — declared here so lib
 // does not import an app-layer module; the page passes these straight through.
@@ -84,6 +89,10 @@ export interface ActivityDetailHeartRate {
   minutes: { ts: string; bpm: number }[];
   zoneMinutes: number[] | null;
   zoneModel: ZoneModel | null;
+}
+
+export interface ActivityStrengthRecord extends StrengthSessionRecords {
+  href: AppRoute;
 }
 
 // What the SOURCE holds second-by-second for this session (#2870 step 4 widened
@@ -140,6 +149,11 @@ export interface ActivityDetailData {
   // pane renders from feed data with no fetch (#2897), and one history scan per
   // exercise per card is not a price a browse surface should pay.
   partDeltas: (ProgressDelta | null)[];
+  // Strength PRs per rendered part, INDEX-ALIGNED with `card.parts`. A running
+  // record beat all earlier sessions on the same load context; an all-time
+  // record has not been surpassed since. Null for non-strength parts, first-ever
+  // dates, mixed load contexts, and sessions that set neither record.
+  partRecords: (ActivityStrengthRecord | null)[];
   // Adjacent activities in ledger order (date, then id) for ‹ older / newer ›.
   olderId: number | null;
   newerId: number | null;
@@ -318,6 +332,7 @@ export function getActivityDetailData(
   // sessions oldest-first, so "last" is simply the entry before this activity's.
   const mySets = sets.filter((s) => s.activity_id === row.id);
   const deltaByExercise = new Map<string, ProgressDelta | null>();
+  const recordsByExercise = new Map<string, ActivityStrengthRecord | null>();
   for (const part of card.parts) {
     if (part.kind !== "strength") continue;
     if (deltaByExercise.has(part.name)) continue;
@@ -333,6 +348,7 @@ export function getActivityDetailData(
     );
     if (lanes.size !== 1) {
       deltaByExercise.set(part.name, null);
+      recordsByExercise.set(part.name, null);
       continue;
     }
     const lane = [...lanes][0];
@@ -352,9 +368,36 @@ export function getActivityDetailData(
         ? sessionProgressDelta(history[index], previous, units.weightUnit)
         : null
     );
+    const records =
+      index >= 0
+        ? strengthSessionRecords(history, index, isBodyweight(part.name))
+        : null;
+    recordsByExercise.set(
+      part.name,
+      records && (records.e1rm || records.weight)
+        ? {
+            ...records,
+            href: strengthAnalyzeHref(part.name, {
+              metric:
+                records.e1rm === "all-time"
+                  ? "e1rm"
+                  : records.weight === "all-time"
+                    ? "top"
+                    : records.e1rm
+                      ? "e1rm"
+                      : "top",
+              range: "all",
+              lane,
+            }),
+          }
+        : null
+    );
   }
   const partDeltas = card.parts.map((part) =>
     part.kind === "strength" ? (deltaByExercise.get(part.name) ?? null) : null
+  );
+  const partRecords = card.parts.map((part) =>
+    part.kind === "strength" ? (recordsByExercise.get(part.name) ?? null) : null
   );
 
   const olderId =
@@ -390,6 +433,7 @@ export function getActivityDetailData(
     overlappingSiblings,
     comparison,
     partDeltas,
+    partRecords,
     olderId,
     newerId,
     isDraft: isDraftActivityRow(

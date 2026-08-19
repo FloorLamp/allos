@@ -12,14 +12,19 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
-import { compositeRollup, minutesBetween } from "@/lib/activity-meta";
+import {
+  compositeRollup,
+  inferFreeTextType,
+  minutesBetween,
+  titleCase,
+} from "@/lib/activity-meta";
 import { activityTiming } from "@/lib/activity-timing";
 import {
   summarizeEquipmentAvailability,
   deRankUnavailableLifts,
 } from "@/lib/equipment-availability";
 import { round } from "@/lib/units";
-import { IconAlertTriangle, IconFlagCheck } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -75,6 +80,7 @@ import {
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
 import { activityEditDataHasStrength } from "@/lib/activity-form-model";
+import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
 // this module; the definition now lives in ./activity-form/model.
@@ -112,12 +118,14 @@ export default function ActivityForm({
   prefill = null,
   initialDate,
   live = false,
+  onLiveFinished,
   adoptRowId = null,
   onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   onClose,
+  onCloseRequestReady,
   onDeleted,
   stickyFooter = false,
 }: {
@@ -148,6 +156,9 @@ export default function ActivityForm({
   // collapses it back to the plain editor. Since #2870 step 3 it also applies
   // to a resumed session's edit, not just creates.
   live?: boolean;
+  // The overlay drops its live-only minimize chrome once Finish settles this
+  // form back into an ordinary activity editor.
+  onLiveFinished?: () => void;
   // The provider-created session row for a create-at-start live workout (#2870
   // step 3): adopted by the autosave without a re-key, so saves UPDATE it.
   adoptRowId?: number | null;
@@ -165,6 +176,11 @@ export default function ActivityForm({
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   onClose: () => void;
+  // The containing dialog routes Escape through the same save-aware path as
+  // Done, the backdrop, and the live-workout minimize control.
+  onCloseRequestReady?: (
+    requestClose: ((beforeClose?: () => void) => Promise<boolean>) | null
+  ) => void;
   // The provider owns route context. Report a completed delete so it can leave a
   // canonical detail URL that now points at no record.
   onDeleted?: (id: number) => void;
@@ -278,6 +294,7 @@ export default function ActivityForm({
     editData ? (editData.start_time ?? "") : nowHHMM(tz)
   );
   const [endTime, setEndTime] = useState(editData?.end_time ?? "");
+  const finishStampedEndRef = useRef(false);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
   );
@@ -306,6 +323,10 @@ export default function ActivityForm({
       (editData?.source != null && editData.imported_metrics != null) ||
       editData?.route_polyline != null
   );
+  const revealMoreDetails = useCallback(
+    () => setMoreDetailsOpen(true),
+    [setMoreDetailsOpen]
+  );
 
   const isEdit = !!editData;
   // Live workout mode (issue #340). No longer create-only (#2870 step 3):
@@ -332,6 +353,12 @@ export default function ActivityForm({
   // target and every mutation over them (name/variant resolution, set + part CRUD,
   // suggestion/repeat fills, the plate round-trip). The parent stays composition over
   // this hook plus the auto-save hook and the presentational sections.
+  const defaultCustomType =
+    prefill?.title === "" &&
+    !prefill.components &&
+    (prefill.type === "cardio" || prefill.type === "sport")
+      ? prefill.type
+      : null;
   const activityParts = useActivityParts({
     seed,
     units,
@@ -343,12 +370,7 @@ export default function ActivityForm({
     // A protocol's type-scoped action opens a deliberately blank create seed.
     // Keep that type as the fallback when the user commits an unknown custom
     // activity name; recognizable names still use their inferred catalog type.
-    defaultCustomType:
-      prefill?.title === "" &&
-      !prefill.components &&
-      (prefill.type === "cardio" || prefill.type === "sport")
-        ? prefill.type
-        : null,
+    defaultCustomType,
     // A set check-off starts the live-mode rest timer (#340) and fires a short haptic
     // tick (#1422) — the phone-in-pocket confirmation that the set registered, distinct
     // from the rest timer's end-of-rest double-pulse. Live mode only: the tick means
@@ -381,6 +403,96 @@ export default function ActivityForm({
     plateFromSuggestion,
     applyPlateBuild,
   } = activityParts;
+
+  type HeadingIdentity = { type: ActivityType; title: string };
+  const identityForPart = (part: PartEntry | undefined) => {
+    if (!part) return null;
+    const type = partType(part);
+    return type ? { type, title: part.name } : null;
+  };
+  // Combobox text is a draft until the user commits it. Keep one committed
+  // identity per part so renaming never clears the icon, while a mixed session
+  // can still switch to the honest composite mark as components are committed.
+  const [headingPartIdentities, setHeadingPartIdentities] = useState<
+    (HeadingIdentity | null)[]
+  >(() => parts.map(identityForPart));
+  const committedHeadingIdentities = headingPartIdentities.filter(
+    (identity): identity is HeadingIdentity => identity != null
+  );
+  const headingIdentity = committedHeadingIdentities[0] ?? null;
+  const headingComposite = activityIconIdentitiesAreComposite(
+    committedHeadingIdentities
+  );
+
+  function setCommittedHeadingIdentity(
+    index: number,
+    identity: HeadingIdentity
+  ) {
+    setHeadingPartIdentities((current) => {
+      const next = [...current];
+      next[index] = identity;
+      return next;
+    });
+  }
+
+  function commitHeadingName(index: number, rawName: string) {
+    const name = isKnown(rawName) ? rawName : titleCase(rawName.trim());
+    const type =
+      classifier.nameType(name) ?? inferFreeTextType(name) ?? defaultCustomType;
+    if (type) setCommittedHeadingIdentity(index, { type, title: name });
+  }
+
+  function pickPartNameWithIdentity(index: number, name: string) {
+    pickPartName(index, name);
+    commitHeadingName(index, name);
+  }
+
+  function updatePartWithIdentity(index: number, patch: Partial<PartEntry>) {
+    updatePart(index, patch);
+    if (!patch.customType) return;
+    const name = parts[index]?.name.trim();
+    if (name)
+      setCommittedHeadingIdentity(index, {
+        type: patch.customType,
+        title: name,
+      });
+  }
+
+  function updatePartNameWithIdentity(
+    index: number,
+    name: string,
+    extra?: Partial<PartEntry>
+  ) {
+    updatePartName(index, name, extra);
+    commitHeadingName(index, name);
+  }
+
+  function movePartWithIdentity(index: number, direction: -1 | 1) {
+    const destination = index + direction;
+    if (destination >= 0 && destination < parts.length) {
+      setHeadingPartIdentities((current) => {
+        const reordered = [...current];
+        [reordered[index], reordered[destination]] = [
+          reordered[destination],
+          reordered[index],
+        ];
+        return reordered;
+      });
+    }
+    movePart(index, direction);
+  }
+
+  function removePartWithIdentity(index: number) {
+    setHeadingPartIdentities((current) =>
+      current.filter((_, partIndex) => partIndex !== index)
+    );
+    removePart(index);
+  }
+
+  function addPartWithIdentity() {
+    setHeadingPartIdentities((current) => [...current, null]);
+    addPart();
+  }
 
   const liveLeadExercise = leadExerciseName(parts.map((p) => p.name));
   function finishWorkout() {
@@ -534,9 +646,6 @@ export default function ActivityForm({
   const derivableDurationMin = hasStrengthPart
     ? (enteredSessionDuration ?? componentDurationMin)
     : componentDurationMin;
-  const firstValid = namedParts[0];
-  const headingType = firstValid ? partType(firstValid) : null;
-
   // Live multisport roll-up (issue #337): Σ distance / Σ duration across the legs
   // while editing a brick, so the totals don't only appear after save. Fed the
   // display-unit numbers through the SAME compositeRollup the save-time fold uses
@@ -837,7 +946,9 @@ export default function ActivityForm({
       setTitle(d.title);
       setTitleEdited(d.titleEdited);
       setActivityEquipmentId(d.activityEquipmentId);
-      setParts(d.parts as PartEntry[]);
+      const restoredParts = d.parts as PartEntry[];
+      setParts(restoredParts);
+      setHeadingPartIdentities(restoredParts.map(identityForPart));
       if (d.notes || d.estCalories) setMoreDetailsOpen(true);
     },
     confirmReplace: () =>
@@ -925,10 +1036,15 @@ export default function ActivityForm({
 
   // Save from the recap step: stamp the end time and leave live mode, collapsing to
   // the plain editor for the now-finished session (the #340 finishWorkout landing).
-  // Auto-save persists the fields (end time + effort + notes); this is the explicit
-  // finalize the step promises — viewing the recap alone writes nothing.
-  function saveRecapStep() {
+  // This explicit flush persists the fields (end time + effort + notes) before
+  // the step collapses.
+  async function saveRecapStep() {
+    // Finish is an explicit commit boundary. Persist the latest title, effort,
+    // notes, and end stamp before collapsing the recap so a quick Save followed
+    // by navigation cannot outrun the autosave debounce.
+    await autosave.flushBeforeClose();
     finishWorkout();
+    if (live) onLiveFinished?.();
   }
 
   // Plain-form "Finish workout" (#1124): the in-app finish for NON-live logging.
@@ -945,8 +1061,16 @@ export default function ActivityForm({
     date === todayStr(tz) &&
     canSave;
   function openFinishRecap() {
-    if (!endTime) changeEndTime(nowHHMM(tz));
+    finishStampedEndRef.current = !endTime;
+    if (finishStampedEndRef.current) changeEndTime(nowHHMM(tz));
     setShowRecap(true);
+  }
+  function backFromFinishRecap() {
+    // Remove only the tentative stamp created by Finish. An explicit end time
+    // entered before the recap belongs to the user and survives Back.
+    if (finishStampedEndRef.current) changeEndTime("");
+    finishStampedEndRef.current = false;
+    setShowRecap(false);
   }
 
   const moreDetailsSummary = activityDisclosureSummary({
@@ -967,22 +1091,6 @@ export default function ActivityForm({
   const showEstimate =
     !editData?.source &&
     (autoEstimateKcal != null || estCalories.trim() !== "");
-
-  // Closing goes through requestClose (defined below the save machinery), which
-  // warns when a blocked form would drop edits; the ref keeps this effect
-  // subscribed once.
-  const requestCloseRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Close the topmost layer: with the plate builder open, Escape dismisses
-      // just the builder, not the whole editor.
-      if (plateTarget) setPlateTarget(null);
-      else requestCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [plateTarget, setPlateTarget, requestCloseRef]);
 
   async function remove() {
     const id = savableId();
@@ -1056,24 +1164,29 @@ export default function ActivityForm({
   // to a real row would silently drop them — confirm first. A blocked blank
   // create is exempt: discarding it is the natural "cancel". The durable
   // before-close flush lives in the auto-save hook (#1189).
-  const requestClose = useCallback(async () => {
-    if (hasRow && dirty && !canSave) {
-      const ok = await confirm({
-        title: "Discard unsaved changes?",
-        message:
-          "Some changes can’t be saved yet and will be lost. Close anyway?",
-        confirmLabel: "Close anyway",
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    await autosave.flushBeforeClose();
-    onClose();
-  }, [hasRow, dirty, canSave, confirm, autosave, onClose]);
+  const requestClose = useCallback(
+    async (beforeClose?: () => void) => {
+      if (hasRow && dirty && !canSave) {
+        const ok = await confirm({
+          title: "Discard unsaved changes?",
+          message:
+            "Some changes can’t be saved yet and will be lost. Close anyway?",
+          confirmLabel: "Close anyway",
+          danger: true,
+        });
+        if (!ok) return false;
+      }
+      await autosave.flushBeforeClose();
+      beforeClose?.();
+      onClose();
+      return true;
+    },
+    [hasRow, dirty, canSave, confirm, autosave, onClose]
+  );
   useEffect(() => {
-    requestCloseRef.current = requestClose;
-  }, [requestClose]);
-
+    onCloseRequestReady?.(requestClose);
+    return () => onCloseRequestReady?.(null);
+  }, [onCloseRequestReady, requestClose]);
   return (
     <form
       ref={formElRef}
@@ -1093,14 +1206,15 @@ export default function ActivityForm({
           onIntensity={setIntensity}
           notes={notes}
           onNotes={setNotes}
-          onBack={() => setShowRecap(false)}
+          onBack={backFromFinishRecap}
           onSave={saveRecapStep}
         />
       ) : (
         <>
           <ActivityFormHeader
-            headingType={headingType}
-            headingTitle={firstValid?.name}
+            headingType={headingIdentity?.type ?? null}
+            headingTitle={headingIdentity?.title}
+            headingComposite={headingComposite}
             effectiveTitle={effectiveTitle}
             title={displayedTitle}
             date={date}
@@ -1110,6 +1224,7 @@ export default function ActivityForm({
             saveError={status === "error"}
             blocker={blocker}
             overlay={stickyFooter}
+            showMinimize={liveMode}
             onTitleChange={(value) => {
               setTitle(value);
               setTitleEdited(true);
@@ -1162,7 +1277,7 @@ export default function ActivityForm({
             <LiveWorkoutPanel
               leadExercise={liveLeadExercise}
               restStartKey={restStartKey}
-              onFinish={() => setShowRecap(true)}
+              onFinish={openFinishRecap}
             />
           )}
 
@@ -1201,15 +1316,15 @@ export default function ActivityForm({
             rollupDistanceKm={rollup.distanceKm}
             rollupDurationMin={rollup.durationMin}
             onTypePartName={typePartName}
-            onPickPartName={pickPartName}
-            onMovePart={movePart}
-            onRemovePart={removePart}
-            onAddPart={addPart}
-            onUpdatePart={updatePart}
+            onPickPartName={pickPartNameWithIdentity}
+            onMovePart={movePartWithIdentity}
+            onRemovePart={removePartWithIdentity}
+            onAddPart={addPartWithIdentity}
+            onUpdatePart={updatePartWithIdentity}
             onUpdateSet={updateSet}
             onAddSet={addSet}
             onRemoveSet={removeSet}
-            onUpdatePartName={updatePartName}
+            onUpdatePartName={updatePartNameWithIdentity}
             onApplySuggestion={applySuggestion}
             onApplyPerSideSuggestion={applyPerSideSuggestion}
             onFillFromSession={fillFromSession}
@@ -1217,29 +1332,20 @@ export default function ActivityForm({
             onPlateTarget={setPlateTarget}
           />
 
-          {/* Plain-form "Finish workout" (#1124): the in-app finish for non-live
-          create logging — stamps end = now and opens the shared SessionCompleteStep
-          (session-effort capture). Live mode has its own Finish in the panel above. */}
-          {canFinishInForm && (
-            <button
-              type="button"
-              onClick={openFinishRecap}
-              data-testid="plain-finish-workout"
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 active:scale-95"
-            >
-              <IconFlagCheck className="h-4 w-4" />
-              Finish workout
-            </button>
-          )}
-
           <section
             data-testid="session-details"
             aria-labelledby="session-details-title"
             className="py-1"
           >
-            <h3 id="session-details-title" className="sr-only">
-              Session details
-            </h3>
+            <div className="mb-3 flex items-center gap-3">
+              <h3 id="session-details-title" className="label mb-0 shrink-0">
+                Session
+              </h3>
+              <span
+                aria-hidden="true"
+                className="h-px flex-1 bg-black/5 dark:bg-white/10"
+              />
+            </div>
             <DateTimeFields
               date={date}
               startTime={startTime}
@@ -1321,6 +1427,7 @@ export default function ActivityForm({
             // for this create-mode form. Null until that row exists.
             activityId={editData?.id ?? createdId}
             distanceUnit={units.distanceUnit}
+            onRevealPopulated={revealMoreDetails}
           />
 
           {/* Auto-save is paused: spell out what to fix (the offending fields are
@@ -1363,6 +1470,8 @@ export default function ActivityForm({
             savedAt={savedAt}
             onDelete={remove}
             onDone={requestClose}
+            onFinish={canFinishInForm ? openFinishRecap : undefined}
+            showDone={!liveMode}
           />
         </>
       )}

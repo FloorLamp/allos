@@ -34,7 +34,7 @@
 // tier reaches `middleware.ts` (executed by `lib/__db_tests__/auth.test.ts`),
 // `scripts/seed-personas.ts` (executed by its DB test), ~30 `scripts/gen-*.ts`
 // generators whose types the `lib/datasets/` modules re-export, and
-// `components/activity/ActivityVideoStrip.tsx` via a training Server Action. #2954
+// `components/activity/ActivityMediaStrip.tsx` via a training Server Action. #2954
 // predicted `components/` was unreachable and said to confirm before including it;
 // the walk said otherwise, which is the whole argument for walking.
 //
@@ -297,7 +297,7 @@ describe("the test:db gate's trigger set", () => {
       "app/(app)/training/video-actions.ts",
       "middleware.ts",
       "scripts/seed-personas.ts",
-      "components/activity/ActivityVideoStrip.tsx",
+      "components/activity/ActivityMediaStrip.tsx",
     ])
       expect(covered(rel), `${rel} must fire the gate`).toBe(true);
   });
@@ -371,7 +371,7 @@ describe("the trigger-set scan's reach", () => {
       'import { helper } from "./setup-shared";',
       'import { PERSONAS } from "../../scripts/seed-personas";',
       'import { middleware } from "@/middleware";',
-      'import type { View } from "@/components/activity/ActivityVideoStrip";',
+      'import type { View } from "@/components/activity/ActivityMediaStrip";',
       "// see docs/orchestration.md for the gate order",
       "/* the e2e/ suite covers this path end to end */",
     ];

@@ -45,6 +45,7 @@
 
 import type { Route } from "next";
 import type { CardioMetric, RangeId } from "./analyze-view";
+import type { ExerciseCompareMetric } from "./queries/training/strength";
 import { continuousReadingSlug } from "./reading-cadence";
 import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
@@ -281,9 +282,14 @@ export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
 
 // One activity's canonical page (#2870): every activity type uses this route;
 // callers preserve optional browsing context with typed query helpers below.
-export function trainingActivityPageHref(activityId: number): AppRoute {
+export function trainingActivityPageHref(
+  activityId: number,
+  subjectProfileId?: number
+): AppRoute {
   const href: Route<`/training/activity/${number}`> = `/training/activity/${activityId}`;
-  return href as AppRoute;
+  return (
+    subjectProfileId == null ? href : `${href}?subject=${subjectProfileId}`
+  ) as AppRoute;
 }
 
 // The Timeline "jump to this day" link: filter the feed to a single day AND
@@ -472,7 +478,11 @@ export interface CyclingLens {
 // same query survives adjacent/comparison navigation and reconstructs the
 // overview link, so opening a Power · 6m ride never silently returns to
 // Distance · All.
-export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
+export function cyclingRideHref(
+  id: number,
+  lens: CyclingLens,
+  subjectProfileId?: number
+): AppRoute {
   const path = trainingActivityPageHref(id);
   const params = new URLSearchParams({
     metric: lens.metric,
@@ -481,7 +491,32 @@ export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
   if (lens.activity && lens.activity.trim().toLowerCase() !== "cycling") {
     params.set("item", lens.activity);
   }
+  if (subjectProfileId != null) {
+    params.set("subject", String(subjectProfileId));
+  }
   return `${path}?${params.toString()}` as AppRoute;
+}
+
+// The strength progression view for one movement. A PR link supplies the exact
+// metric, all-time range, and load context that explain the record; ordinary
+// exercise links can omit those refinements and let Analyze use its defaults.
+export function strengthAnalyzeHref(
+  exercise: string,
+  options: {
+    metric?: ExerciseCompareMetric;
+    range?: RangeId;
+    lane?: string;
+  } = {}
+): AppRoute {
+  const params = new URLSearchParams({
+    tab: "analyze",
+    kind: "strength",
+    item: exercise,
+  });
+  if (options.metric) params.set("metric", options.metric);
+  if (options.range) params.set("range", options.range);
+  if (options.lane) params.set("lane", options.lane);
+  return `/training?${params.toString()}` as AppRoute;
 }
 
 export function cyclingOverviewHref(lens: CyclingLens): AppRoute {

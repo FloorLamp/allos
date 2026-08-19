@@ -597,6 +597,73 @@ export function lastSessionPR(s: ExerciseSummary): {
   };
 }
 
+export type StrengthRecordStanding = "all-time" | "running";
+
+export interface StrengthRecordSession {
+  date: string;
+  e1rmKg: number | null;
+  e1rmReps: number | null;
+  topWeightKg: number | null;
+}
+
+export interface StrengthSessionRecords {
+  // A running record beat every comparable session before this one. It remains
+  // all-time when no later session surpassed it. The two metrics stay separate:
+  // a session can set the heaviest-load record without setting the best e1RM.
+  e1rm: StrengthRecordStanding | null;
+  weight: StrengthRecordStanding | null;
+}
+
+function compareE1rm(
+  a: StrengthRecordSession,
+  b: StrengthRecordSession
+): number {
+  const aValue = a.e1rmKg ?? 0;
+  const bValue = b.e1rmKg ?? 0;
+  if (aValue !== bValue) return aValue - bValue;
+  return (a.e1rmReps ?? 0) - (b.e1rmReps ?? 0);
+}
+
+// Classify one historical strength session against the complete history for the
+// SAME movement and load context. A first-ever training date is a baseline, not
+// a celebration. Tying a prior record does not mint another record; the session
+// that first established an unbeaten mark remains the all-time holder.
+export function strengthSessionRecords(
+  history: StrengthRecordSession[],
+  index: number,
+  bodyweight: boolean
+): StrengthSessionRecords {
+  const none: StrengthSessionRecords = { e1rm: null, weight: null };
+  const current = history[index];
+  if (!current) return none;
+
+  const prior = history.slice(0, index);
+  if (!prior.some((session) => session.date < current.date)) return none;
+  const later = history.slice(index + 1);
+
+  const e1rmRunning =
+    (current.e1rmKg ?? 0) > 0 &&
+    prior.every((session) => compareE1rm(current, session) > 0);
+  const e1rm = e1rmRunning
+    ? later.some((session) => compareE1rm(session, current) > 0)
+      ? "running"
+      : "all-time"
+    : null;
+
+  const currentWeight = current.topWeightKg ?? 0;
+  const weightRunning =
+    !bodyweight &&
+    currentWeight > 0 &&
+    prior.every((session) => currentWeight > (session.topWeightKg ?? 0));
+  const weight = weightRunning
+    ? later.some((session) => (session.topWeightKg ?? 0) > currentWeight)
+      ? "running"
+      : "all-time"
+    : null;
+
+  return { e1rm, weight };
+}
+
 export interface PR {
   exercise: string;
   // The registry implement the record was set on, or null (#1610). Every surface

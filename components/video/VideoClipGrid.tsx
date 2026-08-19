@@ -12,8 +12,8 @@ import NotesText from "@/components/NotesText";
 import { extractPosterFrame } from "@/lib/video/client-poster";
 
 // The shared capture → poster-grid → open-to-play surface of the video core
-// (#1224 phase 1) — every video-carrying domain (symptom/episode clips now,
-// training form checks now; in-app recording in phase 2) renders THIS instead of
+// (#1224 phase 1) — every video-carrying domain (symptom/episode clips and
+// activity media; in-app recording in phase 2) renders THIS instead of
 // a bespoke strip, so the privacy note, the poster-first grid (the clip loads only
 // on open), and the audio/location affordances can never diverge per domain (the
 // #221 one-surface / #1119 one-core philosophy).

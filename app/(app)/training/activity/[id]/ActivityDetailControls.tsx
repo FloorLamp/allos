@@ -2,7 +2,12 @@
 
 import { createContext, useContext, useState } from "react";
 import Link from "next/link";
-import { IconArrowsShuffle, IconPencil } from "@tabler/icons-react";
+import {
+  IconArrowsShuffle,
+  IconBolt,
+  IconChevronRight,
+  IconPencil,
+} from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/lib/activity-form-model";
 import type { UnitPrefs } from "@/lib/settings";
@@ -39,22 +44,44 @@ function useMergeSignal() {
   return value;
 }
 
+export function ActivityInProgressBanner() {
+  const { openLive, workoutOffer } = useActivityEditor();
+  return (
+    <button
+      type="button"
+      onClick={openLive}
+      data-testid="session-in-progress"
+      data-workout-offer={workoutOffer.kind}
+      className="mb-4 flex w-full items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-left text-sm text-emerald-800 transition hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+    >
+      <IconBolt className="h-4 w-4 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">Workout in progress</span>
+      <span className="inline-flex shrink-0 items-center gap-1 font-medium">
+        Resume
+        <IconChevronRight className="h-4 w-4" aria-hidden />
+      </span>
+    </button>
+  );
+}
+
 export function ActivityDetailActions({
   activity,
-  siblings,
+  mergeCandidates,
   keeperLabel,
   foldValues,
   editLocked,
   units,
   canWrite,
+  trainingRelevant,
 }: {
   activity: ActivityEditData;
-  siblings: MergeSibling[];
+  mergeCandidates: MergeSibling[];
   keeperLabel: string;
   foldValues: Record<string, unknown>;
   editLocked: boolean;
   units: UnitPrefs;
   canWrite: boolean;
+  trainingRelevant: boolean;
 }) {
   const { openEdit } = useActivityEditor();
   const { signal } = useMergeSignal();
@@ -74,7 +101,7 @@ export function ActivityDetailActions({
       ) : null}
       <ActivityCardMenu
         activity={activity}
-        siblings={siblings}
+        siblings={mergeCandidates}
         keeperLabel={keeperLabel}
         foldValues={foldValues}
         editLocked={editLocked}
@@ -84,6 +111,13 @@ export function ActivityDetailActions({
         } /* detail-none: this menu already lives on the activity's canonical detail page. */
         canWrite={canWrite}
         openMergeSignal={signal}
+        deleteReturnHref={trainingRelevant ? "/training?tab=log" : "/timeline"}
+        mergeAwayHref={(keeperId) =>
+          trainingActivityPageHref(
+            keeperId,
+            activity.subjectProfileId ?? undefined
+          )
+        }
       />
     </div>
   );
@@ -92,9 +126,11 @@ export function ActivityDetailActions({
 export function ActivityOverlapBanner({
   overlapping,
   canWrite,
+  subjectProfileId,
 }: {
   overlapping: MergeSibling[];
   canWrite: boolean;
+  subjectProfileId?: number;
 }) {
   const { openMerge } = useMergeSignal();
   if (!canWrite || overlapping.length === 0) return null;
@@ -123,7 +159,7 @@ export function ActivityOverlapBanner({
         {overlapping.map((sibling) => (
           <Link
             key={sibling.id}
-            href={trainingActivityPageHref(sibling.id)}
+            href={trainingActivityPageHref(sibling.id, subjectProfileId)}
             data-testid={`activity-overlap-compare-${sibling.id}`}
             className="font-medium underline underline-offset-2"
           >

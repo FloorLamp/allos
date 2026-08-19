@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   recentSessionsView,
-  recentSessionPartText,
   RECENT_SESSION_LIMIT,
   RECENT_SESSION_PART_LIMIT,
 } from "@/lib/training-recent-sessions";
@@ -48,7 +47,7 @@ function card(
     },
     foldValues: {},
     routePolyline: null,
-    videos: [],
+    media: [],
     ...over,
   } as DayGroup["cards"][number];
 }
@@ -78,7 +77,7 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
       WINDOW
     );
     expect(view.scope).toBe("week");
-    expect(view.rows.map((r) => r.title)).toEqual([
+    expect(view.rows.map((r) => r.card.activity.title)).toEqual([
       "Evening accessories",
       "Squat day",
       "Easy run",
@@ -101,7 +100,7 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
       ],
       WINDOW
     );
-    expect(view.rows.map((r) => r.title)).toEqual(["Squat day"]);
+    expect(view.rows.map((r) => r.card.activity.title)).toEqual(["Squat day"]);
     expect(view.more).toBe(0);
   });
 
@@ -117,7 +116,7 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
       WINDOW
     );
     expect(view.scope).toBe("earlier");
-    expect(view.rows.map((r) => r.title)).toEqual(["Long ride"]);
+    expect(view.rows.map((r) => r.card.activity.title)).toEqual(["Long ride"]);
     expect(view.rows[0].dayLabel).toBe("4 August");
     expect(view.more).toBe(0);
   });
@@ -147,33 +146,6 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
     expect(view.rows[0].moreParts).toBe(3);
   });
 
-  it("builds the meta line from the card's own formatted values, in order", () => {
-    const view = recentSessionsView(
-      [
-        group("2026-08-16", "Today", [
-          card(1, "Easy run", {
-            timeText: "07:15",
-            durationText: "42 min",
-            distanceText: "8.0 km",
-            speedText: "11.4 km/h",
-            heartRateText: "142 bpm",
-            // No calorie estimate on this row — the gap closes up rather than
-            // leaving a stray separator.
-            calorieText: null,
-          }),
-        ]),
-      ],
-      WINDOW
-    );
-    expect(view.rows[0].meta).toEqual([
-      "07:15",
-      "42 min",
-      "8.0 km",
-      "11.4 km/h",
-      "142 bpm",
-    ]);
-  });
-
   it("opens each session at the one destination it has", () => {
     // The shared resolver (#2870/#3061): every session opens its canonical
     // activity page. Never a second href rule.
@@ -194,26 +166,5 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
     );
     expect(view.rows[0].href).toBe("/training/activity/11");
     expect(view.rows[1].href).toBe("/training/activity/12");
-  });
-});
-
-describe("recentSessionPartText", () => {
-  it("reads a strength part's set summary and a cardio part's detail", () => {
-    expect(
-      recentSessionPartText({
-        kind: "strength",
-        name: "Squat",
-        muscle: "quads",
-        text: "3 x 5 @ 100 kg",
-        status: null,
-      })
-    ).toBe("3 x 5 @ 100 kg");
-    expect(
-      recentSessionPartText({
-        kind: "cardio",
-        name: "Run",
-        detail: "8 km · 42 min",
-      })
-    ).toBe("8 km · 42 min");
   });
 });
