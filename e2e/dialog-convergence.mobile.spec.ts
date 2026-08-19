@@ -319,7 +319,32 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
     })
     .toBe(atRest);
 
-  await page.touchscreen.tap(195, Math.round(atRest / 2));
+  const tapY = Math.round(atRest / 2);
+  await page.touchscreen.tap(195, tapY);
+
+  // WHAT THE PAGE LOOKED LIKE AT THE TAP, carried into the failure message.
+  //
+  // This sequence fails only in CI — never here, not in 10 runs, not at 20x CPU
+  // throttling — so CI is the only place the evidence exists, and a bare "element
+  // not found" from it is a symptom with no mechanism attached. Reading the hit
+  // target, the dirty count and the panel's position at the moment of the
+  // assertion turns the next red into a description of what actually happened.
+  // Costs one evaluate on a path that is green everywhere else.
+  const atTap = await page.evaluate((y) => {
+    const el = document.elementFromPoint(195, y);
+    const panel = document.querySelector("[data-sheet-panel]");
+    return {
+      hit: el?.getAttribute("data-testid") ?? el?.tagName ?? "nothing",
+      dirty:
+        document
+          .querySelector('[data-testid="dirty-form-registry"]')
+          ?.getAttribute("data-dirty") ?? "?",
+      panelTop: panel ? Math.round(panel.getBoundingClientRect().top) : -1,
+      confirmMounted: document.querySelectorAll(
+        '[data-testid="confirm-dialog"]'
+      ).length,
+    };
+  }, tapY);
 
   // ORDERED TO DIAGNOSE. If the guard failed OPEN, the dialog is already gone and
   // the typing with it — a dirty form silently discarded by a scrim tap, which is
@@ -332,7 +357,9 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   ).toHaveCount(1);
   await expect(
     confirm,
-    "a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused"
+    `a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused (tapped y=${tapY}; at that moment: ${JSON.stringify(
+      atTap
+    )})`
   ).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
   await expect(dialog).toHaveCount(0);
