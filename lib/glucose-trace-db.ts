@@ -185,8 +185,7 @@ export function recordGlucoseTrace(
     );
     for (const p of points) {
       const found = find.get(profileId, p.ts, source) as
-        | { mgdl: number }
-        | undefined;
+        { mgdl: number } | undefined;
       stmt.run(profileId, p.ts, p.mgdl, source);
       tallyUpsert(out.trace, classifyUpsert(!!found, found?.mgdl === p.mgdl));
     }

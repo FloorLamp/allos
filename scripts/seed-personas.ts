@@ -2365,7 +2365,11 @@ const diabeticCgm: SeedPersona = {
       for (let minute = 0; minute < 24 * 60; minute += 5) {
         // Overnight floor rising into the dawn phenomenon, then a flat daytime base.
         const base =
-          minute < 4 * 60 ? 108 : minute < 7 * 60 ? 108 + (minute - 240) / 12 : 118;
+          minute < 4 * 60
+            ? 108
+            : minute < 7 * 60
+              ? 108 + (minute - 240) / 12
+              : 118;
         let excursion = 0;
         for (const [start, height] of MEALS) {
           const since = minute - start;
