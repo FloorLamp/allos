@@ -27,6 +27,8 @@ import {
 } from "../substance-use";
 import type { FrequencyTarget } from "../types";
 import { parseComponents } from "../types";
+import { getTimezone } from "../settings";
+import { dateFromCreatedAt } from "../timeline-format";
 import { weekWindowStartOn } from "./profile-week";
 
 // THE CADENCE LEDGER (#2034) — the one read model over `frequency_targets`.
@@ -106,6 +108,8 @@ export interface CadenceWeek {
 
 export interface CadenceLedgerEntry {
   target: FrequencyTarget;
+  /** Profile-local day on which this target was declared. */
+  declaredOn: string;
   direction: CadenceDirection;
   /** Oldest first — the render order of every weekly strip. */
   weeks: CadenceWeek[];
@@ -222,13 +226,23 @@ export function cadenceCounts(
   const dayBuckets = (): Set<string>[] =>
     Array.from({ length: n }, () => new Set<string>());
 
-  // Which week a date falls in, or null when it is outside the span.
-  const bucketOf = (date: string): number | null => {
-    if (date < firstStart || date > lastEnd) return null;
+  // Which windows a date falls in. Normal ledger windows are disjoint and take
+  // the constant-time path. The dashboard's current-vs-yesterday comparison is
+  // the one overlapping shape: two trailing/current windows gathered together,
+  // so one source read can project both semantic states without query fan-out.
+  const disjoint = windows.every(
+    (window, index) => index === 0 || windows[index - 1].end < window.start
+  );
+  const bucketsOf = (date: string): number[] => {
+    if (date < firstStart || date > lastEnd) return [];
+    if (!disjoint)
+      return windows.flatMap((window, index) =>
+        date >= window.start && date <= window.end ? [index] : []
+      );
     const delta = daysBetweenDateStr(firstStart, date);
-    if (delta == null || delta < 0) return null;
+    if (delta == null || delta < 0) return [];
     const idx = Math.floor(delta / 7);
-    return idx < n ? idx : null;
+    return idx < n ? [idx] : [];
   };
 
   const needs = new Set<CadenceSource>(
@@ -263,11 +277,9 @@ export function cadenceCounts(
     for (const r of rows) {
       const region = regionForExercise(r.exercise);
       if (!region) continue;
-      const b = bucketOf(r.date);
-      if (b == null) continue;
       let arr = regionWeeks.get(region);
       if (!arr) regionWeeks.set(region, (arr = dayBuckets()));
-      arr[b].add(r.date);
+      for (const bucket of bucketsOf(r.date)) arr[bucket].add(r.date);
     }
   }
 
@@ -293,11 +305,11 @@ export function cadenceCounts(
         arr[bucket].add(date);
       };
       for (const a of rows) {
-        const b = bucketOf(a.date);
-        if (b == null) continue;
-        addType(a.type, a.date, b);
-        for (const c of parseComponents(a.components))
-          if (c?.type) addType(c.type, a.date, b);
+        for (const bucket of bucketsOf(a.date)) {
+          addType(a.type, a.date, bucket);
+          for (const c of parseComponents(a.components))
+            if (c?.type) addType(c.type, a.date, bucket);
+        }
       }
     }
 
@@ -315,10 +327,8 @@ export function cadenceCounts(
         }));
       for (const [region, dates] of mobilityRegionDays(sessions, lastEnd, 0)) {
         const arr = dayBuckets();
-        for (const d of dates) {
-          const b = bucketOf(d);
-          if (b != null) arr[b].add(d);
-        }
+        for (const d of dates)
+          for (const bucket of bucketsOf(d)) arr[bucket].add(d);
         mobilityWeeks.set(region, arr);
       }
     }
@@ -338,11 +348,9 @@ export function cadenceCounts(
       date: string;
       n: number;
     }[]) {
-      const b = bucketOf(r.date);
-      if (b == null) continue;
       let arr = foodWeeks.get(r.group_key);
       if (!arr) foodWeeks.set(r.group_key, (arr = zeros()));
-      arr[b] += r.n;
+      for (const bucket of bucketsOf(r.date)) arr[bucket] += r.n;
     }
   }
 
@@ -358,12 +366,10 @@ export function cadenceCounts(
       practice: string;
       date: string;
     }[]) {
-      const b = bucketOf(r.date);
-      if (b == null) continue;
       const key = practiceIdentity(r.practice);
       let arr = practiceWeeks.get(key);
       if (!arr) practiceWeeks.set(key, (arr = dayBuckets()));
-      arr[b].add(r.date);
+      for (const bucket of bucketsOf(r.date)) arr[bucket].add(r.date);
     }
   }
 
@@ -383,11 +389,9 @@ export function cadenceCounts(
       date: string;
       n: number;
     }[]) {
-      const b = bucketOf(r.date);
-      if (b == null) continue;
       let arr = substanceWeeks.get(r.substance);
       if (!arr) substanceWeeks.set(r.substance, (arr = zeros()));
-      arr[b] += r.n;
+      for (const bucket of bucketsOf(r.date)) arr[bucket] += r.n;
     }
   }
 
@@ -443,18 +447,17 @@ export function cadenceCounts(
 // The ledger
 // ---------------------------------------------------------------------------
 
-// Every ACTIVE target read in the given direction, with its per-week counts and
-// verdicts over the requested windows.
-export function getCadenceLedger(
+function cadenceLedgerForWindows(
   profileId: number,
-  options: CadenceLedgerOptions
+  direction: CadenceDirection,
+  windows: readonly CadenceWindow[]
 ): CadenceLedgerEntry[] {
   const targets = getFrequencyTargets(profileId).filter(
-    (t) => cadenceDirection(t.scope_kind) === options.direction
+    (t) => cadenceDirection(t.scope_kind) === direction
   );
   if (targets.length === 0) return [];
-  const windows = cadenceWindows(profileId, options);
   if (windows.length === 0) return [];
+  const timezone = getTimezone(profileId);
 
   const scopes: CadenceScopeRef[] = targets.map((t) => ({
     kind: t.scope_kind as FrequencyScopeKind,
@@ -463,6 +466,8 @@ export function getCadenceLedger(
   const counts = cadenceCounts(profileId, scopes, windows);
 
   return targets.map((t) => {
+    const declaredOn =
+      dateFromCreatedAt(t.created_at, timezone) ?? t.created_at.slice(0, 10);
     const series =
       counts.get(
         scopeKey({
@@ -472,7 +477,8 @@ export function getCadenceLedger(
       ) ?? (Array(windows.length).fill(0) as number[]);
     return {
       target: t,
-      direction: options.direction,
+      declaredOn,
+      direction,
       weeks: windows.map((w, i) => ({
         start: w.start,
         end: w.end,
@@ -480,19 +486,58 @@ export function getCadenceLedger(
         elapsedDays: w.elapsedDays,
         count: series[i],
         verdict: cadenceVerdict({
-          direction: options.direction,
+          direction,
           count: series[i],
           target: t.per_week,
           ceiling: t.per_week_max,
           elapsedDays: w.elapsedDays,
         }),
       })),
-      // `created_at` is a UTC `datetime('now')` stamp; its calendar day is what the
-      // cold-start exclusion compares. A target created ON the window's first day
-      // counts as having existed for it.
-      existedWholeWindow: t.created_at.slice(0, 10) <= windows[0].start,
+      // `created_at` is a UTC `datetime('now')` stamp. Cold-start eligibility is
+      // based on its profile-local day, not the UTC day embedded in the stamp. A
+      // target created ON the window's first day counts as having existed for it.
+      existedWholeWindow: declaredOn <= windows[0].start,
     };
   });
+}
+
+// Every ACTIVE target read in the given direction, with its per-week counts and
+// verdicts over the requested windows.
+export function getCadenceLedger(
+  profileId: number,
+  options: CadenceLedgerOptions
+): CadenceLedgerEntry[] {
+  return cadenceLedgerForWindows(
+    profileId,
+    options.direction,
+    cadenceWindows(profileId, options)
+  );
+}
+
+// The in-progress cadence verdict today and its immediately-prior comparable
+// verdict yesterday, oldest first. The windows overlap in rolling mode and after
+// the first day of a calendar week; cadenceCounts projects both from one bounded
+// source gather so dashboard transition detection does not add a second query.
+export function getCadenceCurrentAndPriorDay(
+  profileId: number,
+  direction: CadenceDirection
+): CadenceLedgerEntry[] {
+  const currentDay = today(profileId);
+  const previousDay = shiftDateStr(currentDay, -1);
+  const previous = cadenceWindows(profileId, {
+    weeks: 1,
+    includeCurrent: true,
+    asOf: previousDay,
+  });
+  const current = cadenceWindows(profileId, {
+    weeks: 1,
+    includeCurrent: true,
+    asOf: currentDay,
+  });
+  return cadenceLedgerForWindows(profileId, direction, [
+    ...previous,
+    ...current,
+  ]);
 }
 
 // The cadence facts ONE activity carries (#2503) — the session-level twin of the two
@@ -659,8 +704,7 @@ export function getCadenceCapWeeks(
     // Only the weeks that began after the cap was declared. The ledger's
     // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
     // it per week, off the same `created_at` day the flag compares.
-    const declaredOn = entry.target.created_at.slice(0, 10);
-    const weeks = entry.weeks.filter((w) => w.start >= declaredOn);
+    const weeks = entry.weeks.filter((w) => w.start >= entry.declaredOn);
     if (weeks.length < CAP_PERIOD_MIN_WEEKS) continue;
     out.push({
       label: cadenceScopeNoun(

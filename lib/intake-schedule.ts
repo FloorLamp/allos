@@ -672,15 +672,27 @@ const FAT_SOLUBLE = [
   "carotene",
 ];
 
-// Best-effort default food timing for a supplement name (catalog entries can
-// override). Returns "any" when nothing clearly applies.
+// Best-effort default food timing for a supplement (catalog entries can override).
+// Returns "any" when nothing clearly applies.
+//
+// The keywords are read over the item's NAME and, when the person has entered the
+// label's composition, over each INGREDIENT NAME too (#2856) — one keyword list, wider
+// input, exactly as the upper-limit and interaction matchers were widened. A blend is
+// named for what it is FOR ("Eye Health+"), never for the fat-soluble carotenoids
+// inside it, so the item that most needs this hint was the one that could never get it.
+//
+// ANY fat-soluble ingredient is enough: absorption is per substance, so a capsule
+// carrying lutein alongside six water-soluble things is still better taken with fat.
+// It stays a DEFAULT the form fills in and the person can change, never a rule.
 export function defaultFoodTiming(
   name: string,
-  explicit?: FoodTiming | null
+  explicit?: FoodTiming | null,
+  ingredientNames: readonly string[] = []
 ): FoodTiming {
   if (explicit) return explicit;
-  const n = name.toLowerCase();
-  if (FAT_SOLUBLE.some((k) => n.includes(k))) return "with_fat";
+  const texts = [name, ...ingredientNames].map((t) => t.toLowerCase());
+  if (texts.some((t) => FAT_SOLUBLE.some((k) => t.includes(k))))
+    return "with_fat";
   return "any";
 }
 

@@ -14,8 +14,8 @@ import type { ReactNode } from "react";
 // Atomic placement has one reading order at every viewport, so Now is one column
 // just like Standing and Everything.
 //
-// Renders NOTHING (not even a wrapper) when nothing is firing — the strip's zero
-// state is zero height, never a filler card. See lib/dashboard-relevance.ts for why.
+// Empty remains a real landmark: a quiet sentence, never a filler card or a
+// synthetic candidate. The mobile date stays here because the PageHeader is hidden.
 
 export interface NowStripCard {
   id: string;
@@ -32,7 +32,6 @@ export default function NowStrip({
   // day's orientation survives on a phone. Absent → no line.
   dateLabel?: string;
 }) {
-  if (cards.length === 0) return null;
   return (
     <section
       data-testid="now-strip"
@@ -48,17 +47,26 @@ export default function NowStrip({
           {dateLabel}
         </div>
       )}
-      <div className="grid min-w-0 grid-cols-1 items-start gap-3">
-        {cards.map((c) => (
-          <div
-            key={c.id}
-            data-testid={`now-strip-card-${c.id}`}
-            className="min-w-0"
-          >
-            {c.node}
-          </div>
-        ))}
-      </div>
+      {cards.length === 0 ? (
+        <p
+          data-testid="now-strip-empty"
+          className="text-sm text-slate-600 dark:text-slate-300"
+        >
+          Nothing needs you.
+        </p>
+      ) : (
+        <div className="grid min-w-0 grid-cols-1 items-start gap-3">
+          {cards.map((c) => (
+            <div
+              key={c.id}
+              data-testid={`now-strip-card-${c.id}`}
+              className="min-w-0"
+            >
+              {c.node}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

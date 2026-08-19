@@ -29,6 +29,7 @@ import {
 // page section or the Upcoming finding. Informational, never prescriptive.
 export default function IntakeInteractionNotices({
   name,
+  ingredientNames = [],
   rxcui,
   rxcuiIngredients,
   stackItems,
@@ -38,6 +39,10 @@ export default function IntakeInteractionNotices({
   showFood = true,
 }: {
   name: string;
+  // The label ingredients entered in the form's repeater (#2856). A blend's own name
+  // often names nothing the datasets know, so without these the notice stays silent
+  // on the very item most likely to carry an interaction.
+  ingredientNames?: readonly string[];
   rxcui: string | null;
   rxcuiIngredients: string[] | null;
   stackItems: InteractionItem[];
@@ -53,8 +58,11 @@ export default function IntakeInteractionNotices({
   const candidateInteractions = useMemo(() => {
     if (!name.trim()) return [];
     const others = stackItems.filter((x) => x.id !== excludeId);
-    return interactionsForCandidate({ name, rxcui, rxcuiIngredients }, others);
-  }, [name, rxcui, rxcuiIngredients, stackItems, excludeId]);
+    return interactionsForCandidate(
+      { name, rxcui, rxcuiIngredients, ingredients: ingredientNames },
+      others
+    );
+  }, [name, ingredientNames, rxcui, rxcuiIngredients, stackItems, excludeId]);
 
   const candidatePgx = useMemo(() => {
     if (!name.trim()) return [];

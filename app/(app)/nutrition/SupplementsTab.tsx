@@ -6,6 +6,7 @@ import {
   getSkippedDoseIds,
   getIntakeLogsInRange,
   getIntakePairs,
+  getIntakeIngredientsByItem,
   getRefillRates,
   getPoolChips,
   findLinkableSupply,
@@ -480,6 +481,9 @@ export default async function SupplementsTab({
   // dose in the same bucket. Policy lives in the shared separatePairWarnings
   // (issue #313); this surface just supplies the bucket's supplement ids.
   const pairs = getIntakePairs(profile.id);
+  // Label composition (#2856), for the "What's in this" line on each card and for the
+  // edit form's repeater. One profile-scoped read for the whole page, indexed by item.
+  const ingredientsBySupp = getIntakeIngredientsByItem(profile.id);
   // Filtered through the findings bus (#435): a keep-apart warning the profile has
   // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
   // dedupeKey. `suppressions`/`todayStr` are resolved above.
@@ -625,11 +629,16 @@ export default async function SupplementsTab({
   // The item stack (name + cached RxCUI(s) + active) threaded to every form for
   // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
   // #279) keep a combination product matchable against ingredient-keyed concepts.
+  // Composition rides along (#2856): the notice must answer the SAME for a pair of
+  // items whichever one is being entered. Without it, typing the blend against a saved
+  // SSRI warned while typing the SSRI against the saved blend said nothing — one pair,
+  // one profile, two answers decided by the order the person happened to add them.
   const stackItems: InteractionItem[] = intakeItems.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
     rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+    ingredients: (ingredientsBySupp.get(s.id) ?? []).map((g) => g.name),
     active: !!s.active,
   }));
 
@@ -663,6 +672,7 @@ export default async function SupplementsTab({
         stackItems={stackItems}
         pgxVariants={pgxVariants}
         pairs={pairsFor(it.supplement.id)}
+        ingredients={ingredientsBySupp.get(it.supplement.id) ?? []}
         isTaken={isTaken}
         isSkipped={isSkipped}
         strip={stripFor(it.supplement)}

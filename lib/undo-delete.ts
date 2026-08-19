@@ -565,6 +565,17 @@ const KIND_SPECS = {
         childBinds: 1,
       },
       {
+        entity: "ingredients",
+        table: "intake_item_ingredients",
+        // Label composition (#2856): attributes of the item, restated in full on every
+        // save. Nothing else references them, so they simply come back with the item —
+        // and must, or an undone delete would restore a blend the upper-limit and
+        // interaction engines had gone blind to.
+        fks: [{ column: "item_id", ref: "item" }],
+        childWhere: "item_id = ?",
+        childBinds: 1,
+      },
+      {
         entity: "side_effects",
         table: "intake_item_side_effects",
         // Re-inserted after `courses` (its nullable course_id target) and `item`.

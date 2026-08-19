@@ -12,6 +12,8 @@ import {
 } from "../../biomarker-goal";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
 import { biomarkerFamily } from "../../canonical-name";
+import { getTimezone } from "../../settings";
+import { dateFromCreatedAt } from "../../timeline-format";
 import {
   goalMatchesExercise,
   isGoalLive,
@@ -19,7 +21,7 @@ import {
 } from "../../outcome-goals";
 import type { BodyMetricKind, OutcomeGoal } from "../../types";
 import { biomarkerPlots } from "../biomarker-plot";
-import { getLatestBodyMetric } from "../metrics";
+import { getLatestBodyMetricDailyPoints } from "../metrics";
 
 // Training-SPECIFIC goal reads. The scope-kind-generic `frequency_targets`
 // machinery that used to sit below them serves five domains, only one of which is
@@ -63,17 +65,51 @@ export function getOutcomeGoalProgressMap(
   goals: OutcomeGoal[]
 ): Map<number, GoalProgress> {
   const out = new Map<number, GoalProgress>();
+  const measuredGoals = goals.filter(
+    (goal) =>
+      goal.body_metric ||
+      isBiomarkerGoal(goal) ||
+      (goal.exercise && goal.metric)
+  );
+  if (measuredGoals.length === 0) return out;
+  const timezone = getTimezone(profileId);
+  const periodStartDates = new Map(
+    measuredGoals.map((goal) => [
+      goal.id,
+      dateFromCreatedAt(goal.created_at, timezone),
+    ])
+  );
 
   // Body-metric goals: latest body-metric value vs baseline → target.
   const bodyGoals = goals.filter((g) => g.body_metric);
   if (bodyGoals.length) {
-    const latest: Record<BodyMetricKind, number | null> = {
-      weight: getLatestBodyMetric(profileId, "weight"),
-      body_fat: getLatestBodyMetric(profileId, "body_fat"),
-      resting_hr: getLatestBodyMetric(profileId, "resting_hr"),
+    const points: Record<BodyMetricKind, { date: string; value: number }[]> = {
+      weight: getLatestBodyMetricDailyPoints(profileId, "weight"),
+      body_fat: getLatestBodyMetricDailyPoints(profileId, "body_fat"),
+      resting_hr: getLatestBodyMetricDailyPoints(profileId, "resting_hr"),
     };
     for (const g of bodyGoals) {
-      out.set(g.id, computeBodyGoalProgress(g, latest[g.body_metric!]));
+      const series = points[g.body_metric!];
+      const current = computeBodyGoalProgress(g, series.at(-1)?.value ?? null);
+      const createdDay = periodStartDates.get(g.id) ?? null;
+      const hasGoalPeriodEvidence =
+        createdDay != null && series.some((point) => point.date >= createdDay);
+      const baseline =
+        hasGoalPeriodEvidence && g.baseline_value != null
+          ? computeBodyGoalProgress(g, g.baseline_value)
+          : null;
+      out.set(g.id, {
+        ...current,
+        ...(createdDay ? { periodStartDate: createdDay } : {}),
+        previous:
+          baseline && createdDay
+            ? {
+                pct: baseline.pct,
+                done: baseline.done,
+                comparisonDate: createdDay,
+              }
+            : null,
+      });
     }
   }
 
@@ -105,8 +141,30 @@ export function getOutcomeGoalProgressMap(
         plot?.points ?? [],
         plot?.unit ?? target.unit
       );
+      const createdDay = periodStartDates.get(g.id) ?? null;
+      const hasGoalPeriodEvidence =
+        createdDay != null &&
+        (plot?.points.some((point) => point.date >= createdDay) ?? false);
+      const baseline =
+        hasGoalPeriodEvidence && target.baselineValue != null
+          ? computeBiomarkerGoalProgress(
+              target,
+              [{ date: createdDay, value: target.baselineValue }],
+              plot?.unit ?? target.unit
+            )
+          : null;
       out.set(g.id, {
         ...progress,
+        ...(createdDay ? { periodStartDate: createdDay } : {}),
+        previous:
+          baseline && createdDay
+            ? {
+                pct: baseline.pct,
+                done: baseline.done,
+                asOf: baseline.asOf,
+                comparisonDate: createdDay,
+              }
+            : null,
         checkIn: biomarkerGoalCheckIn(
           progress.asOf,
           retestDaysForBiomarker(target.name),
@@ -142,7 +200,8 @@ export function getOutcomeGoalProgressMap(
   );
   if (matchingNames.length === 0) {
     // Every exGoal still gets an entry (empty progress), matching the old loop.
-    for (const g of exGoals) out.set(g.id, computeGoalProgress(g, [], t));
+    for (const g of exGoals)
+      out.set(g.id, { ...computeGoalProgress(g, [], t), previous: null });
     return out;
   }
   const rows = db
@@ -183,7 +242,31 @@ export function getOutcomeGoalProgressMap(
       const arr = byExercise.get(k);
       if (arr) matched.push(...arr);
     }
-    out.set(g.id, computeGoalProgress(g, matched, t));
+    const progress = computeGoalProgress(g, matched, t);
+    const createdDay = periodStartDates.get(g.id) ?? null;
+    const baselineRows = matched.filter(
+      (row) => createdDay != null && row.date != null && row.date < createdDay
+    );
+    const hasGoalPeriodEvidence = matched.some(
+      (row) => createdDay != null && row.date != null && row.date >= createdDay
+    );
+    const baseline = computeGoalProgress(
+      g,
+      baselineRows,
+      createdDay ?? undefined
+    );
+    out.set(g.id, {
+      ...progress,
+      ...(createdDay ? { periodStartDate: createdDay } : {}),
+      previous:
+        baselineRows.length > 0 && hasGoalPeriodEvidence && createdDay
+          ? {
+              pct: baseline.pct,
+              done: baseline.done,
+              comparisonDate: createdDay,
+            }
+          : null,
+    });
   }
   return out;
 }

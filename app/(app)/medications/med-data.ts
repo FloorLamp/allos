@@ -14,6 +14,7 @@ import {
   getSkippedDoseIds,
   getIntakeLogsInRange,
   getIntakePairs,
+  getIntakeIngredientsByItem,
   getRefillRates,
   getPoolChips,
   type PoolChipData,
@@ -498,11 +499,17 @@ export function loadMedicationsData(
     allPgxWarnings
   );
 
+  // Composition rides along (#2856): the notice must answer the SAME for a pair of
+  // items whichever one is being entered. Without it, typing the blend against a saved
+  // SSRI warned while typing the SSRI against the saved blend said nothing — one pair,
+  // one profile, two answers decided by the order the person happened to add them.
+  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
   const stackItems: InteractionItem[] = intakeItems.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
     rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+    ingredients: (ingredientsByItem.get(s.id) ?? []).map((g) => g.name),
     active: !!s.active,
   }));
   const pgxVariants: PgxVariantInput[] = getGenomicVariants(profileId)

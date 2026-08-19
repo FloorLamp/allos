@@ -2,6 +2,7 @@ import type {
   DashboardCandidate,
   DashboardObligation,
   DashboardRankReasons,
+  DashboardReadingPromotion,
   DashboardRelevancePolicy,
   DashboardSubject,
   DashboardTiming,
@@ -27,6 +28,7 @@ interface Policy {
   relevance?: DashboardRelevancePolicy;
   timing?: DashboardTiming;
   rankReasons?: DashboardRankReasons;
+  readingPromotion?: DashboardReadingPromotion;
   standingEligible?: boolean;
 }
 

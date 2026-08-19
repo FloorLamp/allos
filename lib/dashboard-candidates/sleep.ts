@@ -52,7 +52,8 @@ export const sleepCandidates = {
     key: string,
     wakeDay: string,
     engagement: Engagement,
-    timing: DashboardTiming
+    timing: DashboardTiming,
+    promoted = false
   ) {
     return reading(
       ctx,
@@ -61,15 +62,13 @@ export const sleepCandidates = {
       "sleep.last-night",
       engagement,
       "current",
-      {
-        timing,
-        rankReasons: {
-          safety: false,
-          owed: false,
-          windowOpen: true,
-          changed: false,
-        },
-      }
+      promoted
+        ? {
+            timing,
+            rankReasons: changed,
+            readingPromotion: "sleep-arrived",
+          }
+        : { timing }
     );
   },
   nap(
@@ -89,6 +88,7 @@ export const sleepCandidates = {
       {
         timing: { kind: "since-event", ageMinutes, maxMinutes: 180 },
         rankReasons: changed,
+        readingPromotion: "nap-ended",
       }
     );
   },
