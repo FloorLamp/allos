@@ -345,7 +345,16 @@ export function rankDashboardCandidates(
     .filter(
       ({ candidate }) =>
         !standing.memberIds.has(candidate.candidateId) &&
-        !standing.factKeys.has(candidate.factKey)
+        !standing.factKeys.has(candidate.factKey) &&
+        // Owner ruling (#3186): a capped Standing family renders its capped
+        // members and nothing else. The tail beyond the cap is not a dashboard
+        // fact in any lane — the family's own page owns the rest of the census.
+        // It still surfaces when it earns Now on its own: an active promotion
+        // (a marker that just became notable) or a safety flag, which is what
+        // keeps this from hiding the readings someone most needs to see.
+        (!standing.cappedOverflowIds.has(candidate.candidateId) ||
+          candidate.rankReasons.changed ||
+          candidate.rankReasons.safety)
     )
     .sort(({ candidate: a }, { candidate: b }) => {
       const kinds: Record<DashboardCandidateKind, number> = {

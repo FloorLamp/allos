@@ -124,6 +124,7 @@ import {
   type DashboardCandidate,
   type DashboardTiming,
 } from "@/lib/dashboard-relevance";
+import { CLINICAL_RESULTS_CAP } from "@/lib/dashboard-standing";
 import {
   attentionCandidates,
   careCandidates,
@@ -603,9 +604,15 @@ async function renderDashboard(
   // and the combined duration appear without changing the main-sleep card.
   const todayNaps = getNapHistory(profile.id, 1).today;
 
-  // Recent clinical results: gather every canonical member in the shared
-  // recentLabHighlights order. The Standing registry owns the six-row cap so the
-  // remaining results stay reachable in Everything.
+  // Recent clinical results: rank every canonical member in the shared
+  // recentLabHighlights order (that order is unchanged), then mint candidates for
+  // the rows the dashboard can actually seat — the Standing registry's capped
+  // membership, plus any marker whose promotion is live. The tail beyond the cap
+  // is not a dashboard fact in any lane (#3186); /results owns the full census.
+  //
+  // The promotion union is what makes the cap safe: with the cap already full of
+  // notable markers, a marker that has JUST become notable sits outside the top
+  // rows, and a plain slice would silently drop its Now card.
   let labRows: RecentLabRow[] = [];
   const labPromotions = new Map<
     string,
@@ -614,7 +621,6 @@ async function renderDashboard(
   {
     const observations = getDashboardClinicalObservations(profile.id);
     const activeAttentionKeys = new Set(attention.map((item) => item.key));
-    labRows = recentLabHighlights(observations, Number.MAX_SAFE_INTEGER, on);
     for (const observation of observations) {
       const name = observation.canonical_name?.trim() || observation.name;
       const findingKey = biomarkerFlagDismissalKey(name);
@@ -635,6 +641,14 @@ async function renderDashboard(
           : {}),
       });
     }
+    labRows = recentLabHighlights(
+      observations,
+      Number.MAX_SAFE_INTEGER,
+      on
+    ).filter(
+      (row, index) =>
+        index < CLINICAL_RESULTS_CAP || labPromotions.get(row.name)?.changed
+    );
   }
 
   // next-appointment (medical): the single most attention-worthy scheduled visit,

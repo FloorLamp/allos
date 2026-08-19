@@ -10,7 +10,10 @@ import {
   rankDashboardCandidates,
   type DashboardCandidate,
 } from "../dashboard-relevance";
-import { STANDING_READING_ORDER } from "../dashboard-standing";
+import {
+  CLINICAL_RESULTS_CAP,
+  STANDING_READING_ORDER,
+} from "../dashboard-standing";
 
 const profile = { scope: "profile" as const, profileId: 7 };
 
@@ -141,16 +144,17 @@ describe("fixed Standing instrument cluster", () => {
       expected.filter((id) => id.startsWith("target.weekly-progress:"))
     ).toHaveLength(4);
 
-    const everythingIds = rank(candidates)
-      .filter((placement) => placement.lane === "everything")
-      .map((placement) => placement.candidate.candidateId);
-    expect(everythingIds).toEqual(
-      expect.arrayContaining([
-        "labs.latest:g",
-        "goal.progress:5",
-        "target.weekly-progress:5",
-      ])
+    // The tail each capped family did not seat is not a dashboard fact at all
+    // (#3186) — no lane holds it, and its family's own page owns it.
+    const placedIds = rank(candidates).map(
+      (placement) => placement.candidate.candidateId
     );
+    for (const tail of [
+      "labs.latest:g",
+      "goal.progress:5",
+      "target.weekly-progress:5",
+    ])
+      expect(placedIds).not.toContain(tail);
   });
 
   it("keeps family replacements in place and removes not-applicable families", () => {
@@ -253,5 +257,100 @@ describe("fixed Standing instrument cluster", () => {
       subject: { scope: "profile", profileId: 8 },
     });
     expect(rank([other])[0].lane).toBe("everything");
+  });
+});
+
+// The owner ruling of #3186: a capped family renders its capped members and
+// nothing else. The dashboard is for what is relevant; the family's own page owns
+// the rest of the census. This deliberately narrows #3077's "reduce prominence,
+// never access" to the uncapped facts.
+describe("a capped Standing family's tail", () => {
+  const changedReasons = {
+    safety: false,
+    owed: false,
+    windowOpen: false,
+    changed: true,
+  };
+  const cap = CLINICAL_RESULTS_CAP;
+
+  it("never becomes a dashboard candidate in any lane", () => {
+    const markers = Array.from({ length: cap + 5 }, (_, index) =>
+      reading(`labs.latest:marker-${index}`, 300 + index)
+    );
+    const placements = rank(markers);
+
+    expect(
+      placements.map(({ candidate, lane }) => [candidate.candidateId, lane])
+    ).toEqual(
+      markers
+        .slice(0, cap)
+        .map((candidate) => [candidate.candidateId, "standing"])
+    );
+    // Exact-once by factKey holds over the census NET of the tail: what is placed
+    // is placed once, and the tail is placed nowhere.
+    const factKeys = placements.map(({ candidate }) => candidate.factKey);
+    expect(new Set(factKeys).size).toBe(factKeys.length);
+  });
+
+  it("still promotes a marker that becomes notable outside the capped order", () => {
+    const alreadyNotable = Array.from({ length: cap }, (_, index) =>
+      reading(`labs.latest:notable-${index}`, 300 + index)
+    );
+    const becameNotable = reading("labs.latest:newly-notable", 300 + cap, {
+      rankReasons: changedReasons,
+      readingPromotion: "clinical-non-notable-to-notable",
+    });
+    const placements = rank([...alreadyNotable, becameNotable]);
+
+    expect(
+      placements.find(
+        ({ candidate }) => candidate.candidateId === "labs.latest:newly-notable"
+      )
+    ).toMatchObject({
+      lane: "now",
+      candidate: { readingPromotion: "clinical-non-notable-to-notable" },
+    });
+    expect(
+      placements.filter((placement) => placement.lane === "standing")
+    ).toHaveLength(cap);
+  });
+
+  it("celebrates a met weekly target once and then leaves every lane", () => {
+    const unmet = reading("target.weekly-progress:1", 400);
+    const met = (promoted: boolean) =>
+      reading("target.weekly-progress:2", 401, {
+        standingEligible: false,
+        ...(promoted
+          ? {
+              rankReasons: changedReasons,
+              readingPromotion: "weekly-target-transition" as const,
+            }
+          : {}),
+      });
+
+    expect(
+      rank([unmet, met(true)]).map(({ candidate, lane }) => [
+        candidate.candidateId,
+        lane,
+      ])
+    ).toEqual([
+      ["target.weekly-progress:2", "now"],
+      ["target.weekly-progress:1", "standing"],
+    ]);
+
+    expect(
+      rank([unmet, met(false)]).map(({ candidate, lane }) => [
+        candidate.candidateId,
+        lane,
+      ])
+    ).toEqual([["target.weekly-progress:1", "standing"]]);
+  });
+
+  it("leaves an uncapped family's members whole", () => {
+    const pillars = Array.from({ length: cap + 3 }, (_, index) =>
+      reading(`healthspan.pillar:pillar-${index}`, 200 + index)
+    );
+    expect(rank(pillars).every(({ lane }) => lane === "standing")).toBe(true);
+    expect(rank(pillars)).toHaveLength(pillars.length);
   });
 });
