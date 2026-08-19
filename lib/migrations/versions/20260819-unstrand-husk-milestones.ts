@@ -1,5 +1,12 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
+// IMPORTED, NOT INLINED — and this file's behaviour therefore is not frozen by its
+// hash. `manifest.json` covers these bytes; it does not cover `isDraftActivityRow`,
+// so a later change to the draft rule changes what this migration deletes on a
+// database that has not run it yet. That trade is the house's (shipped migrations
+// already import `canonical-name`, `coverage-gaps` and `timezone`), and the
+// alternative here is worse: a copy of the rule in this file would be the SECOND
+// definition of a draft that the whole #3056 census exists to prevent.
 import { isDraftActivityRow } from "../../activity-draft";
 
 // #3190 — release the Nth-workout recognitions a create-at-start husk consumed.
