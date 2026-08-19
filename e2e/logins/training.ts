@@ -152,3 +152,36 @@ export const E2E_LOGIN_OVERVIEW_NO_ROUTINE = "e2e_overview_no_routine";
 export const OVERVIEW_NO_ROUTINE_PROFILE = "Overview No Routine (e2e)";
 export const E2E_LOGIN_OVERVIEW_REST = "e2e_overview_rest";
 export const OVERVIEW_REST_PROFILE = "Overview Rest (e2e)";
+
+// ── The Overview strength ladder's measurement lane (#3177) ──────────────────
+// ONE dedicated ADULT profile whose whole strength history is three lifts, chosen so
+// the browser can see every state #3175 made the ladder produce. The ladder keeps its
+// top THREE rows, so three lifts is also the whole list — nothing is cut and the sort
+// is observable end to end.
+//
+//   • LADDER_PR_LIFT      — 100 days back, pressed on a MACHINE (heavy) and on the
+//                           BAR (light) on the same day; today, a heavier bar press.
+//                           Free-weight lane: the prior dot sits at the bar's number
+//                           and the lift reads as a PR. Unfiltered, the machine
+//                           number is the prior, it towers over today's, and the PR
+//                           silently disappears — the masked-PR half of #3132.
+//   • LADDER_DECLINED_LIFT — the issue's probe on its own: every pre-cutoff set was
+//                           on a machine, so there is NO comparable prior and the
+//                           ladder must render ONE dot. This is the state the fix
+//                           newly produces and the one a future change is likeliest
+//                           to regress by helpfully filling the dot back in.
+//   • LADDER_FLAT_LIFT     — the control: a real free-weight prior that did not move,
+//                           so "no PR suffix" is proved to mean something.
+//
+// Dedicated on purpose (#868). Ladder rows are a RANKED, TRUNCATED list, so any
+// neighbour's strength write on a shared profile would reorder or evict a row — and
+// seeding this history onto profile 1 would perturb every spec that reads its lift
+// lists, which is why #3175 left the browser tier uncovered.
+export const E2E_LOGIN_LADDER_LANES = "e2e_ladder_lanes";
+export const LADDER_LANES_PROFILE = "Ladder Lanes (e2e)";
+export const LADDER_PR_LIFT = "Bench Press";
+export const LADDER_DECLINED_LIFT = "Back Squat";
+export const LADDER_FLAT_LIFT = "Overhead Press";
+export const LADDER_MACHINE_PRESS = "Zzz ladder chest press (e2e)";
+export const LADDER_SMITH_MACHINE = "Zzz ladder smith machine (e2e)";
+export const LADDER_POWER_RACK = "Zzz ladder power rack (e2e)";
