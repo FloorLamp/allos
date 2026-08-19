@@ -188,6 +188,32 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     );
   });
 
+  it("promotes a zero-count rolling target when its last log ages out", () => {
+    const profileId = newProfile("dashboard-target-zero-count-transition");
+    setWeekMode(profileId, "rolling");
+    const anchor = today(profileId);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, per_week, created_at)
+       VALUES (?, 'food_group', 'fruit', 1, ?)`
+    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
+    db.prepare(
+      `INSERT INTO food_daily_totals
+         (profile_id, date, group_key, servings)
+       VALUES (?, ?, 'fruit', 1)`
+    ).run(profileId, shiftDateStr(anchor, -7));
+
+    const [progress] = getFrequencyTargetProgress(profileId);
+    expect(progress).toMatchObject({
+      count: 0,
+      pace: "behind",
+      previous: { pace: "met", met: true },
+    });
+    expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(
+      true
+    );
+  });
+
   it("carries the prior body-goal result and promotes completion", () => {
     const profileId = newProfile("dashboard-goal-transition");
     const anchor = today(profileId);

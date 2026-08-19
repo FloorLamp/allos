@@ -63,7 +63,13 @@ describe("closed dashboard reading promotions", () => {
     expect(
       weeklyTargetStateChanged(
         { pace: "behind", met: false, count: 0 },
-        { pace: "met", met: true }
+        { pace: "on-pace", met: false }
+      )
+    ).toBe(true);
+    expect(
+      weeklyTargetStateChanged(
+        { pace: "on-pace", met: false, count: 0 },
+        { pace: "on-pace", met: false }
       )
     ).toBe(false);
   });
@@ -160,11 +166,11 @@ describe("closed dashboard reading promotions", () => {
     expect(bedtime.rankReasons.changed).toBe(false);
   });
 
-  it("keeps a late sleep arrival promoted across midnight without recurring", () => {
-    expect(sleepArrivedInWakeWindow(0, 1380, 1379)).toBe(false);
-    expect(sleepArrivedInWakeWindow(0, 1380, 1380)).toBe(true);
-    expect(sleepArrivedInWakeWindow(1, 1380, 120)).toBe(true);
-    expect(sleepArrivedInWakeWindow(1, 1380, 121)).toBe(false);
-    expect(sleepArrivedInWakeWindow(2, 1380, 60)).toBe(false);
+  it("requires the canonical last-night label and never repromotes recent sleep", () => {
+    expect(sleepArrivedInWakeWindow("last-night", 0, 1380, 1379)).toBe(false);
+    expect(sleepArrivedInWakeWindow("last-night", 0, 1380, 1380)).toBe(true);
+    expect(sleepArrivedInWakeWindow("recent", 1, 1380, 120)).toBe(false);
+    expect(sleepArrivedInWakeWindow("recent", 1, 1380, 121)).toBe(false);
+    expect(sleepArrivedInWakeWindow("recent", 2, 1380, 60)).toBe(false);
   });
 });

@@ -34,12 +34,14 @@ export function clinicalResultBecameNotable(
 }
 
 export function sleepArrivedInWakeWindow(
+  freshness: "last-night" | "recent" | "stale",
   wakeDayAge: number | null,
   wakeMinutes: number,
   minutesOfDay: number,
   windowMinutes = 180
 ): boolean {
-  if (wakeDayAge == null || wakeDayAge < 0) return false;
+  if (freshness !== "last-night" || wakeDayAge == null || wakeDayAge < 0)
+    return false;
   const ageMinutes = wakeDayAge * 1440 + minutesOfDay - wakeMinutes;
   return ageMinutes >= 0 && ageMinutes <= windowMinutes;
 }
@@ -54,7 +56,6 @@ export function weeklyTargetStateChanged(
   previous: WeeklyTargetSemanticState | null
 ): boolean {
   return (
-    current.count > 0 &&
     previous != null &&
     (current.pace !== previous.pace || (!previous.met && current.met))
   );

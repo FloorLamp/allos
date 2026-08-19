@@ -2095,7 +2095,12 @@ async function renderDashboard(
           engagementFromSource(sleepSummary.source),
           sleepTiming,
           key === "duration" &&
-            sleepArrivedInWakeWindow(wakeDayAge, wakeMinutes, nowMinutes)
+            sleepArrivedInWakeWindow(
+              sleepPresentation?.freshness ?? "stale",
+              wakeDayAge,
+              wakeMinutes,
+              nowMinutes
+            )
         ),
         <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
