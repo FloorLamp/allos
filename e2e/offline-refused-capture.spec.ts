@@ -34,10 +34,7 @@ import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 // refused-capture coverage in offline-write-gate.spec.ts R-5 (the gate-closed
 // cause); DoseStatusControl's toast is covered there too, and the LAST test here
 // pins the half only this spec observes — its ledger settling the refusal as
-// ready-again rather than a post-"success" cooldown. HowAreYouCard is unmounted
-// since the #3097 dashboard cutover (the dashboard's mood entry is the
-// quick-entry sheet asserted below), so it has no tier that renders it — its
-// refused branch is held by the lib scan test instead.
+// ready-again rather than a post-"success" cooldown.
 
 // Mask IndexedDB before the surface's page loads. `hasIndexedDB()` reads
 // `typeof indexedDB`, so every queue write refuses while the rest of the app

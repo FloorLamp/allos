@@ -13,12 +13,13 @@
 //      cast), because an id the scan cannot read is an id nobody can census.
 //   2. Every registry entry is WIRED — some component actually runs the shared
 //      machinery under that id. This is the #2130 tooth that caught the audit's
-//      two one-tap gaps: `mood-valence` (HowAreYouCard hand-rolled its tap) and
+//      two one-tap gaps: `mood-valence` (the former dashboard mood card
+//      hand-rolled its tap) and
 //      `period-lifecycle` (PeriodOfferButton, "THE one-tap period affordance",
 //      ran a bare transition with no #2007 double-tap absorption).
 //
 // PROVEN ON THE DEFECT: on the pre-wiring tree — the two #2130 registry rows
-// added, HowAreYouCard/PeriodOfferButton not yet converted — direction 2 failed
+// added, the mood card/PeriodOfferButton not yet converted — direction 2 failed
 // with exactly:
 //   mood-valence: declared in ONE_TAP_AFFORDANCES but no component calls
 //     useOptimisticLedger("mood-valence")

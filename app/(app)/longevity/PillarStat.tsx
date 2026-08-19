@@ -4,7 +4,7 @@ import {
   PILLAR_TONE_CLASS,
   PillarToneBadge,
   TrendArrow,
-} from "@/components/dashboard/HealthspanPillarsWidget";
+} from "@/components/dashboard/HealthspanPillarPresentation";
 
 // The Longevity page's rendering of ONE pillar's compact facts — the same
 // label/value/detail/tone/trend the dashboard widget card shows (#1042 phase 4),

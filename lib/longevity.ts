@@ -1,10 +1,10 @@
 // The Longevity page's section model (#1042 phase 4). PURE — no DB, no network.
 //
-// The page (/longevity) is the EXPANDED formatter over the SAME pillar model the
-// dashboard HealthspanPillarsWidget compact-renders (the digest-data/weekly-recap
+// The page (/longevity) is the expanded formatter over the same pillar model
+// rendered in dashboard Standing (the digest-data/weekly-recap
 // one-model-two-formatters precedent, #221): buildPillars (lib/longevity-pillars)
-// stays the ONE computation, the widget shows each pillar as a stat card, and
-// this module groups those SAME Pillar objects into the page's anchored sections.
+// stays the one computation, Standing shows each pillar as a row, and this
+// module groups those same Pillar objects into the page's anchored sections.
 // A test (lib/__tests__/longevity-sections.test.ts) pins that the two surfaces
 // carry identical facts for the same fixture — the sections re-derive NOTHING.
 //

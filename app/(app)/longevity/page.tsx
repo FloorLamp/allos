@@ -23,10 +23,10 @@ import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
-// The Longevity page (#1042 phase 4): the EXPANDED formatter over the SAME
-// healthspan-pillar model the dashboard HealthspanPillarsWidget compact-renders
-// (one model, two formatters — the #221 digest/recap precedent; identity pinned
-// by lib/__tests__/longevity-sections.test.ts). Deliberately PILLARS, not a
+// The Longevity page (#1042 phase 4): the expanded formatter over the same
+// healthspan-pillar model rendered in dashboard Standing (one model, two
+// formatters — the #221 digest/recap precedent; identity pinned by
+// lib/__tests__/longevity-sections.test.ts). Deliberately PILLARS, not a
 // composite score — no invented single number anywhere on this page.
 //
 // Membership test (issue #1042): a section belongs iff it's a pillar in the
@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic";
 // the shared bioAgeSurface decision), and #protocols (the absorbed /protocols
 // hub — the interventions arm) always renders, since it's also the creation
 // surface for a first experiment. Each section carries a stable anchor id the
-// widget's pillar cards deep-link to (pillarHref).
+// dashboard's pillar rows deep-link to (pillarHref).
 export default async function LongevityPage({
   searchParams,
 }: {
