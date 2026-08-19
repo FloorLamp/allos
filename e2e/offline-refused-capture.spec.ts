@@ -30,11 +30,14 @@ import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 // non-vacuity control.
 //
 // The flows covered here are the queue's enumerated consumers (see the constant
-// in lib/offline/queue.ts). DoseStatusControl and LogPracticeButton predate this
-// spec and keep their refused-capture coverage in offline-write-gate.spec.ts;
-// HowAreYouCard is unmounted since the #3097 dashboard cutover (the dashboard's
-// mood entry is the quick-entry sheet asserted below), so it has no tier that
-// renders it — its refused branch is held by the lib scan test instead.
+// in lib/offline/queue.ts). LogPracticeButton predates this spec and keeps its
+// refused-capture coverage in offline-write-gate.spec.ts R-5 (the gate-closed
+// cause); DoseStatusControl's toast is covered there too, and the LAST test here
+// pins the half only this spec observes — its ledger settling the refusal as
+// ready-again rather than a post-"success" cooldown. HowAreYouCard is unmounted
+// since the #3097 dashboard cutover (the dashboard's mood entry is the
+// quick-entry sheet asserted below), so it has no tier that renders it — its
+// refused branch is held by the lib scan test instead.
 
 // Mask IndexedDB before the surface's page loads. `hasIndexedDB()` reads
 // `typeof indexedDB`, so every queue write refuses while the rest of the app
@@ -268,4 +271,70 @@ test("a refused workout capture at close says so and claims no sync", async ({
     db.close();
   }
   await context.setOffline(false);
+});
+
+test("a refused dose tap settles READY AGAIN — the retry it asks for is not absorbed", async ({
+  page,
+  context,
+}) => {
+  // THE LEDGER HALF of DoseStatusControl's refusal, which R-5's sibling (the
+  // toast, offline-write-gate.spec.ts) cannot see. A refused queue settles the
+  // ledger as "nothing" — rollback, phase ready — so the very retry the sentence
+  // asks for goes through and is refused AGAIN, visibly. The mutant this pins
+  // (it shipped green through every other test): settling the refusal as "wrote"
+  // puts the clear→taken transition into the 2s post-"success" cooldown, which
+  // silently absorbs the second tap — one sentence, then a control that ignores
+  // the person following its own instruction (and a settle animation plus a
+  // snapshot dirty-mark for a write that never happened). Two taps, two
+  // sentences, is the observable difference.
+  //
+  // Fixture-owned supplement (#868, the offline-dose-confirm pattern): a
+  // uniquely-named Morning dose this test creates and deletes, so it never
+  // touches the seeded intake rows other specs count on.
+  const name = `Refused Dose Zinc ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+  await breakIndexedDB(page);
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const addCard = page.getByRole("dialog", { name: "Add supplement" });
+  await addCard.getByLabel("Name").fill(name);
+  await addCard.getByLabel("Amount").first().fill("10 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await addCard.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addCard).toHaveCount(0);
+  const row = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
+    .locator("div.card")
+    .filter({ hasText: name });
+  const take = row.getByTestId("dose-take");
+  await expect(take).toBeVisible();
+
+  await context.setOffline(true);
+  const sentence = page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE);
+  await hydratedClick(page, take);
+  await expect(sentence).toHaveCount(1);
+  // The optimistic "taken" rolled back the moment the queue refused…
+  await expect(take).toHaveAttribute("aria-pressed", "false");
+  // …and the control is READY, not cooling down: the immediate second tap runs,
+  // is refused, and says so again. Keyless error toasts stack, so the count is
+  // the proof the tap was not absorbed. (Well inside the mutant's 2s window:
+  // the first sentence renders on the settle's own frame, with no network and
+  // no storage between tap and answer.)
+  await take.click();
+  await expect(sentence).toHaveCount(2);
+  await expect(take).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText(SAVED_OFFLINE)).toHaveCount(0);
+  await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+  await context.setOffline(false);
+
+  // Cleanup: the fixture supplement goes with the test.
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.locator("div.card").filter({ hasText: name })).toHaveCount(
+    0
+  );
 });

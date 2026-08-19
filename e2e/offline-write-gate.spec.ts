@@ -669,8 +669,12 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
 
   await context.setOffline(true);
   await takeAfterReload.click();
+  // Generous ceiling, matching every other wait in this test: the badge renders
+  // only after the tap's IndexedDB round trip AND React's re-render, which under
+  // 2-worker load can outlast the 5s expect default (observed flaking there).
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
-    /1 queued offline/
+    /1 queued offline/,
+    { timeout: 20_000 }
   );
   expect((await storedRows(page, "intents")).length).toBe(1);
 
