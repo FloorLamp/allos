@@ -202,9 +202,9 @@ describe("the coaching rollup-reach census is total and enforced (#3129)", () =>
   });
 
   it("the training-stale group envelope keeps its #3095 annotation", () => {
-    expect(
-      functionSource(read(RULE_FINDINGS), STALE_GROUP_HELPER)
-    ).toContain(ANNOTATION);
+    expect(functionSource(read(RULE_FINDINGS), STALE_GROUP_HELPER)).toContain(
+      ANNOTATION
+    );
   });
 
   it("every origin-tab class's claimed surface really reads the named symbol", () => {
