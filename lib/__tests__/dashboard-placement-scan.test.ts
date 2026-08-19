@@ -137,4 +137,24 @@ describe("atomic dashboard source boundary", () => {
     expect(cluster).not.toContain(".sort(");
     expect(cluster).not.toContain('className="card"');
   });
+
+  it("uses typed illness metadata and real rendered identity, never id-prefix policy", () => {
+    const relevance = fs.readFileSync(
+      path.join(root, "lib/dashboard-relevance.ts"),
+      "utf8"
+    );
+    const canvas = fs.readFileSync(
+      path.join(root, "components/dashboard/DashboardPlacementCanvas.tsx"),
+      "utf8"
+    );
+    const hero = fs.readFileSync(
+      path.join(root, "components/dashboard/IllnessHero.tsx"),
+      "utf8"
+    );
+    expect(relevance).toContain("candidate.episodeGroup");
+    expect(relevance).not.toMatch(/startsWith\([^)]*illness/);
+    expect(canvas).not.toContain('className="hidden"');
+    expect(hero).toContain("data-candidate-id={c.stateIdentity?.candidateId}");
+    expect(hero).toContain("data-fact-key={c.stateIdentity?.factKey}");
+  });
 });

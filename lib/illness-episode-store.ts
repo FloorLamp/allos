@@ -18,6 +18,7 @@
 // so the active-situation set and the open row never disagree ("never two truths").
 
 import { db, today, writeTx } from "./db";
+import { profileIdsIn, type AuthorizedProfileIds } from "./cross-profile";
 import { shiftDateStr } from "./date";
 import { rangeContainsDate } from "./date-range";
 import { episodeConditionExternalId } from "./illness-episode-format";
@@ -109,6 +110,42 @@ export function getEpisodeRowForDate(
       )
       .get(profileId, date, date) as IllnessEpisodeRow | undefined) ?? null
   );
+}
+
+// Every episode row covering `date`, in the owning query's stable order. A profile
+// may have more than one simultaneously-open illness situation (#3138), so the
+// dashboard must not collapse this set through getEpisodeRowForDate's LIMIT 1.
+export function getEpisodeRowsForDate(
+  profileId: number,
+  date: string
+): IllnessEpisodeRow[] {
+  return db
+    .prepare(
+      `SELECT ${COLS} FROM illness_episodes
+        WHERE profile_id = ?
+          AND (start_date IS NULL OR start_date <= ?)
+          AND (end_date IS NULL OR end_date >= ?)
+        ORDER BY start_date IS NULL, start_date DESC, id DESC`
+    )
+    .all(profileId, date, date) as IllnessEpisodeRow[];
+}
+
+// Every OPEN row owned by an already-authorized profile set, gathered in one flat
+// query. This deliberately does not decide whether a row covers "today": today is a
+// profile-local value, so callers partition these rows against each member's own day
+// after the set-based read. The result itself is flat stored data with no timezone or
+// other per-profile context, which is the cross-profile reader shape #1095 permits.
+export function openEpisodeRowsForProfiles(
+  profileIds: AuthorizedProfileIds
+): IllnessEpisodeRow[] {
+  if (profileIds.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT ${COLS} FROM illness_episodes
+        WHERE profile_id IN ${profileIdsIn(profileIds)} AND end_date IS NULL
+        ORDER BY profile_id ASC, start_date IS NULL, start_date DESC, id DESC`
+    )
+    .all(...profileIds) as IllnessEpisodeRow[];
 }
 
 // The id of the OPEN illness episode that COVERS `date` (start_date ≤ date, end_date
@@ -236,16 +273,21 @@ export interface ProfileEpisodeState {
   // The episode row COVERING today (start_date ≤ today ≤ end_date, either bound
   // NULL-open), or null — the same row getEpisodeRowForDate returns.
   todayRow: IllnessEpisodeRow | null;
+  // All rows covering today in the canonical query order. `todayRow` remains the
+  // compatibility projection used by single-episode consumers.
+  todayRows: readonly IllnessEpisodeRow[];
   // The most-recently CLOSED episode row, or null.
   mostRecentClosed: IllnessEpisodeRow | null;
 }
 
 export function episodeStateForProfile(profileId: number): ProfileEpisodeState {
   const day = today(profileId);
+  const todayRows = getEpisodeRowsForDate(profileId, day);
   return {
     profileId,
     today: day,
-    todayRow: getEpisodeRowForDate(profileId, day),
+    todayRow: todayRows[0] ?? null,
+    todayRows,
     mostRecentClosed: mostRecentClosedEpisodeRow(profileId),
   };
 }

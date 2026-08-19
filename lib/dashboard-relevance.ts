@@ -71,6 +71,23 @@ export interface DashboardRankReasons {
   changed: boolean;
 }
 
+export type DashboardEpisodeMemberRole =
+  "state" | "must" | "should" | "reading";
+
+// Typed membership for one open illness cockpit (#3138). `groupKey` remains the
+// generic presentation identity used by the rest of the dashboard; this metadata is
+// the only authority the ranker uses to recognize and order illness members. In
+// particular, candidate-id spelling and input adjacency carry no policy.
+export interface DashboardEpisodeGroup {
+  kind: "illness-episode";
+  groupKey: string;
+  episodeKey: string;
+  profileId: number;
+  episodeOrder: number;
+  memberRole: DashboardEpisodeMemberRole;
+  memberOrder: number;
+}
+
 export const NO_DASHBOARD_RANK_REASONS: DashboardRankReasons = {
   safety: false,
   owed: false,
@@ -82,6 +99,7 @@ export interface DashboardCandidateBase {
   candidateId: string;
   factKey: string;
   groupKey: string | null;
+  episodeGroup?: DashboardEpisodeGroup;
   subject: DashboardSubject;
   applicable: boolean;
   relevance: DashboardRelevancePolicy;
@@ -204,14 +222,6 @@ function compareOrdinal(a: string, b: string): number {
 function nowScore(candidate: DashboardCandidate): number | null {
   const reasons = candidate.rankReasons;
   if (reasons.safety) return 5_000;
-  // An active illness is the ordinary Now state that gives the dashboard its
-  // immediate care context. It follows uncapped safety facts but cannot be
-  // displaced by the two-action ordinary cap.
-  if (
-    candidate.kind === "state" &&
-    candidate.candidateId.startsWith("illness.state:")
-  )
-    return 4_500;
   if (candidate.kind === "action") {
     if (candidate.obligation === "may") return reasons.changed ? 2_000 : null;
     const obligation = candidate.obligation === "must" ? 200 : 100;
@@ -231,6 +241,10 @@ function compareSource(a: DashboardCandidate, b: DashboardCandidate): number {
 
 function validateCandidates(candidates: readonly DashboardCandidate[]): void {
   const candidateIds = new Set<string>();
+  const episodeGroups = new Map<
+    string,
+    Pick<DashboardEpisodeGroup, "episodeKey" | "profileId" | "episodeOrder">
+  >();
   for (const candidate of candidates) {
     if (candidateIds.has(candidate.candidateId)) {
       throw new Error(
@@ -238,6 +252,44 @@ function validateCandidates(candidates: readonly DashboardCandidate[]): void {
       );
     }
     candidateIds.add(candidate.candidateId);
+    const episode = candidate.episodeGroup;
+    if (episode) {
+      if (
+        candidate.groupKey !== episode.groupKey ||
+        candidate.subject.scope !== "profile" ||
+        candidate.subject.profileId !== episode.profileId
+      ) {
+        throw new Error(
+          `Invalid dashboard episode membership: ${candidate.candidateId}`
+        );
+      }
+      const roleMatchesKind =
+        (episode.memberRole === "state" && candidate.kind === "state") ||
+        (episode.memberRole === "reading" && candidate.kind === "reading") ||
+        (episode.memberRole === "must" &&
+          candidate.kind === "action" &&
+          candidate.obligation === "must") ||
+        (episode.memberRole === "should" &&
+          candidate.kind === "action" &&
+          candidate.obligation === "should");
+      if (!roleMatchesKind) {
+        throw new Error(
+          `Dashboard episode role mismatch: ${candidate.candidateId}`
+        );
+      }
+      const existing = episodeGroups.get(episode.groupKey);
+      if (
+        existing &&
+        (existing.episodeKey !== episode.episodeKey ||
+          existing.profileId !== episode.profileId ||
+          existing.episodeOrder !== episode.episodeOrder)
+      ) {
+        throw new Error(
+          `Inconsistent dashboard episode group: ${episode.groupKey}`
+        );
+      }
+      episodeGroups.set(episode.groupKey, episode);
+    }
     if (candidate.kind === "reading") {
       if (
         candidate.rankReasons.changed !==
@@ -254,8 +306,38 @@ function validateCandidates(candidates: readonly DashboardCandidate[]): void {
   }
 }
 
-// Now + Standing + Everything is an exact once-by-factKey partition.
-// Safety is uncapped; the ordinary Now cap applies after safety is removed.
+function compareEpisodeGroup(
+  a: DashboardEpisodeGroup,
+  b: DashboardEpisodeGroup,
+  activeProfileId: number
+): number {
+  return (
+    Number(b.profileId === activeProfileId) -
+      Number(a.profileId === activeProfileId) ||
+    a.profileId - b.profileId ||
+    a.episodeOrder - b.episodeOrder ||
+    compareOrdinal(a.episodeKey, b.episodeKey)
+  );
+}
+
+const EPISODE_ROLE_ORDER: Record<DashboardEpisodeMemberRole, number> = {
+  state: 0,
+  must: 1,
+  should: 2,
+  reading: 3,
+};
+
+function eligibleEpisodeMember(candidate: DashboardCandidate): boolean {
+  const role = candidate.episodeGroup?.memberRole;
+  if (!role) return false;
+  if (role === "state" || role === "reading") return true;
+  return candidate.kind === "action" && candidate.rankReasons.owed;
+}
+
+// Now + Standing + Everything is an exact once-by-factKey partition. Now has
+// structural layers: uncapped safety, whole authorized illness groups, then the
+// ordinary capped rank. Episode grouping is placement only; it never grants access or
+// changes a member's safety, obligation, timing, or applicability.
 export function rankDashboardCandidates(
   candidates: readonly DashboardCandidate[],
   signals: DashboardPlacementSignals
@@ -278,10 +360,73 @@ export function rankDashboardCandidates(
       candidate.rankReasons.safety || timingDisposition.kind !== "expired"
   );
 
-  const rankedNow = live
+  const active = live.filter(
+    ({ timingDisposition }) => timingDisposition.kind === "active"
+  );
+  const safety = live
+    .filter(({ candidate }) => candidate.rankReasons.safety)
+    .sort(({ candidate: a }, { candidate: b }) => compareSource(a, b));
+  const safetyFacts = new Set<string>();
+  const selectedSafety = safety.filter(({ candidate }) => {
+    if (safetyFacts.has(candidate.factKey)) return false;
+    safetyFacts.add(candidate.factKey);
+    return true;
+  });
+
+  const episodeGroups = new Map<
+    string,
+    {
+      metadata: DashboardEpisodeGroup;
+      members: typeof active;
+      hasState: boolean;
+    }
+  >();
+  for (const entry of active) {
+    const metadata = entry.candidate.episodeGroup;
+    if (!metadata) continue;
+    const group = episodeGroups.get(metadata.groupKey) ?? {
+      metadata,
+      members: [],
+      hasState: false,
+    };
+    group.members.push(entry);
+    group.hasState ||= metadata.memberRole === "state";
+    episodeGroups.set(metadata.groupKey, group);
+  }
+  const episodeFacts = new Set(safetyFacts);
+  const selectedEpisodes = [...episodeGroups.values()]
+    .filter((group) => group.hasState)
+    .sort((a, b) =>
+      compareEpisodeGroup(a.metadata, b.metadata, signals.activeProfileId)
+    )
+    .flatMap((group) =>
+      group.members
+        .filter(({ candidate }) => eligibleEpisodeMember(candidate))
+        .sort(({ candidate: a }, { candidate: b }) => {
+          const am = a.episodeGroup!;
+          const bm = b.episodeGroup!;
+          return (
+            EPISODE_ROLE_ORDER[am.memberRole] -
+              EPISODE_ROLE_ORDER[bm.memberRole] ||
+            am.memberOrder - bm.memberOrder ||
+            compareSource(a, b)
+          );
+        })
+        .filter(({ candidate }) => {
+          if (episodeFacts.has(candidate.factKey)) return false;
+          episodeFacts.add(candidate.factKey);
+          return true;
+        })
+    );
+
+  const rankedOrdinary = active
     .filter(
-      ({ candidate, timingDisposition }) =>
-        candidate.rankReasons.safety || timingDisposition.kind === "active"
+      ({ candidate }) =>
+        !candidate.rankReasons.safety &&
+        !episodeFacts.has(candidate.factKey) &&
+        !selectedEpisodes.some(
+          (entry) => entry.candidate.candidateId === candidate.candidateId
+        )
     )
     .map(({ candidate, timingDisposition }) => ({
       candidate,
@@ -298,23 +443,18 @@ export function rankDashboardCandidates(
       } => entry.score !== null
     )
     .sort(
-      (a, b) =>
-        Number(b.candidate.rankReasons.safety) -
-          Number(a.candidate.rankReasons.safety) ||
-        b.score - a.score ||
-        compareSource(a.candidate, b.candidate)
+      (a, b) => b.score - a.score || compareSource(a.candidate, b.candidate)
     );
-  const rankedNowFacts = new Set<string>();
-  const uniqueRankedNow = rankedNow.filter(({ candidate }) => {
-    if (rankedNowFacts.has(candidate.factKey)) return false;
-    rankedNowFacts.add(candidate.factKey);
+  const ordinaryFacts = new Set(episodeFacts);
+  const uniqueOrdinary = rankedOrdinary.filter(({ candidate }) => {
+    if (ordinaryFacts.has(candidate.factKey)) return false;
+    ordinaryFacts.add(candidate.factKey);
     return true;
   });
   const selectedNow = [
-    ...uniqueRankedNow.filter((entry) => entry.candidate.rankReasons.safety),
-    ...uniqueRankedNow
-      .filter((entry) => !entry.candidate.rankReasons.safety)
-      .slice(0, NOW_CANDIDATE_CAP),
+    ...selectedSafety,
+    ...selectedEpisodes,
+    ...uniqueOrdinary.slice(0, NOW_CANDIDATE_CAP),
   ];
   const nowIds = new Set(
     selectedNow.map((entry) => entry.candidate.candidateId)

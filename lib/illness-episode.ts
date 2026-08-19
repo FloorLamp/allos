@@ -57,6 +57,116 @@ const TEMP_CANONICAL = VITAL_CANONICAL.temperature.canonical;
 // The far-past floor used when an episode's start is unknown (before the change-log).
 const OPEN_START_FLOOR = "0001-01-01";
 
+interface EpisodeTemperatureRow {
+  id: number;
+  date: string;
+  occurred_at: string | null;
+  external_id: string | null;
+  value_num: number;
+  unit: string | null;
+  flag: string | null;
+}
+
+interface EpisodeAdministrationRow {
+  [key: string]: unknown;
+  id: number;
+  item_id: number;
+  name: string;
+  kind: IntakeItemKind;
+  product: string | null;
+  date: string;
+  occurred_at: string | null;
+  recorded_at: string;
+  amount: string | null;
+}
+
+type EpisodeSymptomDays = ReturnType<typeof getSymptomDaysInRange>;
+
+// A profile's broad episode window is gathered once, then partitioned in memory for
+// each simultaneously-open situation. All rows retain their own dates, so the pure
+// assembler below applies exactly the same inclusive [start, end] membership as the
+// former one-query-set-per-episode path.
+interface IllnessEpisodeFactBatch {
+  asOf: string;
+  timezone: string;
+  symptomDays: EpisodeSymptomDays;
+  temperatureRows: EpisodeTemperatureRow[];
+  administrationRows: EpisodeAdministrationRow[];
+  conditions: Condition[];
+}
+
+function episodeWindow(
+  episodes: readonly IllnessEpisode[],
+  asOf: string
+): { from: string; to: string } | null {
+  if (episodes.length === 0) return null;
+  let from = episodes[0].start ?? OPEN_START_FLOOR;
+  let to = episodes[0].end ?? asOf;
+  for (const episode of episodes.slice(1)) {
+    const episodeFrom = episode.start ?? OPEN_START_FLOOR;
+    const episodeTo = episode.end ?? asOf;
+    if (episodeFrom < from) from = episodeFrom;
+    if (episodeTo > to) to = episodeTo;
+  }
+  return { from, to };
+}
+
+function gatherIllnessEpisodeFacts(
+  profileId: number,
+  episodes: readonly IllnessEpisode[],
+  options?: { asOf?: string; conditions?: Condition[] }
+): IllnessEpisodeFactBatch {
+  const asOf = options?.asOf ?? today(profileId);
+  const timezone = getTimezone(profileId);
+  const window = episodeWindow(episodes, asOf);
+  if (!window) {
+    return {
+      asOf,
+      timezone,
+      symptomDays: [],
+      temperatureRows: [],
+      administrationRows: [],
+      conditions: options?.conditions ?? [],
+    };
+  }
+
+  const { from, to } = window;
+  const symptomDays = getSymptomDaysInRange(profileId, from, to);
+  const temperatureRows = db
+    .prepare(
+      `SELECT id, date, occurred_at, external_id, value_num, unit, flag
+         FROM medical_records
+        WHERE profile_id = ? AND canonical_name = ?
+          AND date >= ? AND date <= ? AND value_num IS NOT NULL
+        ORDER BY date ASC, COALESCE(occurred_at, '') ASC, id ASC`
+    )
+    .all(profileId, TEMP_CANONICAL, from, to) as EpisodeTemperatureRow[];
+  const administrationRows = db
+    .prepare(
+      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, ii.kind AS kind,
+              COALESCE(l.product, ii.product) AS product, l.date AS date,
+              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at,
+              COALESCE(l.amount, d.amount) AS amount
+         FROM intake_item_logs l
+         JOIN intake_items ii ON ii.id = l.item_id
+         LEFT JOIN intake_item_doses d
+           ON d.id = l.dose_id AND d.item_id = l.item_id
+        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
+          AND l.date >= ? AND l.date <= ?
+        ORDER BY l.date ASC, COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
+    )
+    .all(profileId, from, to) as EpisodeAdministrationRow[];
+
+  return {
+    asOf,
+    timezone,
+    symptomDays,
+    temperatureRows,
+    administrationRows,
+    conditions: options?.conditions ?? getConditions(profileId),
+  };
+}
+
 // Assemble the full illness story for one derived episode. `conditions` may be passed
 // pre-fetched so a caller assembling MANY episodes for one profile (the episodes-index
 // summary, #886) hoists the profile-invariant getConditions() out of its loop rather
@@ -67,8 +177,20 @@ export function assembleIllnessEpisode(
   episode: IllnessEpisode,
   presetConditions?: Condition[]
 ): AssembledEpisode {
-  const asOf = today(profileId);
-  const tz = getTimezone(profileId);
+  return assembleIllnessEpisodeFromFacts(
+    episode,
+    gatherIllnessEpisodeFacts(profileId, [episode], {
+      conditions: presetConditions,
+    })
+  );
+}
+
+function assembleIllnessEpisodeFromFacts(
+  episode: IllnessEpisode,
+  facts: IllnessEpisodeFactBatch
+): AssembledEpisode {
+  const asOf = facts.asOf;
+  const tz = facts.timezone;
   const ongoing = episode.end == null;
   // Inclusive query window. `to` is the last active day: the inclusive end for a
   // closed episode, else today for an ongoing one.
@@ -76,7 +198,9 @@ export function assembleIllnessEpisode(
   const from = episode.start ?? OPEN_START_FLOOR;
 
   // ── Symptoms: per-symptom severity series (worst-first) ─────────────────────
-  const dayRollups = getSymptomDaysInRange(profileId, from, to);
+  const dayRollups = facts.symptomDays.filter(
+    (day) => day.date >= from && day.date <= to
+  );
   const bySymptom = new Map<string, SymptomSeries>();
   // getSymptomDaysInRange is newest-day-first; build each series oldest-first.
   for (const day of [...dayRollups].reverse()) {
@@ -111,23 +235,9 @@ export function assembleIllnessEpisode(
   // vitalReadingTime the Trends vitals surfaces read, so the curve and the Today
   // strip can never disagree about when a reading was taken. Untimed rows sort
   // first within their day ('' < any instant), as the note-less rows always did.
-  const tempRows = db
-    .prepare(
-      `SELECT id, date, occurred_at, external_id, value_num, unit, flag
-         FROM medical_records
-        WHERE profile_id = ? AND canonical_name = ?
-          AND date >= ? AND date <= ? AND value_num IS NOT NULL
-        ORDER BY date ASC, COALESCE(occurred_at, '') ASC, id ASC`
-    )
-    .all(profileId, TEMP_CANONICAL, from, to) as {
-    id: number;
-    date: string;
-    occurred_at: string | null;
-    external_id: string | null;
-    value_num: number;
-    unit: string | null;
-    flag: string | null;
-  }[];
+  const tempRows = facts.temperatureRows.filter(
+    (row) => row.date >= from && row.date <= to
+  );
   // Unit-gated (#1018): value_num is only trusted as °F when the row's unit IS a
   // recognized °F spelling (or NULL — every app writer stores 'degF'; older
   // extracted rows may carry null, the pre-existing trust, kept). A recognized
@@ -160,31 +270,9 @@ export function assembleIllnessEpisode(
   // scheduled supplement confirmed every day would drown out the signal.
   // A log's snapshot stays authoritative; legacy rows without one fall back to their
   // linked dose so history still shows the same amount as the Meds logger.
-  const admRows = db
-    .prepare(
-      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, ii.kind AS kind,
-              COALESCE(l.product, ii.product) AS product, l.date AS date,
-              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at,
-              COALESCE(l.amount, d.amount) AS amount
-         FROM intake_item_logs l
-         JOIN intake_items ii ON ii.id = l.item_id
-         LEFT JOIN intake_item_doses d
-           ON d.id = l.dose_id AND d.item_id = l.item_id
-        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
-          AND l.date >= ? AND l.date <= ?
-        ORDER BY l.date ASC, COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
-    )
-    .all(profileId, from, to) as {
-    id: number;
-    item_id: number;
-    name: string;
-    kind: IntakeItemKind;
-    product: string | null;
-    date: string;
-    occurred_at: string | null;
-    recorded_at: string;
-    amount: string | null;
-  }[];
+  const admRows = facts.administrationRows.filter(
+    (row) => row.date >= from && row.date <= to
+  );
   const byMed = new Map<number, EpisodeMedication>();
   for (const r of admRows) {
     let med = byMed.get(r.item_id);
@@ -231,9 +319,7 @@ export function assembleIllnessEpisode(
   // ── Conditions bridged from / overlapping the window ────────────────────────
   const promotedExternal =
     episode.id != null ? episodeConditionExternalId(episode.id) : null;
-  const conditions: EpisodeCondition[] = (
-    presetConditions ?? getConditions(profileId)
-  )
+  const conditions: EpisodeCondition[] = facts.conditions
     .filter((c) => {
       const fromEp =
         promotedExternal != null && c.external_id === promotedExternal;
@@ -398,6 +484,28 @@ export function openEpisodeFromState(
   const row = state.todayRow;
   if (!row || row.end_date != null) return null;
   return assembleIllnessEpisode(state.profileId, episodeRowToDerived(row));
+}
+
+// Every open episode covering the profile's local today, preserving the episode
+// store's stable row order (#3138). The active profile includes a just-opened empty
+// cockpit so the dashboard remains the illness front door; household cockpits retain
+// the established has-a-signal gate.
+export function openEpisodesFromState(
+  state: ProfileEpisodeState,
+  options: { includeEmpty: boolean }
+): (AssembledEpisode & { id: number })[] {
+  const rows = state.todayRows.filter((row) => row.end_date == null);
+  if (rows.length === 0) return [];
+  const derived = rows.map(episodeRowToDerived);
+  const facts = gatherIllnessEpisodeFacts(state.profileId, derived, {
+    asOf: state.today,
+  });
+  return rows
+    .map((row) => ({
+      ...assembleIllnessEpisodeFromFacts(episodeRowToDerived(row), facts),
+      id: row.id,
+    }))
+    .filter((episode) => options.includeEmpty || isOpenEpisode(episode));
 }
 
 // All of a profile's illness episodes, most-recent first — what the timeline lists a

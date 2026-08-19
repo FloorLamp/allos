@@ -21,7 +21,8 @@ import {
   serializeOnboardingState,
 } from "@/lib/onboarding";
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
-import type { SessionProfile } from "@/lib/auth";
+import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
+import { authorizedProfileSubset } from "@/lib/cross-profile";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
@@ -52,6 +53,30 @@ vi.mock("@/lib/auth", async (importActual) => {
     },
     getAccessibleProfiles: async () => session.accessible,
     ownProfileForLogin: () => session.profile?.id ?? null,
+  };
+});
+
+vi.mock("@/lib/scope", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/scope")>();
+  return {
+    ...actual,
+    requireScope: async () => {
+      if (!session.profile) throw new Error("dashboard test scope not set");
+      const ids = authorizedProfileSubset(
+        accessibleProfileIdsForLogin(session.loginId),
+        session.accessible.map((profile) => profile.id)
+      );
+      return {
+        loginId: session.loginId,
+        role: "admin" as const,
+        actingProfileId: session.profile.id,
+        ownProfileId: session.profile.id,
+        profiles: session.accessible,
+        ids,
+        viewIds: authorizedProfileSubset(ids, [session.profile.id]),
+        access: new Map(ids.map((id) => [id, "write" as const])),
+      };
+    },
   };
 });
 
@@ -163,6 +188,8 @@ const standingPresentations = new Map<
 >();
 const queryCounts = new Map<string, number>();
 const personaProfileIds = new Map<string, number>();
+let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
+let switchedHouseholdProfileId = 0;
 const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 describe("actual atomic dashboard manifests", () => {
@@ -200,6 +227,19 @@ describe("actual atomic dashboard manifests", () => {
       );
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
+      if (persona.name === "household") {
+        const switched = session.accessible.find(
+          (profile) => profile.name === "Riley"
+        )!;
+        session.profile = switched;
+        switchedHouseholdProfileId = switched.id;
+        const switchedElement =
+          (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>;
+        switchedHouseholdManifest = switchedElement.props.placements;
+        session.profile = session.accessible.find(
+          (profile) => profile.id === profileId
+        )!;
+      }
     }
   }, 120_000);
 
@@ -302,9 +342,58 @@ describe("actual atomic dashboard manifests", () => {
     }
   });
 
-  it("does not exceed the phase-1 query budget", () => {
+  it("orders real safety, three illness groups, then the live workout", () => {
+    const placements = manifests
+      .get("household")!
+      .filter((placement) => placement.lane === "now");
+    const now = placements.map((placement) => placement.candidate.candidateId);
+    const illnesses = now.filter((id) => id.startsWith("illness.state:"));
+    const safetyIndex = placements.findIndex(
+      ({ candidate }) => candidate.rankReasons.safety
+    );
+    const workoutIndex = now.findIndex((id) => id.startsWith("workout.live:"));
+    expect(illnesses).toHaveLength(3);
+    expect(safetyIndex).toBeGreaterThanOrEqual(0);
+    expect(safetyIndex).toBeLessThan(
+      Math.min(...illnesses.map((id) => now.indexOf(id)))
+    );
+    expect(workoutIndex).toBeGreaterThan(-1);
+    expect(Math.max(...illnesses.map((id) => now.indexOf(id)))).toBeLessThan(
+      workoutIndex
+    );
+  });
+
+  it("leads with the acting illness before two household profiles and reorders on switch", () => {
+    const illnessProfiles = (
+      placements: DashboardPlacementCanvasProps["placements"]
+    ) =>
+      placements
+        .filter(
+          ({ lane, candidate }) =>
+            lane === "now" && candidate.episodeGroup?.memberRole === "state"
+        )
+        .map(({ candidate }) => candidate.episodeGroup!.profileId);
+    const original = illnessProfiles(manifests.get("household")!);
+    expect(original).toHaveLength(3);
+    expect(original[0]).toBe(personaProfileIds.get("household"));
+    expect(original.slice(1)).toEqual(
+      original.slice(1).toSorted((a, b) => a - b)
+    );
+    const switched = illnessProfiles(switchedHouseholdManifest);
+    expect(switched).toHaveLength(3);
+    expect(switched[0]).toBe(switchedHouseholdProfileId);
+    expect(switched.slice(1)).toEqual(
+      switched.slice(1).toSorted((a, b) => a - b)
+    );
+  });
+
+  it("does not exceed the phase-5 interactive-cockpit query budget", () => {
     for (const [persona, count] of queryCounts) {
-      expect(count, persona).toBeLessThanOrEqual(500);
+      // Phase 5 restores the real symptom, temperature, medication, and episode
+      // controls. Their reads are batched once per sick profile; the integrated
+      // household fixture deliberately has three sick profiles, while the separate
+      // multi-episode pin proves episode cardinality does not increase them.
+      expect(count, persona).toBeLessThanOrEqual(535);
     }
   });
 });

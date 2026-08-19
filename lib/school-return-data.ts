@@ -25,6 +25,35 @@ const OPEN_START_FLOOR = "0001-01-01";
 
 const DEFAULT_THRESHOLD_HOURS = 24;
 
+interface AntipyreticAdministrationRow {
+  [key: string]: unknown;
+  name: string;
+  rxcui: string | null;
+  rxcui_ingredients: string | null;
+  date: string;
+  occurred_at: string | null;
+  recorded_at: string;
+}
+
+function antipyreticAdministrationRows(
+  profileId: number,
+  from: string,
+  to: string
+): AntipyreticAdministrationRow[] {
+  return db
+    .prepare(
+      `SELECT ii.name AS name, ii.rxcui AS rxcui,
+              ii.rxcui_ingredients AS rxcui_ingredients, l.date AS date,
+              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at
+         FROM intake_item_logs l
+         JOIN intake_items ii ON ii.id = l.item_id
+        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
+          AND l.date >= ? AND l.date <= ?
+        ORDER BY COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
+    )
+    .all(profileId, from, to) as AntipyreticAdministrationRow[];
+}
+
 // The per-profile school-return threshold in hours (the common 24h convention by
 // default). Clamped to a sane 1..168h range so a corrupt setting can't produce a
 // nonsense countdown.
@@ -38,12 +67,14 @@ export function getSchoolReturnThresholdHours(profileId: number): number {
 // Compute the school-return countdown for an assembled OPEN episode, or null when it
 // doesn't apply yet — there has been no fever-range reading in the episode, so there
 // is nothing to count down from. `nowMs` is injectable for tests.
-export function schoolReturnStatusFor(
+function schoolReturnStatusForRows(
   profileId: number,
   episode: AssembledEpisode,
-  nowMs: number = Date.now()
+  nowMs: number,
+  prefetchedRows?: readonly AntipyreticAdministrationRow[],
+  prefetchedSettings?: { timeZone: string; thresholdHours: number }
 ): SchoolReturnStatus | null {
-  const tz = getTimezone(profileId);
+  const tz = prefetchedSettings?.timeZone ?? getTimezone(profileId);
 
   // Last FEVER-RANGE reading: the newest temperature whose reference-range flag is
   // "high". The episode's temperatures are date-then-time ascending.
@@ -71,29 +102,14 @@ export function schoolReturnStatusFor(
   // JOIN), then filters to fever reducers via the curated PRN dataset.
   const from = episode.firstDay ?? OPEN_START_FLOOR;
   const to = episode.lastActiveDay ?? episode.asOf;
-  const rows = db
-    .prepare(
-      `SELECT ii.name AS name, ii.rxcui AS rxcui,
-              ii.rxcui_ingredients AS rxcui_ingredients,
-              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at
-         FROM intake_item_logs l
-         JOIN intake_items ii ON ii.id = l.item_id
-        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
-          AND l.date >= ? AND l.date <= ?
-        ORDER BY COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
-    )
-    .all(profileId, from, to) as {
-    name: string;
-    rxcui: string | null;
-    rxcui_ingredients: string | null;
-    occurred_at: string | null;
-    recorded_at: string;
-  }[];
+  const rows =
+    prefetchedRows ?? antipyreticAdministrationRows(profileId, from, to);
 
   let lastAntipyreticAtMs: number | null = null;
   let lastAntipyreticName: string | null = null;
   let lastAntipyreticClockLabel: string | null = null;
   for (const r of rows) {
+    if (r.date < from || r.date > to) continue;
     if (
       !isAntipyreticIntakeItem({
         name: r.name,
@@ -135,6 +151,56 @@ export function schoolReturnStatusFor(
     lastAntipyreticName,
     lastAntipyreticClockLabel,
     nowMs,
-    thresholdHours: getSchoolReturnThresholdHours(profileId),
+    thresholdHours:
+      prefetchedSettings?.thresholdHours ??
+      getSchoolReturnThresholdHours(profileId),
   });
+}
+
+export function schoolReturnStatusFor(
+  profileId: number,
+  episode: AssembledEpisode,
+  nowMs: number = Date.now()
+): SchoolReturnStatus | null {
+  return schoolReturnStatusForRows(profileId, episode, nowMs);
+}
+
+// Resolve every open cockpit for one profile over a single antipyretic read. The
+// fever side already rides each preassembled episode; adding an episode therefore
+// changes only the pure partition below, not SQL count.
+export function schoolReturnStatusesFor(
+  profileId: number,
+  episodes: readonly (AssembledEpisode & { id: number })[],
+  nowMs: number = Date.now()
+): Map<number, SchoolReturnStatus | null> {
+  const out = new Map<number, SchoolReturnStatus | null>();
+  if (episodes.length === 0) return out;
+  if (
+    !episodes.some((episode) =>
+      episode.temperatures.some((temperature) => temperature.flag === "high")
+    )
+  ) {
+    for (const episode of episodes) out.set(episode.id, null);
+    return out;
+  }
+  const from = episodes.reduce((earliest, episode) => {
+    const start = episode.firstDay ?? OPEN_START_FLOOR;
+    return start < earliest ? start : earliest;
+  }, episodes[0].firstDay ?? OPEN_START_FLOOR);
+  const to = episodes.reduce((latest, episode) => {
+    const end = episode.lastActiveDay ?? episode.asOf;
+    return end > latest ? end : latest;
+  }, episodes[0].lastActiveDay ?? episodes[0].asOf);
+  const rows = antipyreticAdministrationRows(profileId, from, to);
+  const settings = {
+    timeZone: getTimezone(profileId),
+    thresholdHours: getSchoolReturnThresholdHours(profileId),
+  };
+  for (const episode of episodes) {
+    out.set(
+      episode.id,
+      schoolReturnStatusForRows(profileId, episode, nowMs, rows, settings)
+    );
+  }
+  return out;
 }

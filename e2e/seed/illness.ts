@@ -15,6 +15,8 @@ import {
   SICK_SELF_PROFILE,
   E2E_LOGIN_SICK_COLLAPSE,
   SICK_COLLAPSE_PROFILE,
+  E2E_LOGIN_MULTI_ILLNESS,
+  MULTI_ILLNESS_PROFILE,
   E2E_LOGIN_SICK_PHOTO,
   SICK_PHOTO_PROFILE,
   E2E_LOGIN_SICK_VIDEO,
@@ -27,8 +29,6 @@ import {
   CARE_PARENT_PROFILE,
   SICK_KID_A_PROFILE,
   SICK_KID_B_PROFILE,
-  E2E_LOGIN_COCARE,
-  COCARE_PARENT_PROFILE,
   E2E_LOGIN_HHHIST,
   E2E_LOGIN_HHHIST_RO,
   HH_HISTORY_PARENT_PROFILE,
@@ -173,25 +173,83 @@ export function seedIllness(): void {
     }
   }
 
-  // Base (well) caregiver profiles FIRST so they carry the lowest ids among each
+  // Base caregiver profiles FIRST so they carry the lowest ids among each
   // caregiver's grants — createSession picks accessibleProfiles[0] (lowest id) as the
-  // active profile, so each caregiver lands acting as their OWN well profile (not a kid).
+  // active profile, so the caregiver lands acting as their OWN profile (not a kid).
   const careParentId = fixtureProfileId(CARE_PARENT_PROFILE);
-  const coCareParentId = fixtureProfileId(COCARE_PARENT_PROFILE);
   const sickKidAId = fixtureProfileId(SICK_KID_A_PROFILE);
   const sickKidBId = fixtureProfileId(SICK_KID_B_PROFILE);
   const sickSelfId = fixtureProfileId(SICK_SELF_PROFILE);
   const sickCollapseId = fixtureProfileId(SICK_COLLAPSE_PROFILE);
+  const multiIllnessId = fixtureProfileId(MULTI_ILLNESS_PROFILE);
 
   seedSickEpisode(sickSelfId, { activateSituation: true });
   seedSickEpisode(sickCollapseId, { activateSituation: true });
+  seedSickEpisode(careParentId, { activateSituation: true });
   seedSickEpisode(sickKidAId, { prnMed: true });
   seedSickEpisode(sickKidBId, {});
+
+  const careToday = today(careParentId);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, created_at, updated_at)
+     VALUES (?, ?, 'strength', 'Care workout', '12:30', NULL, ?, ?)`
+  ).run(
+    careParentId,
+    careToday,
+    utcInstant(
+      zonedWallTimeToUtc(getTimezone(careParentId), careToday, "12:30")!
+    ),
+    utcInstant(
+      zonedWallTimeToUtc(getTimezone(careParentId), careToday, "12:30")!
+    )
+  );
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name)
+     VALUES (?, ?, 'instrument', 'PHQ-9', '24', 24, NULL, 'PHQ-9')`
+  ).run(careParentId, careToday);
+
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    multiIllnessId
+  );
+  const multiToday = today(multiIllnessId);
+  for (const [situation, daysAgo] of [
+    ["Flu", 4],
+    ["Migraine", 2],
+    ["Stomach bug", 1],
+  ] as const) {
+    const existingSituation = db
+      .prepare(
+        "SELECT id FROM situations WHERE profile_id = ? AND name = ? COLLATE NOCASE"
+      )
+      .get(multiIllnessId, situation) as { id: number } | undefined;
+    if (existingSituation)
+      db.prepare(
+        "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
+      ).run(existingSituation.id);
+    else
+      db.prepare(
+        `INSERT INTO situations (profile_id, name, active, illness_type)
+         VALUES (?, ?, 1, 1)`
+      ).run(multiIllnessId, situation);
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, ?, ?, NULL)`
+    ).run(multiIllnessId, situation, shiftDateStr(multiToday, -daysAgo));
+  }
+  db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+     VALUES (?, ?, 'headache', 2)
+     ON CONFLICT(profile_id, date, symptom)
+     DO UPDATE SET severity = excluded.severity`
+  ).run(multiIllnessId, multiToday);
 
   // SICK_SELF: sole (active) profile is sick → its own FULL cockpit at hero position.
   seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
   // SICK_COLLAPSE: a separate sick-solo login for the collapse-persistence test.
   seedMemberLogin(E2E_LOGIN_SICK_COLLAPSE, sickCollapseId);
+  seedMemberLogin(E2E_LOGIN_MULTI_ILLNESS, multiIllnessId);
 
   // SICK_PHOTO (#1093): a dedicated sick-solo login whose episode cockpit the
   // symptom-photo-link spec drives — attaching a photo TAGGED to a specific symptom log.
@@ -303,17 +361,14 @@ export function seedIllness(): void {
   }
   seedMemberLogin(E2E_LOGIN_ILLNESS_CARE, illnessCareId);
 
-  // CARE: acts as the well Care Parent, granted both sick kids → two accordion cockpits.
+  // CARE: acts as a sick Care Parent with a live workout and safety signal, granted
+  // both sick kids → the integrated phase-5 ordering fixture.
   const careLoginId = seedMemberLogin(E2E_LOGIN_CARE, careParentId);
   grantProfile(careLoginId, sickKidAId);
   grantProfile(careLoginId, sickKidBId);
 
-  // COCARE: a second caregiver granted Kid A (shared with CARE) → the co-caregiver case.
-  const coCareLoginId = seedMemberLogin(E2E_LOGIN_COCARE, coCareParentId);
-  grantProfile(coCareLoginId, sickKidAId);
-
   console.log(
-    `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregivers ${careLoginId}/${coCareLoginId} (#858)`
+    `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregiver ${careLoginId} (#858)`
   );
 
   // ── Household-rollup + illness-episode caregiver fixtures (#868 census hardening) ──

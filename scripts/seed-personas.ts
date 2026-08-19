@@ -1799,7 +1799,7 @@ const household: SeedPersona = {
   description:
     "One caregiver login over four profiles: Dave (rising LDL, profile 1), " +
     "his mother Margaret (six meds, T2D + AFib + CKD 3), and 22-month-old " +
-    "twins Riley and Rowan who are BOTH currently sick — active illness " +
+    "Dave and twins Riley and Rowan who are currently sick — active illness " +
     "episodes, day-by-day symptoms, and a fever curve. Stresses the " +
     "household roll-ups, cross-profile timeline/calendar, family settings, " +
     "and every multi-profile merge surface the solo personas can't reach.",
@@ -1820,11 +1820,45 @@ const household: SeedPersona = {
       "profiles journey does not yet parameterize.",
   ],
   dashboard: {
-    expect: ["checkin.mood", "household.attention"],
+    expect: [
+      "checkin.mood",
+      "household.attention",
+      "attention.fact:mental-health:crisis:",
+      "illness.state:",
+      "workout.live:",
+    ],
     absent: ["cycle.control"],
   },
   apply(ctx) {
     seedDaveMidlife(ctx);
+    activeIllness(ctx, {
+      startedDaysAgo: 1,
+      symptoms: [
+        [1, "fatigue", 2],
+        [0, "cough", 2],
+      ],
+    });
+    ctx.db
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, value_num, unit, canonical_name)
+         VALUES (?, ?, 'instrument', 'PHQ-9', '24', 24, NULL, 'PHQ-9')`
+      )
+      .run(ctx.profileId, ctx.daysAgo(0));
+    const workoutDay = ctx.daysAgo(0);
+    ctx.db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, start_time, end_time, duration_min,
+            created_at, updated_at)
+         VALUES (?, ?, 'strength', 'Lunch workout', '12:30', NULL, NULL, ?, ?)`
+      )
+      .run(
+        ctx.profileId,
+        workoutDay,
+        ctx.occurredAt(workoutDay, "12:30"),
+        ctx.occurredAt(workoutDay, "12:30")
+      );
 
     const margaret = addFamilyProfile(ctx, {
       name: "Margaret",
@@ -1860,7 +1894,6 @@ const household: SeedPersona = {
         [0, "07:45", 100.4],
       ],
     });
-
     const rowan = addFamilyProfile(ctx, {
       name: "Rowan",
       sex: "male",

@@ -4,15 +4,9 @@ import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_BADGE,
-  E2E_LOGIN_CARE,
-  E2E_LOGIN_COCARE,
-  E2E_LOGIN_ILLNESS_CAREGIVER,
-  E2E_LOGIN_ILLNESS_RO,
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_RECAP,
-  E2E_LOGIN_SICK_COLLAPSE,
-  E2E_LOGIN_SICK_SELF,
   E2E_LOGIN_SLEEP_SEGMENTED,
 } from "./fixture-logins";
 
@@ -53,60 +47,6 @@ test("retired dashboard fixtures resolve to their atomic facts", async ({
   await caregiverOnboarding.goto("/");
   await expect(caregiverOnboarding).toHaveURL(/\/onboarding/);
   await caregiverOnboarding.context().close();
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_SICK_SELF,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_SICK_COLLAPSE,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_CARE,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_COCARE,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_ILLNESS_CAREGIVER,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
-  // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
-  // call window; these are deliberately distinct access-control subjects.
-  await expectCandidate(
-    await loginAs(browser, {
-      username: E2E_LOGIN_ILLNESS_RO,
-      password: E2E_MEMBER_PASSWORD,
-    }),
-    "illness.state:"
-  );
   // Keep each explicit sign-in outside the hygiene scanner's preceding bounded
   // call window; these are deliberately distinct access-control subjects.
   await expectCandidate(

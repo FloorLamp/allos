@@ -27,6 +27,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   episodeStateForProfile,
   episodeStatesForProfiles,
+  openEpisodeRowsForProfiles,
   reopenEligibleEpisodeForProfile,
   reopenEligibleFromState,
 } from "@/lib/illness-episode-store";
@@ -35,8 +36,12 @@ import {
   currentEpisodeFromState,
   openEpisodeForProfile,
   openEpisodeFromState,
+  openEpisodesFromState,
 } from "@/lib/illness-episode";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
+import { testAuthorizedIds } from "@/lib/__tests__/authorized-ids";
+import { gatherDashboardIllnessCockpits } from "@/lib/dashboard-illness-cockpit";
+import { withSettingReadCache } from "@/lib/settings";
 
 // The three illness_episodes reads the dashboard path can issue, by signature. The
 // today-row and closed-row queries are distinguishable in their WHERE clauses, which
@@ -46,6 +51,11 @@ const TODAY_ROW =
 const CLOSED_ROW = /FROM illness_episodes[\s\S]*end_date IS NOT NULL/;
 const OPEN_BY_SITUATION =
   /FROM illness_episodes[\s\S]*COLLATE NOCASE AND end_date IS NULL/;
+const SYMPTOM_FACTS = /FROM symptom_logs[\s\S]*date >= \?[\s\S]*date <= \?/;
+const TEMPERATURE_FACTS =
+  /FROM medical_records[\s\S]*canonical_name = \?[\s\S]*date >= \?[\s\S]*date <= \?/;
+const PRN_FACTS =
+  /FROM intake_item_logs[\s\S]*obligation = 'may'[\s\S]*l\.date >= \?[\s\S]*l\.date <= \?/;
 
 // One spy fanned out over several signatures — vi.spyOn returns the SAME spy for an
 // already-spied method, so two independent spies would leave the second calling
@@ -257,5 +267,157 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
     expect(todayRow.calls()).toBe(all.length * 3);
     expect(closedRow.calls()).toBe(all.length * 2);
     expect(openBySituation.calls()).toBe(2);
+  });
+});
+
+describe("multiple open illness episodes — one broad fact gather (#3138)", () => {
+  it("partitions one symptom/temperature/PRN/condition gather across every open episode", () => {
+    const p = newProfile("DIG-Multiple-open");
+    const day = today(p);
+    const olderDay = shiftDateStr(day, -4);
+    const recentDay = shiftDateStr(day, -1);
+    const olderId = addEpisode(p, "Flu", olderDay, null);
+
+    addSymptom(p, shiftDateStr(day, -3), "cough", 2);
+    addSymptom(p, day, "fever", 3);
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit,
+          canonical_name, source, occurred_at)
+       VALUES (?, ?, 'vitals', 'Body Temperature', '101.2', 101.2, 'degF',
+               'Body Temperature', 'manual', ?)`
+    ).run(p, day, `${day}T08:00:00Z`);
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'any', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, amount, status)
+       VALUES (?, ?, ?, ?, '200 mg', 'taken')`
+    ).run(doseId, itemId, day, `${day} 09:00:00`);
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, onset_date)
+       VALUES (?, 'Viral syndrome', 'active', ?)`
+    ).run(p, day);
+
+    const countFacts = () => {
+      const [symptoms, temperatures, administrations] = countPrepareSet(
+        SYMPTOM_FACTS,
+        TEMPERATURE_FACTS,
+        PRN_FACTS
+      );
+      const episodes = openEpisodesFromState(episodeStateForProfile(p), {
+        includeEmpty: true,
+      });
+      const counts = [
+        symptoms.calls(),
+        temperatures.calls(),
+        administrations.calls(),
+      ];
+      vi.restoreAllMocks();
+      return { episodes, counts };
+    };
+
+    const one = countFacts();
+    expect(one.episodes.map((episode) => episode.id)).toEqual([olderId]);
+    expect(one.counts).toEqual([1, 1, 1]);
+
+    const recentId = addEpisode(p, "Migraine", recentDay, null);
+    const two = countFacts();
+    expect(two.episodes.map((episode) => episode.id)).toEqual([
+      recentId,
+      olderId,
+    ]);
+    // Adding an episode partitions the same broad rows; it adds no fact query.
+    expect(two.counts).toEqual(one.counts);
+
+    const recent = two.episodes[0];
+    const older = two.episodes[1];
+    expect(recent.symptoms.map((series) => series.symptom)).toEqual(["fever"]);
+    expect(older.symptoms.map((series) => series.symptom).sort()).toEqual([
+      "cough",
+      "fever",
+    ]);
+    for (const episode of two.episodes) {
+      expect(episode.temperatures).toHaveLength(1);
+      expect(episode.totalAdministrations).toBe(1);
+      expect(episode.conditions.map((condition) => condition.name)).toEqual([
+        "Viral syndrome",
+      ]);
+    }
+  });
+
+  it("gathers all and only the authorized set's open rows in one statement", () => {
+    const first = newProfile("DIG-Authorized-first");
+    const second = newProfile("DIG-Authorized-second");
+    const ungranted = newProfile("DIG-Ungranted");
+    const day = today(first);
+    const firstOpen = addEpisode(first, "Flu", shiftDateStr(day, -2), null);
+    const secondOpen = addEpisode(second, "Cold", shiftDateStr(day, -1), null);
+    addEpisode(first, "Old flu", shiftDateStr(day, -8), shiftDateStr(day, -5));
+    addEpisode(ungranted, "Private", shiftDateStr(day, -1), null);
+
+    const [openSet] = countPrepareSet(
+      /FROM illness_episodes[\s\S]*profile_id IN[\s\S]*end_date IS NULL/
+    );
+    const rows = openEpisodeRowsForProfiles(testAuthorizedIds([second, first]));
+
+    expect(openSet.calls()).toBe(1);
+    expect(rows.map((row) => row.id).sort((a, b) => a - b)).toEqual(
+      [firstOpen, secondOpen].sort((a, b) => a - b)
+    );
+    expect(rows.every((row) => row.end_date == null)).toBe(true);
+    expect(rows.some((row) => row.profile_id === ungranted)).toBe(false);
+  });
+
+  it("does not add cockpit-control statements for a second open episode", () => {
+    const p = newProfile("DIG-Cockpit-batch");
+    const day = today(p);
+    addEpisode(p, "Flu", shiftDateStr(day, -4), null);
+    addSymptom(p, day, "cough", 2);
+
+    const gatherCount = () => {
+      const episodes = openEpisodesFromState(episodeStateForProfile(p), {
+        includeEmpty: true,
+      }).filter((episode): episode is typeof episode & { id: number } =>
+        Number.isInteger(episode.id)
+      );
+      let statements = 0;
+      const real = db.prepare.bind(db);
+      vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+        statements++;
+        return real(sql);
+      }) as typeof db.prepare);
+      withSettingReadCache(() =>
+        gatherDashboardIllnessCockpits(p, episodes, {
+          canWrite: true,
+          temperatureUnit: "F",
+          weightUnit: "kg",
+          now: new Date(`${day}T12:00:00Z`),
+        })
+      );
+      vi.restoreAllMocks();
+      return statements;
+    };
+
+    const one = gatherCount();
+    addEpisode(p, "Migraine", shiftDateStr(day, -1), null);
+    const two = gatherCount();
+    expect(two).toBe(one);
   });
 });

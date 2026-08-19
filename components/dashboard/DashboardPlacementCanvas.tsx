@@ -17,6 +17,7 @@ export interface DashboardPlacementCanvasProps {
   candidateNodes: ReadonlyMap<string, ReactNode>;
   standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   attentionBadgeCount: number;
+  illnessGroupNode?: ReactNode;
 }
 
 const EVERYTHING_LABELS: Record<DashboardCandidateKind, string> = {
@@ -32,10 +33,12 @@ export default function DashboardPlacementCanvas({
   candidateNodes,
   standingPresentations,
   attentionBadgeCount,
+  illnessGroupNode,
 }: DashboardPlacementCanvasProps) {
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
+      placement.candidate.episodeGroup == null &&
       candidateNodes.get(placement.candidate.candidateId) == null
   );
   if (missingNode) {
@@ -66,7 +69,26 @@ export default function DashboardPlacementCanvas({
       </div>
     );
   };
-  const now = placementsInLane(placements, "now").flatMap((placement) => {
+  const nowPlacements = placementsInLane(placements, "now");
+  const illnessPlacements = nowPlacements.filter(
+    (placement) => placement.candidate.episodeGroup != null
+  );
+  if (illnessPlacements.length > 0 && illnessGroupNode == null) {
+    throw new Error("Missing dashboard illness-group presentation");
+  }
+  const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
+  const now = nowPlacements.flatMap((placement) => {
+    if (placement.candidate.episodeGroup) {
+      if (placement.candidate.candidateId !== firstIllnessId) return [];
+      return [
+        {
+          id: "illness-group",
+          node: (
+            <div data-testid="dashboard-illness-group">{illnessGroupNode}</div>
+          ),
+        } satisfies NowStripCard,
+      ];
+    }
     const node = nodeFor(placement);
     return node == null
       ? []
