@@ -204,6 +204,14 @@ export const OWNED_TABLES = [
   // nothing FKs into it (the situation bridge is suggest-only, no persistent link), so a
   // delete is a plain row delete and deleteProfile clears it by profile_id.
   "injuries",
+  // Niggle layer (#2948): the self-expiring tier BELOW injury — region + laterality +
+  // optional source link + reported/last-reported stamps, extracted from workout notes
+  // and written only by the user's tap on a confirm chip. Directly owned; nothing FKs
+  // into it (its own FK points OUT, at the source activity, ON DELETE SET NULL), so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id. Liveness is
+  // a read-time derivation over last_reported_at (NIGGLE_QUIET_DAYS), so there is no
+  // status column and no sweep to keep in step with a deletion.
+  "niggles",
   // Fitness-check session rows (#834): one per (profile, date), grouping the battery's
   // measured tests. Directly owned. Its child fitness_assessment_entries carries no
   // profile_id and is cleared THROUGH this parent via its ON DELETE CASCADE FK (like

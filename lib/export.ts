@@ -660,6 +660,29 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM injuries WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Niggles (#2948) — the self-expiring tier below injury, one row per body region +
+    // side the person confirmed was bothering them. User-entered (the confirm chip's tap
+    // IS the write), so it leaves with a migrating family like the injuries above.
+    // EXPIRED rows are exported too: expiry is a read-time derivation over
+    // `last_reported_at`, never a delete, so the table IS the history.
+    key: "niggles",
+    label: "Niggles",
+    table: "niggles",
+    columns: [
+      "region",
+      "laterality",
+      "body_term",
+      "source_activity_id",
+      "source_exercise",
+      "reported_at",
+      "last_reported_at",
+    ],
+    select: `SELECT id, region, laterality, body_term, source_activity_id,
+                    source_exercise, reported_at, last_reported_at
+       FROM niggles WHERE profile_id = ? ORDER BY last_reported_at DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM niggles WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Endurance event plans (#839) — user-entered training goals a migrating family keeps
     // (event, discipline, target distance/time, status). The weekly trajectory is derived,
     // never stored, so nothing but the goal is exported here.
@@ -1545,6 +1568,16 @@ export const DELETE_POLICY = {
   },
   goals: { revalidate: ["/training", "/"] },
   injuries: { revalidate: ["/training", "/timeline", "/"] },
+  // A niggle (#2948) is a plain id + profile_id delete: nothing FKs into the table, no
+  // counter sits beside it, and liveness is recomputed on read from `last_reported_at`
+  // — so removing rows means exactly "these are no longer on record" with nothing left
+  // dangling. Revalidates the activity page as well as /training, because the confirm
+  // chip's offer is derived from the live set: deleting the row must put the chip back.
+  // Not an undo root (no UNDO_KINDS entry), so DATASET_UNDO_KIND needs no decision — and
+  // a niggle is cheap to re-report, one tap on the same note.
+  niggles: {
+    revalidate: ["/training", revalidateTarget("/training/activity/[id]"), "/"],
+  },
   endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
   intake_items: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/records", "/"] },
