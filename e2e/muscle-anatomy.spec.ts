@@ -99,10 +99,9 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
   await expect(coverage.getByText("What counts?", { exact: true })).toHaveCount(
     0
   );
-  await expect(coverage.locator("summary").first()).toHaveAttribute(
-    "aria-label",
-    /Show or hide what counts for/
-  );
+  await expect(
+    coverage.locator("summary").first() // first-ok: asserts any workout-scoped muscle disclosure exposes its accessible toggle label
+  ).toHaveAttribute("aria-label", /Show or hide what counts for/);
 
   const benchRow = pushCard
     .getByTestId("training-log-strength-row")

@@ -156,9 +156,7 @@ export default function ActivitySummaryLine({
             title={item.title}
             className="flex min-w-0 flex-col items-start gap-1"
           >
-            <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {item.label}
-            </dt>
+            <dt className="section-label">{item.label}</dt>
             <dd>
               <SummaryValue item={item} detail />
             </dd>

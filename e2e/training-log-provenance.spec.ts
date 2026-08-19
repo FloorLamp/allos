@@ -74,7 +74,10 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   // Keep the card footer compact: the re-enable action lives in the portaled
   // activity menu, not beside the lock marker.
   await expect(stravaCard.getByTestId("edit-lock-resume")).toHaveCount(0);
-  await stravaCard.getByRole("button", { name: "Activity actions" }).click();
+  await hydratedClick(
+    page,
+    stravaCard.getByRole("button", { name: "Activity actions" })
+  );
   await expect(page.getByTestId("edit-lock-resume")).toHaveText(
     "Resume sync updates"
   );

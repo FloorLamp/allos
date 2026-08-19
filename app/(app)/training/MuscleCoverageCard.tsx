@@ -139,7 +139,7 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                       >
                         {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
                       </span>
-                      <span className="shrink-0 text-slate-400 group-open:[&_svg]:rotate-180 dark:text-slate-500">
+                      <span className="shrink-0 text-slate-500 group-open:[&_svg]:rotate-180 dark:text-slate-400">
                         <IconChevronDown
                           className="h-4 w-4 transition-transform"
                           aria-hidden

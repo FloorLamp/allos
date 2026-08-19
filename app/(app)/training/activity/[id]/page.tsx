@@ -311,9 +311,7 @@ export default async function TrainingActivityPage(props: {
             {canWrite && (
               <DiscardDraftButton
                 activityId={data.row.id}
-                subjectProfileId={
-                  crossProfile ? subjectProfileId : undefined
-                }
+                subjectProfileId={crossProfile ? subjectProfileId : undefined}
               />
             )}
           </div>

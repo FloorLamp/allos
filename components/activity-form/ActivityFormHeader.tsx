@@ -85,7 +85,7 @@ export default function ActivityFormHeader({
             />
             <IconPencil
               aria-hidden
-              className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within/title:text-brand-600 dark:text-slate-500 dark:group-focus-within/title:text-brand-400"
+              className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 transition-colors group-focus-within/title:text-brand-600 dark:text-slate-400 dark:group-focus-within/title:text-brand-400"
               stroke={1.75}
             />
           </div>

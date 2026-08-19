@@ -52,10 +52,12 @@ async function confirmDelete(page: Page): Promise<void> {
 
 async function deleteFromRecordMenu(page: Page, row: Locator): Promise<void> {
   await hydratedClick(page, row);
-  await page
-    .getByTestId("training-activity-page")
-    .getByRole("button", { name: "Activity actions" })
-    .click();
+  await hydratedClick(
+    page,
+    page
+      .getByTestId("training-activity-page")
+      .getByRole("button", { name: "Activity actions" })
+  );
   await page.getByTestId("delete-activity").click();
   await settledClick(
     page,
