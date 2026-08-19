@@ -845,7 +845,9 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     expect(out).toEqual({ kind: "not-bound" });
     expect(
       (
-        db.prepare("SELECT time FROM practice_logs WHERE id = ?").get(logId) as {
+        db
+          .prepare("SELECT time FROM practice_logs WHERE id = ?")
+          .get(logId) as {
           time: string;
         }
       ).time
