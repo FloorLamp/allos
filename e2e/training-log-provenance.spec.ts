@@ -1,16 +1,20 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 
 // The Log feed is a slim index into canonical activity records. Return to that
 // index before each selection, then scope record assertions to the activity page.
-function readingPane(page: Page) {
+function activityPage(page: Page) {
   return page.getByTestId("training-activity-page");
 }
-async function openInPane(page: Page, row: Locator, title: string) {
+async function openActivityPage(page: Page, row: Locator, title: string) {
   await page.goto("/training?tab=log");
-  await hydratedClick(page, row);
-  const card = readingPane(page).filter({ hasText: title });
+  await followLink(
+    page,
+    row.getByRole("link", { name: title, exact: true }),
+    /\/training\/activity\/\d+$/
+  );
+  const card = activityPage(page).filter({ hasText: title });
   await expect(card).toBeVisible();
   return card;
 }
@@ -42,13 +46,17 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   page,
 }) => {
   // /training defaults to the Log tab, which renders the training log feed —
-  // slim rows since #2897; provenance lives on the full record in the pane.
+  // slim rows; provenance lives on the canonical activity page.
   await page.goto("/training?tab=log");
 
   const stravaRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Strava morning ride" });
-  const stravaCard = await openInPane(page, stravaRow, "Strava morning ride");
+  const stravaCard = await openActivityPage(
+    page,
+    stravaRow,
+    "Strava morning ride"
+  );
   await expect(stravaCard.getByTestId("activity-provenance-source")).toHaveText(
     "Strava"
   );
@@ -88,16 +96,19 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
     .getByTestId("training-log-row")
     .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
-  const manualCard = await openInPane(page, manualRow, "Basketball pickup");
+  const manualCard = await openActivityPage(
+    page,
+    manualRow,
+    "Basketball pickup"
+  );
   await expect(manualCard.getByTestId("activity-provenance-source")).toHaveText(
     "Manual"
   );
   await expect(manualCard.getByTestId("activity-provenance")).not.toContainText(
     "edited"
   );
-  // Title-click editing left with the feed cards (#2897): the pane header's
-  // Edit button opens the same docked editor.
-  await readingPane(page).getByTestId("activity-page-edit").click();
+  // The canonical page's Edit action opens the shared editor.
+  await activityPage(page).getByTestId("activity-page-edit").click();
   const moreDetails = page.getByRole("button", { name: /^More details/ });
   if ((await moreDetails.getAttribute("aria-expanded")) === "false")
     await moreDetails.click();
@@ -117,7 +128,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   const healthRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "5k run" });
-  const healthConnectCard = await openInPane(page, healthRow, "5k run");
+  const healthConnectCard = await openActivityPage(page, healthRow, "5k run");
   await expect(
     healthConnectCard.getByTestId("activity-provenance-source")
   ).toHaveText("Google Health Connect");
@@ -128,7 +139,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(healthSummary).toContainText("12.5 km/h");
   await expect(healthSummary).toContainText("372 kcal");
   await expect(healthSummary).not.toContainText("≈ 372 kcal");
-  await readingPane(page).getByTestId("activity-page-edit").click();
+  await activityPage(page).getByTestId("activity-page-edit").click();
   const healthDetails = page.getByTestId("imported-activity-details");
   await expect(healthDetails).toContainText("Recorded measurements");
   await expect(
@@ -147,7 +158,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
 });
 
 // #569: the seeded Strava ride carries a captured GPS route, so its record card
-// (in the reading pane since #2897) renders a tile-free SVG route thumbnail
+// renders a tile-free SVG route thumbnail on its canonical page
 // (decoded from the encoded polyline, no basemap, no external request). Manual
 // rows carry no route → no thumbnail.
 test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)", async ({
@@ -158,7 +169,11 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   const stravaRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Strava morning ride" });
-  const stravaCard = await openInPane(page, stravaRow, "Strava morning ride");
+  const stravaCard = await openActivityPage(
+    page,
+    stravaRow,
+    "Strava morning ride"
+  );
   const routeMap = stravaCard.getByTestId("route-map");
   await expect(routeMap).toBeVisible();
   const visualBox = stravaCard.getByTestId("activity-visuals");
@@ -173,7 +188,11 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
     .getByTestId("training-log-row")
     .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
-  const manualCard = await openInPane(page, manualRow, "Basketball pickup");
+  const manualCard = await openActivityPage(
+    page,
+    manualRow,
+    "Basketball pickup"
+  );
   await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
 });
 
@@ -182,11 +201,11 @@ test("training log cards prioritize a summary and progressively disclose details
 }) => {
   await page.goto("/training?tab=log");
 
-  // The full card renders in the reading pane; its row carries the compact line.
+  // The canonical page carries the full summary; the feed row stays compact.
   const rideRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Strava morning ride" });
-  const ride = await openInPane(page, rideRow, "Strava morning ride");
+  const ride = await openActivityPage(page, rideRow, "Strava morning ride");
 
   // Primary measurements and intensity read as one quiet, scan-friendly line.
   const summary = ride.getByTestId("activity-summary");
@@ -211,7 +230,7 @@ test("training log cards prioritize a summary and progressively disclose details
     .getByTestId("training-log-row")
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity THIS spec created (filtered by its name)
-  const hardActivity = await openInPane(page, hardRow, "Intervals");
+  const hardActivity = await openActivityPage(page, hardRow, "Intervals");
   const intensity = hardActivity.getByTestId("activity-intensity");
   await expect(intensity).toContainText("Hard");
   await expect(intensity.getByTestId("activity-intensity-dot")).toHaveClass(
@@ -219,7 +238,7 @@ test("training log cards prioritize a summary and progressively disclose details
   );
 
   // Swap the pane back to the ride for its structured measurements.
-  await openInPane(page, rideRow, "Strava morning ride");
+  await openActivityPage(page, rideRow, "Strava morning ride");
 
   // Rich measurements are structured list values, not a collection of badges.
   const metrics = ride.getByTestId("activity-metrics");
@@ -345,15 +364,14 @@ test("strength target status is named and muscle filters are quiet text", async 
     .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
-  const push = await openInPane(page, pushRow, "Push day");
+  const push = await openActivityPage(page, pushRow, "Push day");
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
   await expect(
     push.getByRole("img", { name: "All sets hit their target reps" })
   ).toBeVisible();
-  // Edit flows through the pane header since #2897 (title-click left with the
-  // feed cards).
-  await readingPane(page).getByTestId("activity-page-edit").click();
+  // Edit flows through the canonical activity page.
+  await activityPage(page).getByTestId("activity-page-edit").click();
   await expect(
     page.getByTestId("activity-target-status").filter({ hasText: "Target met" })
   ).toBeVisible();
@@ -372,7 +390,7 @@ test("strength target status is named and muscle filters are quiet text", async 
     .getByTestId("training-log-strength-row")
     .filter({ hasText: "Barbell Bench Press" })
     .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
-  const exerciseName = benchRow.getByRole("button", {
+  const exerciseName = benchRow.getByRole("link", {
     name: "Barbell Bench Press",
     exact: true,
   });
@@ -416,8 +434,8 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   const stravaRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: "Strava morning ride" });
-  await openInPane(page, stravaRow, "Strava morning ride");
-  await readingPane(page).getByTestId("activity-page-edit").click();
+  await openActivityPage(page, stravaRow, "Strava morning ride");
+  await activityPage(page).getByTestId("activity-page-edit").click();
 
   const details = page.getByTestId("imported-activity-details");
   await expect(details).toBeVisible();

@@ -1037,9 +1037,13 @@ export default function ActivityForm({
 
   // Save from the recap step: stamp the end time and leave live mode, collapsing to
   // the plain editor for the now-finished session (the #340 finishWorkout landing).
-  // Auto-save persists the fields (end time + effort + notes); this is the explicit
-  // finalize the step promises — viewing the recap alone writes nothing.
-  function saveRecapStep() {
+  // This explicit flush persists the fields (end time + effort + notes) before
+  // the step collapses.
+  async function saveRecapStep() {
+    // Finish is an explicit commit boundary. Persist the latest title, effort,
+    // notes, and end stamp before collapsing the recap so a quick Save followed
+    // by navigation cannot outrun the autosave debounce.
+    await autosave.flushBeforeClose();
     finishWorkout();
     if (live) onLiveFinished?.();
   }
@@ -1060,6 +1064,12 @@ export default function ActivityForm({
   function openFinishRecap() {
     if (!endTime) changeEndTime(nowHHMM(tz));
     setShowRecap(true);
+  }
+  function backFromFinishRecap() {
+    // Opening the recap tentatively stops the clock at the Finish tap. Back means
+    // the workout is still in progress, so remove that tentative end stamp.
+    changeEndTime("");
+    setShowRecap(false);
   }
 
   const moreDetailsSummary = activityDisclosureSummary({
@@ -1195,7 +1205,7 @@ export default function ActivityForm({
           onIntensity={setIntensity}
           notes={notes}
           onNotes={setNotes}
-          onBack={() => setShowRecap(false)}
+          onBack={backFromFinishRecap}
           onSave={saveRecapStep}
         />
       ) : (
@@ -1266,7 +1276,7 @@ export default function ActivityForm({
             <LiveWorkoutPanel
               leadExercise={liveLeadExercise}
               restStartKey={restStartKey}
-              onFinish={() => setShowRecap(true)}
+              onFinish={openFinishRecap}
             />
           )}
 

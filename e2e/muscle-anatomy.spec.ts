@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the
@@ -60,7 +60,11 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
-  await hydratedClick(page, pushRow);
+  await followLink(
+    page,
+    pushRow.getByRole("link", { name: "Push day", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   const pushCard = page.getByTestId("training-activity-page");
   await expect(pushCard).toBeVisible();
 
@@ -126,7 +130,9 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     .getByTestId("training-log-row")
     .filter({ hasText: "Custom-only lift day (e2e)" })
     .first(); // first-ok: the session row THIS spec created (unique name)
-  await customRow.click();
+  await customRow
+    .getByRole("link", { name: "Custom-only lift day (e2e)", exact: true })
+    .click();
   const customCard = page
     .getByTestId("training-activity-page")
     .filter({ hasText: "Custom-only lift day (e2e)" });
@@ -163,7 +169,7 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
   await expect(quadsRow).not.toHaveAttribute("open");
   await hydratedClick(
     page,
-    figure.locator('[data-muscle-target="coverage-quads"]')
+    figure.locator('[data-muscle-target="coverage-quads"] path').first() // first-ok: either bilateral quad path bubbles to the same muscle disclosure target
   );
   await expect(quadsRow).toHaveAttribute("open", "");
   // No catalog lift tags the neck, so it is always the neutral empty tint.

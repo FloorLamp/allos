@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
@@ -12,7 +12,11 @@ import {
 // canonical activity page at every viewport size.
 async function openRideRecord(page: Page, title: string) {
   const row = page.getByTestId("training-log-row").filter({ hasText: title });
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link", { name: title, exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   const record = page
     .getByTestId("training-activity-page")
     .filter({ hasText: title });

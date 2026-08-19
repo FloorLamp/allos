@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
@@ -12,14 +17,17 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  // The feed renders slim rows (#2897); the full record card — gear included —
-  // lives in the reading pane once the row is selected.
+  // The feed renders slim rows; gear lives on the canonical activity page.
   const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Zone 2 bike" })
     .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link", { name: "Zone 2 bike", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   const card = page.getByTestId("training-activity-page");
   await expect(card).toBeVisible();
 
@@ -62,14 +70,17 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
 }) => {
   await page.goto("/training?tab=log");
 
-  // Select the run's slim row into the reading pane (#2897), then open the
-  // editor from the pane's Edit — the old click-the-card-title path is gone.
+  // Follow the run's slim row to its canonical page, then open the shared editor.
   const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "5k run" })
     .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link", { name: "5k run", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
@@ -241,7 +252,7 @@ test("the strength picker creates and selects a travel machine without losing th
   await settledClick(
     page,
     page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
   await page.goto("/training?tab=log");
@@ -265,7 +276,7 @@ test("the strength picker creates and selects a travel machine without losing th
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,
-    page.getByRole("dialog").getByRole("button", { name: "Delete" })
+    page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
   );
   await expect(row).toHaveCount(0);
 });

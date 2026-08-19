@@ -27,7 +27,11 @@ test("live start → set → finish: the record settles at the session's own URL
 
   // The in-gym layout is up…
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await expect(page.getByTestId("minimize-workout")).toHaveCount(1);
+  const minimize = page.getByRole("button", {
+    name: "Minimize workout",
+    exact: true,
+  });
+  await expect(minimize).toBeVisible();
   await expect(page.getByTestId("workout-drag-handle")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Close", exact: true })
@@ -39,7 +43,7 @@ test("live start → set → finish: the record settles at the session's own URL
 
   // Minimize onto the session record. Its in-progress banner is the same
   // resume affordance as the app-wide bar and reopens the shared workspace.
-  await page.getByTestId("minimize-workout").click();
+  await minimize.click();
   const inProgress = page.getByTestId("session-in-progress");
   await expect(inProgress).toBeVisible();
   await expect(inProgress).toContainText("Resume");
@@ -81,7 +85,7 @@ test("live start → set → finish: the record settles at the session's own URL
   await expect(page.getByTestId("activity-form")).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 });

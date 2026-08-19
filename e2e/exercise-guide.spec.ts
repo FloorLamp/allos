@@ -84,7 +84,9 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   await openGuide.click();
 
   // The overlay is the shared ExerciseGuideSection inside a modal dialog.
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("dialog", {
+    name: "How to: Barbell Bench Press",
+  });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("How to: Barbell Bench Press");
   const guide = dialog.getByTestId("exercise-guide");
@@ -100,5 +102,5 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   // Close the overlay. Nothing was logged (no set filled), so the shared seed DB
   // is left untouched — no cleanup needed.
   await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
 });

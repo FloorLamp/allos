@@ -44,9 +44,14 @@ test("the sheet's workout row resumes a running session with its clock intact (#
   // ...and the session clock is the same one, so the same elapsed time continues.
   await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
 
-  // No set was logged, so nothing auto-saved — restore and close without a draft.
+  // The session row exists from start, so explicitly discard it. Escape only
+  // minimizes a running workout and deliberately leaves the dock available.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await expect(dock).toHaveCount(0);
 });

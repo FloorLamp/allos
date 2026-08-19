@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  followLink,
   hydratedClick,
   openCombobox,
   settledBoxes,
@@ -82,9 +83,15 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   const before = await titleRows.count();
 
   // Open the canonical record, then use its overflow (⋯) menu → "Duplicate activity".
-  await hydratedClick(
+  await followLink(
     page,
-    titleRows.first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
+    titleRows
+      .first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
+      .getByRole("link", {
+        name: "Training Log merge keeper",
+        exact: true,
+      }),
+    /\/training\/activity\/\d+$/
   );
   await page
     .getByTestId("training-activity-page")
@@ -94,9 +101,9 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   await page.getByTestId("duplicate-activity").click();
 
   // The editor opens pre-filled — its heading carries the source title.
-  await expect(
-    page.getByRole("heading", { name: "Training Log merge keeper" })
-  ).toBeVisible();
+  await expect(page.getByLabel("Activity name")).toHaveValue(
+    "Training Log merge keeper"
+  );
 
   // The prefilled, complete session auto-saves as a NEW row (dated today). Return
   // to the log to verify that a second row with the same title was created.
@@ -112,7 +119,7 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   // here keeps those specs order-independent.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await page.goto("/training?tab=log");
@@ -151,9 +158,9 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   // only the literal weekly summary and recent cadence.
   const routineRow = page.getByTestId("training-log-routine-row");
   await expect(routineRow.getByText("Weekly routine")).toHaveCount(0);
-  await expect(page.getByTestId("training-log-week-summary")).toContainText(
-    /\d+ sessions? · \d+\/7 days active/
-  );
+  const weekSummary = page.getByTestId("training-log-week-summary");
+  await expect(weekSummary).toContainText(/\d+ sessions?/);
+  await expect(weekSummary).toContainText(/\d+\/7 days active/);
 
   // The longer window is reserved for the largest practical layout. At an
   // intermediate desktop width, the strip contracts to its newest 14 days.
@@ -170,7 +177,7 @@ test("Training Log actions share the search toolbar and stay outside the editor 
       )
   ).toBe(14);
   await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(page.getByTestId("activity-editor-scroll")).toBeVisible();
+  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
 
   const actions = page.getByTestId("training-log-actions");
   const button = page.getByTestId("repeat-last");
@@ -261,16 +268,19 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
   await expect(pushRow).toBeVisible();
 
-  // Select the record into the reading pane (#2897), then open the editor in
-  // EDIT mode from there.
-  await hydratedClick(page, pushRow);
+  // Follow the row to its canonical page, then open the editor in EDIT mode.
+  await followLink(
+    page,
+    pushRow.getByRole("link", { name: "Push day", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 
   // The editor opens on the stored session — its header carries the title.
-  await expect(page.getByRole("heading", { name: "Push day" })).toBeVisible();
+  await expect(page.getByLabel("Activity name")).toHaveValue("Push day");
 
   // A strength part renders its Recent panel of prior sessions. Deliberately
   // NOT scoped to <main>: the editor mounts either in the training log's dock
@@ -340,7 +350,11 @@ test("editing cardio duration updates the parent session total", async ({
   await expect(row).toBeVisible();
   // Open the canonical record and edit it there. Closing the workspace returns
   // to the same record, so the restore can use its Edit button again.
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link", { name: "Intervals", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   const paneEdit = page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit");
@@ -444,7 +458,7 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   // it also confirms the activity persisted. Restores the seed for later specs.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 });
@@ -462,7 +476,11 @@ test("the activity form keeps workout entry primary and context visible across b
 
   // The row opens its canonical page; Edit always uses the shared activity
   // workspace rather than re-parenting the form into the Training Log.
-  await hydratedClick(page, pushRow);
+  await followLink(
+    page,
+    pushRow.getByRole("link", { name: "Push day", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
@@ -694,7 +712,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 });
@@ -724,7 +742,7 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
   // Clean up the auto-saved draft (a duration makes it savable).
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 });
@@ -772,8 +790,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   ).toBeVisible();
 
   // Clean up the row this test created so the shared seed DB is left untouched:
-  // select it into the reading pane (its generated title carries "Tennis"),
-  // edit from there, and delete.
+  // follow its generated-title link to the canonical page, edit, and delete.
   await page.goto("/training?tab=log");
   const newRow = page
     .getByTestId("training-log-row")
@@ -781,14 +798,18 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
     .filter({ hasText: "55 min" })
     .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
   await expect(newRow).toBeVisible();
-  await hydratedClick(page, newRow);
+  await followLink(
+    page,
+    newRow.getByRole("link").first(), // first-ok: the canonical generated-title link precedes any component links in this uniquely filtered row
+    /\/training\/activity\/\d+$/
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await page.goto("/training?tab=log");

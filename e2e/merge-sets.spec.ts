@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 // Issues #199/#200: merging must never destroy the discarded row's logged sets — they
 // are re-parented onto the keeper — and the conflict preview surfaces how many sets
 // are moving. The e2e seed (e2e/seed-events) plants two same-day MANUAL strength rows
@@ -19,7 +19,11 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   await expect(page.getByText("Set merge dupe")).toBeVisible();
 
   // Open the keeper's canonical record, which owns its exercise rows and menu.
-  await hydratedClick(page, keeperRow);
+  await followLink(
+    page,
+    keeperRow.getByRole("link", { name: "Set merge keeper", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   // Before the merge the keeper shows only its own exercise. Target the

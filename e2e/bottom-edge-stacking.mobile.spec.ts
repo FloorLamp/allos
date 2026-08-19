@@ -136,7 +136,7 @@ test("a toast raised during a live workout stacks above the dock, never over it 
       .getByRole("button", { name: "Delete", exact: true })
       .click();
     await page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
       .click();
     await expect(dock).toHaveCount(0);

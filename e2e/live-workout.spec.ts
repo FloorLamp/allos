@@ -80,7 +80,7 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await page.getByTestId("workout-dock-open").click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await page.waitForURL(/\/training(\?.*)?$/);
@@ -128,7 +128,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   // Deleting the activity from its canonical page leaves that now-dead URL and
@@ -160,7 +160,9 @@ test("mid-session, the workout entry point resumes and the session clock survive
 
   // Minimize — the form stays MOUNTED and the clock keeps running. Off the
   // Log view, the app-wide bar carries the pocketed session.
-  await page.getByTestId("minimize-workout").click();
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
   const dock = page.getByTestId("workout-dock");
   await expect(dock).toBeVisible();
   const startedAt = await dock.getAttribute("data-start-epoch");
@@ -182,7 +184,9 @@ test("mid-session, the workout entry point resumes and the session clock survive
   await entry.click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   expect(page.url()).toBe(logUrl);
-  await page.getByTestId("minimize-workout").click();
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
   await expect(dock).toBeVisible();
   // The pin: the same start instant, so the same elapsed time continues.
   await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
@@ -192,7 +196,7 @@ test("mid-session, the workout entry point resumes and the session clock survive
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await page.waitForURL(/\/training(\?.*)?$/);

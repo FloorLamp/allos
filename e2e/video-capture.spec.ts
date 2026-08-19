@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import {
   E2E_LOGIN_VIDEO,
   E2E_MEMBER_PASSWORD,
@@ -12,14 +12,14 @@ import { buildMp4Fixture } from "../lib/video/fixture";
 import { workerDbPath } from "./worker-env";
 
 // Video capture over the shared video core (#1224 phase 1): the upload-first
-// path end to end on the training FORM-CHECK surface — the native file-input
+// path end to end on the activity-media surface — the native file-input
 // upload → poster-first grid → open-to-play (the <video> loads only on open) →
 // the id-AND-profile-scoped serve route honoring an HTTP Range request (206) →
 // the location-metadata privacy warning → delete round trip.
 //
 // It also pins the #1457 PRESENCE RULES, which split the surface in two: the
-// Training Log record card (in the reading pane since #2897 — the feed itself is
-// slim rows) shows the strip ONLY when clips exist (read/playback + per-clip
+// canonical activity page (the feed itself is slim rows) shows the strip ONLY
+// when clips exist (read/playback + per-clip
 // edit/delete, no add), and the activity EDITOR's More-details block is where a
 // clip gets attached (always rendered, empty state included, wherever a SAVED
 // activity id exists — an upload needs one). So the walk is: no section → open
@@ -142,18 +142,20 @@ test("upload → poster grid → open player → Range serve → location warnin
     const aid = activityId();
     await page.goto("/training?tab=log");
 
-    // Select the seeded session's row into the reading pane (#2897): the full
-    // record card — the activity-media strip's home — renders there, not on the
-    // slim feed. hydratedClick: a pure client toggle whose first post-goto
-    // click can land pre-hydration.
+    // Follow the seeded row to its canonical page, where activity media lives;
+    // the slim feed deliberately omits it.
     const row = page
       .getByRole("main")
       .locator('[id^="activity-"]')
       .filter({ hasText: "Squat session (e2e)" })
       .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
-    await hydratedClick(page, row);
+    await followLink(
+      page,
+      row.getByRole("link", { name: "Squat session (e2e)", exact: true }),
+      /\/training\/activity\/\d+$/
+    );
     const pane = page.getByTestId("training-activity-page");
-    await expect(pane.getByTestId("activity-card-body")).toBeVisible();
+    await expect(pane).toBeVisible();
 
     // #1457: with no clips, the record card carries NO media section at all —
     // no heading, no empty text, no button. It used to render on every writable
@@ -163,7 +165,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     );
 
     // The add affordance now lives in the activity editor. Open it from the
-    // pane's Edit (openEdit → EDIT mode, which is where an activityId exists).
+    // page's Edit action (openEdit → EDIT mode, where an activityId exists).
     await pane.getByTestId("activity-page-edit").click();
 
     // Media sits inside the collapsible More details section. Drive the
@@ -212,11 +214,14 @@ test("upload → poster grid → open player → Range serve → location warnin
       editorStrip.locator('[data-testid^="video-clip-location-"]')
     ).toBeVisible();
 
-    // …and now that a clip EXISTS, the record card's strip appears — the presence
-    // rule's other half. A fresh load also drops the editor (and the pane
-    // selection), so re-select the row to read the card in the pane.
+    // …and now that a clip EXISTS, the canonical page's strip appears — the
+    // presence rule's other half. Return through the feed after closing editor.
     await page.goto("/training?tab=log");
-    await hydratedClick(page, row);
+    await followLink(
+      page,
+      row.getByRole("link", { name: "Squat session (e2e)", exact: true }),
+      /\/training\/activity\/\d+$/
+    );
     const strip = pane.getByTestId(`activity-media-strip-${aid}`);
     await expect(strip).toBeVisible();
     // Read surface: playback and per-clip controls, but no add affordance here.

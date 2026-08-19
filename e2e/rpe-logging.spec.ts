@@ -29,7 +29,10 @@ function cardsByTitle(page: Page, text: string | RegExp) {
 
 // Open the stored session's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
-  await hydratedClick(page, row);
+  await hydratedClick(
+    page,
+    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
@@ -54,7 +57,7 @@ async function confirmDelete(page: Page): Promise<void> {
   await settledClick(
     page,
     page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
 }
@@ -168,7 +171,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     await expect(row).toBeVisible();
     // Reopen the stored session for edit via its row → the pane's Edit.
     await openEditorFromRow(page, row);
-    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByLabel("Activity name")).toHaveValue(title);
     // The RPE selector reloaded the persisted half-point value — the round-trip.
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
   }).toPass({ timeout: 20_000 }); // topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event

@@ -135,7 +135,7 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   const traces = page.getByTestId("activity-traces");
   await expect(traces).toBeVisible();
   await expect(record.getByRole("heading", { name: "Effort" })).toBeVisible();
-  await expect(traces.locator("svg")).toBeVisible();
+  await expect(traces.getByTestId("session-telemetry-chart")).toBeVisible();
   // A session that HAS detail never claims to be totals-only.
   await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
 

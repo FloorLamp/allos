@@ -48,7 +48,7 @@ async function closeEmptyLiveWorkout(page: Page): Promise<void> {
     .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toBeHidden();
 }
 
 test("a no-routine Overview answers first and keeps both logging doors (#3062)", async ({

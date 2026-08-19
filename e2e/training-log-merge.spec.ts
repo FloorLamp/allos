@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 // Issue #64, Part 2: the Training Log's manual pair-merge. The e2e seed (e2e/seed-events)
 // plants two same-day MANUAL activities on 2026-07-05 — "Training Log merge keeper" and
 // "Training Log merge dupe" — a duplicate no heuristic catches (two manual rows). This
@@ -21,7 +21,14 @@ test("merge two same-day activities from the Training Log, then Undo (#64)", asy
 
   // Open the keeper, then use the record's overflow (⋯) menu → "Merge with…"
   // → pick the dupe.
-  await hydratedClick(page, keeperRow);
+  await followLink(
+    page,
+    keeperRow.getByRole("link", {
+      name: "Training Log merge keeper",
+      exact: true,
+    }),
+    /\/training\/activity\/\d+$/
+  );
   const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();

@@ -29,7 +29,10 @@ function trashRow(page: Page, title: string) {
 
 // Open the stored activity's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
-  await hydratedClick(page, row);
+  await hydratedClick(
+    page,
+    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+  );
   await page
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
@@ -42,7 +45,7 @@ async function confirmDelete(page: Page): Promise<void> {
   await settledClick(
     page,
     page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
 }

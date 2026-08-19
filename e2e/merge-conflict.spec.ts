@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 // Issue #100: conflict-aware merge preview. The e2e seed (e2e/seed-events) plants two
 // same-day MANUAL cardio rows on 2026-07-06 that genuinely DISAGREE on duration
 // ("Conflict merge keeper" 42 min vs "Conflict merge dupe" 51 min) but agree on
@@ -23,7 +23,14 @@ test("merge preview lets you override a conflicting field to the discarded value
 
   // Open the keeper's canonical record, then use its overflow (⋯) menu →
   // "Merge with…" → pick the dupe.
-  await hydratedClick(page, keeperRow);
+  await followLink(
+    page,
+    keeperRow.getByRole("link", {
+      name: "Conflict merge keeper",
+      exact: true,
+    }),
+    /\/training\/activity\/\d+$/
+  );
   const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();

@@ -15,9 +15,10 @@ test("activity rows open the canonical activity page", async ({ page }) => {
   await expect(row.getByTestId("activity-parts")).toBeVisible();
   await expect(row.getByTestId("training-log-strength-row")).not.toHaveCount(0);
   const id = (await row.getAttribute("id"))!.replace("activity-", "");
-  await expect(row).toHaveAttribute("href", `/training/activity/${id}`);
+  const detailLink = row.getByRole("link", { name: "Push day", exact: true });
+  await expect(detailLink).toHaveAttribute("href", `/training/activity/${id}`);
 
-  await followLink(page, row, new RegExp(`/training/activity/${id}$`));
+  await followLink(page, detailLink, new RegExp(`/training/activity/${id}$`));
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByTestId("activity-record-body")).toBeVisible();
   await expect(page.getByTestId("training-log-reading-pane")).toHaveCount(0);
@@ -38,10 +39,9 @@ test("an #activity-N deep link scrolls to the canonical row", async ({
   await page.goto(`/training?tab=log#activity-${targetId}`);
   const target = page.locator(`#activity-${targetId}`);
   await expect(target).toBeVisible();
-  await expect(target).toHaveAttribute(
-    "href",
-    `/training/activity/${targetId}`
-  );
+  await expect(
+    target.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the uniquely identified row
+  ).toHaveAttribute("href", `/training/activity/${targetId}`);
 });
 
 test("phone rows use the same canonical destination", async ({ page }) => {
@@ -50,7 +50,11 @@ test("phone rows use the same canonical destination", async ({ page }) => {
   const row = page.getByTestId("training-log-row").first(); // first-ok: any row proves the shared destination
   const id = (await row.getAttribute("id"))!.replace("activity-", "");
 
-  await followLink(page, row, new RegExp(`/training/activity/${id}$`));
+  await followLink(
+    page,
+    row.getByRole("link").first(), // first-ok: the canonical title link precedes any exercise links in the row
+    new RegExp(`/training/activity/${id}$`)
+  );
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByTestId("activity-record-body")).toBeVisible();
 });

@@ -115,7 +115,7 @@ async function completeFirstSet(page: Page) {
 async function discardDraft(page: Page) {
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 }
@@ -135,7 +135,9 @@ test("the live editor takes a screen wake lock, drops it on minimize, and re-tak
   // 2. Minimizing to the dock releases it. The panel is still MOUNTED (the rest timer
   //    keeps ticking behind the bar), so this is exactly the case a mount-tied release
   //    could never cover.
-  await page.getByTestId("minimize-workout").click();
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
   await expect(page.getByTestId("workout-dock")).toBeVisible();
   await expect
     .poll(async () => (await wakeLockCounts(page)).releases)
@@ -149,10 +151,9 @@ test("the live editor takes a screen wake lock, drops it on minimize, and re-tak
     .poll(async () => (await wakeLockCounts(page)).requests)
     .toBeGreaterThan(beforeRestore);
 
-  // Nothing was logged: closing abandons the create-at-start row (#2870 step 3)
-  // and returns to the hub — WAIT for that redirect, or the test ends with the
-  // discard in flight and the active row leaks into the next test's presence.
-  await page.keyboard.press("Escape");
+  // Explicitly discard the empty create-at-start row. Escape now minimizes every
+  // live workout consistently, so it is not a destructive cleanup gesture.
+  await discardDraft(page);
   await page.waitForURL(/\/training(\?.*)?$/);
 });
 
@@ -220,8 +221,7 @@ test("the live flow works with no wake-lock and no vibration API at all (#1422)"
     "Pause rest timer"
   );
 
-  // Same abandonment wait as above: the empty session's discard must land
-  // before the test ends, or its active row bleeds into the next test.
-  await page.keyboard.press("Escape");
+  // Explicitly discard the empty create-at-start row; Escape only minimizes.
+  await discardDraft(page);
   await page.waitForURL(/\/training(\?.*)?$/);
 });

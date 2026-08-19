@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 // #152: an estimated 1RM gains a bodyweight-band strength-standard from ONE model
 // (lib/strength-standards.json) that now feeds every strength-level surface — the
 // exercise-detail coaching line + level badge, the Analyze "Benchmarks" card, and
@@ -30,15 +30,20 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
     .getByTestId("training-log-row")
     .filter({ hasText: "Leg day" })
     .first(); // first-ok: any seeded Leg day session carries Back Squat, and EVERY drill-in opens the same panel
-  await hydratedClick(page, legDayRow);
+  await followLink(
+    page,
+    legDayRow.getByRole("link", { name: "Leg day", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   // A COVERED core lift (a dataset barbell lift). The seeded Leg day record
-  // carries Back Squat; the drill-in button names the lift it opens.
+  // carries Back Squat; the drill-in link names the lift it opens.
   const squatDrillIn = page
     .getByTestId("training-activity-page")
-    .getByRole("button", { name: "Back Squat", exact: true })
-    .first(); // first-ok: the pane record's Back Squat drill-in — the lift may repeat across sets, and EVERY button opens the same panel
-  await squatDrillIn.click();
-  await expect(page).toHaveURL(
+    .getByRole("link", { name: "Back Squat", exact: true })
+    .first(); // first-ok: the record's Back Squat drill-in — the lift may repeat across sets, and every link opens the same panel
+  await followLink(
+    page,
+    squatDrillIn,
     /tab=analyze&kind=strength&item=Back(%20|\+)Squat/
   );
   const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
