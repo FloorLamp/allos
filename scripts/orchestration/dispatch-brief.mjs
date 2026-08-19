@@ -372,6 +372,13 @@ ${nodeLine}
   agent can tell. If a log you wrote contains a worktree path that is not yours, or
   NUL bytes, DISCARD IT and re-run into a branch-named file; do not reconcile it, and
   do not quote gates out of it.
+  CHECK IT WITH \`grep -aPc '\\x00' <log>\`, and with nothing else. Every obvious
+  spelling is broken and broken QUIETLY: bash cannot put a NUL in an argument, so
+  \`grep -c $'\\x00'\` and \`rg -l $'\\0'\` collapse to an EMPTY pattern that matches
+  every line and every file — a clean log reads as riddled, a riddled tree reads as
+  clean. Without \`-a\`, grep and rg both call the file binary and skip it, reporting
+  a sweep they never took. Two agents have hit this; lib/__tests__/nul-byte-census.test.ts
+  carries the receipt (#3206).
 - CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
   403 CONNECT through the agent proxy, so a playwright-report zip or an
   error-context.md from a real CI run CANNOT be downloaded. If a brief (mine included)
