@@ -697,9 +697,14 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
   // summary — so an indoor Spinning session rendering an empty route map and a
   // segments block would have shipped green.
   await expect(page.getByTestId("activity-section-course")).toHaveCount(0);
+  // The nav ENTRY too (`hasCourse` gates both). Counted rather than read as
+  // text, because an indoor session may not clear the three-section bar at all
+  // and a not.toContainText against a missing nav fails for the wrong reason.
   await expect(
-    page.getByTestId("activity-section-navigation")
-  ).not.toContainText("Course");
+    page.locator(
+      '[data-testid="activity-section-navigation"] a[href="#course"]'
+    )
+  ).toHaveCount(0);
   await expect(page.getByTestId("ride-comparison")).toContainText(
     "1 similar session"
   );

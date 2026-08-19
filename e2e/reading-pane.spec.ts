@@ -53,19 +53,23 @@ test("an #activity-N deep link pages older history in and scrolls the row into v
   let targetId: number;
   try {
     db.pragma("busy_timeout = 5000");
-    const oldest = db
+    // The NEWEST activity the opening window does not render — i.e. the top of
+    // the next page down. Deliberately not the profile's oldest row: the point is
+    // to sit outside the rendered window, and the furthest-back row would also
+    // depend on how deep the server feed pages, which is a different contract.
+    const newestFirst = db
       .prepare(
-        "SELECT id FROM activities WHERE profile_id = 1 ORDER BY date ASC, id ASC"
+        "SELECT id FROM activities WHERE profile_id = 1 ORDER BY date DESC, id DESC"
       )
       .all() as { id: number }[];
-    const pick = oldest.find((a) => !firstPage.has(`activity-${a.id}`));
+    const pick = newestFirst.find((a) => !firstPage.has(`activity-${a.id}`));
     // If the seed ever stops carrying more history than one page, this test
     // stops being able to prove anything — so it says so out loud rather than
     // passing on a target that was already loaded. That silent degradation is
     // the exact failure #3172 was filed about.
     expect(
       pick,
-      "the seed must carry activity history beyond the first page for this test to mean anything"
+      "the seed must carry activity history beyond the opening window for this test to mean anything"
     ).toBeDefined();
     targetId = pick!.id;
   } finally {
