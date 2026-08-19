@@ -342,15 +342,42 @@ leading form and parses back out; a note written by hand keeps its whole text.
 Food timing became an item-level rule, so `DoseRowsEditor` hides its per-row
 food select for this form — one field, one editor.
 
+**Two capabilities were deliberately withdrawn from the FORM, not from the
+model.** Both are decisions, not gaps.
+
+- _Per-dose-row food timing._ The form now writes `food_timing` per ITEM, to
+  every dose row. "With food in the morning, without at night" remains
+  expressible in the schema and still arrives from import and from
+  `supplement-suggest`, and every reader (reminders, `foodTimingCheck`,
+  `intake-format`) still reads it per dose — but the form no longer mints rows
+  that differ. Restoring it means giving the food sentence a per-row scope, not
+  a migration.
+- _Free-text notes on a keep-apart / take-together pair._ `intake_item_pairs.note`
+  is no longer editable from any surface: the pairs repeater that owned that
+  input (`KeepApartPairsEditor`) was deleted with the merge, and the two pair
+  SENTENCES carry the other item and the interval instead. An existing note
+  round-trips untouched — `parseKeepApartNote` keeps whatever text it cannot read
+  as an interval — but cannot be changed or cleared by a user. This is also why
+  the interval-in-the-note encoding is safe today: nobody can edit around it.
+
 **Formulation is a derived chip row** (`lib/intake-formulations.ts`): the
 ingredient's own form plus the curated pediatric products, defaulted by the
 profile's age and outranked by a stored `product` so an edit reads back what was
 saved. A switch re-derives the product, the redose preset and the pediatric
 context line. It does NOT write the volume into the dose amount: the amount
 stays milligrams and `formatMedicationDoseProduct` scales the concentration at
-every display boundary. Storing both would put one datum in two columns, render
-the concentration twice, and leave #1854's milligram exposure counter unable to
-read the amount at all.
+every display boundary.
+
+The reason is a safety one and is worth stating exactly, because the near-miss
+is harmless. `parseAmountMg` (#1854) is anchored at a leading number + mass
+unit, so an **mg-leading** amount with the volume appended — `240 mg / 7.5 mL` —
+reads fine. It is the LITERAL "volume-first" shape that does not: `7.5 mL
+(240 mg)` and `7.5 mL` both parse to null, and `prnDayExposure` treats an
+unreadable amount as a reason to abandon the milligram basis. `PrnExposureBasis`
+flips from `"mg"` to `"count"`, so a confirmed mg/day ceiling silently stops
+being a mg/day ceiling — on a child's liquid medicine, the one case where it
+matters most, with nothing surfacing the downgrade. Storing both would also put
+one datum in two columns and render the concentration twice.
 
 **What did not change.** Same actions, no schema change. `SharedSupplyPicker`
 remains the authority for linking and unlinking an EXISTING item, with its

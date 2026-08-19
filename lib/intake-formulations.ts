@@ -87,16 +87,22 @@ export function defaultFormulationSlug(input: {
 // and a suspension's dose really is a volume — but the volume is already DERIVED at
 // every display boundary by `formatMedicationDoseProduct`, which scales the product's
 // concentration to the selected milligrams and renders "240 mg / 7.5 mL". So the
-// switch re-derives `product`, and the amount stays milligrams. Writing the volume
-// into the amount too would be the same datum in two columns, free to drift the
-// moment someone edits one — and it would break two shipped readers outright:
+// switch re-derives `product`, and the amount stays milligrams.
 //
-//   • `formatMedicationDoseProduct` matches a bare "<n> mg" amount to pair with the
-//     concentration; a volume-carrying amount falls through and renders the
-//     concentration twice ("240 mg / 7.5 mL · 160 mg / 5 mL").
-//   • `parseAmountMg` (#1854) reads a LEADING mass off the snapshotted amount to sum
-//     the day's exposure against a confirmed mg/day ceiling. Anything it cannot read
-//     silently degrades the counter to counting doses.
+// WHAT A VOLUME-LEADING AMOUNT WOULD COST. `parseAmountMg` (#1854) is anchored at a
+// leading number + mass unit, so it reads "240 mg / 7.5 mL" perfectly well — an
+// mg-leading string with the volume appended is NOT the hazard. The hazard is the
+// literal reading of "volume-first": "7.5 mL (240 mg)" and "7.5 mL" both parse to
+// null. And `prnDayExposure` treats an unreadable amount as a reason to abandon the
+// milligram basis — `PrnExposureBasis` flips from "mg" to "count", so a confirmed
+// mg/day ceiling silently stops being a mg/day ceiling and becomes a dose count.
+// That would land on a child's liquid medicine, which is the single case where the
+// milligram ceiling matters most (200 mg and 800 mg of the same ingredient are the
+// same "dose" and four times the exposure). Nothing surfaces the downgrade.
+//
+// Storing BOTH would also put one datum in two columns, free to drift the moment
+// someone edits one, and make `formatMedicationDoseProduct` render the concentration
+// twice ("240 mg / 7.5 mL · 160 mg / 5 mL").
 //
 // The band PICKER still shows the volume beside each band — there it is a label the
 // person reads before measuring, not a value the row stores.

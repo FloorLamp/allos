@@ -40,8 +40,9 @@ import type {
   PairRelation,
 } from "./types";
 
-// One unsaved pair row, structurally the shape KeepApartPairsEditor edits. Declared
-// here (not imported from components/) so this module stays free of React.
+// One unsaved pair row. Declared here (not in a component) so this module stays free
+// of React — the pairs repeater it used to mirror is gone, replaced by the two pair
+// SENTENCES below.
 export interface IntakePairDraft {
   otherId: number;
   relation: PairRelation;

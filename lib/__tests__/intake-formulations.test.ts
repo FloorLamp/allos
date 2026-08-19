@@ -8,7 +8,7 @@ import {
   pediatricContextLine,
 } from "@/lib/intake-formulations";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
-import { parseAmountMg } from "@/lib/prn-redose";
+import { parseAmountMg, prnDayExposure } from "@/lib/prn-redose";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // The formulation chip row (#3216 decision 2). One ingredient is several products;
@@ -66,19 +66,43 @@ describe("intake formulation row (#3216)", () => {
     const amount = formulationDoseAmount(100);
     // The volume belongs to the PRODUCT and is scaled at every display boundary by
     // formatMedicationDoseProduct. Writing it into the amount as well would put one
-    // datum in two columns — and both of the readers below would break on it.
+    // datum in two columns and render the concentration twice.
     expect(amount).toBe("100 mg");
     expect(formatMedicationDoseProduct(amount, formulation.label)).toBe(
       "100 mg / 5 mL"
     );
-    // #1854's day-exposure counter reads the LEADING mass off the snapshotted amount;
-    // anything it cannot read degrades the ceiling to counting doses.
-    expect(parseAmountMg(amount)).toBe(100);
   });
 
-  it("a solid dose states milligrams too, and the two paths agree", () => {
-    expect(formulationDoseAmount(200)).toBe("200 mg");
-    expect(parseAmountMg(formulationDoseAmount(200))).toBe(200);
+  it("a VOLUME-LEADING amount would silently demote the mg/day ceiling to a dose count", () => {
+    // This is the actual hazard behind storing milligrams, and it is worth stating
+    // precisely because the near-miss is harmless: `parseAmountMg` is anchored at a
+    // leading number + mass unit, so an mg-leading string with the volume appended
+    // reads fine. It is the LITERAL "volume-first" shape that does not.
+    expect(parseAmountMg("240 mg / 7.5 mL")).toBe(240); // appended volume: fine
+    expect(parseAmountMg("7.5 mL (240 mg)")).toBeNull(); // volume-first: unreadable
+    expect(parseAmountMg("7.5 mL")).toBeNull();
+
+    // And an unreadable amount is not merely ignored — it costs the BASIS. With a
+    // confirmed mg/day ceiling and readable amounts the day is measured in
+    // milligrams; make the amounts volume-leading and the same confirmed ceiling
+    // silently becomes a dose count, which is the one thing #1854 exists to stop.
+    const ceilings = { maxDailyAmountMg: 1200, maxDailyCount: 4 };
+    expect(
+      prnDayExposure({ amounts: ["240 mg", "240 mg"], ...ceilings })?.basis
+    ).toBe("mg");
+    expect(
+      prnDayExposure({
+        amounts: ["7.5 mL (240 mg)", "7.5 mL (240 mg)"],
+        ...ceilings,
+      })?.basis
+    ).toBe("count");
+  });
+
+  it("every amount this module mints is readable as milligrams", () => {
+    for (const mg of [100, 200, 240, 160]) {
+      const amount = formulationDoseAmount(mg);
+      expect(parseAmountMg(amount)).toBe(mg);
+    }
   });
 
   it("switching to a pediatric product re-derives the child's redose preset", () => {
