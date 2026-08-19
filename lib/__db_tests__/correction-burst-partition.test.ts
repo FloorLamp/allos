@@ -275,18 +275,14 @@ describe("two dose reminders answered minutes apart stay two bursts (#3092)", ()
       })
     );
     expect(onEvening).toContain(`dosetime:${pid}:${eveningLog.id}:30`);
-    expect(
-      onEvening.some((t) => t.includes(`:${bedtimeLog.id}:`))
-    ).toBe(false);
+    expect(onEvening.some((t) => t.includes(`:${bedtimeLog.id}:`))).toBe(false);
 
     // The Bedtime message: its own row only — it no longer owns the Evening dose.
     const onBedtime = dosetimeTokens(
       withDoseCorrections(pid, base, { ref: { chatId, messageId: 9944 } })
     );
     expect(onBedtime).toContain(`dosetime:${pid}:${bedtimeLog.id}:30`);
-    expect(
-      onBedtime.some((t) => t.includes(`:${eveningLog.id}:`))
-    ).toBe(false);
+    expect(onBedtime.some((t) => t.includes(`:${eveningLog.id}:`))).toBe(false);
   });
 
   it("a chip on the Bedtime row moves the Bedtime dose and leaves the Evening log untouched", async () => {
@@ -318,9 +314,7 @@ describe("two dose reminders answered minutes apart stay two bursts (#3092)", ()
 
     const after = doseLogs(pid);
     // The Bedtime administration moved back 30 minutes from where it stood…
-    expect(
-      minutesApart(after[0].occurredAt, bedtimeLog.occurredAt)
-    ).toBe(-30);
+    expect(minutesApart(after[0].occurredAt, bedtimeLog.occurredAt)).toBe(-30);
     // …and the Evening administration — a dose the Bedtime message never mentioned —
     // did not move at all. This instant arms the PRN redose window (#2020).
     expect(after[1].occurredAt).toBe(eveningLog.occurredAt);

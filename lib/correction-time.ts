@@ -282,7 +282,9 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
         // onto every member — so members filed under different days (or any member
         // filed under none) leave the burst with no day a day-keyed offer could be
         // bounded by.
-        localDay: current.every((e) => e.localDay && e.localDay === first.localDay)
+        localDay: current.every(
+          (e) => e.localDay && e.localDay === first.localDay
+        )
           ? (first.localDay ?? null)
           : null,
         label: current.length === 1 ? first.label : "",
@@ -291,14 +293,17 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
     };
     for (const e of part) {
       const prev = current[current.length - 1];
-      if (prev && ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS) flush();
+      if (prev && ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS)
+        flush();
       current.push(e);
     }
     flush();
   }
   // Ascending by tap start again — concatenating partitions loses it. `fromId` breaks
   // an identical-stamp tie across partitions; within one it is already unique.
-  return out.sort((a, b) => ms(a.startAt) - ms(b.startAt) || a.fromId - b.fromId);
+  return out.sort(
+    (a, b) => ms(a.startAt) - ms(b.startAt) || a.fromId - b.fromId
+  );
 }
 
 // Is this burst still correctable? Keyed on the NEWEST TAP in it, so a burst that is
