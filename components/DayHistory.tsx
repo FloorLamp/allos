@@ -1324,8 +1324,13 @@ export default function DayHistory({
                           }`}
                         />
                       )}
-                      <span className="truncate">
-                        {item.meta?.label ?? item.key}
+                      {/* The abbreviated form (#2858): this row is a truncating
+                          half of a two-column line whose other half is the count
+                          and its notes, so it is a dense label like the chips and
+                          the matrix gutter, not the record. The full label stays on
+                          the hover title. */}
+                      <span className="truncate" title={item.meta?.label}>
+                        {item.meta?.short ?? item.meta?.label ?? item.key}
                       </span>
                     </span>
                     <span className={PANE_VALUE}>

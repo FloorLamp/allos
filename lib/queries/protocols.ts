@@ -252,7 +252,8 @@ export function situationUsedByOtherProtocol(
 
 // Usage-during-window for a protocol (issues #344/#1583): event-row counts within
 // [start_date, end_date ?? today]. Each scope reads its own ledger: activities,
-// food_daily_totals, or practice_logs. Multi-session days remain multiple sessions.
+// food_daily_totals, practice_logs, or intake_item_logs. Multi-session days remain
+// multiple sessions.
 export interface ProtocolUsage {
   sessions: number;
   lastUsed: string | null;
@@ -266,9 +267,10 @@ type ProtocolUsageScope =
       equipmentId: number | null;
       activityType: string | null;
     }
+  | { kind: "intake"; itemId: number }
   | { kind: "none" };
 
-// Which of this reader's three event ledgers a cadence SOURCE lands in — the
+// Which of this reader's four event ledgers a cadence SOURCE lands in — the
 // third scope dispatcher (#2034), rebased onto the one registry so it cannot
 // disagree with the weekly ledger about what a target measures.
 //
@@ -305,6 +307,15 @@ function usageScopeFor(
   target: { scope_kind: string; scope_value: string } | null
 ): ProtocolUsageScope {
   let activityType: string | null = null;
+  // A target this reader has declared UNMEASURABLE has already answered "what does
+  // this protocol measure" — with "not a session ledger". The equipment/activity
+  // fallback below is grandfathered for those (it predates this branch and the
+  // registry's comment names it), but the dose ledger is NOT: a substance CAP plus
+  // an intake link would start reporting "2 sessions", and counting a limit-to-stay-
+  // under as usage is exactly the adherence misread PROTOCOL_USAGE_LEDGER's own
+  // comment declines to create. So an unmeasurable target keeps reporting nothing
+  // rather than quietly acquiring a different ledger's number (#2797 review).
+  let unmeasurableTarget = false;
   if (target && isCadenceScopeKind(target.scope_kind)) {
     const ledger =
       PROTOCOL_USAGE_LEDGER[CADENCE_SCOPES[target.scope_kind].source];
@@ -313,6 +324,7 @@ function usageScopeFor(
     if (ledger === "food_group")
       return { kind: "food_group", value: target.scope_value };
     if (ledger === "activity-type") activityType = target.scope_value;
+    if (ledger === "unmeasurable") unmeasurableTarget = true;
   }
 
   if (protocol.equipment_id != null || activityType != null) {
@@ -321,6 +333,16 @@ function usageScopeFor(
       equipmentId: protocol.equipment_id,
       activityType,
     };
+  }
+
+  // A supplement/medication N-of-1 (#660) links the item and nothing else, so its
+  // ledger is the dose log (#2797): before this, such a protocol matched no branch
+  // and reported "0 sessions across 0 active days" forever — the shipped Creatine
+  // and NMN showcases read as abandoned experiments. Checked LAST so a protocol
+  // that also links a practice or equipment keeps measuring the intervention it
+  // already measured.
+  if (protocol.intake_item_id != null && !unmeasurableTarget) {
+    return { kind: "intake", itemId: protocol.intake_item_id };
   }
   return { kind: "none" };
 }
@@ -550,6 +572,55 @@ export function getProtocolUsageByDayMap(
           (scope.equipmentId != null && r.equipment_id === scope.equipmentId) ||
           (scope.activityType != null && r.type === scope.activityType);
         if (!matches) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  // ---- intake_item_logs ----------------------------------------------------------
+  const intakes = scoped.filter((r) => r.scope.kind === "intake");
+  if (intakes.length > 0) {
+    const itemIds = [
+      ...new Set(
+        intakes.map(
+          (r) => (r.scope as { kind: "intake"; itemId: number }).itemId
+        )
+      ),
+    ];
+    const span = spanOf(intakes);
+    // Only doses actually TAKEN count as usage — a skipped dose is a logged
+    // non-event.
+    //
+    // The owning item is resolved through the DOSE, not through the log's own
+    // `item_id`: that column is a nullable denormalized shortcut (migration 011's
+    // finding #2, whose invariant is only "equal to the dose's item WHEN SET"),
+    // while `intake_item_doses.item_id` is NOT NULL and FK-enforced. Reading the
+    // shortcut would silently drop any log that left it null, and would put this
+    // tally at odds with every other reader of the same ledger about which rows
+    // belong to an item. The join to `intake_items` carries the profile scope the
+    // log rows do not, so a protocol pointing at another profile's item — or a
+    // deleted one — tallies nothing rather than leaking a count.
+    const rows = db
+      .prepare(
+        `SELECT l.date AS date, d.item_id AS item_id, COUNT(*) AS count
+           FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items ii ON ii.id = d.item_id
+          WHERE ii.profile_id = ? AND l.status = 'taken'
+            AND d.item_id IN (${itemIds.map(() => "?").join(",")})
+            AND l.date >= ? AND l.date <= ?
+          GROUP BY l.date, d.item_id`
+      )
+      .all(profileId, ...itemIds, span.start, span.end) as {
+      date: string;
+      item_id: number;
+      count: number;
+    }[];
+    for (const row of intakes) {
+      const itemId = (row.scope as { kind: "intake"; itemId: number }).itemId;
+      for (const r of rows) {
+        if (r.item_id !== itemId) continue;
+        if (r.date < row.start || r.date > row.end) continue;
         tallyByDate(tallies, row.protocol.id, r.date, r.count);
       }
     }

@@ -335,6 +335,17 @@ export interface UpcomingItem {
   // place (offeredItems), which is the point: a renderer must never reconstruct one by
   // slicing the other.
   offerHint?: string | null;
+  // The intake domains only (`dose`, `available`): the item's curated CONTROL label
+  // (lib/intake-short-name) — "Coenzyme Q10" → "CoQ10" — for the surfaces that render
+  // this row as a chip or a truncating control line rather than as the record (#2858).
+  // Equal to `title` whenever the item has no curated form, and ALWAYS equal to it for
+  // a medication, which the resolver never shortens.
+  //
+  // It rides on the row rather than being resolved by each renderer because the fields
+  // it needs (kind, product) are the ITEM's, and a chip renderer holds an UpcomingItem.
+  // `title` stays the record's full display name everywhere — the ledger, the history
+  // tables, the digests and every message body read that and only that.
+  shortLabel?: string;
   // A WEEKLY FLOOR TARGET row — an unmet scope of `frequency_targets`, whose `detail`
   // is its CATEGORY LABEL ("Weekly nutrition target") rather than a fact about this
   // particular row. Declared by the two builders that make them (trainingItems,

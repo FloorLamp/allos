@@ -47,16 +47,27 @@ const ACTION_ICON: Record<string, TablerIcon> = {
   "clipboard-plus": IconClipboardPlus,
 };
 
+// A chip whose VISIBLE label is an abbreviation states the unabbreviated form here
+// (#2858): it becomes the control's accessible name and its hover title, so a
+// shortened supplement name is never the only form the chip can be read as. Absent
+// on every chip whose label already IS the whole thing.
+//
+// A CHIP concern only. The overflow-menu presenter below renders `label` verbatim,
+// because the only surface that abbreviates (Upcoming's availability run) renders
+// with `fold={false}` and has no menu — giving the menu a branch no descriptor can
+// reach would be a second, untested definition of what a row action is called.
+type FullLabel = { fullLabel?: string };
+
 export type RowAction =
-  | {
+  | ({
       id: string;
       kind: "link";
       label: string;
       href: AppRoute;
       icon?: keyof typeof ACTION_ICON;
       testId?: string;
-    }
-  | {
+    } & FullLabel)
+  | ({
       id: string;
       kind: "submit";
       label: string;
@@ -71,7 +82,7 @@ export type RowAction =
       // BOTH presentations instead of the row silently re-rendering unchanged, and a
       // success may carry outcome-named wording. `void` keeps the additive default.
       action: (formData: FormData) => Promise<MenuActionResult>;
-    };
+    } & FullLabel);
 
 const CHIP =
   "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
@@ -136,6 +147,8 @@ export function RowActionChips({
               href={a.href}
               data-testid={a.testId}
               className={CHIP}
+              title={a.fullLabel}
+              aria-label={a.fullLabel}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
               {a.label}
@@ -153,6 +166,8 @@ export function RowActionChips({
               pendingLabel="…"
               data-testid={a.testId}
               className={CHIP}
+              title={a.fullLabel}
+              aria-label={a.fullLabel}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
               {a.label}

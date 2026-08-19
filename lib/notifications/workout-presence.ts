@@ -55,7 +55,7 @@ import {
   type WindowDose,
 } from "./intake-format";
 import { OBLIGATION_ORDER } from "../intake-schedule";
-import { intakeItemShortLabel } from "../intake-short-name";
+import { intakeShortLabels } from "../intake-short-name";
 import { dispatch } from "./index";
 import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
@@ -147,10 +147,14 @@ export function renderPostWorkoutFinishMessage(
     .join("\n");
 
   const actions: NotificationAction[] = [];
-  for (const { dose, item } of pending) {
+  // Resolved over this message's own pending set (#2858 review): two ✅ buttons
+  // reading alike over two different dose tokens is a wrong-subject tap, so a
+  // colliding pair keeps its full names.
+  const buttonLabels = intakeShortLabels(pending.map((e) => e.item));
+  for (const [i, { dose, item }] of pending.entries()) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `${GLYPH.done} ${intakeItemShortLabel(item)}`,
+      label: `${GLYPH.done} ${buttonLabels[i]}`,
       data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });
