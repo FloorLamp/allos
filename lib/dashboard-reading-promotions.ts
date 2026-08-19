@@ -84,14 +84,15 @@ export function outcomeGoalProgressChanged(
   if (!progress?.previous) return false;
   if (goal.target_date && goal.target_date < today) return false;
   const perResult = isBiomarkerGoal(goal);
+  const periodStartDate = progress.periodStartDate ?? goal.created_at;
   const currentPace = goalPaceTone(progress.pct, {
-    createdAt: goal.created_at,
+    createdAt: periodStartDate,
     targetDate: goal.target_date,
     today,
     ...(perResult ? { evidenceDate: progress.asOf ?? null } : {}),
   });
   const previousPace = goalPaceTone(progress.previous.pct, {
-    createdAt: goal.created_at,
+    createdAt: periodStartDate,
     targetDate: goal.target_date,
     today: perResult
       ? today

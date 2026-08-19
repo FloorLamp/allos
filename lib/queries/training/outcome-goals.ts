@@ -12,6 +12,8 @@ import {
 } from "../../biomarker-goal";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
 import { biomarkerFamily } from "../../canonical-name";
+import { getTimezone } from "../../settings";
+import { dateFromCreatedAt } from "../../timeline-format";
 import {
   goalMatchesExercise,
   isGoalLive,
@@ -63,6 +65,20 @@ export function getOutcomeGoalProgressMap(
   goals: OutcomeGoal[]
 ): Map<number, GoalProgress> {
   const out = new Map<number, GoalProgress>();
+  const measuredGoals = goals.filter(
+    (goal) =>
+      goal.body_metric ||
+      isBiomarkerGoal(goal) ||
+      (goal.exercise && goal.metric)
+  );
+  if (measuredGoals.length === 0) return out;
+  const timezone = getTimezone(profileId);
+  const periodStartDates = new Map(
+    measuredGoals.map((goal) => [
+      goal.id,
+      dateFromCreatedAt(goal.created_at, timezone),
+    ])
+  );
 
   // Body-metric goals: latest body-metric value vs baseline → target.
   const bodyGoals = goals.filter((g) => g.body_metric);
@@ -75,23 +91,24 @@ export function getOutcomeGoalProgressMap(
     for (const g of bodyGoals) {
       const series = points[g.body_metric!];
       const current = computeBodyGoalProgress(g, series.at(-1)?.value ?? null);
-      const createdDay = g.created_at.slice(0, 10);
-      const hasGoalPeriodEvidence = series.some(
-        (point) => point.date >= createdDay
-      );
+      const createdDay = periodStartDates.get(g.id) ?? null;
+      const hasGoalPeriodEvidence =
+        createdDay != null && series.some((point) => point.date >= createdDay);
       const baseline =
         hasGoalPeriodEvidence && g.baseline_value != null
           ? computeBodyGoalProgress(g, g.baseline_value)
           : null;
       out.set(g.id, {
         ...current,
-        previous: baseline
-          ? {
-              pct: baseline.pct,
-              done: baseline.done,
-              comparisonDate: createdDay,
-            }
-          : null,
+        ...(createdDay ? { periodStartDate: createdDay } : {}),
+        previous:
+          baseline && createdDay
+            ? {
+                pct: baseline.pct,
+                done: baseline.done,
+                comparisonDate: createdDay,
+              }
+            : null,
       });
     }
   }
@@ -124,9 +141,10 @@ export function getOutcomeGoalProgressMap(
         plot?.points ?? [],
         plot?.unit ?? target.unit
       );
-      const createdDay = g.created_at.slice(0, 10);
+      const createdDay = periodStartDates.get(g.id) ?? null;
       const hasGoalPeriodEvidence =
-        plot?.points.some((point) => point.date >= createdDay) ?? false;
+        createdDay != null &&
+        (plot?.points.some((point) => point.date >= createdDay) ?? false);
       const baseline =
         hasGoalPeriodEvidence && target.baselineValue != null
           ? computeBiomarkerGoalProgress(
@@ -137,14 +155,16 @@ export function getOutcomeGoalProgressMap(
           : null;
       out.set(g.id, {
         ...progress,
-        previous: baseline
-          ? {
-              pct: baseline.pct,
-              done: baseline.done,
-              asOf: baseline.asOf,
-              comparisonDate: createdDay,
-            }
-          : null,
+        ...(createdDay ? { periodStartDate: createdDay } : {}),
+        previous:
+          baseline && createdDay
+            ? {
+                pct: baseline.pct,
+                done: baseline.done,
+                asOf: baseline.asOf,
+                comparisonDate: createdDay,
+              }
+            : null,
         checkIn: biomarkerGoalCheckIn(
           progress.asOf,
           retestDaysForBiomarker(target.name),
@@ -223,18 +243,23 @@ export function getOutcomeGoalProgressMap(
       if (arr) matched.push(...arr);
     }
     const progress = computeGoalProgress(g, matched, t);
-    const createdDay = g.created_at.slice(0, 10);
+    const createdDay = periodStartDates.get(g.id) ?? null;
     const baselineRows = matched.filter(
-      (row) => row.date != null && row.date < createdDay
+      (row) => createdDay != null && row.date != null && row.date < createdDay
     );
     const hasGoalPeriodEvidence = matched.some(
-      (row) => row.date != null && row.date >= createdDay
+      (row) => createdDay != null && row.date != null && row.date >= createdDay
     );
-    const baseline = computeGoalProgress(g, baselineRows, createdDay);
+    const baseline = computeGoalProgress(
+      g,
+      baselineRows,
+      createdDay ?? undefined
+    );
     out.set(g.id, {
       ...progress,
+      ...(createdDay ? { periodStartDate: createdDay } : {}),
       previous:
-        baselineRows.length > 0 && hasGoalPeriodEvidence
+        baselineRows.length > 0 && hasGoalPeriodEvidence && createdDay
           ? {
               pct: baseline.pct,
               done: baseline.done,

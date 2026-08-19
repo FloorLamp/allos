@@ -18,7 +18,7 @@ import {
   getOutcomeGoals,
   getStrengthByExercise,
 } from "@/lib/queries";
-import { setWeekMode, setWeekStart } from "@/lib/settings";
+import { setTimezone, setWeekMode, setWeekStart } from "@/lib/settings";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -27,6 +27,43 @@ function newProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+}
+
+function gatheredOutcome(profileId: number, goalId: number) {
+  const goal = getOutcomeGoals(profileId).find(({ id }) => id === goalId)!;
+  return {
+    goal,
+    progress: getOutcomeGoalProgressMap(profileId, [goal]).get(goalId)!,
+  };
+}
+
+function moveToDay(date: string): void {
+  vi.setSystemTime(new Date(`${date}T12:00:00Z`));
+}
+
+function addStrengthSet(profileId: number, date: string, weight: number): void {
+  const activityId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities (profile_id, date, type, title, source)
+         VALUES (?, ?, 'strength', 'Strength', 'manual')`
+      )
+      .run(profileId, date).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets
+       (activity_id, exercise, set_number, weight_kg, reps)
+     VALUES (?, 'Bench Press', 1, ?, 5)`
+  ).run(activityId, weight);
+}
+
+function addLdl(profileId: number, date: string, value: number): void {
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, canonical_name, value, value_num, unit, flag)
+     VALUES (?, ?, 'lab', 'LDL Cholesterol', 'LDL Cholesterol', ?, ?,
+             'mg/dL', 'normal')`
+  ).run(profileId, date, String(value), value);
 }
 
 describe("dashboard reading-promotion gathers (#3137)", () => {
@@ -214,9 +251,13 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     );
   });
 
-  it("carries the prior body-goal result and promotes completion", () => {
+  it("keeps a body-goal transition through same-state evidence and ends it on reversion or period close", () => {
     const profileId = newProfile("dashboard-goal-transition");
     const anchor = today(profileId);
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+       VALUES (?, ?, 80, 'manual')`
+    ).run(profileId, shiftDateStr(anchor, -3));
     const goalId = Number(
       db
         .prepare(
@@ -225,25 +266,63 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
               target_value, target_date, created_at)
            VALUES (?, 'Reach 70 kg', 'active', 'weight', 80, 70, ?, ?)`
         )
-        .run(profileId, shiftDateStr(anchor, 30), shiftDateStr(anchor, -30))
-        .lastInsertRowid
+        .run(
+          profileId,
+          shiftDateStr(anchor, 2),
+          `${shiftDateStr(anchor, -2)} 08:00:00`
+        ).lastInsertRowid
     );
     db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
-       VALUES (?, ?, 70, 'manual'), (?, ?, 69, 'manual')`
-    ).run(profileId, shiftDateStr(anchor, -1), profileId, anchor);
+       VALUES (?, ?, 70, 'manual')`
+    ).run(profileId, shiftDateStr(anchor, -1));
 
-    const goal = getOutcomeGoals(profileId).find(({ id }) => id === goalId)!;
-    const progress = getOutcomeGoalProgressMap(profileId, [goal]).get(goalId)!;
-    expect(progress).toMatchObject({
-      current: 69,
+    let gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({
+      current: 70,
       done: true,
       previous: { pct: 0, done: false },
     });
-    expect(outcomeGoalProgressChanged(goal, progress, anchor)).toBe(true);
     expect(
-      outcomeGoalProgressChanged(goal, progress, shiftDateStr(anchor, 1))
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, anchor)
     ).toBe(true);
+
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+       VALUES (?, ?, 69, 'manual')`
+    ).run(profileId, anchor);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, anchor)
+    ).toBe(true);
+
+    const nextDay = shiftDateStr(anchor, 1);
+    moveToDay(nextDay);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, nextDay)
+    ).toBe(true);
+
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+       VALUES (?, ?, 72, 'manual')`
+    ).run(profileId, nextDay);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({ pct: 80, done: false });
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, nextDay)
+    ).toBe(false);
+
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+       VALUES (?, ?, 69, 'manual')`
+    ).run(profileId, shiftDateStr(anchor, 2));
+    const afterTarget = shiftDateStr(anchor, 3);
+    moveToDay(afterTarget);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, afterTarget)
+    ).toBe(false);
   });
 
   it("does not fabricate outcome transitions from pre-goal evidence", () => {
@@ -341,26 +420,174 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     }
   });
 
+  it("admits goal-period evidence on the profile-local creation day across UTC midnight", () => {
+    for (const scenario of [
+      {
+        name: "west",
+        timezone: "America/Los_Angeles",
+        createdAt: "2026-06-17 00:30:00",
+        before: "2026-06-15",
+        opening: "2026-06-16",
+      },
+      {
+        name: "east",
+        timezone: "Asia/Tokyo",
+        createdAt: "2026-06-16 23:30:00",
+        before: "2026-06-16",
+        opening: "2026-06-17",
+      },
+    ]) {
+      const profileId = newProfile(`dashboard-goal-${scenario.name}`);
+      setTimezone(profileId, scenario.timezone);
+      const goalId = Number(
+        db
+          .prepare(
+            `INSERT INTO goals
+               (profile_id, title, status, body_metric, baseline_value,
+                target_value, target_date, created_at)
+             VALUES (?, 'Local opening', 'active', 'weight', 80, 70,
+                     '2026-06-30', ?)`
+          )
+          .run(profileId, scenario.createdAt).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+         VALUES (?, ?, 70, 'manual')`
+      ).run(profileId, scenario.before);
+
+      expect(gatheredOutcome(profileId, goalId).progress.previous).toBeNull();
+
+      db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+         VALUES (?, ?, 69, 'manual')`
+      ).run(profileId, scenario.opening);
+      expect(gatheredOutcome(profileId, goalId).progress).toMatchObject({
+        periodStartDate: scenario.opening,
+        previous: { pct: 0, done: false },
+      });
+    }
+  });
+
+  it("keeps a biomarker transition through later results and ends it on reversion or period close", () => {
+    const profileId = newProfile("dashboard-biomarker-lifecycle");
+    const anchor = today(profileId);
+    addLdl(profileId, shiftDateStr(anchor, -3), 120);
+    const goalId = Number(
+      db
+        .prepare(
+          `INSERT INTO goals
+             (profile_id, title, status, biomarker_name, baseline_value,
+              target_value, target_direction, unit, target_date, created_at)
+           VALUES (?, 'LDL under 100', 'active', 'LDL Cholesterol', 120,
+                   100, 'below', 'mg/dL', ?, ?)`
+        )
+        .run(
+          profileId,
+          shiftDateStr(anchor, 2),
+          `${shiftDateStr(anchor, -2)} 08:00:00`
+        ).lastInsertRowid
+    );
+    addLdl(profileId, shiftDateStr(anchor, -1), 95);
+
+    let gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({
+      current: 95,
+      done: true,
+      previous: { pct: 0, done: false },
+    });
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, anchor)
+    ).toBe(true);
+
+    addLdl(profileId, anchor, 90);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, anchor)
+    ).toBe(true);
+
+    const nextDay = shiftDateStr(anchor, 1);
+    moveToDay(nextDay);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, nextDay)
+    ).toBe(true);
+
+    addLdl(profileId, nextDay, 105);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({ pct: 75, done: false });
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, nextDay)
+    ).toBe(false);
+
+    addLdl(profileId, shiftDateStr(anchor, 2), 90);
+    const afterTarget = shiftDateStr(anchor, 3);
+    moveToDay(afterTarget);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, afterTarget)
+    ).toBe(false);
+  });
+
+  it("keeps an exercise pace transition through same-state evidence and ends it on reversion or period close", () => {
+    const profileId = newProfile("dashboard-exercise-lifecycle");
+    const anchor = today(profileId);
+    addStrengthSet(profileId, shiftDateStr(anchor, -7), 50);
+    const goalId = Number(
+      db
+        .prepare(
+          `INSERT INTO goals
+             (profile_id, title, status, exercise, metric, target_weight_kg,
+              target_date, created_at)
+           VALUES (?, 'Bench 100 kg', 'active', 'Bench Press', 'weight', 100, ?, ?)`
+        )
+        .run(
+          profileId,
+          shiftDateStr(anchor, 4),
+          `${shiftDateStr(anchor, -6)} 08:00:00`
+        ).lastInsertRowid
+    );
+    addStrengthSet(profileId, anchor, 55);
+
+    let gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({
+      current: 55,
+      done: false,
+      previous: { pct: 50, done: false },
+    });
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, anchor)
+    ).toBe(true);
+
+    const nextDay = shiftDateStr(anchor, 1);
+    addStrengthSet(profileId, nextDay, 55);
+    moveToDay(nextDay);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, nextDay)
+    ).toBe(true);
+
+    const revertedDay = shiftDateStr(anchor, 2);
+    addStrengthSet(profileId, revertedDay, 80);
+    moveToDay(revertedDay);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(gathered.progress).toMatchObject({ pct: 80, done: false });
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, revertedDay)
+    ).toBe(false);
+
+    const afterTarget = shiftDateStr(anchor, 5);
+    moveToDay(afterTarget);
+    gathered = gatheredOutcome(profileId, goalId);
+    expect(
+      outcomeGoalProgressChanged(gathered.goal, gathered.progress, afterTarget)
+    ).toBe(false);
+  });
+
   it("reuses the existing all-history strength verdict for today's record", () => {
     const profileId = newProfile("dashboard-training-transition");
     const anchor = today(profileId);
-    const addSet = (date: string, weight: number) => {
-      const activityId = Number(
-        db
-          .prepare(
-            `INSERT INTO activities (profile_id, date, type, title, source)
-             VALUES (?, ?, 'strength', 'Strength', 'manual')`
-          )
-          .run(profileId, date).lastInsertRowid
-      );
-      db.prepare(
-        `INSERT INTO exercise_sets
-           (activity_id, exercise, set_number, weight_kg, reps)
-         VALUES (?, 'Bench Press', 1, ?, 5)`
-      ).run(activityId, weight);
-    };
-    addSet(shiftDateStr(anchor, -2), 50);
-    addSet(anchor, 60);
+    addStrengthSet(profileId, shiftDateStr(anchor, -2), 50);
+    addStrengthSet(profileId, anchor, 60);
 
     const records = recentPRs(
       getStrengthByExercise(profileId, true),
@@ -376,24 +603,5 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
         }),
       ])
     );
-
-    const goalId = Number(
-      db
-        .prepare(
-          `INSERT INTO goals
-             (profile_id, title, status, exercise, metric, target_weight_kg,
-              target_date, created_at)
-           VALUES (?, 'Bench 60 kg', 'active', 'Bench Press', 'weight', 60, ?, ?)`
-        )
-        .run(profileId, shiftDateStr(anchor, 30), shiftDateStr(anchor, -1))
-        .lastInsertRowid
-    );
-    const goal = getOutcomeGoals(profileId).find(({ id }) => id === goalId)!;
-    const progress = getOutcomeGoalProgressMap(profileId, [goal]).get(goalId)!;
-    expect(progress).toMatchObject({
-      done: true,
-      previous: { done: false },
-    });
-    expect(outcomeGoalProgressChanged(goal, progress, anchor)).toBe(true);
   });
 });
