@@ -6,7 +6,8 @@
 // even when the client sends a GPS-tagged frame (never-trust-the-client at the
 // action boundary); oversize/overlong clips are rejected with the #478
 // { ok:false } shape; the location flag drives has_location; and the serve route
-// refuses a cross-profile fetch by id and honors a Range request (206).
+// honors accessible cross-profile reads, refuses inaccessible reads by id, and
+// honors a Range request (206).
 
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "node:fs";
@@ -63,8 +64,8 @@ function videoFile(bytes: Buffer, name = "clip.mp4"): File {
 }
 
 describe("uploadActivityVideoAction + serve route", () => {
-  it("stores a server-sniffed clip with a stripped poster, honors Range, and scopes by profile", async () => {
-    const owner = seedActor();
+  it("stores a server-sniffed clip with a stripped poster, honors Range, and gates access by profile", async () => {
+    const owner = seedActor({ role: "member" });
     const activityId = seedActivity(owner.profile.id);
     expect(readJpegExif(gpsPoster).hasGps).toBe(true); // the poster fixture has teeth
 
@@ -145,8 +146,18 @@ describe("uploadActivityVideoAction + serve route", () => {
     expect(poster.status).toBe(200);
     expect(poster.headers.get("content-type")).toBe("image/jpeg");
 
-    // Another profile can't fetch it by id.
-    seedActor();
+    // A household member can view the owner's media without changing the media's
+    // ownership to the currently active profile.
+    const householdProfile = createProfile("Household profile", owner.login.id);
+    actAs(owner.login, householdProfile);
+    const accessible = await serveActivityVideo(
+      new Request(`http://test/api/activity-video/${row.id}`),
+      { params: Promise.resolve({ id: String(row.id) }) }
+    );
+    expect(accessible.status).toBe(200);
+
+    // A login with no grant to the owner still can't fetch it by id.
+    seedActor({ role: "member" });
     const denied = await serveActivityVideo(
       new Request(`http://test/api/activity-video/${row.id}`),
       { params: Promise.resolve({ id: String(row.id) }) }
