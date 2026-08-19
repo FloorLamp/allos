@@ -47,6 +47,17 @@ export interface PersonaContext {
   occurredAt(day: string, hhmm: string): string;
   reconcileFlags(profileId: number, ids: number[]): void;
   saveFitnessEntry(profileId: number, entry: FitnessEntryInput): unknown;
+  /**
+   * The continuous-glucose trace write core (lib/glucose-trace-db.ts, #2810) —
+   * stores the raw points AND recomputes the day's derived `metric_samples` rows,
+   * so a persona seeds the two-store shape through the path an ingest would use
+   * rather than hand-writing either half.
+   */
+  recordGlucoseTrace(
+    profileId: number,
+    rows: readonly { ts: string; mgdl: number }[],
+    source: string
+  ): unknown;
   /** The standard Overview metric saves every production-created profile gets. */
   seedStandardMetricSaves(profileId: number): void;
   /** The situation change-log helpers (lib/trend-annotations, lib/symptom-episode). */
@@ -2222,8 +2233,9 @@ const diabeticCgm: SeedPersona = {
   name: "diabetic-cgm",
   title: "Ray, 52 — type 2 diabetic wearing a CGM; partner with asthma",
   description:
-    "Dense home glucose readings (4/day for two weeks, the CGM-export " +
-    "shape), an improving A1c series, diabetes med stack with monitoring " +
+    "A two-week per-5-minute sensor trace plus the dense timed readings " +
+    "(4/day) the same fortnight lands as lab rows, an improving A1c " +
+    "series, diabetes med stack with monitoring " +
     "obligations (metformin B12/eGFR), microalbumin creeping up, a linked " +
     "visit-summary document — plus Priya, his partner with chronic asthma: " +
     "controller + rescue inhalers, a peak-flow stream with a flare dip, " +
@@ -2239,9 +2251,10 @@ const diabeticCgm: SeedPersona = {
     "/household",
   ],
   gaps: [
-    "No continuous-glucose stream: metric_samples has no glucose metric and " +
-      "no CGM integration exists, so CGM data can only land as discrete " +
-      "medical_records vitals rows (#2810).",
+    "Continuous glucose has a HOME but no way in and no way to look at it: " +
+      "the two stores exist (#2810 — a glucose_trace stream plus its derived " +
+      "metric_samples day summaries, seeded here), but no integration ingests " +
+      "a CGM, and no surface charts the trace or its time-in-range.",
   ],
   dashboard: {
     expect: ["checkin.mood", "vitals.resting-heart-rate"],
@@ -2323,6 +2336,58 @@ const diabeticCgm: SeedPersona = {
         });
       }
     }
+
+    // ── The CGM's actual output: a per-5-minute trace (#2810) ────────────────
+    //
+    // The four timed readings above are the LAB shape — discrete `medical_records`
+    // vitals, which is what a CGM export could land as before this store existed
+    // and is still what a fingerstick or a clinic draw is. This is the other half
+    // the ruling splits out: 288 sensor points a day, in `glucose_trace`, carrying
+    // no reading identity and no band, with the day's mean / time-in-range /
+    // coverage recomputed into `metric_samples` by the same write core an ingest
+    // would call.
+    //
+    // The curve is a plausible type-2 day rather than noise: a dawn rise, three
+    // meal excursions that peak ~45 minutes after the meal and decay over two
+    // hours, and an overnight floor — so time-in-range lands in the 60–75% band a
+    // reasonably-controlled person on metformin actually sees, and the trace and
+    // the timed readings above tell the same story. Deterministic: the wobble is a
+    // function of the day index and the minute, so re-seeding reproduces it.
+    const MEALS: [number, number][] = [
+      // minute-of-day the meal started, its excursion height in mg/dL
+      [7 * 60 + 30, 62],
+      [12 * 60 + 45, 54],
+      [19 * 60 + 15, 70],
+    ];
+    for (let d = 13; d >= 0; d--) {
+      const day = ctx.daysAgo(d);
+      const points: { ts: string; mgdl: number }[] = [];
+      for (let minute = 0; minute < 24 * 60; minute += 5) {
+        // Overnight floor rising into the dawn phenomenon, then a flat daytime base.
+        const base =
+          minute < 4 * 60 ? 108 : minute < 7 * 60 ? 108 + (minute - 240) / 12 : 118;
+        let excursion = 0;
+        for (const [start, height] of MEALS) {
+          const since = minute - start;
+          // Rise over 45 min, decay over the next 135. Zero outside the window.
+          if (since >= 0 && since < 45) excursion += (height * since) / 45;
+          else if (since >= 45 && since < 180)
+            excursion += height * (1 - (since - 45) / 135);
+        }
+        const wobble = ((d * 7 + minute) % 13) - 6;
+        points.push({
+          ts: ctx.occurredAt(
+            day,
+            `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+              minute % 60
+            ).padStart(2, "0")}`
+          ),
+          mgdl: Math.round(base + excursion + wobble),
+        });
+      }
+      ctx.recordGlucoseTrace(ctx.profileId, points, "manual");
+    }
+
     // Quarterly labs: A1c improving, kidney watch items.
     const labs: [number, number, number, number, number][] = [
       // ago, a1c, egfr, microalbuminRatio, b12ago-marker unused
