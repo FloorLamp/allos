@@ -9,7 +9,7 @@ import { glanceAgeToken } from "@/lib/glance-age";
 // so existing import sites (the dashboard page) stay unchanged.
 export type { RecentLabRow };
 
-// Recent labs widget (issue #171 — medical presence). The latest reading per marker
+// Recent clinical results widget (issue #171 — medical presence). The latest reading per marker
 // from the newest panels, flagged markers surfaced first so an out-of-range result
 // is the headline rather than buried. Read-only; the analysis lives in Trends.
 export default function RecentLabsWidget({
@@ -21,10 +21,13 @@ export default function RecentLabsWidget({
 }) {
   return (
     <div className="card">
-      <WidgetHeader title="Recent labs" href="/results/clinical-results" />
+      <WidgetHeader
+        title="Recent clinical results"
+        href="/results/clinical-results"
+      />
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          No recent lab results.
+          No recent clinical results.
         </p>
       ) : (
         <ul className="space-y-1.5">

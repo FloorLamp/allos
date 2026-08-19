@@ -151,6 +151,15 @@ export const progressCandidates = {
       engagement
     );
   },
+  weightQuickAdd(ctx: DomainCandidateContext, day: string) {
+    return action(
+      ctx,
+      "weight.quick-add",
+      `weight.quick-add-offer:${day}`,
+      "weight.summary",
+      "may"
+    );
+  },
   healthspan(ctx: DomainCandidateContext, key: string) {
     return reading(
       ctx,

@@ -180,6 +180,7 @@ import WidgetDormant from "@/components/dashboard/WidgetDormant";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
+import WeightQuickAddWidget from "@/components/dashboard/WeightQuickAddWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
@@ -191,7 +192,10 @@ import RecentLabsWidget, {
 import NextAppointmentWidget, {
   type NextAppointment,
 } from "@/components/dashboard/NextAppointmentWidget";
-import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
+import HealthspanPillarsWidget, {
+  PillarToneBadge,
+  TrendArrow,
+} from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
 import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
@@ -1459,7 +1463,15 @@ async function renderDashboard(
       <NutritionTodayWidget today={proteinToday} routine={null} />,
       {
         value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
-        detail: `Goal ${proteinTargetSummary(proteinToday.target)} · From ${proteinToday.todayIntake ? proteinBasisPhrase(proteinToday.todayIntake.basis) : "logged foods"}`,
+        detail: [
+          `Goal ${proteinTargetSummary(proteinToday.target)}`,
+          proteinToday.trailing.grams != null && !proteinToday.trailing.dayOne
+            ? `7-day average ${Math.round(proteinToday.trailing.grams)} g/day`
+            : null,
+          `From ${proteinToday.todayIntake ? proteinBasisPhrase(proteinToday.todayIntake.basis) : "logged foods"}${proteinToday.todayIntake?.basis === "tracked" ? "" : " — a floor, actual likely higher"}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         href: "/nutrition",
         presence: "current",
       }
@@ -1838,8 +1850,8 @@ async function renderDashboard(
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
-          detail: latestWeight.date,
-          href: "/trends",
+          detail: formatLongDate(latestWeight.date, formatPrefs),
+          href: "/trends#body",
           presence: "current",
         }
       );
@@ -1859,15 +1871,29 @@ async function renderDashboard(
         weightUnit={units.weightUnit}
         formatPrefs={formatPrefs}
         today={on}
-        subjectName={actingSubjectName}
       />,
       {
         label: "Trend",
-        value: `${bodyMetrics.length} readings`,
-        detail: `${weightTrendSince} to ${on}`,
-        href: "/trends",
+        value: "View trend",
+        href: "/trends#body",
         presence: "current",
       }
+    );
+    add(
+      progressCandidates.weightQuickAdd(
+        {
+          subject: profileSubject,
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        on
+      ),
+      <WeightQuickAddWidget
+        latest={latestWeight ?? null}
+        weightUnit={units.weightUnit}
+        today={on}
+        subjectName={actingSubjectName}
+      />
     );
   }
 
@@ -2054,8 +2080,18 @@ async function renderDashboard(
       <HealthspanPillarsWidget pillars={[pillar]} />,
       {
         label: pillar.label,
-        value: pillar.value,
-        detail: pillar.detail,
+        value: (
+          <span className="inline-flex flex-wrap items-baseline gap-1.5">
+            <span>{pillar.value}</span>
+            <PillarToneBadge tone={pillar.tone} />
+          </span>
+        ),
+        detail: (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span>{pillar.detail}</span>
+            <TrendArrow pillar={pillar} />
+          </span>
+        ),
         href: pillar.href,
         presence: "current",
       }

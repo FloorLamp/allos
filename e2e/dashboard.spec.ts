@@ -1,6 +1,51 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
+
+function setSecondDashboardNap(enabled: boolean): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const seededNap = db
+      .prepare(
+        `SELECT profile_id, date, started_at
+           FROM metric_samples
+          WHERE profile_id = (SELECT MIN(id) FROM profiles)
+            AND metric = 'sleep_min'
+            AND value = 45
+          ORDER BY date DESC
+          LIMIT 1`
+      )
+      .get() as { profile_id: number; date: string; started_at: string };
+    const start = new Date(
+      new Date(seededNap.started_at).getTime() - 2 * 60 * 60_000
+    );
+    const end = new Date(start.getTime() + 30 * 60_000);
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ?
+          AND source = 'manual'
+          AND origin IS NULL
+          AND metric = 'sleep_min'
+          AND started_at = ?`
+    ).run(seededNap.profile_id, start.toISOString());
+    if (!enabled) return;
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
+       VALUES (?, 'manual', NULL, 'sleep_min', ?, ?, ?, 30)`
+    ).run(
+      seededNap.profile_id,
+      seededNap.date,
+      start.toISOString(),
+      end.toISOString()
+    );
+  } finally {
+    db.close();
+  }
+}
 
 test("the dashboard renders one fixed instrument cluster and no editor", async ({
   page,
@@ -139,6 +184,33 @@ test("one nap produces one Standing total and leaves individual naps outside", a
   }
 });
 
+test("multiple naps produce one Standing total and keep every nap outside", async ({
+  page,
+}) => {
+  setSecondDashboardNap(true);
+  try {
+    await page.goto("/");
+    const total = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.nap-total:"]'
+    );
+    const naps = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.nap:"]'
+    );
+    await expect(total).toHaveAttribute("data-lane", "standing");
+    await expect(total).toContainText("1h 15m");
+    await expect(total).toContainText("2 naps");
+    await expect(naps).toHaveCount(2);
+    for (let index = 0; index < 2; index += 1) {
+      await expect(naps.nth(index)).not.toHaveAttribute(
+        "data-lane",
+        "standing"
+      );
+    }
+  } finally {
+    setSecondDashboardNap(false);
+  }
+});
+
 test("the clinical family cap leaves its tail in Everything", async ({
   page,
 }) => {
@@ -158,6 +230,13 @@ test("the clinical family cap leaves its tail in Everything", async ({
   );
   expect(standingCount).toBe(6);
   expect(tailCount).toBeGreaterThan(0);
+  const firstTail = page
+    .locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"][data-lane="everything"]'
+    )
+    .first();
+  await expect(firstTail).toContainText("Recent clinical results");
+  await expect(firstTail).not.toContainText("Recent labs");
 });
 
 test("every applicable fact appears in exactly one atomic lane", async ({
