@@ -26,9 +26,7 @@ import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 //    this motion must not do (motion never delays or displaces the next tap).
 //  * Nothing loops. One animation per change, cancelled if another change lands.
 //
-// NOT `components/CountUpNumber.tsx`, which is the other tenancy: a dashboard hero
-// number ticking up ONCE on mount and explicitly never replaying. This one never
-// plays on mount and only ever plays on a change. Two different sentences.
+// This motion never plays on mount and only ever plays on a change.
 export default function RollingNumber({
   value,
   format,
