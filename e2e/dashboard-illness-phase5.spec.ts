@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
@@ -8,16 +9,50 @@ import {
   settledClickApplied,
   settledFill,
 } from "./helpers";
-import { openTempEntry } from "./symptom-helpers";
+import { addFromPicker, openTempEntry, settledTap } from "./symptom-helpers";
 import {
   E2E_LOGIN_CARE,
   E2E_LOGIN_ILLNESS_CAREGIVER,
   E2E_LOGIN_ILLNESS_RO,
   E2E_LOGIN_MULTI_ILLNESS,
+  MULTI_ILLNESS_PROFILE,
   E2E_LOGIN_SICK_COLLAPSE,
   E2E_LOGIN_SICK_SELF,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
+
+// This spec owns the multi-episode profile's cough/nausea, 101.9 °F reading, and
+// Ibuprofen administrations. Reset only those rows before driving it so a retry or
+// repeat starts from the seeded baseline without touching the fixture's headache or
+// any other profile's data.
+function resetMultiIllnessWrites(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profile = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(MULTI_ILLNESS_PROFILE) as { id: number };
+    db.prepare(
+      `DELETE FROM symptom_logs
+        WHERE profile_id = ? AND symptom IN ('cough', 'nausea')`
+    ).run(profile.id);
+    db.prepare(
+      `DELETE FROM medical_records
+        WHERE profile_id = ? AND canonical_name = 'Body Temperature'
+          AND value_num = 101.9`
+    ).run(profile.id);
+    db.prepare(
+      `DELETE FROM intake_item_logs
+        WHERE item_id IN (
+          SELECT id FROM intake_items
+           WHERE profile_id = ? AND name = 'Ibuprofen'
+        )`
+    ).run(profile.id);
+  } finally {
+    db.close();
+  }
+}
 
 const credentials = (username: string) => ({
   username,
@@ -27,6 +62,7 @@ const credentials = (username: string) => ({
 test("simultaneous episodes keep whole controls and close independently", async ({
   browser,
 }) => {
+  resetMultiIllnessWrites();
   const page = await loginAs(browser, {
     username: E2E_LOGIN_MULTI_ILLNESS,
     password: E2E_MEMBER_PASSWORD,
@@ -83,8 +119,7 @@ test("simultaneous episodes keep whole controls and close independently", async 
         .locator(`[data-situation="${situation}"]`);
     async function addSymptom(cockpit: Locator, symptom: string) {
       const bar = cockpit.getByTestId("symptom-log-bar");
-      await bar.getByTestId("symptom-add-picker-toggle").click();
-      await settledClick(page, bar.getByTestId(`symptom-pick-${symptom}`));
+      await addFromPicker(bar, symptom, settledTap(page));
       await expect(bar.getByTestId(`symptom-${symptom}-sev-1`)).toHaveAttribute(
         "aria-pressed",
         "true"
