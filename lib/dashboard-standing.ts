@@ -45,6 +45,21 @@ const idStartsWith =
 // definition site: a gather that hard-codes six drifts the first time the cap moves.
 export const CLINICAL_RESULTS_CAP = 6;
 
+// The rows of a capped family a gather should still mint, in the family's own
+// order: the ones the registry can seat, PLUS any row whose promotion is live.
+// The union is what keeps the cap safe. A member that has just changed is a Now
+// fact wherever it sits in the family's order, so a plain `slice(0, cap)` would
+// silently drop exactly the reading someone most needs to see — with the cap
+// already full of notable markers, the one that JUST became notable is the one
+// outside it.
+export function cappedFamilyGather<Row>(
+  rows: readonly Row[],
+  cap: number,
+  promoted: (row: Row) => boolean
+): Row[] {
+  return rows.filter((row, index) => index < cap || promoted(row));
+}
+
 // The fixed dashboard instrument cluster. Declaration order is render order.
 // This is intentionally the sole list of Standing families: a newly gathered
 // reading remains in Everything until this closed registry explicitly claims it.

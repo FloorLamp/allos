@@ -124,7 +124,10 @@ import {
   type DashboardCandidate,
   type DashboardTiming,
 } from "@/lib/dashboard-relevance";
-import { CLINICAL_RESULTS_CAP } from "@/lib/dashboard-standing";
+import {
+  cappedFamilyGather,
+  CLINICAL_RESULTS_CAP,
+} from "@/lib/dashboard-standing";
 import {
   attentionCandidates,
   careCandidates,
@@ -641,13 +644,10 @@ async function renderDashboard(
           : {}),
       });
     }
-    labRows = recentLabHighlights(
-      observations,
-      Number.MAX_SAFE_INTEGER,
-      on
-    ).filter(
-      (row, index) =>
-        index < CLINICAL_RESULTS_CAP || labPromotions.get(row.name)?.changed
+    labRows = cappedFamilyGather(
+      recentLabHighlights(observations, Number.MAX_SAFE_INTEGER, on),
+      CLINICAL_RESULTS_CAP,
+      (row) => labPromotions.get(row.name)?.changed === true
     );
   }
 

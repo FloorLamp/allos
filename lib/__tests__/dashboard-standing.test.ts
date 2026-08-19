@@ -11,6 +11,7 @@ import {
   type DashboardCandidate,
 } from "../dashboard-relevance";
 import {
+  cappedFamilyGather,
   CLINICAL_RESULTS_CAP,
   STANDING_READING_ORDER,
 } from "../dashboard-standing";
@@ -315,6 +316,45 @@ describe("a capped Standing family's tail", () => {
     ).toHaveLength(cap);
   });
 
+  it("keeps a tail entry with a live promotion, even when Now is full", () => {
+    const owed = (candidateId: string, sourceOrder: number) =>
+      actionCandidate({
+        candidateId,
+        factKey: `fact:${candidateId}`,
+        groupKey: null,
+        subject: profile,
+        applicable: true,
+        relevance: { kind: "event" },
+        obligation: "must",
+        rankReasons: {
+          safety: false,
+          owed: true,
+          windowOpen: false,
+          changed: false,
+        },
+        sourceOrder,
+      });
+    const placements = rank([
+      owed("intake.log:morning", 0),
+      owed("intake.log:evening", 1),
+      ...Array.from({ length: cap }, (_, index) =>
+        reading(`labs.latest:notable-${index}`, 300 + index)
+      ),
+      reading("labs.latest:newly-notable", 300 + cap, {
+        rankReasons: changedReasons,
+        readingPromotion: "clinical-non-notable-to-notable",
+      }),
+    ]);
+
+    // The ordinary Now cap is spent on the two owed actions, so the promotion
+    // cannot take a Now seat — and the ruling still may not hide it.
+    expect(
+      placements.find(
+        ({ candidate }) => candidate.candidateId === "labs.latest:newly-notable"
+      )
+    ).toMatchObject({ lane: "everything" });
+  });
+
   it("celebrates a met weekly target once and then leaves every lane", () => {
     const unmet = reading("target.weekly-progress:1", 400);
     const met = (promoted: boolean) =>
@@ -344,6 +384,21 @@ describe("a capped Standing family's tail", () => {
         lane,
       ])
     ).toEqual([["target.weekly-progress:1", "standing"]]);
+  });
+
+  it("gathers the seats a capped family has plus its live promotions", () => {
+    const markers = Array.from(
+      { length: cap + 3 },
+      (_, index) => `marker-${index}`
+    );
+    const outsideTheCap = markers[cap + 2];
+
+    expect(
+      cappedFamilyGather(markers, cap, (marker) => marker === outsideTheCap)
+    ).toEqual([...markers.slice(0, cap), outsideTheCap]);
+    expect(cappedFamilyGather(markers, cap, () => false)).toEqual(
+      markers.slice(0, cap)
+    );
   });
 
   it("leaves an uncapped family's members whole", () => {
