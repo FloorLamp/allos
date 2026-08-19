@@ -7,10 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import {
-  isDraftActivityRow,
-  type DraftCandidateRow,
-} from "../activity-draft";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import { getAllBiomarkerSeries, getCanonicalResultDefinition } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
@@ -578,7 +575,13 @@ export function getProtocolUsageByDayMap(
            FROM activities a
           WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ? AND (${lanes})`
       )
-      .all(profileId, span.start, span.end, ...equipIds, ...types) as (DraftCandidateRow & {
+      .all(
+        profileId,
+        span.start,
+        span.end,
+        ...equipIds,
+        ...types
+      ) as (DraftCandidateRow & {
       date: string;
       equipment_id: number | null;
       type: string;

@@ -1,8 +1,5 @@
 import { db, today } from "../db";
-import {
-  isDraftActivityRow,
-  type DraftCandidateRow,
-} from "../activity-draft";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import {
   CADENCE_SCOPES,
   cadenceDirection,

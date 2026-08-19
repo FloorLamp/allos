@@ -50,6 +50,22 @@ function statementLiterals(): string[] {
 const LITERALS = statementLiterals();
 const SQL = LITERALS.join("\nUNION ALL\n");
 
+// Tables an arm names WITHOUT producing a day from them, so neither the census nor
+// the per-arm pairing below reads one as a store: the JOIN'd parent a child table
+// scopes through (`intake_items` carries the profile filter, not the days), and the
+// correlated EXISTS the Train arm asks the draft rule's "has any set" half with
+// (`exercise_sets` decides whether an activity row is an entry, and contributes no
+// date). The EXISTS sits in the select list, so it is also the FIRST `FROM` in its
+// arm — `armTable` therefore skips these rather than taking the literal first match.
+const NO_DAYS_OF_ITS_OWN = ["intake_items", "exercise_sets"];
+
+function armTable(arm: string): string {
+  for (const m of arm.matchAll(/FROM\s+([a-z_]+)/g)) {
+    if (!NO_DAYS_OF_ITS_OWN.includes(m[1])) return m[1];
+  }
+  return "";
+}
+
 function declaredTables(): string[] {
   return Object.values(LOG_DAY_SOURCES).flatMap((v) =>
     isArguedExclusion(v) ? [] : [...v]
@@ -77,17 +93,10 @@ describe("LOG_DAY_SOURCES", () => {
   });
 
   it("declares every store it counts", () => {
-    // Every `FROM <table>` in the statements, minus the two tables that appear
-    // without producing a day of their own: the JOIN'd parent a child table scopes
-    // through (intake_items carries the profile filter, not the days), and the
-    // correlated EXISTS the Train arm asks the draft rule's "has any set" half with
-    // (exercise_sets decides whether an activity row is an entry, and contributes no
-    // date).
     const counted = new Set(
       [...SQL.matchAll(/FROM\s+([a-z_]+)/g)].map((m) => m[1])
     );
-    counted.delete("intake_items");
-    counted.delete("exercise_sets");
+    for (const table of NO_DAYS_OF_ITS_OWN) counted.delete(table);
     const declared = new Set(declaredTables());
     for (const table of counted) {
       expect(declared, `${table} is counted but undeclared`).toContain(table);
@@ -131,9 +140,9 @@ describe("LOG_DAY_SOURCES", () => {
     const arms = SQL.split("UNION ALL").filter((a) => a.includes("FROM"));
     for (const arm of arms) {
       const segment = /SELECT '([a-z]+)' AS segment/.exec(arm)?.[1] ?? "";
-      // The arm's OWN table is its first FROM; a JOIN'd parent (intake_items) is
-      // how a child scopes to the profile and produces no days of its own.
-      const table = /FROM\s+([a-z_]+)/.exec(arm)?.[1] ?? "";
+      // The arm's OWN table is its first day-producing FROM — see
+      // NO_DAYS_OF_ITS_OWN for the two that are named without being counted.
+      const table = armTable(arm);
       const declaredFor = [...(expected.get(table) ?? [])];
       expect(
         declaredFor,

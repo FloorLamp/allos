@@ -149,7 +149,10 @@ export function getSegmentLogDays(
   // The Train arm's own distinct-day fold — a create-at-start draft is not a day
   // this person logged training on (#3191), and only the pure rule can say which
   // rows those are.
-  const trainRows = TRAIN_HABIT_DAYS.all({ profileId, from }) as (DraftCandidateRow & {
+  const trainRows = TRAIN_HABIT_DAYS.all({
+    profileId,
+    from,
+  }) as (DraftCandidateRow & {
     segment: LogSegmentId;
     d: string | null;
     /** 0 or 1 — the draft rule only asks whether ANY set exists. */
