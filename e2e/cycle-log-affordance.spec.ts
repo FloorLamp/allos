@@ -11,15 +11,15 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// The dashboard's cycle log affordance (issue #1892).
+// The dashboard's atomic cycle log action (issue #1892).
 //
-// THE BUG, in one sentence: the phase widget self-hid whenever no phase was derivable —
+// THE BUG, in one sentence: the action disappeared whenever no phase was derivable —
 // which is exactly the state of someone who has not logged day 1 yet — so the dashboard
 // went blank at the moment logging mattered most, and the only path to it was
 // nav → Medical → Cycles. Period start is time-sensitive in a way a weigh-in is not:
 // both the phase derivation and the regularity data depend on catching it.
 //
-// What this spec pins is that the card is now a SECOND RENDERER of the #1681 control
+// What this spec pins is that the dashboard action is a SECOND RENDERER of the #1681 control
 // state rather than a second implementation of it — the same three verbs, the same
 // windows, the same silences:
 //
@@ -65,8 +65,8 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     await page.close();
   });
 
-  test("the card and the Cycle page always agree about the verb on offer", async () => {
-    // One state, two renderers. If the widget ever grew its own derivation, this is
+  test("the dashboard action and the Cycle page always agree about the verb on offer", async () => {
+    // One state, two renderers. If the dashboard atom ever grew its own derivation, this is
     // the assertion that would catch it in the browser.
     await page.goto("/");
     await openDashboardAll(page);

@@ -5,6 +5,7 @@ import { loginAs } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
   expectNoClippedContent,
+  openDashboardAll,
   settledClick,
   settledClickApplied,
   settledFill,
@@ -464,6 +465,7 @@ test.describe("fresh-profile illness front door", () => {
     test.slow();
     await createProfileViaFamily(page, "phase5-front-door");
     await page.goto("/");
+    await openDashboardAll(page);
     await settledClickApplied(
       page,
       page.getByTestId("symptom-illness-bridge-activate"),
