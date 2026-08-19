@@ -68,7 +68,7 @@ function getFrequencyTargetProgressUncached(
   profileId: number
 ): FrequencyTargetProgress[] {
   return getCadenceCurrentAndPriorDay(profileId, "floor").map(
-    ({ target, weeks, existedWholeWindow }) => {
+    ({ target, declaredOn, weeks, existedWholeWindow }) => {
       const current = weeks.at(-1)!;
       const previous = weeks.at(-2);
       // Range semantics (#1259): the FLOOR (per_week) drives met + pace; the optional
@@ -88,7 +88,7 @@ function getFrequencyTargetProgressUncached(
         ? previous && existedWholeWindow
           ? { count: previous.count, elapsedDays: previous.elapsedDays }
           : null
-        : target.created_at.slice(0, 10) <= current.start
+        : declaredOn <= current.start
           ? { count: 0, elapsedDays: 1 }
           : null;
       const previousRange = comparison

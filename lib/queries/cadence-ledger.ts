@@ -27,6 +27,8 @@ import {
 } from "../substance-use";
 import type { FrequencyTarget } from "../types";
 import { parseComponents } from "../types";
+import { getTimezone } from "../settings";
+import { dateFromCreatedAt } from "../timeline-format";
 import { weekWindowStartOn } from "./profile-week";
 
 // THE CADENCE LEDGER (#2034) — the one read model over `frequency_targets`.
@@ -106,6 +108,8 @@ export interface CadenceWeek {
 
 export interface CadenceLedgerEntry {
   target: FrequencyTarget;
+  /** Profile-local day on which this target was declared. */
+  declaredOn: string;
   direction: CadenceDirection;
   /** Oldest first — the render order of every weekly strip. */
   weeks: CadenceWeek[];
@@ -453,6 +457,7 @@ function cadenceLedgerForWindows(
   );
   if (targets.length === 0) return [];
   if (windows.length === 0) return [];
+  const timezone = getTimezone(profileId);
 
   const scopes: CadenceScopeRef[] = targets.map((t) => ({
     kind: t.scope_kind as FrequencyScopeKind,
@@ -461,6 +466,8 @@ function cadenceLedgerForWindows(
   const counts = cadenceCounts(profileId, scopes, windows);
 
   return targets.map((t) => {
+    const declaredOn =
+      dateFromCreatedAt(t.created_at, timezone) ?? t.created_at.slice(0, 10);
     const series =
       counts.get(
         scopeKey({
@@ -470,6 +477,7 @@ function cadenceLedgerForWindows(
       ) ?? (Array(windows.length).fill(0) as number[]);
     return {
       target: t,
+      declaredOn,
       direction,
       weeks: windows.map((w, i) => ({
         start: w.start,
@@ -485,10 +493,10 @@ function cadenceLedgerForWindows(
           elapsedDays: w.elapsedDays,
         }),
       })),
-      // `created_at` is a UTC `datetime('now')` stamp; its calendar day is what the
-      // cold-start exclusion compares. A target created ON the window's first day
-      // counts as having existed for it.
-      existedWholeWindow: t.created_at.slice(0, 10) <= windows[0].start,
+      // `created_at` is a UTC `datetime('now')` stamp. Cold-start eligibility is
+      // based on its profile-local day, not the UTC day embedded in the stamp. A
+      // target created ON the window's first day counts as having existed for it.
+      existedWholeWindow: declaredOn <= windows[0].start,
     };
   });
 }
@@ -696,8 +704,7 @@ export function getCadenceCapWeeks(
     // Only the weeks that began after the cap was declared. The ledger's
     // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
     // it per week, off the same `created_at` day the flag compares.
-    const declaredOn = entry.target.created_at.slice(0, 10);
-    const weeks = entry.weeks.filter((w) => w.start >= declaredOn);
+    const weeks = entry.weeks.filter((w) => w.start >= entry.declaredOn);
     if (weeks.length < CAP_PERIOD_MIN_WEEKS) continue;
     out.push({
       label: cadenceScopeNoun(

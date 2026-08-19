@@ -426,54 +426,31 @@ export type DashboardClinicalObservation = ClinicalObservation & {
 };
 
 // The current lab reading and its immediately-prior comparable family reading,
-// in one bounded row per family. This replaces the dashboard's current-only
-// gather when it needs to decide the closed non-notable → notable transition;
-// it does not issue one history query per result and it uses the same de-duplicated
-// #482 family identity as getClinicalObservations.
-const getDashboardClinicalObservationsSnapshot = snapshotCached(
-  "medical.dashboard-current-with-prior",
-  (profileId: number) => String(profileId),
-  (profileId: number): DashboardClinicalObservation[] =>
-    db
-      .prepare(
-        `WITH ${DEDUP_IDS_CTE},
-              dashboard_ranked AS (
-                SELECT id,
-                       ${BIOMARKER_FAMILY_KEY} AS family_key,
-                       ROW_NUMBER() OVER (
-                         PARTITION BY ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE
-                         ORDER BY date DESC, id DESC
-                       ) AS rn
-                  FROM medical_records
-                 WHERE profile_id = ?
-                   AND category = 'lab'
-                   AND ${IN_DEDUPED}
-              )
-         SELECT medical_records.*,
-                (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
-                  AS provider_name,
-                (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
-                  AS ordering_provider_name,
-                1 AS is_latest,
-                previous_record.id AS previous_id,
-                previous_record.flag AS previous_flag
-           FROM dashboard_ranked current_rank
-           JOIN medical_records ON medical_records.id = current_rank.id
-           LEFT JOIN dashboard_ranked previous_rank
-             ON previous_rank.family_key = current_rank.family_key COLLATE NOCASE
-            AND previous_rank.rn = 2
-           LEFT JOIN medical_records previous_record
-             ON previous_record.id = previous_rank.id
-          WHERE current_rank.rn = 1
-          ORDER BY medical_records.date DESC, medical_records.id DESC`
-      )
-      .all(profileId, profileId) as DashboardClinicalObservation[]
-);
-
+// in one row per family. The dashboard already pays for the canonical, de-duplicated
+// all-history observation snapshot through its preventive evidence. Projecting that
+// same date-desc/id-desc list keeps the #482 family identity and avoids a parallel
+// medical_records scan solely for transition detection.
 export function getDashboardClinicalObservations(
   profileId: number
 ): DashboardClinicalObservation[] {
-  return getDashboardClinicalObservationsSnapshot(profileId);
+  const currentByFamily = new Map<string, DashboardClinicalObservation>();
+  for (const observation of getClinicalObservations(profileId)) {
+    if (observation.category !== "lab") continue;
+    const name = observation.canonical_name?.trim() || observation.name;
+    const family = biomarkerFamily(name).toLowerCase();
+    const current = currentByFamily.get(family);
+    if (!current) {
+      currentByFamily.set(family, {
+        ...observation,
+        previous_id: null,
+        previous_flag: null,
+      });
+    } else if (current.previous_id == null) {
+      current.previous_id = observation.id;
+      current.previous_flag = observation.flag;
+    }
+  }
+  return [...currentByFamily.values()];
 }
 
 // HOW MANY observations a filter set selects, without hydrating one (#2116). The

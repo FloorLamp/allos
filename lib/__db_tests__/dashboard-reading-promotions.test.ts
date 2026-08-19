@@ -225,6 +225,87 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     );
   });
 
+  it("anchors calendar-week transitions on the profile-local declaration day", () => {
+    for (const scenario of [
+      {
+        name: "west-admitted",
+        timezone: "America/Los_Angeles",
+        createdAt: "2026-06-17 00:30:00",
+        expectedPrevious: { pace: "behind", met: false },
+        changed: true,
+      },
+      {
+        name: "east-rejected",
+        timezone: "Asia/Tokyo",
+        createdAt: "2026-06-16 23:30:00",
+        expectedPrevious: null,
+        changed: false,
+      },
+    ] as const) {
+      const profileId = newProfile(`dashboard-calendar-${scenario.name}`);
+      setTimezone(profileId, scenario.timezone);
+      setWeekStart(profileId, 2);
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, per_week, created_at)
+         VALUES (?, 'food_group', 'vegetables', 7, ?)`
+      ).run(profileId, scenario.createdAt);
+      db.prepare(
+        `INSERT INTO food_daily_totals
+           (profile_id, date, group_key, servings)
+         VALUES (?, '2026-06-16', 'vegetables', 1),
+                (?, '2026-06-17', 'vegetables', 1)`
+      ).run(profileId, profileId);
+
+      const [progress] = getFrequencyTargetProgress(profileId);
+      expect(progress).toMatchObject({ count: 2, pace: "on-pace" });
+      expect(progress.previous).toEqual(scenario.expectedPrevious);
+      expect(
+        weeklyTargetStateChanged(progress, progress.previous ?? null)
+      ).toBe(scenario.changed);
+    }
+  });
+
+  it("anchors rolling comparison eligibility on the profile-local declaration day", () => {
+    for (const scenario of [
+      {
+        name: "west-admitted",
+        timezone: "America/Los_Angeles",
+        createdAt: "2026-06-11 00:30:00",
+        expectedPrevious: { pace: "met", met: true },
+        changed: true,
+      },
+      {
+        name: "east-rejected",
+        timezone: "Asia/Tokyo",
+        createdAt: "2026-06-10 23:30:00",
+        expectedPrevious: null,
+        changed: false,
+      },
+    ] as const) {
+      const profileId = newProfile(`dashboard-rolling-${scenario.name}`);
+      setTimezone(profileId, scenario.timezone);
+      setWeekMode(profileId, "rolling");
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, per_week, created_at)
+         VALUES (?, 'food_group', 'fruit', 1, ?)`
+      ).run(profileId, scenario.createdAt);
+      db.prepare(
+        `INSERT INTO food_daily_totals
+           (profile_id, date, group_key, servings)
+         VALUES (?, '2026-06-10', 'fruit', 1)`
+      ).run(profileId);
+
+      const [progress] = getFrequencyTargetProgress(profileId);
+      expect(progress).toMatchObject({ count: 0, pace: "behind" });
+      expect(progress.previous).toEqual(scenario.expectedPrevious);
+      expect(
+        weeklyTargetStateChanged(progress, progress.previous ?? null)
+      ).toBe(scenario.changed);
+    }
+  });
+
   it("promotes a zero-count rolling target when its last log ages out", () => {
     const profileId = newProfile("dashboard-target-zero-count-transition");
     setWeekMode(profileId, "rolling");
