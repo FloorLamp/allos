@@ -177,6 +177,33 @@ describe("overlay motion chokepoint", () => {
     ).toEqual([]);
   });
 
+  // Importing from components/overlay is not the same as USING the shared scrim.
+  // #3099 dropped the check that the drawer's and the sheet's backdrops are one
+  // token (`drawerScrim === sheetScrim`), and divergence now only takes writing a
+  // class by hand — cheap to do, invisible in review, and nothing else notices.
+  // Naming the constant is the observable form of "one scrim, two surfaces".
+  it("the drawer and the sheet dress their backdrop from the shared scrim token", () => {
+    const offenders: string[] = [];
+    for (const rel of [
+      "components/MobileNav.tsx",
+      "components/BottomSheet.tsx",
+    ]) {
+      const text = byPath.get(rel);
+      if (text == null) {
+        offenders.push(`${rel} (listed but not on disk)`);
+        continue;
+      }
+      // Referenced by NAME in a className, not merely imported — an import the
+      // file never applies is exactly the state this is meant to rule out.
+      if (!/\$\{OVERLAY_SCRIM\}/.test(text)) offenders.push(rel);
+    }
+    expect(
+      offenders,
+      "MobileNav and BottomSheet must both dress their backdrop with OVERLAY_SCRIM " +
+        "from components/overlay, so the two scrims cannot drift apart (#3172)."
+    ).toEqual([]);
+  });
+
   it("classifies every full-viewport portal overlay", () => {
     const unclassified = FILES.filter(
       (f) =>
