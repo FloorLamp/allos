@@ -43,10 +43,12 @@ import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 // measurements say why. The expensive half of a repeated read is COMPILATION, and
 // this statement compiles once per connection: 4.5 µs per call hoisted against
 // 24.4 µs through a fresh `db.prepare` — 5.4× — so what a value memo could still
-// buy is the round-trip alone. One profile's digest gather issues SIX of these
+// buy is the round-trip alone. One profile's digest gather issued SIX of these
 // (collectUpcoming, liveFoodLimits, and resolveDerivedSituations four times over
-// from four unrelated callers), i.e. ~27 µs; collapsing them to one would save
-// ~23 µs per profile per tick. That is the entire prize.
+// from four unrelated callers — #2724 has since tick-memoized that RESOLVER, whose
+// own cost is ~1.7 ms per call, so the gather now issues three), i.e. a handful of
+// ~6 µs round-trips. Collapsing those to one would save ~µs per profile per tick.
+// That is the entire prize.
 //
 // Against it stands a writer the tick's own scope cannot exclude, which is the
 // condition lib/tick-cache.ts demands before anything may be memoized there.
