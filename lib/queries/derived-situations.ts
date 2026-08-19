@@ -16,6 +16,7 @@
 // scoping guard is unaffected.
 
 import { getSleepSignal } from "./coaching";
+import { tickCached } from "../tick-cache";
 import { getFindingSuppressions } from "./upcoming/suppressions";
 import { getIntakeItems } from "./intake/schedule";
 import { getActiveSituations } from "../settings";
@@ -75,7 +76,40 @@ export interface DerivedSituations {
 // today rather than reading its forecast tail. It matters to #2613: the period read takes a
 // horizon, and passing the subject day as its own horizon is only sound where the subject
 // really is today. Naming it says so instead of leaving a guard that silently cannot fire.
-export function resolveDerivedSituations(
+//
+// TICK-MEMOIZED (#2724), measured first on #2674's evidence standard. One digest gather
+// reaches this resolver from FOUR unrelated callers (two getEffectiveActiveSituations
+// dueness reads, getDerivedSituationLines, and the reported-burden gather), and unlike
+// the bare suppression read #2674 declined to memoize, this call is heavy: ~1.7 ms per
+// call against a seeded profile (mean 1746 µs, p50 1621 µs, n=5000 — the weather-series
+// scan dominates), so the four collapse to one for ~5.2 ms per profile per digest gather
+// (~5% of the ~97 ms gather), against ~23 µs for #2674's whole prize.
+//
+// The writers, enumerated, which is what actually decides it (lib/tick-cache.ts):
+//   • IN SCOPE, the one upcoming_dismissals writer the tick reaches is `runPreventive`'s
+//     episode-end sweep (`clearPreventiveDismissal`), and it can only delete
+//     `<kind>:<ruleKey>` preventive keys with `dismissed_at` set — provably disjoint from
+//     `poor-sleep-override:<date>`, the ONE suppression key this resolver consults. No
+//     tick path writes situations, cycle rows, sleep samples or the weather cache after
+//     `syncIntegrations`, which runs before the scope's first read (the same claim the
+//     other tickCached gathers rest on).
+//   • CROSS-PROCESS, the web override action can dismiss today's poor-sleep key while a
+//     scope sits open across an awaited dispatch. The memo bounds that staleness to one
+//     profile's tick — the identical, already-accepted exposure of the tickCached
+//     medication-family gather — and buys the four readers a CONSISTENT verdict where
+//     they previously could disagree mid-gather.
+//
+// This memoizes the RESOLVER, not `getFindingSuppressions`: the bus read itself stays
+// unmemoized (#2674 stands; lib/__db_tests__/tick-suppression-freshness.test.ts pins it).
+// The scope boundary is pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts,
+// which fails if the memo is widened beyond the tick scope or dropped.
+export const resolveDerivedSituations = tickCached(
+  "derived-situations.resolve",
+  (profileId: number, today: string) => `${profileId}:${today}`,
+  resolveDerivedSituationsUncached
+);
+
+function resolveDerivedSituationsUncached(
   profileId: number,
   today: string
 ): DerivedSituations {

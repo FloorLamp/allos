@@ -8,7 +8,10 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
-import { OUTDATED_MESSAGE_TEXT } from "@/lib/notifications/callback-data";
+import {
+  BULK_ALL_SKIPPED_TEXT,
+  OUTDATED_MESSAGE_TEXT,
+} from "@/lib/notifications/callback-data";
 
 // Stub the RAW Telegram Bot API transport (issue #454's guarded boundary), keeping
 // the chokepoint (telegram.ts: rebuildMessage/closeMessage/…) and the pure render
@@ -750,5 +753,138 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(logsFor(doseA, date)).toEqual([]);
     expect(logsFor(doseB, date)).toEqual([]);
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+});
+
+// ---- Bulk dose-tap hardening (#3120) ---------------------------------------
+//
+// Two inherited gaps, both pre-existing in the `all:` posture and inherited by
+// `stacktake:`; neither reachable from the official client:
+//   1. callback dates were never format-validated, so a forged non-date threaded
+//      through every re-minted keyboard token on the rebuild — now refused at
+//      parse time (the dispatcher's unknown-token fallback answers out-of-date);
+//   2. a fully-skipped resolved set answered "Already logged ✅" — a skip is a
+//      recorded refusal (#232), not a log, so both handlers now share the
+//      distinct BULK_ALL_SKIPPED_TEXT answer.
+describe("bulk dose-tap hardening (#3120)", () => {
+  const HARD_CHAT = "5553120";
+  let bp: SeededProfile;
+  let itemA: number;
+  let doseA: number;
+  let itemB: number;
+  let doseB: number;
+
+  const mkItem = (name: string) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
+        )
+        .run(bp.profileId, name).lastInsertRowid
+    );
+  const mkDose = (itemId: number) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 cap', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+
+  beforeAll(() => {
+    bp = seedProfile("TG3120");
+    seedLoginTelegram(bp.profileId, HARD_CHAT);
+    itemA = mkItem("TG3120 Morning A");
+    doseA = mkDose(itemA);
+    itemB = mkItem("TG3120 Morning B");
+    doseB = mkDose(itemB);
+    // The fixture profile seeds its own morning doses (a pending Lisinopril would
+    // make ✅ All log something); this block is about the A/B pair only.
+    db.prepare(
+      `UPDATE intake_items SET active = 0 WHERE profile_id = ? AND id NOT IN (?, ?)`
+    ).run(bp.profileId, itemA, itemB);
+  });
+
+  const logsOn = (date: string) =>
+    db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id IN (?, ?) AND date = ?`
+      )
+      .all(doseA, doseB, date) as { status: string }[];
+
+  const clearLogs = () =>
+    db
+      .prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`)
+      .run(doseA, doseB);
+
+  it("a forged non-date `all:` token is refused at parse time — nothing written, nothing re-minted", async () => {
+    await handleCallbackQuery(
+      cq(`all:${bp.profileId}:Morning:banana`, HARD_CHAT)
+    );
+    expect(logsOn("banana")).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    // The handler never ran, so no rebuild threads the forged date through a
+    // re-minted keyboard.
+    expect(editTextMock).not.toHaveBeenCalled();
+  });
+
+  it("a forged shape-only date (2026-13-45) is refused the same way", async () => {
+    await handleCallbackQuery(
+      cq(`all:${bp.profileId}:Morning:2026-13-45`, HARD_CHAT)
+    );
+    expect(logsOn("2026-13-45")).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(editTextMock).not.toHaveBeenCalled();
+  });
+
+  it("a forged non-date `stacktake:` token is refused at parse time", async () => {
+    await handleCallbackQuery(
+      cq(`stacktake:${bp.profileId}:banana:${doseA},${doseB}`, HARD_CHAT)
+    );
+    expect(logsOn("banana")).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(editTextMock).not.toHaveBeenCalled();
+  });
+
+  it('✅ All on a fully-skipped session answers the skip, not "Already logged"', async () => {
+    const date = today(bp.profileId);
+    clearLogs();
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'skipped'), (?,?,?,'skipped')"
+    ).run(doseA, itemA, date, doseB, itemB, date);
+
+    await handleCallbackQuery(
+      cq(`all:${bp.profileId}:Morning:${date}`, HARD_CHAT)
+    );
+    // Nothing inserted — both skips stand untouched (#232).
+    expect(logsOn(date).map((r) => r.status)).toEqual(["skipped", "skipped"]);
+    expect(lastAnswerText()).toBe(BULK_ALL_SKIPPED_TEXT);
+    // The answer contradicts the ✅, so it must be dismissed, not glanced at.
+    expect(answerMock.mock.calls.at(-1)?.[2]).toEqual({ alert: true });
+  });
+
+  it("a stack tap on a fully-skipped set shares the same answer string", async () => {
+    const date = today(bp.profileId);
+    await handleCallbackQuery(
+      cq(`stacktake:${bp.profileId}:${date}:${doseA},${doseB}`, HARD_CHAT)
+    );
+    expect(logsOn(date).map((r) => r.status)).toEqual(["skipped", "skipped"]);
+    expect(lastAnswerText()).toBe(BULK_ALL_SKIPPED_TEXT);
+    expect(answerMock.mock.calls.at(-1)?.[2]).toEqual({ alert: true });
+  });
+
+  it('a mixed taken+skipped resolved set keeps the standing "Already logged ✅" answer', async () => {
+    const date = today(bp.profileId);
+    clearLogs();
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'taken'), (?,?,?,'skipped')"
+    ).run(doseA, itemA, date, doseB, itemB, date);
+    await handleCallbackQuery(
+      cq(`all:${bp.profileId}:Morning:${date}`, HARD_CHAT)
+    );
+    expect(lastAnswerText()).toBe("Already logged ✅");
   });
 });

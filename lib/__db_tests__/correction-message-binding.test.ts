@@ -17,7 +17,10 @@ import {
   it,
   vi,
 } from "vitest";
-import { stubTelegramSends } from "./telegram-spies";
+import {
+  answerCallbackQuery as answerSpy,
+  stubTelegramSends,
+} from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
@@ -38,8 +41,10 @@ import {
 import { keyboardTokens } from "@/lib/notifications/reconcile-core";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
 import { now as clockNow } from "@/lib/clock";
+import { burstsForMessage, burstFrom } from "@/lib/correction-time";
 import {
   getDoseCorrectionBursts,
+  getRecentDoseTaps,
   markDoseTaken,
 } from "@/lib/queries/intake/adherence";
 import { getFoodCorrectionBursts } from "@/lib/queries";
@@ -502,5 +507,135 @@ describe("a dose correction row renders only on the message that produced it (#2
         messageId: pointer.messageId,
       })
     ).toEqual({ messageRef: pointer.id, isNewest: false });
+  });
+});
+
+// ---- the cross-domain bind (#3108) ------------------------------------------
+//
+// Found by #3105's adversarial lane, executed against the merge ref: with the
+// chat's only FOOD pointer pruned, the newest-of-food check was vacuously true at
+// ANY message, so a `foodtime` token tapped at a DOSE reminder bound the pruned
+// (now unattributed) food burst and restamped the serving — from a message that
+// never mentioned food. Not reachable through the official client (callback_data
+// is server-authored per button); this is defense-in-depth for the binding model.
+describe("a message binds only bursts of its own domain (#3108)", () => {
+  it("the executed sequence refuses: a foodtime token at a dose message, food pointer pruned", async () => {
+    const pid = newProfile("Cross Cora");
+    const chatId = "5664020";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+
+    // 07:30 — the food nudge goes out for real and is tapped, creating a serving
+    // attributed to it.
+    await dispatch(pid, buildFoodNudge(pid, "Morning", date)!);
+    const foodPointer = liveMessagePointers(pid)[0];
+    setNow("2026-08-05T05:31:00Z");
+    await handleCallbackQuery(
+      cqAt(
+        chatId,
+        foodPointer.messageId,
+        `food:${pid}:Morning:${date}:berries`,
+        foodPointer.keyboard
+      )
+    );
+    const serving = foodEvents(pid)[0];
+
+    // The chat's ONLY food pointer is pruned (the routine prune/close lifecycle):
+    // the burst degrades to unattributed, and no live food pointer remains.
+    db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(foodPointer.id);
+    expect(foodEvents(pid)[0].notify_message_id).toBeNull();
+
+    // A dose reminder is live in the same chat.
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9944,
+      kind: "dose",
+      date,
+      keyboard: [[{ text: "x", callback_data: `take:${pid}:1:1:${date}` }]],
+      title: "💊 dose",
+    });
+
+    // The dose message provably belongs to another domain, so it may not carry
+    // food riders — vacuously newest or not. Red if the kind check is removed:
+    // with no live food pointer anywhere, isNewest was vacuously true here.
+    expect(
+      correctionMessageBinding(pid, "food", { chatId, messageId: 9944 })
+    ).toEqual({ messageRef: expect.any(Number), isNewest: false });
+
+    // 05:45 — the burst is still fresh. The cross-domain chip tap at the dose
+    // message writes NOTHING and says so.
+    setNow("2026-08-05T05:45:00Z");
+    const occurredBefore = db
+      .prepare(`SELECT occurred_at FROM food_log_events WHERE id = ?`)
+      .get(serving.id) as { occurred_at: string };
+    await handleCallbackQuery(
+      cqAt(chatId, 9944, `foodtime:${pid}:${serving.id}:30`, [
+        [
+          {
+            text: "−30m",
+            callback_data: `foodtime:${pid}:${serving.id}:30`,
+          },
+        ],
+      ])
+    );
+    const occurredAfter = db
+      .prepare(`SELECT occurred_at FROM food_log_events WHERE id = ?`)
+      .get(serving.id) as { occurred_at: string };
+    expect(occurredAfter.occurred_at).toBe(occurredBefore.occurred_at);
+    expect(answerSpy.mock.calls.at(-1)?.[1]).toContain(
+      "can't correct those entries"
+    );
+  });
+
+  it("keeps the fail-open vacuous newest for a message with NO pointer at all", async () => {
+    const pid = newProfile("Vacuous Vala");
+    const chatId = "5664021";
+    seedLoginTelegram(pid, chatId);
+    // No pointer at the location and no live food pointer in the chat: best-effort
+    // pointer bookkeeping can fail, and failing closed would strip a working
+    // affordance from the very message whose tap made the burst.
+    expect(
+      correctionMessageBinding(pid, "food", { chatId, messageId: 7777 })
+    ).toEqual({ messageRef: null, isNewest: true });
+  });
+
+  it("a burst attributed to the tapped message stays bound across host kinds (the #2443 digest offer list)", async () => {
+    const pid = newProfile("Host Hana");
+    const chatId = "5664022";
+    seedLoginTelegram(pid, chatId);
+    const date = today(pid);
+    // A DIGEST message hosts the expanded offer list; a prn tap from it stamps the
+    // digest's own pointer id onto the dose log (#2443), and the dose-domain chips
+    // then render on that digest message via the exact pointer-id match.
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId: 9955,
+      kind: "digest",
+      date,
+      keyboard: [[{ text: "x", callback_data: `offer:${pid}:${date}` }]],
+      title: "📋 digest",
+    });
+    const digestPtr = liveMessagePointers(pid).find(
+      (ptr) => ptr.messageId === 9955
+    )!;
+    const d = seedDose(pid, "Digest Tab");
+    markDoseTaken(pid, d.doseId, d.itemId, date, undefined, digestPtr.id);
+    const logRow = doseLogs(pid)[0];
+    stampTap(logRow.id, "2026-08-05 05:31:00");
+    setNow("2026-08-05T05:40:00Z");
+
+    const binding = correctionMessageBinding(pid, "dose", {
+      chatId,
+      messageId: 9955,
+    });
+    // messageRef is the exact pointer-id match, kind-blind on purpose; only the
+    // unattributed ride-along is kind-scoped.
+    expect(binding.messageRef).toBe(digestPtr.id);
+    expect(binding.isNewest).toBe(false);
+    const burst = burstFrom(getRecentDoseTaps(pid, clockNow()), logRow.id)!;
+    expect(burst.messageRef).toBe(digestPtr.id);
+    expect(burstsForMessage([burst], binding)).toHaveLength(1);
   });
 });

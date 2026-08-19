@@ -14,6 +14,7 @@ import type { ClassifyActivityTypeOutcome } from "../activity-type-write";
 import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-daily-totals-write";
 import { formatRecordDate } from "../record-format";
+import { isRealIsoDate } from "../date";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
@@ -58,12 +59,12 @@ export interface AllCallback {
 // send-slot labels (the four windows, or the PreWorkout pseudo-slot — #1154).
 // Like parseTakeCallback, the profile id is a cross-check (the handler
 // re-resolves the acting profile from the chat). Anything malformed (unknown
-// prefix, bad slot, missing date) returns null.
+// prefix, bad slot, missing or non-date date — #3120) returns null.
 export function parseAllCallback(data: unknown): AllCallback | null {
   if (typeof data !== "string" || !data.startsWith("all:")) return null;
   const [, profStr, window, date] = data.split(":");
   const profileId = Number(profStr);
-  if (!profileId || !date) return null;
+  if (!profileId || !isRealIsoDate(date)) return null;
   if (!INTAKE_SEND_SLOTS.includes(window as IntakeSendSlot)) return null;
   return { profileId, window: window as IntakeSendSlot, date };
 }
@@ -98,17 +99,17 @@ export function stackTakeCallback(
   return `stacktake:${profileId}:${date}:${doseIds.join(",")}`;
 }
 
-// Parse a stacktake token. Malformed (wrong prefix, bad ids, missing date, empty
-// id list) → null. The profile id is a cross-check like every other tap token —
-// the handler re-resolves the acting profile from the chat, and every write is
-// re-verified against the dose → item → profile chain.
+// Parse a stacktake token. Malformed (wrong prefix, bad ids, missing or non-date
+// date — #3120, empty id list) → null. The profile id is a cross-check like every
+// other tap token — the handler re-resolves the acting profile from the chat, and
+// every write is re-verified against the dose → item → profile chain.
 export function parseStackTakeCallback(
   data: unknown
 ): StackTakeCallback | null {
   if (typeof data !== "string" || !data.startsWith("stacktake:")) return null;
   const [, profStr, date, idsStr] = data.split(":");
   const profileId = Number(profStr);
-  if (!profileId || !date || !idsStr) return null;
+  if (!profileId || !isRealIsoDate(date) || !idsStr) return null;
   const doseIds = idsStr.split(",").map(Number);
   if (doseIds.length === 0 || doseIds.some((id) => !id)) return null;
   return { profileId, date, doseIds };
@@ -145,8 +146,8 @@ export function keyboardDoseFootprint(rows: InlineKeyboard): {
 // given prefix ("take" or "skip"). The profile id names who the button was sent
 // to; the handler still resolves the acting profile from the chat id and
 // re-checks the dose→item→profile chain, so this id is a cross-check, never
-// trusted on its own. Anything malformed (wrong prefix, bad ids, missing date)
-// returns null.
+// trusted on its own. Anything malformed (wrong prefix, bad ids, missing or
+// non-date date — #3120) returns null.
 function parseDoseCallback(
   data: unknown,
   prefix: "take" | "skip"
@@ -155,7 +156,7 @@ function parseDoseCallback(
   const [, profStr, doseStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const doseId = Number(doseStr);
-  if (!profileId || !doseId || !date) return null;
+  if (!profileId || !doseId || !isRealIsoDate(date)) return null;
   return { profileId, doseId, itemId: Number(itemStr) || null, date };
 }
 
@@ -310,6 +311,12 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
       return "Not logged — this reminder is out of date. Open the app.";
   }
 }
+
+// The honest answer when a bulk take (✅ All, or a per-stack one-tap) finds every
+// dose it resolved deliberately SKIPPED (#232) beforehand: nothing is written, and
+// "Already logged ✅" would misname a recorded refusal as a log (#3120). One string
+// for both handlers so the two bulk taps cannot drift apart.
+export const BULK_ALL_SKIPPED_TEXT = `Already skipped ${GLYPH.skipped} — nothing was logged. Open the app to change it.`;
 
 // Replacement body when a message can't be rebuilt from current state and a
 // FAILED tap consumed its last button — "All done 💊✅" would be a lie.
@@ -1332,7 +1339,13 @@ export function parseHouseholdDoseCallback(
   const memberProfileId = Number(memberStr);
   const doseId = Number(doseStr);
   const itemId = Number(itemStr);
-  if (!receiverProfileId || !memberProfileId || !doseId || !itemId || !date) {
+  if (
+    !receiverProfileId ||
+    !memberProfileId ||
+    !doseId ||
+    !itemId ||
+    !isRealIsoDate(date)
+  ) {
     return null;
   }
   if (receiverProfileId === memberProfileId) return null;
@@ -1408,7 +1421,7 @@ export function parseOfferTailCallback(
   if (prefix !== OFFER_EXPAND_PREFIX && prefix !== OFFER_COLLAPSE_PREFIX)
     return null;
   const profileId = Number(profStr);
-  if (!profileId || !date) return null;
+  if (!profileId || !isRealIsoDate(date)) return null;
   return {
     profileId,
     date,
@@ -1431,7 +1444,7 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
   const [, profStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const itemId = Number(itemStr);
-  if (!profileId || !itemId || !date) return null;
+  if (!profileId || !itemId || !isRealIsoDate(date)) return null;
   return { profileId, itemId, date };
 }
 
@@ -1462,7 +1475,7 @@ export function parseMedStopCallback(data: unknown): MedStopCallback | null {
   const [, profStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const itemId = Number(itemStr);
-  if (!profileId || !itemId || !date) return null;
+  if (!profileId || !itemId || !isRealIsoDate(date)) return null;
   return { profileId, itemId, date };
 }
 
@@ -1488,7 +1501,7 @@ export function parseDigestTimeCallback(
   if (typeof data !== "string") return null;
   const [prefix, profStr, date] = data.split(":");
   const profileId = Number(profStr);
-  if (!profileId || !date) return null;
+  if (!profileId || !isRealIsoDate(date)) return null;
   if (prefix === DIGEST_TIME_USE_PREFIX)
     return { profileId, date, action: "use" };
   if (prefix === DIGEST_TIME_DYNAMIC_PREFIX)
@@ -1519,7 +1532,7 @@ export function parseTuneCallback(data: unknown): TuneCallback | null {
   if (typeof data !== "string") return null;
   const [prefix, profStr, date, catStr] = data.split(":");
   const profileId = Number(profStr);
-  if (!profileId || !date) return null;
+  if (!profileId || !isRealIsoDate(date)) return null;
   if (prefix === TUNE_EXPAND_PREFIX)
     return { profileId, date, action: "expand", category: null };
   if (prefix === TUNE_COLLAPSE_PREFIX)
