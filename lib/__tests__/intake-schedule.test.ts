@@ -424,9 +424,9 @@ describe("defaultFoodTiming", () => {
   });
 
   it("still honors an explicit timing over a fat-soluble ingredient", () => {
-    expect(
-      defaultFoodTiming("Eye Health+", "empty_stomach", ["Lutein"])
-    ).toBe("empty_stomach");
+    expect(defaultFoodTiming("Eye Health+", "empty_stomach", ["Lutein"])).toBe(
+      "empty_stomach"
+    );
   });
 
   it("stays any when nothing on the label is fat-soluble", () => {

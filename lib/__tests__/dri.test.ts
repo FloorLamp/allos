@@ -1005,7 +1005,8 @@ const blend = (
 ): StackItem => ({ name, active: true, doseAmounts, ingredients });
 
 // The adult-male UL view these cases score against (mirrors the helper above).
-const compositionUl = (items: StackItem[]) => stackUlWarnings(items, 40, "male");
+const compositionUl = (items: StackItem[]) =>
+  stackUlWarnings(items, 40, "male");
 
 describe("doseUnitCount (#2856)", () => {
   it("reads a leading count as label units", () => {
@@ -1036,11 +1037,15 @@ describe("composition stacking (#2856)", () => {
     // silent on its own; the blend's 11 mg is invisible to a name-only reading. Taken
     // together they are over, and only composition can see it.
     const standalone = active("Zinc", ["30 mg"]);
-    const eyeBlend = blend("Eye Health+", ["1 cap"], [
-      { name: "Lutein", amount: 10, unit: "mg" },
-      { name: "Zinc", amount: 11, unit: "mg" },
-      { name: "Copper", amount: 2, unit: "mg" },
-    ]);
+    const eyeBlend = blend(
+      "Eye Health+",
+      ["1 cap"],
+      [
+        { name: "Lutein", amount: 10, unit: "mg" },
+        { name: "Zinc", amount: 11, unit: "mg" },
+        { name: "Copper", amount: 2, unit: "mg" },
+      ]
+    );
 
     expect(compositionUl([standalone])).toEqual([]);
     expect(compositionUl([eyeBlend])).toEqual([]);
@@ -1066,9 +1071,11 @@ describe("composition stacking (#2856)", () => {
   });
 
   it("converts an ingredient's IU through the nutrient, like a dose amount", () => {
-    const d3 = blend("Immune Blend", ["1 capsule"], [
-      { name: "Vitamin D3", amount: 5000, unit: "iu" },
-    ]);
+    const d3 = blend(
+      "Immune Blend",
+      ["1 capsule"],
+      [{ name: "Vitamin D3", amount: 5000, unit: "iu" }]
+    );
     const totals = summarizeStack([d3], 30, "male");
     const vitD = totals.find((t) => t.key === "vitamin_d");
     // 5000 IU x 0.025 mcg/IU = 125 mcg.
@@ -1100,10 +1107,14 @@ describe("composition stacking (#2856)", () => {
   });
 
   it("sums two ingredient rows naming the same element", () => {
-    const twoForms = blend("Zinc Complex", ["1 capsule"], [
-      { name: "Zinc picolinate", amount: 25, unit: "mg" },
-      { name: "Zinc gluconate", amount: 25, unit: "mg" },
-    ]);
+    const twoForms = blend(
+      "Zinc Complex",
+      ["1 capsule"],
+      [
+        { name: "Zinc picolinate", amount: 25, unit: "mg" },
+        { name: "Zinc gluconate", amount: 25, unit: "mg" },
+      ]
+    );
     const [warning] = compositionUl([twoForms]);
     expect(warning.total).toBeCloseTo(50, 5);
   });
@@ -1111,9 +1122,11 @@ describe("composition stacking (#2856)", () => {
   it("ignores an ingredient row with no parseable amount", () => {
     // "Proprietary blend" names a substance for the safety belts but states no
     // number; it must never become a fabricated zero or a fabricated anything else.
-    const vague = blend("Mood Support", ["1 capsule"], [
-      { name: "Zinc", amount: null, unit: null },
-    ]);
+    const vague = blend(
+      "Mood Support",
+      ["1 capsule"],
+      [{ name: "Zinc", amount: null, unit: null }]
+    );
     expect(summarizeStack([vague], 30, "male")).toEqual([]);
   });
 

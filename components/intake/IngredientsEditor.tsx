@@ -12,7 +12,10 @@ export interface IngredientState {
   amount: string;
 }
 
-export const emptyIngredient = (): IngredientState => ({ name: "", amount: "" });
+export const emptyIngredient = (): IngredientState => ({
+  name: "",
+  amount: "",
+});
 
 export function ingredientStates(
   rows: readonly IntakeItemIngredient[]

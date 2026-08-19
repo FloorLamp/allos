@@ -43,18 +43,14 @@ describe("normalizeIngredientDrafts", () => {
   it("preserves the label text beside the canonical reading", () => {
     expect(
       normalizeIngredientDrafts([{ name: " Zinc ", amount_text: " 11 mg " }])
-    ).toEqual([
-      { name: "Zinc", amount_text: "11 mg", amount: 11, unit: "mg" },
-    ]);
+    ).toEqual([{ name: "Zinc", amount_text: "11 mg", amount: 11, unit: "mg" }]);
   });
 
   it("keeps a named ingredient with no amount", () => {
     // "This blend contains St. John's Wort" is the whole point of the interaction
     // belt even when the label hides the milligrams inside a proprietary blend.
     expect(
-      normalizeIngredientDrafts([
-        { name: "St. John's Wort", amount_text: "" },
-      ])
+      normalizeIngredientDrafts([{ name: "St. John's Wort", amount_text: "" }])
     ).toEqual([
       {
         name: "St. John's Wort",

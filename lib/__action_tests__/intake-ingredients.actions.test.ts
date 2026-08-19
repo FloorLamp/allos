@@ -28,7 +28,9 @@ import { seedActor, createProfile, fd } from "./harness";
 
 // The form posts the repeater as JSON: the label's own words, nothing canonical.
 function ingredientsField(rows: { name: string; amount?: string }[]): string {
-  return JSON.stringify(rows.map((r) => ({ name: r.name, amount: r.amount ?? "" })));
+  return JSON.stringify(
+    rows.map((r) => ({ name: r.name, amount: r.amount ?? "" }))
+  );
 }
 
 describe("the write boundary", () => {

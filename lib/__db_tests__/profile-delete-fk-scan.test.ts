@@ -153,6 +153,10 @@ describe("profile-delete sweep completeness (#2126)", () => {
       why: "take-together/apart pair of two same-profile items",
     },
     {
+      table: "intake_item_ingredients",
+      why: "label composition of one supplement/medication (#2856) — attributes of the item, transcribed off that person's own bottle and shared with nothing",
+    },
+    {
       table: "intake_item_side_effects",
       why: "recorded side effects of one item (#2126 orphan)",
     },

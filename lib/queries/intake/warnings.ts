@@ -106,6 +106,10 @@ export type UlWarningWithCaveat = UlWarning & {
 // already enforced) and resolves age/sex from profile_settings; the UL math is the
 // pure lib/dri.stackUlWarnings. `today` selects the age from a birthdate. Each warning
 // carries the #657 condition caveat when an active condition lowers the nutrient's ceiling.
+// A shared empty map for the profiles with nothing on the shelf, so the two gathers
+// below can skip the composition read without minting a Map per call (#2856).
+const EMPTY_INGREDIENTS: ReadonlyMap<number, never[]> = new Map();
+
 export function getDietaryLimitWarnings(
   profileId: number,
   todayStr: string = today(profileId)
@@ -170,7 +174,9 @@ function stackDriContext(
   // NAME_MATCHERS the item name does, applied per ingredient, so an "Eye Health+"
   // capsule's zinc finally stacks against a standalone zinc instead of contributing
   // nothing. Profile-scoped through the parent JOIN; no new scoping surface.
-  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
+  const ingredientsByItem = intakeItems.length
+    ? getIntakeIngredientsByItem(profileId)
+    : EMPTY_INGREDIENTS;
   const items: StackItem[] = intakeItems
     .filter((item) => contributesToDailyLimit(item))
     .map((item) => ({
@@ -205,8 +211,11 @@ export function getInteractionWarnings(profileId: number): InteractionHit[] {
   // additional name evidence, so a "Mood Support" blend whose label carries St.
   // John's Wort resolves the SSRI interaction its own name never could. Widening
   // only — an item with no ingredient rows matches exactly as before.
-  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
-  const items: InteractionItem[] = getIntakeItems(profileId).map((s) => ({
+  const stack = getIntakeItems(profileId);
+  const ingredientsByItem = stack.length
+    ? getIntakeIngredientsByItem(profileId)
+    : EMPTY_INGREDIENTS;
+  const items: InteractionItem[] = stack.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,

@@ -371,9 +371,9 @@ describe("blend composition (#2856)", () => {
   it("does not join ingredient names into phrases neither one carries", () => {
     // The synonym test is contiguous-token containment, so concatenating rows would
     // mint "st johns wort" out of two innocent ones. Each string is matched alone.
-    expect(matchConceptKeys(blend(["St", "Johns Wort Free Extract"]))).not.toContain(
-      "st_johns_wort"
-    );
+    expect(
+      matchConceptKeys(blend(["St", "Johns Wort Free Extract"]))
+    ).not.toContain("st_johns_wort");
   });
 
   it("leaves an item with no ingredient rows matching exactly as before", () => {

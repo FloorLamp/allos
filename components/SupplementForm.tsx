@@ -509,8 +509,8 @@ export default function SupplementForm({
             List what&apos;s in this
           </button>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            For a blend: the label&apos;s ingredients and amounts, so upper-limit
-            totals and interaction checks can see them.
+            For a blend: the label&apos;s ingredients and amounts, so
+            upper-limit totals and interaction checks can see them.
           </p>
         </div>
       )}

@@ -78,9 +78,7 @@ export function parseIngredientAmount(
 // the whole point of the interaction belt even when the label hides the milligrams
 // inside a proprietary blend. A row with an amount and no name is dropped — an amount
 // of nothing names no substance and no engine could read it.
-export function normalizeIngredientDrafts(
-  rows: readonly IngredientDraft[]
-): {
+export function normalizeIngredientDrafts(rows: readonly IngredientDraft[]): {
   name: string;
   amount_text: string | null;
   amount: number | null;
@@ -110,9 +108,7 @@ export function normalizeIngredientDrafts(
 // The ingredient NAMES of an item, for the token matchers. Deliberately just the
 // names: the belts ask "does this item carry substance X", which is a question about
 // identity, never about how much.
-export function ingredientNames(
-  rows: readonly { name: string }[]
-): string[] {
+export function ingredientNames(rows: readonly { name: string }[]): string[] {
   return rows.map((r) => r.name.trim()).filter((n) => n.length > 0);
 }
 

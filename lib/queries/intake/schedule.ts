@@ -91,7 +91,7 @@ export const getIntakeItems = snapshotCached(
 // consumer wants it: the stack-total assembly, the interaction/allergen belts and the
 // supplements list each iterate the profile's items once and need each one's
 // composition beside it. Callers index by item_id (getIntakeIngredientsByItem).
-export function getIntakeIngredients(
+function getIntakeIngredientsUncached(
   profileId: number
 ): IntakeItemIngredient[] {
   return db
@@ -103,6 +103,14 @@ export function getIntakeIngredients(
     )
     .all(profileId) as IntakeItemIngredient[];
 }
+// Snapshot-cached like getIntakeItems beside it, and for the same reason: the stack
+// totals, the interaction detector and the supplements list each ask for it, so one
+// render of a household page would otherwise repeat the read per consumer per member.
+export const getIntakeIngredients = snapshotCached(
+  "intake.ingredients",
+  (profileId: number) => String(profileId),
+  getIntakeIngredientsUncached
+);
 
 // The same rows grouped by item_id — the shape every consumer actually uses.
 export function getIntakeIngredientsByItem(
