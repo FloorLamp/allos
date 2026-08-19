@@ -115,3 +115,84 @@ test("phone rows use the same canonical destination", async ({ page }) => {
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByTestId("activity-record-body")).toBeVisible();
 });
+
+// Back from an activity page, into a log the user had paged older history into
+// (issue #3179). Newly reachable rather than newly broken: before #3099 a row filled
+// a reading pane without navigating, so there was no Back to take, and nothing has
+// ever covered this.
+//
+// Three mechanisms have to agree and none of them is obviously the one doing the
+// work. App Router restores a scroll offset against a document that is SHORTER on
+// the way back, because `TrainingLogView`'s `visibleDays` is component state and
+// resets to the opening 14 days on remount. What actually rescues the return is the
+// scroll-spy (TrainingLogView's `history.replaceState` as you scroll): it leaves a
+// `#day-YYYY-MM-DD` on the entry being left, and the mount-time hash effect pages
+// older history back in until that day exists, widens the window past it, and
+// scrolls to it.
+//
+// So the guarantee is "you come back to where you were, with the history you had
+// paged in", NOT "the pixel offset is restored" — the hash names a DAY, and the row
+// you opened lands somewhere inside the viewport rather than at its old offset.
+// Asserting the offset would pin an accident; asserting viewport containment pins
+// the promise.
+test("Back returns to the paged-in log with the row you opened still on screen", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  const rows = page.getByTestId("training-log-row");
+  await expect(rows.first()).toBeVisible(); // first-ok: presence gate before counting
+  const openingWindow = await rows.count();
+
+  // Page older history in. Without this the whole question is trivial — every row
+  // would be in the DOM on a plain reload and Back could not tell us anything.
+  const loadMore = page.getByTestId("training-log-load-more");
+  await expect(loadMore).toBeVisible();
+  await loadMore.click();
+  await expect
+    .poll(() => rows.count(), {
+      message:
+        "the seed must carry activity history beyond the opening window for this test to mean anything",
+    })
+    .toBeGreaterThan(openingWindow);
+  const pagedIn = await rows.count();
+
+  // The DEEPEST row now rendered. It sits outside the opening window, so it can
+  // only be on screen after Back if the older history came back too — and because
+  // the feed renders a PREFIX of the loaded days, the deepest row being rendered is
+  // the whole paged-in window being rendered. One assertion covers both halves.
+  const target = rows.nth(pagedIn - 1);
+  const targetId = (await target.getAttribute("id"))!;
+  await target.scrollIntoViewIfNeeded();
+  // The spy's hash is what the history entry carries away, so wait for it to be
+  // written rather than racing it.
+  await expect
+    .poll(() => page.evaluate(() => window.location.hash), {
+      message: "the scroll-spy must stamp the entry with the day being read",
+    })
+    .toMatch(/^#day-\d{4}-\d{2}-\d{2}$/);
+
+  await target.getByRole("link").first().click(); // first-ok: the canonical title link precedes any exercise links in the row
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
+
+  await page.goBack();
+  await expect(rows.first()).toBeVisible(); // first-ok: presence gate before measuring
+
+  // POSITION, not `toBeVisible()`: Playwright's visibility check is "non-empty
+  // bounding box" and passes just as happily on a row a thousand pixels below the
+  // fold — which is exactly the failure this test exists to catch (#3176's shape).
+  // The restoration is smooth-scrolled, so poll the box rather than reading it once.
+  const viewport = page.viewportSize()!;
+  await expect
+    .poll(
+      async () => {
+        const box = await page.locator(`#${targetId}`).boundingBox();
+        return box != null && box.y >= 0 && box.y < viewport.height;
+      },
+      {
+        message:
+          "the row the user opened must be back on screen after Back, not below the fold",
+      }
+    )
+    .toBe(true);
+});

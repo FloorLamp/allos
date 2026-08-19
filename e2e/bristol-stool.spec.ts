@@ -1,7 +1,9 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { zonedWallIsoToUtc } from "@/lib/date";
 
 // Bristol stool form, end to end (issue #2785).
 //
@@ -16,6 +18,9 @@ import { workerDbPath } from "./worker-env";
 // averaged surface would show one mark at 4, the middle of the scale.
 
 const DB_PATH = workerDbPath();
+// metric_samples.started_at is a profile-LOCAL wall clock, so decoding one back to an
+// instant needs the run's rotating instance timezone (e2e/pinned-timezone.ts).
+const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 
 function clearBristol(): void {
   const db = new Database(DB_PATH);
@@ -103,6 +108,7 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     "Nothing logged today."
   );
 
+  const before = frozenNow().getTime();
   await settledClick(page, picker.getByTestId("stool-type-6"));
 
   // The sheet STAYS OPEN — several a day is ordinary, and a mis-tap is corrected by
@@ -111,15 +117,32 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     "1 logged today."
   );
   await expect(sheet).toBeVisible();
+  const after = frozenNow().getTime();
 
   const rows = bristolRows();
   expect(rows).toHaveLength(1);
   expect(rows[0].value).toBe(6);
   // Instant grain: the row records WHEN, which is what makes a deliberate second tap
   // a second observation instead of an overwrite of the first.
-  expect(rows[0].started_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
-  expect(rows[0].started_at.slice(0, 10)).toBe(rows[0].date);
-  expect(rows[0].started_at.slice(11)).not.toBe("00:00:00");
+  //
+  // BRACKETED, not "not midnight" (#3214). The tap is bracketed between two readings
+  // of the app's clock seam and the stamp has to land between them — that states the
+  // property, "stamped during this operation". The old check asserted the time part
+  // was not `00:00:00`, which infers the clock from one value the stamp is unlikely
+  // to equal; it reds outright under the boundary-stress hook that supplies
+  // ALLOS_TEST_NOW at local midnight (playwright.config.ts), and it would keep
+  // passing if the fallback ever became any other fixed time.
+  //
+  // The run FREEZES that seam, so the two captures coincide and the bracket collapses
+  // to an identity against the frozen instant — the strongest form of the same
+  // statement, and the reason no tolerance is needed here.
+  const stampedAt = zonedWallIsoToUtc(TZ, rows[0].started_at);
+  expect(stampedAt).not.toBeNull();
+  // Whole seconds, so the lower bound is `before` floored to its own second.
+  expect(stampedAt!.getTime()).toBeGreaterThanOrEqual(
+    Math.floor(before / 1000) * 1000
+  );
+  expect(stampedAt!.getTime()).toBeLessThanOrEqual(after);
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({
