@@ -23,7 +23,7 @@
 // even untapped. Hint-less items are offered in every slot — no hint means no opinion.
 
 import { currentTimeBucket } from "../intake-schedule";
-import { intakeItemShortLabel } from "../intake-short-name";
+import { intakeShortLabels } from "../intake-short-name";
 import type { IntakeItemKind } from "../types";
 import { DIGEST_TAIL_ROW, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
@@ -134,9 +134,13 @@ export function expandedOfferActions(
   items: readonly OfferedItem[],
   token: () => string
 ): NotificationAction[] {
-  const actions: NotificationAction[] = items.map((it) => ({
+  // Resolved over the offered set this keyboard renders (#2858 review): every
+  // button here logs an administration, so two that read alike over two different
+  // item ids is a wrong-subject tap.
+  const buttonLabels = intakeShortLabels(items);
+  const actions: NotificationAction[] = items.map((it, i) => ({
     label:
-      `${GLYPH.dose} ${intakeItemShortLabel(it)}` +
+      `${GLYPH.dose} ${buttonLabels[i]}` +
       (it.detail ? ` · ${it.detail}` : "") +
       (it.countToday > 0 ? ` (${it.countToday} today)` : ""),
     data: `prn:${profileId}:${it.itemId}:${token()}`,

@@ -6,6 +6,7 @@ import {
   getFoodHabitTrends,
   getFoodDailyServingTotals,
   getConfirmedIntakeDosesInRange,
+  getIntakeItems,
   getMacroFiberDays,
 } from "@/lib/queries";
 import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
@@ -28,6 +29,7 @@ import {
   dayHistoryWindow,
 } from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
+import { intakeShortLabels } from "@/lib/intake-short-name";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
@@ -120,28 +122,73 @@ export default async function NutritionSection({
     // The confirmed amount rides along as hover copy ("2 doses · 1000 mg").
     note: d.amount ?? undefined,
   }));
-  const doseItems = new Map(doseRows.map((d) => [d.itemId, d]));
-  const doseNameCounts = new Map<string, number>();
-  for (const d of doseItems.values()) {
-    doseNameCounts.set(d.name, (doseNameCounts.get(d.name) ?? 0) + 1);
-  }
-  const labelCounts = new Map<string, number>();
-  const doseGroups = [...doseItems.values()]
-    .sort((a, b) => a.name.localeCompare(b.name) || a.itemId - b.itemId)
-    .map((item) => {
-      const duplicateName = (doseNameCounts.get(item.name) ?? 0) > 1;
+  const doseItems = [...new Map(doseRows.map((d) => [d.itemId, d])).values()];
+  // Each row's DISPLAY name in a chosen vocabulary, disambiguated: a name two
+  // separately-managed items share earns the qualifier that tells them apart, and a
+  // pair that STILL collides earns an ordinal. Run over both vocabularies, because
+  // they collide in different places.
+  const disambiguate = (
+    nameOf: (item: (typeof doseItems)[number]) => string
+  ) => {
+    const counts = new Map<string, number>();
+    for (const item of doseItems) {
+      const name = nameOf(item);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    const seen = new Map<string, number>();
+    const out = new Map<number, string>();
+    for (const item of doseItems) {
+      const name = nameOf(item);
       const qualifier =
         item.product?.trim() ||
         item.brand?.trim() ||
         (item.kind === "medication" ? "Medication" : "Supplement");
-      const base = duplicateName ? `${item.name} · ${qualifier}` : item.name;
-      const occurrence = (labelCounts.get(base) ?? 0) + 1;
-      labelCounts.set(base, occurrence);
-      return {
-        key: String(item.itemId),
-        label: occurrence > 1 ? `${base} ${occurrence}` : base,
-      };
-    });
+      // A short name that IS the product already carries the qualifier (the
+      // resolver's product fallback), so appending it would read "Citrate · Citrate".
+      const base =
+        (counts.get(name) ?? 0) > 1 && name !== qualifier
+          ? `${name} · ${qualifier}`
+          : name;
+      const occurrence = (seen.get(base) ?? 0) + 1;
+      seen.set(base, occurrence);
+      out.set(item.itemId, occurrence > 1 ? `${base} ${occurrence}` : base);
+    }
+    return out;
+  };
+  doseItems.sort((a, b) => a.name.localeCompare(b.name) || a.itemId - b.itemId);
+  const doseLabels = disambiguate((item) => item.name);
+  // The dense form for the filter chips, the matrix row gutter and the day panel —
+  // the SAME `short` seam the food groups already use, so a 20-item dose vocabulary
+  // fits its chip run instead of truncating every label to "Coenzyme…". `label`
+  // stays the record's full name, in the tooltips and the aria copy.
+  //
+  // The SHORT names come from the shared resolver's set-aware entry point, which is
+  // the ONE definition of "what is this item called on a dense surface" — the same
+  // answer the Upcoming chips and the household confirm rows get. It has already
+  // dropped any label two items would have shared, so this pass only adds the
+  // qualifier/ordinal a duplicate FULL name still earns.
+  //
+  // Resolved over the PROFILE's items, not over the doses that happen to fall in
+  // this window (#2858 review, R3). Resolving over the window would let the same
+  // supplement read "CoQ10" here and "Coenzyme Q10" on Upcoming, and would flip its
+  // label as the user narrows the range — the label has to be a property of the
+  // item, not of the current query. `getIntakeItems` is snapshot-cached, so this
+  // costs nothing the page was not already paying.
+  const profileItems = getIntakeItems(profile.id);
+  const profileShortNames = intakeShortLabels(profileItems);
+  const shortByItemId = new Map(
+    profileItems.map((item, i) => [item.id, profileShortNames[i]])
+  );
+  // A dose row's item is always one of the profile's (the gather inner-joins
+  // intake_items), so the map answers for every row.
+  const doseShortLabels = disambiguate(
+    (item) => shortByItemId.get(item.itemId) ?? item.name
+  );
+  const doseGroups = doseItems.map((item) => ({
+    key: String(item.itemId),
+    label: doseLabels.get(item.itemId)!,
+    short: doseShortLabels.get(item.itemId)!,
+  }));
 
   // Part 3 — macros + fiber daily series (fiber the uncharted signal), already
   // windowed to the shared range by the gather (#2258 §4 — filtering is the

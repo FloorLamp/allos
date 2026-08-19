@@ -891,15 +891,25 @@ function AvailableSection({
           // builder composed beside it ("Magnesium · Bedtime · Mondays"). Both come
           // off the item — this never re-splits `dueText`, which is the same two
           // pieces written for a sentence.
-          const label = [item.title, item.offerHint]
-            .filter(Boolean)
-            .join(" · ");
+          //
+          // The NAME here is the control form (#2858): a chip run wraps, and
+          // "Coenzyme Q10 · Bedtime · Mondays" spends its width on a word the reader
+          // already reads as "CoQ10". A medication is never shortened (the resolver's
+          // own gate), and the full name stays one tap away on the item's page.
+          const chipText = (name: string) =>
+            [name, item.offerHint].filter(Boolean).join(" · ");
+          const label = chipText(item.shortLabel ?? item.title);
+          // Stated only when the two actually differ, so an unabbreviated chip gets
+          // no redundant title/aria copy of its own visible text.
+          const fullLabel =
+            label === chipText(item.title) ? undefined : chipText(item.title);
           const actions: RowAction[] = [];
           if (actionVisible && item.doseId != null) {
             actions.push({
               id: "mark-taken",
               kind: "submit",
               label,
+              fullLabel,
               toast: "Marked taken",
               testId: "available-mark-taken",
               fields: { dose_id: item.doseId, profile_id: item.profileId },
@@ -929,6 +939,7 @@ function AvailableSection({
               id: "open",
               kind: "link",
               label,
+              fullLabel,
               href: item.href ?? "/medications",
             });
           }

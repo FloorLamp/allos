@@ -392,9 +392,10 @@ export interface DayHistoryValue {
 export interface DayHistoryGroupMeta {
   key: string;
   label: string;
-  // Abbreviated display form for dense surfaces (chips, matrix row labels);
-  // the full label stays in tooltips and aria copy. Optional — falls back to
-  // `label`.
+  // Abbreviated display form for dense surfaces — the filter chips, the matrix row
+  // gutter and the selected-day panel's rows; the full label stays in tooltips and
+  // aria copy. Optional — falls back to `label`. Supplied by the surface from its own
+  // vocabulary (foodGroupShortName for food; intakeItemShortLabel for doses, #2858).
   short?: string;
   foodSlug?: string;
   tier?: string;
