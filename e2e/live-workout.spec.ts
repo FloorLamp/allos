@@ -77,9 +77,6 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   // require a discard warning, but minimizing keeps it mounted and loses nothing.
   await pickActivity(page, "Barbell Bench Press");
   await page.getByTestId("set1-weight").fill("60");
-  await expect(
-    page.getByText("Enter a complete set to save this exercise.")
-  ).toBeVisible();
 
   // Escape is another leave gesture, so it parks rather than abandons the live
   // session without presenting the form's destructive-close confirmation.

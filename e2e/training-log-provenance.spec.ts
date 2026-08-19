@@ -375,7 +375,7 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   // Keep keyboard focus in the form while the pointer opens the tooltip. Escape
   // still belongs to the visible child layer even though its trigger is not the
   // key event target.
-  await page.getByTestId("set1-weight").first().focus(); // first-ok: any editor field keeps focus outside the hovered tooltip trigger
+  await page.getByLabel("Activity name").focus();
   await editLockIcon.hover();
   await expect(page.getByRole("tooltip")).toBeVisible();
   await page.keyboard.press("Escape");
