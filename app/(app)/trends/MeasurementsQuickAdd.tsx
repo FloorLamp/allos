@@ -28,7 +28,10 @@ import {
   isMeasurementEntryAllowed,
   type MeasurementEntryMetric,
 } from "@/lib/measurement-entry";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import {
@@ -404,11 +407,21 @@ export default function MeasurementsQuickAdd({
     // kinds are the write cores, and this form is a composition of them, not a new
     // kind. (Neither the growth pair nor the waist tape reading has a queue flow —
     // both write metric_samples through their own cores — so an entry holding only
-    // those is reported as a failure rather than silently dropped.)
-    const queueOffline = async (): Promise<boolean> => {
-      if (hasGrowth || hasWaist) return false;
+    // those is reported as "unqueueable" rather than silently dropped.)
+    //
+    // "refused" is the device declining the capture (#3038): nothing will sync,
+    // so the caller says the shared sentence and every success step — the toast,
+    // the group memory, the summaries refresh — is skipped. The refusal causes
+    // are device-wide (no storage to queue into, or this device was logged out),
+    // so in practice the two halves refuse together — and the first refusal
+    // stops the second enqueue rather than queueing half a sitting under a toast
+    // that says none of it was saved.
+    const queueOffline = async (): Promise<
+      "queued" | "refused" | "unqueueable"
+    > => {
+      if (hasGrowth || hasWaist) return "unqueueable";
       if (hasBody) {
-        await enqueue("body-metric", date, {
+        const kept = await enqueue("body-metric", date, {
           weight: String(body.weight ?? ""),
           weightUnit,
           bodyFatPct: body.bodyFatPct,
@@ -419,27 +432,34 @@ export default function MeasurementsQuickAdd({
           // Time still clears — same trichotomy the online action posts.
           occurredAt: s("occurred_at"),
         });
+        if (!kept) return "refused";
       }
       if (hasVitals) {
         // The sitting's one stated time travels with the vitals intent too
         // (#2154): a queued evening BP keeps its statement, and an explicitly
         // empty Time replays as "no time" — the same trichotomy the online
         // action reads off the same hidden field.
-        await enqueue("vitals", date, {
+        const kept = await enqueue("vitals", date, {
           ...vitals,
           occurredAt: s("occurred_at"),
         });
+        if (!kept) return "refused";
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
       tempUnitDetection.reset();
       refreshSummaries();
-      return true;
+      return "queued";
     };
 
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      if (await queueOffline()) return;
+      const captured = await queueOffline();
+      if (captured === "queued") return;
+      if (captured === "refused") {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return;
+      }
       setError("You're offline — reconnect to save these measurements.");
       return;
     }
@@ -448,7 +468,12 @@ export default function MeasurementsQuickAdd({
       saved = await addMeasurements(formData);
     } catch (err) {
       if (shouldQueueOffline(navigator.onLine !== false, err)) {
-        if (await queueOffline()) return;
+        const captured = await queueOffline();
+        if (captured === "queued") return;
+        if (captured === "refused") {
+          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+          return;
+        }
       }
       setError("Couldn't save these measurements. Try again.");
       return;

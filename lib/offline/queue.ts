@@ -596,6 +596,35 @@ export function syncedAnnouncement(
   return `${head} ${tail} \u2014 ${why}.`;
 }
 
+// ── THE REFUSED-CAPTURE SENTENCE (#3038) ─────────────────────────────────────
+//
+// What a quick-log surface says when `enqueue` answers false: the device refused
+// to keep the write (no storage to queue into, or this device was logged out),
+// so nothing was captured, nothing will replay, and no badge or dead-letter
+// entry will ever contradict a false "saved offline". ONE sentence, shared by
+// every surface — the refusal is the same event everywhere, and it is stated
+// plainly, without asking the person holding a pill to understand storage or
+// gates. The surface's optimistic state must ROLL BACK in the same breath: the
+// queue kept nothing, so nothing may stand in for it.
+//
+// The flows that read it (a new quick-log surface joins this list and reuses the
+// constant rather than inventing a ninth copy):
+//   • components/DoseStatusControl.tsx — dose take/skip
+//   • components/practices/LogPracticeButton.tsx — practice session
+//   • components/dashboard/WeightQuickAdd.tsx — dashboard weigh-in
+//   • components/dashboard/HowAreYouCard.tsx — mood tap + expanded save
+//   • components/quick-entry/QuickMoodCheckin.tsx — quick-entry mood
+//   • components/ActivityForm.tsx — close-path workout capture
+//   • app/(app)/nutrition/FoodLogBar.tsx — food serving "+"
+//   • app/(app)/nutrition/ProteinQuickAdd.tsx — protein grams "+"
+//   • app/(app)/trends/MeasurementsQuickAdd.tsx — body metrics + vitals
+//   • app/(app)/training/MobilityLogBar.tsx — mobility move on-tap
+// lib/__tests__/offline-refused-capture.test.ts pins both halves: every consumer
+// of the queue's `enqueue` references this constant, and the sentence itself
+// exists exactly once.
+export const OFFLINE_CAPTURE_REFUSED_MESSAGE =
+  "This entry wasn't saved. Try again once you're back online.";
+
 // A short human description of what an intent tried to log, for the review list —
 // the user needs to recognise which entry was dropped so they can re-enter it. Only
 // the flow + captured date (no per-field PHI beyond what the user already sees).

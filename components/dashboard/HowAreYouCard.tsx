@@ -5,7 +5,10 @@ import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import CheckInSection from "@/components/dashboard/CheckInSection";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptom-actions";
 import {
   toggleSituation,
@@ -245,27 +248,36 @@ export default function HowAreYouCard({
   // Offline (or a dropped connection): queue the captured fields to replay on
   // reconnect — idempotent per day, so a double flush can't duplicate. Lands on
   // the SELECTED day (#2128), which is the day the user was logging.
+  //
+  // Three answers (#3038): "not-offline" — not the offline case, the caller
+  // renders its ordinary failure; "refused" — the device kept nothing, said here
+  // in the shared sentence, and the caller rolls its optimistic state back;
+  // "queued" — the honest "saved offline".
   async function queueIfOffline(
     err: unknown,
     next: MoodDraft
-  ): Promise<boolean> {
+  ): Promise<"not-offline" | "refused" | "queued"> {
     if (
       !shouldQueueOffline(
         typeof navigator === "undefined" ? true : navigator.onLine,
         err
       )
     ) {
-      return false;
+      return "not-offline";
     }
-    await enqueue("mood", selectedDate, {
+    const kept = await enqueue("mood", selectedDate, {
       valence: next.valence,
       energy: next.energy,
       anxiety: next.anxiety,
       factors: next.factors,
       note: next.note.trim() ? next.note.trim() : null,
     });
+    if (!kept) {
+      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+      return "refused";
+    }
     toast("Saved offline — will sync when you reconnect.");
-    return true;
+    return "queued";
   }
 
   // Persist an expanded save or a day-factor toggle while a mood is logged. The
@@ -277,7 +289,9 @@ export default function HowAreYouCard({
         const res = await logMood(buildForm(next));
         if (!res.ok) setError(res.error);
       } catch (err) {
-        if (await queueIfOffline(err, next)) return;
+        // "refused" has already told the user; the server props re-render the
+        // stored truth, exactly as an ordinary failed save settles.
+        if ((await queueIfOffline(err, next)) !== "not-offline") return;
         setError("Couldn't save that check-in — try again.");
       }
     });
@@ -300,7 +314,11 @@ export default function HowAreYouCard({
         return { kind: "rollback" };
       },
       onError: async (err) => {
-        if (await queueIfOffline(err, next)) return { kind: "keep" };
+        const captured = await queueIfOffline(err, next);
+        if (captured === "queued") return { kind: "keep" };
+        // "refused": the queue kept nothing, so the optimistic face rolls back
+        // to the stored rating — the shared toast has already said why (#3038).
+        if (captured === "refused") return undefined; // rollback
         setError("Couldn't save that check-in — try again.");
         return undefined; // rollback
       },

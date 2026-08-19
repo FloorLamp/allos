@@ -6,7 +6,10 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { subjectActionLabel } from "@/lib/own-profile";
 
@@ -56,13 +59,20 @@ export default function WeightQuickAdd({
     // reconnect — don't fail the log (issue #28; same payload shape as the
     // Trends → Overview → body census quick-add so the one replay path serves both).
     const queueOffline = async () => {
-      await enqueue("body-metric", today, {
+      const kept = await enqueue("body-metric", today, {
         weight: String(formData.get("weight") ?? ""),
         weightUnit,
         bodyFatPct: null,
         restingHr: null,
         notes: null,
       });
+      // The device can refuse the capture (#3038) — nothing was queued, so say
+      // so and skip the success toast. (The fields clear either way: React
+      // resets a form after its action, refused or not.)
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return;
+      }
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
     };

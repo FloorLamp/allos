@@ -25,6 +25,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useLatestRef } from "@/components/useLatestRef";
@@ -725,7 +726,20 @@ export default function ActivityForm({
       const capturedDate = isRealIsoDate(fields.date ?? "")
         ? fields.date
         : todayStr(tz);
-      await enqueueOffline("set", capturedDate, { fields });
+      const kept = await enqueueOffline("set", capturedDate, { fields });
+      // The device refused the capture (#3038): the queue owns nothing, so say
+      // so in the shared sentence, KEEP the draft (whatever it still holds is
+      // strictly better than nothing), and report false — the autosave hook then
+      // treats the close as the failed save it is instead of a clean one. Keyed,
+      // because the close-path flush retries a handful of times before giving up
+      // and each attempt is the SAME refusal: one toast, replaced in place.
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+          tone: "error",
+          key: "offline-capture-refused",
+        });
+        return false;
+      }
       // clear(), not discard(): it also cancels a pending draft write, so the
       // just-queued session can't be re-offered as a restorable draft.
       draftRef.current?.clear();
