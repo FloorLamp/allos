@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import {
   E2E_LOGIN_CYCLE_CTA,
   CYCLE_CTA_PROFILE,
@@ -69,6 +69,7 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     // One state, two renderers. If the widget ever grew its own derivation, this is
     // the assertion that would catch it in the browser.
     await page.goto("/");
+    await openDashboardAll(page);
     const card = page.getByRole("main").getByTestId("cycle-phase-widget");
     await settledClick(page, card.getByTestId("period-started-button"));
     await expect(card.getByTestId("period-ended-button")).toBeVisible({
@@ -87,6 +88,7 @@ test.describe("cycle logging from the dashboard (#1892)", () => {
     // The dashboard is the surface most likely to be stale — a tab open since
     // yesterday. Here a second tab opens a period behind this page's back.
     await page.goto("/");
+    await openDashboardAll(page);
     const card = page.getByRole("main").getByTestId("cycle-phase-widget");
     await expect(card.getByTestId("period-started-button")).toBeVisible();
 
