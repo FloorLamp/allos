@@ -31,12 +31,10 @@ export function getBristolReadings(
   from: string,
   to: string
 ): BristolReading[] {
-  const rows = readingsStmt.all(
-    profileId,
-    BRISTOL_STOOL_METRIC,
-    from,
-    to
-  ) as { date: string; value: number }[];
+  const rows = readingsStmt.all(profileId, BRISTOL_STOOL_METRIC, from, to) as {
+    date: string;
+    value: number;
+  }[];
   return rows.map((r) => ({ date: r.date, type: r.value }));
 }
 

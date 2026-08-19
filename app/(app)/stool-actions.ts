@@ -22,8 +22,7 @@ import { parseBristolType } from "@/lib/bristol-stool";
 // is informed rather than accidental.
 
 export type LogStoolFormOutcome =
-  | { ok: true; type: number; todayCount: number }
-  | { ok: false; error: string };
+  { ok: true; type: number; todayCount: number } | { ok: false; error: string };
 
 export async function logStoolForm(
   formData: FormData

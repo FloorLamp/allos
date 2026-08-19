@@ -159,7 +159,7 @@ export const ONE_TAP_AFFORDANCES = {
     repeat: "additive",
     expectedInterval: "none",
     feedback: "outcome-toast",
-    why: "Each tap records ONE bowel movement at its own instant (#2785) — several a day is ordinary, and the metric_samples natural key includes start_time, so a second tap is a second observation rather than a correction of the first. Additive with no expected interval, like prn-dose: there is no cadence a repeat could violate, so a confirm here would only ask people to justify their digestion.",
+    why: "Each tap records ONE bowel movement at its own instant (#2785) — several a day is ordinary, and the metric_samples natural key resolves to the second, so a deliberate second tap is a second observation rather than a correction of the first. The two mechanisms are sized to line up: the cooldown below is two seconds and the key's resolution is one, so a tap this ledger absorbs and a tap the key collapses are the same tap. Additive with no expected interval, like prn-dose — there is no cadence a repeat could violate, so a confirm here would only ask people to justify their digestion.",
   },
   "medication-refill": {
     repeat: "cadenced",

@@ -509,24 +509,38 @@ export function logBristolStool(
   if (!isRealIsoDate(date)) return false;
   const bristolType = parseBristolType(type);
   if (bristolType === null) return false;
-  const hhmm =
-    normalizeClockTime(at ?? null) ??
-    zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
-  const ts = `${date}T${hhmm}:00`;
+  // SECOND precision, not minute, and the resolution is load-bearing.
+  //
+  // The key is the instant, so two readings are two rows exactly when they fall on
+  // different seconds. That lines up with the affordance's declared repeat class
+  // rather than fighting it: `stool-form` is `additive`, and the accidental
+  // double-tap is absorbed by the one-tap ledger's POST_SUCCESS_COOLDOWN_MS window.
+  // The cooldown is two seconds and the key's resolution is one, so a tap the ledger
+  // would absorb and a tap this key would collapse are the SAME tap — a deliberate
+  // second movement always lands on a later second and is always its own row. At
+  // minute resolution the two mechanisms would not line up, and a genuine second
+  // reading forty seconds after the first would be lost with the surviving row
+  // looking perfectly normal.
+  //
+  // A caller that STATES a wall time gives HH:MM and lands on :00, so restating the
+  // same time corrects that reading — which is what a stated time means. Only the
+  // clock path carries seconds, and it reads them off the instant in UTC: every IANA
+  // zone in the modern era is a whole-minute offset, so the seconds are the same
+  // number on any wall clock.
+  const stated = normalizeClockTime(at ?? null);
+  const instant = clockNow();
+  const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
+  const seconds = stated
+    ? "00"
+    : String(instant.getUTCSeconds()).padStart(2, "0");
+  const ts = `${date}T${hhmm}:${seconds}`;
   writeTx(() => {
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', ?, ?, ?, ?, ?)
        ON CONFLICT DO UPDATE SET
          value = excluded.value, date = excluded.date`
-    ).run(
-      profileId,
-      BRISTOL_STOOL_METRIC,
-      date,
-      ts,
-      ts,
-      bristolType
-    );
+    ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
   });
   return true;
 }
