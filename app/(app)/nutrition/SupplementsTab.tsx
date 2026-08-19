@@ -78,6 +78,7 @@ import { isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
+import { travelExcusalResolver } from "@/lib/travel-excusal";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
   suggestedSituationsFromConditions,
@@ -280,6 +281,8 @@ export default async function SupplementsTab({
   // were, "skipped" when every due dose was deliberately skipped (#232),
   // "missed" when none were resolved (but it was due), and "na" when not due.
   // Policy lives in the shared intakeAdherenceStrip (issue #313).
+  // Travel (#3263): the per-day excusal, resolved once for the page.
+  const isExcused = travelExcusalResolver(profile.id);
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of intakeItems) {
     stripBySupp.set(
@@ -291,7 +294,8 @@ export default async function SupplementsTab({
         workoutDays,
         situationsOn,
         takenByDose,
-        tz
+        tz,
+        isExcused
       )
     );
   }
@@ -388,6 +392,14 @@ export default async function SupplementsTab({
       )
         .filter((item) => doseDueOn(item.supplement, item.dose, dateContext))
         .filter((item) => existedOn(item, date))
+        // A slot travel jumped over is out of this rail's denominator too (#3263) —
+        // unless it was answered anyway, in which case the log wins over the clock.
+        .filter(
+          (item) =>
+            !isExcused(item.dose.time_of_day, date) ||
+            takenByDose.get(item.dose.id)?.taken.has(date) ||
+            takenByDose.get(item.dose.id)?.skipped.has(date)
+        )
         .map((item) => item.dose.id);
       return {
         date,

@@ -1,0 +1,74 @@
+// Which of a profile's dose slots a timezone switch EXCUSED (issue #3263) — the
+// profile-scoped resolver that joins the pure rules (lib/travel-timezone.ts) to the
+// two consumers that must agree: the adherence denominator and the reminder tick.
+//
+// ONE NUMBER, ONE RULE. A dose's slot minute here is the SAME minute the tick fires
+// that slot at — the profile's configured reminder time for the dose's send window,
+// falling back to the shipped default when that window is switched off. That is what
+// makes "out of the denominator" and "sends nothing" two readings of one fact rather
+// than two rules that can drift: if the app decides a slot was impossible, it must
+// neither count it nor chase it.
+//
+// A dose whose bucket is "Anytime" is NEVER excused. Its window is the whole day, so
+// a stretch of skipped wall clock does not make it impossible — only late. Excusing
+// it would be the same error in the other direction: a dose quietly dropped from the
+// denominator that the person could still have taken and was never asked about.
+
+import { timeBucket, type TimeBucket } from "./intake-schedule";
+import { bucketWindow, type ReminderWindow } from "./notifications/intake-format";
+import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
+import { getNotifySchedule } from "./settings/notifications";
+import { getTravelSwitches } from "./settings/travel";
+import { isExcusedSlot, type TimezoneSwitch } from "./travel-timezone";
+
+// The profile-local minute a reminder window fires at: the configured time, or the
+// shipped default when the window is off. A window switched off still HAS a nominal
+// time of day — turning reminders off does not move when the dose is meant to be
+// taken — so the denominator keeps judging it there.
+export function windowSlotMinute(
+  window: ReminderWindow,
+  configured: number | null | undefined
+): number {
+  return configured ?? DEFAULT_INTAKE_REMINDER_MINUTES[window];
+}
+
+// Whether a dose in `bucket` was excused on profile-local day `date`.
+export function isDoseSlotExcused(
+  switches: readonly TimezoneSwitch[],
+  slotMinutes: Record<ReminderWindow, number | null>,
+  bucket: TimeBucket,
+  date: string
+): boolean {
+  if (bucket === "Anytime") return false;
+  const window = bucketWindow(bucket);
+  return isExcusedSlot(switches, date, windowSlotMinute(window, slotMinutes[window]));
+}
+
+// A dose-level excusal predicate for one profile, resolved once. `time_of_day` is
+// free text on the dose row (`timeBucket` is the reader for it), so the predicate
+// takes the raw column and buckets it here — a caller never has to know that.
+export type DoseExcusalResolver = (
+  timeOfDay: string | null,
+  date: string
+) => boolean;
+
+export function travelExcusalResolver(profileId: number): DoseExcusalResolver {
+  const switches = getTravelSwitches(profileId);
+  // The overwhelmingly common case: nobody has travelled, so nothing is excused and
+  // neither the schedule read nor the per-day work is worth doing.
+  if (switches.length === 0) return () => false;
+  const slotMinutes = getNotifySchedule(profileId).supplementMinutes;
+  return (timeOfDay, date) =>
+    isDoseSlotExcused(switches, slotMinutes, timeBucket(timeOfDay), date);
+}
+
+// The SLOT-level twin, for the notify tick: was this window's own send excused on
+// this profile-local day? Same switches, same minute, so a slot the denominator
+// forgives is a slot the tick stays silent about.
+export function isReminderSlotExcused(
+  switches: readonly TimezoneSwitch[],
+  date: string,
+  slotMinute: number
+): boolean {
+  return isExcusedSlot(switches, date, slotMinute);
+}

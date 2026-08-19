@@ -8,7 +8,13 @@ export interface SupplementAdherenceDayInput {
   isToday: boolean;
 }
 
-export type WeeklyAdherenceState = AdherenceState | "pending";
+// "excused" (#3263) is excluded: this rail is fed day COUNTS, and its caller drops a
+// travel-excused dose from `due` before it ever gets here, so an excused day arrives
+// as a day with nothing due. That keeps the rail out of the false-miss it exists to
+// avoid; the month calendar is where the excusal is NAMED.
+export type WeeklyAdherenceState =
+  | Exclude<AdherenceState, "excused">
+  | "pending";
 
 export interface SupplementAdherenceDay extends SupplementAdherenceDayInput {
   intended: number;

@@ -151,6 +151,7 @@ describe("adherenceSummary", () => {
       takenDays: 0,
       partialDays: 0,
       skippedDays: 0,
+      excusedDays: 0,
       applicableDays: 0,
     });
   });

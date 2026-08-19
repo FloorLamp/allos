@@ -24,6 +24,7 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
       partial: 0,
       skipped: 1,
       missed: 1,
+      excused: 0,
       pending: 0,
       na: 0,
     });
@@ -52,6 +53,7 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
         partial: 0,
         skipped: 0,
         missed: 0,
+        excused: 0,
         pending: 0,
         na: 0,
       },
@@ -78,6 +80,7 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
       partial: 0,
       skipped: 1,
       missed: 0,
+      excused: 0,
       pending: 0,
       na: 0,
     });

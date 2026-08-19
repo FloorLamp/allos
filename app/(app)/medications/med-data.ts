@@ -56,6 +56,7 @@ import {
   type MedicationWithHistory,
 } from "@/lib/medication-history";
 import { medicationStartDate } from "@/lib/profile-summary";
+import { travelExcusalResolver } from "@/lib/travel-excusal";
 import { monitoringSummaryForMed } from "@/lib/medication-monitoring";
 import {
   buildMedicationList,
@@ -272,6 +273,8 @@ export function loadMedicationsData(
   // Adherence strip inputs (shared with the supplement row via the pure
   // intakeAdherenceStrip — #313/#747 parity).
   const workoutDays = new Set(getActivityDates(profileId));
+  // Travel (#3263): the per-day slot excusal, resolved once for the whole gather.
+  const isExcused = travelExcusalResolver(profileId);
   const dates = lastNDates(todayStr, STRIP_DAYS);
   const takenByDose = indexTakenByDose(
     getIntakeLogsInRange(profileId, STRIP_DAYS)
@@ -420,7 +423,8 @@ export function loadMedicationsData(
         workoutDays,
         situationsOn,
         takenByDose,
-        tz
+        tz,
+        isExcused
       ),
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
@@ -672,7 +676,8 @@ export function getMedicationAdherenceCalendar(
     data.adherenceInputs.workoutDays,
     data.adherenceInputs.situationsOn,
     takenByDose,
-    data.tz
+    data.tz,
+    travelExcusalResolver(profileId)
   );
   const startedOn = medicationStartDate(card.courses, card.med.created_at);
   return buildAdherenceCalendar(strip, startedOn);

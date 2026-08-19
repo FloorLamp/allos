@@ -4,9 +4,12 @@
 // then asks bedtimeDoseDisposition() below which doses belong to a night and
 // hands those to the pure reducer.
 
-import { aggregateDoseDay, type AdherenceState } from "./intake-adherence";
+import { aggregateDoseDay, type CountedDoseDayState } from "./intake-adherence";
 
-export type BedtimeSupplementState = Exclude<AdherenceState, "na">;
+// The four outcomes `aggregateDoseDay` can produce — this summary is only built for
+// a night that HAD bedtime doses, so "not due" never arises, and a travel-excused
+// slot (#3263) cannot be reached from a tally.
+export type BedtimeSupplementState = CountedDoseDayState;
 
 export interface BedtimeSupplementItemSummary {
   name: string;

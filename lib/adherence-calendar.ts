@@ -1,7 +1,7 @@
 // Month adherence calendar (issue #852 item 5) — a PURE formatter over the EXISTING
 // adherence data (an AdherenceDot[] over a month's dates, oldest-first and contiguous,
 // built by the same intakeAdherenceStrip the 14-day strip uses; no new model). It
-// lays the daily taken/partial/skipped/missed/not-due states out on a Sun→Sat calendar
+// lays the daily taken/partial/skipped/missed/excused/not-due states out on a Sun→Sat calendar
 // grid so the med's detail page can show the month-scale picture the strip can't.
 
 import { dayGrid } from "./day-grid";
@@ -66,6 +66,7 @@ export function buildAdherenceCalendar(
     partial: 0,
     skipped: 0,
     missed: 0,
+    excused: 0,
     pending: 0,
     na: 0,
   };
