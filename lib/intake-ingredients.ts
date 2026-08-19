@@ -80,16 +80,43 @@ export type IngredientAmountReading =
 // So the whole string must be one quantity, or it is not a number at all:
 //   * grouped thousands separators are ACCEPTED, because real labels use them and the
 //     grouping is what makes them unambiguous (digits in threes after the first group);
-//   * a comma that is NOT a thousands group ("2,5 g") is REFUSED rather than guessed -
-//     reading it as 2.5 or as 25 is a coin flip on a safety number;
+//   * a separator that is NOT unambiguously a thousands group is REFUSED rather than
+//     guessed - reading "2,5 g" as 2.5 or as 25 is a coin flip on a safety number;
 //   * anything else carrying digits but not forming exactly one quantity is refused
 //     too: a range ("1-2 mg"), two quantities, a stray character.
+//
+// THE PERIOD IS THE SAME COIN FLIP AS THE COMMA, and the first fix only caught one of
+// them (second review of #2856). Refusing "2,5 g" concedes that labels using European
+// numeric conventions reach this field - and on such a label the roles are swapped, so
+// the period is the thousands separator:
+//
+//     "10.000 IU"  ->  ten thousand IU on a European vitamin D label, read as 10 IU:
+//                      a THOUSANDFOLD low, and every warning it should raise is gone
+//     "1.000 mg"   ->  1 mg
+//     "2.500 mg"   ->  2.5 mg
+//
+// Resolving one convention's ambiguity by refusal while silently resolving the other's
+// to the US reading is the inconsistency, so the same rule now applies to both: a
+// period preceded by one to three digits and followed by EXACTLY three is ambiguous
+// and refused. That leaves every unambiguous decimal alone - "0.5 g", "2.5 g",
+// "1.25 mg", "1.0 mg" all still read - because a genuine decimal fraction that happens
+// to be exactly three places on a one-to-three digit number is the only case that
+// collides, and on that case nobody can tell which was meant.
+//
+// A comma group already present settles it: in "1,000.500 mg" the comma has named the
+// thousands separator, so the period is a decimal and the value reads.
 //
 // Refusal surfaces as an error on the form naming the offending string (see
 // normalizeIngredientDrafts), so the person corrects their own label text. Nothing is
 // stored, nothing is silently dropped, and no number is invented.
 const AMOUNT_RE =
   /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(mcg|\u00b5g|ug|mg|g|iu)$/i;
+
+// A bare number whose period sits exactly where a thousands separator would: one to
+// three digits, a period, exactly three digits, and nothing else. Deliberately NOT
+// applied to a value that already carries a comma group, which has settled the
+// question in the other direction.
+const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 
 // Mass converts to milligrams or micrograms: grams fold to mg at the boundary
 // (canonical-units-at-the-write-boundary), mcg stays mcg so a 100 mcg label does not
@@ -112,6 +139,7 @@ export function readIngredientAmount(
     // thing from a quantity we could not read.
     return /\d/.test(raw) ? { kind: "unreadable" } : { kind: "none" };
   }
+  if (AMBIGUOUS_PERIOD_GROUPING.test(m[1])) return { kind: "unreadable" };
   const value = Number(m[1].replace(/,/g, ""));
   if (!Number.isFinite(value)) return { kind: "unreadable" };
   const u = m[2].toLowerCase();

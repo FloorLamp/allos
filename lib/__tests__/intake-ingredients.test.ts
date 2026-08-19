@@ -87,6 +87,50 @@ describe("readIngredientAmount", () => {
     expect(readIngredientAmount("1,00 mg")).toEqual({ kind: "unreadable" });
   });
 
+  it("refuses an ambiguous PERIOD grouping the same way it refuses a comma", () => {
+    // Second review of #2856. Refusing "2,5 g" concedes that European numeric
+    // conventions reach this field; on such a label the period IS the thousands
+    // separator, so "10.000 IU" of vitamin D means ten thousand and reading it as 10
+    // is a THOUSANDFOLD low with every warning it should raise dropped. Guessing one
+    // convention while refusing the other was the inconsistency.
+    expect(readIngredientAmount("1.000 mg")).toEqual({ kind: "unreadable" });
+    expect(readIngredientAmount("2.500 mg")).toEqual({ kind: "unreadable" });
+    expect(readIngredientAmount("10.000 IU")).toEqual({ kind: "unreadable" });
+    expect(readIngredientAmount("1.500 mg")).toEqual({ kind: "unreadable" });
+  });
+
+  it("leaves every unambiguous decimal alone", () => {
+    // Only a one-to-three digit number with exactly three decimal places collides
+    // with a thousands grouping. Everything else reads.
+    expect(readIngredientAmount("0.5 g")).toEqual({
+      kind: "quantity",
+      amount: 500,
+      unit: "mg",
+    });
+    expect(readIngredientAmount("2.5 g")).toEqual({
+      kind: "quantity",
+      amount: 2500,
+      unit: "mg",
+    });
+    expect(readIngredientAmount("1.25 mg")).toEqual({
+      kind: "quantity",
+      amount: 1.25,
+      unit: "mg",
+    });
+    expect(readIngredientAmount("1.0 mg")).toEqual({
+      kind: "quantity",
+      amount: 1,
+      unit: "mg",
+    });
+    // A comma group has already named the thousands separator, so the period here is
+    // a decimal and the value reads.
+    expect(readIngredientAmount("1,000.500 mg")).toEqual({
+      kind: "quantity",
+      amount: 1000.5,
+      unit: "mg",
+    });
+  });
+
   it("refuses anything else carrying digits that is not one quantity", () => {
     expect(readIngredientAmount("1-2 mg")).toEqual({ kind: "unreadable" });
     expect(readIngredientAmount("10 mg (as citrate) 5 mg")).toEqual({
