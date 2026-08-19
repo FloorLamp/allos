@@ -594,28 +594,90 @@ describe("the rendered rows", () => {
 
 // ---- #2264: a correction row renders only on the message that produced it ----
 //
-// The burst carries its FIRST tap's message provenance, and `burstsForMessage` is the
-// one filter every render site applies: an attributed burst renders on its own message
-// and nowhere else (the wrong-subject case fails closed — its chips would restamp
-// servings the message never mentioned), while an unattributed burst (a web one-tap, an
-// offline replay, a pruned message row) rides only the NEWEST live message of its
-// domain, never an older one.
-describe("message attribution (#2264)", () => {
+// The burst carries its message provenance — shared by every member, since #3092
+// partitions the grouping by it — and `burstsForMessage` is the one filter every render
+// site applies: an attributed burst renders on its own message and nowhere else (the
+// wrong-subject case fails closed — its chips would restamp servings the message never
+// mentioned), while an unattributed burst (a web one-tap, an offline replay, a pruned
+// message row) rides only the NEWEST live message of its domain, never an older one.
+describe("message attribution (#2264, #3092)", () => {
   const NOW = new Date("2026-08-05T19:30:00Z");
 
   function tapFrom(id: number, iso: string, messageRef: number | null) {
     return { id, tapAt: iso, messageRef, label: "Salmon" };
   }
 
-  it("attributes a burst to its FIRST tap's message, matching the fromId anchor", () => {
-    const [burst] = collapseBursts([
-      tapFrom(1, "2026-08-05T19:02:00Z", 41),
-      // A burst-mate tapped from a different message keeps collapsing (one error,
-      // one row) — attribution follows the first tap, exactly as the anchor does.
-      tapFrom(2, "2026-08-05T19:08:00Z", 55),
+  // A burst is ONE MESSAGE'S ERROR (#3092, superseding #2264's cross-message clause):
+  // two live dose reminders answered minutes apart are two errors, so `collapseBursts`
+  // partitions by `messageRef` before the gap rule runs.
+  it("keeps two taps minutes apart from two messages as TWO bursts, each carrying its own", () => {
+    const bursts = collapseBursts([
+      tapFrom(1, "2026-08-05T05:00:00Z", 41),
+      tapFrom(2, "2026-08-05T05:05:00Z", 55),
     ]);
-    expect(burst.fromId).toBe(1);
-    expect(burst.messageRef).toBe(41);
+    expect(bursts).toHaveLength(2);
+    expect(bursts[0].ids).toEqual([1]);
+    expect(bursts[0].messageRef).toBe(41);
+    expect(bursts[1].ids).toEqual([2]);
+    expect(bursts[1].messageRef).toBe(55);
+  });
+
+  it("still collapses the same two taps when one message produced both", () => {
+    const bursts = collapseBursts([
+      tapFrom(1, "2026-08-05T05:00:00Z", 41),
+      tapFrom(2, "2026-08-05T05:05:00Z", 41),
+    ]);
+    expect(bursts).toHaveLength(1);
+    expect(bursts[0].ids).toEqual([1, 2]);
+    expect(bursts[0].messageRef).toBe(41);
+  });
+
+  it("never joins an unattributed tap to an attributed one, in either order", () => {
+    for (const [refA, refB] of [
+      [41, null],
+      [null, 41],
+    ] as const) {
+      const bursts = collapseBursts([
+        tapFrom(1, "2026-08-05T05:00:00Z", refA),
+        tapFrom(2, "2026-08-05T05:05:00Z", refB),
+      ]);
+      expect(bursts, `${refA} then ${refB}`).toHaveLength(2);
+      expect(bursts[0].messageRef).toBe(refA);
+      expect(bursts[1].messageRef).toBe(refB);
+    }
+  });
+
+  it("groups taps interleaved A, B, A inside one window as TWO bursts, A's members together", () => {
+    // Partition-then-gap, not flush-on-change: a flush-on-change rule would give three.
+    const bursts = collapseBursts([
+      tapFrom(1, "2026-08-05T05:00:00Z", 41),
+      tapFrom(2, "2026-08-05T05:04:00Z", 55),
+      tapFrom(3, "2026-08-05T05:08:00Z", 41),
+    ]);
+    expect(bursts).toHaveLength(2);
+    const a = bursts.find((b) => b.messageRef === 41)!;
+    const b = bursts.find((b) => b.messageRef === 55)!;
+    expect(a.ids).toEqual([1, 3]);
+    expect(b.ids).toEqual([2]);
+  });
+
+  it("re-sorts bursts ascending by tap start, so the newest-first cap picks the newest", () => {
+    // Message 41's partition is enumerated first, but its second burst starts LAST —
+    // concatenated partitions would leave it out of order and the cap would pick wrong.
+    const events = [
+      tapFrom(1, "2026-08-05T17:40:00Z", 41),
+      tapFrom(2, "2026-08-05T18:00:00Z", 55),
+      tapFrom(3, "2026-08-05T18:20:00Z", 41),
+    ];
+    const bursts = collapseBursts(events);
+    expect(bursts.map((b) => b.fromId)).toEqual([1, 2, 3]);
+    // All three are fresh; MAX_CORRECTION_ROWS = 2, so the profile-wide newest-first
+    // cap takes exactly the two newest — across partitions.
+    expect(
+      correctionBursts(events, new Date("2026-08-05T18:30:00Z")).map(
+        (b) => b.fromId
+      )
+    ).toEqual([3, 2]);
   });
 
   it("renders a burst on its own message and never on a sibling", () => {

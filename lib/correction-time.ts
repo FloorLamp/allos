@@ -21,6 +21,14 @@
 // with one set of chips, and one tap re-stamps the whole burst. A lone tap is a burst
 // of one and renders with its name.
 //
+// AND A BURST IS ONE MESSAGE'S ERROR (#3092, superseding #2264's cross-message
+// clause). Two reminders are two errors: an Evening dose due at 18:00 and a Bedtime
+// dose due at 22:00, both answered the next morning minutes apart, are late by
+// different amounts and want different corrections — they were never one logging act.
+// So taps partition by the message they answered BEFORE the gap rule groups them, and
+// a burst may not span two messages. Null — a web one-tap or an offline replay, which
+// has no message — is its own partition.
+//
 // ── ONE VOCABULARY: EVERY OFFER IS AN ABSOLUTE LOCAL TIME (#2206) ────────────
 //
 // A chip used to read `−1h` and a picker button `19:00` — two vocabularies for one
@@ -151,8 +159,8 @@ export interface TapEvent {
   // WHICH MESSAGE'S TAP wrote this row (#2264): the `notify_messages` row id stored on
   // the ledger row, or null for a tap no chat message produced — a web one-tap, an
   // offline replay, or a chat tap whose message row has since been pruned or closed
-  // (`ON DELETE SET NULL`). Attribution, not time: it decides WHERE a correction row may
-  // render, never what it says.
+  // (`ON DELETE SET NULL`). Attribution, not time: it decides WHERE a correction row
+  // may render and WHICH taps may share a burst (#3092), never what a correction says.
   messageRef?: number | null;
   // THE PROFILE-LOCAL DAY THE ROW IS FILED UNDER, for a DAY-KEYED store (#2875) —
   // `practice_logs.date`, read straight off the column. Omitted by the instant-keyed
@@ -199,9 +207,11 @@ export interface CorrectionBurst {
   // Does any member stand somewhere other than where it was tapped? The "(corrected)"
   // marker, and nothing more — see CORRECTED_MARK_MS.
   corrected: boolean;
-  // The message this burst belongs to (#2264): its FIRST tap's `messageRef`. The first
-  // tap, matching `fromId` already being the burst's anchor — burst-mates share one
-  // error, and the message that error was made on is the one the first tap landed from.
+  // The message this burst belongs to (#2264): shared by EVERY member, because
+  // `collapseBursts` partitions by it before the gap rule runs (#3092) — two reminders
+  // are two errors, so a burst may not span two messages. (#2264's original clause
+  // attributed a cross-message burst to its first tap; #3092 overturned it on the case
+  // it did not anticipate — two live dose reminders answered minutes apart.)
   // Null is an UNATTRIBUTED burst (web, offline replay, pruned message row), which may
   // ride only the newest live message of its domain — see `burstsForMessage`.
   messageRef: number | null;
@@ -218,57 +228,77 @@ function ms(iso: string): number {
   return new Date(iso).getTime();
 }
 
-// Group taps into bursts. Sorted by tap instant (id breaks a tie, which is what an
-// identical stamp on two rows written in one transaction produces), and a gap wider
-// than BURST_GAP_MIN starts a new burst.
+// Group taps into bursts: PARTITION BY MESSAGE, then split on time (#3092). Within
+// each `messageRef` partition — null (web one-tap, offline replay, pruned message row)
+// its own — taps sort by tap instant (id breaks a tie, which is what an identical
+// stamp on two rows written in one transaction produces), and a gap wider than
+// BURST_GAP_MIN starts a new burst.
+//
+// Partition-then-gap rather than a flush-on-change in one pass: two messages answered
+// alternately (A, B, A) inside one window must give A's two taps ONE row, and a
+// flush-on-change rule would give three bursts. The result is re-sorted ascending by
+// tap start — the pre-partition contract — so `correctionBursts`' newest-first cap
+// still picks the newest whichever partition it came from.
 export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
   const sorted = [...events]
     .filter((e) => Number.isFinite(ms(e.tapAt)))
     .sort((a, b) => ms(a.tapAt) - ms(b.tapAt) || a.id - b.id);
-  const out: CorrectionBurst[] = [];
-  let current: TapEvent[] = [];
-  const flush = () => {
-    if (current.length === 0) return;
-    const first = current[0];
-    const last = current[current.length - 1];
-    // The stored span is computed rather than read off the ends: a chip moves every row
-    // back from its OWN instant so the order usually survives, but a per-row correction
-    // (or a row that carries a stated time it was never tapped with, which the web food
-    // bar writes) can reorder them, and the header must state the real extremes.
-    const at = current.map((e) => ms(rowInstant(e)));
-    const atStart = current[at.indexOf(Math.min(...at))];
-    const atEnd = current[at.indexOf(Math.max(...at))];
-    out.push({
-      fromId: Math.min(...current.map((e) => e.id)),
-      ids: current.map((e) => e.id),
-      count: current.length,
-      startAt: first.tapAt,
-      endAt: last.tapAt,
-      atStartAt: rowInstant(atStart),
-      atEndAt: rowInstant(atEnd),
-      corrected: current.some(
-        (e) => Math.abs(ms(rowInstant(e)) - ms(e.tapAt)) >= CORRECTED_MARK_MS
-      ),
-      messageRef: first.messageRef ?? null,
-      // ONE day or none. A burst is one error, and a correction writes one answer onto
-      // every member — so members filed under different days (or any member filed under
-      // none) leave the burst with no day a day-keyed offer could be bounded by.
-      localDay: current.every(
-        (e) => e.localDay && e.localDay === first.localDay
-      )
-        ? (first.localDay ?? null)
-        : null,
-      label: current.length === 1 ? first.label : "",
-    });
-    current = [];
-  };
+  const partitions = new Map<number | null, TapEvent[]>();
   for (const e of sorted) {
-    const prev = current[current.length - 1];
-    if (prev && ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS) flush();
-    current.push(e);
+    const key = e.messageRef ?? null;
+    const part = partitions.get(key);
+    if (part) part.push(e);
+    else partitions.set(key, [e]);
   }
-  flush();
-  return out;
+  const out: CorrectionBurst[] = [];
+  for (const part of partitions.values()) {
+    let current: TapEvent[] = [];
+    const flush = () => {
+      if (current.length === 0) return;
+      const first = current[0];
+      const last = current[current.length - 1];
+      // The stored span is computed rather than read off the ends: a chip moves every
+      // row back from its OWN instant so the order usually survives, but a per-row
+      // correction (or a row that carries a stated time it was never tapped with, which
+      // the web food bar writes) can reorder them, and the header must state the real
+      // extremes.
+      const at = current.map((e) => ms(rowInstant(e)));
+      const atStart = current[at.indexOf(Math.min(...at))];
+      const atEnd = current[at.indexOf(Math.max(...at))];
+      out.push({
+        fromId: Math.min(...current.map((e) => e.id)),
+        ids: current.map((e) => e.id),
+        count: current.length,
+        startAt: first.tapAt,
+        endAt: last.tapAt,
+        atStartAt: rowInstant(atStart),
+        atEndAt: rowInstant(atEnd),
+        corrected: current.some(
+          (e) => Math.abs(ms(rowInstant(e)) - ms(e.tapAt)) >= CORRECTED_MARK_MS
+        ),
+        // The partition key: every member carries it, by construction (#3092).
+        messageRef: first.messageRef ?? null,
+        // ONE day or none. A burst is one error, and a correction writes one answer
+        // onto every member — so members filed under different days (or any member
+        // filed under none) leave the burst with no day a day-keyed offer could be
+        // bounded by.
+        localDay: current.every((e) => e.localDay && e.localDay === first.localDay)
+          ? (first.localDay ?? null)
+          : null,
+        label: current.length === 1 ? first.label : "",
+      });
+      current = [];
+    };
+    for (const e of part) {
+      const prev = current[current.length - 1];
+      if (prev && ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS) flush();
+      current.push(e);
+    }
+    flush();
+  }
+  // Ascending by tap start again — concatenating partitions loses it. `fromId` breaks
+  // an identical-stamp tie across partitions; within one it is already unique.
+  return out.sort((a, b) => ms(a.startAt) - ms(b.startAt) || a.fromId - b.fromId);
 }
 
 // Is this burst still correctable? Keyed on the NEWEST TAP in it, so a burst that is

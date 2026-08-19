@@ -368,7 +368,8 @@ export function restampPracticeLogsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, practice, date, time, created_at FROM practice_logs
+        `SELECT id, practice, date, time, created_at, notify_message_id
+           FROM practice_logs
           WHERE profile_id = ? AND id >= ?
             AND time IS NOT NULL AND external_id IS NULL
           ORDER BY created_at, id
@@ -380,6 +381,7 @@ export function restampPracticeLogsCore(
       date: string;
       time: string;
       created_at: string;
+      notify_message_id: number | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const events: TapEvent[] = [];
@@ -395,6 +397,10 @@ export function restampPracticeLogsCore(
         // core builds and the burst the renderer bounded its offers with carry ONE day
         // (#2875) — not the same day computed two ways.
         localDay: r.date,
+        // A burst is one message's error (#3092): the write partitions by the same
+        // provenance the renderer partitioned by, so a chip re-stamps exactly the
+        // rows whose correction row it was.
+        messageRef: r.notify_message_id,
         label: r.practice,
       });
     }

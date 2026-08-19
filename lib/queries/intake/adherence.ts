@@ -2250,7 +2250,8 @@ export function restampDoseLogsCore(
     const rows = db
       .prepare(
         `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-                l.recorded_at AS tapAt, l.occurred_at AS statedAt, s.name AS name
+                l.recorded_at AS tapAt, l.occurred_at AS statedAt,
+                l.notify_message_id AS messageRef, s.name AS name
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = d.item_id
@@ -2265,6 +2266,7 @@ export function restampDoseLogsCore(
       date: string;
       tapAt: string;
       statedAt: string | null;
+      messageRef: number | null;
       name: string;
     }[];
     const taps: {
@@ -2288,6 +2290,10 @@ export function restampDoseLogsCore(
         id: t.row.id,
         tapAt: t.tapAt,
         statedAt: t.statedAt,
+        // A burst is one message's error (#3092): the write partitions by the same
+        // provenance the renderer partitioned by, so a chip re-stamps exactly the
+        // rows whose correction row it was.
+        messageRef: t.row.messageRef,
         label: t.row.name,
       })),
       fromLogId

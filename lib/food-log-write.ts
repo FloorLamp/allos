@@ -648,7 +648,8 @@ export function restampFoodEventsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, group_key, date, recorded_at, occurred_at FROM food_log_events
+        `SELECT id, group_key, date, recorded_at, occurred_at, notify_message_id
+           FROM food_log_events
           WHERE profile_id = ? AND id >= ?
           ORDER BY recorded_at, id
           LIMIT 200`
@@ -659,6 +660,7 @@ export function restampFoodEventsCore(
       date: string;
       recorded_at: string;
       occurred_at: string | null;
+      notify_message_id: number | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const burst = burstFrom(
@@ -666,6 +668,10 @@ export function restampFoodEventsCore(
         id: r.id,
         tapAt: r.recorded_at,
         statedAt: r.occurred_at,
+        // A burst is one message's error (#3092): the write partitions by the same
+        // provenance the renderer partitioned by, so a chip re-stamps exactly the
+        // rows whose correction row it was.
+        messageRef: r.notify_message_id,
         label: r.group_key,
       })),
       fromEventId
