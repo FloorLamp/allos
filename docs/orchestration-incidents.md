@@ -634,3 +634,76 @@ This is the session's dominant defect class one level up. The first three passes
 were guards _true of their own function and false of the system_; this one is a
 guard true of the system whose **backup** was unobservable. Same test:
 could this control have come out the other way?
+
+## The verdict destroyed by reading it (2026-08-19)
+
+Fourth time the restart detector soothed over dead agents, and the first three
+fixes had all widened WHAT counts as a restart — a machine reboot (04:38Z
+2026-08-13), then a session restart with the box still up (12:33Z the same day).
+The remaining hole was never detection. It was that detection is
+compare-then-stamp, so the ANSWER IS CONSUMED BY THE FIRST READ.
+
+At 10:14Z the recorder printed `*** RESTARTED ***` for both boot-id and session
+and ran the preserve-first drill. The orchestrator then re-ran it twice, seconds
+apart, for the ordinary reason anyone re-runs it: the first output had been read
+in slices and the worktree section was wanted whole. Runs 2 and 3 compared
+against the ids run 1 had just stamped, found them UNCHANGED, and printed
+
+    wt-biomarker  agent/3050-2937-biomarker-bugs  LIVE  remote=ABSENT  dirty=5
+    (no rescue targets — every dirty tree belongs to a live agent)
+
+over five uncommitted files on a branch that existed on no remote. The rescue
+happened anyway, but only because run 1 was still on screen; an orchestrator
+that had scrolled, or that ran the recorder once more before acting, would have
+removed that worktree on the word of the script that was warning about it.
+
+The lesson generalises past this script: **a verdict that a reader can destroy
+by re-reading is not a verdict, it is a race.** Persisted state was already the
+right instinct — the fix is that the state has to outlive its own first
+consumer. `$SCRATCH/.agents_dead` is now raised on detection, answered from on
+every later run, and cleared only by an explicit
+`orchestrator-checkin.sh --relaunched`. The clear runs BEFORE the raise inside
+one invocation, so an ack written for an older restart cannot swallow a newer
+one detected in the same run. Cost of forgetting to clear it: a loud reminder.
+Cost of never seeing it: an agent's uncommitted work.
+
+## The restart that killed nobody (2026-08-19)
+
+Minutes after the sticky-flag fix above shipped for a recorder that soothed over
+DEAD agents, the same recorder cried restart over LIVE ones — and this time the
+orchestrator believed it.
+
+At 10:14Z the check-in reported both detectors tripped: boot-id changed, session
+identity changed (`532:1118` → `511:1282`), uptime reset to 25m. Everything the
+script knows how to look at said the world had been replaced. It had not: the
+container had been resumed from a snapshot, so both ids were new and THE PROCESS
+TREE WAS RESTORED. `ListAgents`, asked afterwards, showed the two dispatched
+agents still RUNNING, 33 and 34 minutes in — straight through the "restart".
+
+Acting on the verdict, the orchestrator ran the preserve-first drill (correct,
+and it did rescue five genuinely unpushed files) and then relaunched both
+dispatches (wrong). That put **two writers on one worktree, on two branches at
+once**. What saved it was not the tooling:
+
+- the biomarker relaunch noticed a `git rm` racing its own, watched a file get
+  rewritten during a 20-second sleep it ran deliberately to test for a live
+  writer, wrote nothing at all, and stopped to ask;
+- the intake relaunch made no source change and no GitHub write, but did run the
+  full unit and DB tiers inside a tree its sibling was editing — a
+  phantom-failure generator that had to be relayed to the owner so a contended
+  red would not be chased as a regression.
+
+The rule this bought is asymmetric, and the asymmetry is the whole lesson:
+
+- **RESCUE on the verdict.** Committing a dirty tree costs a junk commit if the
+  agent turns out to be alive, and saves unrepeatable work if it is not. A proxy
+  is good enough to authorise something that cheap.
+- **RELAUNCH only after confirming liveness with something that actually knows**
+  — `ListAgents`, never the recorder. A relaunch onto a live agent IS the
+  two-writers accident, and it violates the standing rule against editing a live
+  agent's worktree without an acknowledgement; the relaunch is the edit.
+
+Generalised: a proxy may raise an alarm, but it may not authorise the
+destructive response to that alarm. Both directions of this detector are now
+receipted — soothing over the dead (four times) and alarming over the living
+(once, and one careful subagent away from losing work).

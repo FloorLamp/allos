@@ -33,15 +33,40 @@
 # to $SCRATCH and would have died in the next restart — the same mistake one
 # level up.
 #
-# Usage:  bash scripts/orchestrator-checkin.sh
+# Usage:  bash scripts/orchestrator-checkin.sh [--relaunched]
 # Run it as the FIRST action of every check-in, and after any gap in activity.
+#
+# --relaunched clears the sticky rescue flag described at RESCUE_FILE below. Pass
+# it only AFTER every dirty tree has been rescued and every dead agent relaunched.
 
 set -uo pipefail
+
+ACK_RELAUNCH=0
+[ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
 STATE_DIR=${SCRATCH:-/home/user/scratch}
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
+# THE VERDICT MUST SURVIVE BEING READ. Detection is compare-then-stamp, so the
+# first run consumes it: the second invocation in the same window sees UNCHANGED
+# and prints the reassuring half over trees whose agents are still dead. That is
+# not hypothetical and it is not rare — re-running the recorder is the ordinary
+# way to re-read a section you truncated. Observed 2026-08-19T10:14Z: run 1
+# printed *** RESTARTED *** for both boot-id and session; runs 2 and 3, seconds
+# later, printed `wt-biomarker ... LIVE` and "(no rescue targets — every dirty
+# tree belongs to a live agent)" over FIVE uncommitted files on a branch with no
+# remote. The rescue happened only because a human still had run 1 on screen.
+#
+# This is the fourth time this detector has soothed over dead agents (04:38Z and
+# 12:33Z on 2026-08-13 are in the comments below), and the first three fixes all
+# widened WHAT counts as a restart. The remaining hole was never the detection —
+# it was that the answer is destroyed by the act of reading it. So the verdict is
+# now STICKY: a detected restart writes this file, every later run keeps treating
+# the fleet as dead while it exists, and only an explicit --relaunched clears it.
+# An orchestrator that forgets to clear it loses nothing but a loud reminder; one
+# that never sees it loses an agent's uncommitted work.
+RESCUE_FILE="$STATE_DIR/.agents_dead"
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 
 echo "=== ORCHESTRATOR CHECK-IN  $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
@@ -109,11 +134,38 @@ elif [ "$sid" = "$sid_stored" ]; then
   echo "session:  UNCHANGED ($sid)"
 else
   echo "session:  *** RESTARTED *** (was $sid_stored, now $sid)"
-  echo "  >>> Every subagent and every in-process timer died with the old session."
+  echo "  >>> Assume every subagent and in-process timer died with the old session."
   echo "  >>> The roster below records DISPATCH, not liveness — treat all of it as DEAD."
   echo "  >>> PRESERVE-FIRST DRILL applies to every dirty worktree before relaunching."
+  echo "  >>> THEN CONFIRM WITH ListAgents BEFORE RELAUNCHING ANYTHING — see below."
   SESSION_NEW=1
 fi
+
+# WHICH WAY THIS VERDICT IS SAFE, AND WHICH WAY IT IS NOT.
+#
+# Both detectors above are PROXIES: they compare the identity of the machine and
+# of the claude process, and infer the fleet from that. Snapshot-style resume
+# breaks the inference in the direction the comments above never considered —
+# both ids change while the process TREE IS RESTORED, so the recorder reports a
+# restart over agents that are still running.
+#
+# Observed 2026-08-19T10:14Z, minutes after the sticky-flag fix above shipped for
+# the opposite failure. boot-id changed, session changed, uptime reset — and
+# `ListAgents` showed the two dispatched agents still RUNNING, 33 and 34 minutes
+# in. Acting on the verdict, the orchestrator relaunched both, putting TWO
+# WRITERS ON ONE WORKTREE on two branches at once. One relaunch detected the
+# collision and stood down with nothing written; the other ran full test tiers in
+# a tree its sibling was editing, which is a phantom-failure generator even when
+# it writes no source. Nothing was lost, and only because a subagent was careful.
+#
+# So the rule is asymmetric, and both halves matter:
+#   RESCUE on the verdict — committing a dirty tree costs a junk commit if the
+#     agent was alive, and saves unrepeatable work if it was not. Cheap either way.
+#   RELAUNCH only after CONFIRMING with a source that actually knows liveness —
+#     ListAgents, not this script. A relaunch onto a live agent is a second
+#     writer, and the doctrine's own rule (never edit a live agent's worktree
+#     without an acknowledgement) is violated by the relaunch itself.
+# A proxy may raise the alarm. It may not authorise the destructive response.
 
 # One flag for the one consequence. A machine reboot and a session restart differ
 # in what else they take down (tmp dirs, dev servers, the port map) but agree
@@ -121,6 +173,26 @@ fi
 AGENTS_DEAD=0
 [ "$RESTARTED" = "1" ] && AGENTS_DEAD=1
 [ "$SESSION_NEW" = "1" ] && AGENTS_DEAD=1
+
+# Sticky, per RESCUE_FILE's note: raise the flag on detection, and keep answering
+# from it until the orchestrator says the fleet is back. The clear is explicit
+# and comes FIRST so that `--relaunched` on a run that ALSO detects a fresh
+# restart still ends with the flag raised — the newer restart wins over an ack
+# written for the older one.
+if [ "$ACK_RELAUNCH" = "1" ] && [ -f "$RESCUE_FILE" ]; then
+  echo "rescue flag CLEARED (was: $(head -1 "$RESCUE_FILE" 2>/dev/null))"
+  rm -f "$RESCUE_FILE"
+fi
+if [ "$AGENTS_DEAD" = "1" ]; then
+  [ -f "$RESCUE_FILE" ] || printf 'detected %s (boot RESTARTED=%s, session RESTARTED=%s)\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RESTARTED" "$SESSION_NEW" > "$RESCUE_FILE"
+elif [ -f "$RESCUE_FILE" ]; then
+  AGENTS_DEAD=1
+  echo "agents:   *** STILL DEAD (sticky) *** — $(head -1 "$RESCUE_FILE" 2>/dev/null)"
+  echo "  >>> This run detected no NEW restart; the flag from the earlier one stands."
+  echo "  >>> Rescue every dirty tree and relaunch every rostered cluster, THEN run:"
+  echo "  >>>   bash scripts/orchestrator-checkin.sh --relaunched"
+fi
 echo
 
 # 2. Worktrees.
