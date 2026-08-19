@@ -264,7 +264,7 @@ describe("selectLowSupplyItems", () => {
   it("agrees item-for-item with the intake surface row computation (parity, #301)", () => {
     // The intake row (EditableSupplementRow) computes each badge as
     // daysOfSupplyForItem(qty, perDose, rate, scheduledDoseCount) + isLowSupply.
-    // The dashboard widget must reach the identical verdict for every item, so
+    // The dashboard presentation must reach the identical verdict for every item, so
     // the two surfaces can never disagree on the same screen.
     const scheduledDoseCount = new Map<number, number>([
       [1, 2], // 2 scheduled rows, yet taken twice a week

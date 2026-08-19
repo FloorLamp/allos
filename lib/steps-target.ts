@@ -1,7 +1,7 @@
 // The daily step target and its calm presence (#1723 part 2) — PURE. No DB, no clock.
 //
 // WHY THIS IS NEW MACHINERY. Steps sync and chart (`metric_samples.steps`, the Body
-// tab card, the #1221 dashboard widget) but nothing has ever counted a day's step SUM
+// tab card, the #1221 dashboard presentation) but nothing has ever counted a day's step SUM
 // against an expectation: `frequency_targets` are weekly-SESSION shaped (count of days
 // a thing happened), which cannot express "8,000 a day". So the target is a declared
 // per-profile VALUE, stored beside the other profile health facts.

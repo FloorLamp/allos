@@ -14,15 +14,14 @@ import { workerDbPath } from "./worker-env";
 import { dashboardCandidateWithText } from "./dashboard-candidate";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
-// dedicated dashboard widget (top-3 by leverage, no score — a count and a list), the
+// atomic dashboard statements (ranked by leverage, with no score), the
 // coaching surfaces (a dismiss anywhere silences everywhere through the shared bus),
 // and a household per-member gaps line. Since #1533 the dashboard shows each gap in
-// exactly ONE card: the widget is the family's dedicated home, and the Coaching-
-// observations rollup carries them only while that widget is hidden. The seeded fixtures (seed-events.ts) ship a
-// GAPPY sole profile (no birthdate/sex + a failed doc), a COMPLETE profile (widget
-// self-hides), and a caregiver with a gappy child.
+// exactly once: data-quality and coaching-observation candidates are disjoint. The
+// seeded fixtures ship a gappy sole profile, a complete profile, and a caregiver
+// with a gappy child.
 
-// Clears the gappy profile's data-quality dismissals so the widget is guaranteed
+// Clears the gappy profile's data-quality dismissals so the atom is guaranteed
 // populated before each assertion, regardless of retries or a prior dismiss test
 // (the resetCoachingObservationDismissals pattern from #206/#449). BLAST RADIUS: only
 // the `data-quality:` namespace on the gappy fixture profile.
@@ -45,7 +44,7 @@ function resetDataQualityDismissals(profileName: string): void {
   }
 }
 
-test("the dashboard Data quality widget renders top gaps with fix-it CTAs (#1045)", async ({
+test("the dashboard surfaces the highest-leverage data-quality gap with a fix-it CTA (#1045)", async ({
   browser,
 }) => {
   resetDataQualityDismissals(DQ_GAPPY_PROFILE);
@@ -56,26 +55,26 @@ test("the dashboard Data quality widget renders top gaps with fix-it CTAs (#1045
   await page.goto("/");
   await openDashboardAll(page);
 
-  const widget = dashboardCandidateWithText(
+  const atom = dashboardCandidateWithText(
     page,
     "data-quality.finding:",
     "Set a birthdate"
   );
-  await expect(widget).toBeVisible();
+  await expect(atom).toBeVisible();
   // The highest-leverage gap (no birthdate → age unknown) leads, and each row carries
   // a fix-it CTA link (an EXISTING explicit-entry surface, never an auto-fix).
-  const birthdate = widget
+  const birthdate = atom
     .getByTestId("data-quality-item")
     .filter({ hasText: "Set a birthdate" });
   await expect(birthdate).toBeVisible();
   await expect(birthdate.getByRole("link")).toBeVisible();
   // NO score / percentage ring — a count and a list.
-  await expect(widget).not.toContainText("%");
+  await expect(atom).not.toContainText("%");
 
   await page.context().close();
 });
 
-test("the Data quality widget self-hides on a structurally-complete profile (#1045)", async ({
+test("a structurally complete profile emits no Data quality candidate (#1045)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -84,9 +83,9 @@ test("the Data quality widget self-hides on a structurally-complete profile (#10
   });
   await page.goto("/");
   await openDashboardAll(page);
-  // The dashboard rendered (a known widget is present)…
+  // The dashboard rendered successfully…
   await expect(page.getByRole("main")).toBeVisible();
-  // …but the data-quality widget is absent (the absent-pillar rule).
+  // …but there is no structural gap to mint a data-quality candidate.
   await expect(page.getByRole("main").getByTestId("data-quality")).toHaveCount(
     0
   );
@@ -106,18 +105,15 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   await page.goto("/");
   await openDashboardAll(page);
 
-  // The Data quality widget is this family's dedicated dashboard home, so it owns
-  // the gap…
-  const widget = dashboardCandidateWithText(
+  // The data-quality candidate owns this gap.
+  const atom = dashboardCandidateWithText(
     page,
     "data-quality.finding:",
     "Set a birthdate"
   );
-  await expect(widget).toBeVisible();
+  await expect(atom).toBeVisible();
   await expect(
-    widget
-      .getByTestId("data-quality-item")
-      .filter({ hasText: "Set a birthdate" })
+    atom.getByTestId("data-quality-item").filter({ hasText: "Set a birthdate" })
   ).toBeVisible();
   // …and the Coaching-observations rollup defers: the gap is NOT a second row a
   // screen further down (which is what the mobile stack used to show).
@@ -132,10 +128,10 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
     .filter({ hasText: "Set a birthdate" });
   await expect(gapRows).toHaveCount(1);
 
-  // Dismissing on its owning widget still writes to the shared suppression bus.
+  // Dismissing the atom still writes to the shared suppression bus.
   await settledClick(
     page,
-    widget
+    atom
       .getByTestId("data-quality-item")
       .filter({ hasText: "Set a birthdate" })
       .getByTestId("data-quality-dismiss")

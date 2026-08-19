@@ -11,7 +11,7 @@
 // THE #666 LINE: a condition produces a NOTE only — it NEVER gates the recommendation and
 // NEVER re-ranks the user's targets (medical judgment stays with the clinician). The note
 // rides ALONGSIDE the unchanged recommendation on the ONE shared model
-// (lib/workout-recommendation.ts), so the dashboard widget, the Training overview, and the
+// (lib/workout-recommendation.ts), so the dashboard presentation, the Training overview, and the
 // Telegram nudge all agree (#221). Calm, coaching-tier reach (#449): never a notification.
 //
 // Matching mirrors the food-drug name fallback: a normalized name/synonym match is

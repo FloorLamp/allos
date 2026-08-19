@@ -10,7 +10,7 @@
 // re-exported here so `@/lib/settings` import paths and export names are unchanged.
 //   - kv.ts             the three-tier get/set/delete primitives
 //   - display.ts        unit prefs, timezone (per profile), week start/mode,
-//                       trend pins/views, dashboard layout
+//                       trend pins/views, illness Now-group disclosure state
 //   - server.ts         public URL, instance timezone, backup, audit + trash
 //                       retention, AI
 //   - notifications.ts  telegram bot config, per-profile telegram, HA channel,

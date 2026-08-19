@@ -248,8 +248,8 @@ export function cyclePhaseOnDate(
 // first bleeding day is day 1. Null before any recorded period, and null after `today` —
 // the SAME domain as cyclePhaseOnDate, deliberately. Retrospective and non-predictive:
 // it counts elapsed days from a
-// LOGGED start, never a forecast. The Cycle-phase dashboard card (#1221) formats
-// "Cycle day N · <phase>" over this + cyclePhaseOnDate.
+// LOGGED start, never a forecast. The dashboard Standing phase reading (#1221)
+// formats "Cycle day N · <phase>" over this + cyclePhaseOnDate.
 //
 // The horizon is here for the same #2613 reason, and not because a caller feeds it a
 // future date today — neither of the two does. "Cycle day 285" on a date four months out
@@ -415,7 +415,7 @@ export type ForecastConfidence = "narrow" | "wide" | "uncertain";
 export type ForecastSuspension = "pregnancy" | "postmenopausal";
 
 // The one sentence a surface says instead of a cycle day/phase while suspended (#2801).
-// Exported so the Cycle hero and the dashboard tile can't phrase the same pause two ways
+// Exported so the Cycle hero and dashboard atom can't phrase the same pause two ways
 // — the same reason the forecast card's own two sentences live beside its renderer.
 export const CYCLE_SUSPENSION_NOTES: Record<ForecastSuspension, string> = {
   pregnancy:
@@ -484,7 +484,7 @@ export function forecastHalfWidthDays(variabilityDays: number): number {
 
 // THE forecast (#1679). Pure: the recorded period history, the profile's today, and an
 // optional suspension the caller gathered. Every consumer — the Cycle surface, the
-// dashboard tile — formats THIS result; none of them re-derives a projection.
+// dashboard atom — formats THIS result; none of them re-derives a projection.
 //
 // Order matters: suspension beats everything (a projected period during a pregnancy is
 // noise at best), then sufficiency, then the projection itself.

@@ -294,7 +294,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // unreviewed risk factors. COACHING tier (#449) — never a notification, never
     // the hero (structural, one-time, completable prompts, never behavioral nagging).
     // Joins collectCoachingFindings and rides the shared suppression bus keyed on the
-    // gap TYPE, so a decline silences it on BOTH the dedicated dashboard widget and
+    // gap TYPE, so a decline silences it on BOTH the dedicated dashboard presentation and
     // the coaching rollup.
     prefix: DATA_QUALITY_PREFIX,
     tier: "coaching",

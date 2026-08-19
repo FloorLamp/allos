@@ -18,7 +18,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 // chip surface adds its path here (and threads pace) — the render-site discovery
 // check below fails closed until it does.
 const CHIP_DATA_BUILDERS = [
-  "components/dashboard/GoalsHabitsWidget.tsx", // dashboard Goals-and-habits
+  "components/dashboard/ProgressAtoms.tsx", // dashboard Goals-and-habits
   "app/(app)/training/OverviewSection.tsx", // Training weekly routine
   "app/(app)/training/PlanSection.tsx", // Plan's FrequencyTargets items (#2892)
 ];
@@ -28,7 +28,7 @@ const CHIP_DATA_BUILDERS = [
 // without re-mapping). The discovery test below walks the tree and requires the
 // discovered set to EQUAL this one, so it can neither miss a new site nor go stale.
 const KNOWN_RENDER_SITES = [
-  "components/dashboard/GoalsHabitsWidget.tsx",
+  "components/dashboard/ProgressAtoms.tsx",
   "app/(app)/training/OverviewSection.tsx",
   // TrainingLogView left this list with #2892: the weekly-routine chips have
   // ONE render home (Overview) and one editing home (Plan's FrequencyTargets).

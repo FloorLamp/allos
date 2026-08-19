@@ -3,7 +3,7 @@
 // `MedicalValue` renders a reading as "value unit" plus a caret and a color. The
 // caret's DIRECTION is a shape, so it survives color blindness; the red-vs-amber
 // SEVERITY — "High" versus "Above optimal" — did not. #1220 named that gap exactly
-// and then closed it on ONE surface, the dashboard's Recent-labs widget, by adding a
+// and then closed it on ONE surface, the dashboard's clinical-result readout, by adding a
 // second, parallel visible label beside the component. The clinical results table, where
 // out-of-range and above-optimal readings sit intermixed in a single list, still
 // distinguished them by color alone for a sighted reader.

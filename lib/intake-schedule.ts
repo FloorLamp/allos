@@ -1,5 +1,5 @@
 // Pure scheduling helpers for intake items (no DB access), shared by the
-// intake surfaces, the dashboard widget, and any future notifier. Keeping the
+// intake surfaces, the dashboard presentation, and any future notifier. Keeping the
 // "is this due today?" / time-bucket / priority logic here (not inline in the
 // page) means an alerting layer can reuse it directly.
 

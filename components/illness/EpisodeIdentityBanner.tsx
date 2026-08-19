@@ -3,7 +3,7 @@ import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 
 // Whose episode this is, rendered ON the page (issues #879 / #531 / #534). The episode
 // page can now show ANY accessible profile's episode (a caregiver opening a household
-// member's illness from the hero), so identity can no longer be inferred from how you got
+// member's illness from the Now group), so identity can no longer be inferred from how you got
 // here: the subject's Avatar + name lead the page ALWAYS, so with several kids sick you
 // can't read the wrong child's story by mistake.
 //

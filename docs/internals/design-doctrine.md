@@ -101,7 +101,7 @@ rescued case by case (#2011/#2055); the one canonicalization primitive is
 ## 5. Attention is one scheduler
 
 The reach policy (care findings may reach Upcoming, attention surfaces, and
-notifications; coaching findings stay in calm, hideable surfaces), the
+notifications; coaching findings stay in calm, dismissible surfaces), the
 suppression bus and shared `dedupeKey`, undismissable safety signals,
 obligation (`must`/`should`/`may`), and the contact-consent rule — the system
 may reduce contact unilaterally, never increase it — live in

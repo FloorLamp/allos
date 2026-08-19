@@ -79,7 +79,8 @@ facts from another area.
 
 ### Data quality
 
-A **Data quality** widget surfaces the _structural_ gaps that silently degrade
+Each **Data quality** gap is an atomic dashboard statement about a structural
+problem that silently degrades
 the engines — a missing birthdate (which hides every adult-population model), an
 unset sex, medications with no confirmed RxNorm code (name-only safety
 matching), a partial biological-age panel, a failed document extraction,
@@ -98,12 +99,11 @@ you can only dismiss, and once reviewed the card says so instead of looking
 identical to a profile that has never opened it. It's deliberately **not a
 completeness score** (no percentage ring — the same pillars-not-a-composite
 stance), covers **structural one-time fixes only** (never behavioral nagging
-like "log more weigh-ins"), self-hides when a profile has none, and rides the
-shared findings bus (declining a gap silences it on the widget, the coaching tab,
-and the household line at once). The widget is the family's dedicated dashboard
-home, so a gap is never also a row in the Coaching observations rollup — hide the
-widget and the gaps fall back into that rollup rather than losing their dashboard
-reach. The same gap model formats a compact
+like "log more weigh-ins"), emits no candidate when a profile has none, and rides
+the shared findings bus (declining a gap silences the same fact on the dashboard,
+the coaching tab, and the household line at once). Data-quality statements and
+coaching observations are disjoint candidate families, so the same gap never appears
+twice on the dashboard. The same gap model formats a compact
 per-member line on the **Household** page — kids' profiles are where
 birthdate/sex gaps cluster and the caregiver is who can fix them.
 
@@ -285,8 +285,8 @@ the one page the hero renders on),
 **fitness-check percentiles** (a read view over your guided fitness checks, “Run
 a fitness check” deep-links into Training), **sleep regularity** (SRI, timing
 spread, trend), and the per-marker breakdown behind **“N of M biomarkers
-optimal”** — the same pillar model the dashboard widget renders (each widget
-card deep-links to its section), pillars and never a composite score, with
+optimal”** — the same pillar model the dashboard renders as separate readouts
+(each readout deep-links to its section), pillars and never a composite score, with
 absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
@@ -1052,9 +1052,9 @@ card now deep-links here), a **consistency strip** (each night's bed→wake wind
 on a shared noon-to-noon axis, weekends tinted), **stage composition** over
 recent nights, and — when both are logged — an inline **sleep ↔ mood** view
 (observational co-occurrence, never a diagnosis); every night links to its
-**Timeline** day view. A compact **last-night tile** ships on the dashboard
-(duration + regularity, linking here), and Trends → Overview → body census keeps a compact
-**Sleep** summary tile pointing at this page rather than the full charts.
+**Timeline** day view. The dashboard's atomic sleep readings reuse the same
+last-night model in Standing, and Trends → Overview → body census keeps a compact
+**Sleep** summary card pointing at this page rather than the full charts.
 
 ## Progress photos
 
@@ -2095,7 +2095,7 @@ write core's **typed outcome** — a tap that changes nothing says so, and never
 reports success.
 
 **That control has three renderers, not three implementations** (#1892). The
-same one-tap offer sits on the **dashboard Cycle-phase card** and in the **phone's
+same one-tap offer sits in the **dashboard Cycle control atom** and in the **phone's
 quick-log sheet** ("Log period"), and all three surfaces render the SAME
 server-resolved control state, so they can never disagree about which verb is
 available. The label always names the write it will perform — _Period started
@@ -2106,10 +2106,7 @@ dated form owns that exception. A tap from a page that has gone stale (a
 dashboard tab open since yesterday, a period logged on another device) hits the
 same write core and gets its honest refusal, never a double-log.
 
-The dashboard card **no longer self-hides when nothing is derivable yet**. That
-was precisely the state of someone who had not logged day 1, so the card
-vanished exactly when logging mattered most and the only path was
-nav → Medical → Cycle. It is now the registry's data-aware CTA — "Log your period
+When nothing is derivable yet, the dashboard emits a setup atom — "Log your period
 to start tracking" plus the offer button — on the SAME `cycle` relevance bit as
 the nav entry, so it never reaches a profile the domain does not apply to. The
 sheet's period row is gated on that same bit, server-side as well as in the menu.
@@ -2202,9 +2199,10 @@ the TTC evidence below is what makes a window actionable.
 
 One pure computation (`forecastNextPeriod`, `lib/cycle.ts`) produces the window,
 the confidence tier, and the evidence (cycles used, mean, spread, anchoring
-period), and every surface formats THAT — the Cycle page's "Next period" card and
-the dashboard Cycle-phase tile cannot disagree. The forecast is **informational
-reach only**: it never becomes an Upcoming item and never notifies. It **suspends
+period), and the Cycle page's "Next period" card formats THAT. The dashboard keeps
+phase as a Standing reading and the write control as its own atom; it does not repeat
+the forecast. The forecast is **informational reach only**: it never becomes an
+Upcoming item and never notifies. It **suspends
 entirely** while a pregnancy is recorded, and for a profile whose recorded
 reproductive status is postmenopausal.
 
@@ -2439,8 +2437,9 @@ target's floor, so substance rows are **excluded** from the floor-semantics
 progress rollup (which would otherwise nag toward MORE) and read by a dedicated
 computation; progress is the calm per-substance "5 of your 7-drink weekly cap
 used" / "…7-use weekly cap…" line, and a week over the cap surfaces ONE
-**coaching-tier** observation per substance (hideable rollup + coaching tab —
-**never** a notification, never the hero). **No gamification is a hard
+**coaching-tier** observation per substance (a dismissible Show-everything
+statement plus the coaching tab — **never** a notification, never dashboard Now).
+**No gamification is a hard
 contract** (the #716/#992 no-streaks law applied deliberately even though
 recovery culture uses chips): no streaks, badges, milestones, or celebratory
 copy — silence is the success state, pinned by a DB-tier structural-exemption

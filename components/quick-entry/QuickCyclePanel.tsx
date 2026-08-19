@@ -6,7 +6,7 @@ import type { CycleControlState } from "@/lib/cycle-plausibility";
 import { CYCLE_SUSPENSION_NOTES } from "@/lib/cycle";
 
 // The quick-log sheet's period panel (issue #1892) — the THIRD renderer of the one
-// cycle offer state, after the Cycle page control and the dashboard phase widget.
+// cycle offer state, after the Cycle page control and dashboard control atom.
 //
 // It holds no logic. The state was resolved on the server on open
 // (`loadQuickEntry("cycle")` → `cycleControlState`), and the button below is the same

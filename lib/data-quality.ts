@@ -19,7 +19,7 @@
 //
 // The detectors are pure functions of a gathered `DataQualityInputs` snapshot; the DB
 // seam (lib/rule-findings buildDataQualityFindings) gathers the inputs and maps the
-// gaps into the shared Finding envelope, and every surface (dashboard widget, coaching
+// gaps into the shared Finding envelope, and every surface (dashboard presentation, coaching
 // findings, household rollup) is a thin formatter over these results.
 //
 // A gap that clears on a REVIEW MARKER rather than on a stored value owes its CTA
@@ -48,7 +48,7 @@ import { isAdultForClinical } from "./life-stage";
 export const DATA_QUALITY_PREFIX = "data-quality:";
 
 // The stable key for one gap key → its bus dedupeKey. A dismiss under it silences the
-// gap on BOTH the dashboard widget and the coaching surface (dismiss once, silence
+// gap on BOTH the dashboard presentation and the coaching surface (dismiss once, silence
 // everywhere) — and, because it's keyed on the gap TYPE (not a row id), the dismissal
 // naturally clears the day the field is filled (the gap stops firing, so it's no
 // longer even offered — the "structural, gone-for-good" contract).

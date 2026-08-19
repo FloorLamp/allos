@@ -239,22 +239,25 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // cleanup entry — with zero writers there is nothing stored to move or prune, and
 // the read path is simply gone.
 
-// Per-viewer illness-hero UI state (issue #858): whether the acting profile's own
+// Per-viewer illness Now-group UI state (issue #858): whether the acting profile's own
 // cockpit is collapsed to its one-line headline, and which OTHER accessible profile's
 // accordion cockpit is expanded (one at a time). Stored per acting profile in the same
-// key/value store as other profile presentation preferences. The hero is
-// COLLAPSIBLE, never hideable — this only remembers open/closed, never removes a cockpit
+// key/value store as other profile presentation preferences. The group is
+// collapsible, never removable — this only remembers open/closed, never removes a cockpit
 // while an episode is open. Read defensively: a malformed blob falls back to defaults.
-export interface IllnessHeroUiState {
+export interface IllnessNowUiState {
   collapsedActive: boolean;
   openOtherKey: string | null;
 }
 
-export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
-  const fallback: IllnessHeroUiState = {
+export function getIllnessNowUi(profileId: number): IllnessNowUiState {
+  const fallback: IllnessNowUiState = {
     collapsedActive: false,
     openOtherKey: null,
   };
+  // Storage compatibility: this key shipped before the dashboard's atomic cutover.
+  // The value shape still answers the current illness Now group, so renaming the key
+  // would add a data migration without changing meaning.
   const v = getProfileSetting(profileId, "illness_hero_ui");
   if (!v) return fallback;
   try {
@@ -270,11 +273,11 @@ export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
   }
 }
 
-export function setIllnessHeroUi(
+export function setIllnessNowUi(
   profileId: number,
-  state: IllnessHeroUiState
+  state: IllnessNowUiState
 ): void {
-  const normalized: IllnessHeroUiState = {
+  const normalized: IllnessNowUiState = {
     collapsedActive: state.collapsedActive === true,
     openOtherKey:
       typeof state.openOtherKey === "string" && state.openOtherKey.length > 0

@@ -220,7 +220,7 @@ async function selectAndSave(
 // The dedicated Sleep page (issue #1066). Profile 1 (the seeded admin) has the
 // #160 SRI nights + the #1066 stage/nap fixture (e2e/seed-events.ts), so the page
 // renders its hero and every section, the nav entry is present (data-gated), and
-// the dashboard "last night" tile links through. The child fixture profile has NO
+// the dashboard sleep readings link through. The child fixture profile has NO
 // sleep data, so it proves the nav gate hides the entry.
 //
 // Reads only; drives no writes on the shared profile-1 session, so it can't

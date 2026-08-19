@@ -13,7 +13,7 @@ import {
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { subjectActionLabel } from "@/lib/own-profile";
 
-// Inline weight quick-add for the dashboard weight-trend widget (#1042 phase 2).
+// Inline weight quick-add for the dashboard weight presentation (#1042 phase 2).
 // Manual daily weighers had the app's highest-frequency action at its deepest
 // path (Trends → Overview → body census → quick-add); this is the SAME write, promoted — one
 // computation, two entry points (#221): it posts the SAME addBodyMetric server
@@ -22,7 +22,7 @@ import { subjectActionLabel } from "@/lib/own-profile";
 // insertBodyMetric), runs the SAME pure validateBodyMetricInput guard, and rides
 // the SAME "body-metric" offline quick-log queue (issue #28) when the network is
 // out, so a gym-scale weigh-in never fails. Weight-only on purpose — body fat /
-// resting HR / notes stay on the Trends form this widget links to.
+// resting HR / notes stay on the Trends form this atom links to.
 export default function WeightQuickAdd({
   weightUnit,
   today,

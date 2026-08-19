@@ -67,7 +67,7 @@ export type CadenceSource =
 // Which DOMAIN PAGE owns a scope (#2888). A target belongs on a surface only if that
 // surface can help you close it (#2017), so every scope names the ONE page that renders,
 // explains and edits it. `/upcoming`, the morning digest and the dashboard's
-// goals-habits widget are cross-domain BY CHARTER and keep reading every scope with a
+// habit-progress atoms are cross-domain BY CHARTER and keep reading every scope with a
 // per-scope identity (#2578) — this field is what a domain page filters on, not a
 // visibility flag on the target itself.
 export type CadenceHome =
@@ -299,7 +299,7 @@ export interface CadenceVerdictInput {
 
 // One week's verdict, for either direction. The two branches delegate to the
 // computations their surfaces already render — `frequencyRangeState` (the /wellness
-// card, the Goals-and-habits widget, Upcoming, the Telegram nudge) and
+// card, the goal/habit atoms, Upcoming, the Telegram nudge) and
 // `substanceCapStatus` (the substance page, the coaching finding) — so consolidating
 // the READ model changed no verdict anywhere.
 export function cadenceVerdict(input: CadenceVerdictInput): CadenceVerdict {

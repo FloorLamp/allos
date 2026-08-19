@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 // WCAG 1.4.1 (issue #1220): the healthspan pillars and the recent-lab flags must
 // never convey their good/warn/bad judgment by COLOR ALONE. Every judging pillar
 // tone pairs its value color with a text badge (PILLAR_TONE_LABEL — one mapping
-// shared by the dashboard widget and the Longevity page), and every directional
+// shared by the dashboard presentation and the Longevity page), and every directional
 // lab-flag caret carries the severity WORD as visible text on the Recent labs
 // widget (#2315 made that one label the component's own, replacing the sr-only
 // span rather than joining it).

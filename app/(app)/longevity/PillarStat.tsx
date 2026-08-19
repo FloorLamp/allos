@@ -7,7 +7,7 @@ import {
 } from "@/components/dashboard/HealthspanPillarPresentation";
 
 // The Longevity page's rendering of ONE pillar's compact facts — the same
-// label/value/detail/tone/trend the dashboard widget card shows (#1042 phase 4),
+// label/value/detail/tone/trend the dashboard presentation card shows (#1042 phase 4),
 // styled through the SAME exported tone/trend atoms so the two formatters can't
 // drift. Not a link: on the page the pillar sits inside the section that expands
 // it (the widget's card links here).

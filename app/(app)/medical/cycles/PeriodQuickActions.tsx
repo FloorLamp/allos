@@ -17,7 +17,7 @@ import type { CycleControlState } from "@/lib/cycle-plausibility";
 //
 // The offer conditions are DECIDED on the server (lib/cycle-plausibility.cycleControlState)
 // and arrive here as data — this component computes nothing. Since #1892 the BUTTON is
-// the shared <PeriodOfferButton>, which the dashboard phase widget and the quick-log
+// the shared <PeriodOfferButton>, which the dashboard control atom and the quick-log
 // sheet render too: one state, one verb, three surfaces. What stays here is the page's
 // own framing — the derived state line and the "why is there no button" sentence, which
 // only make sense standing next to the dated form this page also carries.

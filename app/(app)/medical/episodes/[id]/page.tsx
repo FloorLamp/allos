@@ -169,7 +169,7 @@ export default async function EpisodePage(props: {
     ? episodeComparisonFor(profileId, episodeId)
     : null;
   // Item 6: the redose window + Log button — most useful for an OPEN episode (the 9pm
-  // caregiver). Reuses the dashboard PRN widget over the SAME redoseWindowStatus (one
+  // caregiver). Reuses the shared PRN content over the SAME redoseWindowStatus (one
   // computation), never a second redose engine.
   const episodeMedicationIds = new Set(
     assembled.medications.map((medication) => medication.itemId)

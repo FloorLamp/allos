@@ -16,7 +16,7 @@ const LineChartCardInner = dynamic(() => import("./LineChartCardInner"), {
 // A failed chunk fetch (e.g. the browser went offline before the lazy import
 // resolved) must degrade to an inline placeholder, never the route error page —
 // see ChartErrorBoundary. Both placeholders honor the caller's `heightClass`
-// (issue #407): the inner chart shrinks to h-40 / h-24 for the dashboard tiles, so
+// (issue #407): the inner chart shrinks to h-40 / h-24 for compact dashboard cards, so
 // a hardcoded h-64 loading/offline box caused a 100px+ layout jump on every load
 // and an offline fallback ~3× the widget's chart box. The dynamic loading state is
 // the Suspense fallback (not next/dynamic's fixed `loading`, which can't see props)

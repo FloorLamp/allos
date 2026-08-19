@@ -6,7 +6,7 @@
 // summarizeEpisodesForProfile), so there is no second duration engine. Auth-blind,
 // profileId-first.
 //
-// The household-overlap half of item 10 is served by the illness hero (#858, grants-
+// The household-overlap half of item 10 is served by the illness Now group (#858, grants-
 // scoped — the former sick-household card folded into it); this module owns the
 // duration-comparison half.
 

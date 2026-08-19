@@ -55,7 +55,7 @@ describe("saveRiskFactors — review marker (#1045)", () => {
         (f) => f.dedupeKey
       );
       expect(after).not.toContain(dataQualityDedupeKey("risk-attributes"));
-      // It revalidates the dashboard so the widget refreshes.
+      // It revalidates the dashboard so the statement disappears.
       expect(revalidate).toHaveBeenCalledWith("/");
     });
   });

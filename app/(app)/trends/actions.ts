@@ -33,7 +33,7 @@ export async function generateForDate(formData: FormData) {
 
 // Generate (or regenerate) the AI period recap narrative and store it for
 // the active profile (issue #20). The narrative runs over the same rule-based
-// recap the dashboard widget shows; without an API key it stores the offline
+// recap the dashboard presentation shows; without an API key it stores the offline
 // composition (still useful, still persisted).
 export async function generateRecap(formData: FormData) {
   const { login, profile } = await requireWriteAccess();

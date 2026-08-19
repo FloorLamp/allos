@@ -1,5 +1,5 @@
 import { IconMoon } from "@tabler/icons-react";
-import WidgetHeader from "@/components/dashboard/WidgetHeader";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   sleepWaitingDetail,
   type SleepWaitingState,
@@ -7,14 +7,14 @@ import {
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 
-// The dashboard sleep tile while the profile is WAITING for last night (#2097).
+// The dashboard sleep atom while the profile is WAITING for last night (#2097).
 //
-// It REPLACES the tile's usual figures rather than sitting above them: the state it
+// It replaces the sleep presentation's usual figures rather than sitting above them: the state it
 // names exists precisely because the only number available is a different night's,
 // and nothing on screen should be a value the reader has to discount. The night that
 // IS recorded stays one tap away on /sleep, named here at most as a quiet secondary
 // line.
-export default function SleepWaitingWidget({
+export default function SleepWaitingAtom({
   state,
   formatPrefs,
   previousNightLabel,
@@ -28,8 +28,8 @@ export default function SleepWaitingWidget({
     when: (iso) => formatRelativeTime(iso),
   });
   return (
-    <div className="card h-full" data-testid="sleep-waiting-widget">
-      <WidgetHeader title="Sleep" href="/sleep" />
+    <div className="card h-full" data-testid="sleep-waiting-atom">
+      <CardSectionHeader title="Sleep" href="/sleep" />
       <div className="flex items-start gap-3">
         <IconMoon
           className="mt-0.5 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"

@@ -42,7 +42,7 @@ under **Settings → Notifications**; and **milestone alerts** — a brief note 
 you cross a milestone (your 10th/50th/100th/… workout, or a completed goal). Both
 are rule-based and work with **no AI configured**. Milestones are always recorded
 to your **Timeline** (under the **Milestone** filter) regardless of the alert
-toggle. The recap is also available in the dashboard's **Everything** section
+toggle. The recap is also available in the dashboard's **Show everything** section
 when its reporting window has a recap to show.
 
 The recap also has a **cadence** — _Weekly_, _Monthly_ or _Quarterly_, beside the

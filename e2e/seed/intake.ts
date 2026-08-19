@@ -103,7 +103,7 @@ export function seedMedicationCards(): void {
   // strip nor refillRate). Fully synthetic name with no rxcui → matches no
   // interaction/PGx/food-drug dataset, so other specs are undisturbed; supply is
   // set HIGH (90 units ÷ ~1/day ≈ 90 days) so it stays ABOVE the low-supply
-  // threshold and never joins the dashboard Low-supply widget / Upcoming refill
+  // threshold and never joins the dashboard low-supply placement / Upcoming refill
   // fixtures. Idempotent: re-created from scratch each boot so the log window
   // stays today-relative.
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(

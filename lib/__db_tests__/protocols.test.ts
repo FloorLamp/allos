@@ -414,7 +414,7 @@ describe("protocol chart windows (issue #660)", () => {
 
 describe("getActiveProtocolSummaries (issue #660)", () => {
   it("summarizes ongoing protocols only, with days elapsed + the primary outcome", () => {
-    const profile = newProfile("Proto Widget");
+    const profile = newProfile("Proto Atom");
     insertProtocol(profile, {
       name: "Ongoing creatine",
       start: "2026-05-01",
@@ -434,14 +434,14 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
     // Inclusive elapsed days: May 1 → May 10 = 10 days in.
     expect(out[0].daysElapsed).toBe(10);
     expect(out[0].primaryOutcome?.label).toBe("Body weight");
-    // No practice link → null adherence. The widget renders no verdict at all for
+    // No practice link → null adherence. The dashboard renders no adherence fact for
     // that, which is what the detail page now also does (#2008): with no progress
     // row there is nothing to be on pace WITH.
     expect(out[0].adherence).toBeNull();
     expect(out[0].href).toBe(`/protocols/${getProtocols(profile)[0].id}`);
   });
 
-  it("carries the PACED weekly verdict, not just met/not-met (#2008)", () => {
+  it("carries the shared practice label for the adherence atom", () => {
     const profile = newProfile("Proto Pace");
     const targetId = Number(
       db
@@ -462,85 +462,8 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
       `INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'Cold plunge', ?)`
     ).run(profile, todayStr);
 
-    const progress = getFrequencyTargetProgress(profile).find(
-      (p) => p.target.id === targetId
-    )!;
     const summary = getActiveProtocolSummaries(profile, todayStr, "kg")[0];
-    expect(summary.adherence).not.toBeNull();
-    // The widget's verdict is the SAME value the detail page and the wellness card
-    // render — one computation, copied through, never re-derived from `met`.
-    expect(summary.adherence!.pace).toBe(progress.pace);
-    expect(summary.adherence!.count).toBe(progress.count);
-    expect(summary.adherence!.atCeiling).toBe(progress.atCeiling);
-    // The range's ceiling and the practice's counting noun ride along, so the
-    // shared component can render "N days this week · Target 3-5x/week".
-    expect(summary.adherence!.perWeekMax).toBe(5);
-    expect(summary.adherence!.noun).toBe("day");
-  });
-
-  // #2204 (owner ruling): the dashboard widget mounts the SAME ProtocolLogButton the
-  // detail page does, so it needs the same prefill or its one-tap would be the last
-  // practice log in the app that discards a duration it never showed.
-  it("carries the practice's duration prefill for the widget's inline stepper", () => {
-    const profile = newProfile("Proto Duration");
-    const targetId = Number(
-      db
-        .prepare(
-          `INSERT INTO frequency_targets
-             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
-           VALUES (?, 'practice', 'Sauna', 'sauna', 3, NULL)`
-        )
-        .run(profile).lastInsertRowid
-    );
-    const todayStr = today(profile);
-    db.prepare(
-      `INSERT INTO protocols
-         (profile_id, name, start_date, outcome_keys, frequency_target_id, owns_frequency_target)
-       VALUES (?, 'Sauna trial', ?, '[]', ?, 1)`
-    ).run(profile, todayStr, targetId);
-
-    // No history yet: blank is a real answer, and the widget must not invent one.
-    expect(
-      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
-        .practicePreviousDurationMin
-    ).toBeNull();
-
-    const log = db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
-       VALUES (?, ?, ?, ?, ?)`
-    );
-    log.run(profile, "Sauna", shiftDateStr(todayStr, -1), "07:00", 15);
-    log.run(profile, "sauna", todayStr, "07:30", 20);
-    // The LAST logged session wins, folded across the identity's spellings — the same
-    // pure resolution every other practice surface reads.
-    expect(
-      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
-        .practicePreviousDurationMin
-    ).toBe(20);
-
-    // A session logged WITHOUT one prefills blank again: clearing the stepper is a
-    // decision the next prefill honours rather than reaching further back.
-    log.run(profile, "Sauna", todayStr, "19:00", null);
-    expect(
-      getActiveProtocolSummaries(profile, todayStr, "kg")[0]
-        .practicePreviousDurationMin
-    ).toBeNull();
-  });
-
-  it("has no duration prefill for a non-practice protocol scope", () => {
-    const profile = newProfile("Proto Duration Food");
-    insertProtocol(profile, {
-      name: "Veg push",
-      start: "2026-05-01",
-      end: null,
-      keys: [],
-    });
-    // The activity/food actions open their own full forms, which have always asked
-    // for what they record — there is no one-tap duration to prefill.
-    expect(
-      getActiveProtocolSummaries(profile, "2026-05-10", "kg")[0]
-        .practicePreviousDurationMin
-    ).toBeNull();
+    expect(summary.adherence?.label).toBe("Cold plunge sessions");
   });
 });
 

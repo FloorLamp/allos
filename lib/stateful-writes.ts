@@ -65,7 +65,7 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     cores: ["lib/cycle-store.ts"],
     gate: "lib/cycle-write.ts",
     offerState: "cycleControlState",
-    why: "#1892/#1681: period start/end/reopen are LIFECYCLE transitions over an open-period invariant. lib/cycle-write.ts is the auth-blind core — one writeTx per transition, every refusal typed (already-open / duplicate / too-soon / too-old) and enforced with the SAME pure predicates the Cycle control, the phase widget, and the quick-log sheet render from (cycleControlState). It reaches the table only through lib/cycle-store.ts, which holds the DML; a raw write anywhere else could mint a second simultaneously-open period, which is precisely the state every derivation assumes cannot exist.",
+    why: "#1892/#1681: period start/end/reopen are LIFECYCLE transitions over an open-period invariant. lib/cycle-write.ts is the auth-blind core — one writeTx per transition, every refusal typed (already-open / duplicate / too-soon / too-old) and enforced with the SAME pure predicates the Cycle page control, dashboard control atom, and quick-log sheet render from (cycleControlState). It reaches the table only through lib/cycle-store.ts, which holds the DML; a raw write anywhere else could mint a second simultaneously-open period, which is precisely the state every derivation assumes cannot exist.",
   },
   {
     table: "illness_episodes",

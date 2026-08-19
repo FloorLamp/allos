@@ -239,7 +239,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/actions.ts",
     fn: "dismissDataQualityGap",
-    why: "delegates to dismissCoachingObservation(), which calls requireWriteAccess() (#1219 named alias so the two widgets can diverge safely)",
+    why: "delegates to dismissCoachingObservation(), which calls requireWriteAccess() (#1219 named alias so the two atoms can diverge safely)",
   },
   {
     file: "app/(app)/encounters/appointment-actions.ts",

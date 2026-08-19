@@ -15,7 +15,7 @@ import type { CyclePeriod } from "@/lib/cycle";
 // THE #221 PIN for the cycle offer (issue #1892).
 //
 // Three surfaces put a one-tap period button in front of the user — the Cycle page
-// control, the dashboard phase widget, and the quick-log sheet's overlay. The whole
+// control, the dashboard control atom, and the quick-log sheet's overlay. The whole
 // point of the fix is that they are RENDERERS of one state, not three implementations
 // of one idea, so they can never disagree about which verb is on offer. Nothing about
 // that is enforced by types: each surface could perfectly well grow its own
@@ -45,8 +45,8 @@ const RENDERERS = [
     what: "the Cycle page's quick-action control (#1681)",
   },
   {
-    file: "components/dashboard/CyclePhaseWidget.tsx",
-    what: "the dashboard phase widget (#1892 — the card that used to self-hide)",
+    file: "components/dashboard/CycleControlAtom.tsx",
+    what: "the dashboard control atom (#1892)",
   },
   {
     file: "components/quick-entry/QuickCyclePanel.tsx",
@@ -157,7 +157,7 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
     );
     expect(callers.sort()).toEqual(
       [
-        // The dashboard page (the widget, in both its derived and CTA states).
+        // The dashboard page (the control atom).
         "app/(app)/page.tsx",
         // The Cycle page.
         "app/(app)/medical/cycles/page.tsx",

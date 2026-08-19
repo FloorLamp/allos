@@ -1,7 +1,7 @@
 // THE recap engine (issues #32 / #2178) — a PURE, rule-based summary of the last
 // PERIOD: workouts, personal records, supplement adherence, a robust body-weight
 // trend, aerobic base, and sleep regularity. No DB, no network, no AI — so it runs in
-// the dashboard widget, the recap notification, and the unit tests alike, and works
+// the dashboard presentation, the recap notification, and the unit tests alike, and works
 // with zero AI configuration. The DB gather lives in
 // lib/notifications/recap-data.ts (mirroring the digest's data/render
 // split); this module turns the gathered facts into a line model and renders the
@@ -932,7 +932,7 @@ export function buildRecap(input: RecapInput): Recap {
   // A CLOSED PERIOD ONLY. The gather skips the read for an in-progress one, and this
   // states the rule rather than trusting it to: a week still running is under its floor
   // by construction, so a verdict on it would be an invented failure. The in-progress
-  // week already has a home for its pace (the Goals-and-habits widget, and the digest).
+  // week already has a home for its pace (the goal/habit atoms and the digest).
   const targetLine = input.completed
     ? cadenceWeekVerdictLine(input.targetVerdicts ?? [])
     : null;

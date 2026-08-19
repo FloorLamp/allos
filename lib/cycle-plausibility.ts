@@ -105,7 +105,7 @@ export function canReopenLastPeriodOn(
 
 // The contextual cycle state as one line — "Day 6 · Follicular" — formatted over the SAME
 // cycleDayOnDate + cyclePhaseOnDate derivations every other surface reads (#221/#1221), so
-// the Cycle control and the dashboard tile can never disagree. Null before any recorded
+// the Cycle control and the dashboard atom can never disagree. Null before any recorded
 // period, where no state is derivable.
 //
 // `today` — not an arbitrary date. This line always describes NOW ("Day 6 · Follicular"
@@ -144,7 +144,7 @@ export interface CycleControlState {
   staleOpenPeriod: boolean;
   // The derived cycle day and phase for today — null together before any history, and
   // null together under a suspension (#2801). Carried HERE so the Cycle hero and the
-  // dashboard tile read the suppressed pair rather than each calling the raw
+  // dashboard atom read the suppressed pair rather than each calling the raw
   // cycleDayOnDate/cyclePhaseOnDate, which is exactly how the hero ended up contradicting
   // the forecast card beside it.
   day: number | null;
@@ -208,7 +208,7 @@ export function cycleControlState(
 //
 // `cycleControlState` says what is TRUE; this says what a one-tap affordance may
 // OFFER, and names the write that tap will perform. Three surfaces render it — the
-// Cycle page control, the dashboard phase widget, and the quick-log sheet's overlay —
+// Cycle page control, the dashboard control atom, and the quick-log sheet's overlay —
 // and none of them re-derives it (`lib/__tests__/cycle-offer-renderers.test.ts` is the
 // #221 pin). Same shape as lib/workout-offer.ts: labels are exported constants, so a
 // surface cannot spell the verb its own way.

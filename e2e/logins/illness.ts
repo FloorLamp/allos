@@ -24,7 +24,7 @@ export const MULTI_ILLNESS_PROFILE = "Multi Illness (e2e)";
 // Situation-aware coaching (#837 / #662 item 1): a dedicated sick profile WITH training
 // history (so coaching has gap nags to HOLD, not the empty state) and one situational
 // supplement tied to the active Illness situation (so the situations-bar activation
-// acknowledgment has a count). Read-only in its specs — the dashboard coaching widget's
+// acknowledgment has a count). Read-only in its specs — the dashboard coaching atom's
 // HELD note + the "1 situational item now active" line — so it's repeat-safe and never
 // touches the other sick fixtures' expected cockpit state.
 export const E2E_LOGIN_SITCOACH = "e2e_sitcoach";
@@ -84,7 +84,7 @@ export const NOTIF_PROFILE = "Notif Matrix (e2e)";
 // The child's Cold also carries a LINKED urgent-care visit + a prescribed course for the
 // care-trail nesting cases. Spec-owned + isolated on purpose: the care-trail / episode-card
 // / promotion specs only READ these fixtures, so concurrent workers never contend,
-// and their dedicated profiles never perturb the illness-hero fixtures' cockpit
+// and their dedicated profiles never perturb the illness-now-group fixtures' cockpit
 // assertions. The child's episodes are shaped for the episode-card cases: a CLOSED
 // "Flu" that OVERLAPS the parent's Flu (card-present), and an OPEN "Cold" (currently
 // sick → dashboard promotion). The parent also carries a far-past "Chickenpox" that
@@ -117,7 +117,7 @@ export const E2E_LOGIN_HH_CAREGIVER = "e2e_hh_caregiver";
 export const E2E_LOGIN_HH_SOLO = "e2e_hh_solo";
 export const E2E_LOGIN_HH_VIEWER = "e2e_hh_viewer";
 //   • ILLNESS_CAREGIVER — profile 1 write + profile 2 write. Acts as profile 2 (well),
-//     so sick profile 1 surfaces only in the cross-profile illness-hero accordion (#858).
+//     so sick profile 1 surfaces only in the cross-profile illness Now-group accordion (#858).
 //   • ILLNESS_RO — profile 1 READ + profile 2 write. Acts as profile 2, opens sick
 //     profile 1's episode read-tier (view-only banner, no write controls, #879).
 export const E2E_LOGIN_ILLNESS_CAREGIVER = "e2e_illness_caregiver";

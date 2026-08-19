@@ -46,7 +46,7 @@ import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
-import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
+import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import MedicationForm from "@/components/MedicationForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import ProviderName from "@/components/ProviderName";

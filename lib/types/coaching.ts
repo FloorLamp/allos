@@ -54,7 +54,7 @@ export interface Protocol {
   equipment_id: number | null;
   // Optional practice link (issue #344): the frequency_targets row that measures
   // adherence to the protocol's practice ("sauna 4×/week"), or NULL. Adherence
-  // reuses the Weekly-widget weekly-count computation over this target.
+  // reuses the weekly-target count computation over this target.
   frequency_target_id: number | null;
   // 1 when the protocol CREATED its frequency target (so its delete cleans the
   // target up, unless a sibling protocol now references it); 0 when it merely

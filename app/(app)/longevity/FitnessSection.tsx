@@ -13,7 +13,7 @@ import PillarStat from "./PillarStat";
 // percentiles from lib/fitness-norms), never a forked engine; recording a check
 // stays on the Training tab, which "Run a fitness check" deep-links into. The
 // section's headline stats are the fitness pillars (vo2max/strength) — the SAME
-// Pillar objects the dashboard widget renders. The per-domain bars are the SHARED
+// Pillar objects the dashboard presentation renders. The per-domain bars are the SHARED
 // FitnessDomainBars component (the training grid renders the same one) so the color/label
 // language can't drift between the two surfaces (#1132 / #221 formatter parity).
 //
