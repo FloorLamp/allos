@@ -27,7 +27,9 @@ export interface UsualRoutineControlProps {
   // is not a promise anybody can read. Kept paired rather than as two parallel arrays
   // so the answer can name exactly the rows the server says it wrote.
   food: { slug: string; name: string }[];
-  doses: { id: number; name: string }[];
+  // `stack` (#3098) feeds the shared label compression: an all-one-stack rider is
+  // promised as "<Stack> (n)" — the profile's own name for exactly those doses.
+  doses: { id: number; name: string; stack?: string | null }[];
   // Whose morning this logs (#1013), when the acting profile is not the viewer's own.
   // Resolved server-side through writeSubjectName so a caregiver is never ambiguous.
   subjectName: string | null;
@@ -45,7 +47,7 @@ export default function UsualRoutineControl({
   const doseIds = doses.map((d) => d.id);
   const phrase = usualRoutinePhrase(
     food.map((f) => f.name),
-    doses.map((d) => d.name)
+    doses
   );
   const heading = subjectName
     ? `${subjectName}'s usual ${window}`

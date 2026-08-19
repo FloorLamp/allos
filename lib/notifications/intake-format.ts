@@ -13,7 +13,6 @@ import {
 } from "../food-drug-interactions";
 import {
   FOOD_TIMING_LABELS,
-  OBLIGATION_ORDER,
   isPushedIntake,
   type TimeBucket,
 } from "../intake-schedule";
@@ -22,6 +21,7 @@ import {
   type FoodTimingCheck,
 } from "../food-timing-check";
 import { intakeItemShortLabel } from "../intake-short-name";
+import { compareDoseDay, type DoseDayEntry } from "../dose-order";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type {
   IntakeItem,
@@ -33,7 +33,11 @@ import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
-import { MED_STOP_PREFIX } from "./callback-data";
+import {
+  MED_STOP_PREFIX,
+  stackTakeCallback,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+} from "./callback-data";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -176,11 +180,22 @@ export interface WindowDose {
   adherence: AdherenceSummary;
 }
 
-function byPriority(a: WindowDose, b: WindowDose): number {
-  return (
-    OBLIGATION_ORDER[a.item.obligation] - OBLIGATION_ORDER[b.item.obligation] ||
-    a.item.name.localeCompare(b.item.name)
-  );
+// The SHARED dose-day order (#297/#3098): bucket → obligation → stack → name,
+// through the ONE comparator the Supplements due-today section and Upcoming
+// already sort by (`compareDoseDay`). The reminder used to order by obligation →
+// name alone, so a slot's stack members interleaved with unrelated doses while
+// the in-app surfaces rendering the same day clustered them. No third comparator.
+function doseDayEntry(e: WindowDose): DoseDayEntry {
+  return {
+    timeOfDay: e.dose.time_of_day,
+    obligation: e.item.obligation,
+    stack: e.item.stack,
+    name: e.item.name,
+  };
+}
+
+function byDoseDay(a: WindowDose, b: WindowDose): number {
+  return compareDoseDay(doseDayEntry(a), doseDayEntry(b));
 }
 
 // The take-with condition (food timing), lowercased for inline use; "" when it's
@@ -290,9 +305,9 @@ export function renderWindowMessage(
 ): NotificationMessage {
   const pending = entries
     .filter((e) => !e.taken && !e.skipped)
-    .sort(byPriority);
+    .sort(byDoseDay);
   // Resolved doses (taken or skipped) list after the pending ones; ⏭️ marks a skip.
-  const resolved = entries.filter((e) => e.taken || e.skipped).sort(byPriority);
+  const resolved = entries.filter((e) => e.taken || e.skipped).sort(byDoseDay);
 
   const label = INTAKE_SLOT_LABELS[window];
   // Name the items by their actual kinds so a medications-only window isn't
@@ -345,13 +360,57 @@ function doseSessionActions(
   labelAll: boolean
 ): NotificationAction[] {
   const actions: NotificationAction[] = [];
+  // PER-STACK ONE-TAPS (#3098). Grouped over the already-floored pending set, so a
+  // stack's `may` members never enter a button — the tap confirms only doses the
+  // message itself lists. A stack earns a button at ≥2 pending members; below that
+  // the chip stays page furniture.
+  const byStack = new Map<string, WindowDose[]>();
+  for (const e of pending) {
+    const stack = e.item.stack?.trim();
+    if (!stack) continue;
+    byStack.set(stack, [...(byStack.get(stack) ?? []), e]);
+  }
+  const stacks = [...byStack.entries()].filter(([, m]) => m.length >= 2);
+  // When ONE stack's pending doses are the entire slot, the existing All button
+  // takes the stack's name instead of gaining a duplicate sibling (owner decision,
+  // 2026-08-18): same `all:` token, same handler — only the label changes, and the
+  // tap still writes exactly what the message lists.
+  const wholeSlotStack =
+    stacks.length === 1 && stacks[0][1].length === pending.length
+      ? stacks[0][0]
+      : null;
   if (pending.length >= 2) {
+    const head = wholeSlotStack ?? "All";
     actions.push({
       label: labelAll
-        ? `${GLYPH.done} All ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
-        : `${GLYPH.done} All (${pending.length})`,
+        ? `${GLYPH.done} ${head} ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
+        : `${GLYPH.done} ${head} (${pending.length})`,
       data: `all:${profileId}:${slot}:${date}`,
     });
+  }
+  // One button per qualifying stack, above the per-dose rows, when the slot holds
+  // other doses too. The token carries the member dose ids as an UPPER BOUND (the
+  // handler re-derives the pending set and writes only the intersection); when the
+  // ids do not fit Telegram's callback limit the button is DROPPED, never
+  // truncated — an offer may never name less than the tap would write (#2460).
+  if (wholeSlotStack == null) {
+    for (const [stack, members] of stacks) {
+      const data = stackTakeCallback(
+        profileId,
+        date,
+        members.map((m) => m.dose.id)
+      );
+      if (
+        new TextEncoder().encode(data).length >
+        TELEGRAM_CALLBACK_DATA_MAX_BYTES
+      ) {
+        continue;
+      }
+      actions.push({
+        label: `${GLYPH.done} ${stack} (${members.length})`,
+        data,
+      });
+    }
   }
   for (const { dose, item, demotable, stoppable } of pending) {
     const row = `dose:${dose.id}`;
@@ -441,10 +500,10 @@ export function renderMergedIntakeMessage(
   for (const p of parts) {
     const pending = p.entries
       .filter((e) => !e.taken && !e.skipped)
-      .sort(byPriority);
+      .sort(byDoseDay);
     const resolved = p.entries
       .filter((e) => e.taken || e.skipped)
-      .sort(byPriority);
+      .sort(byDoseDay);
     const lines = [
       `${INTAKE_SLOT_LABELS[p.slot]}:`,
       ...pending.map((e) => doseLine(e, true, age)),

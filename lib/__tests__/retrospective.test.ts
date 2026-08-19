@@ -163,7 +163,7 @@ function yearInput(over: Partial<RecapInput> = {}): RecapInput {
     completed: true,
     workouts: [],
     prevWorkouts: [],
-    prLabels: [],
+    prs: [],
     adherence: null,
     weights: [],
     goalsCompleted: [],
@@ -247,7 +247,7 @@ describe("the commemorative exemption (#2179)", () => {
           "2025-08-11",
         ]),
         prevWorkouts: workoutsOn(["2024-03-04"]),
-        prLabels: ["Bench press", "Back squat"],
+        prs: [{ label: "Bench press" }, { label: "Back squat" }],
         goalsCompleted: ["Run a half marathon"],
         goalsMissed: ["Sleep 8 hours"],
       })
@@ -268,7 +268,7 @@ describe("the commemorative exemption (#2179)", () => {
           "2025-06-09",
           "2025-08-11",
         ]),
-        prLabels: ["Bench press"],
+        prs: [{ label: "Bench press" }],
       })
     );
     expect(recap.headline).toContain("4 workouts");

@@ -36,6 +36,7 @@ import {
   classifyIntakeDeltas,
   intakeDeltaLine,
   INTAKE_DELTA_DAYS,
+  type IntakeDeltaReportWindow,
   type IntakeDeltas,
 } from "./intake-deltas";
 import {
@@ -199,10 +200,13 @@ export function getUnconfirmedMedicationIds(
 
 // The one-line headline for a profile, or null on a quiet window. The thin
 // convenience over getIntakeDeltas + intakeDeltaLine that the three digest surfaces
-// actually call.
+// actually call. `window` is the caller's reporting period (#3033): the weekly
+// recap passes its own window so a single-occurrence miss names its day; the
+// day-scale surfaces pass nothing and keep their copy unchanged.
 export function getIntakeDeltaLine(
   profileId: number,
-  today: string
+  today: string,
+  window: IntakeDeltaReportWindow | null = null
 ): string | null {
-  return intakeDeltaLine(getIntakeDeltas(profileId, today));
+  return intakeDeltaLine(getIntakeDeltas(profileId, today), window);
 }

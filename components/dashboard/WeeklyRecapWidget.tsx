@@ -61,7 +61,9 @@ export default function WeeklyRecapWidget({
               const annotation = recapLineAnnotation(l);
               return (
                 <div
-                  key={l.key}
+                  // The label joins the key: the nutrient-missed key (#3033) can
+                  // legitimately appear once per totally-missed nutrient.
+                  key={`${l.key}:${l.label}`}
                   className="flex items-baseline justify-between gap-3 text-sm"
                 >
                   {/* A bare line is already self-labelled (#1935) — its label stays

@@ -35,7 +35,7 @@ import {
   bandForDays,
 } from "./upcoming";
 import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
-import { loadContextLabel } from "./lifts";
+import { loadContextLabel, prSetClause } from "./lifts";
 import {
   legacyPrCardioDismissalKey,
   legacyPrStrengthDismissalKey,
@@ -283,12 +283,9 @@ export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
   // not the home machine's — and its dedupe key carries the same lane, so two
   // simultaneous load contexts can't overwrite each other's celebration.
   const subject = loadContextLabel(pr.exercise, pr.equipment);
-  const clause =
-    pr.kind === "weight"
-      ? `${subject} top set at ${fmtWeight(pr.weightKg, weightUnit)}`
-      : pr.bodyweight
-        ? `${subject} at bodyweight × ${pr.reps}`
-        : `${subject} at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
+  // The set half is the shared `prSetClause` (#3033), so this celebration and the
+  // recap's PR line state the same record in the same words.
+  const clause = `${subject} ${prSetClause(pr, weightUnit)}`;
   // IDENTITY, not display name (#1931). `recentPRs` reads stats grouped on
   // `movementLoadKey`, and the group's `exercise` is merely its first-seen logged
   // spelling — so keying the raw name split ONE record across two keys ("Curl" vs

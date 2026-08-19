@@ -38,6 +38,8 @@ describe("classifyIntakeDelta — notably missed", () => {
       itemId: 1,
       name: "Magnesium (test)",
       days: 3,
+      // The run's most recent missed occurrence (#3033).
+      date: "1990-02-07",
     });
   });
 
@@ -62,6 +64,8 @@ describe("classifyIntakeDelta — resumed", () => {
       itemId: 1,
       name: "Magnesium (test)",
       days: 3,
+      // The last miss of the lapse the trailing take ended (#3033).
+      date: "1990-02-05",
     });
   });
 
@@ -88,6 +92,7 @@ describe("classifyIntakeDelta — transparent days", () => {
       itemId: 1,
       name: "Magnesium (test)",
       days: 2,
+      date: "1990-02-09",
     });
   });
 
@@ -154,6 +159,73 @@ describe("intakeDeltaLine — the one formatter", () => {
     const line = intakeDeltaLine(classifyIntakeDeltas(many))!;
     expect(line).toContain("+2 more");
     expect(line.startsWith("Missed: Item A (test) for 1 day")).toBe(true);
+  });
+});
+
+// ---- The reporting window (#3033) -----------------------------------------
+//
+// A single-occurrence miss inside a MULTI-DAY report window names its day; the
+// day-scale callers (the digest, the household card) pass no window and their
+// copy is byte-identical to before. Resolved inside the formatter as a function
+// of the window — not a per-caller flag, not a second phrasing.
+describe("intakeDeltaLine — the reporting window names a one-occurrence miss's day (#3033)", () => {
+  const week = { start: "1990-02-01", end: "1990-02-07" };
+  const missSunday = classifyIntakeDeltas([
+    // Miss on 1990-02-04, a Sunday.
+    { itemId: 1, name: "Coenzyme Q10 (test)", strip: strip([T, T, T, M]) },
+  ]);
+
+  it("names the weekday for a miss inside the window", () => {
+    expect(intakeDeltaLine(missSunday, week)).toBe(
+      "Missed: Coenzyme Q10 (test) on Sunday"
+    );
+  });
+
+  it("dates a miss BEYOND the window — the classifier looks back further than a week", () => {
+    const laterWeek = { start: "1990-02-05", end: "1990-02-11" };
+    expect(intakeDeltaLine(missSunday, laterWeek)).toBe(
+      "Missed: Coenzyme Q10 (test) on Sun, Feb 4, 1990"
+    );
+  });
+
+  it("keeps 'for N days' for a multi-occurrence run", () => {
+    const deltas = classifyIntakeDeltas([
+      { itemId: 1, name: "Magnesium (test)", strip: strip([T, T, T, M, M, M]) },
+    ]);
+    expect(intakeDeltaLine(deltas, week)).toBe(
+      "Missed: Magnesium (test) for 3 days"
+    );
+  });
+
+  it("day-scale callers are unchanged — no window, no day name", () => {
+    expect(intakeDeltaLine(missSunday)).toBe(
+      "Missed: Coenzyme Q10 (test) for 1 day"
+    );
+  });
+
+  it("a cadenced item's one missed occurrence names its actual day", () => {
+    // Due every other day: 'na' days are transparent, so the run is ONE scheduled
+    // occurrence — and the day named is the miss's own calendar day (1990-02-07,
+    // a Wednesday), which "for 1 day" could never say.
+    const deltas = classifyIntakeDeltas([
+      {
+        itemId: 1,
+        name: "Weekly (test)",
+        strip: strip([T, NA, T, NA, T, NA, M]),
+      },
+    ]);
+    expect(intakeDeltaLine(deltas, week)).toBe(
+      "Missed: Weekly (test) on Wednesday"
+    );
+  });
+
+  it("a resumed run keeps its lapse length — only a one-occurrence miss names a day", () => {
+    const deltas = classifyIntakeDeltas([
+      { itemId: 2, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
+    ]);
+    expect(intakeDeltaLine(deltas, week)).toBe(
+      "Resumed: Vitamin D (test) for 2 days"
+    );
   });
 });
 

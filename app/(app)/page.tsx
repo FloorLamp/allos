@@ -802,7 +802,11 @@ async function renderDashboard(
           slug,
           name: foodGroupBySlug(slug)?.name ?? slug,
         })),
-        doses: routineOffer.doses.map((d) => ({ id: d.doseId, name: d.name })),
+        doses: routineOffer.doses.map((d) => ({
+          id: d.doseId,
+          name: d.name,
+          stack: d.stack ?? null,
+        })),
         subjectName: actingSubjectName,
       }
     : null;

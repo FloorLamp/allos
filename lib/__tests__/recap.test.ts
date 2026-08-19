@@ -34,7 +34,7 @@ function baseInput(over: Partial<RecapInput> = {}): RecapInput {
     weightUnit: "kg",
     workouts: [],
     prevWorkouts: [],
-    prLabels: [],
+    prs: [],
     adherence: null,
     weights: [],
     goalsCompleted: [],
@@ -350,29 +350,85 @@ describe("buildRecap", () => {
     ).toBe(false);
   });
 
-  it("keeps real achievements in the headline, illness only as context line", () => {
+  it("an illness fact is the WHOLE headline — a sick week is not graded (#3033)", () => {
     const recap = buildRecap(
       baseInput({
         illnessDays: 2,
         workouts: [{ date: TODAY, type: "strength" }],
       })
     );
-    // A logged workout still leads the headline; recovery is the context line.
-    expect(recap.headline).toBe("1 workout");
+    // Owner ruling 2026-08-18: recovery overrides the three-slot pattern. The
+    // workout still has its line; the headline names the episode context.
+    expect(recap.headline).toBe("recovering — sick 2 days");
     expect(recap.lines.some((l) => l.key === "recovery")).toBe(true);
+    expect(recap.lines.some((l) => l.key === "workouts")).toBe(true);
   });
 
   it("lists PRs, truncating past three with a +N more", () => {
     const recap = buildRecap(
       baseInput({
-        prLabels: ["Bench press", "Squat", "Deadlift", "Overhead press"],
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        prs: [
+          { label: "Bench press" },
+          { label: "Squat" },
+          { label: "Deadlift" },
+          { label: "Overhead press" },
+        ],
       })
     );
     const line = recap.lines.find((l) => l.key === "prs")!;
     expect(line.value).toBe("4");
-    expect(line.notes).toEqual(["Bench press, Squat, Deadlift +1 more"]);
+    // One note per record (#2391's homogeneous tail); the grammar punctuates them.
+    expect(line.notes).toEqual([
+      "Bench press",
+      "Squat",
+      "Deadlift",
+      "+1 more",
+    ]);
     expect(line.comparison.kind).toBe("none");
-    expect(recap.headline).toContain("4 PRs");
+    // The headline's PR slot names the FIRST record, never a count (#3033).
+    expect(recap.headline).toContain("a Bench press PR");
+  });
+
+  // #3033 decision 2: the PR line says what was lifted, through the shared
+  // prSetClause — an e1RM record as the set it was performed with, a bodyweight
+  // lift as reps alone, a top-weight record labelled as the top set it is.
+  it("renders each PR as performed, honouring the profile's weight unit", () => {
+    const prs = [
+      {
+        label: "Romanian Deadlift (Rep Trap Bar)",
+        set: { kind: "1rm" as const, weightKg: 100, reps: 5, bodyweight: false },
+      },
+      {
+        label: "Chin-up",
+        set: { kind: "1rm" as const, weightKg: 82, reps: 12, bodyweight: true },
+      },
+      {
+        label: "Leg Press",
+        set: { kind: "weight" as const, weightKg: 180, reps: 0, bodyweight: false },
+      },
+    ];
+    const line = buildRecap(baseInput({ prs })).lines.find(
+      (l) => l.key === "prs"
+    )!;
+    expect(line.value).toBe("3");
+    expect(line.notes).toEqual([
+      "Romanian Deadlift (Rep Trap Bar) at 100 kg × 5",
+      // A bodyweight lift has no load — reps alone.
+      "Chin-up at bodyweight × 12",
+      // A top-weight record must not be dressed as a rep set.
+      "Leg Press top set at 180 kg",
+      // The conditional "+N more" slot, passed positionally (#2391).
+      null,
+    ]);
+    // The profile's unit is honoured through the existing fmtWeight boundary.
+    const lb = buildRecap(
+      baseInput({ weightUnit: "lb", prs: [prs[0]] })
+    ).lines.find((l) => l.key === "prs")!;
+    expect(lb.notes).toEqual([
+      "Romanian Deadlift (Rep Trap Bar) at 220.5 lb × 5",
+      null,
+    ]);
   });
 
   it("computes adherence percentage from taken/due", () => {
@@ -381,9 +437,25 @@ describe("buildRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "adherence")!;
     expect(line.value).toBe("86%");
-    // A LIST of declared notes since #2391; the grammar punctuates them.
-    expect(line.notes).toEqual(["12/14 doses", null]);
+    // The notes name what was counted (#3033): misses, in the delta line's own
+    // vocabulary, so the two intake lines reconcile. missed = intended − taken.
+    expect(line.notes).toEqual(["2 missed", null]);
     expect(line.comparison.kind).toBe("none");
+  });
+
+  it("drops the missed clause at zero and keeps the skip count (#3033/#232)", () => {
+    const clean = buildRecap(
+      baseInput({ adherence: { taken: 14, skipped: 0, due: 14 } })
+    ).lines.find((l) => l.key === "adherence")!;
+    expect(clean.value).toBe("100%");
+    expect(clean.notes).toEqual([null, null]);
+    const skipped = buildRecap(
+      baseInput({ adherence: { taken: 58, skipped: 1, due: 63 } })
+    ).lines.find((l) => l.key === "adherence")!;
+    // 58 of 62 intended (63 due − 1 skipped): four missed, one deliberate skip —
+    // the four the delta line's reader could not find are now named as misses.
+    expect(skipped.value).toBe("94%");
+    expect(skipped.notes).toEqual(["4 missed", "1 skipped"]);
   });
 
   it("shows the latest weight and a robust net change with a direction arrow", () => {
@@ -485,7 +557,7 @@ describe("renderRecapMessage", () => {
           { date: "2026-07-08", type: "cardio" },
         ],
         prevWorkouts: [{ date: "2026-06-30", type: "strength" }],
-        prLabels: ["Romanian Deadlift (Rep Trap Bar)"],
+        prs: [{ label: "Romanian Deadlift (Rep Trap Bar)" }],
         adherence: { taken: 12, skipped: 1, due: 14 },
       })
     );
@@ -499,9 +571,11 @@ describe("renderRecapMessage", () => {
     // a label legitimately containing parens ("Romanian Deadlift (Rep Trap Bar)")
     // cannot nest inside one, and no line renders two asides in a row.
     expect(lines).toEqual([
+      // The headline leads the lines (#3033).
+      "2 workouts, a Romanian Deadlift (Rep Trap Bar) PR",
       "• Workouts: 2 — strength 1, cardio 1 · 1 last week",
       "• PRs: 1 — Romanian Deadlift (Rep Trap Bar)",
-      "• Adherence: 92% — 12/13 doses · 1 skipped",
+      "• Adherence: 92% — 1 missed · 1 skipped",
     ]);
     expect(lines.join("\n")).not.toMatch(/\(\(|\)\)/);
   });
@@ -678,7 +752,7 @@ describe("recap coverage rule (#1935)", () => {
     const recap = buildRecap(
       baseInput({
         workouts: [{ date: "2026-07-08", type: "strength" }],
-        prLabels: ["Bench press"],
+        prs: [{ label: "Bench press" }],
         adherence: { taken: 12, skipped: 1, due: 14 },
         weights: [
           { date: "2026-07-04", weightKg: 74 },
@@ -715,7 +789,7 @@ describe("typed comparison slot (#1935)", () => {
         illnessDays: 2,
         workouts: [{ date: "2026-07-08", type: "strength" }],
         prevWorkouts: [{ date: "2026-07-01", type: "strength" }],
-        prLabels: ["Bench press"],
+        prs: [{ label: "Bench press" }],
         intakeDeltaLine: "Missed: Glycine (2 days)",
         adherence: { taken: 12, skipped: 1, due: 14 },
         weights: [
@@ -1079,7 +1153,7 @@ describe("line composition — value is the quantity (#2389 item 1)", () => {
           { date: "2026-07-06", type: "cardio" },
         ],
         prevWorkouts: [{ date: "2026-07-01", type: "strength" }],
-        prLabels: ["Romanian Deadlift (Rep Trap Bar)"],
+        prs: [{ label: "Romanian Deadlift (Rep Trap Bar)" }],
         intakeDeltaLine: "Missed: Glycine (2 days)",
         adherence: { taken: 12, skipped: 1, due: 14 },
         food: {
@@ -1299,7 +1373,7 @@ describe("the target-verdict line (#2395)", () => {
       baseInput({ completed: true, targetVerdicts: verdicts })
     );
     const line = recap.lines.find((l) => l.key === "targets")!;
-    expect(line.value).toBe("1 of 2 targets met");
+    expect(line.value).toBe("1 of 2 met");
     expect(recapLineAnnotation(line)).toBe("short on Back");
   });
 
@@ -1390,5 +1464,224 @@ describe("the monthly food-habit and cap lines (#2397)", () => {
     expect(line.value).toBe("over the Alcohol cap in 3 of 4 weeks");
     expect(recapLineAnnotation(line)).toBe("Nicotine cap held all 4 weeks");
     expect(line.comparison.kind).toBe("none");
+  });
+});
+
+// ── #3033: a total nutrient miss gets its own line ───────────────────────────
+describe("nutrient-missed line (#3033)", () => {
+  const food = (fiberOnTarget: number) => ({
+    daysLogged: 7,
+    groups: 13,
+    nutrients: [
+      { nutrient: "protein" as const, onTarget: 6, days: 7 },
+      { nutrient: "fiber" as const, onTarget: fiberOnTarget, days: 7 },
+    ],
+  });
+
+  it("lifts a 0-of-N nutrient out of the Food tail onto its own line", () => {
+    const recap = buildRecap(baseInput({ food: food(0) }));
+    const foodLine = recap.lines.find((l) => l.key === "food")!;
+    // The success-reading head no longer carries the total failure as its tail.
+    expect(recapLineAnnotation(foodLine)).toBe(
+      "13 food groups · protein on target 6 of 7 days"
+    );
+    const missed = recap.lines.find((l) => l.key === "nutrient-missed")!;
+    expect(missed.label).toBe("Fiber");
+    expect(missed.value).toBe("0 of 7 days on target");
+    expect(missed.comparison.kind).toBe("none");
+    // Right under the coverage line it was lifted out of.
+    const keys = recap.lines.map((l) => l.key);
+    expect(keys.indexOf("nutrient-missed")).toBe(keys.indexOf("food") + 1);
+  });
+
+  it("keeps a 1-of-N nutrient in the Food tail — the threshold is exactly zero", () => {
+    const recap = buildRecap(baseInput({ food: food(1) }));
+    expect(recap.lines.find((l) => l.key === "nutrient-missed")).toBeUndefined();
+    expect(recapLineAnnotation(recap.lines.find((l) => l.key === "food")!)).toBe(
+      "13 food groups · protein on target 6 of 7 days · fiber on target 1 of 7 days"
+    );
+  });
+
+  it("every 0-of-N nutrient gets its own line; source order settles the headline", () => {
+    const recap = buildRecap(
+      baseInput({
+        food: {
+          daysLogged: 7,
+          groups: 13,
+          nutrients: [
+            { nutrient: "protein" as const, onTarget: 0, days: 6 },
+            { nutrient: "fiber" as const, onTarget: 0, days: 7 },
+          ],
+        },
+      })
+    );
+    const missed = recap.lines.filter((l) => l.key === "nutrient-missed");
+    expect(missed.map((l) => `${l.label}: ${l.value}`)).toEqual([
+      "Protein: 0 of 6 days on target",
+      "Fiber: 0 of 7 days on target",
+    ]);
+    // Only the FIRST (source order, not severity) enters the headline.
+    expect(recap.headline).toContain("protein missed all week");
+    expect(recap.headline).not.toContain("fiber");
+  });
+});
+
+// ── #3033: the closed headline selection contract ────────────────────────────
+describe("headline registry (#3033, owner ruling 2026-08-18)", () => {
+  it("caps at three facts in the declared order: activity, PR detail, concern", () => {
+    const recap = buildRecap(
+      baseInput({
+        workouts: [
+          { date: "2026-07-04", type: "strength" },
+          { date: "2026-07-06", type: "strength" },
+        ],
+        prs: [
+          {
+            label: "Romanian Deadlift (Rep Trap Bar)",
+            set: {
+              kind: "1rm" as const,
+              weightKg: 100,
+              reps: 5,
+              bodyweight: false,
+            },
+          },
+          { label: "Bench press" },
+        ],
+        food: {
+          daysLogged: 7,
+          groups: 13,
+          nutrients: [{ nutrient: "fiber" as const, onTarget: 0, days: 7 }],
+        },
+      })
+    );
+    expect(recap.headline).toBe(
+      "2 workouts, a Romanian Deadlift (Rep Trap Bar) PR at 100 kg × 5, fiber missed all week"
+    );
+  });
+
+  it("slot 1 falls back through food coverage before adherence, weight last", () => {
+    // No workouts, food logged → food coverage leads.
+    expect(
+      buildRecap(
+        baseInput({
+          food: { daysLogged: 5, groups: 8, nutrients: [] },
+          adherence: { taken: 9, skipped: 0, due: 10 },
+        })
+      ).headline
+    ).toBe("food logged on 5 of 7 days");
+    // No food → adherence.
+    expect(
+      buildRecap(baseInput({ adherence: { taken: 9, skipped: 0, due: 10 } }))
+        .headline
+    ).toBe("90% adherence");
+  });
+
+  it("leads with a good week — the headline is a fact, not a grade", () => {
+    const recap = buildRecap(
+      baseInput({
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        adherence: { taken: 10, skipped: 0, due: 10 },
+      })
+    );
+    expect(recap.headline).toBe("1 workout");
+  });
+
+  it("an empty recap keeps an empty headline", () => {
+    const recap = buildRecap(baseInput());
+    expect(recap.isEmpty).toBe(true);
+    expect(recap.headline).toBe("");
+  });
+});
+
+// ── #3033 acceptance: the quoted week, rendered whole ────────────────────────
+//
+// The 2026-08-16 recap the owner reviewed, re-rendered through every decision at
+// once — asserted as ONE artifact so the hierarchy, the reconciled intake lines,
+// the named day, the lifted nutrient line and the de-stuttered targets head are
+// pinned together rather than line by line.
+describe("the reviewed week, rendered as one artifact (#3033)", () => {
+  beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 15));
+  });
+  afterAll(() => vi.useRealTimers());
+
+  it("renders the whole card", () => {
+    const day = (d: number) => `2026-08-${String(d).padStart(2, "0")}`;
+    const recap = buildRecap(
+      baseInput({
+        today: "2026-08-15",
+        completed: true,
+        workouts: [
+          { date: day(9), type: "strength" },
+          { date: day(10), type: "cardio" },
+          { date: day(11), type: "strength" },
+          { date: day(12), type: "strength" },
+          { date: day(13), type: "cardio" },
+          { date: day(14), type: "strength" },
+        ],
+        prevWorkouts: Array.from({ length: 7 }, (_, i) => ({
+          date: `2026-08-0${i + 1}`,
+          type: "strength" as const,
+        })),
+        targetVerdicts: [
+          { label: "Back", direction: "floor", verdict: "under" },
+          ...["Chest", "Legs", "Core", "Cardio", "Mobility", "Zone 2"].map(
+            (label) => ({
+              label,
+              direction: "floor" as const,
+              verdict: "met" as const,
+            })
+          ),
+        ],
+        prs: [
+          {
+            label: "Romanian Deadlift (Rep Trap Bar)",
+            set: {
+              kind: "1rm" as const,
+              weightKg: 100,
+              reps: 5,
+              bodyweight: false,
+            },
+          },
+        ],
+        // The shared #1505 line, preformatted by `intakeDeltaLine` with the
+        // recap's own window — a single-occurrence miss names its day.
+        intakeDeltaLine: "Missed: Coenzyme Q10 (Ubiquinol) on Wednesday",
+        adherence: { taken: 58, skipped: 1, due: 63 },
+        food: {
+          daysLogged: 7,
+          groups: 13,
+          nutrients: [
+            { nutrient: "protein", onTarget: 6, days: 7 },
+            { nutrient: "fiber", onTarget: 0, days: 7 },
+          ],
+        },
+        zone2Min: 31,
+        zone2Target: 150,
+        sleepMinutes: [433, 420, 445, 433, 440, 425, 433],
+        prevSleepMinutes: [465, 460, 470, 465, 462, 468, 465],
+        sri: 92,
+        socialJetlagMin: 8,
+      })
+    );
+    const msg = renderRecapMessage(recap, "Norton")!;
+    expect(msg.title).toBe("📊 Weekly recap — Norton");
+    expect(plainBody(msg.body)).toBe(
+      [
+        "Aug 9 – Aug 15",
+        "6 workouts, a Romanian Deadlift (Rep Trap Bar) PR at 100 kg × 5, fiber missed all week",
+        "• Workouts: 6 — strength 4, cardio 2 · 7 last week",
+        "• Targets: 6 of 7 met — short on Back",
+        "• PRs: 1 — Romanian Deadlift (Rep Trap Bar) at 100 kg × 5",
+        "• Missed: Coenzyme Q10 (Ubiquinol) on Wednesday",
+        "• Adherence: 94% — 4 missed · 1 skipped",
+        "• Food: 7/7 days — 13 food groups · protein on target 6 of 7 days",
+        "• Fiber: 0 of 7 days on target",
+        "• Zone 2: 31 min — 21% of 150 min target",
+        "• Sleep: 7h 13m — typical night over 7 nights · 7h 45m last week",
+        "• Sleep regularity: SRI 92 — 8m weekend shift",
+      ].join("\n")
+    );
   });
 });

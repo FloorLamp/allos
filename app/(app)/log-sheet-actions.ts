@@ -92,7 +92,11 @@ export async function loadLogSheetContext(): Promise<LogSheetContext> {
         slug,
         name: foodGroupBySlug(slug)?.name ?? slug,
       })),
-      doses: offer.doses.map((d) => ({ id: d.doseId, name: d.name })),
+      doses: offer.doses.map((d) => ({
+        id: d.doseId,
+        name: d.name,
+        stack: d.stack ?? null,
+      })),
       subjectName: writeSubjectName(
         scope.ownProfileId,
         scope.actingProfileId,

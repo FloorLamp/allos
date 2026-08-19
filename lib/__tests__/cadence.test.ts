@@ -332,8 +332,10 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
       floor("Chest", "met"),
       floor("Core", "met"),
     ]);
+    // #3033: the head no longer repeats the recap label's own word ("Targets:
+    // 6 of 7 targets met" was the label printing the word the value repeats).
     expect(line).toEqual({
-      value: "4 of 5 targets met",
+      value: "4 of 5 met",
       notes: ["short on Back"],
     });
   });
@@ -341,7 +343,7 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
   it("counts at-ceiling as met — the range model's most complete state", () => {
     expect(
       cadenceWeekVerdictLine([floor("Mobility", "at-ceiling")])?.value
-    ).toBe("1 of 1 target met");
+    ).toBe("1 of 1 met");
   });
 
   it("counts the overflow of a long shortfall list rather than listing it", () => {
@@ -357,7 +359,7 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
       cap("Alcohol", "over-cap"),
       cap("Nicotine", "under-cap"),
     ]);
-    expect(line?.value).toBe("1 of 1 target met");
+    expect(line?.value).toBe("1 of 1 met");
     expect(line?.notes).toEqual([
       "over the Alcohol cap",
       "within the Nicotine cap",
@@ -390,7 +392,7 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
       cadenceWeekVerdictLine([floor("Sauna", "at-ceiling")])?.notes
     ).toEqual([]);
     expect(cadenceWeekVerdictLine([floor("Sauna", "met", true)])).toEqual({
-      value: "1 of 1 target met",
+      value: "1 of 1 met",
       notes: ["past the weekly maximum on Sauna"],
     });
   });

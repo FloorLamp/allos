@@ -59,6 +59,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   { prefix: "take", family: "intake-dose" },
   { prefix: "skip", family: "intake-dose" },
   { prefix: "all", family: "intake-dose" },
+  // The per-stack one-tap (#3098) rides the dose reminder and only ever the dose
+  // reminder, so it needs none of #2460's dual-host machinery. Its dose ids are an
+  // upper bound the handler intersects with fresh state; the sweep reads the same
+  // ledger, so the button dies once every dose it names is resolved.
+  { prefix: "stacktake", family: "intake-dose" },
   // ⤓ May rides the dose reminder (#1505 part 2) and dies with the same message —
   // and separately once the item is already `may`, when the suggestion is moot.
   { prefix: "demote", family: "intake-dose" },

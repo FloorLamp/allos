@@ -450,6 +450,17 @@ const intakeDose: FamilyReconciler = {
         const entries = collectWindowDoses(profileId, slot, date);
         if (entries.length > 0 && entries.every((e) => e.taken || e.skipped))
           dead.add(t);
+      } else if (f[0] === "stacktake") {
+        // "✅ <Stack> (n)" (#3098) is dead once every dose it names is resolved —
+        // the same ledger the tap handler intersects with.
+        const date = f[2];
+        const ids = (f[3] ?? "").split(",").map(Number);
+        if (
+          date &&
+          ids.length > 0 &&
+          ids.every((id) => id && resolvedFor(date).has(id))
+        )
+          dead.add(t);
       } else if (f[0] === "demote") {
         // The ⤓ May suggestion is moot once the item IS `may` — the same
         // already-demoted refusal its own typed outcome would answer with.
@@ -487,6 +498,13 @@ const intakeDose: FamilyReconciler = {
       } else if (f[0] === "all") {
         slots.push(f[2] as IntakeSendSlot);
         date ??= f[3] ?? null;
+      } else if (f[0] === "stacktake") {
+        // The per-stack one-tap (#3098) names its member doses; harvest them so a
+        // partially resolved stack message rebuilds over its whole session.
+        for (const id of (f[3] ?? "").split(",").map(Number)) {
+          if (id) doseIds.push(id);
+        }
+        date ??= f[2] ?? null;
       }
     }
     if (!date) return null;
