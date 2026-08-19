@@ -98,7 +98,15 @@ export default function DashboardStandingCluster({
                           const content = (
                             <>
                               {presentation.label && (
-                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                // The row's IDENTITY — what the reading is, as
+                                // opposed to what it says. Named so a layout guard
+                                // can assert a long value never costs a Standing
+                                // reading its name (#2614), which is a claim about
+                                // this span rather than about any one family.
+                                <span
+                                  data-testid="standing-label"
+                                  className="text-xs text-slate-500 dark:text-slate-400"
+                                >
                                   {presentation.label}
                                 </span>
                               )}

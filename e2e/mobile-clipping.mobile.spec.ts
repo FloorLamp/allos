@@ -97,28 +97,54 @@ test.describe("mobile clipping batch (#2614)", () => {
   test("item 4: a home Clinical results label keeps its identity when the value is long", async ({
     page,
   }) => {
+    // The RULE is unchanged from the census: a long clinical value may not cost the
+    // reading its NAME at 390px. The SURFACE moved (#3186). This read
+    // `recent-lab-row` — RecentLabsWidget — and a Standing member never renders its
+    // widget node (DashboardStandingCluster renders the compact presentation
+    // instead), so those rows were only ever the tail BEYOND the family cap: a
+    // profile seating three markers and spilling none rendered zero of them. The
+    // tail is no longer a dashboard fact, so the clinical rows a phone shows are
+    // the family's own — and they are the worst case for this rule rather than a
+    // milder one, because seating is flagged-first and the values carrying a
+    // severity word are exactly the seated ones.
     await page.goto("/");
-    const rows = page.getByTestId("recent-lab-row");
-    await expect(rows.first()).toBeVisible(); // first-ok: the widget renders rows; the assertion below is over ALL of them
+    const family = page.locator('[data-standing-family="clinical-results"]');
+    await expect(family).toBeVisible();
+    const rows = family.getByTestId("dashboard-candidate");
+    await expect(rows.first()).toBeVisible(); // first-ok: presence proves the family rendered; the assertions below are over ALL of them
 
-    // No label is crushed to an ellipsis. The row wraps its
-    // value/age pair to a second line instead of spending the name column, so the
-    // rendered name is never narrower than a couple of characters' worth.
+    // No name is sacrificed to the value column. The census measured this as the
+    // rendered box against the text's own width; a Range says the same thing for an
+    // inline span, whose `scrollWidth` is zero. A wrapped name reads the same either
+    // way — the union of its line boxes IS its text — so only a name actually
+    // clipped short of itself can fail this.
     const crushed = await rows.evaluateAll((nodes) =>
       nodes.flatMap((node) => {
-        const link = node.querySelector("a");
-        if (!link) return [];
-        const box = link.getBoundingClientRect();
-        // `scrollWidth` is the untruncated text width; a name whose rendered box
-        // shows less than half of it has been sacrificed to the value column.
-        return box.width * 2 < link.scrollWidth
+        const label = node.querySelector('[data-testid="standing-label"]');
+        if (!label) return [];
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const box = label.getBoundingClientRect();
+        return box.width * 2 < range.getBoundingClientRect().width
           ? [
-              `${link.textContent?.trim()} rendered at ${Math.round(box.width)}px`,
+              `${label.textContent?.trim()} rendered at ${Math.round(box.width)}px`,
             ]
           : [];
       })
     );
     expect(crushed, crushed.join("\n")).toEqual([]);
+
+    // And nothing buys its fit by sitting past an edge instead: each name is laid
+    // out inside its own row, and every row inside the card that holds it.
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    for (let index = 0; index < count; index += 1) {
+      const row = rows.nth(index);
+      expect(
+        await overhangWithin(row.getByTestId("standing-label"), row)
+      ).toBeLessThanOrEqual(1);
+    }
+    expect(await scrollableBy(family)).toBeLessThanOrEqual(1);
   });
 });
 

@@ -40,6 +40,26 @@ const idStartsWith =
   (candidate: DashboardCandidate): boolean =>
     prefixes.some((prefix) => candidate.candidateId.startsWith(prefix));
 
+// The clinical family's cap, named so the dashboard gather can stop minting the
+// readings this registry would never seat (#3186). The registry is the single
+// definition site: a gather that hard-codes six drifts the first time the cap moves.
+export const CLINICAL_RESULTS_CAP = 6;
+
+// The rows of a capped family a gather should still mint, in the family's own
+// order: the ones the registry can seat, PLUS any row whose promotion is live.
+// The union is what keeps the cap safe. A member that has just changed is a Now
+// fact wherever it sits in the family's order, so a plain `slice(0, cap)` would
+// silently drop exactly the reading someone most needs to see — with the cap
+// already full of notable markers, the one that JUST became notable is the one
+// outside it.
+export function cappedFamilyGather<Row>(
+  rows: readonly Row[],
+  cap: number,
+  promoted: (row: Row) => boolean
+): Row[] {
+  return rows.filter((row, index) => index < cap || promoted(row));
+}
+
 // The fixed dashboard instrument cluster. Declaration order is render order.
 // This is intentionally the sole list of Standing families: a newly gathered
 // reading remains in Everything until this closed registry explicitly claims it.
@@ -163,7 +183,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     composition: "members",
     matches: idStartsWith("labs.latest:", "labs.bootstrap"),
     memberOrder: { kind: "source", authority: "recentLabHighlights" },
-    cap: 6,
+    cap: CLINICAL_RESULTS_CAP,
   },
   {
     key: "outcome-goals",
@@ -179,9 +199,11 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     section: "longer-view",
     label: "Weekly targets",
     composition: "members",
-    matches: (candidate) =>
-      candidate.standingEligible !== false &&
-      candidate.candidateId.startsWith("target.weekly-progress:"),
+    // A met target is claimed by this family and then declines its seat
+    // (`standingEligible: false`), which is what makes it a capped-family tail
+    // rather than a loose fact: it celebrates the transition in Now and, once
+    // that decays, /training owns it (#3186).
+    matches: idStartsWith("target.weekly-progress:"),
     memberOrder: { kind: "source", authority: "summarizeDashboardHabits" },
     cap: 4,
   },
@@ -233,13 +255,18 @@ export function resolveStandingMembers(
   members: StandingMember[];
   memberIds: ReadonlySet<string>;
   factKeys: ReadonlySet<string>;
+  cappedOverflowIds: ReadonlySet<string>;
 } {
   const members: StandingMember[] = [];
   const memberIds = new Set<string>();
   const claimedFacts = new Set<string>();
+  // Owner ruling (#3186): a capped family renders its capped members and nothing
+  // else. What the family claims but does not seat is its tail, and the tail is
+  // not a dashboard fact — the ranker keeps it out of every lane.
+  const cappedOverflowIds = new Set<string>();
 
   for (const family of STANDING_READING_ORDER) {
-    const eligible = candidates.filter(
+    const claimed = candidates.filter(
       (candidate) =>
         !memberIds.has(candidate.candidateId) &&
         !claimedFacts.has(candidate.factKey) &&
@@ -249,7 +276,10 @@ export function resolveStandingMembers(
         family.matches(candidate)
     );
     const familyFacts = new Set<string>();
-    const ordered = orderFamilyMembers(eligible, family).filter((candidate) => {
+    const ordered = orderFamilyMembers(
+      claimed.filter((candidate) => candidate.standingEligible !== false),
+      family
+    ).filter((candidate) => {
       if (familyFacts.has(candidate.factKey)) return false;
       familyFacts.add(candidate.factKey);
       return true;
@@ -261,7 +291,13 @@ export function resolveStandingMembers(
       memberIds.add(candidate.candidateId);
       claimedFacts.add(candidate.factKey);
     }
+    if (family.cap == null) continue;
+    const seated = new Set(selected.map((candidate) => candidate.candidateId));
+    for (const candidate of claimed) {
+      if (!seated.has(candidate.candidateId))
+        cappedOverflowIds.add(candidate.candidateId);
+    }
   }
 
-  return { members, memberIds, factKeys: claimedFacts };
+  return { members, memberIds, factKeys: claimedFacts, cappedOverflowIds };
 }
