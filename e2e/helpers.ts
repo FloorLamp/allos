@@ -1,6 +1,7 @@
 import {
   expect,
   type CDPSession,
+  type ElementHandle,
   type Locator,
   type Page,
   type Request,
@@ -1246,8 +1247,26 @@ function armActionPost(
   // — and `response.request()` returns that same object.
   const caused = new WeakSet<Request>();
   let collecting = false;
+  // Same-origin POSTs ISSUED after the interaction, answered or not. waitForResponse
+  // can only see requests the server ANSWERED, so before this list a hung response
+  // and a page that dispatched nothing produced the same "no traffic" diagnosis —
+  // which is exactly how #3029's CI stall got read as "the page produced no
+  // traffic" when the helper had no way to know whether it had. The request event
+  // fires when the browser issues the request, so recording it here lets the
+  // timeout say WHICH of the two happened.
+  const armedAt = Date.now();
+  const issued: string[] = [];
   const onRequest = (request: Request) => {
-    if (collecting) caused.add(request);
+    if (!collecting) return;
+    caused.add(request);
+    if (request.method() !== "POST") return;
+    try {
+      const target = new URL(request.url());
+      if (target.origin === here.origin)
+        issued.push(`${target.pathname} (issued +${Date.now() - armedAt}ms)`);
+    } catch {
+      // A malformed URL can't be same-origin.
+    }
   };
   // Every same-origin POST seen during the wait, with the reason it was refused.
   // A timeout here is nearly always a question about WHICH post happened, so the
@@ -1308,13 +1327,86 @@ function armActionPost(
         `interaction. ${advice}` +
         (rejected.length
           ? `\n[${helper}] same-origin POSTs seen while waiting:\n  - ${rejected.join("\n  - ")}`
-          : `\n[${helper}] NO same-origin POST was seen at all during the wait — ` +
-            `not even a background one. The page produced no traffic, so the old ` +
-            `"any POST" helper would have timed out here too; suspect a stalled or ` +
-            `navigated page rather than this contract.`);
+          : issued.length
+            ? // The three-way split #3029 needed: answered-and-refused (above),
+              // issued-but-never-answered (here), and never-issued (below) are
+              // three different culprits, and the old message collapsed the last
+              // two into "the page produced no traffic".
+              `\n[${helper}] same-origin POST(s) WERE issued after this ` +
+              `interaction but NO response arrived before the deadline:` +
+              `\n  - ${issued.join("\n  - ")}` +
+              `\n[${helper}] the page dispatched its action; suspect the server ` +
+              `or network leg (a wedged worker app server, a response stalled ` +
+              `past the budget), not this call site or the page.`
+            : `\n[${helper}] NO same-origin POST was even ISSUED during the wait — ` +
+              `not even a background one. The page dispatched nothing, so the old ` +
+              `"any POST" helper would have timed out here too; suspect a stalled ` +
+              `or navigated page rather than this contract.`);
       return wrapped;
     },
   };
+}
+
+// What the clicked control looks like at the moment a settledClick timeout is
+// being diagnosed, plus whether the page answered the read at all (#3029).
+//
+// Probed through an ElementHandle captured BEFORE the click, never through the
+// caller's locator: a SubmitButton swaps its accessible name to the pending
+// label while the action is in flight, so re-resolving "the button named X" is
+// exactly what fails in the state this probe exists to see. The handle is the
+// same DOM node whatever it now says.
+//
+// Bounded and never-throwing: it runs only on the failure path, and a diagnosis
+// must not replace the error it is explaining with one of its own. The answers
+// separate the hypotheses a bare "no POST" left open:
+//   • aria-busy/disabled with a pending label → React DID dispatch the action;
+//     the stall is downstream of the page (pairs with the issued-POST list).
+//   • an idle, enabled control → the click landed but the submit/action handler
+//     never ran (or returned synchronously without posting) — look at the form's
+//     client-side guards, not at the network.
+//   • connected:false → the node left the DOM (a remount or an applied render).
+//   • a destroyed execution context → the page NAVIGATED under the wait.
+//   • no answer inside the probe's own budget → the renderer is not running JS
+//     at all (a starved worker, a wedged main thread); THAT is the finding.
+async function clickedControlState(
+  handle: ElementHandle<SVGElement | HTMLElement> | null
+): Promise<string> {
+  if (!handle) return "";
+  const started = Date.now();
+  try {
+    const state = await Promise.race([
+      handle
+        .evaluate((el) => ({
+          text: (el.textContent ?? "").trim().slice(0, 80),
+          disabled: el instanceof HTMLButtonElement ? el.disabled : null,
+          ariaBusy: el.getAttribute("aria-busy"),
+          connected: el.isConnected,
+        }))
+        .catch(
+          (probeErr: unknown) =>
+            `probe threw: ${String(probeErr).slice(0, 200)} — a destroyed ` +
+            `execution context here means the page navigated under the wait.`
+        ),
+      new Promise<"probe-timeout">((resolve) =>
+        setTimeout(() => resolve("probe-timeout"), 2_000)
+      ),
+    ]);
+    if (state === "probe-timeout")
+      return (
+        `\n[settledClick] the page did not answer a 2s read of the clicked ` +
+        `control's state — the renderer is not running JS (or is starved); that, ` +
+        `not the missing POST, is the finding.`
+      );
+    if (typeof state === "string") return `\n[settledClick] ${state}`;
+    return (
+      `\n[settledClick] the clicked control at diagnosis time: ` +
+      `${JSON.stringify(state)} (read in ${Date.now() - started}ms). ` +
+      `aria-busy/disabled means the action was dispatched and is still pending; ` +
+      `an idle control means the handler never posted.`
+    );
+  } catch {
+    return "";
+  }
 }
 
 // Click `locator` and await the Server Action POST it fires before returning.
@@ -1388,6 +1480,15 @@ export async function settledClick(
   }).toPass({ timeout: Math.max(1_000, deadline - Date.now()) }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a non-idempotent action is never fired twice
   const rest = Math.max(1_000, deadline - Date.now());
 
+  // The diagnosis probe's stable reference to the node about to be clicked (#3029)
+  // — resolved NOW because the failure state it reads (a pending SubmitButton) is
+  // one the caller's locator may no longer match. Best-effort: the element is
+  // already visible, so this is one cheap round-trip, and a null just means the
+  // failure path reports less.
+  const probeHandle = await locator
+    .elementHandle({ timeout: 1_000 })
+    .catch(() => null);
+
   const wait = armActionPost(page, here, { timeout: rest, url: opts.url });
   // Held outside the try so the CATCH can tell "the app fired no POST" from "the
   // click never landed" — see the catch below. A one-field holder rather than a
@@ -1436,7 +1537,8 @@ export async function settledClick(
       `If this control is a pure CLIENT toggle (a disclosure, a chip, an overflow ` +
         `menu, a dialog opener) it never posts: use hydratedClick and assert what ` +
         `it reveals. If it navigates, use followLink. If it posts somewhere other ` +
-        `than this route, pass { url }.`
+        `than this route, pass { url }.` +
+        (await clickedControlState(probeHandle))
     );
   } finally {
     wait.release();
