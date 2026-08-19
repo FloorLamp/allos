@@ -174,9 +174,11 @@ export function intakeItemShortLabel(item: {
  * `out[i]` is the label for `items[i]` — with collisions resolved: any item whose
  * short form is not unique in the set falls back to its FULL name.
  *
- * WHY THIS IS THE ONLY SAFE ENTRY POINT FOR A CONTROL THAT WRITES. Shortening is a
- * MANY-TO-ONE map, and `intakeItemShortLabel` answers for one item in isolation, so
- * it cannot see the sibling it lands on top of:
+ * EVERY CONTROL WHOSE TAP WRITES A DOSE RESOLVES ITS LABEL HERE — the web chips and
+ * rows through the intake gathers, and the Telegram take/confirm/prn keyboards
+ * through their own builders. Shortening is a MANY-TO-ONE map, and
+ * `intakeItemShortLabel` answers for one item in isolation, so it cannot see the
+ * sibling it lands on top of:
  *
  *   • the curated map aliases on purpose — "Coenzyme Q10" and "Ubiquinone" both
  *     resolve to "CoQ10", and both magnesium glycinates share one entry;
@@ -192,13 +194,35 @@ export function intakeItemShortLabel(item: {
  * open. A longer chip is strictly better than a wrong dose, so ambiguity always
  * loses to the full name here — never the other way round.
  *
- * Resolve over the profile's WHOLE item set, not the subset a surface happens to be
- * rendering: a label that shortened or lengthened depending on which items were due
- * today would be a different name for the same thing on two screens.
+ * WHICH SET TO PASS. Uniqueness is only ever guaranteed WITHIN the set handed in, so
+ * pass the widest set the caller can see:
+ *
+ *   • the web's intake gathers and the Trends dose history pass the PROFILE's whole
+ *     item set (`getIntakeItems`, snapshot-cached), so an item's label is a property
+ *     of the item — it cannot change because a different subset was due today, or
+ *     because the user narrowed a date range;
+ *   • the Telegram message builders are PURE FORMATTERS with no database access, so
+ *     they pass the set that message renders — its pending doses, its offered items,
+ *     one household member's doses. That is exactly the set a thumb chooses between,
+ *     so it closes the wrong-subject tap; what it does not promise is that a lone
+ *     item in a one-dose reminder wears the same label the web gives it, since the
+ *     web may have lengthened it against a sibling this message never mentions.
+ *
+ * Do not pass a set narrower than the surface's own controls — that is the one case
+ * this function cannot protect against.
  *
  * Items whose FULL names are also identical stay identical — that is the pre-existing
  * duplicate-name state every intake surface already qualifies with the dose detail
  * beside it, and this function neither creates nor can fix it.
+ *
+ * The substitution RUNS TO A FIXED POINT, because a full name can itself be another
+ * item's surviving short form: given items named "CoQ10" and "Astaxanthin Complex"
+ * that share the product "Ubi", plus a third named "Coenzyme Q10", the first pass
+ * lengthens the product pair and lands "CoQ10" on top of the third item's short form
+ * — a single pass would hand back the very collision it just resolved (#2858 review
+ * pass 2, R2). Each round only ever moves an item from its short form to its full
+ * name and never back, so at most one round per item can change anything and the
+ * loop terminates.
  *
  * Pure. Comparison is the same normalization the lookup uses, so "CoQ10" and "coq10"
  * count as the collision they would read as.
@@ -211,12 +235,24 @@ export function intakeShortLabels(
   }[]
 ): string[] {
   const labels = items.map((item) => intakeItemShortLabel(item));
-  const counts = new Map<string, number>();
-  for (const label of labels) {
-    const key = normalizeIntakeName(label);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+  // Bounded by construction: `settle` only ever replaces a short form with the
+  // item's own name, so each item can change at most once.
+  for (let round = 0; round <= items.length; round++) {
+    const counts = new Map<string, number>();
+    for (const label of labels) {
+      const key = normalizeIntakeName(label);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    let changed = false;
+    for (let i = 0; i < labels.length; i++) {
+      if ((counts.get(normalizeIntakeName(labels[i])) ?? 0) <= 1) continue;
+      // Already the record's own name — there is nothing longer to fall back to,
+      // and two items that share a full name are the duplicate-name state above.
+      if (labels[i] === items[i].name) continue;
+      labels[i] = items[i].name;
+      changed = true;
+    }
+    if (!changed) break;
   }
-  return labels.map((label, i) =>
-    (counts.get(normalizeIntakeName(label)) ?? 0) > 1 ? items[i].name : label
-  );
+  return labels;
 }

@@ -6,6 +6,7 @@ import {
   getFoodHabitTrends,
   getFoodDailyServingTotals,
   getConfirmedIntakeDosesInRange,
+  getIntakeItems,
   getMacroFiberDays,
 } from "@/lib/queries";
 import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
@@ -166,12 +167,22 @@ export default async function NutritionSection({
   // answer the Upcoming chips and the household confirm rows get. It has already
   // dropped any label two items would have shared, so this pass only adds the
   // qualifier/ordinal a duplicate FULL name still earns.
-  const shortNames = intakeShortLabels(doseItems);
+  //
+  // Resolved over the PROFILE's items, not over the doses that happen to fall in
+  // this window (#2858 review, R3). Resolving over the window would let the same
+  // supplement read "CoQ10" here and "Coenzyme Q10" on Upcoming, and would flip its
+  // label as the user narrows the range — the label has to be a property of the
+  // item, not of the current query. `getIntakeItems` is snapshot-cached, so this
+  // costs nothing the page was not already paying.
+  const profileItems = getIntakeItems(profile.id);
+  const profileShortNames = intakeShortLabels(profileItems);
   const shortByItemId = new Map(
-    doseItems.map((item, i) => [item.itemId, shortNames[i]])
+    profileItems.map((item, i) => [item.id, profileShortNames[i]])
   );
-  const doseShortLabels = disambiguate((item) =>
-    shortByItemId.get(item.itemId)!
+  // A dose row's item is always one of the profile's (the gather inner-joins
+  // intake_items), so the map answers for every row.
+  const doseShortLabels = disambiguate(
+    (item) => shortByItemId.get(item.itemId) ?? item.name
   );
   const doseGroups = doseItems.map((item) => ({
     key: String(item.itemId),

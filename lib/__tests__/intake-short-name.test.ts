@@ -228,6 +228,31 @@ describe("intakeShortLabels", () => {
     ).toEqual(["Creatine", "Creatine Monohydrate"]);
   });
 
+  // #2858 review pass 2, R2. A full name can BE another item's surviving short
+  // form, so one count-and-substitute pass can hand back the collision it just
+  // resolved. The product pair lengthens onto "CoQ10", which the third item was
+  // still wearing; only running to a fixed point separates all three.
+  it("re-resolves a collision its own fallback creates", () => {
+    expect(
+      intakeShortLabels([
+        { name: "CoQ10", kind: "supplement", product: "Ubi" },
+        { name: "Astaxanthin Complex", kind: "supplement", product: "Ubi" },
+        { name: "Coenzyme Q10", kind: "supplement", product: null },
+      ])
+    ).toEqual(["CoQ10", "Astaxanthin Complex", "Coenzyme Q10"]);
+  });
+
+  it("leaves no two labels equal on the case its own fallback broke", () => {
+    // The property the surfaces actually depend on, stated as a property: after
+    // resolution NOTHING in the set shares a label with anything else.
+    const labels = intakeShortLabels([
+      { name: "CoQ10", kind: "supplement", product: "Ubi" },
+      { name: "Astaxanthin Complex", kind: "supplement", product: "Ubi" },
+      { name: "Coenzyme Q10", kind: "supplement", product: null },
+    ]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it("is positional and total — one label per input, empty in, empty out", () => {
     expect(intakeShortLabels([])).toEqual([]);
     const items = [supp("Coenzyme Q10"), supp("Ubiquinone"), supp("Zinc")];

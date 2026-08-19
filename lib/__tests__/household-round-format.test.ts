@@ -48,6 +48,53 @@ const render = (sections: HouseholdRoundSection[]) =>
   });
 
 describe("renderHouseholdRoundMessage", () => {
+  // #2858 review pass 2, R1. This button confirms a dose FOR SOMEONE ELSE, so two
+  // of one member's buttons reading alike is a dose marked taken on their behalf
+  // that they never took. The curated map aliases both names onto "CoQ10".
+  it("never labels two of one member's confirm buttons alike", () => {
+    const msg = render([
+      section({
+        doses: [
+          { doseId: 41, itemId: 4, itemName: "Coenzyme Q10", amount: "200 mg" },
+          { doseId: 42, itemId: 5, itemName: "Ubiquinone", amount: "200 mg" },
+        ],
+      }),
+    ]);
+    const labels = msg!
+      .actions!.filter((a) => a.data?.startsWith("hh:"))
+      .map((a) => a.label);
+    expect(labels).toEqual([
+      "✅ Ada · Coenzyme Q10 · 200 mg",
+      "✅ Ada · Ubiquinone · 200 mg",
+    ]);
+  });
+
+  it("lets two DIFFERENT members share an item label — the name leads each button", () => {
+    // Only a within-member collision is a wrong-subject hazard; the member's own
+    // name already separates these two, so neither has to lengthen.
+    const msg = render([
+      section({
+        doses: [
+          { doseId: 41, itemId: 4, itemName: "Coenzyme Q10", amount: "200 mg" },
+        ],
+      }),
+      section({
+        profileId: 9,
+        name: "Kai",
+        doses: [
+          { doseId: 51, itemId: 6, itemName: "Coenzyme Q10", amount: "200 mg" },
+        ],
+      }),
+    ]);
+    const labels = msg!
+      .actions!.filter((a) => a.data?.startsWith("hh:"))
+      .map((a) => a.label);
+    expect(labels).toEqual([
+      "✅ Ada · CoQ10 · 200 mg",
+      "✅ Kai · CoQ10 · 200 mg",
+    ]);
+  });
+
   it("EMPTY ROUND SENDS NOTHING", () => {
     // The load-bearing negative: a caregiver must never be pinged to be told there
     // is nothing to do.
