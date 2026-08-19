@@ -210,9 +210,7 @@ describe("medicationDuplicationNote / isIndistinguishableFamily (#3069)", () => 
       item({ id: 2, name: "albuterol" }),
     ];
     expect(isIndistinguishableFamily(members)).toBe(false);
-    expect(medicationDuplicationNote(members).evidence).toBe(
-      EXISTING_EVIDENCE
-    );
+    expect(medicationDuplicationNote(members).evidence).toBe(EXISTING_EVIDENCE);
   });
 });
 

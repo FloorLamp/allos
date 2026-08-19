@@ -136,8 +136,7 @@ export function persistExtractedMedications(
 
   let newItems = 0;
   for (const key of order) {
-    const { med, courses, encExt, indExt, rxcui, presDate } =
-      groups.get(key)!;
+    const { med, courses, encExt, indExt, rxcui, presDate } = groups.get(key)!;
     // Prescriber link (#1051 semantics (a)): resolve the parsed prescriber TEXT into
     // an EXISTING individual registry row (exact only — never an org / near-miss).
     const providerId = med.prescriber

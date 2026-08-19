@@ -280,7 +280,9 @@ describe("CCDA source-supplied RxCUI (#3070)", () => {
 
   it("drops an NDC-coded material's code — never an rxcui, external id unchanged", () => {
     const rec = parseCcda(
-      medsDoc(`<code code="12345-6789-01" codeSystem="2.16.840.1.113883.6.69"/>`)
+      medsDoc(
+        `<code code="12345-6789-01" codeSystem="2.16.840.1.113883.6.69"/>`
+      )
     ).observations[0];
     expect(rec.rxcui).toBeNull();
     // Name-keyed, exactly as before this change (slugged printed name).

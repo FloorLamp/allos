@@ -19,9 +19,12 @@ import { utcSqlString } from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
 import {
   collectUpcoming,
+  dismissFinding,
+  getFindingSuppressions,
   getMedicationFamilyStates,
   getPrnOverMaxItems,
 } from "@/lib/queries";
+import { activeFindings } from "@/lib/findings";
 import { prnMaxSignalKey, PRN_MAX_PREFIX } from "@/lib/prn-redose";
 import { SUPPRESSION_DISPLAY_PREFIXES } from "@/lib/suppression-display";
 import { buildMedicationDuplicationFindings } from "@/lib/rule-findings";
@@ -29,7 +32,7 @@ import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
-import { MED_DUP_PREFIX } from "@/lib/medication-family";
+import { MED_DUP_PREFIX, medDupSignalKey } from "@/lib/medication-family";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-prn-family";
 
@@ -416,7 +419,11 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
 
     const findings = buildMedicationDuplicationFindings(p);
     expect(findings).toHaveLength(1);
+    // A one-strength-one-without pair cannot be proven indistinguishable (#3069),
+    // so the ORIGINAL #1027 copy renders, reassurance included.
     expect(findings[0].title).toContain("Ibuprofen appears in 2 active");
+    expect(findings[0].detail).toContain("share the same active ingredient");
+    expect(findings[0].evidence).toContain("often deliberate");
     expect(findings[0].dedupeKey.startsWith(MED_DUP_PREFIX)).toBe(true);
     expect(dedupeKeyHasKnownPrefix(findings[0].dedupeKey)).toBe(true);
     // Coaching tier (#449): calm — never a notification, never the hero.
@@ -425,5 +432,67 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
     expect(
       collectUpcoming(p, today(p)).some((u) => u.key.startsWith(MED_DUP_PREFIX))
     ).toBe(false);
+  });
+
+  // #3069 — the observed triplicate-import family through the REAL builder: three
+  // active `albuterol` items (one name key, no strengths) plus the profile's
+  // `Albuterol Sulfate` (a different name key — its own family, no note). The
+  // indistinguishable trio renders as duplicate RECORDS, never as a lifestyle
+  // choice; the family math and the dismissal key are untouched.
+  it("an indistinguishable family reads as duplicate records; the family math and the dismissal keep working", () => {
+    const p = newProfile("FamDupRecords");
+    const a1 = seedMed(p, "albuterol", { minInterval: 4, maxDaily: 6 });
+    const a2 = seedMed(p, "albuterol");
+    const a3 = seedMed(p, "albuterol");
+    seedMed(p, "Albuterol Sulfate"); // distinct name key — solo family, no note
+
+    const findings = buildMedicationDuplicationFindings(p);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.title).toBe("Albuterol is recorded 3 times");
+    expect(f.detail).toBe(
+      "Most likely one medication imported more than once. Their doses " +
+        "already count as one toward the redose window, so nothing is " +
+        "over-counted."
+    );
+    // No "often deliberate" rationalization anywhere on the note.
+    for (const text of [f.title, f.detail ?? "", f.evidence ?? ""]) {
+      expect(text).not.toContain("often deliberate");
+      expect(text).not.toContain("albuterol + albuterol");
+    }
+    // Action → the medications page, where an extra can be stopped or deleted.
+    expect(f.actionHref).toBe("/medications");
+    // Same key namespace / tier / posture as before the copy split.
+    expect(f.dedupeKey.startsWith(MED_DUP_PREFIX)).toBe(true);
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
+    expect(
+      collectUpcoming(p, today(p)).some((u) => u.key.startsWith(MED_DUP_PREFIX))
+    ).toBe(false);
+
+    // The protective half is UNCHANGED: all three duplicates are one family, so
+    // a dose on one member arms the shared redose clock and today's count spans
+    // the trio (their doses count as ONE stream — nothing over-counted).
+    const now = new Date();
+    const date = today(p);
+    logAdmin(a1.itemId, a1.doseId, date, 8, now);
+    const arming = logAdmin(a2.itemId, a2.doseId, date, 1, now);
+    const state = getMedicationFamilyStates(p, date).get(a3.itemId)!;
+    expect(state.memberIds.sort()).toEqual(
+      [a1.itemId, a2.itemId, a3.itemId].sort()
+    );
+    expect(state.latestId).toBe(arming);
+    expect(state.countToday).toBe(2);
+    expect(state.minConfirmedMax).toBe(6);
+
+    // A dismissal recorded against the family key (as before the copy change)
+    // still suppresses the re-rendered finding — the dedupeKey did not move.
+    expect(f.dedupeKey).toBe(medDupSignalKey(state.familyKey));
+    dismissFinding(p, f.dedupeKey);
+    const after = activeFindings(
+      buildMedicationDuplicationFindings(p),
+      getFindingSuppressions(p),
+      date
+    );
+    expect(after).toEqual([]);
   });
 });
