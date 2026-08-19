@@ -406,8 +406,9 @@ describe("a dose correction row renders only on the message that produced it (#2
     stampTap(betaLog.id, "2026-08-05 10:42:00");
 
     // And Gamma is confirmed from the WEB — no message, honestly unattributed. Its
-    // tap sits 18 minutes after Beta's, past BURST_GAP_MIN, so it is its own burst
-    // rather than a burst-mate of the chat-confirmed one.
+    // tap sits 18 minutes after Beta's. That spacing stopped being load-bearing with
+    // #3092: an unattributed tap now partitions away from an attributed one BEFORE
+    // the gap rule runs, so these are two bursts at any spacing.
     markDoseTaken(pid, c.doseId, c.itemId, date);
     const gammaLog = doseLogs(pid)[2];
     expect(gammaLog.messageRef).toBeNull();

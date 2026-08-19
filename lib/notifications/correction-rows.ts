@@ -63,6 +63,11 @@ import { GLYPH } from "./glyphs";
 export interface CorrectionPrefixes {
   // The −Nh chips.
   chip: string;
+  // The domain's `notify_messages.kind` — the axis `correctionMessageBinding` resolves a
+  // rendering (or tapping) message's identity on. Declared here so the tap-time binding
+  // re-check (lib/notifications/telegram-time-correction.ts) asks the SAME question the
+  // domain's own builder asked at render time, from one declaration per domain.
+  kind: string;
   // The absolute-hour picker: open, back, and each offered hour.
   at: string;
   // Does this domain store a profile-local DAY plus a time, rather than an instant?
@@ -88,6 +93,7 @@ export interface CorrectionPrefixes {
 
 export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "foodtime",
+  kind: "food",
   at: "foodtimeat",
   dayKeyed: false,
   // The food bar's correction sheet (#2227) edits any serving in the log's seven-day
@@ -97,6 +103,7 @@ export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
 
 export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "dosetime",
+  kind: "dose",
   at: "dosetimeat",
   dayKeyed: false,
   appSurface: "the dose history in the app",
@@ -114,6 +121,7 @@ export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
 // bounded by the burst's own local day as well as by the clock.
 export const PRACTICE_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "practime",
+  kind: "practice",
   at: "practimeat",
   dayKeyed: true,
   appSurface: "the practice log in the app",
