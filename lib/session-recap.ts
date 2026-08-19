@@ -30,7 +30,13 @@ import {
   type SetRow,
   type SetStatus,
 } from "./training-log-format";
-import { exerciseHistoryKey, isBodyweight } from "./lifts";
+import {
+  effectiveLoadKg,
+  exerciseHistoryKey,
+  isBodyweight,
+  loadKindOf,
+  type LoadKind,
+} from "./lifts";
 import { pickSeedSessions } from "./exercise-window";
 import type { WeightUnit } from "./settings";
 import { fmtWeight, kgTo, toKg, round } from "./units";
@@ -196,16 +202,20 @@ function sessionBest(
 
 function currentSides(
   sets: RecapSet[],
-  baseKg: number
+  baseKg: number,
+  loadKind: LoadKind
 ): { weightKg: number; reps: number }[] {
   const out: { weightKg: number; reps: number }[] = [];
   for (const s of sets) {
     if (s.warmup) continue;
     if (s.reps != null)
-      out.push({ weightKg: baseKg + (s.weightKg ?? 0), reps: s.reps });
+      out.push({
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weightKg),
+        reps: s.reps,
+      });
     if (s.repsRight != null)
       out.push({
-        weightKg: baseKg + (s.weightKgRight ?? 0),
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weightKgRight),
         reps: s.repsRight,
       });
   }
@@ -214,16 +224,20 @@ function currentSides(
 
 function historySides(
   sets: RecapHistorySet[],
-  baseKg: number
+  baseKg: number,
+  loadKind: LoadKind
 ): { weightKg: number; reps: number }[] {
   const out: { weightKg: number; reps: number }[] = [];
   for (const s of sets) {
     if (s.warmup) continue;
     if (s.reps != null)
-      out.push({ weightKg: baseKg + (s.weight_kg ?? 0), reps: s.reps });
+      out.push({
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weight_kg),
+        reps: s.reps,
+      });
     if (s.reps_right != null)
       out.push({
-        weightKg: baseKg + (s.weight_kg_right ?? 0),
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weight_kg_right),
         reps: s.reps_right,
       });
   }
@@ -246,6 +260,9 @@ export function sessionRecap(
     const hist = history[key];
     const bodyweight = hist?.bodyweight ?? isBodyweight(ex.exercise);
     const baseKg = bodyweight ? session.bodyweightKg : 0;
+    // The SIGN of that fold (#1922): an assisted movement's logged weight is the
+    // machine's counterweight, so it subtracts from bodyweight rather than adding.
+    const loadKind = loadKindOf(ex.exercise);
 
     const setRows = ex.sets.map(toSetRow);
     const summary = summarizeExercise(setRows, "kg");
@@ -267,17 +284,17 @@ export function sessionRecap(
     const prior = (hist?.sessions ?? []).filter(
       (s) => s.activityId !== currentId
     );
-    const curBest = sessionBest(currentSides(ex.sets, baseKg));
+    const curBest = sessionBest(currentSides(ex.sets, baseKg, loadKind));
 
     // PR flags (lastSessionPR semantics): an all-time best on THIS session, gated
     // on prior history existing; weight PRs are meaningless for bodyweight lifts.
     let e1rmPR = false;
     let weightPR = false;
-    if (curBest && prior.length > 0) {
+    if (curBest && prior.length > 0 && loadKind !== "assisted") {
       let priorBestE1rm = -1;
       let priorTopKg = -1;
       for (const ps of prior) {
-        const pb = sessionBest(historySides(ps.sets, ps.baseKg));
+        const pb = sessionBest(historySides(ps.sets, ps.baseKg, loadKind));
         if (pb) {
           priorBestE1rm = Math.max(priorBestE1rm, pb.e1rm);
           priorTopKg = Math.max(priorTopKg, pb.topKg);
@@ -299,7 +316,9 @@ export function sessionRecap(
       // meaningless one. RecentSession ships equipmentId, so pickSeedSessions
       // resolves the lane here exactly as the editor and coaching surfaces do.
       const seed = pickSeedSessions(prior, ex.exercise, ex.equipmentId ?? null);
-      const seedSides = seed.flatMap((s) => historySides(s.sets, s.baseKg));
+      const seedSides = seed.flatMap((s) =>
+        historySides(s.sets, s.baseKg, loadKind)
+      );
       const prevBest = sessionBest(seedSides);
       if (prevBest) deltaE1rmKg = round(curBest.e1rm - prevBest.e1rm, 1);
     }

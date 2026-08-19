@@ -118,6 +118,31 @@ export function muscleLabel(m: MuscleId): string {
 // Movement pattern, used to suggest "Push day" / "Pull day" / "Leg day".
 export type MovementPattern = "push" | "pull" | "legs" | "core";
 
+/**
+ * How a logged weight COMBINES with the movement's own load — the load-semantics
+ * vocabulary (#1922), a sibling of `Equipment` on the exercise model.
+ *
+ *  - `added` (the default, and every lift that existed before #1922): the logged
+ *    weight ADDS. A weighted pull-up at +20 kg moves bodyweight + 20.
+ *  - `assisted`: the logged weight SUBTRACTS. It is a COUNTERWEIGHT, so more
+ *    logged weight means LESS load and an EASIER set. An assisted pull-up at
+ *    40 kg of assistance moves bodyweight − 40.
+ *
+ * The distinction is not cosmetic: `assisted` is the one kind whose load runs
+ * BACKWARDS through every ascending-load consumer we have. A raw assistance weight
+ * fed to an e1RM, a PR list or a plateau slope is wrong in the DANGEROUS
+ * direction — a lifter who needed MORE help would show a personal record. So every
+ * load fold goes through `effectiveLoadKg` below (the sign is applied once, at the
+ * one place bodyweight is folded in), and the ascending consumers exclude
+ * `assisted` lifts outright. lib/__tests__/assisted-load-guard.test.ts is the
+ * class guard that pins both halves across the WHOLE catalog, so the next assisted
+ * movement added here cannot reintroduce the inversion silently.
+ *
+ * Machine variants need no kind of their own: `Equipment: "Machine"` already
+ * carries their exclusion from free-weight standards (#2326).
+ */
+export type LoadKind = "added" | "assisted";
+
 export interface LiftDef {
   name: string;
   muscle: string; // human display label, e.g. "Side delts" (NOT an identity key)
@@ -135,10 +160,20 @@ export interface LiftDef {
   // An isometric hold measured by time, not reps (planks, dead hangs). The set
   // input captures a duration instead of reps.
   timed?: boolean;
-  // The body itself is the load (pull ups, chin ups, dips). Any logged weight is
-  // ADDED to bodyweight; with no logged weight the load is just bodyweight. Used
-  // to fold the user's bodyweight into volume / strength stats.
+  // The body itself is the load (pull ups, chin ups, dips). Any logged weight
+  // combines with bodyweight according to `loadKind` (ADDED unless the lift says
+  // otherwise); with no logged weight the load is just bodyweight. Used to fold
+  // the user's bodyweight into volume / strength stats.
   bodyweight?: boolean;
+  // How a logged weight combines with the movement (#1922). Absent ⇒ `added`,
+  // which is every lift in the catalog except the assisted entries.
+  loadKind?: LoadKind;
+  // For an `assisted` entry: the canonical movement it is a lighter execution OF
+  // ("Assisted Pull Up" → "Pull Up"). It is a SEPARATE history from that base
+  // (#482/#836 — distinct equipment, distinct history), so this is never used to
+  // merge them; it exists so the standards lookup can score the effective load
+  // against the base movement's own bands (#1922 part 2).
+  assistedBase?: string;
 }
 
 // The canonical implement vocabulary for the lift catalog. It serves two roles:
@@ -919,6 +954,39 @@ const PLAIN_DEFS: LiftDef[] = [
     primaryMuscles: ["abs"],
     secondaryMuscles: ["obliques", "front-delts", "glutes", "quads"],
   },
+  // ── Assisted bodyweight movements (#1922) ────────────────────────────────
+  // Their OWN catalog entries, not variants of Pull Up / Dip: an assisted rep and
+  // a full rep are different loads, so merging their histories would blend two
+  // progressions into one meaningless track (#482/#836's distinct-history
+  // discipline — `exerciseHistoryKey` keeps them separate because they are plain
+  // catalog names, not composed variants).
+  //
+  // `bodyweight: true` because the body IS the load; `loadKind: "assisted"`
+  // because the logged weight is the machine's COUNTERWEIGHT and subtracts from
+  // it. Listed LAST so `liftInfo`'s loose contains-fallback still resolves a bare
+  // "pull up" / "dip" to the base movement it names (DEFS order decides ties).
+  {
+    name: "Assisted Pull Up",
+    muscle: "Lats",
+    region: "Back",
+    pattern: "pull",
+    bodyweight: true,
+    loadKind: "assisted",
+    assistedBase: "Pull Up",
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["biceps", "mid-back", "forearms"],
+  },
+  {
+    name: "Assisted Dip",
+    muscle: "Chest & triceps",
+    region: "Chest",
+    pattern: "push",
+    bodyweight: true,
+    loadKind: "assisted",
+    assistedBase: "Dip",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["triceps", "front-delts"],
+  },
 ];
 
 /** Compose the stored exercise name for a variant, e.g. ("Curl","Dumbbell") -> "Dumbbell Curl". */
@@ -1228,9 +1296,83 @@ export function isTimed(name: string): boolean {
   return liftInfo(name)?.timed === true;
 }
 
-/** Whether a lift is loaded by the body itself (logged weight is ADDED to it). */
+/** Whether a lift is loaded by the body itself (logged weight combines with it). */
 export function isBodyweight(name: string): boolean {
   return liftInfo(name)?.bodyweight === true;
+}
+
+// "Assisted Pull Up", "Machine Assisted Dip" — the word as a standalone token, so
+// a lift merely CONTAINING the letters (none today, but the catalog grows) is not
+// swept in.
+const ASSISTED_NAME = /(?:^|\s)assisted(?:\s|$)/i;
+
+/**
+ * The LOAD KIND of a logged exercise name (#1922) — whether its logged weight adds
+ * to the movement or subtracts from it. `added` for everything that is not
+ * explicitly assisted, so the catalog's default and every custom lift are
+ * unchanged.
+ *
+ * Resolution is deliberately NOT `liftInfo`'s loose contains-fallback for the
+ * catalog half. `liftInfo` matches on substrings, and "Assisted Pull Up" CONTAINS
+ * "Pull Up" — which is exactly how a free-typed assisted lift already reads as a
+ * WEIGHTED one today, adding the counterweight to bodyweight. So:
+ *
+ *  1. an EXACT catalog name answers from its own `loadKind`; then
+ *  2. a name that carries the word "assisted" AND resolves to a BODYWEIGHT
+ *     movement is assisted, whatever its exact spelling ("Machine Assisted Pull
+ *     Up", "Assisted Chin Up"). The two conditions together are what keep this
+ *     safe: a free-typed "Assisted Bench Press" resolves to a non-bodyweight lift,
+ *     where a logged weight is the bar and nothing is being counterweighted, so it
+ *     stays `added` and no existing history changes meaning.
+ */
+export function loadKindOf(name: string): LoadKind {
+  const exact = MAP.get(name.trim().toLowerCase());
+  if (exact) return exact.loadKind ?? "added";
+  const info = liftInfo(name);
+  if (info?.bodyweight === true && ASSISTED_NAME.test(name)) return "assisted";
+  return "added";
+}
+
+/** Whether a logged exercise's weight SUBTRACTS from the load (#1922). */
+export function isAssisted(name: string): boolean {
+  return loadKindOf(name) === "assisted";
+}
+
+/**
+ * The canonical movement an assisted lift is a lighter execution of ("Assisted
+ * Pull Up" → "Pull Up"), or null for anything not assisted. Used ONLY by the
+ * standards lookup, to score the effective load against the base movement's bands;
+ * it never merges the two histories.
+ */
+export function assistedBaseLift(name: string): string | null {
+  const exact = MAP.get(name.trim().toLowerCase());
+  if (exact?.assistedBase) return exact.assistedBase;
+  if (!isAssisted(name)) return null;
+  // A non-catalog spelling ("Machine Assisted Pull Up"): the movement liftInfo
+  // resolved it to IS the base — that loose match is why loadKindOf had to be
+  // stricter than liftInfo, and here it is the right answer.
+  return liftInfo(name)?.name ?? null;
+}
+
+/**
+ * THE load fold (#1922). The effective system load of one set: the movement's own
+ * base load (the lifter's bodyweight for a bodyweight movement, 0 otherwise)
+ * combined with the logged external weight ACCORDING TO the movement's load kind.
+ *
+ * This is the single place the SIGN is applied. Every builder that used to write
+ * `baseKg + (weight ?? 0)` calls this instead, so an assisted lift's counterweight
+ * can never reach a consumer as if it were added load — there is no second fold to
+ * forget. Clamped at 0: assistance exceeding bodyweight is not a negative load,
+ * it is no measurable load at all, and 0 is precisely the value the standards
+ * lookup already declines to place.
+ */
+export function effectiveLoadKg(
+  loadKind: LoadKind,
+  baseKg: number,
+  weightKg: number | null | undefined
+): number {
+  const w = weightKg ?? 0;
+  return loadKind === "assisted" ? Math.max(0, baseKg - w) : baseKg + w;
 }
 
 /**
