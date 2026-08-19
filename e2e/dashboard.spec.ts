@@ -218,34 +218,39 @@ test("multiple naps produce one Standing total and keep individuals outside Stan
   }
 });
 
-test("the clinical family cap leaves its tail in Everything", async ({
+// The owner ruling of #3186, on the many-marker profile that provoked it: the
+// dashboard renders the clinical family's capped membership and nothing else, and
+// the readings it no longer names are still whole one tap away. Both halves matter
+// — a test that only watched the dashboard shrink would pass if the data had been
+// deleted instead of moved.
+test("the clinical family renders its cap and /results keeps the census", async ({
   page,
 }) => {
   await page.goto("/");
   const labs = page.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"]'
   );
-  const standingCount = await labs.evaluateAll(
-    (nodes) =>
-      nodes.filter((node) => node.getAttribute("data-lane") === "standing")
-        .length
+  const lanes = await labs.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("data-lane"))
   );
-  const tailCount = await labs.evaluateAll(
-    (nodes) =>
-      nodes.filter((node) => node.getAttribute("data-lane") === "everything")
-        .length
+  expect(lanes).toEqual(Array.from({ length: 6 }, () => "standing"));
+
+  await page.goto("/results/clinical-results");
+  // Each collapsed panel-group header states how many analytes the group holds,
+  // whether or not its rows are expanded — so this is the whole census, not a page
+  // of it.
+  const groups = page
+    .getByTestId("results-clinical-results")
+    .getByTestId("clinical-result-panel-toggle");
+  const census = (
+    await groups.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("aria-label") ?? "")
+    )
+  ).reduce(
+    (total, label) => total + Number(/(\d+) analytes?\b/.exec(label)?.[1] ?? 0),
+    0
   );
-  expect(standingCount).toBe(6);
-  expect(tailCount).toBeGreaterThan(0);
-  const tails = page.locator(
-    '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"][data-lane="everything"]'
-  );
-  const tailTexts = await tails.allTextContents();
-  expect(tailTexts.length).toBeGreaterThan(0);
-  expect(
-    tailTexts.every((text) => text.includes("Recent clinical results"))
-  ).toBe(true);
-  expect(tailTexts.every((text) => !text.includes("Recent labs"))).toBe(true);
+  expect(census).toBeGreaterThan(lanes.length);
 });
 
 test("every applicable fact appears in exactly one atomic lane", async ({
