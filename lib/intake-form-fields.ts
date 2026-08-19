@@ -5,9 +5,10 @@
 // the same action, which is exactly the #2184 drift the merge removes: a field, label
 // or gate fixed in one had to be remembered in two. Now there is one mapping, so the
 // two-tap create and the fully-edited save are literally the same computation with
-// different state — and `lib/quick-add-medication.ts` (the #843 quick path) is
-// expressed over it too, which is what makes the row-parity test a real proof rather
-// than a comparison of two hand-written field lists.
+// different state. #843's separate quick-add mapping is gone with the quick form it
+// served; its guarantee — the quick path's row IS the full form's row — is now the
+// merge's safety net, asserted in lib/__action_tests__/intake-row-parity.actions.test.ts
+// against a hand-transcribed copy of what the old full form posted.
 //
 // HIDDEN IS NOT UNMOUNTED (#2014), STRUCTURALLY. The merged form shows at most one
 // editor at a time, so a form that relied on named inputs would post only whatever

@@ -96,3 +96,33 @@ export function intakeKindAffordances(
     defaultObligation: "should",
   };
 }
+
+// The two lists #846 found teaching the user wrong — brand suggestions and dose-amount
+// suggestions — resolved by kind rather than by which file the form happened to be in.
+// These are the whole of that guarantee's mechanism: one call site each in the form, so
+// a medication CANNOT be offered "e.g. Thorne" without this function returning it.
+
+export function brandOptionsFor(
+  kind: IntakeItemKind,
+  sources: {
+    // The ranked per-profile medication brands (#1677), or the picked drug's own.
+    medicationBrands: readonly string[];
+    supplementBrands: readonly string[];
+  }
+): readonly string[] {
+  return kind === "medication"
+    ? sources.medicationBrands
+    : sources.supplementBrands;
+}
+
+export function dosageOptionsFor(
+  kind: IntakeItemKind,
+  sources: {
+    // The OTC label strengths for the picked ingredient (#798).
+    otcStrengths: readonly string[];
+    // The supplement catalog entry's common dosages.
+    catalogDosages: readonly string[];
+  }
+): readonly string[] {
+  return kind === "medication" ? sources.otcStrengths : sources.catalogDosages;
+}

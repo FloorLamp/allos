@@ -243,7 +243,9 @@ export async function linkItemAction(
   if (!supply) return fail("Couldn't find that shared bottle.");
   linkItemToPool(profileId, itemId, supplyId);
   revalidateSupplies();
-  return ok(supplyOption(supply));
+  // Members read AFTER the link, so the option returned describes the bottle as it
+  // now is rather than as it was a line ago.
+  return ok(supplyOption(supply, poolMembers(supplyId)));
 }
 
 export async function unlinkItemAction(

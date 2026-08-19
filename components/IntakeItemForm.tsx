@@ -41,9 +41,12 @@ import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
 import {
   applyProductSeed,
+  bottleForOptionLabel,
+  bottleOptionLabel,
   itemSeedFromPool,
   type SupplyOption,
 } from "@/lib/supply-product";
+import { listSharedSupplyOptions } from "@/app/(app)/supplies/actions";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -80,7 +83,11 @@ import {
   pauseLinkNeedsConfirm,
 } from "@/lib/intake-schedule";
 import { deriveIntakeKind } from "@/lib/intake-kind";
-import { intakeKindAffordances } from "@/lib/intake-kind-affordances";
+import {
+  brandOptionsFor,
+  dosageOptionsFor,
+  intakeKindAffordances,
+} from "@/lib/intake-kind-affordances";
 import {
   intakeFactSummary,
   type IntakeFactKey,
@@ -201,6 +208,25 @@ export default function IntakeItemForm({
   );
   const [bottleSiblingKind, setBottleSiblingKind] =
     useState<IntakeItemKind | null>(null);
+  // The household's bottles, offered in the SAME field as the vocabularies (#3216
+  // decision 3). This is the #1705 create-mode branch promoted from the refill fold to
+  // the front door: "there is a shared bottle of D3 5000 IU; add it for my daughter"
+  // is one pick, not a form plus a disclosure. Create mode only — an existing item
+  // links and unlinks through SharedSupplyPicker, whose separate-submit, one-way
+  // count-migration design this does not touch.
+  const [bottles, setBottles] = useState<SupplyOption[]>(
+    initialSupply ? [initialSupply] : []
+  );
+  useEffect(() => {
+    if (s) return;
+    let live = true;
+    void listSharedSupplyOptions().then((options) => {
+      if (live) setBottles(options);
+    });
+    return () => {
+      live = false;
+    };
+  }, [s]);
   const rx = useIntakeRxcui(s);
 
   const derivation = deriveIntakeKind({
@@ -343,16 +369,26 @@ export default function IntakeItemForm({
     [isMed, name, rx.rxcui, rx.rxcuiIngredients]
   );
   const catalogEntry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
-  const dosageOptions = useMemo(() => {
-    if (affordances.dosageSource === "supplement")
-      return catalogEntry?.dosages ?? [];
-    if (!prnDefaults) return [];
-    const { doseMgLow, doseMgHigh } = prnDefaults.adult;
-    return [...new Set([`${doseMgLow} mg`, `${doseMgHigh} mg`])];
-  }, [affordances.dosageSource, catalogEntry, prnDefaults]);
-  const brandOptions = isMed
-    ? (brandNarrowing ?? catalogOptions.medicationBrands)
-    : SUPPLEMENT_BRANDS;
+  // One call site each for the two suggestion lists #846 found teaching wrong.
+  const dosageOptions = useMemo(
+    () =>
+      dosageOptionsFor(kind, {
+        otcStrengths: prnDefaults
+          ? [
+              ...new Set([
+                `${prnDefaults.adult.doseMgLow} mg`,
+                `${prnDefaults.adult.doseMgHigh} mg`,
+              ]),
+            ]
+          : [],
+        catalogDosages: catalogEntry?.dosages ?? [],
+      }),
+    [kind, catalogEntry, prnDefaults]
+  );
+  const brandOptions = brandOptionsFor(kind, {
+    medicationBrands: brandNarrowing ?? catalogOptions.medicationBrands,
+    supplementBrands: SUPPLEMENT_BRANDS,
+  });
 
   const isChildProfile =
     pediatricContext?.ageMonths != null &&
@@ -431,6 +467,15 @@ export default function IntakeItemForm({
     // A new name is new evidence: the kind is re-derived rather than staying at
     // whatever the previous name decided.
     setChosenKind(null);
+
+    // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
+    // supply_id on this item's own save, and lends its members' kind — a bottle has
+    // none of its own, so one with nothing linked yet falls through to the ask.
+    const bottle = bottleForOptionLabel(bottles, picked);
+    if (bottle) {
+      onPickSupply(bottle);
+      return;
+    }
 
     const supplementEntry = CATALOG_BY_NAME.get(picked.toLowerCase());
     if (supplementEntry && !getMedicationInfo(picked)) {
@@ -822,6 +867,20 @@ export default function IntakeItemForm({
     setOpenPanel(null);
   }
 
+  // Bottles lead: a bottle the household already has is a more specific answer than a
+  // vocabulary entry with the same name, and it is the one that carries a count.
+  const nameOptions = useMemo(
+    () => [
+      ...bottles.map(bottleOptionLabel),
+      ...(lockedKind === "supplement"
+        ? catalogOptions.supplements
+        : lockedKind === "medication"
+          ? catalogOptions.medications
+          : [...catalogOptions.medications, ...catalogOptions.supplements]),
+    ],
+    [bottles, lockedKind, catalogOptions]
+  );
+
   const ingredientNames = useMemo(
     () => ingredients.map((g) => g.name.trim()).filter((n) => n.length > 0),
     [ingredients]
@@ -859,13 +918,7 @@ export default function IntakeItemForm({
             rx.onNameChange();
           }}
           onPick={onPickName}
-          options={
-            lockedKind === "supplement"
-              ? catalogOptions.supplements
-              : lockedKind === "medication"
-                ? catalogOptions.medications
-                : [...catalogOptions.medications, ...catalogOptions.supplements]
-          }
+          options={nameOptions}
           placeholder={affordances.namePlaceholder}
         />
         <RxNormAffordance name={name} rx={rx} />
@@ -1344,7 +1397,7 @@ export default function IntakeItemForm({
                 ariaLabel="Brand"
                 value={brand}
                 onChange={setBrand}
-                options={brandOptions}
+                options={[...brandOptions]}
                 placeholder={affordances.brandPlaceholder}
               />
             </div>
