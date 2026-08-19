@@ -219,6 +219,29 @@ export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 
+// ── The handled day (#3224) ──────────────────────────────────────────────────
+// The third Now fixture, and the one that pins "Nothing needs you." as a state a
+// real week can actually reach. A profile with a HANDLED day — today's scheduled
+// dose logged taken, nothing overdue, no safety — carrying two open weekly
+// training targets that are UNMET and ON PACE.
+//
+// That combination is the whole fixture. `windowOpen` for a target's log action
+// used to be spelled "not met this week", which is true for seven days, so these
+// two targets alone filled Now (cap 2) every day of every week and the empty state
+// was unreachable. Their week is pinned to START today (a week_start matching the
+// run's frozen weekday) so a zero count is on pace rather than behind on whichever
+// weekday CI happens to run — behind is the `owed` path, which still cards, and is
+// covered separately in the pure ranker tests.
+//
+// Dedicated and read-only in its spec: the assertion is an ABSENCE, so any
+// neighbouring spec logging a dose, a workout or a reading here would erase it.
+export const E2E_LOGIN_NOWQUIET = "e2e_nowquiet";
+export const NOW_QUIET_PROFILE = "Now Quiet (e2e)";
+export const NOW_QUIET_MED = "Quiet Morning Med (e2e)";
+// The two open weekly targets — strength groups, the shape of the owner's own
+// "Log Lower body — 0 of 2" cards. Neither has a per-target rhythm to ask.
+export const NOW_QUIET_TARGETS = ["Lower", "Upper"] as const;
+
 // ── Just-recovered dashboard band folds (issues #1548 / #1549) ────────────────
 // Three spec-owned caregiver fixtures for e2e/dashboard-household-folds.spec.ts, one
 // per state of the household-history promo's placement. Every one is a MULTI-profile

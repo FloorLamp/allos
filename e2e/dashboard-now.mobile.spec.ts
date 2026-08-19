@@ -8,7 +8,9 @@ import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_NOWSTRIP,
   E2E_LOGIN_NOWSAFETY,
+  E2E_LOGIN_NOWQUIET,
   E2E_LOGIN_WHATSNEW,
+  NOW_QUIET_TARGETS,
 } from "./fixture-logins";
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -205,6 +207,38 @@ test("read-only safety facts remain uncapped and actionable", async ({
     await expect(links).toHaveCount(1);
     await expect(links).toBeVisible();
     await expect(fact.getByRole("button")).toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// #3224 — the goal state on a real week. A handled day whose only outstanding facts
+// are unmet weekly targets must read "Nothing needs you.", not two log offers: an
+// unmet target is a seven-day span, and a span is not a window.
+test("unmet weekly targets leave a handled day's Now empty", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
+  try {
+    const strip = page.getByTestId("now-strip");
+    await expect(strip).toHaveAttribute("data-count", "0");
+    await expect(strip.getByTestId("now-strip-empty")).toHaveText(
+      "Nothing needs you."
+    );
+    // The targets are genuinely open — the empty Now is the ranking, not an
+    // absence of data. Their readings stand, and their log offers are still one
+    // tap away under Show everything.
+    const readings = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+    );
+    await expect(readings).toHaveCount(NOW_QUIET_TARGETS.length);
+    const offers = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+    );
+    await expect(offers).toHaveCount(NOW_QUIET_TARGETS.length);
+    for (let i = 0; i < NOW_QUIET_TARGETS.length; i++) {
+      await expect(offers.nth(i)).toHaveAttribute("data-lane", "everything");
+    }
   } finally {
     await page.context().close();
   }

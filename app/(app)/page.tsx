@@ -8,6 +8,7 @@ import {
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
+  frequencyTargetLogWindowOpen,
   getStrengthByExercise,
   getCardioByActivity,
   getBodyMetricDailySeries,
@@ -1560,7 +1561,16 @@ async function renderDashboard(
         id,
         on,
         progress.pace === "behind",
-        !progress.met
+        // A moment, not the whole week (#3224). "Unmet" spans seven days, so
+        // spelling the window `!met` kept every open target parked in Now and put
+        // "Nothing needs you." out of reach. The rhythm answers when this target
+        // normally gets done; with no rhythm there is no moment to open.
+        frequencyTargetLogWindowOpen(
+          profile.id,
+          progress.target,
+          on,
+          nowMinutes
+        )
       ),
       <DashboardAtomCard
         title={`Log ${progress.target.scope_value}`}

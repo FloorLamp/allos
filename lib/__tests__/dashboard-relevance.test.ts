@@ -106,6 +106,49 @@ describe("atomic dashboard placement", () => {
     expect(placements[0].lane).toBe("everything");
   });
 
+  // #3224 — the window a `should` action declares must be a MOMENT. A weekly
+  // target spelled `windowOpen` as "not met this week", which is true for seven
+  // days, so its log offer occupied Now all week and "Nothing needs you." — the
+  // state #3077 names the goal — was unreachable on an ordinary week.
+  it("keeps a should action with no reason out of Now entirely", () => {
+    const placements = rank([
+      action("target.log:1", "should", { owed: false, windowOpen: false }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:1" }, lane: "everything" },
+    ]);
+    expect(placements[0]).toMatchObject({ everythingGroup: "act" });
+  });
+
+  it("admits a should action whose rhythm-derived window is open", () => {
+    const placements = rank([
+      action("target.log:2", "should", { owed: false, windowOpen: true }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:2" }, lane: "now" },
+    ]);
+  });
+
+  it("still cards a behind-pace target on the owed path with the window shut", () => {
+    const placements = rank([
+      action("target.log:3", "should", { owed: true, windowOpen: false }),
+    ]);
+    expect(placements).toMatchObject([
+      { candidate: { candidateId: "target.log:3" }, lane: "now" },
+    ]);
+  });
+
+  it("leaves Now empty when every open target is on pace outside its moment", () => {
+    const placements = rank([
+      action("target.log:4", "should", { owed: false, windowOpen: false }),
+      action("target.log:5", "should", { owed: false, windowOpen: false }),
+      reading("target.weekly-progress:4"),
+    ]);
+    expect(placements.filter((placement) => placement.lane === "now")).toEqual(
+      []
+    );
+  });
+
   it("keeps every safety candidate beyond the ordinary cap", () => {
     const placements = rank([
       action("safe-a", "must", { safety: true }),
