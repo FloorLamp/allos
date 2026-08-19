@@ -22,7 +22,7 @@
 import type { Sex } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import { fmtWeight } from "@/lib/units";
-import { variantOf } from "@/lib/lifts";
+import { assistedBaseLift, defaultEquipment, variantOf } from "@/lib/lifts";
 import {
   STRENGTH_STANDARD_LIFTS_MAP,
   type LiftStandards,
@@ -130,6 +130,16 @@ export interface StrengthStanding {
 // equipment axis is resolved upstream, in the aggregate the standings path consumes
 // (`ExerciseStat.freeWeightE1rmKg`), and a lift whose free-weight history is empty
 // arrives here with no e1RM and gets no standing.
+//
+// THE ASSISTED CASE (#1922). An assisted pull-up is not unplaceable — it is a
+// pull-up at a lighter load, so it places against the SAME Pull Up bands. That
+// works only because the table's basis is the TOTAL SYSTEM LOAD (see
+// `LiftStandards.bodyweight`: for a bodyweight lift the threshold kg is bodyweight
+// ± external load, added for a weighted rep, subtracted for an assisted one). The
+// caller therefore hands in an e1RM already folded through `effectiveLoadKg`, and
+// the ONLY thing that happens here is the table lookup being routed to the base
+// movement. Nothing about the weighted path changes: `Pull Up` still resolves
+// directly, on the same bands, from the same total load.
 function tableFor(exercise: string): { name: string; t: LiftStandards } | null {
   const key = exercise.trim();
   const direct = LIFTS[key];
@@ -144,8 +154,85 @@ function tableFor(exercise: string): { name: string; t: LiftStandards } | null {
     const base = LIFTS[v.group.name];
     if (base) return { name: v.group.name, t: base };
   }
+  // An assisted movement scores against the movement it is a lighter execution of.
+  // Its base may have no table at all (Assisted Dip → Dip), which is simply no
+  // standing — the same silence any uncovered lift gets.
+  const assistedBase = assistedBaseLift(exercise);
+  if (assistedBase) {
+    const base = LIFTS[assistedBase];
+    if (base) return { name: assistedBase, t: base };
+  }
   return null;
 }
+
+/**
+ * WHY a lift shows no level badge, when the honest answer is "the standards are
+ * free-weight ones and this is a machine" (#1922). The silent omission is what
+ * invites the free-text workaround the issue's audit describes: a lifter who sees
+ * nothing concludes the app wants a different NAME, types "Overhead Press" for a
+ * machine press, and earns a barbell standing they did not perform.
+ *
+ * Two shapes of the same fact, kept distinct because they are learned from
+ * different evidence:
+ *  - `machine-implement` — the movement ITSELF is a machine lift (Leg Press, a
+ *    "Machine Curl" variant). Known from the catalog, before any set is read.
+ *  - `machine-history` — the movement could place, but every set backing it was
+ *    logged on a registry machine, so `freeWeightE1rmKg` is 0 (#2326).
+ *
+ * Returns null when there is nothing to explain: the lift has a standing, or it has
+ * no table for reasons that have nothing to do with machines (an accessory nobody
+ * publishes population norms for), where a machine note would be a wrong answer.
+ */
+export type StandardsGap = "machine-implement" | "machine-history" | null;
+
+export function standardsGap(
+  exercise: string,
+  stat: { e1rmKg: number; freeWeightE1rmKg: number }
+): StandardsGap {
+  if (defaultEquipment(exercise) === "Machine") return "machine-implement";
+  const v = variantOf(exercise);
+  if (v?.equipment === "Machine") return "machine-implement";
+  if (!tableFor(exercise)) return null;
+  if (stat.e1rmKg > 0 && stat.freeWeightE1rmKg <= 0) return "machine-history";
+  return null;
+}
+
+// The sentence a surface renders for a gap. One phrasing, so the Analyze panel and
+// anything that later explains the same silence cannot spell it two ways.
+const GAP_NOTES: Record<Exclude<StandardsGap, null>, string> = {
+  "machine-implement":
+    "No level: strength standards are free-weight norms, and they don't apply to machine lifts.",
+  "machine-history":
+    "No level: every set here was logged on a machine, and strength standards are free-weight norms.",
+};
+
+export function standardsGapNote(gap: StandardsGap): string | null {
+  return gap ? GAP_NOTES[gap] : null;
+}
+
+/**
+ * The SOFT NUDGE beside a standing that was earned under a free-weight assumption
+ * (#1922, #798 posture — informational, never blocking, never a refusal).
+ *
+ * The exact-name escape hatch is data honesty, not code: a lift typed as literally
+ * "Overhead Press" matches the barbell table whatever it was performed on. When the
+ * SAME movement also carries machine sets in this profile's history — the evidence
+ * that this lifter does press on a machine — the standing is scored from the
+ * free-weight sets alone (#2326) and says so, rather than leaving the lifter to
+ * wonder why the number moved.
+ *
+ * True only when there IS a standing (free-weight work exists) and machine work
+ * exists alongside it. A wholly free-weight history says nothing extra.
+ */
+export function assumesFreeWeightExecution(stat: {
+  e1rmKg: number;
+  freeWeightE1rmKg: number;
+}): boolean {
+  return stat.freeWeightE1rmKg > 0 && stat.freeWeightE1rmKg < stat.e1rmKg;
+}
+
+export const FREE_WEIGHT_ASSUMED_NOTE =
+  "Scored from your free-weight sets — this standard assumes free-weight execution.";
 
 // Linear interpolation of the threshold vector at an exact bodyweight, between the
 // two nearest bands; clamped to the first/last band outside the covered range.

@@ -19,6 +19,7 @@
 
 import {
   exerciseHistoryKey,
+  isAssisted,
   liftInfo,
   movementLoadKey,
   type MovementPattern,
@@ -447,6 +448,13 @@ export function detectPlateaus(
   const cutoffAgo = PLATEAU_WINDOW_DAYS;
   const out: TrainingObservation[] = [];
   for (const s of series) {
+    // An ASSISTED movement raises no plateau (#1922). The finding's whole content is
+    // "your load stopped rising, drop it ~10% and rebuild" — advice that reads
+    // backwards on a lift whose logged number is the machine's counterweight, where
+    // dropping the load means REMOVING assistance. Excluded rather than re-phrased:
+    // the signal here is about a stalled ascending load, and that is not the question
+    // an assisted lift's history answers.
+    if (isAssisted(s.exercise)) continue;
     const windowed = s.points.filter((p) => {
       const ago = daysSince(p.date, today);
       return ago >= 0 && ago <= cutoffAgo && p.value > 0;

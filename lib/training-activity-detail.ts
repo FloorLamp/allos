@@ -40,7 +40,7 @@ import {
 } from "./session-detail";
 import { isSameActivityKind } from "./cycling-activity";
 import { getExerciseComparison } from "./queries/training/strength";
-import { equipmentLoadLane, isBodyweight } from "./lifts";
+import { equipmentLoadLane, isBodyweight, loadKindOf } from "./lifts";
 import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
 import {
   strengthSessionRecords,
@@ -370,7 +370,12 @@ export function getActivityDetailData(
     );
     const records =
       index >= 0
-        ? strengthSessionRecords(history, index, isBodyweight(part.name))
+        ? strengthSessionRecords(
+            history,
+            index,
+            isBodyweight(part.name),
+            loadKindOf(part.name)
+          )
         : null;
     recordsByExercise.set(
       part.name,
