@@ -56,6 +56,11 @@ function parseSeverity(formData: FormData): number {
   return Math.round(Number(formData.get("severity")));
 }
 
+function parseEpisodeId(formData: FormData): number | undefined {
+  const value = Number(formData.get("episodeId"));
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 function revalidateSymptoms(): void {
   revalidateRoute("/");
   revalidateRoute("/timeline");
@@ -89,7 +94,8 @@ export async function logSymptom(
     symptom,
     parseSeverity(formData),
     parseDate(formData, profileId),
-    String(formData.get("note") ?? "")
+    String(formData.get("note") ?? ""),
+    parseEpisodeId(formData)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't log that symptom." };
@@ -135,7 +141,8 @@ export async function lowerSymptom(
     profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profileId)
+    parseDate(formData, profileId),
+    parseEpisodeId(formData)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't lower that symptom." };
@@ -161,7 +168,8 @@ export async function setSymptomNote(
     profileId,
     symptom,
     parseDate(formData, profileId),
-    String(formData.get("note") ?? "")
+    String(formData.get("note") ?? ""),
+    parseEpisodeId(formData)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't save that note." };
@@ -185,7 +193,8 @@ export async function removeSymptom(
   const outcome = removeSymptomCore(
     profileId,
     symptom,
-    parseDate(formData, profileId)
+    parseDate(formData, profileId),
+    parseEpisodeId(formData)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't find that symptom." };

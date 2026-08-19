@@ -219,6 +219,7 @@ function assembleIllnessEpisodeFromFacts(
         date: day.date,
         severity: s.severity,
         note: s.note,
+        episodeId: s.episodeId,
       });
       series.maxSeverity = Math.max(series.maxSeverity, s.severity);
     }
@@ -487,9 +488,8 @@ export function openEpisodeFromState(
 }
 
 // Every open episode covering the profile's local today, preserving the episode
-// store's stable row order (#3138). The active profile includes a just-opened empty
-// cockpit so the dashboard remains the illness front door; household cockpits retain
-// the established has-a-signal gate.
+// store's stable row order (#3138). `includeEmpty` lets callers choose whether an open
+// stored row is sufficient or whether the older evidence signal gate still applies.
 export function openEpisodesFromState(
   state: ProfileEpisodeState,
   options: { includeEmpty: boolean }

@@ -120,12 +120,14 @@ export type DashboardCandidate =
   | (DashboardCandidateBase & { kind: "state" });
 
 export type DashboardLane = "now" | "standing" | "everything";
+export type DashboardNowLayer = "safety" | "illness" | "ordinary";
 
 export interface DashboardPlacement {
   candidate: DashboardCandidate;
   lane: DashboardLane;
   laneOrder: number;
   timingDisposition: DashboardTimingDisposition;
+  nowLayer?: DashboardNowLayer;
   standingFamilyKey?: StandingFamilyKey;
   standingSection?: StandingSectionKey;
 }
@@ -452,9 +454,18 @@ export function rankDashboardCandidates(
     return true;
   });
   const selectedNow = [
-    ...selectedSafety,
-    ...selectedEpisodes,
-    ...uniqueOrdinary.slice(0, NOW_CANDIDATE_CAP),
+    ...selectedSafety.map((entry) => ({
+      ...entry,
+      nowLayer: "safety" as const,
+    })),
+    ...selectedEpisodes.map((entry) => ({
+      ...entry,
+      nowLayer: "illness" as const,
+    })),
+    ...uniqueOrdinary.slice(0, NOW_CANDIDATE_CAP).map((entry) => ({
+      ...entry,
+      nowLayer: "ordinary" as const,
+    })),
   ];
   const nowIds = new Set(
     selectedNow.map((entry) => entry.candidate.candidateId)
@@ -503,11 +514,12 @@ export function rankDashboardCandidates(
     });
 
   return [
-    ...selectedNow.map(({ candidate, timingDisposition }) => ({
+    ...selectedNow.map(({ candidate, timingDisposition, nowLayer }) => ({
       candidate,
       lane: "now" as const,
       laneOrder: nowOrder.get(candidate.candidateId)!,
       timingDisposition,
+      nowLayer,
     })),
     ...standing.members.map(({ candidate, family }, laneOrder) => ({
       candidate,
@@ -524,6 +536,22 @@ export function rankDashboardCandidates(
       timingDisposition,
     })),
   ];
+}
+
+// The ranker's illness layer is the sole authority for which whole episode groups
+// render and in what order. Safety members may carry episode metadata too, but remain
+// independent safety cards and therefore never contribute a group key here.
+export function orderedIllnessGroupKeys(
+  placements: readonly DashboardPlacement[]
+): string[] {
+  const seen = new Set<string>();
+  return placementsInLane(placements, "now").flatMap((placement) => {
+    const groupKey = placement.candidate.episodeGroup?.groupKey;
+    if (placement.nowLayer !== "illness" || !groupKey || seen.has(groupKey))
+      return [];
+    seen.add(groupKey);
+    return [groupKey];
+  });
 }
 
 export function placementsInLane(

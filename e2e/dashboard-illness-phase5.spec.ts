@@ -55,15 +55,74 @@ test("simultaneous episodes keep whole controls and close independently", async 
       .evaluateAll((links) =>
         links.map((link) => (link as HTMLAnchorElement).getAttribute("href")!)
       );
+    const situationNames = async () =>
+      cockpits.evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-situation"))
+      );
+    expect(await situationNames()).toEqual(["Stomach bug", "Migraine", "Flu"]);
+    const toggles = cockpits.locator(
+      '[data-testid^="illness-cockpit-toggle-"]'
+    );
+    const toggleLabels = await toggles.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("aria-label"))
+    );
+    const detailLabels = await cockpits
+      .getByTestId("illness-cockpit-full-episode")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("aria-label"))
+      );
+    expect(new Set(toggleLabels).size).toBe(3);
+    expect(new Set(detailLabels).size).toBe(3);
+    expect(toggleLabels.join(" ")).toContain("Stomach bug episode");
+    expect(toggleLabels.join(" ")).toContain("Migraine episode");
+    expect(toggleLabels.join(" ")).toContain("Flu episode");
 
-    const nonFirst = cockpits.nth(1);
-    await expect(nonFirst.getByTestId("symptom-log-bar")).toBeVisible();
-    await nonFirst.getByTestId("symptom-headache-sev-3").click();
+    const bySituation = (situation: string) =>
+      page
+        .getByTestId("illness-hero")
+        .locator(`[data-situation="${situation}"]`);
+    async function addSymptom(cockpit: Locator, symptom: string) {
+      const bar = cockpit.getByTestId("symptom-log-bar");
+      await bar.getByTestId("symptom-add-picker-toggle").click();
+      await settledClick(page, bar.getByTestId(`symptom-pick-${symptom}`));
+      await expect(bar.getByTestId(`symptom-${symptom}-sev-1`)).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+    }
+    await addSymptom(bySituation("Flu"), "cough");
+    await addSymptom(bySituation("Migraine"), "nausea");
+    await page.reload();
     await expect(
-      nonFirst.getByTestId("symptom-headache-sev-3")
+      bySituation("Flu").getByTestId("symptom-cough-sev-1")
     ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      bySituation("Migraine").getByTestId("symptom-nausea-sev-1")
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByTestId("illness-hero").getByTestId("symptom-cough-sev-1")
+    ).toHaveCount(1);
+    await expect(
+      page.getByTestId("illness-hero").getByTestId("symptom-nausea-sev-1")
+    ).toHaveCount(1);
+    await expect(
+      page.getByTestId("illness-hero").getByTestId("symptom-headache-sev-2")
+    ).toHaveCount(1);
 
-    async function close(situation: string, remaining: number) {
+    const standingFingerprint = () =>
+      page
+        .getByTestId("dashboard-standing")
+        .locator('[data-testid="dashboard-candidate"]')
+        .evaluateAll((nodes) =>
+          nodes.map(
+            (node) =>
+              `${node.getAttribute("data-candidate-id")}|${node.getAttribute("data-fact-key")}`
+          )
+        );
+    const standingBefore = await standingFingerprint();
+    expect(standingBefore.length).toBeGreaterThan(0);
+
+    async function close(situation: string, remaining: string[]) {
       const cockpit = page
         .getByTestId("illness-hero")
         .locator("[data-episode-key]")
@@ -73,12 +132,15 @@ test("simultaneous episodes keep whole controls and close independently", async 
       await dialog.getByRole("button", { name: "End episode" }).click();
       await expect(
         page.getByTestId("illness-hero").locator("[data-episode-key]")
-      ).toHaveCount(remaining);
+      ).toHaveCount(remaining.length);
+      if (remaining.length > 0)
+        expect(await situationNames()).toEqual(remaining);
+      expect(await standingFingerprint()).toEqual(standingBefore);
     }
 
-    await close("Migraine", 2);
-    await close("Stomach bug", 1);
-    await close("Flu", 0);
+    await close("Stomach bug", ["Migraine", "Flu"]);
+    await close("Migraine", ["Flu"]);
+    await close("Flu", []);
 
     // Restore the isolated fixture through the real reopen controls so this remains
     // repeat-safe while proving the same three stable episode rows return.
@@ -250,6 +312,10 @@ test("household episodes stay ordered and a writable accordion logs without swit
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
       "Care Parent"
     );
+    const kidB = memberCockpit(page, "Sick Kid B");
+    await expand(kidB);
+    await expect(kidA).toHaveAttribute("data-expanded", "false");
+    await expect(kidB).toHaveAttribute("data-expanded", "true");
 
     await page.setViewportSize({ width: 1440, height: 1000 });
     await switchToProfile(page, "Sick Kid A");
@@ -280,9 +346,6 @@ test("target-profile authorization controls every household cockpit write", asyn
     await expect(cockpit.getByTestId("symptom-log-bar")).toHaveCount(0);
     await expect(cockpit.getByTestId("cockpit-prn")).toHaveCount(0);
     await expect(cockpit.getByTestId("cockpit-end-episode")).toHaveCount(0);
-    await expect(
-      readOnly.getByText(/Update admin's illness care/i)
-    ).toHaveCount(0);
   } finally {
     await readOnly.context().close();
   }
@@ -299,7 +362,7 @@ test("target-profile authorization controls every household cockpit write", asyn
     await expect(cockpit.getByTestId("cockpit-end-episode")).toBeVisible();
     await expect(
       writable.getByText(/Update admin's illness care/i)
-    ).toBeVisible();
+    ).toHaveCount(0);
   } finally {
     await writable.context().close();
   }
@@ -344,5 +407,9 @@ test.describe("fresh-profile illness front door", () => {
     await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
     await expect(inline).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("prn-log-now")).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByTestId("illness-hero").getByText("Ibuprofen", { exact: true })
+    ).toBeVisible();
   });
 });

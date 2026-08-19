@@ -38,7 +38,10 @@ export default function DashboardPlacementCanvas({
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
-      placement.candidate.episodeGroup == null &&
+      !(
+        placement.nowLayer === "illness" &&
+        placement.candidate.episodeGroup != null
+      ) &&
       candidateNodes.get(placement.candidate.candidateId) == null
   );
   if (missingNode) {
@@ -71,14 +74,16 @@ export default function DashboardPlacementCanvas({
   };
   const nowPlacements = placementsInLane(placements, "now");
   const illnessPlacements = nowPlacements.filter(
-    (placement) => placement.candidate.episodeGroup != null
+    (placement) =>
+      placement.nowLayer === "illness" &&
+      placement.candidate.episodeGroup != null
   );
   if (illnessPlacements.length > 0 && illnessGroupNode == null) {
     throw new Error("Missing dashboard illness-group presentation");
   }
   const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
   const now = nowPlacements.flatMap((placement) => {
-    if (placement.candidate.episodeGroup) {
+    if (placement.nowLayer === "illness" && placement.candidate.episodeGroup) {
       if (placement.candidate.candidateId !== firstIllnessId) return [];
       return [
         {

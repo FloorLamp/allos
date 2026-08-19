@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import DashboardPlacementCanvas from "../../components/dashboard/DashboardPlacementCanvas";
-import IllnessHero from "../../components/dashboard/IllnessHero";
 import {
+  orderedIllnessGroupKeys,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardEpisodeGroup,
@@ -212,22 +212,39 @@ describe("dashboard illness ordering", () => {
     ).toEqual(["temperature-safety"]);
   });
 
-  it("renders a safety and episode collision exactly once", () => {
+  it("renders episode safety in global safety order and scrubs it from the illness group", () => {
     const shared = "illness.temperature:42";
-    const state = episodeMember(7, "active", 0, "state");
-    const temperature = episodeMember(7, "active", 0, "reading", 0, shared);
-    const safety = ordinary("temperature-safety", 1, {
-      safety: true,
+    const baseState = episodeMember(7, "active", 0, "state");
+    const state = {
+      ...baseState,
+      sourceOrder: 2,
       factKey: shared,
-    });
-    const placements = rank([state, temperature, safety]);
-    const placedIds = new Set(
-      placements.map((placement) => placement.candidate.candidateId)
+      rankReasons: { ...baseState.rankReasons, safety: true },
+    };
+    const temperature = episodeMember(7, "active", 0, "reading", 0, shared);
+    const illnessReading = episodeMember(
+      7,
+      "active",
+      0,
+      "reading",
+      1,
+      "illness.unique-reading"
     );
+    const unrelatedSafety = ordinary("unrelated-safety", 1, { safety: true });
+    const placements = rank([
+      temperature,
+      illnessReading,
+      state,
+      unrelatedSafety,
+    ]);
     const nodes = new Map<string, ReactNode>([
       [
-        safety.candidateId,
-        createElement("div", { "data-testid": "safety-reading" }, "Safety"),
+        unrelatedSafety.candidateId,
+        createElement("div", { "data-testid": "unrelated-safety" }, "First"),
+      ],
+      [
+        state.candidateId,
+        createElement("div", { "data-testid": "episode-safety" }, "Second"),
       ],
     ]);
     const html = renderToStaticMarkup(
@@ -237,58 +254,39 @@ describe("dashboard illness ordering", () => {
         candidateNodes: nodes,
         standingPresentations: new Map(),
         attentionBadgeCount: 0,
-        illnessGroupNode: createElement(IllnessHero, {
-          cockpits: [
-            {
-              episodeKey: "7:active",
-              episodeOrder: 0,
-              profileId: 7,
-              profile: {
-                id: 7,
-                name: "Alex",
-                photo_path: null,
-                photo_version: 0,
-              },
-              displayName: "Alex",
-              situation: "Illness",
-              isActive: true,
-              canWrite: true,
-              status: {
-                dayLabel: "Day 2",
-                temperature: null,
-                lastMeds: null,
-                worsening: false,
-              },
-              feverFree: null,
-              episodeHref: null,
-              body: createElement("div", null, "Whole cockpit"),
-              stateIdentity: placedIds.has(state.candidateId)
-                ? {
-                    candidateId: state.candidateId,
-                    factKey: state.factKey,
-                    groupKey: state.groupKey!,
-                  }
-                : null,
-              temperatureIdentity: placedIds.has(temperature.candidateId)
-                ? {
-                    candidateId: temperature.candidateId,
-                    factKey: temperature.factKey,
-                    groupKey: temperature.groupKey!,
-                  }
-                : null,
-              medicationIdentity: null,
-            },
-          ],
-          initialCollapsedActive: false,
-          initialOpenOtherKey: null,
-          saveState: async () => {},
-        }),
+        illnessGroupNode: createElement(
+          "div",
+          { "data-testid": "whole-illness" },
+          "Whole illness"
+        ),
       })
+    );
+    expect(html.indexOf("unrelated-safety")).toBeLessThan(
+      html.indexOf("episode-safety")
+    );
+    expect(html.indexOf("episode-safety")).toBeLessThan(
+      html.indexOf("whole-illness")
     );
     expect(
       html.match(new RegExp(`data-fact-key="${shared}"`, "g"))
     ).toHaveLength(1);
     expect(html).not.toContain(temperature.candidateId);
+  });
+
+  it("derives illness membership and order only from illness-layer placements", () => {
+    const safetyState = episodeMember(7, "safety-only", 0, "state");
+    safetyState.rankReasons.safety = true;
+    const placements = rank([
+      episodeMember(12, "later-profile", 0, "state"),
+      episodeMember(7, "second", 1, "state"),
+      episodeMember(7, "first", 0, "state"),
+      safetyState,
+    ]);
+    expect(orderedIllnessGroupKeys(placements)).toEqual([
+      "illness.episode:7:first",
+      "illness.episode:7:second",
+      "illness.episode:12:later-profile",
+    ]);
   });
 
   it("keeps only owed episode actions and excludes unrelated optional work", () => {

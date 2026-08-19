@@ -118,6 +118,7 @@ import {
 import {
   localTimeWindow,
   mealTimeWindows,
+  orderedIllnessGroupKeys,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardTiming,
@@ -489,11 +490,18 @@ async function renderDashboard(
     const episodes = orderedCockpits
       .filter((cockpit) => cockpit.profileId === profileId)
       .map((cockpit) => cockpit.episode);
+    const presentationEpisodes = orderedCockpits
+      .filter((cockpit) => cockpit.profileId === profileId)
+      .map(
+        (cockpit) =>
+          presentationCockpitByEpisode.get(cockpit.episode.id)!.episode
+      );
     const gathered = gatherDashboardIllnessCockpits(profileId, episodes, {
       canWrite: scope.access.get(profileId) === "write",
       temperatureUnit: units.temperatureUnit,
       weightUnit: units.weightUnit,
       now: dashboardNow,
+      presentationEpisodes,
     });
     for (const [episodeId, model] of gathered)
       cockpitModelByEpisode.set(episodeId, model);
@@ -556,6 +564,7 @@ async function renderDashboard(
             ),
       status: {
         ...clinicalStatus,
+        worsening: displayStatus.worsening,
         temperature: displayStatus.temperature,
         lastMeds: displayStatus.lastMeds,
       },
@@ -1230,21 +1239,6 @@ async function renderDashboard(
         />
       );
     }
-    add(
-      careCandidates.illnessOpen(
-        {
-          subject: { scope: "profile", profileId: cockpit.profileId },
-          applicable: cockpit.canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        key
-      ),
-      <DashboardAtomCard
-        title={`Update ${cockpit.displayName}'s illness care`}
-        href={href}
-        actionLabel="Open"
-      />
-    );
   }
 
   for (const item of recentlyResolved) {
@@ -2350,12 +2344,22 @@ async function renderDashboard(
     activeProfileId: profile.id,
     minutesOfDay: nowMinutes,
   });
+  const illnessGroupKeys = orderedIllnessGroupKeys(dashboardPlacements);
+  const heroByGroupKey = new Map(
+    heroCockpits.map((cockpit) => [cockpit.stateIdentity!.groupKey, cockpit])
+  );
   const placedEpisodeCandidateIds = new Set(
     dashboardPlacements
-      .filter((placement) => placement.candidate.episodeGroup != null)
+      .filter(
+        (placement) =>
+          placement.lane === "now" && placement.nowLayer === "illness"
+      )
       .map((placement) => placement.candidate.candidateId)
   );
-  const placedHeroCockpits = heroCockpits.map((cockpit) => {
+  const placedHeroCockpits = illnessGroupKeys.map((groupKey) => {
+    const cockpit = heroByGroupKey.get(groupKey);
+    if (!cockpit)
+      throw new Error(`Missing dashboard illness group ${groupKey}`);
     const stateIdentity = placedEpisodeCandidateIds.has(
       cockpit.stateIdentity!.candidateId
     )

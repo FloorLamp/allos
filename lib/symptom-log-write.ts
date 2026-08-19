@@ -20,6 +20,7 @@ import {
 } from "./symptoms";
 import {
   openEpisodeIdForDate,
+  openEpisodeContainsDateForProfile,
   episodeExistsForProfile,
 } from "./illness-episode-store";
 import { captureDelete } from "./undo-delete-db";
@@ -40,14 +41,21 @@ function normalizeNote(note: string | null | undefined): string | null {
 function severityOf(
   profileId: number,
   date: string,
-  symptom: string
+  symptom: string,
+  episodeId?: number
 ): number | null {
   const row = db
     .prepare(
       `SELECT severity FROM symptom_logs
-        WHERE profile_id = ? AND date = ? AND symptom = ?`
+        WHERE profile_id = ? AND date = ? AND symptom = ?
+          ${episodeId == null ? "" : "AND episode_id = ?"}`
     )
-    .get(profileId, date, symptom) as { severity: number } | undefined;
+    .get(
+      profileId,
+      date,
+      symptom,
+      ...(episodeId == null ? [] : [episodeId])
+    ) as { severity: number } | undefined;
   return row?.severity ?? null;
 }
 
@@ -60,24 +68,42 @@ export function logSymptomCore(
   symptomInput: string,
   severity: number,
   date: string,
-  note?: string | null
+  note?: string | null,
+  explicitEpisodeId?: number
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
-    // #1093: a symptom logged while an illness episode is OPEN default-associates to it,
-    // so the episode gathers its own evidence. Set only on INSERT — the ON CONFLICT path
-    // leaves an existing row's episode_id untouched, so a prior detach (episode_id NULL)
-    // survives a re-tap and this never clobbers a hand-set link.
-    const episodeId = openEpisodeIdForDate(profileId, date);
-    db.prepare(
-      `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (profile_id, date, symptom)
-       DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
-                     note = COALESCE(excluded.note, symptom_logs.note)`
-    ).run(profileId, date, symptom, severity, noteVal, episodeId);
+    // #1093: a symptom logged while an illness episode is OPEN default-associates to it.
+    // The default path sets only on INSERT, preserving prior detach/hand-set links on a
+    // re-tap. A named dashboard cockpit is different: its validated explicit episode is
+    // the user's selected write target, so that path also binds an existing day row.
+    if (
+      explicitEpisodeId != null &&
+      !openEpisodeContainsDateForProfile(profileId, explicitEpisodeId, date)
+    )
+      return { kind: "invalid" as const };
+    const episodeId =
+      explicitEpisodeId ?? openEpisodeIdForDate(profileId, date);
+    if (explicitEpisodeId == null) {
+      db.prepare(
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (profile_id, date, symptom)
+         DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
+                       note = COALESCE(excluded.note, symptom_logs.note)`
+      ).run(profileId, date, symptom, severity, noteVal, episodeId);
+    } else {
+      db.prepare(
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (profile_id, date, symptom)
+         DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
+                       note = COALESCE(excluded.note, symptom_logs.note),
+                       episode_id = excluded.episode_id`
+      ).run(profileId, date, symptom, severity, noteVal, episodeId);
+    }
     return {
       kind: "logged" as const,
       symptom,
@@ -154,18 +180,31 @@ export function lowerSymptomSeverityCore(
   profileId: number,
   symptomInput: string,
   severity: number,
-  date: string
+  date: string,
+  explicitEpisodeId?: number
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
   return writeTx(() => {
-    const current = severityOf(profileId, date, symptom);
+    if (
+      explicitEpisodeId != null &&
+      !openEpisodeContainsDateForProfile(profileId, explicitEpisodeId, date)
+    )
+      return { kind: "invalid" as const };
+    const current = severityOf(profileId, date, symptom, explicitEpisodeId);
     // Only an existing row can be lowered, and only to a strictly lower value.
     if (current == null || severity >= current) return { kind: "invalid" };
     db.prepare(
       `UPDATE symptom_logs SET severity = ?
-        WHERE profile_id = ? AND date = ? AND symptom = ?`
-    ).run(severity, profileId, date, symptom);
+        WHERE profile_id = ? AND date = ? AND symptom = ?
+          ${explicitEpisodeId == null ? "" : "AND episode_id = ?"}`
+    ).run(
+      severity,
+      profileId,
+      date,
+      symptom,
+      ...(explicitEpisodeId == null ? [] : [explicitEpisodeId])
+    );
     return { kind: "logged" as const, symptom, severity };
   });
 }
@@ -178,23 +217,36 @@ export function setSymptomNoteCore(
   profileId: number,
   symptomInput: string,
   date: string,
-  note: string | null | undefined
+  note: string | null | undefined,
+  explicitEpisodeId?: number
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom) return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
+    if (
+      explicitEpisodeId != null &&
+      !openEpisodeContainsDateForProfile(profileId, explicitEpisodeId, date)
+    )
+      return { kind: "invalid" as const };
     const info = db
       .prepare(
         `UPDATE symptom_logs SET note = ?
-          WHERE profile_id = ? AND date = ? AND symptom = ?`
+          WHERE profile_id = ? AND date = ? AND symptom = ?
+            ${explicitEpisodeId == null ? "" : "AND episode_id = ?"}`
       )
-      .run(noteVal, profileId, date, symptom);
+      .run(
+        noteVal,
+        profileId,
+        date,
+        symptom,
+        ...(explicitEpisodeId == null ? [] : [explicitEpisodeId])
+      );
     if (info.changes === 0) return { kind: "invalid" };
     return {
       kind: "logged" as const,
       symptom,
-      severity: severityOf(profileId, date, symptom) ?? 0,
+      severity: severityOf(profileId, date, symptom, explicitEpisodeId) ?? 0,
     };
   });
 }
@@ -215,16 +267,28 @@ export type SymptomRemoveOutcome =
 export function removeSymptomCore(
   profileId: number,
   symptomInput: string,
-  date: string
+  date: string,
+  explicitEpisodeId?: number
 ): SymptomRemoveOutcome {
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom) return { kind: "invalid" };
+  if (
+    explicitEpisodeId != null &&
+    !openEpisodeContainsDateForProfile(profileId, explicitEpisodeId, date)
+  )
+    return { kind: "invalid" };
   const row = db
     .prepare(
       `SELECT id FROM symptom_logs
-        WHERE profile_id = ? AND date = ? AND symptom = ?`
+        WHERE profile_id = ? AND date = ? AND symptom = ?
+          ${explicitEpisodeId == null ? "" : "AND episode_id = ?"}`
     )
-    .get(profileId, date, symptom) as { id: number } | undefined;
+    .get(
+      profileId,
+      date,
+      symptom,
+      ...(explicitEpisodeId == null ? [] : [explicitEpisodeId])
+    ) as { id: number } | undefined;
   if (!row) return { kind: "removed", symptom, existed: false, undoId: null };
   // #2124: the one-tap × CAPTURES now. The `symptom-day` kind owns what this used to do
   // by hand — it takes the row's photos with it (deleteExplicitly children, because

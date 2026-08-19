@@ -42,6 +42,7 @@ import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { testAuthorizedIds } from "@/lib/__tests__/authorized-ids";
 import { gatherDashboardIllnessCockpits } from "@/lib/dashboard-illness-cockpit";
 import { withSettingReadCache } from "@/lib/settings";
+import { assignOrderedEpisodeFacts } from "@/lib/illness-episode-format";
 
 // The three illness_episodes reads the dashboard path can issue, by signature. The
 // today-row and closed-row queries are distinguishable in their WHERE clauses, which
@@ -271,6 +272,49 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
 });
 
 describe("multiple open illness episodes — one broad fact gather (#3138)", () => {
+  it("projects symptom controls and fever status only into their owning episode", () => {
+    const p = newProfile("DIG-Owned-presentation");
+    const day = today(p);
+    const olderId = addEpisode(p, "Flu", shiftDateStr(day, -3), null);
+    const newerId = addEpisode(p, "Migraine", shiftDateStr(day, -1), null);
+    db.prepare(
+      `INSERT INTO symptom_logs
+         (profile_id, date, symptom, severity, episode_id)
+       VALUES (?, ?, 'headache', 4, ?)`
+    ).run(p, day, newerId);
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit,
+          canonical_name, source, flag, occurred_at)
+       VALUES (?, ?, 'vitals', 'Body Temperature', '102', 102, 'degF',
+               'Body Temperature', 'manual', 'high', ?)`
+    ).run(p, day, `${day}T08:00:00Z`);
+    const canonical = openEpisodesFromState(episodeStateForProfile(p), {
+      includeEmpty: true,
+    });
+    const presentation = assignOrderedEpisodeFacts(
+      canonical.map((episode) => ({ profileId: p, episode }))
+    ).map(({ episode }) => episode);
+
+    const models = withSettingReadCache(() =>
+      gatherDashboardIllnessCockpits(p, canonical, {
+        canWrite: true,
+        temperatureUnit: "F",
+        weightUnit: "kg",
+        now: new Date(`${day}T12:00:00Z`),
+        presentationEpisodes: presentation,
+      })
+    );
+
+    expect(models.get(olderId)?.controls?.initial).toEqual({});
+    expect(models.get(newerId)?.controls?.initial).toEqual({ headache: 4 });
+    expect(
+      [models.get(olderId)?.feverFree, models.get(newerId)?.feverFree].filter(
+        Boolean
+      )
+    ).toHaveLength(1);
+  });
+
   it("partitions one symptom/temperature/PRN/condition gather across every open episode", () => {
     const p = newProfile("DIG-Multiple-open");
     const day = today(p);

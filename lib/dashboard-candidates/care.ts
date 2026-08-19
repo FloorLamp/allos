@@ -65,15 +65,6 @@ export const careCandidates = {
       { episodeGroup }
     );
   },
-  illnessOpen(ctx: DomainCandidateContext, key: string) {
-    return action(
-      ctx,
-      `illness.open:${key}`,
-      `illness.care-action:${key}`,
-      `illness.episode:${key}`,
-      "may"
-    );
-  },
   illnessReopen(ctx: DomainCandidateContext, key: string) {
     return action(
       ctx,

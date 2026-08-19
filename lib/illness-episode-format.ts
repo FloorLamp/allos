@@ -26,6 +26,9 @@ export interface SymptomSeriesPoint {
   date: string;
   severity: number; // 1–4
   note: string | null;
+  // Present for DB-backed rows. Legacy/unlinked facts remain eligible for stable
+  // first-episode presentation ownership.
+  episodeId?: number | null;
 }
 
 // One symptom's severity-over-time series within the episode (oldest day first).
@@ -654,6 +657,8 @@ export function assignOrderedEpisodeFacts<
     const { profileId, episode } = entry;
     const ownedSymptoms = episode.symptoms.flatMap((series) => {
       const points = series.points.filter((point) => {
+        if (point.episodeId != null && point.episodeId !== episode.id)
+          return false;
         const key = `${profileId}:${series.symptom}:${point.date}`;
         if (symptoms.has(key)) return false;
         symptoms.add(key);

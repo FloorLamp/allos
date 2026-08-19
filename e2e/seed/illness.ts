@@ -146,8 +146,8 @@ export function seedIllness(): void {
 
     if (opts.prnMed) {
       // A PRN med with confirmed interval/max (so the cockpit redose line computes) but NO
-      // prior administration — the co-caregiver dose the spec logs is the FIRST, so its
-      // "last ibuprofen …" clause appears on the other caregiver's hero only after it.
+      // prior administration — the dashboard dose the spec logs is the FIRST, so its
+      // "last ibuprofen …" clause appears only after that write.
       const has = db
         .prepare(
           "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND obligation = 'may'"

@@ -487,6 +487,38 @@ describe("assignOrderedEpisodeFacts", () => {
       latestTemp: null,
     });
   });
+
+  it("presents an explicitly linked symptom only in its owning episode", () => {
+    const symptom = {
+      symptom: "headache",
+      label: "Headache",
+      points: [
+        {
+          date: "2026-06-03",
+          severity: 1,
+          note: null,
+          episodeId: 2,
+        },
+        {
+          date: "2026-06-04",
+          severity: 4,
+          note: null,
+          episodeId: 2,
+        },
+      ],
+      maxSeverity: 4,
+    };
+    const shared = ep({ symptoms: [symptom], distinctSymptomCount: 1 });
+
+    const [first, second] = assignOrderedEpisodeFacts([
+      { profileId: 7, episode: { ...shared, id: 1 } },
+      { profileId: 7, episode: { ...shared, id: 2 } },
+    ]);
+    expect(first.episode.symptoms).toEqual([]);
+    expect(second.episode.symptoms).toHaveLength(1);
+    expect(episodeCollapsedStatus(first.episode, "F").worsening).toBe(false);
+    expect(episodeCollapsedStatus(second.episode, "F").worsening).toBe(true);
+  });
 });
 
 describe("isOpenEpisode", () => {

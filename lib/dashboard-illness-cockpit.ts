@@ -74,6 +74,9 @@ export function gatherDashboardIllnessCockpits(
     temperatureUnit: TemperatureUnit;
     weightUnit: WeightUnit;
     now?: Date;
+    // Exact-once display projection for overlapping open episodes. Domain status,
+    // school-return, stale, and reconciliation continue to use the canonical episodes.
+    presentationEpisodes?: readonly (AssembledEpisode & { id: number })[];
   }
 ): Map<number, DashboardIllnessCockpitModel> {
   const out = new Map<number, DashboardIllnessCockpitModel>();
@@ -83,36 +86,30 @@ export function gatherDashboardIllnessCockpits(
   const now = options.now ?? clockNow();
   const nowIso = now.toISOString();
   const school = schoolReturnStatusesFor(profileId, episodes, now.getTime());
+  const presentationById = new Map(
+    (options.presentationEpisodes ?? episodes).map((episode) => [
+      episode.id,
+      episode,
+    ])
+  );
 
   let sharedControls: Omit<
     DashboardIllnessControls,
     | "altDate"
     | "staleNudge"
     | "medReconciliation"
+    | "initial"
     | "initialAlt"
+    | "initialNotes"
     | "initialAltNotes"
   > | null = null;
-  let byDate = new Map<string, ReturnType<typeof dayRecords>>();
   let staleAcked = new Set<number>();
   let reconciliations = new Map<number, EpisodeMedSuggestion[]>();
   if (options.canWrite) {
-    const dates = new Set([date]);
-    for (const episode of episodes) {
-      const alternate = episodeAlternateLogDate(
-        episode.ongoing,
-        episode.firstDay,
-        date
-      );
-      if (alternate) dates.add(alternate);
-    }
-    byDate = new Map([...dates].map((day) => [day, dayRecords(episodes, day)]));
-    const current = byDate.get(date) ?? { initial: {}, notes: {} };
     sharedControls = {
       prnMeds: getPrnMedicationsForQuickLog(profileId),
       intakeOptions: getIntakeCatalogOptions(profileId),
       pediatric: getPediatricFormContext(profileId, options.weightUnit),
-      initial: current.initial,
-      initialNotes: current.notes,
       customNames: getCustomSymptomNames(profileId),
       rankedKeys: getSymptomLogOrder(profileId),
     };
@@ -128,12 +125,16 @@ export function gatherDashboardIllnessCockpits(
   }
 
   for (const episode of episodes) {
+    const presentation = presentationById.get(episode.id) ?? episode;
     const schoolStatus = school.get(episode.id) ?? null;
     const alternate = options.canWrite
       ? (episodeAlternateLogDate(episode.ongoing, episode.firstDay, date) ??
         undefined)
       : undefined;
-    const alternateRecords = alternate ? byDate.get(alternate) : undefined;
+    const currentRecords = dayRecords([presentation], date);
+    const alternateRecords = alternate
+      ? dayRecords([presentation], alternate)
+      : undefined;
     const stale =
       options.canWrite && !staleAcked.has(episode.id)
         ? computeStaleEpisode(episode)
@@ -154,19 +155,25 @@ export function gatherDashboardIllnessCockpits(
       temperatureUnit: options.temperatureUnit,
       timeZone,
       nowIso,
-      feverFree: schoolStatus
-        ? {
-            label: schoolReturnCompactClause(schoolStatus).replace(
-              /^fever-free/,
-              "Fever-free"
-            ),
-            met: schoolStatus.met,
-          }
-        : null,
+      feverFree:
+        schoolStatus &&
+        presentation.temperatures.some(
+          (temperature) => temperature.flag === "high"
+        )
+          ? {
+              label: schoolReturnCompactClause(schoolStatus).replace(
+                /^fever-free/,
+                "Fever-free"
+              ),
+              met: schoolStatus.met,
+            }
+          : null,
       controls: sharedControls
         ? {
             ...sharedControls,
             altDate: alternate,
+            initial: currentRecords.initial,
+            initialNotes: currentRecords.notes,
             initialAlt: alternateRecords?.initial,
             initialAltNotes: alternateRecords?.notes,
             staleNudge,

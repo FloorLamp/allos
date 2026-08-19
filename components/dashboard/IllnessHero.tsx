@@ -129,9 +129,8 @@ export default function IllnessHero({
       className="flex min-w-0 w-full flex-col gap-3"
     >
       {cockpits.map((c) => {
-        // The active cockpit is one half of the XL priority row, where collapsing it
-        // would leave a conspicuous empty column. Its saved compact-screen preference
-        // still applies as soon as the viewport drops below XL. Household accordions
+        // Active cockpits stay open in the roomy XL layout. Their independent saved or
+        // local compact-screen preferences apply again below XL. Household accordions
         // retain their one-open-at-a-time behavior at every size.
         const lockedOpen = c.isActive && isXl;
         const expanded = c.isActive
@@ -141,12 +140,14 @@ export default function IllnessHero({
               : !collapsedAdditionalActiveKeys.has(c.episodeKey))
           : openOtherKey === c.episodeKey;
         const bodyId = `illness-cockpit-body-${c.episodeKey}`;
+        const episodeLabel = `${c.situation} episode ${c.episodeOrder + 1}`;
         return (
           <div
             key={c.episodeKey}
             data-testid={`illness-cockpit-${c.episodeKey}`}
             data-episode-key={c.episodeKey}
             data-profile-id={c.profileId}
+            data-situation={c.situation}
             data-candidate-id={c.stateIdentity?.candidateId}
             data-fact-key={c.stateIdentity?.factKey}
             data-group-key={c.stateIdentity?.groupKey}
@@ -165,8 +166,8 @@ export default function IllnessHero({
                 aria-controls={bodyId}
                 aria-label={
                   lockedOpen
-                    ? `Illness details for ${c.displayName}`
-                    : `${expanded ? "Collapse" : "Expand"} illness details for ${c.displayName}`
+                    ? `${episodeLabel} details for ${c.displayName}`
+                    : `${expanded ? "Collapse" : "Expand"} ${episodeLabel} details for ${c.displayName}`
                 }
                 disabled={lockedOpen}
                 onClick={() =>
@@ -295,7 +296,7 @@ export default function IllnessHero({
               {c.episodeHref ? (
                 <Link
                   href={c.episodeHref}
-                  aria-label={`More details about ${c.displayName}'s illness episode`}
+                  aria-label={`More details about ${c.displayName}'s ${episodeLabel}`}
                   data-testid="illness-cockpit-full-episode"
                   className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
                 >

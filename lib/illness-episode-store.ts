@@ -170,6 +170,27 @@ export function openEpisodeIdForDate(
   return row?.id ?? null;
 }
 
+// True when the explicit dashboard write target is an OPEN episode owned by the
+// profile and covering the posted profile-local day. This is the data-layer check
+// behind episode-targeted cockpit logging; a forged/stale episode id cannot redirect
+// a symptom row across profiles or outside its episode window.
+export function openEpisodeContainsDateForProfile(
+  profileId: number,
+  episodeId: number,
+  date: string
+): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM illness_episodes
+          WHERE id = ? AND profile_id = ?
+            AND (start_date IS NULL OR start_date <= ?)
+            AND end_date IS NULL`
+      )
+      .get(episodeId, profileId, date) != null
+  );
+}
+
 // True when `episodeId` is an illness episode owned by `profileId` — the ownership gate
 // the symptom-episode attach uses so a forged cross-profile id is rejected at the data
 // layer (belt-and-suspenders to the action's write-access gate). Profile-scoped.

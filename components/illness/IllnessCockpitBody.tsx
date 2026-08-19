@@ -85,6 +85,7 @@ export default function IllnessCockpitBody({
             temperatureUnit={temperatureUnit}
             timeZone={timeZone}
             profileId={target}
+            episodeId={episode.id ?? undefined}
             showTitle={false}
           />
         </section>

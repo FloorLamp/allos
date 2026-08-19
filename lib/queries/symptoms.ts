@@ -16,6 +16,7 @@ export interface SymptomDayEntry {
   symptom: string; // stored key (curated slug or custom name)
   severity: number; // 1–4
   note: string | null;
+  episodeId: number | null;
 }
 
 // The symptoms logged on a specific day, worst-first then alphabetical — the dashboard
@@ -26,7 +27,7 @@ export function getSymptomsOnDate(
 ): SymptomDayEntry[] {
   return db
     .prepare(
-      `SELECT symptom, severity, note FROM symptom_logs
+      `SELECT symptom, severity, note, episode_id AS episodeId FROM symptom_logs
         WHERE profile_id = ? AND date = ?
         ORDER BY severity DESC, symptom COLLATE NOCASE`
     )
@@ -163,7 +164,7 @@ export function getSymptomDaysInRange(
   const where = parts.length ? ` AND ${parts.join(" AND ")}` : "";
   const rows = db
     .prepare(
-      `SELECT date, symptom, severity, note FROM symptom_logs
+      `SELECT date, symptom, severity, note, episode_id AS episodeId FROM symptom_logs
         WHERE profile_id = ?${where}
         ORDER BY date DESC, severity DESC, symptom COLLATE NOCASE`
     )
@@ -181,6 +182,7 @@ export function getSymptomDaysInRange(
       symptom: r.symptom,
       severity: r.severity,
       note: r.note,
+      episodeId: r.episodeId,
     });
   }
   return Array.from(byDay.values()).slice(0, limit);
