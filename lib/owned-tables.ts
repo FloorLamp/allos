@@ -113,6 +113,11 @@ export const OWNED_TABLES = [
   "frequency_targets",
   "equipment",
   "hr_minutes",
+  // The continuous-glucose trace (#2810, migration 20260819-glucose-trace): the
+  // hr_minutes shape one quantity over — a narrow instant-keyed stream deliberately
+  // OUTSIDE the reading model, because a per-5-minute sensor point sits below the
+  // grain boundary that model draws. Its daily derivations live in metric_samples.
+  "glucose_trace",
   "insights",
   "narratives",
   "metric_samples",

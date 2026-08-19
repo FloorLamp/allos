@@ -720,11 +720,45 @@ a **patient-state-qualified sibling** in exactly `frameUnstatedNames`' sense; wh
 curated entry it maps to (or whether the vocabulary needs one) is a curation decision and
 belongs to whoever adds the dataset entry, not to the ingest.
 
-**Not started here.** This is the placement ruling only — no schema, no entry, no
-surface. The `SEED_PERSONA=diabetic-cgm` walkthrough remains the live data shape to
-develop against, and it is worth saying plainly that the persona seeds the _lab_ shape
-(4 timed `medical_records` vitals a day), so it exercises the observation half and not
-the trace half this ruling is mostly about.
+**What was built against this ruling, and what was deliberately left.** The ruling
+above was recorded before any code existed; the STORES and the write path have since
+landed, and the two surfaces the issue asked for have not.
+
+Shipped: `glucose_trace` (migration `20260819-glucose-trace`) — the narrow
+instant-keyed table of ruling 1, with `source` in its primary key from birth (migration
+014's `hr_minutes` lesson taken up front rather than as a rebuild) and its `ts` BORN on
+the #2205 canonical convention, which is the one thing `hr_minutes` had to be converted
+into. No `n` column: an `hr_minutes` bucket is a count-weighted average that a merge has
+to weight, while a CGM point is one reading at one instant and a count would be a
+fiction. The day's derivations of ruling 2 — `glucose_mean_mgdl`,
+`glucose_time_in_range_pct` and the `glucose_trace_points` coverage figure that says
+whether the first two are worth reading — are `metric_samples` rows written by
+`lib/glucose-trace-db.ts` through the existing `upsertMetricSamples` core, so the #508
+tombstone, the #133 edit lock and the sync split are answered once rather than twice.
+One entry point writes both halves and recomputes each touched profile-LOCAL day from
+the stored trace rather than from the batch, which is what makes a rolling window
+idempotent.
+
+Ruling 3 is honoured by ABSENCE and pinned as one: no `READING_IDENTITY_MAP` entry, and
+the metric keys are named for the trace (`glucose_*`) rather than for the analyte, so
+there is no `glucose_mgdl` for a later change to register as a stream of `Glucose`. The
+pin is the general form of the rule and is derived from the live catalog — no stream may
+be registered under ANY name `frameUnstatedNames` returns (today `Glucose`, `Insulin`,
+`Cortisol`), so a fourth frame pair is covered with no edit.
+
+Not built, and each is its own decision rather than remaining work: the INGEST — note
+that the Health Connect ingest already accepts `blood_glucose` and lands every reading
+as a `medical_records` row under the band-less `Glucose`, so a CGM syncing through it
+today produces the lab shape at trace volume; rerouting it is an ingest-policy call
+because a fingerstick meter pushes the same record type. The SURFACES — a trace chart,
+an AGP day overlay, a time-in-range card — need a `TrendMetricSlug` and therefore an
+answer to `METRIC_DOCUMENT_REACH`. And the CURATION question ruling 3 names: which
+curated entry, if any, a CGM reading maps to.
+
+The `SEED_PERSONA=diabetic-cgm` walkthrough now seeds BOTH shapes — a real per-5-minute
+trace for the same fortnight as its 4 timed `medical_records` vitals a day — so the
+observation half and the trace half can be developed against side by side. It used to
+seed only the lab shape, which is the half this ruling is least about.
 
 ## Phase 3 — deliberately not started
 

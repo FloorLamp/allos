@@ -215,6 +215,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `frequency_targets` | `created_at` | bookkeeping | instant | bare |  |
 | `genomic_variants` | `report_date` | event | day | n/a |  |
 | `genomic_variants` | `created_at` | record | instant | bare |  |
+| `glucose_trace` | `ts` | event | instant | canonical | The instant a CGM sensor emitted one interstitial reading, minute-truncated (lib/date.ts utcMinute) and part of the row's primary key. Migration 20260819-glucose-trace (#2810), BORN canonical — unlike hr_minutes.ts, which had to be converted off a profile-local wall clock by migration 164, this column has never held any other shape. The profile-local day is derived at read time through lib/local-day-window.ts. |
 | `goals` | `target_date` | planned | day | n/a |  |
 | `goals` | `created_at` | bookkeeping | instant | bare |  |
 | `goals` | `achieved_at` | lifecycle | instant | canonical | Migration 182 (#2394) — BORN canonical: the instant `status` became 'achieved', written by setStatus through instantNow() and NULLed when a goal is set back to active. LIFECYCLE and not `event`: it is when the goal ROW was marked reached, not when the underlying performance happened — the app never observes that. NULL on every pre-182 achieved goal, deliberately: the recap announces a goal in the period its RECORDED achievement falls in, so an unrecorded one stays silent rather than being announced retroactively. |

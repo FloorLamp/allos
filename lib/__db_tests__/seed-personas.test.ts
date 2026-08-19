@@ -15,6 +15,7 @@ import { utcInstant } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
+import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
 import { getTimezone } from "@/lib/settings";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { episodesForSituation } from "@/lib/symptom-episode";
@@ -55,6 +56,7 @@ function ctxFor(profileId: number): PersonaContext {
     },
     reconcileFlags,
     saveFitnessEntry,
+    recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
     diffSituations,
     serializeSituationEvents,

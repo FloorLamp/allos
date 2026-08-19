@@ -562,6 +562,15 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  glucose_trace: [
+    {
+      column: "ts",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "The instant a CGM sensor emitted one interstitial reading, minute-truncated (lib/date.ts utcMinute) and part of the row's primary key. Migration 20260819-glucose-trace (#2810), BORN canonical — unlike hr_minutes.ts, which had to be converted off a profile-local wall clock by migration 164, this column has never held any other shape. The profile-local day is derived at read time through lib/local-day-window.ts.",
+    },
+  ],
   goals: [
     {
       column: "target_date",
