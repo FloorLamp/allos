@@ -420,6 +420,39 @@ export function getClinicalObservations(
   return getObservationsSnapshot(profileId, observationFiltersKey(filters));
 }
 
+export type DashboardClinicalObservation = ClinicalObservation & {
+  previous_id: number | null;
+  previous_flag: MedicalFlag | null;
+};
+
+// The current lab reading and its immediately-prior comparable family reading,
+// in one row per family. The dashboard already pays for the canonical, de-duplicated
+// all-history observation snapshot through its preventive evidence. Projecting that
+// same date-desc/id-desc list keeps the #482 family identity and avoids a parallel
+// medical_records scan solely for transition detection.
+export function getDashboardClinicalObservations(
+  profileId: number
+): DashboardClinicalObservation[] {
+  const currentByFamily = new Map<string, DashboardClinicalObservation>();
+  for (const observation of getClinicalObservations(profileId)) {
+    if (observation.category !== "lab") continue;
+    const name = observation.canonical_name?.trim() || observation.name;
+    const family = biomarkerFamily(name).toLowerCase();
+    const current = currentByFamily.get(family);
+    if (!current) {
+      currentByFamily.set(family, {
+        ...observation,
+        previous_id: null,
+        previous_flag: null,
+      });
+    } else if (current.previous_id == null) {
+      current.previous_id = observation.id;
+      current.previous_flag = observation.flag;
+    }
+  }
+  return [...currentByFamily.values()];
+}
+
 // HOW MANY observations a filter set selects, without hydrating one (#2116). The
 // /household out-of-range badge renders a number per accessible profile and used to
 // take `.length` of the full read: the same DEDUP+LATEST pass, but every matching row
