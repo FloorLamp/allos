@@ -52,7 +52,7 @@ import {
   type LedgerServing,
 } from "./food-drug-ledger";
 
-import type { Finding } from "./findings";
+import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "./findings";
 import type { UpcomingItem } from "./upcoming";
 import { intakeHref } from "./hrefs";
 import type { AppRoute } from "./hrefs";
@@ -258,6 +258,9 @@ export function buildFoodDrugVarianceFindings(
       title: foodDrugVarianceTitle(f),
       detail: foodDrugVarianceDetail(f),
       tone: "info" as const,
+      // No domain surface renders the variance note — the rollup is its whole
+      // reach, so it clears the rollup's relevance floor explicitly (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence: foodDrugVarianceEvidence(f),
       actionHref: ITEM_HREF,
       actionLabel: "View medication",

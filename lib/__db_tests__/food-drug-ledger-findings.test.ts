@@ -34,6 +34,7 @@ import {
   FOOD_DRUG_EVENT_PREFIX,
   FOOD_DRUG_VARIANCE_PREFIX,
 } from "@/lib/food-drug-ledger";
+import { coachingObservationFindings } from "@/lib/dashboard-presentation";
 
 function newProfile(name: string): number {
   const id = Number(
@@ -243,6 +244,10 @@ describe("food–drug VARIANCE findings (#2021)", () => {
         i.key.startsWith(FOOD_DRUG_VARIANCE_PREFIX)
       )
     ).toBe(false);
+
+    // The rollup is this class's ONLY surface, so it must clear the shipped
+    // dashboard relevance floor explicitly (#3129).
+    expect(coachingObservationFindings([f])).toHaveLength(1);
   });
 
   it("a steady week yields nothing", () => {

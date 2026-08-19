@@ -23,6 +23,7 @@ import {
   pairedObservationSignalKey,
   PAIRED_MIN_NIGHTS_PER_ARM,
 } from "@/lib/paired-observations";
+import { coachingObservationFindings } from "@/lib/dashboard-presentation";
 
 function newProfile(name: string): number {
   return Number(
@@ -147,6 +148,10 @@ describe("buildPairedObservationFindings — the alcohol → overnight HRV pair 
       (x) => x.dedupeKey
     );
     expect(rolled).toContain(f.dedupeKey);
+
+    // The rollup is this class's ONLY surface, so it must clear the shipped
+    // dashboard relevance floor explicitly (#3129).
+    expect(coachingObservationFindings([f])).toHaveLength(1);
   });
 
   it("vanishes when the drink arm drops below the per-arm minimum", () => {

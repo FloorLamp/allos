@@ -547,6 +547,10 @@ export function buildMoodFindings(profileId: number, today: string): Finding[] {
       detail: low.detail,
       // Calm FYI — a neutral observation from the user's own log, never an alarm.
       tone: "info",
+      // This class's ONLY surface is the dashboard rollup (#449 inverted: no
+      // origin tab renders it), so it declares rollup reach explicitly — the
+      // tone-derived default would leave it rendering nowhere (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "From your own daily check-ins — a subjective self-rating, not a screen " +
         "or a diagnosis.",
@@ -606,6 +610,9 @@ export function buildSleepMoodBridgeFindings(
       detail: obs.detail,
       // Calm FYI — a pattern note from the user's own data, never an alarm.
       tone: "info",
+      // Rollup-only reach, declared explicitly for the same reason as the
+      // low-mood note above (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Co-occurrence in your own data — sleep and mood often move together. " +
         "Not a causal claim and not a diagnosis.",
@@ -655,6 +662,9 @@ export function buildPairedObservationFindings(
       detail: verdict.detail,
       // Calm FYI — a co-occurrence in the user's own logs, never an alarm.
       tone: "info",
+      // The module's declared reach is the rollup and nothing more, so the
+      // rollup's floor must be cleared explicitly (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         `Co-occurrence in your own logs — ${verdict.withArm.nights} nights with, ` +
         `${verdict.withoutArm.nights} without. Not a causal claim and not a diagnosis.`,
@@ -788,6 +798,9 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
       detail: obs.detail,
       // Calm FYI — informational, never an alarm and never a push.
       tone: "info",
+      // Coaching-tier ONLY means the rollup is this note's whole reach, so it
+      // declares rollup relevance explicitly (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
       actionHref: "/records/history/visits",
@@ -864,6 +877,10 @@ export function buildTtcWorkupFindings(
       title: prompt.title,
       detail: prompt.detail,
       tone: "info",
+      // The cycles page shows elapsed months, never this workup suggestion —
+      // the rollup is the prompt's only surface, so it clears the floor
+      // explicitly (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Counted from the start date you recorded — informational, not a diagnosis.",
       actionHref: "/medical/cycles",
@@ -1798,6 +1815,9 @@ export function buildSunExposureFindings(
       detail: obs.detail,
       // Calm FYI — a neutral observation, never an alarm.
       tone: "info",
+      // Coaching-tier only with no origin tab of its own: the rollup is this
+      // observation's whole reach, declared explicitly (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
       actionHref: "/results/clinical-results",
       actionLabel: "View biomarkers",
