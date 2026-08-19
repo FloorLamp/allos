@@ -218,14 +218,24 @@ async function rebuildOfferListWithChips(
   // The chips, from the SAME ledger read and the SAME binding the reminder flow uses —
   // `doseAnchor`'s lookup one level up (#2443): the keyboard cannot supply the dose or
   // the day, so the ledger does.
+  //
+  // ASKED WITH THE TOKEN'S DOMAIN, NOT THE HOST'S KIND. These are `dosetime:` chips, so
+  // the question is the DOSE domain's — the same one `correctionWriteBinding` asks when
+  // one of them is tapped and the same one the sweep's intake-dose family asks when it
+  // decides whether they are dead. Asking with the host kind (this read once passed the
+  // digest's own kind) made the render side answer a different question from the other
+  // two: an UNATTRIBUTED dose burst — an ordinary web one-tap — rendered chips here and
+  // was then refused on touch, breaking the module's standing invariant that a chat can
+  // never show a chip the handler would refuse (#3108). Now the digest carries exactly
+  // the bursts ATTRIBUTED to it — the tap that just landed, which is the whole of what
+  // #2443 is for — and borrows none, which is what the note above already promised.
   const bursts = getDoseCorrectionBursts(
     profileId,
     now,
-    correctionMessageBinding(
-      profileId,
-      messagePointerKindAt(profileId, chatId, messageId) ?? "digest",
-      { chatId, messageId }
-    )
+    correctionMessageBinding(profileId, DOSE_TIME_PREFIXES.kind, {
+      chatId,
+      messageId,
+    })
   );
   await updateMessageKeyboard(
     profileId,

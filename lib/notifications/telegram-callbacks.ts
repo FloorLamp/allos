@@ -72,6 +72,7 @@ import {
   escalationSkipCloseText,
   escalationTakeCloseText,
   foodLogAnswerText,
+  BULK_ALL_SKIPPED_TEXT,
   foodOptInAnswerText,
   foodOptInCloseText,
   foodProteinAnswerText,
@@ -1130,19 +1131,26 @@ async function handleAllTaken(
       logged++;
     }
   }
+  // Every resolved dose was deliberately skipped (#232): a skip is a recorded
+  // refusal, not a log, so the answer must not read "Already logged" (#3120).
+  const allSkipped = entries.length > 0 && entries.every((e) => e.skipped);
   await answerCallbackQuery(
     cq.id,
     entries.length === 0
       ? "Not logged — this reminder is out of date. Open the app."
       : logged > 0
         ? `All logged ${GLYPH.done}`
-        : // Everything due was already resolved (e.g. two caregivers race-tapping
-          // ✅ All) — nothing was inserted, so don't claim "Logged ✅" (#280
-          // outcome-honesty; #380).
-          `Already logged ${GLYPH.done}`,
-    // An empty slot is the only arm that contradicts the button: "Already logged" is
-    // the state ✅ All asked for, reached by someone else.
-    { alert: entries.length === 0 }
+        : allSkipped
+          ? BULK_ALL_SKIPPED_TEXT
+          : // Everything due was already resolved (e.g. two caregivers race-tapping
+            // ✅ All) — nothing was inserted, so don't claim "Logged ✅" (#280
+            // outcome-honesty; #380).
+            `Already logged ${GLYPH.done}`,
+    // The arms that contradict the button demand a dismissal: an empty slot, and a
+    // fully-skipped set — "skipped" is not the state ✅ All asked for, and the reader
+    // has to know nothing was taken. "Already logged" IS that state, reached by
+    // someone else, so it stays a glance.
+    { alert: entries.length === 0 || allSkipped }
   );
 
   const messageId = cq.message?.message_id;
@@ -1251,19 +1259,26 @@ async function handleStackTaken(
       logged++;
     }
   }
+  // Every resolved dose was deliberately skipped (#232): a skip is a recorded
+  // refusal, not a log, so the answer must not read "Already logged" (#3120).
+  const allSkipped = current.length > 0 && current.every((e) => e.skipped);
   await answerCallbackQuery(
     cq.id,
     current.length === 0
       ? "Not logged — this reminder is out of date. Open the app."
       : logged > 0
         ? `Logged ${GLYPH.done}`
-        : alreadyResolved > 0
-          ? // Everything the button named is already resolved (a race, or a second
-            // tap) — nothing was inserted, so don't claim a fresh log (#280).
-            `Already logged ${GLYPH.done}`
-          : "Not logged — this reminder is out of date. Open the app.",
-    // Only the arms that contradict the button demand a dismissal.
-    { alert: logged === 0 && alreadyResolved === 0 }
+        : allSkipped
+          ? BULK_ALL_SKIPPED_TEXT
+          : alreadyResolved > 0
+            ? // Everything the button named is already resolved (a race, or a second
+              // tap) — nothing was inserted, so don't claim a fresh log (#280).
+              `Already logged ${GLYPH.done}`
+            : "Not logged — this reminder is out of date. Open the app.",
+    // The arms that contradict the button demand a dismissal — a fully-skipped set
+    // included: "skipped" is not the state the ✅ asked for, and the reader has to
+    // know nothing was taken.
+    { alert: (logged === 0 && alreadyResolved === 0) || allSkipped }
   );
 
   if (chatId == null || messageId == null) return;
