@@ -291,7 +291,7 @@ describe("providerStanding + standingBadge", () => {
   });
 
   it("routes exactly the escalating standings to the badge/digest, and intermittent to nowhere", () => {
-    // standingEscalates is what the Review badge, Needs attention, the hero item,
+    // standingEscalates is what the Review badge, Needs attention, dashboard placement,
     // and the digest 🔌 lines read — the reach of a flapping source only narrows.
     expect(standingEscalates("failing")).toBe(true);
     expect(standingEscalates("needs-reauth")).toBe(true);

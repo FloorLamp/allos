@@ -7,7 +7,7 @@
 //
 // ONE gather (illnessCareFindingsFor), THREE formatters over it (#221): the care-tier
 // Finding (for the #448 registry/reflection guard), the Upcoming item (→ Upcoming
-// page + the non-hideable Needs-attention hero via buildAttentionModel), and — in
+// page + dashboard placement via buildAttentionModel), and — in
 // lib/notifications/illness-care.ts — the Telegram nudge. All three carry the SAME
 // dedupeKey, so a dismiss on any surface silences every surface through the shared
 // bus ("dismiss once, silence everywhere", #449).
@@ -99,7 +99,7 @@ export function buildIllnessCareFindings(
 }
 
 // The illness-care findings as Upcoming items (issue #805) → the Upcoming page AND
-// the non-hideable Needs-attention hero (via collectUpcoming → buildAttentionModel).
+// dashboard placement (via collectUpcoming → buildAttentionModel).
 // Banded "today" like the other care-tier informational findings (dietary-limit /
 // interaction / prn-max), keyed by the SAME dedupeKey so a dismiss on any surface
 // silences it through getFindingSuppressions. `detail` is self-contained (fact +

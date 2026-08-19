@@ -38,8 +38,8 @@ export interface SnoozeDismissProps {
   // Supplying it is the SURFACE'S DECLARATION THAT IT HAS A FOLD. Only /upcoming
   // does: its "Snoozed & dismissed" disclosure sits below the rows and catches every
   // dismissal, which is the lesson the travel teaches (dismissed ≠ deleted, and here
-  // is where to look — the #2386 doctrine's reachability, animated). The dashboard
-  // "Needs attention" hero passes nothing: there is no fold on that page, and a row
+  // is where to look — the #2386 doctrine's reachability, animated). Dashboard
+  // attention atoms pass nothing: there is no matching fold there, and a row
   // sliding toward nowhere would teach a place that does not exist.
   //
   // A SNOOZE does not slide. It is also caught by the same fold, but a snooze is a
@@ -53,8 +53,8 @@ export interface SnoozeDismissProps {
 // beside the first (issue #1446 — every overdue preventive row on /upcoming grew
 // two identical "⋯" triggers because the preventive override menu and this one are
 // separate components). The standalone `SnoozeDismissMenu` below is just these
-// items wrapped in their own OverflowMenu, for the surfaces (the dashboard
-// "Needs attention" hero) whose rows have nothing else to put in the menu.
+// items wrapped in their own OverflowMenu, for surfaces (including dashboard
+// attention atoms) whose rows have nothing else to put in the menu.
 export function SnoozeDismissItems({
   runAction,
   signalKey,
@@ -154,7 +154,7 @@ export function SnoozeDismissItems({
   );
 }
 
-// Per-item snooze/dismiss popover used by the dashboard "Needs attention" hero
+// Per-item snooze/dismiss popover used by dashboard attention atoms
 // (issue #281). Built on the same OverflowMenu the goal / supplement /
 // extracted-record kebabs use, so every popover in the app gets the same opaque
 // panel, click-away backdrop, Escape handling, and viewport-aware positioning —

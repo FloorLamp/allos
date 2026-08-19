@@ -111,7 +111,7 @@ export function getRefillRates(
 // SHARED SUPPLY POOLS (#1374): when the item carries a `supply_id`, the adjustment
 // lands on the POOL instead of the item's private counter — one bottle, one count, every
 // taker drawing from it. This is the ONE place either adjustment is written, so every
-// dose-log path (the page tri-state, the dashboard hero, Upcoming, the household
+// dose-log path (the page tri-state, the dashboard atom, Upcoming, the household
 // cockpit's cross-profile confirm, PRN quick-log, the historical-dose backfill, the
 // offline replay, and every Telegram tap) becomes pool-aware without a second decrement
 // path. The item's own `qty_per_dose` is what's drawn — an adult and a child share a

@@ -71,7 +71,8 @@ export const careCandidates = {
       `illness.reopen:${key}`,
       `illness.closed-episode:${key}`,
       `illness.episode:${key}`,
-      "may"
+      "may",
+      { dashboardScope: "illness-context" }
     );
   },
   householdHistory(ctx: DomainCandidateContext) {
@@ -80,7 +81,8 @@ export const careCandidates = {
       "household.episode-history",
       "household.recent-episode-history",
       "household.episodes",
-      "may"
+      "may",
+      { dashboardScope: "illness-context" }
     );
   },
   appointment(ctx: DomainCandidateContext, href: AppRoute) {

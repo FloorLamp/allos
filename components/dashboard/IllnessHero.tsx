@@ -57,9 +57,9 @@ function getXlSnapshot() {
   return window.matchMedia(XL_QUERY).matches;
 }
 
-// The illness hero (issue #858): a pinned, non-hideable band above the customizable grid
-// that renders every accessible open illness episode as a per-patient cockpit. The acting
-// profile's own episode is a FULL cockpit at hero position; every other accessible
+// The illness context group (issue #858): a Now member that renders every accessible
+// open illness episode as a per-patient cockpit. The acting profile's own episode is a
+// full leading cockpit; every other accessible
 // profile's is a compact accordion line that expands IN PLACE into that profile's cockpit
 // WITHOUT switching the acting profile. One other-profile cockpit expands at a time; the
 // acting profile's primary cockpit and every additional active episode collapse

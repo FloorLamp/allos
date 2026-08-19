@@ -28,7 +28,7 @@
 //     numeric value, unit, reference range, flag, notes, provenance (document_id /
 //     external_id / provider_id), and the edit lock are all already there.
 //   • it would STRAND the readings. Every observation surface in this app — the
-//     Clinical results catalog, the trend series, the flagged hero, star/retest side-state,
+//     Clinical results catalog, the trend series, flagged-result dashboard placement, star/retest side-state,
 //     document reassignment, imported-row cleanup, undo-delete, search projections —
 //     reads `medical_records`. A private table would have to re-earn every one of them,
 //     and #713's readings (already seeded and already trending) would split in two.

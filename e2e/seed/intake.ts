@@ -306,7 +306,7 @@ export function seedDrugAllergyCrosscheck(): void {
   // tracked active medications: amoxicillin (a same-class penicillin hit) and
   // cephalexin (the documented penicillin ↔ cephalosporin cross-reactivity hit). The
   // spec asserts the safety-strip cards on /medications and the care-persistent
-  // Needs-attention hero finding (#1092: snooze-only, a page dismissal resisted), and
+  // dashboard finding (#1092: snooze-only, a page dismissal resisted), and
   // owns its dismissal state (reset per test). Idempotent for a reused server:
   // hard-clear this profile's allergies + intake rows before re-seeding. Synthetic, no PHI.
   const drugAllergyId = fixtureProfileId(DRUG_ALLERGY_PROFILE);

@@ -2,11 +2,14 @@ import { Fragment, type ReactNode } from "react";
 import { PageHeader } from "@/components/ui";
 import {
   placementsInLane,
-  type DashboardCandidateKind,
+  type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
+import type { AppRoute } from "@/lib/hrefs";
 import NowStrip, { type NowStripCard } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
+import RememberedDetails from "@/components/RememberedDetails";
+import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
 import DashboardStandingCluster, {
   type DashboardStandingPresentation,
 } from "./DashboardStandingCluster";
@@ -16,29 +19,59 @@ export interface DashboardPlacementCanvasProps {
   placements: readonly DashboardPlacement[];
   candidateNodes: ReadonlyMap<string, ReactNode>;
   standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  aheadPresentations: ReadonlyMap<string, DashboardAheadPresentation>;
   attentionBadgeCount: number;
   illnessGroupNode?: ReactNode;
 }
 
-const EVERYTHING_LABELS: Record<DashboardCandidateKind, string> = {
-  action: "Actions",
-  statement: "Updates",
-  state: "Current state",
-  reading: "More readings",
+export interface DashboardAheadPresentation {
+  label: string;
+  detail?: string;
+  href?: AppRoute;
+}
+
+const EVERYTHING_LABELS: Record<DashboardEverythingGroup, string> = {
+  act: "Act",
+  read: "Read",
+  understand: "Understand",
+  setup: "Setup",
+  "active-states": "Active states",
 };
+
+function groupsInPlacementOrder<Item, Key>(
+  items: readonly Item[],
+  keyFor: (item: Item) => Key
+): { key: Key; members: Item[] }[] {
+  const groups: { key: Key; members: Item[] }[] = [];
+  const byKey = new Map<Key, Item[]>();
+  for (const item of items) {
+    const key = keyFor(item);
+    let members = byKey.get(key);
+    if (!members) {
+      members = [];
+      byKey.set(key, members);
+      groups.push({ key, members });
+    }
+    members.push(item);
+  }
+  return groups;
+}
 
 export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
   candidateNodes,
   standingPresentations,
+  aheadPresentations,
   attentionBadgeCount,
   illnessGroupNode,
 }: DashboardPlacementCanvasProps) {
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
+      placement.lane !== "ahead" &&
       !(
+        placement.lane === "now" &&
         placement.nowLayer === "illness" &&
         placement.candidate.episodeGroup != null
       ) &&
@@ -49,6 +82,15 @@ export default function DashboardPlacementCanvas({
       `Missing dashboard candidate node for ${missingNode.candidate.candidateId} in ${missingNode.lane}`
     );
   }
+  const missingAhead = placements.find(
+    (placement) =>
+      placement.lane === "ahead" &&
+      aheadPresentations.get(placement.candidate.candidateId) == null
+  );
+  if (missingAhead)
+    throw new Error(
+      `Missing dashboard Ahead presentation for ${missingAhead.candidate.candidateId}`
+    );
 
   const nodeFor = (placement: DashboardPlacement) => {
     const node = candidateNodes.get(placement.candidate.candidateId);
@@ -100,13 +142,43 @@ export default function DashboardPlacementCanvas({
       : [{ id: placement.candidate.candidateId, node } satisfies NowStripCard];
   });
   const standing = placementsInLane(placements, "standing");
+  const ahead = placementsInLane(placements, "ahead");
   const everything = placementsInLane(placements, "everything");
-  const everythingKinds: DashboardCandidateKind[] = [
-    "action",
-    "statement",
-    "state",
-    "reading",
-  ];
+  const aheadBuckets = groupsInPlacementOrder(
+    ahead,
+    (placement) => placement.aheadBucket
+  ).map(({ key, members }): DashboardAheadBucket => {
+    const horizon = members.filter(
+      (placement) => placement.aheadBucket === "horizon"
+    );
+    return {
+      key,
+      label: key === "later-today" ? "Later today" : "This week and later",
+      ...(key === "horizon"
+        ? {
+            primaryHref: (horizon.some(
+              (placement) => placement.upcomingBand === "week"
+            )
+              ? "/upcoming#week"
+              : "/upcoming#later") as AppRoute,
+          }
+        : {}),
+      members: members.map((placement) => {
+        const presentation = aheadPresentations.get(
+          placement.candidate.candidateId
+        )!;
+        return {
+          candidateId: placement.candidate.candidateId,
+          factKey: placement.candidate.factKey,
+          ...presentation,
+        };
+      }),
+    };
+  });
+  const everythingGroups = groupsInPlacementOrder(
+    everything,
+    (placement) => placement.everythingGroup
+  );
 
   return (
     <div>
@@ -126,24 +198,31 @@ export default function DashboardPlacementCanvas({
         />
       )}
 
+      <DashboardAhead buckets={aheadBuckets} />
+
       {everything.length > 0 && (
-        <section aria-labelledby="dashboard-everything-title">
-          <h2
-            id="dashboard-everything-title"
-            className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
-          >
-            Everything
-          </h2>
-          <div className="space-y-6" data-testid="dashboard-everything">
-            {everythingKinds.map((kind) => {
-              const members = everything.filter(
-                (placement) => placement.candidate.kind === kind
-              );
-              if (members.length === 0) return null;
+        <RememberedDetails
+          id="dashboard-all"
+          className="group"
+          testId="dashboard-all"
+          summary={
+            <summary className="mb-3 cursor-pointer list-none text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100">
+              <span
+                aria-hidden
+                className="mr-2 inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none"
+              >
+                ›
+              </span>
+              Show everything
+            </summary>
+          }
+        >
+          <div className="space-y-6" data-testid="dashboard-all-contents">
+            {everythingGroups.map(({ key: group, members }) => {
               return (
-                <section key={kind} aria-label={EVERYTHING_LABELS[kind]}>
+                <section key={group} aria-label={EVERYTHING_LABELS[group]}>
                   <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-                    {EVERYTHING_LABELS[kind]}
+                    {EVERYTHING_LABELS[group]}
                   </h3>
                   <div className="grid grid-cols-1 gap-3">
                     {members.map((placement) => (
@@ -156,7 +235,7 @@ export default function DashboardPlacementCanvas({
               );
             })}
           </div>
-        </section>
+        </RememberedDetails>
       )}
     </div>
   );

@@ -121,7 +121,7 @@ export function goalHighlights(
 
 // ---- Household rollup (issue #31) ----
 
-// The single "next appointment" pick, shared by BOTH the dashboard needs-attention
+// The single "next appointment" pick, shared by BOTH dashboard placement
 // hero and the household card so they can never disagree (issue #303 — they used to
 // run independent pickers with opposite overdue policies). Policy: the most
 // attention-worthy scheduled visit — soonest by calendar date, so a still-scheduled

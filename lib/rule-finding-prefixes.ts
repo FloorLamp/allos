@@ -61,9 +61,9 @@ import { HOUSEHOLD_SETUP_PREFIX } from "./household-setup";
 import { RECORDS_RECENCY_PREFIX } from "./records-recency";
 import type { ReasonCode } from "./reasons";
 
-// The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
-// hero + (where wired) the Telegram nudge. COACHING is calm: its own tab + the hideable
-// dashboard rollup (collectCoachingFindings) — never a notification, never the hero.
+// The two reach tiers (#449). CARE is push: Upcoming + dashboard placement + (where wired)
+// the Telegram nudge. COACHING is calm: its own tab + dashboard placement — never a
+// notification, never dashboard Now.
 export type FindingTier = "care" | "coaching";
 
 // One registered finding namespace: the dedupeKey PREFIX its builder keys under, the
@@ -80,7 +80,8 @@ export interface RuleFindingRegistryEntry {
 // The single source of truth. Every finding-producing builder in the codebase appears
 // exactly once. COACHING members are precisely the builders aggregated by
 // collectCoachingFindings (lib/rule-findings.ts); CARE members are the push builders that
-// reach Upcoming/hero (illness-care, temp-red-flag, condition-review, follow-up) and are
+// reach Upcoming and dashboard placement (illness-care, temp-red-flag,
+// condition-review, follow-up) and are
 // deliberately NOT in collectCoachingFindings. Order is irrelevant; membership + the
 // three columns are what the guards read.
 export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
@@ -335,8 +336,8 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // corollary #1685 established for a broken sync: reaching only surfaces you must
     // open to see inverts the purpose of a feature whose job is to run without you).
     //
-    // It is also deliberately kept off the non-hideable "Needs attention" hero, by
-    // cardBandForItem's coaching exclusion — the one property that would make a calm
+    // It is also deliberately kept out of dashboard Now, by
+    // attentionEmphasisBandForItem's coaching exclusion — the one property that would make a calm
     // ask un-ignorable.
     //
     // NOT a rule-findings builder: the item is emitted by the Upcoming generator
@@ -356,8 +357,8 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // preventive catalog's check-up cadence.
     //
     // COACHING tier, and the ceiling is the same hard contract the portal request has:
-    // no dedicated send, EVER, no escalation, and off the non-hideable hero
-    // (cardBandForItem). Records hygiene is not a safety signal, and an ask about a
+    // no dedicated send, EVER, no escalation, and outside dashboard Now
+    // (attentionEmphasisBandForItem). Records hygiene is not a safety signal, and an ask about a
     // month-scale drift that cannot be dismissed is a nag.
     //
     // The key is EPISODE-scoped on the source's own data frontier
@@ -438,7 +439,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // rule window — the metronidazole × alcohol case the app used to watch in silence.
     // CARE tier: it belongs to the med-safety family (dietary-limit / interaction /
     // allergy-med) and the guidance is forward-looking (the label's own "and for 3 days
-    // after"), so it reaches Upcoming + the non-hideable Needs-attention hero.
+    // after"), so it reaches Upcoming + dashboard placement.
     //
     // A push channel is deliberately scoped OUT, the condition-review precedent: the tier
     // is a CEILING, not a floor (#1433), and the contact-consent rule requires a

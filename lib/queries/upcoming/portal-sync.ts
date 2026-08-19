@@ -20,7 +20,7 @@ import { daysBetweenDateStr } from "../../date";
 // this same `collectUpcoming` — one digest line carrying the SAME dedupe key. Dismiss it
 // on either surface and both go quiet, through the ordinary suppression bus. There is no
 // dedicated send and there will not be one: portal hygiene is never a safety signal.
-// (`cardBandForItem` also keeps it off the non-hideable "Needs attention" hero.)
+// (`attentionEmphasisBandForItem` also keeps it out of the care-tier app badge.)
 //
 // THE DUE DATE IS THE EXPIRY, because that is the only deadline a request has. It is not
 // a schedule — nobody is promised a run at a time — but "this ask stops mattering on

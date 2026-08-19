@@ -1833,7 +1833,6 @@ const household: SeedPersona = {
   dashboard: {
     expect: [
       "checkin.mood",
-      "household.attention",
       "attention.fact:mental-health:crisis:",
       "illness.state:",
       "workout.live:",

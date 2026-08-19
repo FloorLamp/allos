@@ -14,9 +14,8 @@
 // blind spot — cross-profile SETUP NEGLECT had no surface at all. Onboarding that was
 // never STARTED renders identically to onboarding that is complete
 // (`onboardingNeedsSetup(null)` is false); widget empty-state CTAs render only for the
-// ACTIVE profile's own dashboard; and the household strip filters to members with
-// non-zero ATTENTION counts, which none of these produce. So the five checks below live
-// together, on the one surface that is already the family status board.
+// ACTIVE profile's own dashboard. So the five checks below live together on the
+// Household page, the surface that is already the family status board.
 //
 // WHERE IT MAY REACH — class 2, rendered aggregate, and nothing else
 // (docs/internals/findings.md §1). It costs nothing until someone opens `/household`.

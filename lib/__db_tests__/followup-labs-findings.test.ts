@@ -106,7 +106,7 @@ describe("followUpItems labs builder (#700)", () => {
     // Not overdue yet ⇒ ordinary suppressibility.
     expect(it.carePersistent).toBeUndefined();
     expect(it.followUpResolve).toBeUndefined();
-    // It rides collectUpcoming (reaches Upcoming/hero).
+    // It rides collectUpcoming (reaches Upcoming and dashboard placement).
     expect(collectUpcoming(p, now).some((u) => u.key === it.key)).toBe(true);
   });
 

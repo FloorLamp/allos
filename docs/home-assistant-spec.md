@@ -290,9 +290,9 @@ instance before release:
 4. **Environmental context ingestion** (bedroom temp/humidity, CO2, PM2.5/AQI
    via `/ingest`) — needs canonical metric homes first, and its payoff is
    correlation (protocols/insights, #161). Stage behind demand.
-5. **Household attention sensors** — per-profile attention counts as HA sensors
-   ("Dad: 2 overdue"), letting HA notify whoever is home. A formatter over the
-   dashboard redesign's Tier-1 aggregation — gated on #171 building that model.
+5. **Per-profile attention sensors** — future HA sensors could format the shared
+   attention model for one explicitly authorized profile. This requires a separate
+   delivery and privacy design; it is not derived from dashboard household counts.
 6. **HA as a notification CHANNEL (Allos → HA)** — the one genuinely new piece
    of machinery in this space: a webhook channel in `dispatch()`'s fan-out
    beside Telegram/push, letting HA present reminders with what only it knows

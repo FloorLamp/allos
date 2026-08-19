@@ -27,14 +27,14 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   "prn-max": "over-max PRN",
   refill: "refill",
   "dietary-limit": "intake limit",
-  // A food-log × food–drug co-occurrence (#2021). Care-tier on the hero/Upcoming and
+  // A food-log × food–drug co-occurrence (#2021). Care-tier on the dashboard/Upcoming and
   // deliberately NOT pushed — omitted from DOMAIN_SEQ, so it is never counted in this
   // digest. Nobody declared "tell me when I drink" (the contact-consent rule), and a
   // message that arrives because you logged a beer would be surveillance-shaped. The
   // noun exists only because the Record is exhaustive.
   "food-drug-event": "food note",
   "illness-care": "illness check",
-  // A condition-review suggestion (#685). Care-tier on the hero/Upcoming, but
+  // A condition-review suggestion (#685). Care-tier on the dashboard/Upcoming, but
   // deliberately NOT pushed — omitted from DOMAIN_SEQ (like the "something's off"
   // signals), so it's never counted in this digest even though the noun exists.
   "condition-review": "condition to review",
@@ -76,12 +76,12 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // counted in this digest; the exhaustive Record needs the noun.
   practice: "practice target",
   careplan: "care-plan item",
-  // A finding follow-up (#700). Care-tier on the hero/Upcoming (an overdue one
+  // A finding follow-up (#700). Care-tier on the dashboard/Upcoming (an overdue one
   // escalates there + resists dismiss), but the Telegram digest push is deliberately
   // scoped OUT for v1 (like condition-review) — omitted from DOMAIN_SEQ, so it's
   // never counted here even though the noun exists. A push is a follow-up decision.
   followup: "finding follow-up",
-  // A mental-health crisis finding (#716). Care-tier on the hero/Upcoming, but
+  // A mental-health crisis finding (#716). Care-tier on the dashboard/Upcoming, but
   // DELIBERATELY never pushed on any channel — omitted from DOMAIN_SEQ, so it's never
   // counted in this digest even though the exhaustive Record needs the noun. The
   // decided harm case is crisis content landing on a shared/locked device.
@@ -152,7 +152,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
 
 // A surfaced "why" for a high-priority item (issue #656 item 3): the item's title
 // plus its TOP reason text, so the push says WHY the important thing matters instead
-// of only counting it. The reason is the SAME primaryReason() the page/hero carry on
+// of only counting it. The reason is the SAME primaryReason() Upcoming/dashboard carry on
 // the item — one computation, proven by the shared-fixture pin.
 export interface DigestHighlight {
   title: string;
@@ -160,7 +160,7 @@ export interface DigestHighlight {
 }
 
 // One NAMED data-plumbing line for the digest (#1685, extended by #1757), lifted from the
-// SAME UpcomingItem the hero and the Upcoming page render — never a second description of
+// SAME UpcomingItem dashboard placement and the Upcoming page render — never a second description of
 // the same fact. A bare per-band count ("1 sync issue", "1 portal check") cannot be acted
 // on: you need to know WHICH source stopped, or WHICH portal wants a run, and where to go.
 // So the count line stays the glance, and this names the subject and carries its href —
@@ -218,7 +218,7 @@ const MAX_HIGHLIGHTS = 3;
 // urgency order (Overdue → Today → …, each already within-band sorted so the higher-
 // priority item leads), keeps items that carry a structured reason, prefers higher
 // `priority`, de-dupes by title, and caps the list. The reason shown is
-// primaryReason(item) — the SAME lead reason the page/hero render, never re-derived.
+// primaryReason(item) — the SAME lead reason Upcoming/dashboard render, never re-derived.
 export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
   const candidates: { item: UpcomingItem; order: number }[] = [];
   let order = 0;

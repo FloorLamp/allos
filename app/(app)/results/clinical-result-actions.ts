@@ -39,7 +39,7 @@ function revalidateResults() {
   revalidateRoute("/results/clinical-results");
   revalidateRoute("/results/clinical-results/view", "page");
   revalidateRoute("/records");
-  // The dashboard derives Recent labs and Needs attention from these records, so
+  // The dashboard derives clinical-result facts from these records, so
   // a new/edited/deleted reading must refresh its summaries too.
   revalidateRoute("/");
 }

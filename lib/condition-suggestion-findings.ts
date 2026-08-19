@@ -6,17 +6,17 @@
 // through the profile-scoped query layer, so the profile-scoping guard is unaffected.
 //
 // ONE gather (conditionSuggestionsFor), formatters over it (#221): the Upcoming item
-// (→ Upcoming page + the non-hideable Needs-attention hero via buildAttentionModel),
+// (→ Upcoming page + dashboard placement via buildAttentionModel),
 // carrying the SAME dedupeKey as the pure suggestion, so a dismiss on any surface
 // silences every surface through the shared bus ("dismiss once, silence everywhere").
 //
 // Care tier, deliberately (#449): a positive HIV/HCV/HBsAg seen only as a flag chip is
 // the safety gap #685 names, so — like the illness-care builder — this is PUSH-shaped:
-// its items band "today" so they reach the hero, and its dedupeKey prefix
+// its items band "today" so they are eligible for Now, and its dedupeKey prefix
 // (CONDITION_REVIEW_PREFIX) is registered in RULE_FINDING_PREFIXES. It is SUGGEST-ONLY
 // (#560): the item offers a confirm ("Add to conditions") the user clicks; the app
 // never silently inserts a problem-list row. A NEW notification channel (Telegram
-// push) is deliberately NOT added here — the review/Upcoming/hero surface is the scoped
+// push) is deliberately NOT added here — the review/Upcoming/dashboard placement is the scoped
 // step; a push is a larger decision left to a follow-up.
 
 import {
@@ -49,8 +49,8 @@ export function conditionSuggestionsFor(
 // user can review the full list in context.
 const CONDITIONS_HREF: AppRoute = "/records/problems/conditions";
 
-// The condition-suggestion review items for the Upcoming/hero surface. Banded "today"
-// (care tier → the act-now slice of the attention model), suppressible through the
+// The condition-suggestion review items shared by Upcoming and dashboard placement.
+// Banded "today" (care tier → eligible for Now), suppressible through the
 // shared bus by the suggestion's dedupeKey, and carrying the confirm payload the
 // Upcoming page renders as an inline "Add to conditions" button.
 export function conditionReviewItems(profileId: number): UpcomingItem[] {

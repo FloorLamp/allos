@@ -18,8 +18,8 @@
 //     finding renders the "contact a clinician" refusal, not a computed number.
 //     An unknown age never triggers the infant band.
 //
-// Reach is CARE tier (#449) — the builder wires it to Upcoming + the non-hideable
-// hero + the Telegram nudge through the shared dismissal bus. This module only
+// Reach is CARE tier (#449) — the builder wires it to Upcoming, dashboard placement,
+// and the Telegram nudge through the shared dismissal bus. This module only
 // DECIDES + phrases; it owns no surface.
 
 import { daysBetweenDateStr } from "./date";

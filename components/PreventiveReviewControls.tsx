@@ -9,7 +9,7 @@ const CHIP =
   "rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
 
 // The preventive REVIEW CANDIDATE controls (issue #3025), shared by the Upcoming
-// row and the dashboard's Everything lane so the offer reads identically on both.
+// row and dashboard Show everything so the offer reads identically on both.
 // A valueless imported report matched exactly one screening rule, so the app ASKS
 // — "does this record show the screening was completed?" — and the person
 // answers:

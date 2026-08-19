@@ -99,8 +99,7 @@ describe("dismissRecentlyResolved (#1548)", () => {
       )
     ).toEqual([]);
 
-    // #1549 depends on this re-render: the dismissal can move the household-history
-    // promo from the reopen band to the household strip.
+    // The server placement model must drop the dismissed reopen fact from fresh state.
     expect(revalidate).toHaveBeenCalledWith("/");
   });
 

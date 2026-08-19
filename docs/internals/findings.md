@@ -3,7 +3,7 @@
 Status: **shipped** · extracted verbatim from AGENTS.md (#597; the policy was
 decided in #449)
 
-How far a rule-engine finding travels — page, dashboard hero, notification — is
+How far a rule-engine finding travels — page, dashboard placement, notification — is
 a deliberate two-tier decision, not a per-feature accident. This page holds the
 full policy and how a new engine joins a tier; the one-line rule stays in
 AGENTS.md's conventions.
@@ -20,14 +20,13 @@ AGENTS.md's conventions.
 **Findings reach is a two-tier policy — decide it on purpose (#449).** The #45
 rule engines split into two reach tiers. The **care tier** (preventive findings,
 drug-interaction/dietary-limit items, and the illness-care duration/trajectory
-findings — #805) is _push_: it reaches Upcoming, the dashboard **Needs
-attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** —
+findings — #805) is _push_: it reaches Upcoming, is eligible for dashboard
+**Now**, AND reaches the Telegram nudge (one assessor). The **coaching tier** —
 the four observational builders
 (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`,
 aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches
-its own tab and is eligible for the hideable dashboard **Coaching observations**
-rollup when it clears that surface's relevance floor, but **never a notification
-and never the non-hideable hero** (reach without noise).
+its own tab and is eligible for the dashboard when it clears that surface's
+relevance floor, but **never a notification and never Now** (reach without noise).
 A new observational engine joins the coaching tier by adding its builder to
 `collectCoachingFindings` and its dedupeKey prefix to the registry; it does NOT
 get a push channel unless it's genuinely _care_. Every surface renders the SAME
@@ -45,8 +44,8 @@ out of `PreventiveSummary.actionable`, which is what the Telegram nudge and the
 token reconciler are composed from, so it cannot page anyone; the morning digest
 drops it explicitly. Its `UpcomingItem` carries `signalGroup: "setup"`, which
 gives it its own trailing group on Upcoming and excludes it from
-`cardBandForItem`, the hero count, the app badge, and the "+N scheduled later"
-link — the hero renders it as ONE collapsed `attentionSetupItems` line instead.
+`attentionEmphasisBandForItem` and therefore the app badge. Dashboard placement may put the
+same setup fact in Show everything; Upcoming gives it its own trailing group.
 The dedupeKey, rule key, deep link and inline actions are all unchanged, so this
 is a re-framing and not a second finding (an existing dismissal survives it).
 
@@ -109,8 +108,8 @@ Three properties are load-bearing:
   SAME `UpcomingItem` objects to the SAME row renderer, so every folded row keeps
   its `dedupeKey`, its per-item snooze/dismiss, and its `WriteTarget` — a dose
   confirmed on another member's row still writes to that member.
-- **The safety exemption is read from the item's own policy**, exactly as the
-  hero's is: an item whose `itemSuppressionPolicy` is `"safety-ungated"` (a
+- **The safety exemption is read from the item's own policy**, exactly as dashboard
+  capped-tail placement does: an item whose `itemSuppressionPolicy` is `"safety-ungated"` (a
   missed-dose escalation, the crisis finding) is never folded, and neither is a
   `prn-max` row — a count that has already been exceeded must not be summarised by
   another count. Both render individually and lead their band.
@@ -139,13 +138,13 @@ care/coaching reach line to make a layout work.
 
 **Completeness beats compaction where they conflict.** `goalItems` deliberately
 has NO horizon: the fold keeps every dated goal present and counted, because the
-#524 subset invariant is this page's contract with the dashboard hero, and a
+#524 shared-model invariant is this page's contract with dashboard placement, and a
 90-day cutoff would both make the ledger lie and manufacture silent day-N arrivals.
 
 The fold is band-scoped (an overdue dose is never summarised together with a
 not-yet-due one), and it does not touch the engines, the bands,
 `compareWithinBand`, `collectUpcoming`, or the suppression bus — the digest, the
-dashboard hero and the calendar feed read the same model unchanged.
+dashboard placement and the calendar feed read the same model unchanged.
 
 **Due text is band-aware past the This-week boundary (#2579-B).** A countdown is a
 unit of urgency: inside the week "3 days overdue" / "tomorrow" / "6 days left"
@@ -159,33 +158,6 @@ disagree with its heading), and keys, banding and suppression identity are
 untouched. The date follows the viewer's `dateFormat` pref, and its auto-year is
 decided against the PROFILE's today rather than the process wall clock
 (`formatMonthDay(iso, prefs, { today })`).
-
-**The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
-tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero
-may **collapse** to a compact pinned line, because on a phone the full card cost
-a screenful even on a day whose items you had already read. What collapse may
-never touch is the signal itself — the heading, the alert glyph, the **count**,
-and the highest-severity band all render in BOTH states, there is still no
-dismiss control, and the toggle is always two-way, so no interaction reaches a
-state with no attention affordance on the page. The preference is stored per
-**login** (`attention_hero_collapsed` in `login_settings`) because it is a
-viewing-density choice about the reader's own screen, not a fact about the
-person being displayed.
-
-The **safety carve-out outranks the preference entirely**:
-`attentionSafetyLocked` (`lib/attention.ts`) refuses to collapse a hero carrying
-an item whose lifecycle policy is `"safety-ungated"` (dose reminders,
-missed-dose escalation, the #716 crisis finding), and such a hero renders with
-NO collapse control at all. The tier is read from the item's OWN declared policy
-through the shared `itemSuppressionPolicy` dispatcher
-(`lib/upcoming-suppress.ts`) — deliberately NOT a second "serious-looking
-domains" allowlist, so a future safety signal inherits the no-compaction
-guarantee by declaring its policy rather than by someone remembering to update a
-list here. This mirrors `isHiddenUnderPolicy`'s posture (#942): the safety
-branch is checked FIRST and unconditionally, before any stored preference is
-consulted, so neither can be weakened by editing what is stored. Pinned by
-`lib/__tests__/attention-hero-collapse.test.ts` and
-`e2e/dashboard-now.mobile.spec.ts`.
 
 ---
 
@@ -205,7 +177,7 @@ above can't be made by accident and can't drift from the code. Each
   it. The **coaching** members are exactly the builders
   `collectCoachingFindings` aggregates; the **care** members are the push
   builders (`buildIllnessCareFindings`, `tempRedFlagItems`,
-  `conditionReviewItems`, `followUpItems`) that reach Upcoming/hero and are
+  `conditionReviewItems`, `followUpItems`) that reach Upcoming/dashboard placement and are
   deliberately NOT in `collectCoachingFindings`.
 - **reason source** — the closed set of #656 `ReasonCode`s a finding under this
   prefix may carry (empty for the common no-reason builder;
@@ -302,7 +274,7 @@ null case is exercised end to end.
 
 **Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
 `collectCoachingFindings` and renders on the calm, hideable dashboard rollup.
-Never Upcoming, never a notification, never the hero, never an obligation. Keys
+Never Upcoming, never a notification, never dashboard Now, never an obligation. Keys
 are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
 (#2543), so a dismissal is per-month and repeat declines are read as an answer
 (#2386). Substance-conditioned pairs declare `adultOnly` and are withheld from a
@@ -332,7 +304,7 @@ same move: a calm finding whose only push presence is a line on a message that w
 already sending.
 
 `digest-time:` is registered `coaching`. It is never an Upcoming row, never the
-Needs-attention hero, never an escalation, and **never its own send** — a
+dashboard Now, never an escalation, and **never its own send** — a
 digest-timing observation is not a safety signal. Its two surfaces are Settings →
 Notifications beside the digest time (class 2: a rendered aggregate on a page the
 user opened) and ONE line inside the morning digest, below its content.
@@ -369,9 +341,8 @@ notifications?" plus a DB dive to find.
 Auditing a real four-profile household turned that into one instance of a broader
 blind spot — **cross-profile setup neglect had no surface at all**. Never-STARTED
 onboarding renders identically to complete (`onboardingNeedsSetup(null)` is false);
-widget empty-state CTAs render only for the ACTIVE profile's own dashboard; and the
-household strip filters to members with non-zero ATTENTION counts, which none of it
-produces. So `/household` — already the family status board, already resolving the
+dashboard facts are active-profile-only, while ordinary other-profile work is omitted.
+So `/household` — already the family status board, already resolving the
 accessible set once, already a class-2 rendered aggregate — owns it.
 
 **Five checks, all derived at read time**, no stored state, no new engine, no new
@@ -446,7 +417,7 @@ assembly — no second gather) that has crossed a **cited duration or trajectory
 line** becomes a push finding. Its dedupeKey prefix (`illness-care:`) is
 registered in `RULE_FINDING_PREFIXES` (so the #448 reflection guard proves the
 keys are guardable) even though it is a push builder, not a coaching one — it is
-NOT part of `collectCoachingFindings`. It reaches Upcoming + the hero as an
+NOT part of `collectCoachingFindings`. It reaches Upcoming + dashboard placement as an
 `illness-care`-domain `UpcomingItem` banded `today` (via `illnessCareItems` in
 the Upcoming generator fan-out) and the Telegram nudge via `runIllnessCare`
 (`lib/notifications/illness-care.ts`), all keyed by the SAME dedupeKey through
@@ -500,14 +471,14 @@ nothing. **NEGATIVE results are deliberately NOT conditions** — a non-reactive
 HIV/HCV is a screening event (the preventive-cadence follow-up, #686), never a
 problem-list row.
 
-**Tier reach (#449).** It reaches Upcoming + the non-hideable **Needs
-attention** hero as a `condition-review`-domain `UpcomingItem` banded `today`
+**Tier reach (#449).** It reaches Upcoming + dashboard **Now** as a
+`condition-review`-domain `UpcomingItem` banded `today`
 (via `conditionReviewItems` in the Upcoming generator fan-out), suppressible
 through the shared bus by its `condition-review:<conditionCollapseKey>`
 dedupeKey (registered in `RULE_FINDING_PREFIXES`, so the #448 reflection guard
 proves it's guardable). It is NOT part of `collectCoachingFindings`. A **new
 push channel (Telegram) was deliberately scoped OUT** — `condition-review` is
-omitted from the digest's `DOMAIN_SEQ`, so the review/Upcoming/hero surface is
+omitted from the digest's `DOMAIN_SEQ`, so the review/Upcoming/dashboard surface is
 the shipped step; a push is a larger decision left to a follow-up.
 
 ---
@@ -541,7 +512,7 @@ the same declarations rather than kept as a second map.
 **The event finding is CARE tier with no push channel.** A mapped group logged
 inside the item's course window (plus the entry's stated tail) becomes a
 `food-drug-event`-domain `UpcomingItem` banded `today`, so it reaches Upcoming +
-the non-hideable hero, keyed `food-drug-event:<itemId>:<ruleId>:<date>` — a day
+dashboard placement, keyed `food-drug-event:<itemId>:<ruleId>:<date>` — a day
 at a time, so a dismissal covers that day rather than the topic forever. It is
 omitted from the digest's `DOMAIN_SEQ` and has no notify orchestrator, which is
 the tier acting as a CEILING and not a floor (#1433): the contact-consent rule
@@ -554,7 +525,7 @@ of the posture that makes people log honestly in the first place.
 absolute floor and a doubling/halving must clear, with an adoption guard so a new
 logger is not a swing) against advice of the "keep it steady" shape becomes a
 calm, hideable note keyed `food-drug-variance:<itemId>:<ruleId>`. It joins
-`collectCoachingFindings` and reaches no notification and no hero.
+`collectCoachingFindings` and reaches no notification and never dashboard Now.
 
 Both quote the entry's OWN advice sentence, its citation and the informational
 tail, and state what the log actually contains — never a verdict about the
@@ -597,8 +568,8 @@ resolution (an outcome recorded against a later record).**
   serial view of one finding across time.
 
 **Tier reach (#449, amended by owner ruling 2026-08-01 — #1866).** Care tier: it
-reaches Upcoming + the non-hideable **Needs attention** hero (an overdue one
-bands `overdue` → the hero's "Past due"), and — since #1866 — the **overdue
+reaches Upcoming + dashboard **Now** (an overdue one bands `overdue`), and — since
+#1866 — the **overdue
 state pushes**. v1 scoped the channel out; the owner ruled it in-doctrine with
 **zero new settings**: the contact-consent rule requires a user-owned
 declaration behind any contact increase, and the follow-up has one — the user
@@ -673,7 +644,7 @@ active medication meeting a documented, non-resolved allergy. Because a live
 contraindication must not be silenced by a convenience dismiss (the same
 reasoning as an overdue nodule follow-up and the dose-escalation carve-out), the
 `drugAllergyItems` generator sets `carePersistent: true`, so it resolves to
-`snooze-only` — a page `dismissed_at` is RESISTED (it re-surfaces on the hero /
+`snooze-only` — a page `dismissed_at` is RESISTED (it re-surfaces on the dashboard /
 Upcoming / Telegram digest) while a live `snooze_until` still defers it, and the
 care surfaces render a snooze-only menu. The **both-stand** gating is inherent
 in the builder rather than in the suppression policy: the finding disappears the
@@ -686,7 +657,7 @@ strip keeps its plain acknowledge-Dismiss (it is not a push surface); the
 persistence net lives on the care/push surfaces. Pins:
 `lib/__db_tests__/drug-allergy-crosscheck.test.ts` (a dismiss on
 `collectUpcoming` leaves it live; a snooze hides it; it dies with either row)
-and `e2e/drug-allergy.spec.ts` (snooze-only hero menu; a bus dismissal is
+and `e2e/drug-allergy.spec.ts` (snooze-only dashboard atom menu; a bus dismissal is
 resisted).
 
 **Snoozed & dismissed is the complete window over the bus (#1151).** Upcoming's
@@ -730,7 +701,7 @@ awaiting a glaucoma workup), **#705** (dental "re-eval in 3 months"), **#715**
 ## Reproductive-health findings stay coaching, always (#1682, #1680)
 
 Two namespaces come out of the cycle/TTC domain, and both are **coaching tier by
-hard product contract** — never a notification, never the non-hideable hero:
+hard product contract** — never a notification, never dashboard Now:
 
 | Prefix            | Builder                      | Keyed on                              |
 | ----------------- | ---------------------------- | ------------------------------------- |
@@ -780,7 +751,7 @@ on, stated once here because the next environmental engine will need them:
   advice is still actionable. It stands down the moment the overexposure line
   takes over. The heatwave note is the same shape and requires BOTH facts, so a
   merely warm day is silent however many diuretics are in the stack.
-- **No new send, ever.** Both notes ride Upcoming, the hero, and the digest that
+- **No new send, ever.** Both notes ride Upcoming, dashboard placement, and the digest that
   already fires. The composition adds no channel, which is the contact-consent
   rule of the attention doctrine: the system may enrich what it was already
   saying, never start saying more.
@@ -844,7 +815,7 @@ re-litigates it:
    `tempRedFlagTitle`/`tempRedFlagDetail` display parameter,
    `enduranceEventItems`' distance unit) or carries the raw canonical value on
    its envelope for render-time formatting — never a baked-in unit. The web
-   boundaries (the Upcoming page, the dashboard hero) resolve
+   boundaries (the Upcoming page, dashboard placement) resolve
    `getUnitPrefs(login.id)` and thread it into
    `collectAttentionModel`/`collectUpcoming` (`UpcomingDisplayUnits`).
 2. **Telegram/notifications: canonical units (kg/km/°F), documented — EXCEPT
@@ -1027,7 +998,7 @@ where it doesn't apply.
 about existing state — a flagged marker, a preventive gap, a routine lapse —
 that the user reads and, at most, dismisses; dismissing it says "I've seen this,
 stop showing it," and the shared bus makes that one dismissal silence every
-surface (page, hero, Telegram) because they're all views of the ONE observation.
+surface (page, dashboard, Telegram) because they're all views of the ONE observation.
 A suggestion is the opposite shape on three axes:
 
 - **It has a materialization step, not just a read.** `acceptSuggestion` INSERTs
@@ -1093,7 +1064,7 @@ appears in all three, and that is the point.
 | Class                         | Who initiates               | Examples                                                                                                | Rule                                                                                                                 |
 | ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap           | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
-| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                       | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
+| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, dashboard placement, the #1504 count, the Household card                                      | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
 | **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "➕ Doses" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
 
 Two consequences that are easy to get wrong:
@@ -1132,8 +1103,8 @@ and `pool-refill:` aren't — the registry's reflection guards read builder outp
 and a namespace no builder emits would fail them. Its reach question is still the
 same one: how far may it travel?
 
-The answer is **the daily digest and nothing else**. It reaches Upcoming, the
-dashboard hero and Data → Review as it always did, and it is now counted and
+The answer is **the daily digest and nothing else**. It reaches Upcoming,
+dashboard placement and Data → Review as it always did, and it is now counted and
 NAMED in the morning digest — the one message that was already going to send.
 There is no dedicated notification and no escalation.
 
@@ -1187,7 +1158,7 @@ Its reach is the strictest shape this doctrine allows:
 - **one digest line**, named rather than merely counted, on the message that was
   already going to send;
 - and **nothing else — no dedicated send, ever.** It is also excluded from the
-  non-hideable "Needs attention" hero by `cardBandForItem`'s named domain set,
+  care-tier app badge by `attentionEmphasisBandForItem`'s named domain set,
   which is the difference between this and the broken-sync signal beside it: a
   dead connection is a fault you must repair, while "somebody should run the
   portal tool this week" is an ask, and an ask that cannot be dismissed is a nag.
@@ -1236,7 +1207,7 @@ Three properties are load-bearing and are the same in both legs:
 
 The reach is the strictest shape the doctrine allows, identical to the portal
 request's: an Upcoming item, one named digest line on a message that was already
-going to send, and nothing else — excluded from the hero by `cardBandForItem`,
+going to send, and nothing else — excluded from the app badge by `attentionEmphasisBandForItem`,
 with no `notify_*` marker and no escalation, forever.
 
 **A keyboard edit is not a send; an edit that would notify is.** Telegram's
@@ -1446,11 +1417,11 @@ produces care-tier interaction warnings (the safety engines are obligation-blind
 pinned by test), while the demotion suggestion ABOUT it is coaching tier. The
 useful mapping, stated so the two vocabularies cannot drift apart silently:
 
-| Obligation | Its routine dueness signal reaches                            | Note                                                         |
-| ---------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
-| `must`     | care tier — Upcoming, hero, reminder, escalation              | escalation additionally needs the per-item `critical` opt-in |
-| `should`   | care tier minus escalation — Upcoming, hero, reminder         | a miss is a tracked shortfall, never chased twice            |
-| `may`      | no push; the Upcoming disclosure + user-initiated access only | ≈ a coaching-tier signal in reach                            |
+| Obligation | Its routine dueness signal reaches                              | Note                                                         |
+| ---------- | --------------------------------------------------------------- | ------------------------------------------------------------ |
+| `must`     | care tier — Upcoming, dashboard placement, reminder, escalation | escalation additionally needs the per-item `critical` opt-in |
+| `should`   | care tier minus escalation — Upcoming, dashboard, reminder      | a miss is a tracked shortfall, never chased twice            |
+| `may`      | no push; the Upcoming disclosure + user-initiated access only   | ≈ a coaching-tier signal in reach                            |
 
 The correspondence is about ROUTINE DUENESS only. A safety finding's tier is
 decided by the finding, never by the obligation of the item it names — that
@@ -1798,7 +1769,7 @@ a producer can name a stem its own key grew out of, and nothing broader.
 | Recovery clears a suggestion                                                             | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                                                                                                                                                                                                           |
 | Window nesting                                                                           | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                                                                                                                                                                                                        |
 | Reach tier per finding namespace                                                         | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                                                                                                                                                                                                                |
-| A quiet-stream observation renders and never sends (#2146)                               | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the badge / hero / digest never call                                                                                                                                                                    |
+| A quiet-stream observation renders and never sends (#2146)                               | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the care badge / Upcoming / digest never call                                                                                                                                                           |
 | A stream lifecycle offer renders and never sends (#2162)                                 | `getStreamLifecycleOffers` (`lib/queries/stream-lifecycle.ts`) is its own entry point returning its own shape — nothing it produces is an `AttentionIntegration`, so there is no escalation list, and therefore no digest section, for it to reach                                                                                                                                             |
 | Repeat dismissal never reaches a safety signal (10)                                      | `mayQuietOnDismissal` (`lib/dismissal-fatigue.ts`) derives the gate from `isHiddenUnderPolicy`, so quieting is available only where a plain dismiss is already honoured; `lib/__tests__/dismissal-fatigue.test.ts` enumerates `LIFECYCLE_SUPPRESSION_POLICIES` and `lib/__db_tests__/dismissal-fatigue.test.ts` pins the crisis item and a care-persistent follow-up against twelve dismissals |
 | Quieting de-prioritises and never silences (10)                                          | `routineOrder` reranks; the origin tabs and `collectCoachingFindings` are untouched, and no suppression row is written (`lib/__db_tests__/dismissal-fatigue.test.ts`)                                                                                                                                                                                                                          |

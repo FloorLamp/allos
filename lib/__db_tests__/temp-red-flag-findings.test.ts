@@ -81,14 +81,14 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     // #860 Track A — temp red-flag is a CARE-tier (push/hero) builder, registered so.
     expect(tierForDedupeKey(findings[0].dedupeKey)).toBe("care");
 
-    // Care surface: an Upcoming item banded "today" (→ hero), same dedupeKey.
+    // Care surface: an Upcoming item banded "today" (→ dashboard), same dedupeKey.
     const items = tempRedFlagItems(p, today(p));
     expect(items).toHaveLength(1);
     expect(items[0].key).toBe(findings[0].dedupeKey);
     expect(items[0].band).toBe("today");
     expect(items[0].detail).not.toContain("Informational, not medical advice.");
 
-    // Flows through collectUpcoming (Upcoming page + hero + digest gather).
+    // Flows through collectUpcoming (Upcoming page + dashboard + digest gather).
     expect(
       collectUpcoming(p, today(p)).some((i) => i.key === findings[0].dedupeKey)
     ).toBe(true);

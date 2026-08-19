@@ -517,7 +517,7 @@ export function episodeCollapsedStatus(
 // the same #801 assembly (no second engine, no medical claim, issue #805): the fever
 // curve is rising, OR some symptom's most-recent severity rose vs the prior
 // consecutive day. This is only a caregiver-facing "the trend is up" arrow on the
-// household chip — it is NOT the cited illness-care care finding (that lives in
+// illness cockpit and Household page — it is NOT the cited illness-care finding (that lives in
 // lib/illness-care.ts, dataset-gated per symptom) and asserts nothing clinical.
 export function episodeIsWorsening(ep: AssembledEpisode): boolean {
   if (feverTrend(ep.temperatures) === "rising") return true;

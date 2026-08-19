@@ -368,7 +368,7 @@ function localHhmm(tz: string, at: string): string | null {
  * gains a third `kind` beside `failing` and `stale`).
  *
  * DELIBERATELY NOT FOLDED INTO `getIntegrationAttention`. That list is the ESCALATION
- * set: the profile-menu badge counts it, the dashboard's non-hideable hero renders it,
+ * set: the profile-menu badge counts it, the dashboard renders it,
  * and — decisively — the morning digest builds a banded section from it. Quiet-stream
  * is coaching tier, classes 2/3 only, so putting it in that list would have made it a
  * SEND, which #2146 constraint 4 forbids under the contact-consent rule. The separate

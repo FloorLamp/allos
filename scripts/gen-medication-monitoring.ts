@@ -46,8 +46,8 @@ const OUT = path.join(
 );
 
 // The reach tier a monitored drug's retest clock travels (#449 / #995 decision 1). CARE
-// pushes (the Telegram digest highlight, the Needs-attention hero) and ranks up; COACHING
-// is calm — surfaced on Upcoming + the medications row note, never a push, never the hero.
+// pushes (the Telegram digest highlight and dashboard placement) and ranks up; COACHING is calm —
+// surfaced on Upcoming + the medications row note, never a push, never dashboard Now.
 export type MonitoringTier = "care" | "coaching";
 
 // One required monitoring lab. `canonical` is the CANONICAL biomarker name the

@@ -4,7 +4,7 @@ import {
 } from "@/lib/illness-episode-compare";
 
 // The calm historical-duration line for an open episode (issue #856 item 10). Coaching
-// tier: a quiet context card, never a notification or the dashboard hero (#449).
+// tier: a quiet context card, never a notification or dashboard candidate (#449).
 export default function EpisodeComparison({
   comparison,
 }: {

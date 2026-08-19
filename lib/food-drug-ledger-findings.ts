@@ -12,7 +12,7 @@
 //     belongs to the med-safety family the interaction / dietary-limit / allergy-med items
 //     are already in, and unlike a retrospective note it is forward-looking: the label's
 //     own tail ("and for 3 days after") is about the days ahead. It reaches Upcoming and
-//     the non-hideable Needs-attention hero, keyed by its dedupeKey through the shared bus.
+//     dashboard placement, keyed by its dedupeKey through the shared bus.
 //
 //     It reaches NO push channel — no digest line, no dedicated send — and that is the
 //     tier being a CEILING and not a floor (#1433). The contact-consent rule says the
@@ -24,7 +24,7 @@
 //
 //   • The VARIANCE finding ("leafy greens up this week — Warfarin") is COACHING tier: a
 //     calm, hideable trend line on the coaching surfaces, never a notification, never the
-//     hero. It quotes the entry's own "keep it steady" advice and states what it counted.
+//     dashboard placement. It quotes the entry's own "keep it steady" advice and states what it counted.
 //
 // Both key through the shared suppression bus, so a dismissal on any surface silences
 // every surface.
@@ -158,7 +158,7 @@ export interface FoodDrugLedger {
 
 // Wrapped in the shared request-scoped `cache()` shim, because the two finding shapes
 // are read by DIFFERENT surfaces that a single page renders together: the event finding
-// through rawUpcoming → the Needs-attention hero, the variance finding through
+// through rawUpcoming → dashboard placement, the variance finding through
 // collectCoachingFindings. Each builder used to run the whole gather itself — every
 // intake item matched through `matchFoodInteractions`, plus the food-log range read — so
 // a dashboard render paid for it twice. Keyed on (profileId, date), so one request
@@ -222,8 +222,8 @@ export function buildFoodDrugEventFindings(
   }));
 }
 
-// The event findings as Upcoming items → the Upcoming page AND the non-hideable
-// Needs-attention hero (via collectUpcoming → buildAttentionModel). Banded "today" like
+// The event findings as Upcoming items → the Upcoming page AND dashboard placement
+// (via collectUpcoming → buildAttentionModel). Banded "today" like
 // the other care-tier informational findings (dietary-limit / interaction / illness-care),
 // keyed by the SAME dedupeKey so a dismiss on any surface silences all of them.
 // `detail` is self-contained (the log fact + the label's advice + source + the mandatory

@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import {
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
@@ -101,6 +101,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const card = coachingCard(page, "Rest or take it easy today");
       await expect(card).toBeVisible();
       // Headline stays the salience-ordered primary (sleep leads).
@@ -129,6 +130,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const card = coachingCard(page, "Rest or take it easy today");
       await expect(card).toBeVisible();
       const candidateId = await card.getAttribute("data-candidate-id");
@@ -166,6 +168,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const card = coachingCard(page, "Rest or take it easy today");
       await expect(
         card.getByText("Rest or take it easy today", { exact: true })
@@ -192,6 +195,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const card = coachingCard(page);
       await expect(card).toBeVisible();
       await expect(card.getByTestId("coaching-snooze")).toBeVisible();

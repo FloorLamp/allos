@@ -6,7 +6,7 @@ import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
 // Shared-surface detail for this profile's MENTAL-HEALTH visits (#997). By default a
-// mental_health appointment shows only "Medical appointment" on the household strip
+// mental_health appointment shows only "Medical appointment" on the Household page
 // and the family calendar feed — the one kind whose default flips toward privacy.
 // This toggle lets the profile owner opt those visits into full shared detail. The
 // profile's OWN pages always show full detail regardless. Saves on change.
@@ -47,7 +47,7 @@ export default function MentalHealthPrivacyForm({
         />
         <span>
           Show mental-health visits in full detail on shared surfaces (the
-          household strip and the family calendar feed).
+          Household page and the family calendar feed).
           <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
             Off by default: a mental-health visit shows only “Medical
             appointment” on those shared surfaces, even when other kinds show

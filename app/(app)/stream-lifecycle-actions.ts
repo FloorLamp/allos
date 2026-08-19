@@ -62,7 +62,7 @@ function liveOffer(
   );
 }
 
-// Every surface an offer or the setting it writes can appear on. The dashboard card
+// Every surface an offer or the setting it writes can appear on. The dashboard atom
 // and the integrations surface both render the offer list, Settings → Notifications
 // renders the toggle and its paused note, and Upcoming lists the dismissal.
 function revalidateStreamLifecycleSurfaces(): void {

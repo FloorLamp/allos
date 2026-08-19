@@ -454,7 +454,7 @@ export default async function SupplementsTab({
 
   // Group due items by time bucket; within a bucket use the SHARED dose-day
   // comparator (obligation → stack → name) so this section and the Upcoming /
-  // needs-attention surfaces order a dose day identically (issue #297). The
+  // attention surfaces order a dose day identically (issue #297). The
   // buckets already partition by time-of-day, so the comparator's leading bucket
   // key is a constant within each group and the residual order is obligation → …
   const doseEntry = (it: Item): DoseDayEntry => ({

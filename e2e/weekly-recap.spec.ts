@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledSelectSave } from "./helpers";
+import { openDashboardAll, settledSelectSave } from "./helpers";
 // Issue #32: the Weekly-recap dashboard card and a milestone Timeline entry.
 // The e2e seed (e2e/seed-events.ts) pins a dashboard layout that makes the
 // weekly-recap widget visible for profile 1 and plants a "50 workouts logged"
@@ -13,6 +13,7 @@ test.describe("Weekly recap + milestones (#32)", () => {
     page,
   }) => {
     await page.goto("/");
+    await openDashboardAll(page);
     const row = page
       .getByTestId("weekly-recap")
       .locator("dl > div")
@@ -36,6 +37,7 @@ test.describe("Weekly recap + milestones (#32)", () => {
     page,
   }) => {
     await page.goto("/");
+    await openDashboardAll(page);
     const rows = page.getByTestId("weekly-recap").locator("dl > div");
     for (const text of await rows.allInnerTexts()) {
       expect(text, text).not.toMatch(/\(\(|\)\)|\)\s*\(/);

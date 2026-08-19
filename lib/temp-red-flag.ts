@@ -12,8 +12,8 @@
 //   - Thresholds/age bands come ONLY from the committed, cited dataset. No entry ⇒ no
 //     finding, ever. An unknown age never triggers a source-published age band.
 //
-// Reach is CARE tier (#449) — the builder wires it to Upcoming + the non-hideable
-// hero + the Telegram nudge through the shared dismissal bus. This module only DECIDES
+// Reach is CARE tier (#449) — the builder wires it to Upcoming, dashboard placement,
+// and the Telegram nudge through the shared dismissal bus. This module only DECIDES
 // + phrases; it owns no surface.
 
 import type { AssembledEpisode } from "./illness-episode-format";

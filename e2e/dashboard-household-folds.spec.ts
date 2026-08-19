@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, openDashboardAll } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
@@ -47,6 +47,7 @@ test("eligible closed episodes emit independent reopen actions", async ({
   );
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
     await expect(
@@ -76,6 +77,7 @@ test("the household-history action follows its existing 14-day window", async ({
   );
   try {
     await tail.goto("/");
+    await openDashboardAll(tail);
     await expect(dashboardCandidatePrefix(tail, "illness.reopen:")).toHaveCount(
       0
     );
@@ -119,6 +121,7 @@ test("dismissing one reopen action persists without hiding its sibling", async (
   );
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
     const dismissed = reopen.filter({ hasText: FOLD_REOPEN_KID_A_SITUATION });
@@ -132,6 +135,7 @@ test("dismissing one reopen action persists without hiding its sibling", async (
     await expect(reopen).toHaveCount(1);
 
     await page.reload();
+    await openDashboardAll(page);
     await expect(
       page.locator(
         `[data-testid='dashboard-candidate'][data-candidate-id='${dismissedId}']`

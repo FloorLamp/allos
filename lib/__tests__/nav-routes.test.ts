@@ -89,12 +89,12 @@ function navHrefs(): string[] {
 // The due-signal builders whose href literals must point at real pages (issue
 // #283: goal items linked the removed /goals route and screenings the removed
 // /medical route for months — nothing guarded item links the way nav links are).
-// These are the sources feeding the Upcoming page, the dashboard "Needs
-// attention" hero, and the preventive adapter. Static targets only: a template
+// These are the sources feeding Upcoming and the preventive adapter. Dashboard
+// attention targets go through typed href helpers, so they need no literal scan.
+// Static targets only: a template
 // literal contributes its static path prefix (e.g. `/results/clinical-results/view?name=${…}`
 // → /results/clinical-results/view).
 const DUE_SIGNAL_SOURCES = [
-  ["lib", "attention.ts"],
   // The Upcoming item builders (their href literals) live in the generators
   // submodule since the #316 barrel split of lib/queries/upcoming.ts.
   ["lib", "queries", "upcoming", "generators.ts"],

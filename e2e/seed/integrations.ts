@@ -23,6 +23,8 @@ import {
   STREAM_ONBOARD_PROFILE,
   E2E_LOGIN_STREAM_DECLINE,
   STREAM_DECLINE_PROFILE,
+  E2E_LOGIN_DASHBOARD_ALL,
+  DASHBOARD_ALL_PROFILE,
   E2E_LOGIN_STREAM_LAPSED,
   STREAM_LAPSED_PROFILE,
 } from "../fixture-logins";
@@ -629,6 +631,7 @@ export function seedStreamLifecycle(): void {
   for (const [username, name] of [
     [E2E_LOGIN_STREAM_ONBOARD, STREAM_ONBOARD_PROFILE],
     [E2E_LOGIN_STREAM_DECLINE, STREAM_DECLINE_PROFILE],
+    [E2E_LOGIN_DASHBOARD_ALL, DASHBOARD_ALL_PROFILE],
   ] as const) {
     const profileId = fixtureProfileId(name);
     seedMemberLogin(username, profileId, "write");

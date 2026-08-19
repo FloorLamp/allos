@@ -21,7 +21,7 @@ import StreamLifecycleOfferRow from "./StreamLifecycleOfferRow";
 //   • the integrations surface (Data → Import, under "Connect a device or service") —
 //     the post-connect moment, where the user already is when a new wearable starts
 //     delivering;
-//   • the dashboard, once, above the customizable grid — dismissible, and gone for
+//   • dashboard Show everything as one atomic action — dismissible, and gone for
 //     good once answered.
 //
 // One component for both, per the shared-content rule: the offer must not be able to

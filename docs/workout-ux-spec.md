@@ -331,8 +331,8 @@ working through it at the gym with no new in-workout machinery.
 
 ### Reach tier (#449)
 
-Routine adherence is **coaching tier** — calm, hideable, never the
-Needs-attention hero. The only push-tier touch is the existing workout nudge,
+Routine adherence is **coaching tier** — calm, hideable, never dashboard Now.
+The only push-tier touch is the existing workout nudge,
 which gains richer copy ("Push day: Bench, Overhead Press, Dips") through its
 existing dedupe/dismissal key — no new notification.
 
@@ -404,7 +404,7 @@ Builds directly on Pillar 2's coverage math.
   is 6"), emitted alongside the existing training observations with an episodic
   `dedupeKey` in a new registered prefix (`muscle-volume:`), so a dismissal is
   per-episode (#436) and the #448 reflection guard covers it. Calm tier only —
-  never a push notification, never the hero.
+  never a push notification, never dashboard Now.
 - **Cold start (#719):** band observations require history before they may fire
   — no `below`/`untrained` finding until the profile has logged strength
   sessions in at least `MIN_BAND_HISTORY_WEEKS` (2) distinct weeks of

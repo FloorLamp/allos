@@ -81,7 +81,7 @@ describe("getDentalSafetyWarnings — planned invasive dental × meds/conditions
       (i) => i.domain === "dental-safety"
     );
     expect(up?.key).toBe(warnings[0].dedupeKey);
-    expect(up?.band).toBe("today"); // care-tier → Needs-attention hero
+    expect(up?.band).toBe("today"); // care-tier → current dashboard placement
 
     // Dismissing it silences the Upcoming finding ("dismiss once, silence everywhere").
     dismissFinding(profileId, warnings[0].dedupeKey);

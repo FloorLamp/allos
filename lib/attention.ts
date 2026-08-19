@@ -1,33 +1,22 @@
-// The unified attention model (issue #524) — the ONE computation behind BOTH the
-// dashboard "Needs attention" card and the Upcoming page. PURE (no DB, no JSX), so
-// it's importable by both server surfaces and unit-tested in isolation.
+// The unified attention model (issue #524) — the ONE computation behind dashboard
+// attention candidates and the Upcoming page. PURE (no DB, no JSX).
 //
-// The design (issue #524): the card and the page do DIFFERENT jobs — the card is a
-// triage glance (the few act-now things, quiet otherwise), the page is a planning
-// view (everything on the horizon, time-ordered) — but they must never DISAGREE on
-// what an item MEANS. So this module is:
+// The design (issue #524): Upcoming and dashboard placement present the shared facts
+// differently, but they must never disagree on what an item means. So this module is:
 //
 //   1. ONE item builder (buildAttentionModel) — every attention-worthy thing
 //      (dose, retest, flagged biomarker, appointment, care-plan, refill, review
 //      item, failing integration) is built ONCE as a UpcomingItem carrying its
 //      dueness, action copy, href, risk priority (#517), and suppressibility.
 //      Neither surface recomputes an item's meaning. The "something's off" signals
-//      (flagged labs #526, failing integrations, the review count) that used to
-//      exist ONLY on the card are now first-class items in the shared set, so a
-//      flagged HDL lands on BOTH surfaces with the same key and an action verb.
+//      (flagged results #526, failing integrations, the review count) are first-class
+//      items in the shared set, so a flagged HDL keeps one key and action verb.
 //   2. ONE within-band comparator — compareWithinBand (lib/upcoming.ts), shared
 //      with groupUpcoming, so the two surfaces order the same facts identically.
-//   3. TWO presentations over that one model:
-//        - groupAttentionForCard: the act-now slice (overdue + today + signals,
-//          capped, EXCLUDING far-future scheduled items), banded Urgent / Today /
-//          Needs review.
-//        - groupAttentionForPage: everything, time-ordered (Overdue / Today / This
-//          week / Later) plus the signals under their own Flagged / For review
-//          groupings.
-//   4. The load-bearing invariant: the card's items are a strict SUBSET of the
-//      page's item set (attentionCardItems just filters the model), so the counts
-//      the two surfaces show always reconcile — a user who sees "8 · +7 more in
-//      Upcoming" can click through and find exactly those items.
+//   3. The Upcoming presentation groups the full model. Dashboard placement projects
+//      the same items into Now, Ahead, and Show everything without changing identity.
+//   4. `attentionBadgeItems` is the care-tier subset used only for the app badge;
+//      it never decides dashboard placement.
 //
 // The DB gather that feeds buildAttentionModel lives in lib/queries/attention.ts
 // (every read there is profile-scoped); this module only shapes and orders.
@@ -43,12 +32,10 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
-import { itemSuppressionPolicy } from "./upcoming-suppress";
 import {
   clinicalResultDetailHref,
   dataSectionHref,
   integrationDetailHref,
-  type AppRoute,
 } from "./hrefs";
 import { biomarkerFlagTitle, biomarkerFlagDetail } from "./biomarker-flag-copy";
 import { flagLabel, isOutOfRange } from "./reference-range";
@@ -79,7 +66,7 @@ import type { IntegrationId } from "./types";
 // rather than documented: `isEscalatingIntegration` below is the one gate,
 // `buildAttentionModel` and the digest's own integration section both apply it, and
 // the quiet rows arrive through a separate query entry point
-// (`getQuietStreamAttention`) that the badge / hero / digest never call.
+// (`getQuietStreamAttention`) that the care badge / Upcoming / digest never call.
 export interface AttentionIntegration {
   id: IntegrationId | null;
   sourceName: string;
@@ -89,7 +76,7 @@ export interface AttentionIntegration {
 
 /**
  * May this integration row travel to an ESCALATION surface — the profile-menu badge,
- * the non-hideable Needs-attention hero, the Upcoming page's review group, and the
+ * dashboard placement, the Upcoming page's review group, and the
  * morning digest's broken-sync section?
  *
  * Only a broken CONNECTION may. A quiet stream is a coaching-tier observation, and the
@@ -235,8 +222,8 @@ export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
     items.push(buildFlaggedItem(b, b.riskReasons ?? []));
   // Escalating integration rows only (#2146). The gather hands this the escalation
   // list already, so the filter is a second lock on the one direction the doctrine
-  // forbids: a coaching-tier quiet-stream row must never reach the hero, the badge, or
-  // — through this same model — the digest.
+  // forbids: a coaching-tier quiet-stream row must never reach Upcoming, the care
+  // badge, or — through this same model — the digest.
   for (const i of input.integrations.filter(isEscalatingIntegration))
     items.push(integrationToItem(i));
   const review = reviewToItem(input.reviewCount);
@@ -253,9 +240,8 @@ export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
 export type PageGroupKind = UrgencyBand | SignalGroup;
 
 // The one label for the never-recorded preventive group (issue #1433), shared by the
-// Upcoming page section and the dashboard hero's collapsed line so the two surfaces
-// name the same thing identically (#221). It counts rather than alarms: the number is
-// a to-do list length, not a backlog.
+// Upcoming page section. It counts rather than alarms: the number is a to-do list
+// length, not a backlog.
 export const SETUP_GROUP_LABEL = "Set up your screening history";
 
 const PAGE_GROUP_ORDER: PageGroupKind[] = [
@@ -436,66 +422,35 @@ export function emptyMemberIds(members: readonly MemberAttention[]): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Presentation B — the dashboard CARD (triage glance): the act-now slice only,
-// a strict SUBSET of the page's model.
+// Presentation B — the installed-app badge subset.
 // ---------------------------------------------------------------------------
 
-export type CardBand = "urgent" | "today" | "review";
+export type AttentionEmphasisBand = "urgent" | "today" | "review";
 
-export const CARD_BAND_ORDER: CardBand[] = ["urgent", "today", "review"];
-
-// The page and card do different jobs, but the card must not overstate what the
-// model knows: a past date establishes lateness, not clinical urgency.
-export const CARD_BAND_LABELS: Record<CardBand, string> = {
-  // Date lateness alone does not establish clinical urgency. Keep the strong
-  // visual treatment, but describe the fact the model actually knows.
-  urgent: "Past due",
-  today: "Today",
-  review: "Needs review",
-};
-
-const CARD_BAND_RANK: Record<CardBand, number> = {
+const ATTENTION_EMPHASIS_BAND_RANK: Record<AttentionEmphasisBand, number> = {
   urgent: 0,
   today: 1,
   review: 2,
 };
 
-// Domains the dashboard hero deliberately never carries, whatever their date says.
-//
-// The "Needs attention" hero is care-tier: pinned, and the one surface a user cannot
-// choose not to look at. `portal-sync` (#1757) is COACHING tier by hard product contract
-// — portal hygiene is never a safety signal — so it lives on the Upcoming page and in
-// the morning digest line that page's grouping produces, and nowhere else. Without this
-// it would drift onto the hero on the single day its expiry lands on "today", which is
-// exactly the un-ignorable treatment a calm ask must never get.
-//
-// A SET, not a special case: the next calm domain that must stay off the hero adds a
-// name here rather than another branch.
-// `records-recency` (#2164/#2176) is the next name, and it arrives for exactly the
-// reason the set exists: it is the same coaching-tier ask one step further out — "your
-// Takeout export is six weeks behind", "your newest lab result is from last May" — and
-// a month-scale drift that a person fixes when they next have twenty minutes has no
-// claim on the one surface a user cannot choose not to look at.
-const CARD_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
+// Calm domains excluded from the app-badge care-tier count. Dashboard placement is
+// independent: these items may still land in Now, Ahead, or Show everything according
+// to their atomic candidate facts.
+const ATTENTION_BADGE_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
   "portal-sync",
   "records-recency",
 ]);
 
-// Which card band an item belongs to, or null if the card EXCLUDES it. Signals →
+// Which badge band an item belongs to, or null if the badge excludes it. Signals →
 // "Needs review". A date-scheduled item is act-now only when it's overdue (→ Urgent)
-// or due today (→ Today); a this-week / later scheduled item is planning-view-only
-// (the card's whole value is that it hides far-future scheduled work), so it returns
-// null and lives only on the Upcoming page.
-export function cardBandForItem(
+// or due today (→ Today); a this-week / later scheduled item is excluded because the
+// badge reports current care-tier work, not far-future scheduling.
+export function attentionEmphasisBandForItem(
   item: UpcomingItem,
   today: string
-): CardBand | null {
-  if (CARD_EXCLUDED_DOMAINS.has(item.domain)) return null;
-  // A never-recorded preventive rule (#1433) is never a card row and never counts.
-  // The hero is the one surface a user cannot choose not to look at, so an item whose
-  // entire basis is "you just told us your age" has no claim on it. It still reaches
-  // the hero — as ONE collapsed setup line (attentionSetupItems) — but not as an
-  // attention row and not in the count/badge.
+): AttentionEmphasisBand | null {
+  if (ATTENTION_BADGE_EXCLUDED_DOMAINS.has(item.domain)) return null;
+  // Never-recorded setup is not part of the care-tier app-badge count.
   if (item.signalGroup === "setup") return null;
   if (item.signalGroup) return "review";
   const band = bandForItem(item, today);
@@ -504,313 +459,19 @@ export function cardBandForItem(
   return null;
 }
 
-// The card's item SUBSET of the full model (issue #524's load-bearing invariant):
-// every returned item is one of `items`, unchanged, so the card can never show a
-// key the page doesn't. Ordered by card band then the shared comparator.
-export function attentionCardItems(
+// The care-tier app-badge subset. Every returned item is unchanged and ordered by
+// band then the shared comparator.
+export function attentionBadgeItems(
   items: UpcomingItem[],
   today: string
 ): UpcomingItem[] {
   return items
-    .filter((i) => cardBandForItem(i, today) != null)
+    .filter((i) => attentionEmphasisBandForItem(i, today) != null)
     .sort(
       (a, b) =>
-        CARD_BAND_RANK[cardBandForItem(a, today)!] -
-          CARD_BAND_RANK[cardBandForItem(b, today)!] ||
-        compareWithinBand(a, b, today)
+        ATTENTION_EMPHASIS_BAND_RANK[attentionEmphasisBandForItem(a, today)!] -
+          ATTENTION_EMPHASIS_BAND_RANK[
+            attentionEmphasisBandForItem(b, today)!
+          ] || compareWithinBand(a, b, today)
     );
-}
-
-export interface AttentionCardGroup {
-  band: CardBand;
-  label: string;
-  items: UpcomingItem[];
-  // Items beyond the per-band cap (issue #283): count only — the card renders a
-  // "+N more" link instead of the rows, so a pathological day (a giant lab import,
-  // a backlog of overdue visits) can't blow the layout.
-  overflow: number;
-}
-
-// Total row budget for the hero. The old cap applied independently to all three
-// bands and could still render 24 rows — no longer a glanceable dashboard.
-export const ATTENTION_CARD_CAP = 5;
-
-// Group the card's subset by band in fixed Past due → Today → Needs review order,
-// dropping empty bands. The total card is capped, while every populated band gets
-// one representative before remaining slots are allocated in band order. This
-// keeps a large overdue backlog from hiding a failing integration or new lab flag.
-export function groupAttentionForCard(
-  items: UpcomingItem[],
-  today: string,
-  cap: number = ATTENTION_CARD_CAP
-): AttentionCardGroup[] {
-  const subset = attentionCardItems(items, today);
-  const byBand = new Map<CardBand, UpcomingItem[]>();
-  for (const item of subset) {
-    const band = cardBandForItem(item, today)!;
-    const arr = byBand.get(band);
-    if (arr) arr.push(item);
-    else byBand.set(band, [item]);
-  }
-  const populated = CARD_BAND_ORDER.filter((band) => byBand.get(band)?.length);
-  const selected = new Map<CardBand, number>();
-  let remaining = Math.max(0, cap);
-
-  // Preserve representation across bands when the budget permits it.
-  for (const band of populated) {
-    if (remaining === 0) break;
-    selected.set(band, 1);
-    remaining -= 1;
-  }
-  // Spend the rest in urgency order, keeping each band's internal ordering.
-  for (const band of populated) {
-    if (remaining === 0) break;
-    const available = byBand.get(band)!.length - (selected.get(band) ?? 0);
-    const add = Math.min(available, remaining);
-    selected.set(band, (selected.get(band) ?? 0) + add);
-    remaining -= add;
-  }
-
-  const groups: AttentionCardGroup[] = populated.flatMap((band) => {
-    const arr = byBand.get(band)!;
-    const shown = selected.get(band) ?? 0;
-    if (shown === 0) return [];
-    return [
-      {
-        band,
-        label: CARD_BAND_LABELS[band],
-        items: arr.slice(0, shown),
-        overflow: arr.length - shown,
-      },
-    ];
-  });
-  return groups;
-}
-
-// ---------------------------------------------------------------------------
-// Count reconciliation (issue #512 / #524) — the numbers the two surfaces show
-// must nest.
-// ---------------------------------------------------------------------------
-
-// The honest per-band count label for a capped card band (issue #512): when the cap
-// truncated the rendered rows, show BOTH the shown count and the true pre-cap total
-// ("8 of 11") so a band never reads as a bare capped "8". No overflow → plain count.
-export function attentionCountLabel(shown: number, overflow: number): string {
-  return overflow > 0 ? `${shown} of ${shown + overflow}` : `${shown}`;
-}
-
-// The "+N more in Upcoming" figure for the card (issue #524): the page-only items —
-// the far-future scheduled work the card deliberately hides. Because the card set is
-// a strict subset of the model, this is exactly model − card, so "N shown · +M more
-// in Upcoming" always reconciles with the page's total.
-//
-// The never-recorded setup items (#1433) are subtracted first: the link they'd
-// inflate reads "+N scheduled later", and nothing about them is scheduled. They get
-// their own counted line on the hero (attentionSetupItems) and their own page group,
-// so they are described exactly once, by copy that is true of them.
-export function moreInUpcomingCount(
-  model: UpcomingItem[],
-  cardCount: number
-): number {
-  const scheduled = model.filter((i) => i.signalGroup !== "setup").length;
-  return Math.max(0, scheduled - cardCount);
-}
-
-// The never-recorded preventive rules in the model (issue #1433), in a stable display
-// order. The hero renders these as ONE collapsed "Set up your screening history (N)"
-// line and the Upcoming page renders them as its own trailing group — the same items,
-// two formatters, one decision (#221).
-export function attentionSetupItems(items: UpcomingItem[]): UpcomingItem[] {
-  return items
-    .filter((i) => i.signalGroup === "setup")
-    .sort((a, b) => a.title.localeCompare(b.title));
-}
-
-// ---------------------------------------------------------------------------
-// "+N more" link copy (issue #538) — disambiguate by what DIFFERS, never by
-// position (the #531 convention). The card can show TWO kinds of overflow link:
-//   1. a per-band cap overflow (#283) — "more items in THIS band", and
-//   2. the card-level remainder (#524) — "far-future scheduled items the card
-//      hides for the Upcoming page".
-// Post-#524 both read as a bare "+N more in Upcoming", so when the last band's cap
-// overflow renders directly above the card-level remainder they stack as two
-// identical-looking links (#538). This pure helper gives each link copy that names
-// its referent, and MERGES the two into one line when they'd stack adjacently.
-// ---------------------------------------------------------------------------
-
-// The noun a band's cap-overflow link uses for its own items (what the "+N more"
-// points at). Frames the same urgency the band header shows.
-const CARD_BAND_MORE_NOUN: Record<CardBand, string> = {
-  urgent: "overdue",
-  today: "due today",
-  review: "to review",
-};
-
-// The Upcoming-page anchor a band's cap-overflow link deep-links to (issue #538) —
-// the page's sections carry id={group.kind}. Urgent/Today map cleanly onto the
-// page's Overdue/Today bands; the review band spans two page groupings
-// (Flagged + For review), so it lands at the top of the page rather than mis-
-// pointing at one of them.
-const CARD_BAND_ANCHOR: Record<CardBand, string | null> = {
-  urgent: "overdue",
-  today: "today",
-  review: null,
-};
-
-function upcomingHref(anchor: string | null): AppRoute {
-  return anchor ? `/upcoming#${anchor}` : "/upcoming";
-}
-
-export interface AttentionMoreLink {
-  count: number;
-  text: string;
-  href: AppRoute;
-}
-
-export interface AttentionMoreLinks {
-  // Per-band cap-overflow links, keyed by band, for the card to render at the foot
-  // of each band section. The LAST band's link is omitted here when it merged into
-  // `trailing` (so two links never stack).
-  perBand: Partial<Record<CardBand, AttentionMoreLink>>;
-  // The single trailing line at the card foot: either the plain far-future
-  // remainder, or the merged (last-band-overflow + remainder) line.
-  trailing: AttentionMoreLink | null;
-}
-
-// Compute the card's "+N more" links so each names what it points at and the
-// last-band-overflow + card-remainder pair never stacks as two look-alike links
-// (issue #538). `groups` are the rendered card bands (each carrying its cap
-// `overflow`, in render order); `more` is moreInUpcomingCount (the hidden far-
-// future scheduled items).
-export function planAttentionMoreLinks(
-  groups: { band: CardBand; overflow: number }[],
-  more: number
-): AttentionMoreLinks {
-  const perBand: Partial<Record<CardBand, AttentionMoreLink>> = {};
-  const lastIdx = groups.length - 1;
-  const last = lastIdx >= 0 ? groups[lastIdx] : null;
-  // The two links would render adjacently only when the LAST band overflows AND
-  // there's a card-level remainder — that's the exact stack #538 reported.
-  const merge = last != null && last.overflow > 0 && more > 0;
-
-  groups.forEach((g, i) => {
-    if (g.overflow <= 0) return;
-    if (merge && i === lastIdx) return; // folded into `trailing`
-    perBand[g.band] = {
-      count: g.overflow,
-      text: `+${g.overflow} more ${CARD_BAND_MORE_NOUN[g.band]} in Upcoming`,
-      href: upcomingHref(CARD_BAND_ANCHOR[g.band]),
-    };
-  });
-
-  let trailing: AttentionMoreLink | null = null;
-  if (merge && last) {
-    trailing = {
-      count: last.overflow + more,
-      text: `+${last.overflow} more ${CARD_BAND_MORE_NOUN[last.band]} and ${more} scheduled later in Upcoming`,
-      href: "/upcoming",
-    };
-  } else if (more > 0) {
-    trailing = {
-      count: more,
-      text: `+${more} scheduled later — view all in Upcoming`,
-      href: upcomingHref("later"),
-    };
-  }
-
-  return { perBand, trailing };
-}
-
-// ---------------------------------------------------------------------------
-// Hero collapse (issue #1413, section B) — the owner-confirmed refinement of the
-// #449 care tier from ALWAYS-FULL to ALWAYS-PRESENT.
-// ---------------------------------------------------------------------------
-//
-// The "Needs attention" hero is care-tier PUSH: pinned, non-hideable, no dismiss
-// control. On a phone the full card also costs the better part of a screen, even
-// on a day whose items you have already read — which is a real cost, but NOT a
-// reason to weaken the tier. So the contract changes on exactly one axis: the
-// VERTICAL COST becomes opt-in, while presence and the COUNT never do.
-//
-// What that buys, precisely:
-//   - Collapsed still renders the count and the highest-severity band, so
-//     "3 need attention, one of them past due" survives the compaction. A
-//     collapsed hero is a smaller signal, never an absent one.
-//   - There is still no dismiss. Collapse is a two-way toggle the user can
-//     always reverse from the same control; nothing here can reach a state with
-//     no attention affordance on the page.
-//   - The SAFETY CARVE-OUT below outranks the preference entirely.
-//
-// These are pure decisions so the #449 contract is pinned by unit tests rather
-// than by reviewer memory of what the component happens to render.
-
-// The bands a collapsed hero can advertise, most severe first — the same
-// vocabulary and order as the expanded card's sections, so the compact line can
-// never describe the card differently from the card.
-export function attentionTopBand(
-  items: UpcomingItem[],
-  today: string
-): CardBand | null {
-  const subset = attentionCardItems(items, today);
-  for (const band of CARD_BAND_ORDER) {
-    if (subset.some((i) => cardBandForItem(i, today) === band)) return band;
-  }
-  return null;
-}
-
-// Whether the hero carries a SAFETY-tier item and must therefore render expanded
-// no matter what the viewer's collapse preference says (#942's `isHiddenUnderPolicy`
-// posture applied to compaction rather than suppression).
-//
-// The tier is read from the item's OWN declared lifecycle policy via the shared
-// `itemSuppressionPolicy` dispatcher — NOT from a second list of "serious-looking"
-// domains maintained here. That matters: "safety-ungated" is already the property
-// that means "the dismissal bus may never hide this" (dose reminders, missed-dose
-// escalation, the #716 crisis finding), so a signal that opts into it inherits the
-// no-compaction guarantee automatically, and a future safety signal cannot be
-// added without also getting this behavior. A domain allowlist here would have to
-// be remembered and updated separately, which is precisely how a safety carve-out
-// silently stops covering something.
-export function attentionSafetyLocked(
-  items: UpcomingItem[],
-  today: string
-): boolean {
-  return attentionCardItems(items, today).some(
-    (i) => itemSuppressionPolicy(i) === "safety-ungated"
-  );
-}
-
-// The hero's resolved display state. `collapsed` is what the surface renders;
-// `locked` tells it to suppress the collapse CONTROL as well, so a safety-locked
-// hero offers no toggle that would do nothing (a dead control reads as a bug and
-// invites the user to keep pressing it).
-export interface AttentionHeroState {
-  collapsed: boolean;
-  locked: boolean;
-  count: number;
-  topBand: CardBand | null;
-}
-
-// Resolve the hero's state from the viewer's stored preference and the items.
-// The safety carve-out is checked FIRST and unconditionally — the preference is
-// not consulted for a safety-locked hero — mirroring how `isHiddenUnderPolicy`
-// puts its "safety-ungated" branch ahead of any stored record, so neither can be
-// weakened by editing what is stored.
-//
-// An EMPTY hero (the quiet "all clear") is also never collapsed: there is nothing
-// to compact, and a collapsed all-clear line would be a strictly worse rendering
-// of the same zero.
-export function attentionHeroState(
-  items: UpcomingItem[],
-  today: string,
-  preferCollapsed: boolean
-): AttentionHeroState {
-  const count = attentionCardItems(items, today).length;
-  const locked = attentionSafetyLocked(items, today);
-  return {
-    collapsed: !locked && count > 0 && preferCollapsed,
-    locked,
-    count,
-    topBand: attentionTopBand(items, today),
-  };
 }

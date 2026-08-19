@@ -23,7 +23,7 @@ import canonical from "@/lib/canonical-result-definitions.json";
 //      the streak/milestone engines must never reference mood, and the mood
 //      modules must never import them.
 //   3. COACHING TIER ONLY — both mood dedupeKey namespaces resolve to the calm
-//      tier (#449), so they can never ride a push or the Needs-attention hero.
+//      tier (#449), so they can never ride a push or dashboard Now.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 

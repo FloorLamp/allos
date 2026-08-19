@@ -1,7 +1,7 @@
 // #1076: the biomarker surfaces scope to `category = 'lab'` ONLY. This pins the
 // exact leaks the issue fixes against a real schema — a fever (vitals), a high BP
 // (vitals), a severe PHQ-9 (instrument), a bio-age (derived), and a blood type
-// (reference) appear on NONE of: the biomarker list, the flagged hero source, the
+// (reference) appear on NONE of: the clinical-results list, flagged-result placement, the
 // digest, or the retest nudge. The mental-health/substance sensitivity is load-
 // bearing: a depression score can never reach the general health hero/digest.
 //
@@ -101,7 +101,7 @@ function insert(
 }
 
 // One profile seeded with a real lab plus the four re-homed classes, each carrying
-// a FLAG so the "does it leak into the flagged hero/digest" test is strict (even a
+// a FLAG so the "does it leak into flagged-result placement/digest" test is strict (even a
 // flagged non-lab must be excluded).
 function seedMixedProfile(): number {
   const pid = createProfile("Category Scope Test");

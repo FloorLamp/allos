@@ -111,7 +111,7 @@ describe("food–drug EVENT findings (#2021)", () => {
     expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
     expect(tierForDedupeKey(f.dedupeKey)).toBe("care");
 
-    // It reaches the care surfaces: an Upcoming item banded "today" (→ the hero), with
+    // It reaches the care surfaces: an Upcoming item banded "today" (→ dashboard), with
     // self-contained detail, under the SAME dedupeKey.
     const item = foodDrugEventItems(p, t).find((i) => i.key === f.dedupeKey);
     expect(item).toBeTruthy();
@@ -236,7 +236,7 @@ describe("food–drug VARIANCE findings (#2021)", () => {
     expect(f.detail).toContain("cruciferous");
     expect(f.detail).toContain("Informational, not medical advice.");
 
-    // COACHING tier: registered so, and it reaches no Upcoming/hero surface at all.
+    // COACHING tier: registered so, and it reaches no Upcoming/dashboard care surface.
     expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
     expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
     expect(

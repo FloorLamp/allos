@@ -33,8 +33,8 @@ const IMMUNIZATION_DEDUPED = representativeCte(
 );
 
 // Hoisted (#2110): the immunization schedule generator asks for all three of these
-// per member, and the dashboard's household strip runs that generator once per
-// member. Statement cached per connection, value never — the answer is identical.
+// per member, and the Household page runs that generator once per member. Statement
+// cached per connection, value never — the answer is identical.
 const IMMUNIZATIONS_STMT = hoistedStatement(
   `WITH ${IMMUNIZATION_DEDUPED}
    SELECT id, date, vaccine, dose_label, notes,

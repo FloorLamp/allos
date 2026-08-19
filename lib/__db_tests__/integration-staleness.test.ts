@@ -7,7 +7,7 @@
 // isAuthRefreshFailure never fired), and nothing has arrived either. This harness builds
 // exactly that state from real rows — a connection plus a last successful sync event of a
 // chosen age — and asserts it through the real reads the badge, the Data → Review Issues
-// list and the dashboard hero use.
+// list and dashboard placement use.
 //
 // Since #2263 it is also THE escalation rule, at minute grain: silence past the
 // source's declared tolerance is what makes a connected source `failing`, whether
@@ -207,7 +207,7 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     expect(getImportIssues(p)).toEqual([]);
   });
 
-  it("lands in the shared attention model the hero and Upcoming page render", () => {
+  it("lands in the shared attention model the dashboard and Upcoming page render", () => {
     const p = newProfile("StaleModel");
     connect(p, "oura");
     syncEvent(p, "oura", 30 * DAYS);

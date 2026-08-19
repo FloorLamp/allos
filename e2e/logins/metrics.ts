@@ -130,7 +130,7 @@ export const BULKFIX_PROFILE = "Bulk Fix (e2e)";
 // A member granted a dedicated ADULT profile carrying NOTHING but the two
 // age-derived preventive findings every adult profile gets (COVID-19, Influenza),
 // used by app-badge.mobile.spec.ts (#1424). Dedicated ON PURPOSE: proving the
-// app-icon badge CLEARS requires driving a hero all the way to "All clear", and
+// app-icon badge CLEARS requires resolving the final care-tier dashboard item, and
 // the only way there is dismissing those two findings — a write that would
 // silently change the dashboard every other fixture profile renders. The spec
 // resets this profile's `upcoming_dismissals` at test start, so the set→clear

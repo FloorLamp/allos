@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, openDashboardAll, settledClick } from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_LOGIN_MOBILITY,
@@ -255,6 +255,7 @@ test("a refused dashboard weigh-in says so and claims nothing", async ({
   try {
     await breakIndexedDB(page);
     await page.goto("/");
+    await openDashboardAll(page);
     const input = page.getByTestId("weight-quick-add-input");
     await expect(input).toBeVisible();
 

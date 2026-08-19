@@ -98,7 +98,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     // #860 Track A — illness-care is a CARE-tier (push/hero) builder, registered so.
     expect(tierForDedupeKey(dur[0].dedupeKey)).toBe("care");
 
-    // And it reaches the CARE surfaces: an Upcoming item banded "today" (→ hero),
+    // And it reaches the CARE surfaces: an Upcoming item banded "today" (→ dashboard),
     // self-contained detail (source + disclaimer), same dedupeKey.
     const items = illnessCareItems(p, today(p));
     const item = items.find((i) => i.key === dur[0].dedupeKey);
@@ -107,7 +107,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     expect(item!.domain).toBe("illness-care");
     expect(item!.detail).not.toContain("Informational, not medical advice.");
 
-    // It flows through collectUpcoming (the Upcoming page + hero + digest gather).
+    // It flows through collectUpcoming (the Upcoming page + dashboard + digest gather).
     const upcoming = collectUpcoming(p, today(p));
     expect(upcoming.some((i) => i.key === dur[0].dedupeKey)).toBe(true);
   });
@@ -134,7 +134,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
 });
 
 describe("illness-care builder — dismissal (dismiss once, silence everywhere)", () => {
-  it("a dismissed finding drops out of the collectUpcoming (page + hero) gather", () => {
+  it("a dismissed finding drops out of the collectUpcoming (page + dashboard) gather", () => {
     const p = newProfile("fever-dismiss");
     makeSick(p, 3);
     logConsecutive(p, "fever", [2, 2, 3, 3]);

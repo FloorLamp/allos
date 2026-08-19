@@ -1,8 +1,8 @@
 // The PURE decision half of the diabetes↔periodontitis coaching observation
 // (issue #706, ask 4). Coaching-tier ONLY per the findings two-tier policy (#449):
 // it joins collectCoachingFindings, its dedupeKey prefix is registered in
-// RULE_FINDING_PREFIXES, and it NEVER notifies and NEVER reaches the non-hideable
-// "Needs attention" hero — it's a calm, informational, dismissible FYI, deliberately
+// RULE_FINDING_PREFIXES, and it NEVER notifies and NEVER reaches dashboard Now —
+// it's a calm, informational, dismissible FYI, deliberately
 // the calm tier while the dental-cadence tightening (#706 ask 1) is the push side.
 //
 // COPY STAYS OBSERVATIONAL, NOT PRESCRIPTIVE. It states the well-established

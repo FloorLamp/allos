@@ -225,7 +225,7 @@ export function trainingItems(profileId: number): UpcomingItem[] {
 // so this is where "Saturday is the best window for your ride" lives; the digest's
 // This-week line renders the SAME `planningLine` computation as a glance (#221).
 //
-// CALM by construction: banded to `week` (never Today, never the hero), no due date, and
+// CALM by construction: banded to `week` (never Today or dashboard Now), no due date, and
 // it only appears when outdoor viability is genuinely SCARCE — a week where every day
 // works produces nothing, and a week where NO day works produces nothing either, because
 // there is no session to recommend and nagging about weather nobody can change is the

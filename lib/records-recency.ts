@@ -68,8 +68,8 @@
 //
 // Both legs travel exactly #1757's reach and no further: an Upcoming item, the digest
 // line that page's own banding yields, and nothing else. No `notify_*` marker, no
-// dedicated channel, no escalation, and excluded from the non-hideable "Needs
-// attention" hero (`CARD_EXCLUDED_DOMAINS`, lib/attention.ts) — records hygiene is
+// dedicated channel, no escalation, and excluded from the installed-app badge
+// (`ATTENTION_BADGE_EXCLUDED_DOMAINS`, lib/attention.ts) — records hygiene is
 // never a safety signal, and an ask that cannot be dismissed is a nag.
 
 import { freshnessAgeDays, freshnessState } from "./freshness";

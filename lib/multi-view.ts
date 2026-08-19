@@ -83,7 +83,7 @@ export function subjectChipVisible(ctx: {
 
 // The view-set BADGE label (#1327 fix 6, product-decided): a multi-view badge reads
 // "N across M profiles" so it can't read as a contradiction against the acting-only
-// dashboard hero / nav counts (which STAY acting-only by design — their subject is you).
+// dashboard placement / nav counts (which STAY acting-only by design — their subject is you).
 // Single view keeps the plain "N total". Recorded as a shared rule so no future adopter
 // "fixes" the deliberate difference.
 export function viewCountLabel(total: number, profileCount: number): string {

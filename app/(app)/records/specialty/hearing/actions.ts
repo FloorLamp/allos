@@ -24,7 +24,7 @@ function revalidateHearing() {
   revalidateRoute("/records");
   // The thresholds ARE biomarker readings, so every surface that reads them must
   // refresh with them: the Results catalog + per-analyte views, the dashboard's
-  // recent/needs-attention summaries, and the medication safety strips + Upcoming,
+  // recent/dashboard summaries, and the medication safety strips + Upcoming,
   // whose ototoxic note now cites this baseline.
   revalidateRoute("/results");
   revalidateRoute("/results/clinical-results/view", "page");

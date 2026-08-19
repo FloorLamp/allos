@@ -26,7 +26,7 @@
 // The findings-bus namespace for the "over the confirmed daily max" care finding. A
 // per-item, count-per-day analogue of the dietary-limit (UL) warning: when today's
 // administrations EXCEED the user's confirmed max_daily_count, surface a dismissible
-// care-tier finding (Upcoming + the dashboard attention hero). Registered on the
+// care-tier finding (Upcoming + dashboard placement). Registered on the
 // intake-surface dismiss guard so a dismiss silences it like any other finding.
 import { parseUtcSql } from "./date";
 import {

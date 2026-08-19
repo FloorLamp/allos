@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appBadgeAction } from "@/lib/app-badge";
 
 // The only decision the app-icon badge owns (issue #1424): set N, or clear. The
-// COUNT is the hero's — see lib/__tests__/app-badge-chokepoint.test.ts, which
-// guards that this module and its one caller never re-derive it.
+// dashboard passes the already-computed care-tier count into this formatter.
 
 describe("appBadgeAction", () => {
   it("sets the count when there is anything to attend to", () => {

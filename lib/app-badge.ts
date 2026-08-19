@@ -2,8 +2,8 @@
 //
 // `navigator.setAppBadge(n)` paints a count on the installed PWA's home-screen
 // icon. The COUNT is not computed here and never will be: it is the care-tier
-// "Needs attention" number the dashboard hero already renders
-// (`attentionCardItems(items, today).length`, over `collectAttentionModel` —
+// current care-tier number the dashboard already computes
+// (`attentionBadgeItems(items, today).length`, over `collectAttentionModel` —
 // the #449 care tier), handed to `components/AppBadge.tsx` as a prop. This
 // module owns only the tiny decision the platform API forces — set N, or clear —
 // so that decision is pinned by a unit test instead of living inside an effect.

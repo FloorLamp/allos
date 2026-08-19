@@ -67,15 +67,4 @@ export const setupCandidates = {
       { relevance: { kind: "setup" } }
     );
   },
-  householdAttention(ctx: DomainCandidateContext, count: number) {
-    const profileId =
-      ctx.subject.scope === "profile" ? ctx.subject.profileId : "unknown";
-    return statement(
-      ctx,
-      `household.attention:${profileId}`,
-      `household.attention-count:${profileId}:${count}`,
-      "household.profiles",
-      { relevance: { kind: "state" } }
-    );
-  },
 };

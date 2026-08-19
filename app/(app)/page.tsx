@@ -16,7 +16,7 @@ import {
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
-  collectAttentionModel,
+  collectAttentionDashboardData,
   getHealthspanPillars,
   getLastNightSummary,
   getSleepWaitingState,
@@ -35,7 +35,6 @@ import {
   getSymptomNotesOnDate,
   getCustomSymptomNames,
   getSymptomLogOrder,
-  attentionCountForProfile,
 } from "@/lib/queries";
 import {
   getCycleForecast,
@@ -137,7 +136,7 @@ import {
   setupCandidates,
   sleepCandidates,
 } from "@/lib/dashboard-candidates";
-import { attentionCardItems } from "@/lib/attention";
+import { attentionBadgeItems } from "@/lib/attention";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getStreamLifecycleOffers } from "@/lib/queries/stream-lifecycle";
 import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
@@ -149,9 +148,10 @@ import {
   onboardingNeedsSetup,
 } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
-import { DashboardAttentionAtom } from "@/components/dashboard/NeedsAttentionHero";
+import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
 import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
+import type { DashboardAheadPresentation } from "@/components/dashboard/DashboardPlacementCanvas";
 import IllnessHero, {
   type HeroCockpit,
 } from "@/components/dashboard/IllnessHero";
@@ -179,10 +179,7 @@ import {
   type DashboardIllnessCockpitModel,
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
-import {
-  householdFanoutProfiles,
-  householdFanoutWithActing,
-} from "@/lib/household-fanout";
+import { householdFanoutWithActing } from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
@@ -216,7 +213,6 @@ import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import HouseholdStrip from "@/components/dashboard/HouseholdStrip";
 import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import { dismissRecentlyResolved, saveIllnessHeroState } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
@@ -243,6 +239,8 @@ import {
   prCardioDismissalKey,
   prStrengthDismissalKey,
 } from "@/lib/dismissal-keys";
+import { upcomingDueText } from "@/lib/upcoming";
+import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
@@ -305,32 +303,10 @@ async function renderDashboard(
     finishedRecap != null &&
     finishedRecap.totalWorkingSets > 0;
 
-  // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
-  // unconditionally (outside the customizable grid). Renders the act-now SUBSET of
-  // the ONE unified attention model (lib/attention.ts) the Upcoming page renders in
-  // full — a strict subset, so the two surfaces always reconcile (issue #524). The
-  // model shares its underlying reads with the Telegram digest and the Upcoming list.
-  // The login's unit prefs ride along (#1019) so a measurement-carrying item (the
-  // temperature red-flag, an endurance event distance) renders in the viewer's unit.
-  // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
-  // profile attention count for their OTHER profiles (same gate as the Household
-  // nav entry). Each chip's number is a WHOLE attention model for that member —
-  // tens of statements, not "a few profile-scoped reads" as this comment used to
-  // claim (#2110) — which is exactly why the fan-out is bounded below rather than
-  // left to scale with the accessible set. Grants are respected —
-  // getAccessibleProfiles returns only reachable profiles, and the switch action
-  // re-checks.
-  //
-  // It stays the whole model DELIBERATELY (#2110). Every cheap substitute —
-  // collectHouseholdRollup, an overdue-only slice — returns a DIFFERENT INTEGER,
-  // because cardBandForItem admits act-now items from essentially all 30
-  // generators; a chip driven by one of those would stop being the number that
-  // member's own hero shows (#524), which is a correctness regression wearing a
-  // performance label. What got cheaper instead is what the gather COMPILES: the
-  // clinical-fact and current-reading reads it repeats per member are hoisted
-  // (hoistedStatement), so they compile once per connection rather than once per
-  // chip. lib/__db_tests__/household-attention-count.test.ts pins both halves —
-  // the integer and the one-compile-per-connection claim.
+  // Gather the unified attention model and its unchanged Upcoming input once. Atomic
+  // candidates from that model are distributed by the four-zone resolver; the
+  // act-now subset supplies only the app-badge count. Viewer units ride along so
+  // measurement-carrying item copy stays consistent with Upcoming.
   const accessible = scope.profiles;
   preloadProfileSettings(
     accessible.map((accessibleProfile) => accessibleProfile.id)
@@ -373,19 +349,11 @@ async function renderDashboard(
           countPushSubscriptionsForLogin(login.id) > 0,
       }
     : null;
-  const householdProfiles = householdFanoutProfiles(accessible, profile.id);
-  const { attention, householdAttention } = {
-    attention: collectAttentionModel(profile.id, on, units),
-    householdAttention: householdProfiles
-      .map((householdProfile) => ({
-        profile: householdProfile,
-        count: attentionCountForProfile(
-          householdProfile.id,
-          today(householdProfile.id)
-        ),
-      }))
-      .filter((entry) => entry.count > 0),
-  };
+  const { attention, upcoming } = collectAttentionDashboardData(
+    profile.id,
+    on,
+    units
+  );
 
   // Applicability belongs to each candidate and is never inferred from missing data.
   // These bits reuse the same life-stage/navigation decisions as the owning routes.
@@ -620,12 +588,11 @@ async function renderDashboard(
   // bounded household member, the most-recent episode still inside its 7-day reopen
   // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
   // aware like the hero (#858) — each row reopens that member's episode via its
-  // profileId. Calm/dismissible, never the attention hero (#449). Names disambiguated
+  // profileId. Calm/dismissible, never dashboard Now (#449). Names disambiguated
   // across the accessible set (#531).
   //
-  // Derived from the ONE episode gather above (#2115) — it re-read the closed-episode
-  // row the recently-sick predicate below had already read — and bounded on the same
-  // set as the strip (#2446), with the viewer always in it.
+  // Derived from the ONE episode gather above (#2115) and bounded by the shared illness
+  // fan-out (#2446), with the viewer always included.
   //
   // Filtered SERVER-SIDE against the viewer's stored dismissals (#1548): the X used to
   // be client state only, so a hidden line came back on the next reload. The client
@@ -661,20 +628,14 @@ async function renderDashboard(
   // link that surfaces near the illness hero when any accessible member is currently or
   // recently sick, and recedes once the house is well. Only for a multi-profile login
   // (a single-profile login has no household to merge). Reads the LITERAL SAME rows the
-  // hero and the reopen band read — one gather, three derivations (#2115); the comment
+  // illness context and reopen facts read — one gather, three derivations (#2115); the comment
   // here used to claim that reuse while isHouseholdRecentlySick re-issued both SELECTs
-  // per profile. Bounded on the same set as the strip, viewer included (#2446).
+  // per profile. Bounded by the same illness fan-out, viewer included (#2446).
   // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
   // because it's useful and disappears on its own.
   //
-  // The PREDICATE is unchanged by #1549; only its PLACEMENT is now contextual. The
-  // reopen window (7 days) is a strict subset of this one (14), so a standalone block
-  // stacked a third household-shaped band under the reopen lines in every just-
-  // recovered state, and floated context-free in the 8–14-day tail once the illness
-  // hero that justified "surfaces near the hero" was gone. So the link renders as a row
-  // of whichever household band is already on screen — ONE render, never two:
-  //   • reopen lines visible → the reopen band's footer;
-  //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
+  // The typed login-scoped candidate survives the active-profile scope boundary and
+  // lands once in Show everything. It remains a calm link, not a finding or send.
   const promoteHouseholdHistory =
     accessible.length > 1 && isHouseholdRecentlySickFromStates(episodeStates);
 
@@ -783,7 +744,7 @@ async function renderDashboard(
   }
 
   // next-appointment (medical): the single most attention-worthy scheduled visit,
-  // via the SHARED pickNextAppointment (issue #303 — the dashboard hero and the
+  // via the SHARED pickNextAppointment (issue #303 — dashboard placement and the
   // household card must answer "the profile's next appointment" identically). Its
   // policy is overdue-first: a still-scheduled past visit outranks a future one.
   let nextAppt: NextAppointment | null = null;
@@ -1111,6 +1072,7 @@ async function renderDashboard(
     string,
     DashboardStandingPresentation
   >();
+  const aheadPresentations = new Map<string, DashboardAheadPresentation>();
   const add = (
     candidate: DashboardCandidate,
     node: ReactNode,
@@ -1130,7 +1092,7 @@ async function renderDashboard(
   };
   let sourceOrder = 0;
 
-  const attentionBadgeCount = attentionCardItems(attention, on).length;
+  const attentionBadgeCount = attentionBadgeItems(attention, on).length;
   const attentionItems = [...attention];
   for (const candidate of attentionCandidates(
     profileSubject,
@@ -1138,8 +1100,14 @@ async function renderDashboard(
     on
   )) {
     const item = attentionItems.find(
-      (entry) => `attention.fact:${entry.key}` === candidate.candidateId
+      (entry) =>
+        dashboardAttentionCandidateId(entry.key) === candidate.candidateId
     )!;
+    aheadPresentations.set(candidate.candidateId, {
+      label: item.title,
+      detail: upcomingDueText(item, on, formatPrefs),
+      href: item.href,
+    });
     add(
       candidate,
       <DashboardAttentionAtom
@@ -1156,7 +1124,7 @@ async function renderDashboard(
   // riding on a due preventive item, keyed `preventive-review:<recordId>:
   // <ruleKey>`. The builder bars them from the Now lane structurally (all rank
   // reasons false, obligation "may"), so they can only render here in the
-  // exhaustive Everything lane — the same confirm-the-date / dismiss controls
+  // exhaustive Show everything remainder — the same confirm-the-date / dismiss controls
   // the Upcoming row shows beside the due item, and never a send.
   for (const item of attentionItems) {
     for (const offer of item.preventiveReview ?? []) {
@@ -1279,7 +1247,6 @@ async function renderDashboard(
       ),
       <RecentlyResolvedReopen
         items={[item]}
-        showHouseholdPromo={false}
         dismissAction={dismissRecentlyResolved}
       />
     );
@@ -1445,32 +1412,20 @@ async function renderDashboard(
     );
   }
 
-  householdAttention.forEach((entry) =>
-    add(
-      setupCandidates.householdAttention(
-        {
-          subject: { scope: "profile", profileId: entry.profile.id },
-          sourceOrder: sourceOrder++,
-        },
-        entry.count
-      ),
-      <HouseholdStrip entries={[entry]} />
-    )
+  const moodCheckinCandidate = dailyCandidates.moodCheckin(
+    {
+      subject: profileSubject,
+      applicable: canWrite,
+      sourceOrder: sourceOrder++,
+    },
+    on,
+    nowSlots.Evening == null
+      ? { kind: "always" }
+      : localTimeWindow(nowSlots.Evening, 1439),
+    todayMood == null
   );
-
   add(
-    dailyCandidates.moodCheckin(
-      {
-        subject: profileSubject,
-        applicable: canWrite,
-        sourceOrder: sourceOrder++,
-      },
-      on,
-      nowSlots.Evening == null
-        ? { kind: "always" }
-        : localTimeWindow(nowSlots.Evening, 1439),
-      todayMood == null
-    ),
+    moodCheckinCandidate,
     <DashboardQuickEntryAction
       title={todayMood ? "Update today's mood" : "Log today's mood"}
       detail={
@@ -1484,6 +1439,17 @@ async function renderDashboard(
       form="mood"
     />
   );
+  aheadPresentations.set(moodCheckinCandidate.candidateId, {
+    label: todayMood ? "Update today's mood" : "Log today's mood",
+    ...(nowSlots.Evening == null
+      ? {}
+      : {
+          detail: `Opens ${formatClockMinutes(
+            formatPrefs.timeFormat,
+            nowSlots.Evening
+          )}`,
+        }),
+  });
 
   if (todayMood) {
     const moodReadings = [
@@ -2368,6 +2334,8 @@ async function renderDashboard(
   const dashboardPlacements = rankDashboardCandidates(candidates, {
     activeProfileId: profile.id,
     minutesOfDay: nowMinutes,
+    today: on,
+    upcoming,
   });
   const illnessGroupKeys = orderedIllnessGroupKeys(dashboardPlacements);
   const heroByGroupKey = new Map(
@@ -2436,6 +2404,7 @@ async function renderDashboard(
       placements={dashboardPlacements}
       candidateNodes={candidateNodes}
       standingPresentations={standingPresentations}
+      aheadPresentations={aheadPresentations}
       attentionBadgeCount={attentionBadgeCount}
       illnessGroupNode={
         placedHeroCockpits.length > 0 ? (

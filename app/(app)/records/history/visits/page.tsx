@@ -16,7 +16,7 @@ export default async function RecordsVisitsPage(props: {
   // Single view is byte-identical to the former requireSession()/profile.id path.
   const scope = await requireScope();
   // Widen-to-household link — shown only when the login can reach 2+ profiles
-  // (the SAME predicate that gates the Household strip/nav).
+  // (the SAME predicate that gates Household navigation).
   const showHousehold = scope.profiles.length > 1;
   return (
     <div data-testid="records-visits">
