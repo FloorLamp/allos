@@ -38,6 +38,12 @@ import {
 import { TELEGRAM_CALL_TIMEOUT_MS } from "@/lib/notifications/telegram-api";
 import { HOME_ASSISTANT_CALL_TIMEOUT_MS } from "@/lib/notifications/home-assistant";
 import { PUSH_SEND_TIMEOUT_MS } from "@/lib/notifications/push";
+import { NOTIFICATION_DISPATCH_TIMEOUT_MS } from "@/lib/notifications/dispatch-deadline";
+import {
+  EMAIL_CONNECTION_TIMEOUT_MS,
+  EMAIL_GREETING_TIMEOUT_MS,
+  EMAIL_SOCKET_TIMEOUT_MS,
+} from "@/lib/email";
 import { writeActivityFold } from "@/lib/merge-activity";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-dupes";
@@ -595,36 +601,64 @@ describe("carryPostWorkoutMarker", () => {
   });
 });
 
-// ── The deadline's VALUE, not just its existence ─────────────────────────────
+// ── The deadlines' VALUES, not just their existence (#3057) ──────────────────
 //
-// POST_WORKOUT_DISPATCH_TIMEOUT_MS is derived from the channel caps: it is a
-// last-resort bound on something genuinely stuck, never a ceiling a healthy send
-// can reach. Nothing above enforces that. Set to 1 ms, every spec in this file and
-// in the queue's own stayed green while the deadline abandoned each real send
-// mid-flight — which puts the abandoned run and its successor back into exactly the
-// read-then-act same-push race this change exists to close.
+// NOTIFICATION_DISPATCH_TIMEOUT_MS is the shared whole-dispatch bound: a
+// last-resort ceiling on something genuinely stuck, never one a healthy send can
+// reach. Nothing above enforces that. Set to 1 ms, every spec in this file and in
+// the queue's own stayed green while the deadline abandoned each real send
+// mid-flight — which puts the abandoned run and its successor back into exactly
+// the read-then-act same-push race the queue exists to close.
 //
 // So the argument lives at the constants, and changing any ONE of them reds here.
 //
 // HEADROOM, not just clearance. A dispatch is a message build plus a Promise.all
 // fan-out across channels, not one call, so a deadline barely above one channel's
 // cap cuts off a merely-slow send — and cutting off a slow send is how the duplicate
-// this queue tolerates stops being the pathological case and becomes the normal one.
+// the queue tolerates stops being the pathological case and becomes the normal one.
 // Hence 2×, and not `> slowest`, which 30_001 ms would satisfy.
 //
 // The MULTIPLE is provisional: chosen for headroom, not derived from a measurement.
 // It is here so that changing a cap meets an argument rather than a constant.
 const DISPATCH_DEADLINE_HEADROOM = 2;
 
-describe("the dispatch deadline clears every channel cap", () => {
+describe("the shared dispatch deadline clears every channel cap (#3057)", () => {
   it("leaves room for a whole dispatch, not just one channel call", () => {
     const slowestChannel = Math.max(
       TELEGRAM_CALL_TIMEOUT_MS,
       HOME_ASSISTANT_CALL_TIMEOUT_MS,
-      PUSH_SEND_TIMEOUT_MS
+      PUSH_SEND_TIMEOUT_MS,
+      EMAIL_CONNECTION_TIMEOUT_MS,
+      EMAIL_GREETING_TIMEOUT_MS,
+      EMAIL_SOCKET_TIMEOUT_MS
     );
-    expect(POST_WORKOUT_DISPATCH_TIMEOUT_MS).toBeGreaterThanOrEqual(
+    expect(NOTIFICATION_DISPATCH_TIMEOUT_MS).toBeGreaterThanOrEqual(
       slowestChannel * DISPATCH_DEADLINE_HEADROOM
+    );
+  });
+
+  it("every channel transport cap sits at or below the shared deadline", () => {
+    // A cap past the whole-dispatch deadline means every slow send on that
+    // channel is abandoned mid-flight — the deadline stops being a last resort.
+    for (const cap of [
+      TELEGRAM_CALL_TIMEOUT_MS,
+      HOME_ASSISTANT_CALL_TIMEOUT_MS,
+      PUSH_SEND_TIMEOUT_MS,
+      EMAIL_CONNECTION_TIMEOUT_MS,
+      EMAIL_GREETING_TIMEOUT_MS,
+      EMAIL_SOCKET_TIMEOUT_MS,
+    ]) {
+      expect(cap).toBeLessThanOrEqual(NOTIFICATION_DISPATCH_TIMEOUT_MS);
+    }
+  });
+
+  it("the post-workout whole-task guard is STRICTLY greater than the shared deadline", () => {
+    // Equal would race the bounded dispatch at the same instant and could
+    // abandon a run whose dispatch was about to resolve with results; strictly
+    // greater means the bounded dispatch always wins, and the guard only fires
+    // on non-dispatch work (import, re-verify, build) genuinely stuck.
+    expect(POST_WORKOUT_DISPATCH_TIMEOUT_MS).toBeGreaterThan(
+      NOTIFICATION_DISPATCH_TIMEOUT_MS
     );
   });
 });
