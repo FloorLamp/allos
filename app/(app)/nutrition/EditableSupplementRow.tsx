@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
+import {
+  ingredientLine,
+  type IntakeItemIngredient,
+} from "@/lib/intake-ingredients";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
@@ -52,6 +56,7 @@ export default function EditableSupplementRow({
   stackItems,
   pgxVariants,
   pairs,
+  ingredients = [],
   isTaken,
   isSkipped,
   strip,
@@ -74,6 +79,9 @@ export default function EditableSupplementRow({
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   pairs: IntakePair[];
+  // This item's label composition (#2856): the "What's in this" disclosure below and
+  // the edit form's repeater. Empty for the ordinary single-substance item.
+  ingredients?: IntakeItemIngredient[];
   isTaken: boolean;
   isSkipped: boolean;
   strip: AdherenceDot[];
@@ -338,6 +346,22 @@ export default function EditableSupplementRow({
               {medMeta}
             </div>
           )}
+          {/* What's in this (#2856): the label composition, shown where the person
+            entered it so the numbers behind an upper-limit warning or an interaction
+            notice are inspectable rather than mysterious. Closed by default — most
+            items have none, and a blend's label is a lot of words for a dose row. */}
+          {ingredients.length > 0 && (
+            <details className="mt-0.5" data-testid="supplement-ingredients">
+              <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
+                What&apos;s in this ({ingredients.length})
+              </summary>
+              <ul className="mt-1 space-y-0.5 border-l-2 border-black/10 pl-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+                {ingredients.map((g) => (
+                  <li key={g.id}>{ingredientLine(g)}</li>
+                ))}
+              </ul>
+            </details>
+          )}
           <NotesText
             as="div"
             notes={s.notes}
@@ -402,6 +426,7 @@ export default function EditableSupplementRow({
               action={updateIntakeItem}
               supplement={s}
               doses={doses}
+              ingredients={ingredients}
               retiredDoses={retiredDoses}
               allIntakeItems={allIntakeItems}
               stackItems={stackItems}

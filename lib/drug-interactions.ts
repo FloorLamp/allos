@@ -273,6 +273,11 @@ export function interactionsForCandidate(
     name: string;
     rxcui: string | null;
     rxcuiIngredients?: string[] | null;
+    // The label ingredients typed into the form's repeater so far (#2856), so the
+    // inline notice answers while the blend is still being entered — the interaction
+    // appears as the person writes "St. John's Wort" into a "Mood Support" row,
+    // rather than only after the item is saved.
+    ingredients?: readonly string[] | null;
   },
   others: InteractionItem[]
 ): InteractionHit[] {
@@ -283,6 +288,7 @@ export function interactionsForCandidate(
       name: candidate.name,
       rxcui: candidate.rxcui,
       rxcuiIngredients: candidate.rxcuiIngredients,
+      ingredients: candidate.ingredients,
       active: true,
     },
     ...others.filter((o) => o.id !== CANDIDATE_ID),

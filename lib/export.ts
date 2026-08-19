@@ -1429,6 +1429,28 @@ export const DATASETS: ExportDataset[] = [
        WHERE ii.profile_id = ?`,
   }),
   tableDataset({
+    // Label composition of an intake item (#2856) — a child of intake_items via
+    // item_id, so browse/export-only. It exports rather than being argued away: the
+    // rows are what a person transcribed off their own bottles, and they are the input
+    // the upper-limit totals and interaction checks read, so a migrating family
+    // leaving without them would leave without the composition half of their shelf.
+    // `amount_text` is the label's own words and `amount`/`unit` the canonical reading
+    // — both, because the second is derived from the first and only the first is
+    // checkable against the bottle.
+    key: "intake_item_ingredients",
+    label: "Ingredients",
+    table: "intake_item_ingredients",
+    deletable: false,
+    columns: ["item", "ingredient", "amount_text", "amount", "unit"],
+    select: `SELECT g.id, ii.name AS item, g.name AS ingredient, g.amount_text,
+              g.amount, g.unit
+       FROM intake_item_ingredients g JOIN intake_items ii ON ii.id = g.item_id
+       WHERE ii.profile_id = ? ORDER BY ii.name, g.sort, g.id`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM intake_item_ingredients g JOIN intake_items ii ON ii.id = g.item_id
+       WHERE ii.profile_id = ?`,
+  }),
+  tableDataset({
     // Recorded medication/supplement side effects (a child of intake_items via
     // item_id, so browse/export-only).
     key: "intake_item_side_effects",
