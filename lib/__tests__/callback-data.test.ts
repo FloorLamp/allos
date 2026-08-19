@@ -68,6 +68,7 @@ describe("parseTakeCallback", () => {
     expect(parseTakeCallback("take:1:0:34:2026-07-03")).toBeNull(); // zero dose
     expect(parseTakeCallback("take:0:12:34:2026-07-03")).toBeNull(); // zero profile
     expect(parseTakeCallback("take:1:12:34")).toBeNull(); // no date
+    expect(parseTakeCallback("take:1:12:34:banana")).toBeNull(); // non-date date (#3120)
     expect(parseTakeCallback("take:12:34:2026-07-03")).toBeNull(); // legacy (no profile)
     expect(parseTakeCallback(undefined)).toBeNull();
     expect(parseTakeCallback(42)).toBeNull();
@@ -95,6 +96,14 @@ describe("parseAllCallback", () => {
     expect(parseAllCallback(undefined)).toBeNull();
   });
 
+  it("rejects a forged non-date date at parse time (#3120)", () => {
+    // Would otherwise write nothing but thread `banana` through every re-minted
+    // keyboard token on the rebuild.
+    expect(parseAllCallback("all:1:Morning:banana")).toBeNull();
+    expect(parseAllCallback("all:1:Morning:2026-13-45")).toBeNull(); // shape, not a date
+    expect(parseAllCallback("all:1:Morning:2026-02-30")).toBeNull(); // no Feb 30
+  });
+
   it("its profile id resolves against a shared chat like a per-dose tap", () => {
     // resolveTapProfile accepts any token carrying a profileId.
     expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
@@ -120,6 +129,11 @@ describe("parseStackTakeCallback (#3098)", () => {
     expect(parseStackTakeCallback("stacktake:1::11")).toBeNull(); // no date
     expect(parseStackTakeCallback("all:1:Morning:2026-07-03")).toBeNull();
     expect(parseStackTakeCallback(undefined)).toBeNull();
+  });
+
+  it("rejects a forged non-date date at parse time (#3120)", () => {
+    expect(parseStackTakeCallback("stacktake:1:banana:11")).toBeNull();
+    expect(parseStackTakeCallback("stacktake:1:2026-13-45:11")).toBeNull();
   });
 
   it("declares Telegram's callback ceiling for the compose-time drop rule", () => {
@@ -223,6 +237,7 @@ describe("parseSkipCallback", () => {
     expect(parseSkipCallback("skip:1:abc:34:2026-07-03")).toBeNull();
     expect(parseSkipCallback("skip:1:0:34:2026-07-03")).toBeNull();
     expect(parseSkipCallback("skip:1:12:34")).toBeNull();
+    expect(parseSkipCallback("skip:1:12:34:2026-02-30")).toBeNull(); // non-date date (#3120)
     expect(parseSkipCallback(undefined)).toBeNull();
   });
 });
@@ -442,6 +457,15 @@ describe("parseEscalationCallback", () => {
     expect(parseEscalationCallback("esctake:3:7:10")).toBeNull(); // no date
     expect(parseEscalationCallback("take:3:7:10:2026-07-11")).toBeNull();
     expect(parseEscalationCallback(undefined)).toBeNull();
+  });
+
+  it("rejects a forged non-date date at parse time (#3120)", () => {
+    // An `escack:` PERSISTS its date as the escalation marker, which escalate.ts
+    // compares by equality — a stored non-date silently voids the acknowledgement
+    // while the caregiver is told the chase has stopped.
+    expect(parseEscalationCallback("escack:3:7:10:banana")).toBeNull();
+    expect(parseEscalationCallback("esctake:3:7:10:2026-02-30")).toBeNull();
+    expect(parseEscalationCallback("escskip:3:7:10:2026-13-45")).toBeNull();
   });
 });
 

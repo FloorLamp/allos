@@ -17,6 +17,7 @@ import {
 import { seedStandardMetricSaves } from "../standard-metric-seeds";
 import { runPhotoMetadataBackfill } from "../photo/metadata-backfill";
 import { reconcileCyclingStreamSummaries } from "../cycling-stream-summary-db";
+import { unknownFlagSql } from "../reference-range";
 import { runBootTx } from "./schema-utils";
 import { clockOverride, now } from "../clock";
 import { dateStrInTz, utcInstant } from "../date";
@@ -779,10 +780,20 @@ function reconcileNonOptimalFlags(db: Database.Database) {
     return dateStrInTz(resolveTimezone(prof, instance), now());
   };
 
+  // The boot twin of reconcileFlags' row selection: the flags this build's numeric pass
+  // may restate, PLUS any token it does not recognise (#2937 — a value written by a
+  // build from the future, on a database that has since been rolled back). This is the
+  // boot that reaches such a row: the rolled-back build's canonical-flags signature
+  // cannot equal the one the future build stored, so the gate above always fires once.
+  // The unknown half is spelled by the shared lib/reference-range list so the two
+  // spellings cannot drift; the known half stays literal here for the same reason it
+  // always has — importing lib/queries from boot would be circular.
   const rowsStmt = db.prepare(
     `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
        WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-         AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low','reported-high','reported-low'))`
+         AND (flag IS NULL
+              OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low','reported-high','reported-low')
+              OR ${unknownFlagSql()})`
   );
   const setFlag = db.prepare(
     "UPDATE medical_records SET flag = ? WHERE id = ?"

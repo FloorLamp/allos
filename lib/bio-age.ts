@@ -26,6 +26,7 @@ import {
   type PhenoAgeInputEffect,
   type PhenoAgeReference,
 } from "./derived-biomarkers";
+import { formatDateWithYear, type DisplayFormatPrefs } from "./format-date";
 import { isAdultForClinical } from "./life-stage";
 import { optimalBand, referenceRange } from "./reference-range/selection";
 import type {
@@ -208,11 +209,27 @@ export function inputCompleteness(
 }
 
 // Join names into an Oxford-comma list ("A", "A and B", "A, B, and C").
+//
+// TWO OF THE NINE ANALYTE NAMES CARRY THEIR OWN COMMA — "Glucose, Fasting" and
+// "Lymphocytes, Relative" — and a comma-joined list of them says something the reader
+// cannot parse: "missing Glucose, Fasting and Lymphocytes, Relative" reads as four
+// analytes, in a sentence that already carries two comma-bearing dates. A CMP/CBC
+// split omitting exactly those two is an ordinary panel, not a corner case.
+//
+// So the separator steps up to the semicolon when any item contains a comma — the
+// standard English rule for a list whose elements have internal commas, not an
+// invention — and stays a plain comma otherwise, leaving every existing sentence
+// byte-identical. Both the checklist and the newer-panel line read through here, so
+// both get it.
 function humanizeList(items: readonly string[]): string {
   if (items.length === 0) return "";
   if (items.length === 1) return items[0];
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+  const sep = items.some((i) => i.includes(",")) ? "; " : ", ";
+  if (items.length === 2)
+    return sep === "; "
+      ? `${items[0]}; and ${items[1]}`
+      : `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(sep)}${sep}and ${items[items.length - 1]}`;
 }
 
 // The partial-panel checklist message ("7 of 9 inputs present; add hs-CRP and Albumin
@@ -224,6 +241,121 @@ export function completenessChecklistMessage(c: InputCompleteness): string {
   return `${c.presentCount} of ${c.totalCount} inputs present; add ${humanizeList(
     c.missing
   )} to compute your biological age.`;
+}
+
+// ── The inputs card's status line (#3050) ─────────────────────────────────────
+//
+// The Results card gathers the computed draws and used to render only their COUNT, so
+// it could say "All 9 inputs present." and link to a result without ever saying WHICH
+// draw that result is from — nor that the newest panel failed to produce one.
+//
+// Its two sentences also answered different questions. The checklist's `present` is
+// "any usable reading of this analyte, ever" — the right question for the CTA, because
+// that is what tells you which analytes to go and ask for — while the footnote states
+// the model's actual requirement: all nine FROM ONE DRAW. Nine ticks and "All 9 inputs
+// present." can therefore both be true while no single draw carries all nine (albumin
+// from 2020 and the other eight from 2026), in which case the result the card points
+// at does not exist and /longevity#bio-age renders nothing at all.
+//
+// So the status line reads the DRAWS as well as the checklist. It still renders no
+// estimate — #2367's split is exact: the number, the delta, the pace and the per-input
+// effects are a longevity index and live on /longevity. A DATE is not the number.
+
+// One dated panel: which of the nine PhenoAge slots it carried, and which it lacked.
+// A panel carrying all nine IS a computable draw; a panel one short computes nothing,
+// which is why the near-miss can only be described from here (lib/queries/derived.ts
+// builds these from the same gather the draws come from).
+export interface BioAgePanel {
+  date: string;
+  present: string[];
+  missing: string[];
+}
+
+// How near a later panel must come to completing before the card names its gap. A
+// re-draw that missed one or two analytes is the case worth reporting — it is why the
+// number is still the older draw's, and the gap is nameable in a sentence. A day that
+// happens to carry one of the nine (a single glucose from a CGM export) is not a
+// re-draw of the panel, and reporting its seven "gaps" on every such day would be
+// noise on the one card whose job is a short, actionable list.
+export const NEAR_COMPLETE_MISSING_MAX = 2;
+
+export type BioAgeInputsStatusKind =
+  // Fewer than nine analytes present anywhere — the import CTA, unchanged.
+  | "partial"
+  // A computable draw exists; the line names WHICH one the result is from.
+  | "computed"
+  // A computable draw exists AND a newer panel came close and missed, so the result on
+  // /longevity is still the older draw's. Names both the gap and the live draw.
+  | "stale"
+  // All nine present, never on one draw: there is no result to see, and saying so is
+  // the whole point — this is the state the old status line contradicted.
+  | "never-together";
+
+export interface BioAgeInputsStatus {
+  kind: BioAgeInputsStatusKind;
+  message: string;
+}
+
+// The card's status line, from the checklist plus the draws and panels the card has
+// already gathered. Dates render through the viewer's display prefs, like the
+// Longevity hero's — always carrying the YEAR, because how CURRENT the result is is
+// the question this line exists to answer, and it can name two dates at once.
+export function bioAgeInputsStatus(
+  completeness: InputCompleteness,
+  draws: readonly { date: string }[],
+  panels: readonly BioAgePanel[],
+  prefs: DisplayFormatPrefs
+): BioAgeInputsStatus {
+  const on = (iso: string) => formatDateWithYear(iso, prefs);
+  const byDate = <T extends { date: string }>(a: T, b: T) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+  // Not all nine anywhere: the question is still "which analytes do you still need",
+  // and the answer is the one it has always been.
+  if (!completeness.complete)
+    return {
+      kind: "partial",
+      message: completenessChecklistMessage(completeness),
+    };
+
+  const latestDraw = [...draws].sort(byDate).at(-1);
+  if (latestDraw) {
+    // A LATER panel that came close and missed is the most actionable fact this card
+    // can carry: it is why a routine re-draw silently left the result where it was.
+    const missed = panels
+      .filter(
+        (p) =>
+          p.date > latestDraw.date &&
+          p.missing.length > 0 &&
+          p.missing.length <= NEAR_COMPLETE_MISSING_MAX
+      )
+      .sort(byDate)
+      .at(-1);
+    if (missed)
+      return {
+        kind: "stale",
+        message: `Your ${on(missed.date)} panel is missing ${humanizeList(
+          missed.missing
+        )} — your biological age is still from ${on(latestDraw.date)}.`,
+      };
+    return {
+      kind: "computed",
+      message: `All ${completeness.totalCount} inputs present · computed from your ${on(
+        latestDraw.date
+      )} draw.`,
+    };
+  }
+
+  // Nine ticked and no computable draw. When no panel carries all nine, that is the
+  // divergence this card used to hide, and the sentence says it plainly. (A panel that
+  // IS complete without producing a draw means the index came from the document
+  // itself, which this card has no claim to describe — it falls back to stating the
+  // checklist and nothing more.)
+  return panels.some((p) => p.missing.length === 0)
+    ? { kind: "partial", message: completenessChecklistMessage(completeness) }
+    : {
+        kind: "never-together",
+        message: `All ${completeness.totalCount} inputs present, but not from one draw — the model needs them together.`,
+      };
 }
 
 // ── Censored inputs (#2334) ───────────────────────────────────────────────────

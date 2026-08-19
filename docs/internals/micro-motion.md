@@ -149,9 +149,7 @@ information. Contract:
   screen reader, a no-JS reader and an exact-text assertion all read the real number.
 - **`tabular-nums` is applied by the component**, not by the caller: digits that change
   width relayout the row around them, which is the one thing this motion must not do.
-- it is **not** `components/CountUpNumber.tsx`, the other tenancy — a dashboard hero
-  number ticking up once on _mount_ and explicitly never replaying. This one never plays
-  on mount and only plays on a change.
+- it never plays on mount and only plays on a change.
 
 **`slide` + `fold` — the dismissal and the fold that catches it, on `/upcoming`.** One
 gesture, two motions, two components, because the two ends of it are on opposite sides

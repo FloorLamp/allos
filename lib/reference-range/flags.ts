@@ -347,8 +347,14 @@ export function reconciledFlag(
   // Unknown age keeps the adult regime (isAdultBpRegime), so nothing changes for a
   // profile with no birthdate — and an age is always taken ON the record's collection
   // date, so a childhood reading does not re-flag when the person turns 13.
+  //
+  // An UNRECOGNISED token is retired here too (#2937), on the same licence: below the
+  // decline gates the value is one we can judge, and no source can write a token
+  // outside MEDICAL_FLAGS, so it is a future build's claim and not the clinician's.
   if (bpComponentFor(cb.name) && !isAdultBpRegime(age)) {
-    return isOutOfRange(f) || isNonOptimal(f) ? null : undefined;
+    return isOutOfRange(f) || isNonOptimal(f) || !isKnownFlag(f)
+      ? null
+      : undefined;
   }
 
   const rr = referenceRange(cb, sex, age, status, cyclePhase);
@@ -384,7 +390,18 @@ export function reconciledFlag(
   // printed range changed on re-import) is ours to retire — this pass is the only
   // thing that writes one.
   if (isLabStated(f)) return null;
-  if (opt === "optimal") return isNonOptimal(f) ? null : undefined;
+  if (opt === "optimal" && isNonOptimal(f)) return null;
+  // A token this build does not recognise, on a row nothing of ours judges (#2937).
+  // Retiring it is migration 176's ownership argument in its clearest form: no source
+  // can write one — the extractor and the CDA ingest are held to MEDICAL_FLAGS
+  // (normal/high/low/abnormal) — so an unrecognised value was written by a FUTURE
+  // build of this same reconcile, on a database that has since been rolled back. It is
+  // our own claim, in a vocabulary this build cannot restate, so leaving it strands a
+  // row that reads Normal and flagged at once. Every branch above already replaces or
+  // clears it; this is the one that would otherwise have let it through. It costs
+  // nothing forward: re-upgrading moves the canonical flags signature, and the boot
+  // reconcile re-derives the row in the vocabulary that owns it.
+  if (!isKnownFlag(f)) return null;
   return undefined;
 }
 
@@ -427,6 +444,66 @@ export const NOTABLE_FLAGS = [
   ...LAB_STATED_FLAGS,
 ] as const;
 
+// The neutral verdicts: a flag that IS a decision but carries no concern marker.
+// "normal" is the app or the lab saying it looked and found nothing; "immune" is
+// #544's good durable-immunity titer, which must never read as needs-attention.
+export const NEUTRAL_FLAGS = ["normal", "immune"] as const;
+
+// ---------------------------------------------------------------------------
+// EVERY TOKEN THIS BUILD RECOGNISES — and the rollback contract for the ones it
+// does not (issue #2937).
+//
+// `FLAG_LOGIC_VERSION` makes a new flag token retirable FORWARD: the reconcile's
+// RECONCILABLE_FLAGS selects it, so a later run can correct or clear it. Nothing made
+// it retirable BACKWARD. Upgrade a database to a build that introduces a token, roll
+// that build back, and the older build's reconcile never selects the row — while its
+// display and query tiers disagree about what the token means: `flagLabel` falls back
+// to "Normal", `isNormalFlag` is true and `rangeFilterClause` admits it to neither
+// filter, but a `flag NOT IN ('normal','immune')` denylist COUNTS it as flagged. The
+// result was a permanent card reading "Flagged normal — 44": a row simultaneously
+// normal and flagged, filterable by neither state.
+//
+// The contract, stated once so a future token needs no per-token rollback work:
+//
+//   1. A RECONCILE SELECTS ANY FLAG IT DOES NOT RECOGNISE. An unknown token means
+//      "written by a build from the future", which is exactly the row a reconcile
+//      should re-decide — see the selection in lib/queries/medical/flags.ts and its
+//      boot twin, and reconciledFlag's tail below, which retires one when nothing of
+//      ours judges the value.
+//   2. WHERE A ROW IS OUT OF THAT REACH (no canonical name, an unconvertible unit),
+//      DISPLAY AND QUERY STILL AGREE: an unrecognised token is not notable, so every
+//      reader spells its membership as one of the lists above rather than as "not one
+//      of the two neutral words". That disagreement — not the unknown token itself —
+//      is what produced the incoherent card.
+//
+// A QUALITATIVE row is covered by the first rule too, and deliberately so: the
+// qualitative pass selects every `value_num IS NULL` lab row regardless of flag, and
+// its promotion gate asks `isNormalFlag(currentFlag)` — which an unrecognised token
+// satisfies, because that is what the display tier says about it. So #544's own
+// analyte, an immunity titer left carrying a future token, is re-decided on the same
+// boot. Stated here rather than left as a coincidence: tightening `isNormalFlag` to
+// mean "recognised AND neutral" would silently strand qualitative rows again.
+//
+// The list is exhaustive over MedicalFlag by construction: the assignment below stops
+// compiling if a token joins the union without being listed here, so "which tokens
+// does this build know" cannot drift from the type.
+export const KNOWN_FLAGS = [...NOTABLE_FLAGS, ...NEUTRAL_FLAGS] as const;
+
+// Compile-time exhaustiveness — a MedicalFlag missing from KNOWN_FLAGS fails to
+// assign here, naming the token that was added without being classified.
+const _KNOWN_FLAGS_COVER_MEDICAL_FLAG: (typeof KNOWN_FLAGS)[number][] =
+  [] as MedicalFlag[];
+void _KNOWN_FLAGS_COVER_MEDICAL_FLAG;
+
+/**
+ * Whether this build recognises the token at all (#2937). A null/absent flag IS
+ * recognised — that is the ordinary unflagged state; any string outside KNOWN_FLAGS
+ * is not, and is treated as written by a build from the future.
+ */
+export function isKnownFlag(flag: string | null | undefined): boolean {
+  return flag == null || inTier(KNOWN_FLAGS, flag);
+}
+
 /**
  * A SQL `flag IN ('a','b')` predicate over one of the lists above.
  *
@@ -437,6 +514,16 @@ export const NOTABLE_FLAGS = [
  */
 export function flagInSql(flags: readonly string[]): string {
   return `flag IN (${flags.map((f) => `'${f}'`).join(",")})`;
+}
+
+/**
+ * The SQL twin of `!isKnownFlag(...)` — the rows carrying a token this build does not
+ * recognise (#2937), for a reconcile's row selection. A NULL flag is excluded by
+ * SQL's own three-valued logic, which is the right answer: absent is recognised, and
+ * every selection here admits `flag IS NULL` on its own terms anyway.
+ */
+export function unknownFlagSql(): string {
+  return `flag NOT IN (${KNOWN_FLAGS.map((f) => `'${f}'`).join(",")})`;
 }
 
 function inTier(tier: readonly string[], flag: string | null | undefined) {
