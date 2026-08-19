@@ -66,6 +66,10 @@ section rather than restating it, so the rule cannot drift per surface.
 - Compare transcript byte growth and commit age when diagnosing a stall.
 - Before reporting or debugging a stopped agent, commit dirty work as an
   explicitly unverified WIP and push its branch.
+- The restart verdict is STICKY and survives being re-read: a detected restart
+  raises `$SCRATCH/.agents_dead`, every later run keeps reporting the fleet as
+  dead, and only `orchestrator-checkin.sh --relaunched` clears it. Clear it
+  after the rescues and the relaunches, never before.
 - Resume agents with a precise state summary. Never run background work that
   depends on an ephemeral completion event.
 

@@ -634,3 +634,35 @@ This is the session's dominant defect class one level up. The first three passes
 were guards _true of their own function and false of the system_; this one is a
 guard true of the system whose **backup** was unobservable. Same test:
 could this control have come out the other way?
+
+## The verdict destroyed by reading it (2026-08-19)
+
+Fourth time the restart detector soothed over dead agents, and the first three
+fixes had all widened WHAT counts as a restart — a machine reboot (04:38Z
+2026-08-13), then a session restart with the box still up (12:33Z the same day).
+The remaining hole was never detection. It was that detection is
+compare-then-stamp, so the ANSWER IS CONSUMED BY THE FIRST READ.
+
+At 10:14Z the recorder printed `*** RESTARTED ***` for both boot-id and session
+and ran the preserve-first drill. The orchestrator then re-ran it twice, seconds
+apart, for the ordinary reason anyone re-runs it: the first output had been read
+in slices and the worktree section was wanted whole. Runs 2 and 3 compared
+against the ids run 1 had just stamped, found them UNCHANGED, and printed
+
+    wt-biomarker  agent/3050-2937-biomarker-bugs  LIVE  remote=ABSENT  dirty=5
+    (no rescue targets — every dirty tree belongs to a live agent)
+
+over five uncommitted files on a branch that existed on no remote. The rescue
+happened anyway, but only because run 1 was still on screen; an orchestrator
+that had scrolled, or that ran the recorder once more before acting, would have
+removed that worktree on the word of the script that was warning about it.
+
+The lesson generalises past this script: **a verdict that a reader can destroy
+by re-reading is not a verdict, it is a race.** Persisted state was already the
+right instinct — the fix is that the state has to outlive its own first
+consumer. `$SCRATCH/.agents_dead` is now raised on detection, answered from on
+every later run, and cleared only by an explicit
+`orchestrator-checkin.sh --relaunched`. The clear runs BEFORE the raise inside
+one invocation, so an ack written for an older restart cannot swallow a newer
+one detected in the same run. Cost of forgetting to clear it: a loud reminder.
+Cost of never seeing it: an agent's uncommitted work.
