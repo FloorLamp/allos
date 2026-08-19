@@ -100,6 +100,13 @@ export interface IntakeItem {
   // `supply_name` is joined on read for the shared-bottle chip (null when unlinked).
   supply_id: number | null;
   supply_name?: string | null;
+  // Label composition (issue #2856), as a JSON array of intake_item_ingredients rows
+  // projected on the item read, or NULL when the item has none — which is nearly all
+  // of them. It rides here rather than costing a second statement, because the child
+  // table is optional and the item read is the hottest one in the app. Consumers do
+  // not touch this string: they go through getIntakeIngredients /
+  // getIntakeIngredientsByItem, which parse it once per request.
+  ingredients_json?: string | null;
   // The number of units the item was LAST refilled by (issue #852 item 3), NULL until
   // the first "Refilled" one-tap records it. Remembered so subsequent refills reuse the
   // size without re-asking; NOT the on-hand counter.

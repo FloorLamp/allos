@@ -320,3 +320,83 @@ describe("combination medications (issue #279)", () => {
     expect(hits[0].bId === 7 || hits[0].aId === 7).toBe(true);
   });
 });
+
+// ---- Label composition (issue #2856) --------------------------------------------
+//
+// A blend is one row named for what it is FOR. "Mood Support" resolves to no concept
+// at all, so the SSRI × St. John's Wort rule — a MAJOR serotonin-syndrome interaction
+// — could not fire no matter what was in the capsule. Ingredient names are read as
+// additional NAME EVIDENCE through the same synonym matcher.
+
+describe("blend composition (#2856)", () => {
+  const blend = (ingredients: string[]): InteractionItem => ({
+    id: 1,
+    name: "Mood Support",
+    rxcui: null,
+    ingredients,
+    active: true,
+  });
+  const ssri: InteractionItem = {
+    id: 2,
+    name: "Sertraline",
+    rxcui: null,
+    active: true,
+  };
+
+  it("matches a concept named only by an ingredient", () => {
+    expect(matchConceptKeys(blend(["St. John's Wort"]))).toContain(
+      "st_johns_wort"
+    );
+  });
+
+  it("catches the SSRI x St. John's Wort interaction inside a blend", () => {
+    // Without the ingredient row the same two items are silent — which is the defect.
+    expect(detectInteractions([blend([]), ssri])).toEqual([]);
+
+    const [hit] = detectInteractions([blend(["St. John's Wort 300 mg"]), ssri]);
+    expect(hit).toBeDefined();
+    expect(hit.severity).toBe("major");
+    expect(interactionTitle(hit)).toContain("Mood Support");
+  });
+
+  it("answers at the form, while the blend is still being entered", () => {
+    const hits = interactionsForCandidate(
+      { name: "Mood Support", rxcui: null, ingredients: ["st johns wort"] },
+      [ssri]
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("major");
+  });
+
+  it("answers the same whichever of the two is being entered", () => {
+    // Review of #2856: composition reached the CANDIDATE but not the saved stack, so
+    // typing the blend against a saved SSRI warned while typing the SSRI against the
+    // saved blend said nothing — one pair, one profile, two answers decided by the
+    // order the person happened to add them.
+    const enteringBlend = interactionsForCandidate(
+      { name: "Mood Support", rxcui: null, ingredients: ["St. John's Wort"] },
+      [ssri]
+    );
+    const enteringSsri = interactionsForCandidate(
+      { name: "Sertraline", rxcui: null },
+      [blend(["St. John's Wort"])]
+    );
+    expect(enteringSsri).toHaveLength(1);
+    expect(enteringSsri[0].severity).toBe(enteringBlend[0].severity);
+  });
+
+  it("does not join ingredient names into phrases neither one carries", () => {
+    // The synonym test is contiguous-token containment, so concatenating rows would
+    // mint "st johns wort" out of two innocent ones. Each string is matched alone.
+    expect(
+      matchConceptKeys(blend(["St", "Johns Wort Free Extract"]))
+    ).not.toContain("st_johns_wort");
+  });
+
+  it("leaves an item with no ingredient rows matching exactly as before", () => {
+    const plain = item(3, "St. John's Wort");
+    expect(matchConceptKeys(plain)).toEqual(
+      matchConceptKeys({ ...plain, ingredients: [] })
+    );
+  });
+});

@@ -18,7 +18,9 @@ import {
   rdaAdequacyDetail,
   fmtAmount,
   elementalReading,
+  doseUnitCount,
   type StackItem,
+  type StackIngredient,
 } from "../dri";
 
 // Pure tests for the supplement stack-total UL checker (issue #148): unit parsing +
@@ -985,5 +987,205 @@ describe("compound vs elemental mass — refutations (#2798)", () => {
         elementalReading("Magnesium Oxide", magnesium, 2000).compound
       ).toBe("magnesium oxide");
     });
+  });
+});
+
+// ---- Label composition (issue #2856) --------------------------------------------
+//
+// A blend is one row whose NAME resolves to at most one nutrient (usually none), so
+// before ingredient rows existed an "Eye Health+ · 1 cap" contributed nothing to any
+// stack total even with its zinc and copper written down in the notes. These assert
+// the widening: the SAME NAME_MATCHERS, applied per ingredient.
+
+// A blend: a name the matchers know nothing about, dosed in capsules, with a label.
+const blend = (
+  name: string,
+  doseAmounts: (string | null)[],
+  ingredients: StackIngredient[]
+): StackItem => ({ name, active: true, doseAmounts, ingredients });
+
+// The adult-male UL view these cases score against (mirrors the helper above).
+const compositionUl = (items: StackItem[]) =>
+  stackUlWarnings(items, 40, "male");
+
+describe("doseUnitCount (#2856)", () => {
+  it("reads a stated count of label units", () => {
+    expect(doseUnitCount("1 capsule")).toBe(1);
+    expect(doseUnitCount("2 capsules")).toBe(2);
+    expect(doseUnitCount("2 softgels")).toBe(2);
+    expect(doseUnitCount("1 scoop")).toBe(1);
+    expect(doseUnitCount("2 SCOOPS")).toBe(2);
+    // A bare number is a count; there is nothing else it could be.
+    expect(doseUnitCount("2")).toBe(2);
+  });
+
+  it("finds the count beside a strength, whichever order it was written", () => {
+    // Review of #2856: refusing to look past a mass anywhere in the string turned a
+    // two-capsule dose into one and DROPPED a real 50 mg zinc exceedance.
+    expect(doseUnitCount("2 capsules (500 mg)")).toBe(2);
+    expect(doseUnitCount("500 mg (2 capsules)")).toBe(2);
+  });
+
+  it("reads a mass or IU strength as ONE serving, never as a count", () => {
+    // Reading "400 mg" as four hundred capsules would multiply every ingredient by
+    // four hundred on the app's most safety-critical number.
+    expect(doseUnitCount("400 mg")).toBe(1);
+    expect(doseUnitCount("5000 IU")).toBe(1);
+    expect(doseUnitCount("2 g")).toBe(1);
+    // How many 12 g scoops "24 g" is depends on a scoop size the app does not have;
+    // someone whose powder is really two scoops writes "2 scoops".
+    expect(doseUnitCount("24 g")).toBe(1);
+  });
+
+  it("reads a VOLUME as one serving, not as that many units", () => {
+    // Review of #2856: a children's liquid multivitamin dosed "10 ml" read as ten
+    // servings and raised two over-limit warnings at ten times the truth, on a child.
+    expect(doseUnitCount("10 ml")).toBe(1);
+    expect(doseUnitCount("30 drops")).toBe(1);
+    expect(doseUnitCount("1 tsp")).toBe(1);
+  });
+
+  it("never turns a fraction into a multiple", () => {
+    // The "2" of "1/2 tablet" is half a tablet, not two of them.
+    expect(doseUnitCount("1/2 tablet")).toBe(1);
+  });
+
+  it("treats an absent or wordless amount as one serving", () => {
+    expect(doseUnitCount(null)).toBe(1);
+    expect(doseUnitCount("")).toBe(1);
+    expect(doseUnitCount("one capsule")).toBe(1);
+  });
+});
+
+describe("composition stacking (#2856)", () => {
+  it("stacks a blend's zinc against a standalone zinc", () => {
+    // THE case from the issue. Standalone zinc 30 mg is under the 40 mg adult UL and
+    // silent on its own; the blend's 11 mg is invisible to a name-only reading. Taken
+    // together they are over, and only composition can see it.
+    const standalone = active("Zinc", ["30 mg"]);
+    const eyeBlend = blend(
+      "Eye Health+",
+      ["1 cap"],
+      [
+        { name: "Lutein", amount: 10, unit: "mg" },
+        { name: "Zinc", amount: 11, unit: "mg" },
+        { name: "Copper", amount: 2, unit: "mg" },
+      ]
+    );
+
+    expect(compositionUl([standalone])).toEqual([]);
+    expect(compositionUl([eyeBlend])).toEqual([]);
+
+    const [warning] = compositionUl([standalone, eyeBlend]);
+    expect(warning.key).toBe("zinc");
+    expect(warning.total).toBeCloseTo(41, 5);
+    expect(warning.ul).toBe(40);
+    // The evidence line NAMES the ingredient, so the 11 mg is checkable against the
+    // bottle instead of appearing from a product whose name mentions no mineral.
+    expect(ulWarningEvidence(warning)).toContain("Eye Health+ (Zinc) 11 mg");
+  });
+
+  it("counts a blend dosed with a strength beside the count", () => {
+    // The dropped-warning case in full: 2 x 25 mg zinc is 50 mg against a 40 mg UL,
+    // and the whole string has to be read to see it.
+    const twoCaps = blend(
+      "Eye Health+",
+      ["2 capsules (500 mg)"],
+      [{ name: "Zinc", amount: 25, unit: "mg" }]
+    );
+    const [warning] = compositionUl([twoCaps]);
+    expect(warning.total).toBeCloseTo(50, 5);
+  });
+
+  it("does not multiply a liquid dose by its millilitres", () => {
+    // A child's liquid multivitamin: iron 10 mg per 10 ml serving, not per ml.
+    const liquid = blend(
+      "Kids Multi Liquid",
+      ["10 ml"],
+      [{ name: "Iron", amount: 10, unit: "mg" }]
+    );
+    const totals = summarizeStack([liquid], 5, "female");
+    expect(totals.find((t) => t.key === "iron")?.total).toBeCloseTo(10, 5);
+  });
+
+  it("multiplies ingredient amounts by the label units taken that day", () => {
+    // Ingredient amounts are per SINGLE dose unit; two softgels a day is twice each.
+    const twiceDaily = blend(
+      "PreserVision AREDS 2",
+      ["1 softgel", "1 softgel"],
+      [{ name: "Zinc", amount: 40, unit: "mg" }]
+    );
+    const [warning] = compositionUl([twiceDaily]);
+    expect(warning.total).toBeCloseTo(80, 5);
+  });
+
+  it("converts an ingredient's IU through the nutrient, like a dose amount", () => {
+    const d3 = blend(
+      "Immune Blend",
+      ["1 capsule"],
+      [{ name: "Vitamin D3", amount: 5000, unit: "iu" }]
+    );
+    const totals = summarizeStack([d3], 30, "male");
+    const vitD = totals.find((t) => t.key === "vitamin_d");
+    // 5000 IU x 0.025 mcg/IU = 125 mcg.
+    expect(vitD?.total).toBeCloseTo(125, 5);
+  });
+
+  it("takes the LARGER of the name and composition readings, never their sum", () => {
+    // A blend states the same substance twice — its own name dosed by the dose row,
+    // and an ingredient row saying the same thing. Summing would silently double it.
+    const both = {
+      name: "Zinc",
+      active: true,
+      doseAmounts: ["30 mg"],
+      ingredients: [{ name: "Zinc", amount: 30, unit: "mg" as const }],
+    };
+    const totals = summarizeStack([both], 30, "male");
+    expect(totals.find((t) => t.key === "zinc")?.total).toBeCloseTo(30, 5);
+  });
+
+  it("widens only: a smaller ingredient row cannot talk the name's dose down", () => {
+    const mistyped = {
+      name: "Zinc",
+      active: true,
+      doseAmounts: ["50 mg"],
+      ingredients: [{ name: "Zinc", amount: 5, unit: "mg" as const }],
+    };
+    const [warning] = compositionUl([mistyped]);
+    expect(warning.total).toBeCloseTo(50, 5);
+  });
+
+  it("sums two ingredient rows naming the same element", () => {
+    const twoForms = blend(
+      "Zinc Complex",
+      ["1 capsule"],
+      [
+        { name: "Zinc picolinate", amount: 25, unit: "mg" },
+        { name: "Zinc gluconate", amount: 25, unit: "mg" },
+      ]
+    );
+    const [warning] = compositionUl([twoForms]);
+    expect(warning.total).toBeCloseTo(50, 5);
+  });
+
+  it("ignores an ingredient row with no parseable amount", () => {
+    // "Proprietary blend" names a substance for the safety belts but states no
+    // number; it must never become a fabricated zero or a fabricated anything else.
+    const vague = blend(
+      "Mood Support",
+      ["1 capsule"],
+      [{ name: "Zinc", amount: null, unit: null }]
+    );
+    expect(summarizeStack([vague], 30, "male")).toEqual([]);
+  });
+
+  it("leaves an item with no ingredient rows exactly as it was", () => {
+    const before = summarizeStack([active("Zinc", ["30 mg"])], 30, "male");
+    const after = summarizeStack(
+      [{ ...active("Zinc", ["30 mg"]), ingredients: [] }],
+      30,
+      "male"
+    );
+    expect(after).toEqual(before);
   });
 });
