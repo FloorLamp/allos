@@ -1,14 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  IconFlask,
-  IconScale,
-  IconMoon,
-  IconSalad,
-  IconWalk,
-  IconHeartbeat,
-} from "@tabler/icons-react";
+import { IconFlask, IconMoon } from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
@@ -179,10 +172,8 @@ import {
   householdFanoutWithActing,
 } from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
-import WidgetDormant from "@/components/dashboard/WidgetDormant";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
-import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import WeightQuickAddWidget from "@/components/dashboard/WeightQuickAddWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
@@ -195,17 +186,15 @@ import RecentLabsWidget, {
 import NextAppointmentWidget, {
   type NextAppointment,
 } from "@/components/dashboard/NextAppointmentWidget";
-import HealthspanPillarsWidget, {
+import {
   PillarToneBadge,
   TrendArrow,
-} from "@/components/dashboard/HealthspanPillarsWidget";
+} from "@/components/dashboard/HealthspanPillarPresentation";
 import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
 import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
 import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
-import StepsTodayWidget from "@/components/dashboard/StepsTodayWidget";
-import VitalsLatestWidget from "@/components/dashboard/VitalsLatestWidget";
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
@@ -878,13 +867,7 @@ async function renderDashboard(
     ? getActiveProtocolSummaries(profile.id, on, units.weightUnit, freqTargets)
     : [];
 
-  // symptom-log (#799/#843/#858 → #992): the widget slot is now the unified "How are
-  // you today?" daily check-in card — the one-tap mood log composed with the illness
-  // front door. When the acting profile is well it leads with the mood tap plus the
-  // quiet "Not feeling well?" branch (door A — one tap activates Illness and the
-  // cockpit surfaces in the hero on the next render). When illness is ACTIVE the
-  // cockpit lives in the hero above the grid, so the card defers to it with a quiet
-  // note — and still offers the mood tap (mood during illness is signal, #992).
+  // Mood entry is the quick-entry sheet; illness owns its separate care lifecycle.
   // Keep observations as individual facts so placement never hides siblings.
   const todayMood = getMoodOnDate(profile.id, on);
 
@@ -922,6 +905,13 @@ async function renderDashboard(
     candidateNodes.set(candidate.candidateId, node);
     if (standingPresentation)
       standingPresentations.set(candidate.candidateId, standingPresentation);
+  };
+  const addStandingOnly = (
+    candidate: DashboardCandidate,
+    presentation: DashboardStandingPresentation
+  ) => {
+    candidates.push(candidate);
+    standingPresentations.set(candidate.candidateId, presentation);
   };
   let sourceOrder = 0;
 
@@ -1480,7 +1470,7 @@ async function renderDashboard(
   }
 
   if (proteinToday)
-    add(
+    addStandingOnly(
       dailyCandidates.protein(
         {
           subject: profileSubject,
@@ -1491,7 +1481,6 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      <NutritionTodayWidget today={proteinToday} routine={null} />,
       {
         value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
         detail: [
@@ -1508,19 +1497,12 @@ async function renderDashboard(
       }
     );
   else if (foodLoggingApplicable)
-    add(
+    addStandingOnly(
       dailyCandidates.nutritionBootstrap({
         subject: profileSubject,
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <WidgetEmpty
-        title="Nutrition"
-        icon={IconSalad}
-        message="No food logged yet."
-        ctaLabel="Log food"
-        ctaHref="/nutrition"
-      />,
       {
         detail: "No food logged yet.",
         href: "/nutrition",
@@ -1544,12 +1526,11 @@ async function renderDashboard(
     );
 
   if (stepsSummary)
-    add(
+    addStandingOnly(
       dailyCandidates.steps(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         on
       ),
-      <StepsTodayWidget summary={stepsSummary} />,
       {
         value:
           stepsSummary.today == null
@@ -1571,19 +1552,12 @@ async function renderDashboard(
       }
     );
   else
-    add(
+    addStandingOnly(
       dailyCandidates.stepsBootstrap({
         subject: profileSubject,
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <WidgetEmpty
-        title="Steps"
-        icon={IconWalk}
-        message="No step data yet."
-        ctaLabel="Connect a source"
-        ctaHref="/integrations/health-connect"
-      />,
       {
         detail: "No step data yet.",
         href: "/integrations/health-connect",
@@ -1593,17 +1567,12 @@ async function renderDashboard(
     );
 
   if (vitalsModel?.bp)
-    add(
+    addStandingOnly(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "blood-pressure",
         vitalsModel.bp.date
       ),
-      <VitalsLatestWidget
-        model={{ bp: vitalsModel.bp, restingHr: null }}
-        today={on}
-        showLogAction={false}
-      />,
       {
         value: (() => {
           const age = glanceAgeToken({
@@ -1639,17 +1608,12 @@ async function renderDashboard(
       }
     );
   if (vitalsModel?.restingHr)
-    add(
+    addStandingOnly(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "resting-heart-rate",
         vitalsModel.restingHr.date
       ),
-      <VitalsLatestWidget
-        model={{ bp: null, restingHr: vitalsModel.restingHr }}
-        today={on}
-        showLogAction={false}
-      />,
       {
         value: (() => {
           const age = glanceAgeToken({
@@ -1700,7 +1664,7 @@ async function renderDashboard(
   );
 
   if (cycleModel)
-    add(
+    addStandingOnly(
       dailyCandidates.cyclePhase(
         {
           subject: profileSubject,
@@ -1709,11 +1673,6 @@ async function renderDashboard(
         },
         on
       ),
-      <DashboardAtomCard
-        title={`Cycle day ${cycleModel.day}`}
-        value={cycleModel.phase}
-        href="/medical/cycles"
-      />,
       {
         value: `Day ${cycleModel.day}`,
         detail: cycleModel.phase,
@@ -1821,19 +1780,12 @@ async function renderDashboard(
       domain: "weight",
     }) === "dormant";
   if (lastWeightRecord == null)
-    add(
+    addStandingOnly(
       progressCandidates.weightBootstrap({
         subject: profileSubject,
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <WidgetEmpty
-        title="Weight"
-        icon={IconScale}
-        message="No weigh-ins yet."
-        ctaLabel="Log weight"
-        ctaHref="/trends"
-      />,
       {
         detail: "No weigh-ins yet.",
         href: "/trends",
@@ -1845,18 +1797,11 @@ async function renderDashboard(
     const ageDays =
       freshnessAgeDays(lastWeightRecord, on) ??
       DORMANCY_DOMAINS.weight.collapseAfterDays;
-    add(
+    addStandingOnly(
       progressCandidates.weightDormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         lastWeightRecord
       ),
-      <WidgetDormant
-        title="Weight"
-        icon={IconScale}
-        line={dormantRecordLine("weight", ageDays)}
-        ctaLabel="Body metrics"
-        ctaHref="/trends"
-      />,
       {
         detail: dormantRecordLine("weight", ageDays),
         href: "/trends",
@@ -1867,17 +1812,12 @@ async function renderDashboard(
   } else {
     const latestWeight = bodyMetrics.at(-1);
     if (latestWeight)
-      add(
+      addStandingOnly(
         progressCandidates.weightLatest(
           { subject: profileSubject, sourceOrder: sourceOrder++ },
           latestWeight.date,
           weightEngagement
         ),
-        <DashboardAtomCard
-          title="Latest weight"
-          value={`${latestWeight.value} ${units.weightUnit}`}
-          href="/trends"
-        />,
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
@@ -1886,7 +1826,7 @@ async function renderDashboard(
           presence: "current",
         }
       );
-    add(
+    addStandingOnly(
       progressCandidates.weightTrend(
         {
           subject: profileSubject,
@@ -1897,12 +1837,6 @@ async function renderDashboard(
         on,
         weightEngagement
       ),
-      <WeightTrendWidget
-        data={bodyMetrics}
-        weightUnit={units.weightUnit}
-        formatPrefs={formatPrefs}
-        today={on}
-      />,
       {
         label: "Trend",
         value: "View trend",
@@ -1953,18 +1887,11 @@ async function renderDashboard(
       />
     );
   else if (lastSleepRecord == null)
-    add(
+    addStandingOnly(
       sleepCandidates.bootstrap({
         subject: profileSubject,
         sourceOrder: sourceOrder++,
       }),
-      <WidgetEmpty
-        title="Sleep"
-        icon={IconMoon}
-        message="No sleep recorded yet."
-        ctaLabel="Sync a source"
-        ctaHref="/data"
-      />,
       {
         detail: "No sleep recorded yet.",
         href: "/data",
@@ -1976,18 +1903,11 @@ async function renderDashboard(
     const ageDays =
       freshnessAgeDays(lastSleepRecord, on) ??
       DORMANCY_DOMAINS.sleep.collapseAfterDays;
-    add(
+    addStandingOnly(
       sleepCandidates.dormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         lastSleepRecord
       ),
-      <WidgetDormant
-        title="Sleep"
-        icon={IconMoon}
-        line={dormantRecordLine("sleep", ageDays)}
-        ctaLabel="Sync a source"
-        ctaHref="/data"
-      />,
       {
         detail: dormantRecordLine("sleep", ageDays),
         href: "/data",
@@ -2039,7 +1959,7 @@ async function renderDashboard(
       ],
     ] as const;
     values.forEach(([key, title, value], index) =>
-      add(
+      addStandingOnly(
         sleepCandidates.reading(
           { subject: profileSubject, sourceOrder: sourceOrder + index },
           key,
@@ -2047,7 +1967,6 @@ async function renderDashboard(
           engagementFromSource(sleepSummary.source),
           sleepTiming
         ),
-        <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
           label: title,
           value,
@@ -2072,7 +1991,7 @@ async function renderDashboard(
     )
   );
   if (todayNaps.length > 0)
-    add(
+    addStandingOnly(
       sleepCandidates.napTotal(
         {
           subject: profileSubject,
@@ -2080,13 +1999,6 @@ async function renderDashboard(
         },
         on
       ),
-      <DashboardAtomCard
-        title="Nap total"
-        value={formatHm(
-          todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
-        )}
-        href="/sleep#naps"
-      />,
       {
         value: formatHm(
           todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
@@ -2099,7 +2011,7 @@ async function renderDashboard(
   sourceOrder += todayNaps.length + 1;
 
   pillars.forEach((pillar, index) =>
-    add(
+    addStandingOnly(
       progressCandidates.healthspan(
         {
           subject: profileSubject,
@@ -2108,7 +2020,6 @@ async function renderDashboard(
         },
         pillar.key
       ),
-      <HealthspanPillarsWidget pillars={[pillar]} />,
       {
         label: pillar.label,
         value: (

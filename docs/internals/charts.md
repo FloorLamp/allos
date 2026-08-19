@@ -430,22 +430,15 @@ family of rule as #1220 (status never carried by color alone). Concretely:
 
 Minimal and meaningful; a medical-data surface is not a place for decoration.
 
-| Where                       | Duration              | Notes                                                                                                                                            |
-| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Chart draw-in               | ~400ms ease-out       | **first mount only.** recharts' 1500ms default reads sluggish, and it replays on every data change — a range or tab switch must snap, not redraw |
-| Hover (active dot, tooltip) | ~150ms ease-out       | `chartTooltipProps` + two rules in `globals.css` for what recharts styles in the DOM                                                             |
-| Dashboard hero count-up     | 400ms, once, on mount | `CountUpNumber`, currently the steps tile only                                                                                                   |
+| Where                       | Duration        | Notes                                                                                                                                            |
+| --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Chart draw-in               | ~400ms ease-out | **first mount only.** recharts' 1500ms default reads sluggish, and it replays on every data change — a range or tab switch must snap, not redraw |
+| Hover (active dot, tooltip) | ~150ms ease-out | `chartTooltipProps` + two rules in `globals.css` for what recharts styles in the DOM                                                             |
 
 **`prefers-reduced-motion: reduce` disables all of it** —
 `isAnimationActive={false}` through `useChartMotion()`, and the CSS transitions
 are dropped in a media query. (This settles #794's open 8d checkbox for the
 chart layer.)
-
-`CountUpNumber` renders the FINAL value on the server and on the first client
-paint; the count-up is a client-only embellishment layered on afterwards, so no
-reader — human, screen reader, or test — ever sees a partial number. It is for a
-hero **count**, not a general number wrapper; don't wrap a value an exact-text
-assertion reads.
 
 **Not doing:** animated gradients, perpetual pulsing on live values, per-point
 stagger.

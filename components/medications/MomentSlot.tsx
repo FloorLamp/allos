@@ -23,8 +23,7 @@ import type { MomentSection } from "@/lib/moment-sections";
 //
 // The slot heading stays an `<h3>` in BOTH shapes — inside the `<summary>` when
 // compressed — so a reader navigating by heading still finds every slot of their day.
-// A collapsed section is still a section; only its height changed. (Same principle as
-// WidgetDormant's `<h2>`.)
+// A collapsed section is still a section; only its height changed.
 //
 // Deliberately STATELESS: this fold is derived from the clock, so it must not be
 // remembered. Disclosure memory (behavior 3) is for ROUTINE folds a person chooses; a
