@@ -9,7 +9,10 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import DateField from "@/components/DateField";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
@@ -194,13 +197,10 @@ export default function LogPracticeButton({
     // IndexedDB to queue into — and the toast below promises the tap will sync. Nothing
     // contradicts that promise afterwards: no badge, no dead-letter entry, no replay. The
     // count must not move either, since it is this card's claim that the practice landed.
-    //
-    // The eight other quick-log flows still ignore this boolean; that is #3038, and
-    // pre-existing. This call site is new in #2908 and had no business joining them.
+    // Every quick-log flow reads this boolean and answers with the one shared
+    // sentence (#3038; the enumeration lives on the constant).
     if (!kept) {
-      toast("This tap wasn't saved. Try again once you're back online.", {
-        tone: "error",
-      });
+      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
       return;
     }
     setCount((n) => n + 1);

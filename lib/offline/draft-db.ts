@@ -191,22 +191,12 @@ export async function purgeExpiredDrafts(now: number): Promise<void> {
   }
 }
 
-/**
- * Wipe EVERY draft. Logout only: drafts are PHI at rest on a possibly shared
- * device, and the next login must never be offered the previous one's half-typed
- * workout. A profile SWITCH deliberately does not clear — drafts are keyed per
- * profile, so switching simply stops finding them, and switching back still
- * resumes.
- */
-export async function clearDrafts(): Promise<void> {
-  if (!hasIndexedDB()) return;
-  try {
-    const db = await openOfflineDb();
-    const s = store(db, "readwrite");
-    s.clear();
-    await txDone(s.transaction);
-    db.close();
-  } catch {
-    /* ignore */
-  }
-}
+// THERE IS DELIBERATELY NO WHOLE-STORE WIPE HERE (#3024). The logout wipe of the
+// drafts store is `clearQueue` (lib/offline/queue-db.ts), which clears it inside
+// the same transaction that closes the device write gate — the wipe stays
+// complete by construction instead of asking each logout path to remember a
+// second call. A standalone `clearDrafts` exported from this file was unreachable
+// while its doc comment claimed to be that wipe, which is exactly what an auditor
+// grepping "does logout clear drafts?" must not find. Nothing in #1699 or #2908
+// asks for a draft wipe without the rest of the device's PHI, so it was debris,
+// not an unfinished requirement.

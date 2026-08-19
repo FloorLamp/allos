@@ -224,8 +224,12 @@ export async function clearQueue(): Promise<void> {
   await updateGate(closeSession, [
     STORE,
     REJECTED,
-    // #1699: half-typed form drafts are PHI at rest too, and logout is the one moment
-    // every device-local store must go.
+    // #1699: half-typed form drafts. Logout only: drafts are PHI at rest on a
+    // possibly shared device, and the next login must never be offered the
+    // previous one's half-typed workout. (A profile SWITCH deliberately does not
+    // clear — drafts are keyed per profile, so switching simply stops finding
+    // them, and switching back still resumes.) This line IS the draft wipe;
+    // lib/offline/draft-db.ts deliberately exports no whole-store clear (#3024).
     DRAFTS_STORE,
     // #2908: the read snapshots are the largest device-local PHI surface of the four —
     // a med list and a dose schedule, readable with no session at /offline.
