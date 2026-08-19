@@ -15,10 +15,13 @@ import {
   paceOfAgingPhrase,
   inputCompleteness,
   completenessChecklistMessage,
+  bioAgeInputsStatus,
   bioAgeSurface,
+  type BioAgePanel,
   isBioAgeHiddenForAge,
 } from "../bio-age";
 import { AGE_INPUT_KEY, type PhenoAgeInputEffect } from "../derived-biomarkers";
+import { DEFAULT_FORMAT_PREFS } from "../format-date";
 import canonicalSeed from "../canonical-result-definitions.json";
 import type { CanonicalResultDefinition } from "../types";
 
@@ -268,6 +271,184 @@ describe("inputCompleteness", () => {
     const c = inputCompleteness(["Ferritin", "Vitamin D", "Testosterone"]);
     expect(c.presentCount).toBe(0);
     expect(c.complete).toBe(false);
+  });
+});
+
+// ── The inputs card's status line (#3050) ────────────────────────────────────
+//
+// The card gathered the computed draws and rendered only their COUNT, so it never
+// said WHICH draw the result behind its button was from, and its checklist ("any
+// usable reading, ever") could read as complete while its own footnote's requirement
+// (all nine FROM ONE DRAW) was unmet — nine ticks, "All 9 inputs present.", and a
+// button onto a section that renders nothing.
+//
+// The sentences are asserted here in full rather than paraphrased: they are the fix.
+describe("bioAgeInputsStatus", () => {
+  const ALL_NINE = inputCompleteness(PHENOAGE_INPUT_NAMES);
+  const CRP = "High-Sensitivity C-Reactive Protein (hs-CRP)";
+  const panel = (date: string, missing: string[] = []): BioAgePanel => ({
+    date,
+    present: PHENOAGE_INPUT_NAMES.filter((n) => !missing.includes(n)),
+    missing: PHENOAGE_INPUT_NAMES.filter((n) => missing.includes(n)),
+  });
+
+  it("names the draw the linked result is computed from", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2026-06-03")],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("computed");
+    expect(s.message).toBe(
+      "All 9 inputs present · computed from your Jun 3, 2026 draw."
+    );
+  });
+
+  it("names the LATEST draw when several computed", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2021-04-20" }, { date: "2026-06-03" }],
+      [panel("2021-04-20"), panel("2026-06-03")],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.message).toContain("Jun 3, 2026");
+    expect(s.message).not.toContain("2021");
+  });
+
+  it("says nine present is NOT nine together when no draw carries them all", () => {
+    // Albumin from an old draw, the other eight from a recent one: the checklist is
+    // complete, the model has nothing to compute from, and /longevity renders no
+    // section at all. The old sentence claimed a result existed.
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [],
+      [
+        panel(
+          "2020-02-02",
+          PHENOAGE_INPUT_NAMES.filter((n) => n !== "Albumin")
+        ),
+        panel("2026-06-03", ["Albumin"]),
+      ],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("never-together");
+    expect(s.message).toBe(
+      "All 9 inputs present, but not from one draw — the model needs them together."
+    );
+    // It must not read as a result the reader can go and look at.
+    expect(s.message).not.toContain("computed");
+  });
+
+  it("names the gap AND the still-live draw when a newer panel missed", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2026-06-03"), panel("2026-07-12", [CRP])],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("stale");
+    expect(s.message).toBe(
+      `Your Jul 12, 2026 panel is missing ${CRP} — your biological age is still from Jun 3, 2026.`
+    );
+  });
+
+  it("names both gaps when a newer panel missed two", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2026-06-03"), panel("2026-07-12", [CRP, "Albumin"])],
+      DEFAULT_FORMAT_PREFS
+    );
+    // In PHENOAGE_INPUT_NAMES order, like the checklist's own list.
+    expect(s.message).toContain(`missing Albumin and ${CRP}`);
+  });
+
+  it("stays quiet about a later day that is not a re-draw of the panel", () => {
+    // A single glucose from a CGM export is not a panel that "missed" — reporting its
+    // seven gaps on every such day would bury the card's one actionable line.
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2026-06-03"), panel("2026-08-12", PHENOAGE_INPUT_NAMES.slice(1))],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("computed");
+    expect(s.message).toContain("Jun 3, 2026");
+  });
+
+  it("ignores an OLDER partial panel: the current draw still computed", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2021-04-20", [CRP]), panel("2026-06-03")],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("computed");
+  });
+
+  it("leaves the partial-panel CTA message exactly as it was", () => {
+    const present = PHENOAGE_INPUT_NAMES.filter((n) => n !== CRP);
+    const c = inputCompleteness(present);
+    const s = bioAgeInputsStatus(
+      c,
+      [],
+      [panel("2026-06-03", [CRP])],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.kind).toBe("partial");
+    expect(s.message).toBe(completenessChecklistMessage(c));
+  });
+
+  it("claims nothing about a draw the document itself reported", () => {
+    // A complete panel with no COMPUTED draw means a stored PhenoAge won that date.
+    // The card has no claim to make about it, so it states the checklist and stops.
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [],
+      [panel("2026-06-03")],
+      DEFAULT_FORMAT_PREFS
+    );
+    expect(s.message).toBe("All 9 inputs present.");
+  });
+
+  it("renders its dates through the viewer's display prefs", () => {
+    const s = bioAgeInputsStatus(
+      ALL_NINE,
+      [{ date: "2026-06-03" }],
+      [panel("2026-06-03"), panel("2026-07-12", [CRP])],
+      { ...DEFAULT_FORMAT_PREFS, dateFormat: "dmy" }
+    );
+    expect(s.message).toContain("12 Jul 2026");
+    expect(s.message).toContain("3 Jun 2026");
+  });
+
+  it("states no estimate, in any state — the #2367 split (a date is not the number)", () => {
+    const states = [
+      bioAgeInputsStatus(
+        ALL_NINE,
+        [{ date: "2026-06-03" }],
+        [panel("2026-06-03")],
+        DEFAULT_FORMAT_PREFS
+      ),
+      bioAgeInputsStatus(
+        ALL_NINE,
+        [],
+        [panel("2026-06-03", ["Albumin"])],
+        DEFAULT_FORMAT_PREFS
+      ),
+      bioAgeInputsStatus(
+        ALL_NINE,
+        [{ date: "2026-06-03" }],
+        [panel("2026-06-03"), panel("2026-07-12", [CRP])],
+        DEFAULT_FORMAT_PREFS
+      ),
+    ];
+    for (const s of states) {
+      expect(s.message).not.toMatch(/biological age is \d/i);
+      expect(s.message).not.toMatch(/years (younger|older)/i);
+      expect(s.message).not.toMatch(/per year/i);
+    }
   });
 });
 

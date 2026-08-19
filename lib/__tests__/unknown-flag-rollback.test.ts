@@ -11,7 +11,8 @@ import {
   NOTABLE_FLAGS,
   unknownFlagSql,
 } from "../reference-range";
-import type { CanonicalResultDefinition, MedicalFlag } from "../types";
+import type { CanonicalRanges } from "../reference-range/parsing";
+import type { MedicalFlag } from "../types";
 
 // THE ROLLBACK CONTRACT FOR FLAG TOKENS (issue #2937), pure half.
 //
@@ -33,22 +34,37 @@ import type { CanonicalResultDefinition, MedicalFlag } from "../types";
 // restate — so an unrecognised value on a row is always a future build's claim.
 const FUTURE_TOKENS = ["reported-critical", "borderline-high", "watch"];
 
-// A band-less catalog entry — nothing of OURS judges a value against it — with no
-// printed range on the row either, so `reconciledFlag` reaches its final decision.
-const BANDLESS: Partial<CanonicalResultDefinition> = {
-  name: "Microalbumin/Creatinine Ratio, Urine",
-  unit: "mg/g",
-  direction: "in_range",
-};
+// A catalog entry with every band absent unless stated — the shape reconciledFlag
+// reads. The dataset's own rows are the DB tier's business; here the point is which
+// branch of the derivation an unrecognised token reaches.
+function entry(over: Partial<CanonicalRanges> = {}): CanonicalRanges {
+  return {
+    name: "Microalbumin/Creatinine Ratio, Urine",
+    unit: "mg/g",
+    direction: "in_range",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    optimal_low_male: null,
+    optimal_high_male: null,
+    optimal_low_female: null,
+    optimal_high_female: null,
+    ...over,
+  };
+}
+
+// Band-less — nothing of OURS judges a value against it — and the rows below print no
+// reference range either, so `reconciledFlag` reaches its final decision.
+const BANDLESS = entry();
 
 // A banded entry, so the same call can be shown re-deriving rather than only clearing.
-const BANDED: Partial<CanonicalResultDefinition> = {
+const BANDED = entry({
   name: "Alkaline Phosphatase",
   unit: "U/L",
-  direction: "in_range",
   ref_low: 40,
   ref_high: 129,
-};
+});
 
 describe("which tokens this build recognises", () => {
   it("classifies every known token as notable or neutral, and nothing else", () => {
@@ -107,9 +123,7 @@ describe("display and query agree about an unrecognised token", () => {
 
   it("spells the unknown-token SQL from the same list the predicates read", () => {
     const clause = unknownFlagSql();
-    const listed = new Set(
-      [...clause.matchAll(/'([^']+)'/g)].map((m) => m[1])
-    );
+    const listed = new Set([...clause.matchAll(/'([^']+)'/g)].map((m) => m[1]));
     expect([...listed].sort()).toEqual([...KNOWN_FLAGS].sort());
     expect(clause.startsWith("flag NOT IN (")).toBe(true);
   });
@@ -145,7 +159,9 @@ describe("a reconcile re-decides a flag it does not recognise", () => {
     // Above the two decline gates the flag is not ours to retire, unrecognised or
     // not: an unconvertible unit means this build could never have derived a flag
     // there. Those rows are covered by the display/query agreement above instead.
-    expect(reconciledFlag(FUTURE_TOKENS[0], 44, "torr", BANDED)).toBeUndefined();
+    expect(
+      reconciledFlag(FUTURE_TOKENS[0], 44, "torr", BANDED)
+    ).toBeUndefined();
     expect(reconciledFlag(FUTURE_TOKENS[0], 44, "mg/g", null)).toBeUndefined();
   });
 });

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { IconActivityHeartbeat, IconCircleCheck } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { getProfileAge } from "@/lib/settings";
+import { getDisplayFormatPrefs, getProfileAge } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
+  bioAgeInputsStatus,
   bioAgeSurface,
-  completenessChecklistMessage,
   inputCompleteness,
   isBioAgeHiddenForAge,
   PHENOAGE_INPUT_NAMES,
@@ -29,8 +29,19 @@ import { clinicalResultDetailHref } from "@/lib/hrefs";
 // No computation is forked to achieve it: the render decision is the same
 // bioAgeSurface call (lib/bio-age.ts) over the same getBioAgeReadings gather the
 // Longevity section makes, and this card shows no estimate of its own.
+//
+// WHAT THE STATUS LINE SAYS (#3050). The gather carries each computed draw's date, so
+// the card names WHICH draw the result behind the button is from — a reader could not
+// otherwise tell whether it is from June or from this morning. It also carries the
+// dated PANELS, which is what lets the card say that a newer re-draw missed and left
+// the result where it was, and what stops the two sentences here from answering
+// different questions: the checklist ticks "any usable reading, ever" (the right
+// question for the import CTA) while the footnote states the model's requirement (all
+// nine FROM ONE DRAW), so nine ticks can be true while no result exists. The wording
+// of all four states lives in lib/bio-age.ts beside the checklist copy; this file
+// stays a formatter. Still NO estimate renders here — a date is not the number.
 export default async function BioAgeInputsCard() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
 
   // A known minor sees no bio-age UI. Unknown age remains eligible for this input
   // checklist because it exposes no adult-population estimate; it helps the profile
@@ -38,8 +49,14 @@ export default async function BioAgeInputsCard() {
   const age = getProfileAge(profile.id);
   const hiddenForProfile = isBioAgeHiddenForAge(age);
 
-  const { draws, presentInputs } = getBioAgeReadings(profile.id);
+  const { draws, presentInputs, panels } = getBioAgeReadings(profile.id);
   const completeness = inputCompleteness(presentInputs);
+  const status = bioAgeInputsStatus(
+    completeness,
+    draws,
+    panels,
+    getDisplayFormatPrefs(login.id)
+  );
   const surface = bioAgeSurface(
     hiddenForProfile,
     draws.length,
@@ -66,7 +83,7 @@ export default async function BioAgeInputsCard() {
             className="mt-1 text-sm text-slate-600 dark:text-slate-300"
             data-testid="bio-age-inputs-status"
           >
-            {completenessChecklistMessage(completeness)}
+            {status.message}
           </p>
         </div>
       </div>
@@ -118,7 +135,12 @@ export default async function BioAgeInputsCard() {
             Add your age
           </Link>
         )}
-        {!completeness.complete && (
+        {/* The import CTA follows the STATUS, not the tick count (#3050). Keyed on
+            "all nine ticked" it disappeared in exactly the two states where importing
+            is the whole answer: nine analytes present but never on one draw, and a
+            newer panel that missed by one — both of which leave the reader a card
+            with nothing to act on. It stays hidden once a current draw computes. */}
+        {status.kind !== "computed" && (
           <Link href="/data" className="btn-ghost btn-sm">
             Import labs
           </Link>

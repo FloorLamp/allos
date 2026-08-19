@@ -132,14 +132,30 @@ beforeAll(() => {
     unit: "g/dL",
     flag: FUTURE_TOKEN,
   });
-  // A QUALITATIVE row carrying the token — the `immune` shape (#544 introduced that
-  // token on exactly this kind of row at v5). The numeric pass cannot reach it at all,
-  // which is why the contract has a second half.
+  // A QUALITATIVE row carrying the token — #544's own analyte, and the `immune` shape
+  // (that token was introduced on exactly this kind of row at v5). The numeric pass
+  // skips it, but the QUALITATIVE pass reaches it, because its promotion gate asks
+  // `isNormalFlag(currentFlag)` and an unrecognised token reads as unflagged there —
+  // the display tier's answer, applied consistently. Pinned so a later tightening of
+  // that predicate cannot silently re-open the class.
   ids.qualitative = insert({
     canonical: "Hepatitis B Surface Antibody",
     value: "Reactive",
     valueNum: null,
     unit: null,
+    flag: FUTURE_TOKEN,
+  });
+  // The row genuinely out of BOTH passes' reach: a numeric reading whose unit does not
+  // convert (a device export spelling), so the numeric pass selects it and then
+  // declines to judge — the flag survives whatever it says. This is the row the
+  // display/query agreement exists for, and the current reading of its analyte, so the
+  // care-tier read below is asked about it directly.
+  ids.unconvertible = insert({
+    canonical: "Alkaline Phosphatase",
+    value: "300",
+    valueNum: 300,
+    unit: "torr",
+    date: "2026-06-20",
     flag: FUTURE_TOKEN,
   });
   // The forward path's own row, unchanged by any of this: a lab-stated flag this build
@@ -171,6 +187,13 @@ describe("a rolled-back build re-decides the tokens it does not recognise", () =
     expect(flagOf(ids.stated)).toBe("reported-high");
     expect(flagOf(ids.banded)).toBe("high");
     expect(flagOf(ids.bandedNormal)).toBeNull();
+    // The qualitative pass re-decides its own rows on the same boot: #544's durable
+    // immunity titer, left "Normal-looking" by the unrecognised token, is promoted to
+    // the verdict this build has for it.
+    expect(flagOf(ids.qualitative)).toBe("immune");
+    // …and the row neither pass can judge keeps the token. That is allowed; what is
+    // not allowed is the surfaces disagreeing about it (below).
+    expect(flagOf(ids.unconvertible)).toBe(FUTURE_TOKEN);
     // The gate records this build's signature, so it runs once per change.
     expect(
       (
@@ -207,11 +230,12 @@ describe("a rolled-back build re-decides the tokens it does not recognise", () =
 
 describe("no row reads Normal and flagged at once", () => {
   it("keeps an unrecognised token off the care-tier flagged read", () => {
-    // The qualitative row still carries the token — no pass of this build owns that
-    // word on that row — and that is allowed. What is not allowed is the disagreement:
-    // the shared flagged read used to admit it (`flag NOT IN ('normal','immune')`)
-    // while flagLabel called it "Normal", producing "Flagged normal — 44".
-    expect(flagOf(ids.qualitative)).toBe(FUTURE_TOKEN);
+    // The unconvertible-unit row still carries the token — no pass of this build can
+    // judge that reading — and that is allowed. What is not allowed is the
+    // disagreement: the shared flagged read used to admit it (`flag NOT IN
+    // ('normal','immune')`) while flagLabel called it "Normal", producing the
+    // permanent "Flagged normal — 300" item.
+    expect(flagOf(ids.unconvertible)).toBe(FUTURE_TOKEN);
 
     const flagged = getCurrentFlaggedBiomarkers(profileId);
     for (const row of flagged) {

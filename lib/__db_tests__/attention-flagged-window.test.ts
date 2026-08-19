@@ -37,12 +37,23 @@ import {
   collectAttentionModel,
   FLAGGED_ATTENTION_WINDOW_DAYS,
 } from "@/lib/queries/attention";
+import { flagInSql, NOTABLE_FLAGS } from "@/lib/reference-range";
 
 // The two statements this change is about: the retired now-read, and the heavy
 // DEDUP+LATEST pass the window feeds.
+//
+// The flagged-pass signature is SPELLED FROM the shared tier list rather than typed
+// out, because a hand-typed copy of the predicate is how this pin quietly died once:
+// it read `flag NOT IN ('normal', 'immune')`, #2937 re-spelled that clause as the
+// positive `flag IN (…)` the display tiers use, and a signature that matches nothing
+// satisfies `toBe(0)` vacuously. Built from the same fragment the query emits, it
+// cannot drift again — and the self-check below fails if it ever matches nothing.
 const NOW_READ = /datetime\('now'/;
-const FLAGGED_CTE =
-  /WITH[\s\S]*FROM medical_records[\s\S]*flag NOT IN \('normal', 'immune'\)/;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const FLAGGED_PREDICATE = flagInSql(NOTABLE_FLAGS);
+const FLAGGED_CTE = new RegExp(
+  `WITH[\\s\\S]*FROM medical_records[\\s\\S]*${escapeRe(FLAGGED_PREDICATE)}`
+);
 
 function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
   const counts = signatures.map(() => 0);
@@ -160,5 +171,16 @@ describe("flagged-biomarker attention window (#2112)", () => {
     // rather than by a compile count — the two stopped being the same measurement.
     expect(flaggedCte.calls()).toBe(0);
     expect(flagged.map((i) => i.title).join(" | ")).toContain("Ferritin fw");
+  });
+
+  it("self-check: the flagged-pass signature matches the clause the query emits", () => {
+    // A zero compile count means nothing if the signature can never match. This holds
+    // the signature against the production spelling of the same predicate.
+    expect(
+      FLAGGED_CTE.test(
+        `WITH dedup AS (SELECT 1) SELECT flag FROM medical_records
+          WHERE profile_id = ? AND category = 'lab' AND ${FLAGGED_PREDICATE}`
+      )
+    ).toBe(true);
   });
 });

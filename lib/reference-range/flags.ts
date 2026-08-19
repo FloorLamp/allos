@@ -470,11 +470,19 @@ export const NEUTRAL_FLAGS = ["normal", "immune"] as const;
 //      should re-decide — see the selection in lib/queries/medical/flags.ts and its
 //      boot twin, and reconciledFlag's tail below, which retires one when nothing of
 //      ours judges the value.
-//   2. WHERE A ROW IS OUT OF THAT REACH (no canonical name, no numeric value, an
-//      unconvertible unit), DISPLAY AND QUERY STILL AGREE: an unrecognised token is
-//      not notable, so every reader spells its membership as one of the lists above
-//      rather than as "not one of the two neutral words". That disagreement — not the
-//      unknown token itself — is what produced the incoherent card.
+//   2. WHERE A ROW IS OUT OF THAT REACH (no canonical name, an unconvertible unit),
+//      DISPLAY AND QUERY STILL AGREE: an unrecognised token is not notable, so every
+//      reader spells its membership as one of the lists above rather than as "not one
+//      of the two neutral words". That disagreement — not the unknown token itself —
+//      is what produced the incoherent card.
+//
+// A QUALITATIVE row is covered by the first rule too, and deliberately so: the
+// qualitative pass selects every `value_num IS NULL` lab row regardless of flag, and
+// its promotion gate asks `isNormalFlag(currentFlag)` — which an unrecognised token
+// satisfies, because that is what the display tier says about it. So #544's own
+// analyte, an immunity titer left carrying a future token, is re-decided on the same
+// boot. Stated here rather than left as a coincidence: tightening `isNormalFlag` to
+// mean "recognised AND neutral" would silently strand qualitative rows again.
 //
 // The list is exhaustive over MedicalFlag by construction: the assignment below stops
 // compiling if a token joins the union without being listed here, so "which tokens
