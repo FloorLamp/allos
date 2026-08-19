@@ -1182,10 +1182,10 @@ export const TIME_COLUMNS = {
   niggles: [
     {
       column: "reported_at",
-      semantic: "event",
+      semantic: "window-start",
       grain: "instant",
       convention: "canonical",
-      note: "When the person FIRST reported this niggle — i.e. when they tapped the confirm chip on the note that named it. Migration 20260819-niggles (#2948), BORN canonical (lib/clock.ts instantNow). An `event` rather than a `record`: the row's whole subject IS the report, so this is when the thing the row records happened, not merely when it reached the app. Never advances — a re-report advances last_reported_at and leaves this alone, so the pair reads as the span the niggle has been going on for.",
+      note: "When the person FIRST reported this niggle — i.e. when they tapped the confirm chip on the note that named it. Migration 20260819-niggles (#2948), BORN canonical (lib/clock.ts instantNow). `window-start` on the `injuries.since` reading: it opens the span the niggle has been going on for, and never advances — a re-report moves last_reported_at and leaves this alone. It is deliberately NOT the row's `event` column: the fact every consumer reads is the FRESHEST report, so declaring two events here would be exactly the substitution-wearing-a-declaration the index forbids.",
     },
     {
       column: "last_reported_at",

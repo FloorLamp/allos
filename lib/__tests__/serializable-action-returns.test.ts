@@ -125,6 +125,7 @@ import type * as M76 from "@/app/(app)/training/frequency-actions";
 import type * as M77 from "@/app/(app)/training/goal-actions";
 import type * as M78 from "@/app/(app)/training/injury-actions";
 import type * as M79 from "@/app/(app)/training/mobility-actions";
+import type * as MNiggles from "@/app/(app)/training/niggle-actions";
 import type * as M80 from "@/app/(app)/training/video-actions";
 import type * as M81 from "@/app/(app)/trends/actions";
 import type * as M82 from "@/app/(app)/trends/body-actions";
@@ -347,6 +348,9 @@ type Census = {
   "app/(app)/training/mobility-actions.ts": Expect<
     ActionsAreSerializable<typeof M79>
   >;
+  "app/(app)/training/niggle-actions.ts": Expect<
+    ActionsAreSerializable<typeof MNiggles>
+  >;
   "app/(app)/training/video-actions.ts": Expect<
     ActionsAreSerializable<typeof M80>
   >;
@@ -467,6 +471,7 @@ const CENSUSED_MODULES = [
   "app/(app)/training/goal-actions.ts",
   "app/(app)/training/injury-actions.ts",
   "app/(app)/training/mobility-actions.ts",
+  "app/(app)/training/niggle-actions.ts",
   "app/(app)/training/video-actions.ts",
   "app/(app)/trends/actions.ts",
   "app/(app)/trends/body-actions.ts",
