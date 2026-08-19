@@ -393,6 +393,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // requireWriteAccess() for a single-view form. The paired add* action keeps its plain
   // requireWriteAccess() (a new row always lands on the acting profile). ---
   {
+    file: "app/(app)/training/niggle-actions.ts",
+    fn: "confirmNiggle",
+    why: "multi-view (#1328/#2948): confirms a niggle on the ACTIVITY's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId), so a chip tapped on a household member's session writes to that member; the store additionally re-verifies the source activity belongs to the gated profile, and the action re-derives the candidate from the stored notes so a forged post cannot write a region the note never named",
+  },
+  {
     file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "updateCondition",
     why: "multi-view (#1328): edits the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",

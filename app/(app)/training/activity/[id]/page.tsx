@@ -19,6 +19,10 @@ import {
 } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
+import { detectNiggles, niggleChipPrompt } from "@/lib/niggle-extract";
+import { niggleKey } from "@/lib/niggle-model";
+import { getLiveNiggles } from "@/lib/niggle-store";
+import NiggleConfirmChip from "./NiggleConfirmChip";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import DiscardDraftButton from "../DiscardDraftButton";
 import {
@@ -193,6 +197,23 @@ export default async function TrainingActivityPage(props: {
     Boolean(card.fault) ||
     Boolean(card.activity.notes) ||
     card.media.length > 0;
+  // Niggle detection over this session's notes (#2948). Pure and deterministic — the
+  // curated lexicon, no AI pass — and it OFFERS only; the tap on the chip is the write.
+  // A candidate whose (region, side) already has a LIVE niggle is dropped, so a confirmed
+  // chip disappears and re-reading the page does not nag about something already tracked.
+  // Read-only viewers see nothing: there is no write for them to confirm.
+  const niggleCandidates = canWrite
+    ? (() => {
+        const live = new Set(
+          getLiveNiggles(subjectProfileId).map((n) =>
+            niggleKey(n.region, n.laterality)
+          )
+        );
+        return detectNiggles(card.activity.notes).candidates.filter(
+          (c) => !live.has(niggleKey(c.region, c.laterality))
+        );
+      })()
+    : [];
   const hasCourseDetail =
     Boolean(card.routePolyline) ||
     data.course.laps.length > 0 ||
@@ -650,6 +671,18 @@ export default async function TrainingActivityPage(props: {
                     data-testid="activity-notes"
                     className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-200"
                   />
+                  {niggleCandidates.map((c) => (
+                    <NiggleConfirmChip
+                      key={`${c.region}:${c.laterality ?? "unstated"}`}
+                      activityId={card.activity.id}
+                      region={c.region}
+                      laterality={c.laterality}
+                      prompt={niggleChipPrompt(c)}
+                      subjectProfileId={
+                        crossProfile ? subjectProfileId : undefined
+                      }
+                    />
+                  ))}
                 </CardGroup>
               ) : null}
               {card.media.length > 0 ? (

@@ -68,6 +68,8 @@ const USER_CALL_SITES: Record<string, string> = {
     "follows the user's own upload",
   "app/(app)/training/activity/DiscardDraftButton.tsx":
     "follows the user's own Discard tap when the server KEPT the row (a save raced the tap) — the page must repaint into its real record state right now",
+  "app/(app)/training/activity/[id]/NiggleConfirmChip.tsx":
+    "follows the user's own 'Track it' tap (#2948) — the tap IS the write, and the chip must repaint away the moment the niggle it offered exists, or the page keeps asking about something already tracked",
   // The registry itself: the drain it owes, and the no-provider fallback.
   "components/DirtyFormRegistry.tsx":
     "the registry IS the chokepoint — this is the deferred repaint finally landing",
