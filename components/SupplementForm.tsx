@@ -328,16 +328,15 @@ export default function SupplementForm({
           : d
       )
     );
-    if (seeded.length === 0) return;
-    setIngredients((rows) => {
-      if (!ingredientsAreEmpty(rows)) return rows;
-      setIngredientSeedNote(
-        e?.ingredientsPartial
-          ? `Prefilled with the part of the ${picked} label these checks use — not the whole label. Check it against your own bottle and add anything missing.`
-          : `Prefilled from a typical ${picked} label. Check it against your own bottle.`
-      );
-      return seeded.map((g) => ({ name: g.name, amount: g.amount ?? "" }));
-    });
+    if (seeded.length === 0 || !ingredientsAreEmpty(ingredients)) return;
+    setIngredients(
+      seeded.map((g) => ({ name: g.name, amount: g.amount ?? "" }))
+    );
+    setIngredientSeedNote(
+      e?.ingredientsPartial
+        ? `Prefilled with the part of the ${picked} label these checks use — not the whole label. Check it against your own bottle and add anything missing.`
+        : `Prefilled from a typical ${picked} label. Check it against your own bottle.`
+    );
   }
 
   async function handle(formData: FormData) {
