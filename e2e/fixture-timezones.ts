@@ -4,6 +4,18 @@ import type Database from "better-sqlite3";
 // setup. The e2e clock rotates the instance timezone so frozen now reads near
 // 13:00 local; a profile that opts out creates a second calendar in the same run.
 // Declare that split here so anyone adding one has to account for its midnight.
+//
+// AND FOR ITS TIME OF DAY (#3260). The pin does more than fix a calendar: 13:mm
+// local is `DEFAULT_INTAKE_REMINDER_MINUTES.Midday`, so a profile that follows it
+// sits at the centre of a `mealTimeWindows` window at every UTC start hour. A
+// profile pinned to UTC instead has a local minute-of-day equal to the run's real
+// UTC start hour, so any dashboard candidate carrying meal-window timing (the
+// composed-morning offer, protein-today) resolves `expired` for it once the last
+// meal window closes — and an expired candidate is dropped from EVERY lane, so
+// `openDashboardAll` cannot rescue it. That made one spec red for the ~3 hours of
+// each day a run started in [21:00, 24:00) UTC and green the other 21. So: do NOT
+// opt a profile out here if its spec asserts a dashboard atom. Only fixtures whose
+// assertions are confined to their own pages belong below.
 export const FIXTURE_TIMEZONE_OVERRIDES = {
   weather: {
     why: "New York location fixture needs its weather and UV hour labels evaluated in the location timezone; sync instants are derived from the frozen clock so they cannot straddle an undeclared real-time midnight.",
@@ -31,9 +43,6 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   },
   "food-usual": {
     why: "The usual-food fixture uses fixed UTC meal-window events and derives its anchor through the same UTC profile calendar.",
-  },
-  "routine-usual": {
-    why: "The composed morning fixture seeds a habit in every food window from fixed 08:00Z/12:00Z/19:00Z events, so its window boundaries must be the UTC ones the seed assumes.",
   },
   "sleep-phase": {
     why: "The phase fixture asserts explicit post-noon UTC wall-clock labels independently of the rotating instance timezone.",
