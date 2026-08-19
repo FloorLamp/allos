@@ -178,6 +178,13 @@ export interface PersistClinicalObservation {
   prescriber?: string | null;
   pharmacy?: string | null;
   rxNumber?: string | null;
+  // The SOURCE-SUPPLIED RxCUI (#3070), on prescription observations from the
+  // deterministic CCD/FHIR path only — gated there on the RxNorm code system, so
+  // an NDC/local/unqualified code never reaches it. The persist layer writes it
+  // onto the projected medication row (insert always; renewal only when the
+  // existing item has no code — a user-confirmed or hand-edited code always
+  // wins). Null/absent on the AI path.
+  rxcui?: string | null;
   // Tier-1 visit link (#1050): the external_id of the Encounter this reading's source
   // referenced (Observation/MedicationRequest.encounter, resolved in-bundle). The
   // persist layer resolves it to the local encounter row and sets encounter_id.
@@ -1268,6 +1275,8 @@ export function healthRecordToPersistInput(
       prescriber: r.prescriber ?? null,
       pharmacy: r.pharmacy ?? null,
       rxNumber: r.rxNumber ?? null,
+      // The source-supplied RxCUI rides on prescription observations (#3070).
+      rxcui: r.rxcui ?? null,
       // Tier-1 visit link (#1050): the resolved encounter reference rides through.
       encounter_external_id: r.encounter_external_id ?? null,
       // Tier-1 indication link (#1052): the resolved reason (condition) reference.

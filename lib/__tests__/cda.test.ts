@@ -116,6 +116,9 @@ describe("parseCcda", () => {
     // Medication effectiveTime is an array (period + frequency) → uses the low.
     expect(rx[0].date).toBe("2024-01-01");
     expect(rx[0].external_id).toBe("ccda:rx:83367:2024-01-01");
+    // The RxNorm-coded material carries its code through as the source-supplied
+    // RxCUI (#3070) — the same value the external_id already keyed on.
+    expect(rx[0].rxcui).toBe("83367");
   });
 
   it("recognizes / rejects CDA documents", () => {
@@ -241,6 +244,56 @@ describe("CCDA imported temperature → canonical °F (#1018)", () => {
   it("stores an implausible converted value verbatim (junk stays out of the series)", () => {
     const rec = parseCcda(tempDoc("900", "Cel")).observations[0];
     expect(rec).toMatchObject({ value_num: 900, unit: "Cel" });
+  });
+});
+
+// #3070 — a medication whose material code the ISSUING SYSTEM stamped with the
+// RxNorm OID carries that code through as `rxcui`; an NDC or an unqualified code
+// never does (the code-system check is the gate, not the presence of a numeric
+// code). The external_id keys on the same value it always did in every case.
+describe("CCDA source-supplied RxCUI (#3070)", () => {
+  const medsDoc = (materialCode: string) => `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <component><structuredBody><component><section>
+    <code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+    <title>Medications</title>
+    <entry><substanceAdministration classCode="SBADM" moodCode="EVN">
+      <statusCode code="active"/>
+      <effectiveTime type="IVL_TS"><low value="20251204"/></effectiveTime>
+      <consumable><manufacturedProduct><manufacturedMaterial>
+        ${materialCode}
+        <name>albuterol (2.5 MG/3ML) 0.083% nebulizer solution</name>
+      </manufacturedMaterial></manufacturedProduct></consumable>
+    </substanceAdministration></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>`;
+
+  it("adopts the RxCUI from a material code carrying the RxNorm OID (the observed albuterol record)", () => {
+    const rec = parseCcda(
+      medsDoc(`<code code="630208" codeSystem="2.16.840.1.113883.6.88"/>`)
+    ).observations[0];
+    expect(rec.category).toBe("prescription");
+    expect(rec.rxcui).toBe("630208");
+    // The identity string is unchanged — the code was already keying it.
+    expect(rec.external_id).toBe("ccda:rx:630208:2025-12-04");
+  });
+
+  it("drops an NDC-coded material's code — never an rxcui, external id unchanged", () => {
+    const rec = parseCcda(
+      medsDoc(
+        `<code code="12345-6789-01" codeSystem="2.16.840.1.113883.6.69"/>`
+      )
+    ).observations[0];
+    expect(rec.rxcui).toBeNull();
+    // Name-keyed, exactly as before this change (slugged printed name).
+    expect(rec.external_id).toContain("ccda:rx:");
+    expect(rec.external_id).not.toContain("12345");
+  });
+
+  it("drops an unqualified (no codeSystem) code — numeric presence is not the gate", () => {
+    const rec = parseCcda(medsDoc(`<code code="630208"/>`)).observations[0];
+    expect(rec.rxcui).toBeNull();
+    expect(rec.external_id).not.toContain("630208");
   });
 });
 

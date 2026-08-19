@@ -57,6 +57,28 @@ describe("matchConceptKeys", () => {
       matchConceptKeys({ name: "St. John's Wort 300 mg", rxcui: null })
     ).toContain("st_johns_wort");
   });
+
+  it("an adopted PRODUCT rxcui with null ingredients still matches by NAME (#3070)", () => {
+    // A source-adopted product-level code (an SCD, not an ingredient CUI) is not
+    // in any concept's ingredient list, so the NAME is what matches — the honest
+    // but incomplete state #279's decomposition later completes.
+    expect(
+      matchConceptKeys({
+        name: "Ibuprofen 800 MG Oral Tablet",
+        rxcui: "197806",
+        rxcuiIngredients: null,
+      })
+    ).toContain("nsaid");
+    // The same product code with an unhelpful name matches nothing — proving the
+    // hit above came from the name, never from the product code.
+    expect(
+      matchConceptKeys({
+        name: "Oral tablet",
+        rxcui: "197806",
+        rxcuiIngredients: null,
+      })
+    ).toEqual([]);
+  });
 });
 
 describe("detectInteractions", () => {

@@ -33,6 +33,8 @@
 // lib/__tests__/medication-family.test.ts.
 
 import { medNameKey } from "./medication-record-match";
+import { normalizeStrength, sameStrength } from "./medication-renewal";
+import { strengthFromName } from "./prescription-parse";
 
 // The findings-bus namespace for the coaching-tier therapeutic-duplication note
 // (#1027 ask 3). Registered in RULE_FINDING_REGISTRY (coaching) + the intake
@@ -143,6 +145,83 @@ function familyKeyFor(members: readonly MedFamilyItem[]): string {
     .sort();
   if (nameKeys.length) return nameKeys[0];
   return `item:${Math.min(...members.map((m) => m.id))}`;
+}
+
+// ---- Duplicate-records distinguishability + the duplication note's copy (#3069) --
+
+// Are a family's members INDISTINGUISHABLE from one another — the property test
+// behind the therapeutic-duplication note's two renderings, never a guess:
+//   • identical (non-empty) medNameKey across EVERY member, AND
+//   • no two members carrying different strengths — all strengthless, or every
+//     stated strength the same (sameStrength's one-sided concentration-history
+//     tolerance included). A one-strength-one-without family FAILS: it cannot be
+//     proven indistinguishable.
+// An indistinguishable family is a duplicate-RECORDS observation (the #2919 fold
+// escape writing the same medication again on each re-import), not the #1027
+// OTC-plus-Rx therapeutic duplication the note was written for.
+export function isIndistinguishableFamily(
+  members: readonly { name: string }[]
+): boolean {
+  if (members.length < 2) return false;
+  const keys = members.map((m) => medNameKey(m.name));
+  if (!keys[0] || keys.some((k) => k !== keys[0])) return false;
+  const strengths = members.map((m) =>
+    normalizeStrength(strengthFromName(m.name))
+  );
+  const stated = strengths.filter((s): s is string => s != null);
+  if (stated.length === 0) return true; // no strength anywhere — nothing tells them apart
+  if (stated.length !== strengths.length) return false; // mixed stated/unstated — unprovable
+  // Pairwise, not first-vs-rest: sameStrength's history tolerance is one-sided,
+  // so "2.5mg" ~ "2.5mg/3ml" and "2.5mg" ~ "2.5mg/5ml" while the two
+  // concentrations still differ from each other.
+  for (let i = 0; i < stated.length; i++) {
+    for (let j = i + 1; j < stated.length; j++) {
+      if (!sameStrength(stated[i], stated[j])) return false;
+    }
+  }
+  return true;
+}
+
+// The rendered copy for one family's duplication note (#1027 ask 3, split by
+// #3069). A DISTINGUISHABLE family (different strengths, a brand beside a
+// generic) keeps the original therapeutic-duplication copy — the OTC-plus-Rx
+// case #1027 was written for, reassurance included. An INDISTINGUISHABLE family
+// is duplicate records, and the note says so instead of rationalizing
+// "albuterol + albuterol + albuterol" as a lifestyle choice. Pure — the builder
+// in lib/rule-findings.ts wraps this in the Finding envelope (key, tier, action)
+// unchanged, so a stored `med-dup:` dismissal keeps applying across the split.
+export interface MedicationDuplicationNoteCopy {
+  title: string;
+  detail: string;
+  evidence: string;
+}
+
+export function medicationDuplicationNote(
+  members: readonly MedFamilyItem[]
+): MedicationDuplicationNoteCopy {
+  const label = familyDisplayLabel(members);
+  if (isIndistinguishableFamily(members)) {
+    return {
+      title: `${label} is recorded ${members.length} times`,
+      detail:
+        "Most likely one medication imported more than once. Their doses " +
+        "already count as one toward the redose window, so nothing is " +
+        "over-counted.",
+      evidence:
+        "Informational — an extra copy can be stopped or deleted on the " +
+        "medications page.",
+    };
+  }
+  return {
+    title: `${label} appears in ${members.length} active medications`,
+    detail:
+      `${members.map((m) => m.name).join(" + ")} share the same active ` +
+      `ingredient, so their doses count together toward the redose window and ` +
+      `daily max.`,
+    evidence:
+      "Informational — tracking an OTC and a prescription strength separately " +
+      "is often deliberate; this note only makes the shared ingredient visible.",
+  };
 }
 
 // A human label for the family — the shared generic name when the members agree

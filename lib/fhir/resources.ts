@@ -618,6 +618,31 @@ function firstIdentifierValue(identifier: any): string | null {
   return null;
 }
 
+// The FHIR RxNorm code-system URI — the ONLY system whose code may become an
+// item's `rxcui` (#3070). Deliberately stricter than the RXNORM regex pickCoding
+// uses for the external_id preference: that helper falls back to the FIRST coding
+// when no preferred system matches, and an NDC / SNOMED / local code must never
+// land in intake_items.rxcui.
+const RXNORM_SYSTEM_URI = "http://www.nlm.nih.gov/research/umls/rxnorm";
+
+// The source-supplied RxCUI off a medication CodeableConcept: the first coding
+// whose system IS the RxNorm URI, or null. The system check is the gate — an
+// unqualified code is dropped exactly as on the CDA path.
+function rxnormCuiOf(concept: any): string | null {
+  const codings = Array.isArray(concept?.coding) ? concept.coding : [];
+  for (const c of codings) {
+    if (
+      typeof c?.system === "string" &&
+      c.system.trim().toLowerCase() === RXNORM_SYSTEM_URI &&
+      c?.code != null &&
+      String(c.code).trim()
+    ) {
+      return String(c.code).trim();
+    }
+  }
+  return null;
+}
+
 export function mapMedicationResource(
   r: any,
   ctx: FhirBundleCtx
@@ -686,6 +711,10 @@ export function mapMedicationResource(
     value_num: null,
     unit: null,
     date,
+    // The source-supplied RxCUI (#3070), gated on the RxNorm system URI — never
+    // the pickCoding fallback `code` above, which keys the external_id and may be
+    // an NDC/SNOMED/local code when no RxNorm coding is present.
+    rxcui: rxnormCuiOf(concept),
     external_id: medicationExternalId({ name: drug, code, date }),
     courses,
     prescriber,

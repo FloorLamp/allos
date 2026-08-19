@@ -5,6 +5,8 @@ import {
   medicationNameKey,
   familyDisplayLabel,
   medDupSignalKey,
+  medicationDuplicationNote,
+  isIndistinguishableFamily,
   MED_DUP_PREFIX,
   type MedFamilyItem,
 } from "@/lib/medication-family";
@@ -120,6 +122,95 @@ describe("medicationFamilies (#1027 / #482)", () => {
     expect(key.startsWith(MED_DUP_PREFIX)).toBe(true);
     // The prefix is registered (#448) so the finding is guardable/dismissable.
     expect(dedupeKeyHasKnownPrefix(key)).toBe(true);
+  });
+});
+
+// #3069 — the duplication note's distinguishability split. An INDISTINGUISHABLE
+// family (one name key, no strength telling any two members apart) is duplicate
+// RECORDS and says so; every other family keeps the #1027 therapeutic-duplication
+// copy byte-for-byte, reassurance included.
+describe("medicationDuplicationNote / isIndistinguishableFamily (#3069)", () => {
+  const EXISTING_EVIDENCE =
+    "Informational — tracking an OTC and a prescription strength separately " +
+    "is often deliberate; this note only makes the shared ingredient visible.";
+
+  it("one name key + no strengths ⇒ the duplicate-records copy, no 'often deliberate' reassurance", () => {
+    const members = [
+      item({ id: 1, name: "albuterol" }),
+      item({ id: 2, name: "albuterol" }),
+      item({ id: 3, name: "albuterol" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(true);
+    const copy = medicationDuplicationNote(members);
+    expect(copy.title).toBe("Albuterol is recorded 3 times");
+    expect(copy.detail).toBe(
+      "Most likely one medication imported more than once. Their doses " +
+        "already count as one toward the redose window, so nothing is " +
+        "over-counted."
+    );
+    for (const text of [copy.title, copy.detail, copy.evidence]) {
+      expect(text).not.toContain("often deliberate");
+      expect(text).not.toContain("albuterol + albuterol");
+    }
+  });
+
+  it("different strengths (the OTC-plus-Rx classic) ⇒ today's copy, byte for byte", () => {
+    const members = [
+      item({ id: 1, name: "Ibuprofen 200 mg" }),
+      item({ id: 2, name: "Ibuprofen 800 mg" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(medicationDuplicationNote(members)).toEqual({
+      title: "Ibuprofen appears in 2 active medications",
+      detail:
+        "Ibuprofen 200 mg + Ibuprofen 800 mg share the same active " +
+        "ingredient, so their doses count together toward the redose window " +
+        "and daily max.",
+      evidence: EXISTING_EVIDENCE,
+    });
+  });
+
+  it("one member with a strength, one without ⇒ cannot be proven indistinguishable — existing copy", () => {
+    const members = [
+      item({ id: 1, name: "Ibuprofen 200 mg" }),
+      item({ id: 2, name: "Ibuprofen" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(false);
+    const copy = medicationDuplicationNote(members);
+    expect(copy.title).toBe("Ibuprofen appears in 2 active medications");
+    expect(copy.evidence).toBe(EXISTING_EVIDENCE);
+  });
+
+  it("every member stating the SAME strength ⇒ duplicate records", () => {
+    const members = [
+      item({ id: 1, name: "albuterol 2.5 MG/3ML nebulizer solution" }),
+      item({ id: 2, name: "Albuterol 2.5 mg/3 mL" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(true);
+    expect(medicationDuplicationNote(members).title).toBe(
+      "Albuterol is recorded 2 times"
+    );
+  });
+
+  it("two provably different concentrations stay distinguishable even with a numerator-only sibling (pairwise, not first-vs-rest)", () => {
+    const members = [
+      item({ id: 1, name: "Amoxicillin 400 mg" }),
+      item({ id: 2, name: "Amoxicillin 400 MG/5ML" }),
+      item({ id: 3, name: "Amoxicillin 400 MG/10ML" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(medicationDuplicationNote(members).title).toBe(
+      "Amoxicillin appears in 3 active medications"
+    );
+  });
+
+  it("different name keys (the observed Albuterol Sulfate beside albuterol) ⇒ existing copy", () => {
+    const members = [
+      item({ id: 1, name: "Albuterol Sulfate" }),
+      item({ id: 2, name: "albuterol" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(medicationDuplicationNote(members).evidence).toBe(EXISTING_EVIDENCE);
   });
 });
 
