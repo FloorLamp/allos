@@ -143,6 +143,13 @@ export interface ImportedClinicalObservation {
   prescriber?: string | null;
   pharmacy?: string | null;
   rxNumber?: string | null;
+  // The SOURCE-SUPPLIED RxCUI (#3070), set only on `prescription` observations and
+  // ONLY when the document's own code system is RxNorm (the CCDA OID
+  // 2.16.840.1.113883.6.88 / the FHIR RxNorm URI). An NDC, a local code or an
+  // unqualified code never lands here. Usually PRODUCT level (SCD/SBD): adopting it
+  // says nothing about ingredients — the #279 decomposition stays a separate
+  // (network) step and `rxcui_ingredients` is never fabricated from this field.
+  rxcui?: string | null;
   // Tier-1 visit link (#1050): the external_id of the Encounter this reading's FHIR
   // resource referenced (Observation/MedicationRequest.encounter), resolved within
   // the bundle. The persist layer maps it to the local encounter row's id. Null when

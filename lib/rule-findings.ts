@@ -167,7 +167,10 @@ import {
   type RightSizeDomain,
   type RightSizeInput,
 } from "./target-rightsize";
-import { medDupSignalKey, familyDisplayLabel } from "./medication-family";
+import {
+  medDupSignalKey,
+  medicationDuplicationNote,
+} from "./medication-family";
 import type { FoodSuggestion } from "./food-suggest";
 import type { WeightUnit } from "./settings";
 import {
@@ -345,26 +348,29 @@ export function buildMobilitySuggestionFindings(
 // widened counters can never disagree about what a family is. The familyKey is
 // derived (CUI-first, cleaned-name fallback) — per #203, resolving/renaming a member
 // re-keys the family and an old dismissal goes inert (it resurfaces once).
+//
+// The COPY splits on the members' distinguishability (#3069,
+// medicationDuplicationNote): an INDISTINGUISHABLE family — one name key, no
+// strength telling any two members apart — is duplicate RECORDS (the #2919 fold
+// escape), and the note says so instead of calling "albuterol + albuterol +
+// albuterol" deliberate; a distinguishable family keeps the original #1027 copy
+// unchanged. Only the copy splits: the key, tier, action and the family math all
+// stay as they were, so an existing dismissal keeps suppressing either rendering.
 export function buildMedicationDuplicationFindings(
   profileId: number
 ): Finding[] {
   const findings: Finding[] = [];
   for (const family of getActiveMedicationFamilies(profileId)) {
     if (family.members.length < 2) continue;
-    const label = familyDisplayLabel(family.members);
+    const copy = medicationDuplicationNote(family.members);
     findings.push({
       domain: "med-dup",
       dedupeKey: medDupSignalKey(family.familyKey),
-      title: `${label} appears in ${family.members.length} active medications`,
-      detail:
-        `${family.members.map((m) => m.name).join(" + ")} share the same active ` +
-        `ingredient, so their doses count together toward the redose window and ` +
-        `daily max.`,
+      title: copy.title,
+      detail: copy.detail,
       tone: "info",
       dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Informational — tracking an OTC and a prescription strength separately " +
-        "is often deliberate; this note only makes the shared ingredient visible.",
+      evidence: copy.evidence,
       actionHref: MEDICATIONS_HREF,
       actionLabel: "View medications",
     });

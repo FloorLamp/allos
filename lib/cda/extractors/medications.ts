@@ -188,6 +188,11 @@ export function mapMedication(
     value_num: null,
     unit: null,
     date: observationDate,
+    // The source-supplied RxCUI (#3070): the material code, ONLY when its
+    // codeSystem is the RxNorm OID (the same gate the external_id's code half
+    // uses). An NDC / local / unqualified code stays null — the code-system check
+    // is the gate, never the presence of a numeric code.
+    rxcui: rxnorm ? String(rxnorm) : null,
     external_id: medicationExternalId({
       name: String(name),
       code: rxnorm ? String(rxnorm) : null,
