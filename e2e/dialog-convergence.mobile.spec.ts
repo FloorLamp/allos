@@ -21,9 +21,6 @@ import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
 const TITLE_FIELD = "Reason / title";
 const DRAFT = "e2e dialog convergence visit";
 
-/** Where the scrim is: above a bottom-anchored sheet, clear of its panel. */
-const SCRIM_POINT = { x: 195, y: 90 };
-
 async function scrollY(page: Page): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
@@ -32,9 +29,34 @@ async function bodyOverflow(page: Page): Promise<string> {
   return page.evaluate(() => document.body.style.overflow);
 }
 
-/** Drag upward from low on the screen — the gesture that scrolls a page down. */
-async function dragPageUp(page: Page, from = { x: 195, y: 640 }) {
-  await touchSwipe(page, from, { x: from.x, y: from.y - 360 });
+// Every gesture below is anchored to the DOCUMENT, not to an element: that is
+// what a page scroll IS, and the scrim a drag starts on is a full-viewport
+// sibling of the panel. Inline literals, per the e2e hygiene guard — a measured
+// point would be the wrong tool for a gesture that is not aimed at anything.
+
+/** Drag upward from low on the screen — the gesture that scrolls a page DOWN. */
+async function dragPageUp(page: Page) {
+  await touchSwipe(page, { x: 195, y: 480 }, { x: 195, y: 320 });
+}
+
+// WHERE THE PAGE IS, measured on the page itself rather than on `window.scrollY`.
+// A locked page is parked (`position: fixed` with a top offset), so its scroll
+// offset reads 0 the whole time it is held — true, and useless: it says nothing
+// about whether the reader's place moved. The distance from the viewport top to a
+// landmark ON the page is the thing a person would notice, so that is what gets
+// asserted.
+async function pageOffset(page: Page): Promise<number> {
+  const box = await page.getByTestId("visits-upcoming").boundingBox();
+  expect(
+    box,
+    "the landmark must be laid out to measure the page's place"
+  ).not.toBeNull();
+  return box!.y;
+}
+
+/** Drag downward from high on the screen — with a sheet open, that is its scrim. */
+async function dragScrimDown(page: Page) {
+  await touchSwipe(page, { x: 195, y: 90 }, { x: 195, y: 420 });
 }
 
 async function openAddVisit(page: Page) {
@@ -44,22 +66,31 @@ async function openAddVisit(page: Page) {
   return dialog;
 }
 
-test("the page behind an open record dialog does not move, and moves again once it closes", async ({
+test("the page behind an open record dialog does not move, and is still where it was when it closes", async ({
   page,
 }) => {
   test.slow();
   await page.goto("/records/history/visits");
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
-  // CONTROL, first: this page scrolls under exactly this gesture. Without it the
-  // assertion below would pass just as well on a page that cannot scroll at all
-  // — the classic green that proves nothing.
+  // CONTROL, first: this page scrolls under exactly this gesture. Without it
+  // every "it did not move" below would be satisfied by a page that cannot move
+  // at all — the classic green that proves nothing.
+  const atTop = await pageOffset(page);
   await dragPageUp(page);
-  const control = await scrollY(page);
-  expect(control, "the page under test must be scrollable").toBeGreaterThan(0);
+  const scrolled = await pageOffset(page);
+  expect(scrolled, "the page under test must be scrollable").toBeLessThan(
+    atTop
+  );
 
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect.poll(() => scrollY(page)).toBe(0);
+  // The dialog is opened from a control that is ON SCREEN, so the click cannot
+  // scroll the page into view on its way — which would move the page for a
+  // legitimate reason and make the next assertion unreadable.
+  const toggle = page.getByTestId("add-visit-panel-toggle");
+  const trigger = await toggle.boundingBox();
+  expect(trigger, "the trigger must be laid out").not.toBeNull();
+  expect(trigger!.y).toBeGreaterThan(0);
+  expect(trigger!.y + trigger!.height).toBeLessThan(844);
 
   const dialog = await openAddVisit(page);
   // The phone presentation is the sheet: bottom-anchored, with the drag handle
@@ -70,26 +101,41 @@ test("the page behind an open record dialog does not move, and moves again once 
   );
   await expect(dialog.getByTestId("sheet-drag-handle")).toBeVisible();
 
-  // THE PIN. A drag the dialog does not consume — it starts on the scrim, which
-  // scrolls nothing — used to chain straight out to the document.
-  await touchSwipe(page, SCRIM_POINT, { x: SCRIM_POINT.x, y: 500 });
-  await dragPageUp(page, { x: 195, y: 200 });
+  // FIRST HALF: opening did not move the page. A lock that merely makes the
+  // viewport unscrollable throws the reader to the very top here, which is the
+  // same complaint #2774 filed about the chaining, arriving by the other road.
   expect(
-    await scrollY(page),
+    await pageOffset(page),
+    "opening a dialog must not move the page behind it"
+  ).toBe(scrolled);
+
+  // SECOND HALF, and the defect this issue is named for: a drag the dialog does
+  // not consume — it starts on the scrim, which scrolls nothing — used to chain
+  // straight out to the document. Both directions, because the old scroller
+  // could give either one away.
+  await dragScrimDown(page);
+  expect(
+    await pageOffset(page),
     "the page must not move behind an open dialog"
-  ).toBe(0);
+  ).toBe(scrolled);
+  await dragPageUp(page);
+  expect(await pageOffset(page)).toBe(scrolled);
   // And the mechanism is on: the surface holds the page still while it is open.
   expect(await bodyOverflow(page)).toBe("hidden");
 
-  // The other half — the page is released, not permanently frozen.
+  // THIRD: the page is released where it was, not frozen and not rewound.
   await hydratedClick(page, dialog.getByRole("button", { name: "Close" }));
   await expect(dialog).toHaveCount(0);
   expect(await bodyOverflow(page)).toBe("");
+  expect(
+    await pageOffset(page),
+    "closing must put the reader back exactly where they were"
+  ).toBe(scrolled);
   await dragPageUp(page);
   expect(
-    await scrollY(page),
+    await pageOffset(page),
     "the page must scroll again once the dialog has closed"
-  ).toBeGreaterThan(0);
+  ).toBeLessThan(scrolled);
 });
 
 test("the page behind an open quick-entry sheet does not move either", async ({
@@ -97,14 +143,19 @@ test("the page behind an open quick-entry sheet does not move either", async ({
 }) => {
   test.slow();
   // The quick-entry overlay reached by url (#1424) — the OTHER half of #2774's
-  // acceptance: one converged record form and one quick-entry form.
+  // acceptance: one converged record form and one quick-entry form. This one was
+  // already a sheet, so it is the regression half rather than the fix half.
   await page.goto("/?quick=log-stool");
   await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
-  expect(await scrollY(page)).toBe(0);
-
-  await dragPageUp(page, { x: 195, y: 200 });
-  expect(await scrollY(page)).toBe(0);
   expect(await bodyOverflow(page)).toBe("hidden");
+
+  const before = await scrollY(page);
+  await dragScrimDown(page);
+  await dragPageUp(page);
+  expect(
+    await scrollY(page),
+    "the dashboard must not move under the sheet"
+  ).toBe(before);
 });
 
 test("a dirty converged form confirms before a gesture discards it; a clean one goes in one gesture", async ({
@@ -139,7 +190,7 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
   await expect(title).toHaveValue(DRAFT);
 
   // The scrim is the other accidental dismissal, and it asks too.
-  await page.touchscreen.tap(SCRIM_POINT.x, SCRIM_POINT.y);
+  await page.touchscreen.tap(195, 90);
   await expect(confirm).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
   await expect(dialog).toHaveCount(0);
@@ -172,7 +223,7 @@ test("a dialog stacked over a sheet leaves the page held until the last one clos
   expect(await bodyOverflow(page)).toBe("hidden");
 
   // The discard confirm opens a SECOND surface over the first.
-  await page.touchscreen.tap(SCRIM_POINT.x, SCRIM_POINT.y);
+  await page.touchscreen.tap(195, 90);
   const confirm = page.getByTestId("confirm-dialog");
   await expect(confirm).toBeVisible();
   expect(await bodyOverflow(page)).toBe("hidden");

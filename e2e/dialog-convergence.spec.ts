@@ -22,7 +22,10 @@ async function scrollY(page: Page): Promise<number> {
 
 /** Wheel over the scrim — clear of the centred panel, which owns its own scroll. */
 async function wheelOverScrim(page: Page) {
-  await page.mouse.move(60, 450);
+  // x=1200: in the main reading column, clear of the desktop nav aside (which is
+  // its OWN scroller — a wheel over it would scroll the nav and prove nothing)
+  // and clear of the centred panel, which owns its own scroll.
+  await page.mouse.move(1200, 450);
   await page.mouse.wheel(0, 600);
 }
 
