@@ -45,11 +45,8 @@ export default function ActivityPartRows({
   remainingParts = 0,
   density = "full",
   className = "",
-  onSelectExercise,
   exerciseHref,
   highlightMusclesByExercise = {},
-  onSelectCardio,
-  onSelectSport,
   onFilterTag,
 }: {
   parts: DisplayPart[];
@@ -58,11 +55,8 @@ export default function ActivityPartRows({
   remainingParts?: number;
   density?: "compact" | "full";
   className?: string;
-  onSelectExercise?: (exercise: string) => void;
   exerciseHref?: (exercise: string) => Route;
   highlightMusclesByExercise?: Record<string, MuscleId[]>;
-  onSelectCardio?: (name: string) => void;
-  onSelectSport?: (name: string) => void;
   onFilterTag?: (kind: "muscle" | "region", value: string) => void;
 }) {
   if (parts.length === 0 && remainingParts === 0) return null;
@@ -74,9 +68,6 @@ export default function ActivityPartRows({
     >
       {parts.map((part, index) => {
         if (part.kind !== "strength") {
-          const onSelect =
-            part.kind === "sport" ? onSelectSport : onSelectCardio;
-          const verb = part.kind === "sport" ? "records" : "trends";
           return (
             <div
               key={index}
@@ -85,20 +76,9 @@ export default function ActivityPartRows({
                 density === "compact" ? "py-0.5" : "py-1"
               }`}
             >
-              {onSelect ? (
-                <button
-                  type="button"
-                  onClick={() => onSelect(part.name)}
-                  className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                  title={`See ${part.name} ${verb}`}
-                >
-                  {part.name}
-                </button>
-              ) : (
-                <span className="text-left font-medium text-slate-800 dark:text-slate-100">
-                  {part.name}
-                </span>
-              )}
+              <span className="text-left font-medium text-slate-800 dark:text-slate-100">
+                {part.name}
+              </span>
               {part.detail && (
                 <span className="min-w-0 text-left text-sm tabular-nums text-slate-600 dark:text-slate-300 sm:col-span-2">
                   {part.detail}
@@ -139,15 +119,6 @@ export default function ActivityPartRows({
               >
                 {part.name}
               </Link>
-            ) : onSelectExercise ? (
-              <button
-                type="button"
-                onClick={() => onSelectExercise(part.name)}
-                className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                title={`See ${part.name} progression`}
-              >
-                {part.name}
-              </button>
             ) : (
               <span className="text-left font-medium text-slate-800 dark:text-slate-100">
                 {part.name}
@@ -227,7 +198,7 @@ export default function ActivityPartRows({
                       type="button"
                       onClick={() => onFilterTag("muscle", part.muscle!)}
                       title={`Show ${part.muscle} activities`}
-                      className="shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                      className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                     >
                       {part.muscle}
                     </button>

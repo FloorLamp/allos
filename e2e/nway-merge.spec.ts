@@ -223,7 +223,15 @@ test.describe("N-way activity merge (#1081)", () => {
       await page
         .getByTestId("merge-keeper-select")
         .selectOption({ label: "NW sib A" });
+      const originatingUrl = page.url();
       await settledClick(page, page.getByTestId("merge-run"));
+
+      // The page's record was absorbed, so the canonical route follows the
+      // surviving sibling instead of re-rendering the deleted id as a 404.
+      await expect(page).not.toHaveURL(originatingUrl);
+      await expect(
+        page.getByRole("heading", { name: "NW sib A", level: 1 })
+      ).toBeVisible();
 
       // One undo toast reverses the entire N-way merge.
       await expect(page.getByText("Activities merged.")).toBeVisible();

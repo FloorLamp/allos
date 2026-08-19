@@ -81,6 +81,7 @@ export default function ExerciseDetailPanel({
   showTrend = true,
   showRecent = true,
   showLevel = true,
+  showStrengthStandard = true,
   sex,
   nextSetContext,
 }: {
@@ -112,8 +113,12 @@ export default function ExerciseDetailPanel({
   showTrend?: boolean;
   // Compare also owns the full session table.
   showRecent?: boolean;
-  // Analyze shows the benchmark progression in a dedicated card.
+  // Whether to show the compact level badge in this panel's header. Analyze
+  // owns that tier presentation in its dedicated Benchmarks card.
   showLevel?: boolean;
+  // Whether to show the explanatory coaching line. This is independent from
+  // the badge so Analyze can keep one tier display without losing the guidance.
+  showStrengthStandard?: boolean;
   // Routine context modifiers for the next-set target (#1115 Fix B): a deload week and/
   // or a recovering-injury region. When set, the panel routes its next-set through the
   // SAME contextualNextSet every other surface uses — so the "How to" deep-link from the
@@ -130,13 +135,13 @@ export default function ExerciseDetailPanel({
   // Both the header level badge AND the coaching line below derive from this one
   // computation (no more flat-ratio second model that could disagree by a tier).
   // Hidden entirely when sex or bodyweight is unset, or the lift isn't covered.
-  // Gated on showLevel so it doesn't double up with the Analyze Benchmarks card.
+  // Analyze may hide the compact badge while retaining the explanatory line.
   // Scored from freeWeightE1rmKg (#2326): a lift backed entirely by machine sets
   // gets no badge and no coaching line — "untested against the standard", which is
   // honest, rather than the wrong claim a barbell-table placing would make. The
   // panel's own e1RM readout is unchanged; the machine set is a real set.
   const standing =
-    showLevel && sex && bodyweightKg
+    (showLevel || showStrengthStandard) && sex && bodyweightKg
       ? strengthStanding(
           stat.exercise,
           stat.freeWeightE1rmKg,
@@ -144,17 +149,20 @@ export default function ExerciseDetailPanel({
           bodyweightKg
         )
       : null;
-  const badge = standing
-    ? {
-        level: standing.level,
-        label: strengthLevelLabel(standing.level),
-        color: strengthLevelColor(standing.level),
-      }
-    : null;
+  const badge =
+    showLevel && standing
+      ? {
+          level: standing.level,
+          label: strengthLevelLabel(standing.level),
+          color: strengthLevelColor(standing.level),
+        }
+      : null;
   // standing is non-null only when sex was set (see the gate above); the extra
   // `&& sex` narrows the type for strengthStandingPhrase's Sex parameter.
   const standingMsg =
-    standing && sex ? strengthStandingPhrase(standing, sex, wu) : null;
+    showStrengthStandard && standing && sex
+      ? strengthStandingPhrase(standing, sex, wu)
+      : null;
   const matchedGoals = goals
     ? goalsForExercise(goals, stat.exercise).filter((g) => !g.archived)
     : [];

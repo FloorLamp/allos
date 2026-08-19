@@ -294,6 +294,7 @@ export default function ActivityForm({
     editData ? (editData.start_time ?? "") : nowHHMM(tz)
   );
   const [endTime, setEndTime] = useState(editData?.end_time ?? "");
+  const finishStampedEndRef = useRef(false);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
   );
@@ -1060,13 +1061,15 @@ export default function ActivityForm({
     date === todayStr(tz) &&
     canSave;
   function openFinishRecap() {
-    if (!endTime) changeEndTime(nowHHMM(tz));
+    finishStampedEndRef.current = !endTime;
+    if (finishStampedEndRef.current) changeEndTime(nowHHMM(tz));
     setShowRecap(true);
   }
   function backFromFinishRecap() {
-    // Opening the recap tentatively stops the clock at the Finish tap. Back means
-    // the workout is still in progress, so remove that tentative end stamp.
-    changeEndTime("");
+    // Remove only the tentative stamp created by Finish. An explicit end time
+    // entered before the recap belongs to the user and survives Back.
+    if (finishStampedEndRef.current) changeEndTime("");
+    finishStampedEndRef.current = false;
     setShowRecap(false);
   }
 

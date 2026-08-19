@@ -9,7 +9,7 @@ import {
 } from "@/lib/muscle-coverage";
 import { bandPresentation, bandVerdict } from "@/lib/muscle-volume-bands";
 import type { MuscleId } from "@/lib/lifts";
-import { trainingActivityPageHref } from "@/lib/hrefs";
+import { strengthAnalyzeHref, trainingActivityPageHref } from "@/lib/hrefs";
 import MuscleCoverageDisclosure from "./MuscleCoverageDisclosure";
 
 function fmtSets(value: number): string {
@@ -155,7 +155,7 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                         >
                           {drillInsVisible ? (
                             <Link
-                              href={`/training?tab=analyze&kind=strength&item=${encodeURIComponent(entry.exercise)}`}
+                              href={strengthAnalyzeHref(entry.exercise)}
                               className="font-medium text-brand-700 hover:underline dark:text-brand-400"
                             >
                               {entry.exercise}

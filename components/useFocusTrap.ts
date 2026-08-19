@@ -78,8 +78,9 @@ export function useFocusTrap({
         // reaches the parent modal normally.
         const target = e.target;
         if (
-          target instanceof Element &&
-          target.closest('[data-escape-layer="true"]')
+          (target instanceof Element &&
+            target.closest('[data-escape-layer="true"]')) ||
+          panel.querySelector('[data-escape-layer="true"]')
         ) {
           return;
         }

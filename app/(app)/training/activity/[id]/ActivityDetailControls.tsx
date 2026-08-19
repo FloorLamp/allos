@@ -72,6 +72,7 @@ export function ActivityDetailActions({
   editLocked,
   units,
   canWrite,
+  trainingRelevant,
 }: {
   activity: ActivityEditData;
   mergeCandidates: MergeSibling[];
@@ -80,6 +81,7 @@ export function ActivityDetailActions({
   editLocked: boolean;
   units: UnitPrefs;
   canWrite: boolean;
+  trainingRelevant: boolean;
 }) {
   const { openEdit } = useActivityEditor();
   const { signal } = useMergeSignal();
@@ -109,7 +111,13 @@ export function ActivityDetailActions({
         } /* detail-none: this menu already lives on the activity's canonical detail page. */
         canWrite={canWrite}
         openMergeSignal={signal}
-        deleteReturnHref="/training?tab=log"
+        deleteReturnHref={trainingRelevant ? "/training?tab=log" : "/timeline"}
+        mergeAwayHref={(keeperId) =>
+          trainingActivityPageHref(
+            keeperId,
+            activity.subjectProfileId ?? undefined
+          )
+        }
       />
     </div>
   );

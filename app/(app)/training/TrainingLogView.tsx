@@ -217,6 +217,11 @@ export default function TrainingLogView({
   const [filters, setFilters] = useState<TrainingLogFilters>(
     EMPTY_TRAINING_LOG_FILTERS
   );
+  const filterByTag = useCallback(
+    (kind: "muscle" | "region", value: string) =>
+      setFilters((current) => ({ ...current, tag: { kind, value } })),
+    []
+  );
 
   // Derive rather than reset via an effect: when the last faulty row is fixed
   // the toggle vanishes (faultCount → 0), and the filter must stop applying in
@@ -753,7 +758,10 @@ export default function TrainingLogView({
               </button>
             )}
             {activeFilters.tag && (
-              <span className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">
+              <span
+                data-testid="training-log-tag-filter"
+                className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300"
+              >
                 {activeFilters.tag.value}
               </span>
             )}
@@ -823,6 +831,7 @@ export default function TrainingLogView({
                         multiView != null &&
                         c.subject.profileId !== multiView.actingProfileId
                       }
+                      onFilterTag={filterByTag}
                     />
                   ))}
                 </div>

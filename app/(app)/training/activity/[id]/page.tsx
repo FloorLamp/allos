@@ -274,6 +274,7 @@ export default async function TrainingActivityPage(props: {
               editLocked={!crossProfile && card.provenance.editLocked}
               units={units}
               canWrite={canWrite}
+              trainingRelevant={trainingRelevant}
             />
           }
           stackActionBelowSm

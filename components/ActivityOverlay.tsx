@@ -99,13 +99,20 @@ export default function ActivityOverlay({
     },
     [dismissWorkspace, onCloseRequestReady]
   );
+  const dismissFromOverlay = useCallback(() => {
+    if (minimizeRunningWorkout) {
+      minimizeRunningWorkout();
+      return;
+    }
+    void closeRequestRef.current();
+  }, [minimizeRunningWorkout]);
 
   // Lock the page behind only while the overlay is actually visible; a minimized
   // (hidden) overlay must not trap scroll on the page the user is now browsing.
   useLockBodyScroll(!hidden);
   useFocusTrap({
     panelRef,
-    onClose: () => closeRequestRef.current(),
+    onClose: dismissFromOverlay,
     active: !hidden,
   });
 
@@ -146,7 +153,7 @@ export default function ActivityOverlay({
       className={`fixed inset-0 z-50 flex items-start justify-end overflow-y-auto overscroll-contain bg-surface ${OVERLAY_SCRIM_TINT_SM} ${
         hidden ? "hidden" : ""
       }`}
-      onClick={() => closeRequestRef.current()}
+      onClick={dismissFromOverlay}
     >
       {/* Bottom padding is plain p-4: the form's sticky footer re-spans it and
           carries the safe-area inset itself. */}

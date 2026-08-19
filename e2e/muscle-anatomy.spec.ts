@@ -60,6 +60,14 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
+  await pushRow
+    .getByTestId("training-log-strength-row")
+    .filter({ hasText: "Barbell Bench Press" })
+    .getByRole("button", { name: "Chest", exact: true })
+    .click();
+  await expect(page.getByTestId("training-log-tag-filter")).toHaveText("Chest");
+  await expect(pushRow).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
   await followLink(
     page,
     pushRow.getByRole("link", { name: "Push day", exact: true }),

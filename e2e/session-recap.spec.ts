@@ -135,6 +135,8 @@ test("live Finish opens the Session complete recap step; Back returns to the edi
 }) => {
   test.slow();
   await startLiveSession(page, "E2E Recap Step");
+  const endTime = page.getByTestId("end-time-input");
+  await endTime.fill("23:59");
 
   // Finish opens the recap step (the only live-gated renderer) — the recap renders
   // with the session's working set, and the live control strip is hidden.
@@ -149,6 +151,7 @@ test("live Finish opens the Session complete recap step; Back returns to the edi
   await page.getByTestId("recap-back").click();
   await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await expect(endTime).toHaveValue("23:59");
 
   await deleteOpenDraft(page);
 });

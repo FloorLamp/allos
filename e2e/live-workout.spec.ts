@@ -73,9 +73,18 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-label", "Pause rest timer");
 
+  // Leave the durable live row with an incomplete set. Closing this form would
+  // require a discard warning, but minimizing keeps it mounted and loses nothing.
+  await pickActivity(page, "Barbell Bench Press");
+  await page.getByTestId("set1-weight").fill("60");
+  await expect(
+    page.getByText("Enter a complete set to save this exercise.")
+  ).toBeVisible();
+
   // Escape is another leave gesture, so it parks rather than abandons the live
-  // session. Ending or deleting remains an explicit choice.
+  // session without presenting the form's destructive-close confirmation.
   await page.keyboard.press("Escape");
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(page.getByTestId("workout-dock")).toBeVisible();
   await page.getByTestId("workout-dock-open").click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();

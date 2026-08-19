@@ -20,6 +20,8 @@ test("the Analyze Benchmarks card renders the unified bodyweight-band tiers (#15
 
   const main = page.getByRole("main");
   await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
+  const standard = main.getByTestId("strength-standard");
+  await expect(standard).toContainText("at your bodyweight");
   // The ladder is bodyweight-adjusted (× BW rungs) and labeled as such.
   await expect(
     main.getByText("for your bodyweight & sex").first() // first-ok: asserts the bodyweight-adjusted label renders — order-agnostic presence

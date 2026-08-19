@@ -28,11 +28,13 @@ const LOG_ROW_PART_LIMIT = 3;
 function TrainingLogRow({
   card,
   showSubjectChip,
+  onFilterTag,
 }: {
   card: TrainingLogCardData;
   // Multi-view (#1330): the host says whether this card is a non-acting
   // member's (single view and own cards render no chip).
   showSubjectChip: boolean;
+  onFilterTag: (kind: "muscle" | "region", value: string) => void;
 }) {
   const { activity, subject } = card;
   const parts = card.parts.slice(0, LOG_ROW_PART_LIMIT);
@@ -106,6 +108,7 @@ function TrainingLogRow({
                 parts={parts}
                 remainingParts={remainingParts}
                 density="compact"
+                onFilterTag={onFilterTag}
               />
             )}
             {supportingDetails.length > 0 && (

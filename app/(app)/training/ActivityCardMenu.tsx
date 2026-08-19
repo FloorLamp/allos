@@ -81,6 +81,7 @@ export default function ActivityCardMenu({
   canWrite = true,
   openMergeSignal,
   deleteReturnHref,
+  mergeAwayHref,
 }: {
   // The full card activity — the source for "Duplicate activity".
   activity: ActivityEditData;
@@ -108,6 +109,10 @@ export default function ActivityCardMenu({
   // A canonical detail page leaves after deleting its record. Other hosts can omit
   // this and let their own refreshed list remain in place.
   deleteReturnHref?: AppRoute;
+  // A canonical detail page must leave the record that was just absorbed. The
+  // keeper id is only known after the picker runs, so the host supplies the
+  // subject-aware destination builder rather than a static return route.
+  mergeAwayHref?: (keeperId: number) => AppRoute;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -247,6 +252,9 @@ export default function ActivityCardMenu({
     await undoable(mergeActivities, fd, {
       deletedMessage: "Activities merged.",
     });
+    if (dropIds.includes(activity.id) && mergeAwayHref) {
+      router.replace(mergeAwayHref(keepId));
+    }
   }
 
   // Toggle a sibling's inclusion; unchecking the current keeper falls back to the card.
