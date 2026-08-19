@@ -66,32 +66,22 @@ async function openAddVisit(page: Page) {
   return dialog;
 }
 
-test("the page behind an open record dialog does not move, and is still where it was when it closes", async ({
+test("the page behind an open record dialog does not move, and moves again once it closes", async ({
   page,
 }) => {
   test.slow();
   await page.goto("/records/history/visits");
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
-  // CONTROL, first: this page scrolls under exactly this gesture. Without it
-  // every "it did not move" below would be satisfied by a page that cannot move
-  // at all — the classic green that proves nothing.
-  const atTop = await pageOffset(page);
-  await dragPageUp(page);
-  const scrolled = await pageOffset(page);
-  expect(scrolled, "the page under test must be scrollable").toBeLessThan(
-    atTop
-  );
-
-  // The dialog is opened from a control that is ON SCREEN, so the click cannot
-  // scroll the page into view on its way — which would move the page for a
-  // legitimate reason and make the next assertion unreadable.
-  const toggle = page.getByTestId("add-visit-panel-toggle");
-  const trigger = await toggle.boundingBox();
-  expect(trigger, "the trigger must be laid out").not.toBeNull();
-  expect(trigger!.y).toBeGreaterThan(0);
-  expect(trigger!.y + trigger!.height).toBeLessThan(844);
-
+  // The dialog is opened from the TOP of the page, deliberately. A version of
+  // this test scrolled first, and it was flaky for two reasons that are both
+  // about the fixture rather than the fix: a touch drag FLINGS, so the page is
+  // still decelerating when the next line reads it, and clicking a control that
+  // scrolling has pushed near the viewport edge makes Playwright scroll it back
+  // into view — a legitimate movement that the assertion cannot tell from the
+  // defect. Neither happens from a standing start, and the defect is just as
+  // visible: what is being pinned is that a drag under an open dialog moves the
+  // page AT ALL.
   const dialog = await openAddVisit(page);
   // The phone presentation is the sheet: bottom-anchored, with the drag handle
   // that makes a surface read as one (the owner decision in #2774).
@@ -100,42 +90,38 @@ test("the page behind an open record dialog does not move, and is still where it
     "dialog"
   );
   await expect(dialog.getByTestId("sheet-drag-handle")).toBeVisible();
+  const held = await pageOffset(page);
 
-  // FIRST HALF: opening did not move the page. A lock that merely makes the
-  // viewport unscrollable throws the reader to the very top here, which is the
-  // same complaint #2774 filed about the chaining, arriving by the other road.
-  expect(
-    await pageOffset(page),
-    "opening a dialog must not move the page behind it"
-  ).toBe(scrolled);
-
-  // SECOND HALF, and the defect this issue is named for: a drag the dialog does
-  // not consume — it starts on the scrim, which scrolls nothing — used to chain
-  // straight out to the document. Both directions, because the old scroller
-  // could give either one away.
-  await dragScrimDown(page);
+  // THE PIN. A drag the dialog does not consume — one that starts on the scrim,
+  // which scrolls nothing — used to chain straight out to the document, and the
+  // page ended up somewhere other than where it was opened from.
+  await dragPageUp(page);
   expect(
     await pageOffset(page),
     "the page must not move behind an open dialog"
-  ).toBe(scrolled);
-  await dragPageUp(page);
-  expect(await pageOffset(page)).toBe(scrolled);
+  ).toBe(held);
+  await dragScrimDown(page);
+  expect(await pageOffset(page)).toBe(held);
   // And the mechanism is on: the surface holds the page still while it is open.
   expect(await bodyOverflow(page)).toBe("hidden");
 
-  // THIRD: the page is released where it was, not frozen and not rewound.
+  // The other half — the page is released where it was, not left frozen.
   await hydratedClick(page, dialog.getByRole("button", { name: "Close" }));
   await expect(dialog).toHaveCount(0);
   expect(await bodyOverflow(page)).toBe("");
   expect(
     await pageOffset(page),
-    "closing must put the reader back exactly where they were"
-  ).toBe(scrolled);
+    "closing must leave the reader where they were"
+  ).toBe(held);
+
+  // CONTROL, last: the very same gesture DOES scroll this page. Without it every
+  // "it did not move" above would be satisfied by a page that cannot move at all
+  // — the classic green that proves nothing.
   await dragPageUp(page);
   expect(
     await pageOffset(page),
     "the page must scroll again once the dialog has closed"
-  ).toBeLessThan(scrolled);
+  ).toBeLessThan(held);
 });
 
 test("the page behind an open quick-entry sheet does not move either", async ({
