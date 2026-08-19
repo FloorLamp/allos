@@ -27,6 +27,7 @@ import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
+import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
@@ -472,6 +473,74 @@ export function insertWaistCirc(
   if ("error" in normalized) return false;
   writeTx(() => {
     upsertManualSample(profileId, WAIST_CIRC_METRIC, date, normalized.valueCm);
+  });
+  return true;
+}
+
+// ── Bristol stool form (issue #2785) ──────────────────────────────────────────
+
+// Persist one Bristol stool-form observation. The SIBLING of insertWaistCirc in
+// store and discipline, and its deliberate opposite in GRAIN.
+//
+// `upsertManualSample` above files a point measure at the day's midnight, so a
+// re-entry CORRECTS that day — right for a tape reading, wrong here. Several bowel
+// movements a day is ordinary and each is its own observation, so a Bristol row is
+// keyed on the INSTANT it was tapped: the natural key is
+// (profile_id, metric, source, origin, start_time), so 08:12 and 19:40 are two rows
+// and a double-tap inside the same minute settles on one. That is the peak-flow
+// answer (a morning and an evening blow are two blows) applied to the store directly,
+// because Bristol has no canonical identity and therefore no placement — the #482
+// exclusion discipline, the same reason sleep and HRV stay on the sample writer.
+//
+// NOT `recordReading`: placement clause 1 would refuse it, correctly. And no edit-lock
+// consult — that lock (#133) holds out a SOURCE-owned re-push, and nothing streams
+// Bristol; every row here is the user's own tap.
+//
+// Auth-blind + profileId-first like its neighbours. Returns false on a rejected input
+// (bad date, or a value the scale does not name), true on a written row.
+export function logBristolStool(
+  profileId: number,
+  date: string,
+  type: unknown,
+  // The observation's profile-local wall clock, "HH:MM". Omitted → read from the
+  // clock seam, which is what a one-tap log does: the moment IS now.
+  at?: string | null
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const bristolType = parseBristolType(type);
+  if (bristolType === null) return false;
+  // SECOND precision, not minute, and the resolution is load-bearing.
+  //
+  // The key is the instant, so two readings are two rows exactly when they fall on
+  // different seconds. That lines up with the affordance's declared repeat class
+  // rather than fighting it: `stool-form` is `additive`, and the accidental
+  // double-tap is absorbed by the one-tap ledger's POST_SUCCESS_COOLDOWN_MS window.
+  // The cooldown is two seconds and the key's resolution is one, so a tap the ledger
+  // would absorb and a tap this key would collapse are the SAME tap — a deliberate
+  // second movement always lands on a later second and is always its own row. At
+  // minute resolution the two mechanisms would not line up, and a genuine second
+  // reading forty seconds after the first would be lost with the surviving row
+  // looking perfectly normal.
+  //
+  // A caller that STATES a wall time gives HH:MM and lands on :00, so restating the
+  // same time corrects that reading — which is what a stated time means. Only the
+  // clock path carries seconds, and it reads them off the instant in UTC: every IANA
+  // zone in the modern era is a whole-minute offset, so the seconds are the same
+  // number on any wall clock.
+  const stated = normalizeClockTime(at ?? null);
+  const instant = clockNow();
+  const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
+  const seconds = stated
+    ? "00"
+    : String(instant.getUTCSeconds()).padStart(2, "0");
+  const ts = `${date}T${hhmm}:${seconds}`;
+  writeTx(() => {
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+         VALUES (?, 'manual', ?, ?, ?, ?, ?)
+       ON CONFLICT DO UPDATE SET
+         value = excluded.value, date = excluded.date`
+    ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
   });
   return true;
 }

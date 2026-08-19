@@ -3,6 +3,8 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
+import BristolStoolPanel from "@/components/BristolStoolPanel";
+import { getBristolPanel } from "@/lib/queries/bristol-stool";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { sriPresentation } from "@/lib/sleep-regularity";
 import {
@@ -1935,6 +1937,15 @@ export default async function BodySection({
           </div>
         </>
       )}
+      {/* Bristol stool form (#2785) — a distribution and a dot strip, not a chart in
+          the census's line-chart sense, so it renders after the census rather than as
+          a card inside it. It returns NULL for a profile with nothing logged in the
+          window, so the Body section is byte-identical for everyone who does not use
+          it (the fiber panel's rule: never an empty chart with an exhortation). */}
+      <BristolStoolPanel
+        panel={getBristolPanel(profile.id, todayStr)}
+        formatPrefs={formatPrefs}
+      />
     </div>
   );
 }
