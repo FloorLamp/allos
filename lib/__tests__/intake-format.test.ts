@@ -148,7 +148,7 @@ describe("renderWindowMessage", () => {
       entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
       entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
     ]);
-    const takes = msg.actions!.filter((a) => a.data.startsWith("take:"));
+    const takes = msg.actions!.filter((a) => a.data?.startsWith("take:"));
     expect(takes.map((a) => a.label)).toEqual([
       "✅ Coenzyme Q10",
       "✅ Ubiquinone",
@@ -160,7 +160,7 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
     ]);
-    expect(msg.actions!.find((a) => a.data.startsWith("take:"))!.label).toBe(
+    expect(msg.actions!.find((a) => a.data?.startsWith("take:"))!.label).toBe(
       "✅ CoQ10"
     );
   });
