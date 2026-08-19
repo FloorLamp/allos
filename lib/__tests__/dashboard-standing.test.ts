@@ -241,6 +241,7 @@ describe("fixed Standing instrument cluster", () => {
         windowOpen: false,
         changed: true,
       },
+      readingPromotion: "weekly-target-transition",
     });
     const placements = rank([promoted]);
     expect(placements).toHaveLength(1);

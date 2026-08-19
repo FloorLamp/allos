@@ -48,6 +48,18 @@ export interface GoalProgress {
   // exercise-linked goals set it; body-metric goals (computeBodyGoalProgress)
   // leave it undefined.
   lifetimeBest?: number;
+  // Profile-local day on which this goal period opened. Transition consumers use
+  // the same calendar basis as the evidence dates instead of truncating UTC.
+  periodStartDate?: string;
+  // The comparable goal-period opening state, when one exists. It is carried by
+  // the gather for semantic transition consumers; progress math does not infer
+  // it from a raw delta.
+  previous?: {
+    pct: number;
+    done: boolean;
+    asOf?: string | null;
+    comparisonDate?: string;
+  } | null;
 }
 
 export interface GoalSetRow {

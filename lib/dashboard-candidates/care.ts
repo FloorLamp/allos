@@ -62,12 +62,24 @@ export const careCandidates = {
   appointment(ctx: DomainCandidateContext, href: AppRoute) {
     return statement(ctx, "appointment.next", `appointment.next:${href}`, null);
   },
-  lab(ctx: DomainCandidateContext, name: string) {
+  lab(
+    ctx: DomainCandidateContext,
+    name: string,
+    promotion?: { sharedFactKey?: string; changed: boolean }
+  ) {
     return reading(
       ctx,
       `labs.latest:${name}`,
-      `clinical-result.latest:${name}`,
-      null
+      promotion?.sharedFactKey ?? `clinical-result.latest:${name}`,
+      null,
+      "unknown",
+      "current",
+      promotion?.changed
+        ? {
+            rankReasons: changed,
+            readingPromotion: "clinical-non-notable-to-notable",
+          }
+        : {}
     );
   },
   labBootstrap(ctx: DomainCandidateContext) {

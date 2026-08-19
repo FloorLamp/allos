@@ -8,9 +8,11 @@ import {
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
+  getStrengthByExercise,
+  getCardioByActivity,
   getBodyMetricDailySeries,
   getBodyMetricSeriesBySource,
-  getClinicalObservations,
+  getDashboardClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
@@ -51,6 +53,8 @@ import {
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import {
   recommendCoaching,
+  recentCardioPRs,
+  recentPRs,
   strengthAppropriateCoachingInput,
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -85,7 +89,7 @@ import {
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
-import { dispWeight } from "@/lib/units";
+import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import {
@@ -219,6 +223,19 @@ import {
 import { withReadSnapshot } from "@/lib/read-snapshot";
 import { proteinBasisPhrase, proteinTargetSummary } from "@/lib/protein";
 import { MedicalValue } from "@/components/ui";
+import {
+  clinicalResultBecameNotable,
+  outcomeGoalProgressChanged,
+  sleepArrivedInWakeWindow,
+  weeklyTargetStateChanged,
+} from "@/lib/dashboard-reading-promotions";
+import {
+  biomarkerFlagDismissalKey,
+  prCardioDismissalKey,
+  prStrengthDismissalKey,
+} from "@/lib/dismissal-keys";
+import { loadContextLabel } from "@/lib/lifts";
+import { formatMinutes } from "@/lib/duration";
 
 export const dynamic = "force-dynamic";
 
@@ -590,12 +607,34 @@ async function renderDashboard(
   // recentLabHighlights order. The Standing registry owns the six-row cap so the
   // remaining results stay reachable in Everything.
   let labRows: RecentLabRow[] = [];
+  const labPromotions = new Map<
+    string,
+    { changed: boolean; sharedFactKey?: string }
+  >();
   {
-    labRows = recentLabHighlights(
-      getClinicalObservations(profile.id, { current: true }),
-      Number.MAX_SAFE_INTEGER,
-      on
-    );
+    const observations = getDashboardClinicalObservations(profile.id);
+    const activeAttentionKeys = new Set(attention.map((item) => item.key));
+    labRows = recentLabHighlights(observations, Number.MAX_SAFE_INTEGER, on);
+    for (const observation of observations) {
+      const name = observation.canonical_name?.trim() || observation.name;
+      const findingKey = biomarkerFlagDismissalKey(name);
+      const changed =
+        activeAttentionKeys.has(findingKey) &&
+        clinicalResultBecameNotable(
+          observation.flag,
+          observation.previous_id == null
+            ? undefined
+            : observation.previous_flag
+        );
+      labPromotions.set(name, {
+        changed,
+        ...(changed
+          ? {
+              sharedFactKey: `upcoming.${findingKey}`,
+            }
+          : {}),
+      });
+    }
   }
 
   // next-appointment (medical): the single most attention-worthy scheduled visit,
@@ -668,25 +707,56 @@ async function renderDashboard(
   // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
   // on the top rec surfaces the next-ranked one until the snooze expires.
   const coachingSuppressions = getFindingSuppressions(profile.id);
-  const coachingRecs = trainingRelevant
+  const coachingInput = trainingRelevant
+    ? strengthAppropriateCoachingInput(
+        gatherCoachingInput(
+          profile.id,
+          units.weightUnit,
+          units.distanceUnit,
+          // The login's temperature scale (#1967): a °F reader sees the weather-parking
+          // figure in °F here. The notification path keeps canonical °C.
+          units.temperatureUnit
+        ),
+        strengthTrainingAvailable
+      )
+    : null;
+  const coachingRecs = coachingInput
     ? activeByKey(
-        recommendCoaching(
-          strengthAppropriateCoachingInput(
-            gatherCoachingInput(
-              profile.id,
-              units.weightUnit,
-              units.distanceUnit,
-              // The login's temperature scale (#1967): a °F reader sees the weather-parking
-              // figure in °F here. The notification path keeps canonical °C.
-              units.temperatureUnit
-            ),
-            strengthTrainingAvailable
-          )
-        ).filter(
+        recommendCoaching(coachingInput).filter(
           (recommendation) =>
             strengthTrainingAvailable || recommendation.kind !== "strength"
         ),
         (r) => coachingDedupeKey(r.id),
+        coachingSuppressions,
+        on
+      )
+    : [];
+  // Today's all-day training-result transitions reuse the same cached history
+  // gathers coaching already paid for. Strength asks for the load-context
+  // projection (the underlying all-history scan is request-cached); cardio uses
+  // the same unit-scoped cardio aggregate gatherCoachingInput reads. No
+  // per-record query or second classifier.
+  const todayStrengthRecords = strengthTrainingAvailable
+    ? activeByKey(
+        recentPRs(getStrengthByExercise(profile.id, true), on, 0),
+        (record) =>
+          prStrengthDismissalKey(
+            record.exercise,
+            record.equipmentId,
+            record.kind
+          ),
+        coachingSuppressions,
+        on
+      )
+    : [];
+  const todayCardioRecords = coachingInput
+    ? activeByKey(
+        recentCardioPRs(
+          getCardioByActivity(profile.id, units.distanceUnit),
+          on,
+          0
+        ),
+        (record) => prCardioDismissalKey(record.activity, record.kind),
         coachingSuppressions,
         on
       )
@@ -1114,6 +1184,57 @@ async function renderDashboard(
     sourceOrder += recapFacts.length;
   }
 
+  todayStrengthRecords.forEach((record) => {
+    const key = prStrengthDismissalKey(
+      record.exercise,
+      record.equipmentId,
+      record.kind
+    );
+    add(
+      progressCandidates.trainingResult(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        key,
+        on,
+        0
+      ),
+      <DashboardAtomCard
+        title={loadContextLabel(record.exercise, record.equipment)}
+        value={
+          record.kind === "1rm"
+            ? record.bodyweight
+              ? `BW × ${record.reps}`
+              : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
+            : `${fmtWeight(record.weightKg, units.weightUnit)} top`
+        }
+        detail="New personal record"
+        href="/training?tab=analyze"
+      />
+    );
+  });
+  todayCardioRecords.forEach((record) => {
+    const key = prCardioDismissalKey(record.activity, record.kind);
+    const value =
+      record.kind === "distance"
+        ? fmtDistance(record.distanceKm, units.distanceUnit)
+        : record.kind === "speed"
+          ? fmtKmh(record.speedKmh, units.distanceUnit)
+          : formatMinutes(record.durationMin);
+    add(
+      progressCandidates.trainingResult(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        key,
+        on,
+        0
+      ),
+      <DashboardAtomCard
+        title={record.activity}
+        value={value}
+        detail="New personal record"
+        href="/training?tab=analyze"
+      />
+    );
+  });
+
   if (onboardingState && onboardingPresence) {
     const firstRemainingStep = nextOnboardingStep(
       onboardingState,
@@ -1310,7 +1431,8 @@ async function renderDashboard(
     add(
       progressCandidates.goal(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
-        goal.id
+        goal.id,
+        outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
       ),
       <GoalsHabitsWidget
         goals={[goal]}
@@ -1335,7 +1457,8 @@ async function renderDashboard(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
-        !progress.met
+        !progress.met,
+        weeklyTargetStateChanged(progress, progress.previous ?? null)
       ),
       <GoalsHabitsWidget
         goals={[]}
@@ -1722,7 +1845,8 @@ async function renderDashboard(
     add(
       careCandidates.lab(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
-        row.name
+        row.name,
+        labPromotions.get(row.name)
       ),
       <RecentLabsWidget rows={[row]} today={on} />,
       {
@@ -1935,10 +2059,13 @@ async function renderDashboard(
       />
     );
   } else if (sleepSummary) {
-    const sleepTiming = localTimeWindow(
-      sleepSummary.wakeMinutes ?? 420,
-      (sleepSummary.wakeMinutes ?? 420) + 180
-    );
+    const wakeDayAge = freshnessAgeDays(sleepSummary.wakeDay, on);
+    const wakeMinutes = sleepSummary.wakeMinutes ?? 420;
+    const sleepTiming = {
+      kind: "local-days" as const,
+      ageDays: wakeDayAge ?? -1,
+      maxDays: 3,
+    };
     const values = [
       ["duration", "Sleep duration", formatHm(sleepSummary.durationMin)],
       [
@@ -1966,7 +2093,14 @@ async function renderDashboard(
           key,
           sleepSummary.wakeDay,
           engagementFromSource(sleepSummary.source),
-          sleepTiming
+          sleepTiming,
+          key === "duration" &&
+            sleepArrivedInWakeWindow(
+              sleepPresentation?.freshness ?? "stale",
+              wakeDayAge,
+              wakeMinutes,
+              nowMinutes
+            )
         ),
         <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
