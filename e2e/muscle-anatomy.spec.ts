@@ -148,6 +148,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
 test("coverage anatomy renders beside the list on Training → Overview (#737)", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=overview");
   const coverage = page.getByRole("main").getByTestId("muscle-coverage");
   await expect(coverage).toBeVisible();
@@ -170,11 +171,16 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
     .getByTestId("muscle-coverage-row")
     .filter({ hasText: "Quads" });
   await expect(quadsRow).not.toHaveAttribute("open");
+  await figure.evaluate((element) =>
+    element.scrollIntoView({ block: "start" })
+  );
+  await expect(quadsRow).not.toBeInViewport();
   await hydratedClick(
     page,
     figure.locator('[data-muscle-target="coverage-quads"] path').first() // first-ok: either bilateral quad path bubbles to the same muscle disclosure target
   );
   await expect(quadsRow).toHaveAttribute("open", "");
+  await expect(quadsRow).toBeInViewport();
   // No catalog lift tags the neck, so it is always the neutral empty tint.
   await expect(figure.locator('[data-muscle="neck"]')).toHaveAttribute(
     "data-state",

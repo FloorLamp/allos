@@ -552,8 +552,8 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   ].map((fn) => ({
     file: "app/(app)/training/video-actions.ts",
     fn,
-    why: "multi-view activity-media write: targetProfileId() gates the posted subject profile with requireProfileWriteAccess(), or falls back to requireWriteAccess() for an acting-profile form",
-    gate: "targetProfileId",
+    why: "multi-view activity-media write: gateItemProfile() gates the posted subject profile with requireProfileWriteAccess(), or falls back to requireWriteAccess() for an acting-profile form",
+    gate: "gateItemProfile",
   })),
   // --- Tier-1b bespoke lists (issue #1359) — the flat SUB-lists of the Visits and
   // Immunizations surfaces adopt multi-view (Past encounters / All recorded doses);

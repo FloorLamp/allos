@@ -115,6 +115,7 @@ export default function InfoTooltipIcon({
       className={["relative z-10 inline-flex align-middle", className]
         .filter(Boolean)
         .join(" ")}
+      data-escape-layer={open ? "true" : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

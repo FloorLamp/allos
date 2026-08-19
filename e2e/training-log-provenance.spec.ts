@@ -367,10 +367,17 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   await expect(page.getByTestId("imported-edit-note")).toHaveCount(0);
   const editorHeader = page.getByTestId("activity-form-header");
   await expect(editorHeader.getByTestId("edit-lock-badge")).toHaveCount(0);
-  await expect(editorHeader.getByTestId("edit-lock-icon")).toHaveAttribute(
+  const editLockIcon = editorHeader.getByTestId("edit-lock-icon");
+  await expect(editLockIcon).toHaveAttribute(
     "aria-label",
     "You edited this activity, so Strava won’t update it."
   );
+  await editLockIcon.click();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  // Escape belongs to the open tooltip layer; it must not dismiss its editor.
+  await expect(editorHeader).toBeVisible();
   await expect(details).toContainText("Recorded measurements");
   await expect(details).not.toContainText("Recorded by Strava");
   await expect(page.getByTestId("more-details-summary")).toContainText(

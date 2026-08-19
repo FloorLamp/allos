@@ -1,10 +1,10 @@
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 // Issue #64, Part 2: the Training Log's manual pair-merge. The e2e seed (e2e/seed-events)
-// plants two same-day MANUAL activities on 2026-07-05 — "Training Log merge keeper" and
-// "Training Log merge dupe" — a duplicate no heuristic catches (two manual rows). This
-// drives the required flow: open the keeper's canonical record, use its overflow
-// menu, pick the sibling to absorb, and prove
+// plants two same-day MANUAL activities with non-overlapping clock windows — "Training
+// Log merge keeper" and "Training Log merge dupe". This drives the required manual
+// repair path that duplicate detection intentionally leaves alone: open the keeper's
+// canonical record, use its overflow menu, pick the sibling to absorb, and prove
 // the discarded row is folded away, plus the Undo toast restores it.
 test("merge two same-day activities from the Training Log, then Undo (#64)", async ({
   page,
@@ -37,6 +37,11 @@ test("merge two same-day activities from the Training Log, then Undo (#64)", asy
     .getByTestId("merge-target")
     .filter({ hasText: "Training Log merge dupe" })
     .click();
+  // Non-overlapping clock windows disagree by definition, so keep the keeper's
+  // values in the conflict preview and complete the user-directed merge.
+  const dialog = page.getByTestId("merge-conflict-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId("merge-conflict-confirm").click();
 
   // The discarded row is merged away; the canonical keeper record survives.
   await expect(page.getByText("Training Log merge dupe")).toHaveCount(0);

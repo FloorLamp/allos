@@ -49,6 +49,7 @@ export default function MuscleCoverageDisclosure({
     if (!row || !container.contains(row)) return;
     const disclosure = row.querySelector("details");
     if (disclosure) disclosure.open = true;
+    row.scrollIntoView({ block: "nearest" });
   }
 
   function setHighlighted(

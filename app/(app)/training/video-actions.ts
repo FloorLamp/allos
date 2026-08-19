@@ -12,14 +12,14 @@ import {
   getActivityVideos,
 } from "@/lib/activity-video-write";
 import type { ActivityMediaView } from "@/components/activity/ActivityMediaStrip";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 
 // Server Actions for the TRAINING activity-media domain (#1224 phase 1). The
-// whole gate shape lives here (auth-blind cores below): requireWriteAccess →
-// parse/validate → ingestVideo (sniff + caps, never the client type) → poster
-// strip via the photo pipeline → domain write core → revalidate. A multi-view
-// editor carries its subject profile explicitly and is gated against that
-// profile; ordinary callers keep using the active profile. The core also checks
-// that the activity belongs to the resolved profile.
+// write shape is: shared gateItemProfile → parse/validate → ingestVideo (sniff +
+// caps, never the client type) → poster strip via the photo pipeline → domain
+// write core → revalidate. A multi-view editor carries its subject profile
+// explicitly; ordinary callers fall back to the active profile. The core also
+// checks that the activity belongs to the resolved profile.
 
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
@@ -28,26 +28,12 @@ function revalidateActivitySurfaces() {
   revalidateRoute("/");
 }
 
-async function targetProfileId(formData: FormData): Promise<number | null> {
-  const raw = formData.get("profile_id");
-  if (raw == null) return (await requireWriteAccess()).profile.id;
-  const profileId = Number(raw);
-  if (!Number.isInteger(profileId) || profileId <= 0) {
-    await requireWriteAccess();
-    return null;
-  }
-  await requireProfileWriteAccess(profileId);
-  return profileId;
-}
-
 // Attach a clip to one of the profile's activities. `exercise` optionally names a
 // lift for per-lift filtering.
 export async function uploadActivityVideoAction(
   formData: FormData
 ): Promise<FormResult> {
-  const profileId = await targetProfileId(formData);
-  if (profileId == null)
-    return formError("That activity is no longer available.");
+  const profileId = await gateItemProfile(formData);
   const activityId = Number(formData.get("activityId"));
   if (!Number.isInteger(activityId) || activityId <= 0)
     return formError("That activity is no longer available.");
@@ -78,8 +64,7 @@ export async function uploadActivityVideoAction(
 export async function updateActivityVideoCaptionAction(
   formData: FormData
 ): Promise<FormResult> {
-  const profileId = await targetProfileId(formData);
-  if (profileId == null) return formError("That clip is no longer available.");
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
     return formError("That clip is no longer available.");
@@ -94,8 +79,7 @@ export async function updateActivityVideoCaptionAction(
 export async function deleteActivityVideoAction(
   formData: FormData
 ): Promise<FormResult> {
-  const profileId = await targetProfileId(formData);
-  if (profileId == null) return formError("That clip is no longer available.");
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
     return formError("That clip is no longer available.");

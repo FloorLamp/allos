@@ -468,9 +468,7 @@ export default function ActivityForm({
 
   function movePartWithIdentity(index: number, direction: -1 | 1) {
     const destination = index + direction;
-    const next = [...parts];
-    if (destination >= 0 && destination < next.length) {
-      [next[index], next[destination]] = [next[destination], next[index]];
+    if (destination >= 0 && destination < parts.length) {
       setHeadingPartIdentities((current) => {
         const reordered = [...current];
         [reordered[index], reordered[destination]] = [

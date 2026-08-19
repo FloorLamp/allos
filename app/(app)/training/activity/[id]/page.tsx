@@ -232,13 +232,6 @@ export default async function TrainingActivityPage(props: {
       : []),
     ...(hasRecordDetails ? [{ id: "details", label: "Details" }] : []),
   ];
-  // A real clock window lets us distinguish an overlap from merely sharing a
-  // date. Untimed manual records keep the same-day repair path because absence
-  // of a clock is not evidence that two records are unrelated.
-  const mergeCandidates = data.heartRate.window
-    ? data.overlappingSiblings
-    : data.siblings;
-
   return (
     <ActivityDetailControlsProvider>
       <PageContainer
@@ -275,7 +268,7 @@ export default async function TrainingActivityPage(props: {
           action={
             <ActivityDetailActions
               activity={card.activity}
-              mergeCandidates={mergeCandidates}
+              mergeCandidates={data.siblings}
               keeperLabel={card.provenance.label}
               foldValues={card.foldValues}
               editLocked={!crossProfile && card.provenance.editLocked}
