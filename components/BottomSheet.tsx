@@ -293,6 +293,14 @@ export default function BottomSheet({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
+        // The DECLARED size, exposed so a spec can pin the decision rather than
+        // a rendering of it. The width a size resolves to is a Tailwind class
+        // that only bites from `sm` up, so at phone width a class assertion
+        // tests nothing at all — which is exactly what
+        // e2e/protocol-templates.spec.ts's `toHaveClass(/max-w-3xl/)` was doing
+        // at a 390px viewport before #2774 moved it. The size's EFFECT on width
+        // is pinned separately, by measurement, in e2e/dialog-convergence.spec.ts.
+        data-size={size}
         // THE PANEL DOES NOT SCROLL — its content region does (#2774). Before
         // this the panel was the scroller and the header scrolled away with the
         // form; more importantly, ModalShell's version of the same shape scrolled

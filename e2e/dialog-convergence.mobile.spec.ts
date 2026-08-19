@@ -174,7 +174,13 @@ test("the page behind an open quick-entry sheet does not move either", async ({
   );
 });
 
-test("a dirty converged form confirms before a gesture discards it; a clean one goes in one gesture", async ({
+// The dirty-discard guard (#2774, consequence B), in three tests rather than one
+// chain. The chained version — flick, refuse, then tap the scrim, then reopen —
+// was green here ten times over and red on CI, and a test whose failure cannot be
+// reproduced is a test nobody can act on. Each guarantee now starts from a dialog
+// in a known state, which is also the only way to tell WHICH of them broke.
+
+test("a flick on a dirty form asks first, and keeping the edit brings the whole form back", async ({
   page,
 }) => {
   test.slow();
@@ -190,8 +196,7 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
   const atRest = await restingPanelTop(dialog);
 
   // A flick on the handle is the sheet's discard gesture (#1428). Right for a
-  // half-typed weight; wrong for a form somebody has been filling in — so it
-  // asks first (#2774, consequence B).
+  // half-typed weight; wrong for a form somebody has been filling in.
   await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
     dy: 260,
   });
@@ -200,11 +205,11 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
 
   // KEEPING THE EDIT PUTS THE FORM BACK — all of it, not just the text. The
   // flick has already dragged the panel most of the way off the bottom edge by
-  // the time the question is asked, so a dismissal that is refused has to bring
-  // it home; the first version of this feature did not, and left the dialog
-  // parked at translateY(672px) with the typing safe inside a surface nobody
-  // could see. Asserted as GEOMETRY because the obvious assertion does not catch
-  // that: `toBeVisible()` passes on a panel with 0.06px left on screen.
+  // the time the question is asked, so a refused dismissal has to bring it home;
+  // the first version of this feature did not, and left the dialog parked at
+  // translateY(672px) with the typing safe inside a surface nobody could see.
+  // Asserted as GEOMETRY because the obvious assertion does not catch that:
+  // `toBeVisible()` passes on a panel with 0.06px left on screen.
   await hydratedClick(
     page,
     confirm.getByRole("button", { name: "Keep editing" })
@@ -218,23 +223,52 @@ test("a dirty converged form confirms before a gesture discards it; a clean one 
     .toBe(atRest);
   await expect(title).toHaveValue(DRAFT);
 
-  // The scrim is the other accidental dismissal, and it asks too. Aimed from the
-  // panel's SETTLED top edge rather than at a fixed y: the scrim is whatever is
-  // above the panel, and where that starts depends on how tall the form renders.
-  await page.touchscreen.tap(195, Math.round(atRest / 2));
+  // And the guard is not spent: the SAME gesture asks again, and this time the
+  // answer is discard. Refusing a dismissal must not disarm the surface.
+  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+    dy: 260,
+  });
   await expect(confirm).toBeVisible();
   await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
   await expect(dialog).toHaveCount(0);
+});
 
-  // CLEAN: nothing typed, nothing to lose, so the same gesture dismisses without
-  // a question. Without this half the guard could be a confirm on every
-  // dismissal, which is the click-through it must not become.
-  const reopened = await openAddVisit(page);
-  await touchSwipeFrom(page, reopened.getByTestId("sheet-drag-handle"), {
+test("a scrim tap on a dirty form asks first too", async ({ page }) => {
+  test.slow();
+  // The other accidental dismissal. Its own test, from its own clean dialog: the
+  // scrim is a full-viewport sibling of the panel, so this is the one gesture
+  // whose landing spot depends on nothing that happened earlier.
+  await page.goto("/records/history/visits");
+  await expect(page.getByTestId("visits-upcoming")).toBeVisible();
+
+  const dialog = await openAddVisit(page);
+  const title = dialog.getByLabel(TITLE_FIELD);
+  await expect(title).toBeVisible();
+  await title.fill(DRAFT);
+
+  await page.touchscreen.tap(195, 90);
+  const confirm = page.getByTestId("confirm-dialog");
+  await expect(confirm).toBeVisible();
+  await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
+  await expect(dialog).toHaveCount(0);
+});
+
+test("a clean converged form dismisses in one gesture, with no question", async ({
+  page,
+}) => {
+  test.slow();
+  // Nothing typed, nothing to lose. Without this the guard could be a confirm on
+  // EVERY dismissal, which is the click-through it must not become.
+  await page.goto("/records/history/visits");
+  await expect(page.getByTestId("visits-upcoming")).toBeVisible();
+
+  const dialog = await openAddVisit(page);
+  await expect(dialog.getByLabel(TITLE_FIELD)).toBeVisible();
+  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
     dy: 260,
   });
-  await expect(reopened).toHaveCount(0);
-  await expect(confirm).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 });
 
 test("a dialog stacked over a sheet leaves the page held until the last one closes", async ({
