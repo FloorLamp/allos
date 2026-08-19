@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import {
   medicationsToday,
@@ -86,17 +87,21 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   // Marking it PRN reveals the redose-notice block. "As needed" IS the `may`
   // obligation since #1505 — the standalone as_needed checkbox was collapsed into the
   // single obligation select, so PRN is now expressed by choosing `may`.
-  await addCard.getByTestId("med-obligation").selectOption("may");
-  const block = addCard.getByTestId("redose-block");
+  await setObligation(page, "may", addCard);
+  const timing = await openFact(page, "timing", addCard);
+  const block = timing.getByTestId("redose-block");
   await expect(block).toBeVisible();
 
   // "Use label defaults" pre-fills the CONFIRMED numbers (ibuprofen: 6h / max 4).
-  await addCard.getByTestId("redose-prefill").click();
-  await expect(addCard.getByTestId("redose-interval")).toHaveValue("6");
-  await expect(addCard.getByTestId("redose-max")).toHaveValue("4");
+  await block.getByTestId("redose-prefill").click();
+  await expect(block.getByTestId("redose-interval")).toHaveValue("6");
+  await expect(block.getByTestId("redose-max")).toHaveValue("4");
 
-  // The user explicitly opts in (the liability confirm) and saves.
-  await addCard.getByTestId("redose-optin").check();
+  // The user explicitly opts in (the liability confirm), CLOSES the editor, and saves.
+  // Closing it is the point: the opt-in must reach the action from a fact nobody is
+  // looking at (#2014).
+  await block.getByTestId("redose-optin").check();
+  await closeEditor(page, addCard);
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // The new PRN med appears as a current medication row (#817).

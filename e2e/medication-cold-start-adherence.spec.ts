@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { setAmount } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 import { medicationRow } from "./med-card-helpers";
@@ -58,15 +59,20 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
 
   await page.getByTestId("medication-add-toggle").click();
-  const addCard = page.getByTestId("intake-item-form");
+  const panel = page.getByTestId("medication-add-panel");
+  const addCard = panel.getByTestId("intake-item-form");
   await expect(addCard).toBeVisible();
-  await addCard.getByLabel("Medication").fill(name);
-  await addCard.getByTestId("quick-add-amount").fill("200 mg");
-  await expect(addCard.getByTestId("quick-add-prn")).not.toBeChecked();
+  await addCard.getByLabel("Name").fill(name);
+  await setAmount(page, "200 mg", panel);
+  // Scheduled, not as-needed — a PRN med is never due, which would hide the adherence
+  // line for an unrelated reason and make this test prove nothing.
+  await expect(addCard.getByTestId("intake-fact-importance")).not.toContainText(
+    "as needed"
+  );
 
   await settledClick(
     page,
-    addCard.getByRole("button", { name: "Quick add", exact: true })
+    addCard.getByRole("button", { name: "Add", exact: true })
   );
 
   // The new med's row renders — and carries NO adherence percentage. Nothing has

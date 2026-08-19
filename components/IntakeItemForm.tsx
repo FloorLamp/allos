@@ -850,17 +850,21 @@ export default function IntakeItemForm({
 
   // Esc closes an editor exactly as Done does — the same return to the chips, so the
   // keyboard path is never the one that traps you inside a fact.
-  useEffect(() => {
-    if (openPanel == null) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        setOpenPanel(null);
-      }
-    }
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [openPanel]);
+  //
+  // IT YIELDS THE FIRST ESCAPE TO AN OPEN PICKER. A combobox inside an editor uses
+  // Escape to close its own listbox; swallowing that would make the one key that
+  // dismisses a dropdown throw away the whole editor instead. So an Escape aimed at
+  // an EXPANDED combobox belongs to the combobox, and the next one closes the editor.
+  function onFormKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== "Escape" || openPanel == null) return;
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.getAttribute("role") === "combobox" &&
+      target.getAttribute("aria-expanded") === "true"
+    )
+      return;
+    setOpenPanel(null);
+  }
 
   async function handle() {
     setError(null);
@@ -983,6 +987,7 @@ export default function IntakeItemForm({
     <form
       ref={formRef}
       action={handle}
+      onKeyDown={onFormKeyDown}
       data-testid="intake-item-form"
       data-kind={derivation.kind ?? ""}
       className="grid gap-4 sm:grid-cols-2"

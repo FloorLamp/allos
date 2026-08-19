@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import { expectNoClippedContent, settledClick } from "./helpers";
 
@@ -83,12 +84,14 @@ test("a long dose detail never costs the medication its name (#2940)", async ({
   // Escape closes the suggestion listbox only (it is not a modal), so the controls
   // it overlaps are clickable again.
   await nameInput.press("Escape");
-  await addCard.getByTestId("med-obligation").selectOption("may");
-  const doseRow = addCard.getByTestId("prn-dose-row");
+  await setObligation(page, "may", addCard);
+  const dose = await openFact(page, "dose", addCard);
+  const doseRow = dose.getByTestId("prn-dose-row");
   await expect(doseRow).toBeVisible();
   const amountInput = doseRow.getByRole("combobox", { name: "Amount" });
   await amountInput.fill(LONG_DETAIL);
   await amountInput.press("Escape");
+  await closeEditor(page, addCard);
 
   await settledClick(
     page,
