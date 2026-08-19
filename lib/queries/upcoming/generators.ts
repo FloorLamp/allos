@@ -139,7 +139,10 @@ import {
   getImmunityTiters,
   getImmunizationOverrides,
 } from "../medical";
-import { assessProfilePreventive } from "./preventive";
+import {
+  assessProfilePreventive,
+  getPreventiveReviewOffers,
+} from "./preventive";
 import { getFindingSuppressions } from "./suppressions";
 import { illnessCareItems } from "../../illness-care-findings";
 import { foodDrugEventItems } from "../../food-drug-ledger-findings";
@@ -271,6 +274,21 @@ function mergeScreeningRisk(
 // proactive nudge so the page and the push can never diverge on WHICH items are due.
 function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   const scheduled = kindedScheduled(profileId);
+  // Open review candidates (#3025), grouped by rule: a valueless report whose
+  // title matched exactly one screening rule offers a confirm-the-date /
+  // dismiss control BESIDE the due item (attached below to actionable
+  // assessments only — a rule that is not due has nothing to resolve). The
+  // offer never bands, never counts, and never reaches a send: only this
+  // page's row and the dashboard's Everything lane read the field.
+  const reviewOffersByRule = new Map<
+    string,
+    NonNullable<UpcomingItem["preventiveReview"]>
+  >();
+  for (const offer of getPreventiveReviewOffers(profileId)) {
+    const arr = reviewOffersByRule.get(offer.ruleKey);
+    if (arr) arr.push(offer);
+    else reviewOffersByRule.set(offer.ruleKey, [offer]);
+  }
   // Risk-stratified priority (issue #517): a screening the profile's risk factors
   // make more important (family cardiac history → lipid screening) ranks up and
   // says why, in a calm line. Cadence of the catalog is unchanged — this is the
@@ -287,6 +305,12 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
     });
+    // Attach the rule's open review candidates to the DUE item only (#3025):
+    // setup rows (signalGroup "setup") are the absence of history, not a due
+    // signal, and a candidate must render beside actionable work.
+    const reviewOffers = reviewOffersByRule.get(a.key);
+    if (item.signalGroup == null && reviewOffers)
+      item.preventiveReview = reviewOffers;
     // A VISIT whose cadence the risk factors tightened (Substrate 3, #707) carries the
     // reason + rank the assessor already computed (riskReasons/riskPriority). A
     // SCREENING has TWO additive risk dimensions: the priority-only ranking from

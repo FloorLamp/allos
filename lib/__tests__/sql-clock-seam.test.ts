@@ -187,8 +187,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "narratives.created_at — audit stamp; the anchor is the explicit period_start/period_end.",
   },
   "lib/queries/upcoming/preventive.ts": {
-    count: 1,
-    why: "preventive decision created_at — an audit stamp.",
+    count: 3,
+    why: "preventive override created_at plus the two preventive_record_decisions upsert `updated_at` stamps (#3025) — bookkeeping/audit stamps, never compared to a today()-derived day; the decision's clinical day is the JS-bound confirmed_date the person confirmed.",
   },
   "lib/queries/upcoming/suppressions.ts": {
     count: 2,
