@@ -39,14 +39,11 @@
 //      updates — so a saved field stops being unsaved input without anyone
 //      announcing it).
 //
-//      THAT LAST CLAUSE NEEDS A SERVER VALUE TO EXIST, AND FOR A CONTROLLED FIELD
-//      IT DOES NOT (#3352). React syncs the DOM `defaultValue` onto a controlled
-//      field to match its `value`, so the only thing the DOM can offer is a mirror
-//      of the current value — and comparing a value to a mirror of itself answers
-//      "clean" forever. `TrackedField.serverValue` is therefore NULLABLE, and the
-//      null case is decided by the first two clauses alone. The DOM half
-//      (components/DirtyFormRegistry.tsx) owns detecting which kind of field it is
-//      holding; this module owns what that answer MEANS.
+//      THAT LAST CLAUSE NEEDS A SERVER VALUE, AND THE DOM DOES NOT SIMPLY HAVE ONE
+//      (#3352). React syncs the DOM `defaultValue` onto a CONTROLLED field to match
+//      its `value`, so reading that property gives back a mirror of `current` and
+//      the clause can only ever answer "clean". `resolveServerValue` below is how
+//      that is worked out instead, and why it is a decision rather than a read.
 //
 // One question, one computation (#221): "is any form dirty right now" is
 // `isAnyFormDirty` over this state, and nothing else answers it.
@@ -71,35 +68,79 @@ export interface TrackedField {
    */
   baseline: string;
   /**
-   * The value the SERVER most recently rendered into the field, or `null` when
-   * nothing on the page can say what that value is.
+   * The value the SERVER most recently rendered into the field. A field whose
+   * current value equals it is saved, not pending: this is what lets an autosave
+   * form that revalidates release itself without a second mechanism.
    *
-   * A string is the ordinary case: the DOM `defaultValue`. A field whose current
-   * value equals it is saved, not pending — which is what lets an autosave form
-   * that revalidates release itself without a second mechanism.
-   *
-   * `null` IS THE CASE #3352 EXISTS FOR. React syncs `defaultValue` onto a
-   * CONTROLLED field to match its `value`, so for such a field the DOM default is
-   * a mirror of `current` rather than an answer from the server — and reading it
-   * made every controlled field in a named form report clean forever, with its
-   * discard guard silently absent. There is no third value to read: React owns
-   * the field, so the DOM simply does not know what the server has. Saying `null`
-   * says that, instead of guessing an answer that is always "clean".
+   * NOT simply the DOM `defaultValue` — see `resolveServerValue`, which is how the
+   * DOM half works this out, and why it cannot just read one property.
    */
-  serverValue: string | null;
+  serverValue: string;
 }
 
 /** Whether ONE field currently holds input the server does not have. */
 export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
   if (!field.touched) return false;
   if (field.current === field.baseline) return false;
-  // No knowable server value (React owns this field's `value` — see the field
-  // doc). The two remaining rules have already answered: the user edited it, and
-  // it still differs from what it held before that edit. Falling through to a
-  // comparison against a mirror of `current` is precisely the #3352 bug, because
-  // that comparison can only ever say "clean".
-  if (field.serverValue === null) return true;
   return field.current !== field.serverValue;
+}
+
+/**
+ * WHAT THE SERVER RENDERED, given what the DOM can actually see (#3352).
+ *
+ * The DOM half used to answer this with the raw `defaultValue`, which is right for
+ * a field the DOM owns and WRONG for one React owns: React syncs `defaultValue`
+ * onto a controlled field to match its `value`. So for every controlled field in a
+ * named form, `current !== serverValue` compared a value against a copy of itself,
+ * answered "clean" forever, and the discard guard was silently absent — someone
+ * typed, dismissed, and lost the entry with nothing asking.
+ *
+ * THE AMBIGUITY IS IRREDUCIBLE, and pretending otherwise is how the bug survived.
+ * Once the live default equals the current value, two different histories produce
+ * byte-identical DOM:
+ *
+ *   1. React mirrored a controlled `value` onto the default. Nothing is saved.
+ *   2. An autosave wrote the typed value and the server re-rendered it. It IS saved.
+ *
+ * There is no third property to read that separates them, and no timing rule that
+ * survives contact with a real browser — measured, not assumed: React 19 does not
+ * commit a discrete `input` event synchronously, so "did the default move in the
+ * same task as the keystroke?" cannot be asked from an event listener at all.
+ *
+ * SO THIS RESOLVES IT BY CONSEQUENCE RATHER THAN BY EVIDENCE. Reading the
+ * ambiguous default as "the server has it" is the old bug: it drops the guard and
+ * loses what somebody typed, silently. Reading it as "React is mirroring" costs at
+ * most ONE EXTRA CONFIRM on a form that had in fact already saved — a question,
+ * answerable with "Discard", that loses nothing. The cheaper mistake wins.
+ *
+ * A form that would rather be believed can say so: `data-server-value` on the
+ * control states what the server holds, and the DOM half prefers it over all of
+ * this. That is the supported way for a controlled autosaving field to release.
+ */
+export function resolveServerValue(field: {
+  /** The DOM `defaultValue` right now. */
+  readonly liveDefault: string;
+  /** The DOM `defaultValue` when this field first registered, before any edit. */
+  readonly atRegistration: string;
+  /** The field's value right now. */
+  readonly current: string;
+  /** Has the user edited this field since the form last released? */
+  readonly touched: boolean;
+}): string {
+  // Untouched, or the default has not moved: nothing is ambiguous and the live
+  // default is the answer — including a genuine server re-render arriving under a
+  // field nobody has touched.
+  if (!field.touched || field.liveDefault === field.atRegistration) {
+    return field.liveDefault;
+  }
+  // The default moved, but NOT onto what the user typed. Only the server can have
+  // done that, so believe it — this is what keeps a background revalidation from
+  // being mistaken for a mirror.
+  if (field.liveDefault !== field.current) return field.liveDefault;
+  // The default moved onto exactly what the user typed: the ambiguous case above.
+  // Answer with what the server had before any of this, so the field can still be
+  // dirty. This is the whole of the #3352 fix.
+  return field.atRegistration;
 }
 
 /** Whether a form currently holds input the server does not have. */

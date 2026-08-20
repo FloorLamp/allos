@@ -17,6 +17,7 @@ import {
   isAnyFormDirty,
   reduceDirtyForms,
   refreshIsOwed,
+  resolveServerValue,
   type DirtyFormEvent,
   type DirtyFormState,
   type TrackedField,
@@ -56,9 +57,10 @@ import { markUnrecoverableWork } from "@/lib/offline/unsaved-work";
 //   * REACT-OWNED (CONTROLLED). A field whose `value` React controls has its DOM
 //     `defaultValue` mirrored onto that value, so "current vs server" compares a
 //     value against a copy of itself. KEEPING IT MOUNTED DOES NOTHING FOR THIS.
-//     Handled here, by `probeOwnership` below, so it no longer needs an adopter to
-//     do anything at all — and so converting a DOM-owned field to controlled state
-//     (the ordinary "tidy-up" refactor) is now SAFE rather than silently disarming.
+//     Handled by `serverValueFor` below and `resolveServerValue` in the pure half,
+//     so it needs an adopter to do nothing at all — and so converting a DOM-owned
+//     field to controlled state (the ordinary "tidy-up" refactor) is now SAFE
+//     rather than silently disarming.
 //
 // The one-line check that separates them, answerable before any design is
 // committed: DOES THIS FIELD PASS `value`/`onChange` TODAY? If it does, it was
@@ -106,18 +108,12 @@ interface FieldRecord {
   baseline: string;
   touched: boolean;
   /**
-   * The DOM default read at REGISTRATION — before the user could have edited the
-   * field, and (for the edit path) before React could have committed. This is the
-   * server's value, captured while it is still readable, and it is what a
-   * React-owned field is compared against once its live default becomes a mirror.
+   * The DOM default read at REGISTRATION, before the user had edited anything. For
+   * a React-owned field this is the last moment the server's value is legible —
+   * once the user types, React overwrites the default with a mirror of what they
+   * typed. `resolveServerValue` falls back to this exactly then (#3352).
    */
   serverAtRegistration: string;
-  /**
-   * React writes this field's `value` prop onto its DOM `defaultValue`, so the
-   * live default is a MIRROR of `current` and not an answer from the server
-   * (#3352). Detected once, from the user's own first edit — see `probeOwnership`.
-   */
-  reactOwnsValue: boolean;
 }
 
 /** Per-form bookkeeping. Dropped wholesale on submit, reset, or unmount. */
@@ -206,10 +202,7 @@ function domDefaultValue(field: TrackableElement): string {
   return field.defaultValue;
 }
 
-function serverValueFor(
-  field: TrackableElement,
-  meta: FieldRecord
-): string | null {
+function serverValueFor(field: TrackableElement, meta: FieldRecord): string {
   // AN EXPLICIT DECLARATION WINS, ALWAYS. `data-server-value` is how a React-owned
   // editor states the value the server actually holds — the one thing the DOM
   // cannot work out for itself. It is also the escape hatch for a controlled field
@@ -217,11 +210,12 @@ function serverValueFor(
   // resets or unmounts, because nothing else can tell the registry the save landed.
   const declared = field.dataset.serverValue;
   if (declared !== undefined) return declared;
-  // React owns the value, so the live default mirrors `current` and answering from
-  // it would always say "clean" (#3352). The registration snapshot is the last
-  // moment the server's value was readable; anything newer, only the consumer knows.
-  if (meta.reactOwnsValue) return meta.serverAtRegistration;
-  return domDefaultValue(field);
+  return resolveServerValue({
+    liveDefault: domDefaultValue(field),
+    atRegistration: meta.serverAtRegistration,
+    current: currentValue(field),
+    touched: meta.touched,
+  });
 }
 
 /**
@@ -390,48 +384,6 @@ export default function DirtyFormProvider({
       dispatch({ type: "clean", formId: record.id }, { defer });
     };
 
-    // WHO OWNS THIS FIELD'S VALUE — answered from the user's own keystroke, once,
-    // and the whole of the #3352 fix.
-    //
-    // React commits a discrete event (`input`/`change`) SYNCHRONOUSLY, inside its
-    // own root listener. That listener runs AFTER this document capture listener
-    // and BEFORE the microtask below. So by the time the microtask runs, a
-    // controlled field's `defaultValue` has already been dragged onto whatever the
-    // user just typed, and an uncontrolled field's has not moved at all.
-    //
-    // The server cannot be the explanation for a move in that window: a
-    // revalidation costs at least one round trip and this window is zero tasks
-    // wide. That asymmetry is the entire detection, and it fires on exactly the
-    // commit that causes the bug — if React never mirrors this field, nothing here
-    // ever needed to know who owned it.
-    //
-    // Deliberately NOT a heuristic over the field's props or its React internals:
-    // both are invisible from here, and both would answer for fields the bug never
-    // touches. This asks the one question that matters — "did the DOM default just
-    // become a mirror of what was typed?" — of the DOM alone.
-    const probeOwnership = (
-      field: TrackableElement,
-      record: FormRecord,
-      defaultBeforeCommit: string
-    ) => {
-      const meta = record.fields.get(field);
-      if (!meta || meta.reactOwnsValue) return;
-      queueMicrotask(() => {
-        if (!field.isConnected) return;
-        const after = domDefaultValue(field);
-        // Unmoved: DOM-owned. The live default goes on being the server's answer,
-        // which is what lets an autosave form release itself (rule 3).
-        if (after === defaultBeforeCommit) return;
-        // Moved, but not onto what the user typed — a genuine re-render carrying
-        // new server data, not a mirror. Leave the field DOM-owned.
-        if (after !== currentValue(field)) return;
-        meta.reactOwnsValue = true;
-        // The verdict changes the answer, so re-decide now rather than waiting for
-        // the next event: a gesture dismissal can be the very next thing that asks.
-        evaluate(record);
-      });
-    };
-
     // Focus is NOT dirtiness. It is only where a field's pre-edit baseline comes
     // from, which is what lets a controlled field rendering a real value (a date
     // defaulted to today) stay clean until the user actually changes it.
@@ -447,7 +399,6 @@ export default function DirtyFormProvider({
           // whoever owns the field — this is the last moment that is true for a
           // React-owned one.
           serverAtRegistration: domDefaultValue(field),
-          reactOwnsValue: false,
         });
       }
     };
@@ -471,10 +422,8 @@ export default function DirtyFormProvider({
           baseline: defaultBeforeCommit,
           touched: true,
           serverAtRegistration: defaultBeforeCommit,
-          reactOwnsValue: false,
         });
       }
-      probeOwnership(field, record, defaultBeforeCommit);
       prune();
       evaluate(record);
     };

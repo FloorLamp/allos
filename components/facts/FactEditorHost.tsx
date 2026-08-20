@@ -23,8 +23,9 @@ import {
 // "OUTSIDE THE HOST" IS ABOUT LIFETIME, NOT ABOUT OWNERSHIP — and the difference used to
 // matter enough to lose someone's typing (#3352). The sentence above says the state must
 // SURVIVE a panel closing; it does not say the field's `value` has to become a React
-// prop. Taking it as the latter on a DOM-collected form (`<form action={...}>`, named
-// inputs) turned every converted field CONTROLLED, and the dirty-form registry read the
+// prop. Taking it as the latter on a DOM-COLLECTED form — a form element that hands its
+// Server Action whatever FormData the browser gathers from the named inputs mounted at
+// submit — turned every converted field CONTROLLED, and the dirty-form registry read the
 // DOM `defaultValue` as the server's value — which React syncs onto a controlled field
 // to match its `value`. So the field compared equal to itself, reported clean forever,
 // and its discard guard vanished with no test noticing.
