@@ -49,8 +49,10 @@ import type Database from "better-sqlite3";
 // for a value that never comes from a .env file at all.
 //
 // AND FOR THE TRAVEL BANNER (#3263). The BROWSER is now pinned to the run's zone
-// too (`timezoneId` in playwright.config.ts's `use:`), so the fixture device and a
-// pin-following profile agree. A profile that opts out below no longer differs only
+// too (the `timezoneId` fixture in e2e/fixtures.ts — in the WORKER, from the
+// instant global-setup persisted, and #3364 is the receipt for why it cannot live
+// in playwright.config.ts's `use:`), so the fixture device and a pin-following
+// profile agree. A profile that opts out below no longer differs only
 // from its neighbours' calendars — it differs from the DEVICE it is being viewed
 // on, and that is precisely the condition the travel banner exists to announce. So
 // its pages carry the banner, above the content, wherever the session is acting as
