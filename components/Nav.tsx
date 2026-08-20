@@ -24,6 +24,7 @@ import {
   IconChevronRight,
   IconSalad,
   IconSparkles,
+  IconCalendarStats,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -165,6 +166,109 @@ const RECORDS: Group = {
   ],
 };
 
+// The episodic group (#3079). Five top-level rows measured at ZERO deliberate
+// visits in the owner's 2026-08-17 usage review — Timeline, Upcoming, Household,
+// Wellness, Longevity — plus Progress photos, which shares their shape. The
+// measurement did not find six redundant pages: each holds writes that exist
+// nowhere else (protocol creation only at /longevity#protocols, practice CRUD and
+// back-dated logging only at /wellness, member setup only at /household, retro
+// symptom entry for an arbitrary past day only at /timeline, restore /
+// preventive-override / care-plan completion only at /upcoming). NOTHING here is
+// retired, no URL moves, and every gate below keeps the semantics it had as a
+// top-level row.
+//
+// What the measurement found is FOUR DIFFERENT CAUSES, and the per-child notes
+// below are the point of this group — only one of the six is a defect, and a
+// uniform "these six scored zero" reading would have removed surfaces that are
+// working correctly. The mobile side already made this call: #2651 fixed the dock
+// at four slots and ruled explicitly that "Upcoming does not get a slot and stays
+// reachable through More", so all of these already sit behind More on a phone.
+// This aligns the sidebar with a decision the dock shipped.
+const PLAN_REVIEW: Group = {
+  group: "Plan & review",
+  // Deliberately NOT any child's icon. The #1522 note above records what the
+  // duplicate-IconPill row cost when a group child wore its neighbour's glyph:
+  // the one signal that could have told them apart.
+  icon: IconCalendarStats,
+  children: [
+    // UPCOMING — the charter working, NOT a defect. #2579 defines this as a
+    // PLANNING-CADENCE surface: "the daily job… already has four surfaces closer
+    // to the moment." A planning surface nobody opens daily is behaving exactly as
+    // designed, and demoting it for scoring zero would be measuring the wrong
+    // thing. It is here because a cadence surface is the definition of episodic,
+    // not because its zero is a fault. Its real cost (the hero excluding
+    // everything past today) is a separate issue and is untouched here.
+    { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
+    // TIMELINE — used constantly, never from the nav. It is the target of every
+    // DayHistory heatmap cell, every mini-calendar day (TrainingLogCalendar, which
+    // sits in this very sidebar ABOVE this nav), the weekly recap widget, and
+    // several sleep and trends surfaces; it also holds a permanent mobile dock slot
+    // (lib/mobile-dock.ts). It is a destination reached FROM CONTEXT. The unused
+    // thing was the row, not the page — so the row is what moves.
+    { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
+    // WELLNESS (#1620) — an episodic MANAGEMENT surface whose daily reading is
+    // already promoted to the dashboard: a profile opens it to create or edit a
+    // practice a few times a year. #2894's doctrine covers it — "tabs for surfaces
+    // you live in, destination pages for episodic work."
+    //
+    // #3079 PROPOSED TAKING THIS OFF THE NAV ENTIRELY (NAV_PARENT_ROUTES
+    // "/wellness" -> "/", highlighting Dashboard) ON THE #1522 PATTERN. THAT IS NOT
+    // DONE HERE, AND THE REASON IS A FACT ABOUT THE TREE, NOT A DISAGREEMENT WITH
+    // THE RULING. #1522 requires a surface reached from THE THING THAT CONSUMES IT.
+    // The consumer the issue named — the dashboard habits widget's "Manage
+    // practices →" link at components/dashboard/GoalsHabitsWidget.tsx:243 — NO
+    // LONGER EXISTS: that widget was replaced by the atomic dashboard, and its
+    // successor door (the section header of HabitProgressAtom, in
+    // components/dashboard/ProgressAtoms.tsx) renders only when a practice-scope
+    // FREQUENCY TARGET exists and that atom wins placement.
+    //
+    // The `wellness` relevance bit is `hasPracticeTargets || hasPracticeLogs`
+    // (lib/queries/nav-relevance.ts) — the OR is deliberate, because a logs-only
+    // practice is a real state (see the relevanceKey note above). So for a profile
+    // that logs practices without a frequency target, the bit is TRUE, the row
+    // shows today, and there is NO dashboard door at all: taking the row away would
+    // leave global search and a typed URL, which is deletion with extra steps
+    // rather than a surface reached from its consumer. A group child is demoted
+    // exactly as far as its five neighbours here and keeps a door in the chrome.
+    // Restore a durable consumer link and the off-nav move becomes a two-line
+    // follow-up: this placement is chosen to be the reversible half of it.
+    {
+      href: "/wellness",
+      label: "Wellness",
+      icon: IconSparkles,
+      relevanceKey: "wellness",
+    },
+    // LONGEVITY — the same episodic-management diagnosis as Wellness, and its
+    // protocol picker shares the same practice targets, so the two stay adjacent as
+    // #1620 placed them. Still adult-only (ADULT_ONLY_HREFS); NavGroup runs the
+    // same isNavLeafVisible predicate as the top level, so the life-stage boundary
+    // is unchanged by the move.
+    { href: "/longevity", label: "Longevity", icon: IconHourglass },
+    // HOUSEHOLD — already role-demoted by #1463 to a STATUS BOARD whose actions
+    // cede to Upcoming. A board that needs no reading is a board nobody opens; the
+    // nav is only now reflecting a role change that shipped two issues ago.
+    // requiresMultiProfile is unchanged (#31) — a single-profile login still never
+    // sees it, and with no other child gated out the group simply loses a row.
+    {
+      href: "/household",
+      label: "Household",
+      icon: IconUsersGroup,
+      requiresMultiProfile: true,
+    },
+    // PROGRESS PHOTOS (#1119) — not one of the zero-use five, and included on shape
+    // rather than on measurement: a data-gated visual review surface opened in
+    // bursts around a training block. Its `progress` relevance bit and the
+    // always-visible palette action (the un-gated first-capture door) are both
+    // unchanged.
+    {
+      href: "/progress",
+      label: "Progress photos",
+      icon: IconCamera,
+      relevanceKey: "progress",
+    },
+  ],
+};
+
 // The sidebar consolidation (folding Insights → Trends "Insights" tab, Body
 // Metrics → Trends "Body" tab, and Integrations → the Import hub) trimmed three
 // standalone entries. The old routes were REMOVED outright — next.config.js
@@ -182,6 +286,20 @@ const RECORDS: Group = {
 // episodic surfaces (illness, cycle) get contextual promotion via the existing
 // heroes, not permanent prominence. Reference surfaces (Medical, Data, Settings)
 // sit at the bottom regardless of how important their content is.
+//
+// THE PRINCIPLE IS UNCHANGED; ITS INPUT IS NOT (#3079). #1042 set this order from
+// a REASONED ESTIMATE of frequency, because that was the only input available.
+// The owner's 2026-08-17 usage review is a MEASUREMENT, and re-running the same
+// rule against it is what produced PLAN_REVIEW above: "how often each surface is
+// deliberately visited" now means counted, not guessed. Note what the rule does
+// NOT say — it does not say a zero count condemns a page. Timeline scores zero on
+// DELIBERATE visits and is opened constantly from context; Upcoming scores zero
+// because #2579 built it to be opened on a planning cadence. Both keep every
+// route and every door they had; what they lose is a PERMANENT ROW, which is the
+// only thing this sentence was ever rationing. The 2026-08-19 viewport census is
+// why the rationing matters: at 1280x900 the sidebar showed rows only through
+// Wellness in all 102 desktop captures, so the un-visited rows were pushing real
+// destinations below the fold.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   {
@@ -197,13 +315,12 @@ const entries: Entry[] = [
     // Hidden for an infant profile (< 1 y); the page also gates server-side (#591).
     requiresFoodLogging: true,
   },
-  { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
   // Year in review (#2179/#2762) remains user-initiated and ungated, but a
   // once-a-year commemorative page does not spend permanent nav chrome. Timeline
   // and the recap card link it in context, while recent-pages keeps it searchable;
   // sparse first years therefore remain reachable without a standing sidebar row.
-  // Sleep (#1066): a data-gated READING surface between Trends and Upcoming — it
+  // Sleep (#1066): a data-gated READING surface below Trends — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
   // Trends → Overview → body census). Gate = any recorded sleep session (the `sleep` relevance bit);
@@ -215,42 +332,12 @@ const entries: Entry[] = [
     icon: IconMoon,
     relevanceKey: "sleep",
   },
-  // Progress photos (#1119): a data-gated visual READING surface beside Sleep.
-  // Gate = any progress photo (the `progress` relevance bit); cosmetic like every
-  // relevance gate — the page stays reachable by URL, and the command palette's
-  // "Progress photos" action is the always-visible entry (so a first capture is
-  // never stranded behind the empty-state gate).
-  {
-    href: "/progress",
-    label: "Progress photos",
-    icon: IconCamera,
-    relevanceKey: "progress",
-  },
-  { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
-  {
-    href: "/household",
-    label: "Household",
-    icon: IconUsersGroup,
-    // Open to any login with 2+ accessible profiles (admin or caregiver member) —
-    // issue #31. The page re-checks the accessible-profile count server-side.
-    requiresMultiProfile: true,
-  },
-  // Wellness (#1620): a data-gated daily-practice surface beside Longevity,
-  // whose protocol picker shares the same practice targets. Gate = any
-  // practice-scope frequency target OR any practice log (logs-only practices are
-  // a real state). Cosmetic like Sleep/Progress — direct URLs still work, and
-  // the command palette's always-visible "Log practice" action (whose empty
-  // state points here, #2184) plus the /wellness?new=1 deep link preserve the
-  // first-practice creation path.
-  {
-    href: "/wellness",
-    label: "Wellness",
-    icon: IconSparkles,
-    relevanceKey: "wellness",
-  },
-  // Longevity and its protocols are adult-only content. The route independently
-  // enforces the same life-stage predicate.
-  { href: "/longevity", label: "Longevity", icon: IconHourglass },
+  // The episodic group (#3079) sits between the daily reading surfaces above and
+  // the reference surfaces below — exactly where the ORDER note calls for a
+  // cluster that is neither. Progress photos, Wellness and Longevity kept their
+  // relevance and life-stage gates on the way in; see PLAN_REVIEW for the
+  // per-surface diagnosis behind each child.
+  PLAN_REVIEW,
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
   // connect) and managing/exporting what's logged. The former standalone /import
@@ -369,7 +456,17 @@ function NavGroup({
   const expanded = open || active;
   if (children.length === 0) return null;
   const Icon = group.icon;
-  const panelId = `nav-group-${group.group.replace(/\s+/g, "-").toLowerCase()}`;
+  // Slugified on EVERY non-alphanumeric run, not just whitespace. Ids are only
+  // ever consumed through `aria-controls`, which takes them verbatim — but a
+  // label like "Plan & review" (#3079) would otherwise put an `&` in the id, and
+  // while that is legal HTML it is not a valid CSS id SELECTOR, so anything
+  // reaching for the panel by `#id` (a test, a future style hook) breaks on a
+  // group whose name has punctuation in it. Group labels are author-controlled
+  // ASCII, so a plain [^a-z0-9] run is the whole rule.
+  const panelId = `nav-group-${group.group
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
   return (
     <div className="flex flex-col gap-0.5">
       <button

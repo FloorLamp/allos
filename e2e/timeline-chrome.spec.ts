@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledBoxes, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { expandTimelineFilters } from "./timeline-chrome";
 import {
@@ -118,19 +118,30 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       const stillDeep = await scrollTo(page, deep - 300);
       expect(stillDeep).toBeGreaterThan(400);
       await expect(nav).toHaveAttribute("data-hidden", "false");
-      const navBox = await nav.boundingBox();
-      expect(navBox, "the day nav should be laid out").not.toBeNull();
+      // ONE SETTLED SNAPSHOT, not two raw reads (#2437's family; measured here on
+      // #3079's CI shard). `data-hidden` flips at the START of the chrome's
+      // reveal, not the end, so a `boundingBox()` taken the instant the attribute
+      // asserts catches the day nav MID-SLIDE. Measured on an idle box across five
+      // trials, the immediate read was 57, 49.96, 51.61, 51.57 and 14.86 while the
+      // SETTLED read was 57 every time; on a contended CI worker the same race
+      // reported -12.54 and failed the budget below.
+      //
+      // The budget itself is untouched — widening -2 to swallow -12.54 would
+      // retire the guarantee this case exists to hold ("pinned in the top band").
+      // What changed is that the number being judged now comes from a layout that
+      // actually held still. settledBoxes measures both elements in the same
+      // settled snapshot, which is also what makes the two assertions below
+      // describe ONE layout rather than two.
+      const [navBox, filterBox] = await settledBoxes([nav, filters]);
       // -2 epsilon: sticky positioning can report a sub-pixel negative y
       // (-0.82 observed) while visually pinned at the top — the assertion is
       // "pinned in the top band", not "mathematically at 0".
-      expect(navBox!.y).toBeGreaterThan(-2);
-      expect(navBox!.y).toBeLessThan(160);
+      expect(navBox.y).toBeGreaterThan(-2);
+      expect(navBox.y).toBeLessThan(160);
       await expect(page.getByTestId("timeline-day-prev")).toBeVisible();
 
       // The filter block, meanwhile, has scrolled off the top entirely.
-      const filterBox = await filters.boundingBox();
-      expect(filterBox, "the filter block should be laid out").not.toBeNull();
-      expect(filterBox!.y + filterBox!.height).toBeLessThan(0);
+      expect(filterBox.y + filterBox.height).toBeLessThan(0);
     } finally {
       await page.context().close();
     }

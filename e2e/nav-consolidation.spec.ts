@@ -24,11 +24,13 @@ import {
 // order tests only READ the shared admin session's sidebar (profile 1 owns
 // vision/dental/cycle data, so every entry is present there). No mutations.
 
-// The #1042 frequency order. Household appears for the admin session (it reaches
-// 2+ profiles); Longevity took over Protocols' slot in phase 4 (the Protocols
-// hub folded into /longevity#protocols). #2762 removes the once-a-year
-// retrospective from permanent nav chrome; Timeline and the recap card carry its
-// in-context links instead.
+// The #1042 frequency order, re-applied in #3079 to MEASURED frequency instead of
+// the estimate it was first set from. Six rows the owner never opened deliberately
+// became children of one "Plan & review" group; none of the six was retired, and
+// each kept the gate it carried as a top-level row (Household still needs 2+
+// profiles, Longevity is still adult-only, Wellness/Progress photos still carry
+// their relevance bits). #2762 removes the once-a-year retrospective from permanent
+// nav chrome; Timeline and the recap card carry its in-context links instead.
 //
 // UNCHANGED by #1522 on purpose: the medicine-cabinet row this repo just deleted was
 // a child of the Medical GROUP, not a top-level entry, so it never appeared in this
@@ -38,13 +40,13 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   "Dashboard",
   "Training",
   "Nutrition",
-  "Timeline",
   "Trends",
   "Sleep",
-  "Upcoming",
-  "Household",
-  "Wellness",
-  "Longevity",
+  // #3079: Timeline, Upcoming, Household, Wellness, Longevity and Progress photos
+  // are children of this group now, so the top level carries ONE row where it used
+  // to carry six. Collapsed on "/" (no child route is active), which is why the
+  // group's whole text content here is its header label.
+  "Plan & review",
   "Medical",
   // The Data entry carries the import-review badge since #1801 (it is Data →
   // Review's count), so its text is "Data" plus a digit whenever the seeded
@@ -181,12 +183,91 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
 
   // Sanity: an ordinary route still highlights itself, so the map didn't swallow
-  // the normal rule.
+  // the normal rule. Since #3079 this ALSO exercises group auto-expansion — the
+  // Timeline row is only in the DOM at all because navigating to a grouped child
+  // force-expands its group (isGroupActive).
   await page.goto("/timeline");
   await expect(nav.getByRole("link", { name: "Timeline" })).toHaveAttribute(
     "aria-current",
     "page"
   );
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+});
+
+// ── The episodic group (#3079) ───────────────────────────────────────────────
+//
+// Membership is pinned here so a future edit cannot silently promote a child back
+// to the top level: TOP_LEVEL_ORDER above would still pass if a child were ADDED
+// to the group, and would still pass if the group were empty. These cases close
+// both directions — the exact children, and each child reached with the group
+// auto-expanding around it.
+
+// The group's children AS THE SHARED ADMIN FIXTURE SEES THEM, in registry order.
+//
+// PROGRESS PHOTOS IS THE SIXTH CHILD AND IS DELIBERATELY ABSENT HERE: it rides the
+// `progress` relevance bit, and profile 1 seeds no progress photos — which is why
+// it was missing from TOP_LEVEL_ORDER before this change too. Listing it would
+// assert a row that cannot render for this fixture. Its membership is pinned where
+// it can be: as text in lib/__tests__/nav-routes.test.ts, and behaviorally in
+// e2e/progress-photos.spec.ts, which watches the row appear inside this group the
+// moment that profile's first photo lands (and, being on /progress at the time,
+// proves the same auto-expansion the case below asserts for the others).
+const PLAN_REVIEW_CHILDREN = [
+  "Upcoming",
+  "Timeline",
+  "Wellness",
+  "Longevity",
+  "Household",
+];
+
+test("the episodic group holds exactly its children, and none of them is a top-level row (#3079)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const nav = page.locator("aside nav");
+  // Collapsed to begin with: the group is the demotion, so a group that renders
+  // its children unprompted would not be one.
+  const header = nav.getByRole("button", { name: "Plan & review" });
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  for (const child of PLAN_REVIEW_CHILDREN) {
+    await expect(nav.getByRole("link", { name: child })).toHaveCount(0);
+  }
+
+  await header.click();
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  // The group's panel — NOT the whole nav — so "exactly these, in this order" is a
+  // statement about MEMBERSHIP. Read from the panel the header controls, which is
+  // the only handle that survives the group being re-styled or re-wrapped.
+  // Read by ATTRIBUTE rather than as a `#id` selector: the panel id is derived
+  // from the group's label, and an id selector is the one consumer that cares
+  // whether that derivation left punctuation behind.
+  const panelId = await header.getAttribute("aria-controls");
+  const panel = nav.locator(`[id="${panelId}"]`);
+  await expect(panel.getByRole("link")).toHaveText(PLAN_REVIEW_CHILDREN);
+});
+
+test("navigating to any grouped child auto-expands its group and lights exactly one row (#3079)", async ({
+  page,
+}) => {
+  const nav = page.locator("aside nav");
+  const HREFS: Record<string, string> = {
+    Upcoming: "/upcoming",
+    Timeline: "/timeline",
+    Wellness: "/wellness",
+    Longevity: "/longevity",
+    Household: "/household",
+  };
+  for (const [label, href] of Object.entries(HREFS)) {
+    await page.goto(href);
+    // No click anywhere: the group opened because its child route is active, which
+    // is the whole reason a demoted surface is not stranded behind a disclosure.
+    const row = nav.getByRole("link", { name: label, exact: true });
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute("aria-current", "page");
+    // Exactly one entry claims the page — the group header lights up too, but it is
+    // a <button>, not an aria-current link, so the "one lit row" rule is intact.
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+  }
 });
 
 test("Cycle entry hides for a male profile with no cycle rows, but the page never hard-blocks (#1042)", async ({

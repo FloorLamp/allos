@@ -114,9 +114,24 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await primeCameraFallback(page);
     // Photo-less profile: the data-gated nav entry is hidden, the page still
     // renders by URL (#1042 posture) with its empty state.
+    //
+    // EXPAND THE GROUP FIRST (#3079). Progress photos is a child of "Plan &
+    // review", which is COLLAPSED on "/" — so this count would read 0 whether the
+    // relevance gate worked or not, and the case would go on passing against the
+    // very regression it exists to catch. Expanding, and proving the expansion with
+    // an ungated sibling, makes the absence a real observation again. Same shape as
+    // the #1522 medicine-cabinet case in e2e/nav-consolidation.spec.ts.
     await page.goto("/");
+    // `aside nav`, not `aside`: FrequentPages (#1416) renders its shortcuts as
+    // plain links in the same aside, so an aside-wide role query can collide with
+    // a shortcut carrying the same label.
+    const sidebarNav = page.locator("aside nav");
+    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      page.locator("aside").getByRole("link", { name: "Progress photos" })
+      sidebarNav.getByRole("link", { name: "Timeline" })
+    ).toBeVisible();
+    await expect(
+      sidebarNav.getByRole("link", { name: "Progress photos" })
     ).toHaveCount(0);
     await page.goto("/progress");
     await expect(
