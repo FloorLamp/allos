@@ -6,6 +6,7 @@ import {
   settledFill,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { expectFactEscapeGrammar } from "./fact-escape-helpers";
 import {
   closeProtocolFact,
   openProtocolFact,
@@ -403,7 +404,16 @@ test.describe("protocol facts-with-editors (#3219)", () => {
       "6 weeks"
     );
 
-    await editDialog.getByRole("button", { name: "Cancel" }).click();
+    // DISMISSED WITH ESCAPE rather than Cancel, which is #3409's fix asserted on a
+    // real edit dialog. Until the escape-layer marker became conditional this dialog
+    // answered no Escape at all — the host stays mounted so its named inputs keep
+    // posting, and the marker went with the mount rather than with the open editor.
+    // The grammar is stated once in e2e/fact-escape-helpers.ts.
+    await expectFactEscapeGrammar(page, {
+      form: editForm,
+      row: editForm.getByTestId("protocol-fact-row"),
+      openFact: () => openProtocolFact(editForm, "cadence"),
+    });
 
     await hydratedClick(
       page,

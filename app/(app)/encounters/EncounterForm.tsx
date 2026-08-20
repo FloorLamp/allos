@@ -255,7 +255,7 @@ export default function EncounterForm({
         <FactEditorHost
           testId="visit-fact-editor"
           doneTestId="visit-fact-editor-done"
-          panel={openEditor ?? undefined}
+          panel={openEditor}
           className={
             editorOpen
               ? "rounded-lg border border-(--border) bg-surface p-3"

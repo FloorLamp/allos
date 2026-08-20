@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { expectFactEscapeGrammar } from "./fact-escape-helpers";
 import { closeGoalFact, openGoalFact, withGoalFact } from "./goal-form-helpers";
 
 // The training-goal form's adoption of facts-with-editors (#3220, over #3218).
@@ -151,18 +152,17 @@ test.describe("goal facts-with-editors (#3220)", () => {
     // expanded until the person asks for it.
     await expect(editForm.getByTestId("goal-editor")).toBeHidden();
 
-    // Dismissed through the Close control rather than Escape, and the reason is a
-    // finding rather than a preference: `useFocusTrap` yields Escape to the panel
-    // whenever it CONTAINS a `[data-escape-layer="true"]`, and this form's
-    // FactEditorHost is mounted at all times (hidden when nothing is open) so that
-    // its named inputs still post. So the marker is always present and the dialog
-    // never answers Escape at all. Every hidden-not-unmounted consumer of the
-    // primitive has that shape; filed rather than fixed here.
-    await hydratedClick(
-      page,
-      page.getByRole("dialog").getByRole("button", { name: "Close" })
-    );
-    await expect(editForm).toHaveCount(0);
+    // DISMISSED WITH ESCAPE, which is #3409's fix asserted on a real edit dialog
+    // rather than on a purpose-built one. This used to press the Close control
+    // instead, because the host declared itself an escape layer whether or not an
+    // editor was open and so the dialog answered no press at all. The grammar is
+    // stated once in e2e/fact-escape-helpers.ts and asked for in full here: the
+    // editor first, then the dialog.
+    await expectFactEscapeGrammar(page, {
+      form: editForm,
+      row: editForm.getByTestId("goal-fact-row"),
+      openFact: () => openGoalFact(editForm, "category"),
+    });
 
     // Self-clean, so --repeat-each stays clean: this spec owns the goal it created.
     await hydratedClick(
@@ -320,13 +320,12 @@ test.describe("goal facts-with-editors (#3220)", () => {
     // Escape would throw the whole form away, which is the opposite of "returns to
     // the chips".
     //
-    // AND ONLY THAT HALF IS ASSERTED. The sleep dialog's contract continues "the
-    // SECOND Escape still closes the dialog", and on this form it does not: the
-    // FactEditorHost stays mounted so its named inputs keep posting, so the panel
-    // permanently contains a `[data-escape-layer="true"]` and `useFocusTrap` yields
-    // every Escape to it. That is a property of the hidden-not-unmounted shape, not
-    // of this form, and is filed rather than pinned here — a spec that asserted the
-    // current behaviour would freeze it.
+    // THE OTHER HALF — "the SECOND Escape still closes the dialog" — is pinned in the
+    // read-back test above, through `expectFactEscapeGrammar` (#3409). It is
+    // deliberately NOT asked here: this test needs the form still standing so it can
+    // drive the chips and then dismiss by SCRIM, which is the gesture whose confirm it
+    // is the control for. Both halves used to be unassertable on this form; only the
+    // placement of this one is still a choice.
     await page.keyboard.press("Escape");
     await expect(form.getByTestId("goal-fact-row")).toBeVisible();
     await expect(form).toBeVisible();
