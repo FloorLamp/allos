@@ -487,6 +487,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     what: "the durable post-workout dispatch-claim TABLE (#3058, migration 20260819-post-workout-dispatch-claims), enumerated in lib/owned-tables.ts — the unique-key election beside the id-keyed notify_last_post_workout_ marker it hardens",
   },
   {
+    key: "notify_offers",
+    what: "the stored-offer TABLE (#2460, migration 20260819-notify-offers), enumerated in lib/owned-tables.ts — what a delivered button OFFERED, so a 64-byte callback token can name a bundle by id instead of spelling it out. It gates NO send: the composed one-tap decorates messages that are already going out for their own reasons, and this issue adds no marker, kind or schedule",
+  },
+  {
     key: "notify_message_id",
     what: "a COLUMN, not a key: the #2264 tap-provenance link on food_log_events and intake_item_logs (migration 170), referencing notify_messages(id) so a correction row renders only on the message that produced its burst",
   },
