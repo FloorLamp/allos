@@ -10,6 +10,12 @@
 // names carry the #203 name-keyed hygiene: rename re-keys their rows (merging worst
 // severity on a per-day collision), delete cleans them; curated slugs are stable and are
 // never renamed/deleted through here.
+//
+// CASE FOLDS FOR MATCHING, NEVER FOR STORAGE (#3325). `logSymptomCore` — the only core
+// here that MINTS a key — resolves through `resolveProfileVocabularyKey()`, so a typed
+// "kratom" lands on this profile's existing "Kratom" rows. Every other core takes a key
+// a surface just rendered and resolves BARE; the reasoning for that split, and for
+// leaving rows that already differ only by case alone, is in lib/vocabulary-store.ts.
 
 import { db, writeTx } from "./db";
 import {
@@ -24,6 +30,7 @@ import {
   episodeExistsForProfile,
 } from "./illness-episode-store";
 import { captureDelete } from "./undo-delete-db";
+import { resolveProfileVocabularyKey } from "./vocabulary-store";
 
 // Typed result so a caller answers from what ACTUALLY happened (the markDoseTaken
 // contract, #232) rather than unconditionally confirming.
@@ -71,7 +78,21 @@ export function logSymptomCore(
   note?: string | null,
   explicitEpisodeId?: number
 ): SymptomLogOutcome {
-  const symptom = resolveSymptomKey(symptomInput);
+  // #3325 — the one place a custom symptom key is MINTED, so the one place the
+  // case-fold belongs. Resolving against the profile's own spellings makes a typed
+  // "kratom" join the existing "Kratom" rows instead of opening a second ledger beside
+  // them; the stored spelling is whatever was seen FIRST, so nothing is ever re-titled
+  // and "MDMA" never becomes "Mdma". The outcome carries the key that was actually
+  // written, so a caller names what landed rather than what was typed.
+  //
+  // The other cores in this file resolve BARE on purpose: their key comes from a row the
+  // app just rendered, and folding it could redirect an edit or a delete onto a
+  // case-variant neighbour that predates this fix. See lib/vocabulary-store.ts.
+  const symptom = resolveProfileVocabularyKey(
+    "symptom",
+    profileId,
+    symptomInput
+  );
   if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
@@ -319,6 +340,14 @@ export type CustomSymptomOutcome =
 // slug (those are stable). On a per-day collision with an existing row under the new key,
 // the surviving row keeps the WORST severity and the duplicate is dropped. Single
 // IMMEDIATE transaction (#468).
+//
+// BOTH ENDS RESOLVE BARE, and #3325 kept it that way deliberately. Renaming is the one
+// operation whose PURPOSE can be to change case: folding the target would turn
+// "kratom" -> "Kratom" into a silent no-op, and folding the source would aim a rename at
+// the wrong card where a profile already carries both spellings. It is also the
+// user-facing MERGE for such a pair — the per-day collision rule right below is exactly
+// the merge semantics, applied because a person asked for it rather than by a migration
+// that could not ask.
 export function renameCustomSymptomCore(
   profileId: number,
   oldName: string,

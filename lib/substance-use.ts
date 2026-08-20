@@ -65,6 +65,7 @@
 //     is the coaching tier (#449 — hideable rollup, never a push, never the hero).
 
 import type { SeverityBand } from "./mental-health";
+import { matchFoldedVocabulary } from "./vocabulary-fold";
 
 // ---- Screening instruments -------------------------------------------------
 
@@ -451,6 +452,14 @@ const SUBSTANCE_DEFS: Record<Substance, SubstanceDef> = {
 // second normalization rule for the same shape of user text is the "one question,
 // one computation" disease at the identity layer (docs/internals/identity-registry.md).
 //
+// ONE THING IS NO LONGER BORROWED — IT IS SHARED (#3325). Case-folding for matching is
+// not re-instantiated on this side: both resolvers call `matchFoldedVocabulary()` from
+// lib/vocabulary-fold.ts, and both are handed the profile's spellings by
+// `resolveProfileVocabularyKey()` in lib/vocabulary-store.ts. Two parallel copies of a
+// fold would drift the moment one domain's rule changed, and the whole reason #3279's
+// lane left the case defect ALONE was that fixing one vocabulary alone re-forks them.
+// The two rows in docs/internals/identity-registry.md now name the same shared fold.
+//
 // NO NEW TABLE, AND NO MIGRATION. A custom substance is not registered anywhere before
 // it is used: its identity IS its normalized name in the ledger, exactly as a custom
 // symptom's is in `symptom_logs.symptom`. Migration 096 declared this on day one —
@@ -489,7 +498,10 @@ export const MAX_SUBSTANCE_NAME_LENGTH = 60;
 // Canonicalize a custom substance name: trim + collapse internal whitespace, capped.
 // Paired with substance_daily_totals' UNIQUE (profile_id, date, substance), this makes
 // "  Kratom " and "Kratom" resolve to one per-day row. Case is PRESERVED — the person's
-// own capitalization is their label (the symptoms rule).
+// own capitalization is their label (the symptoms rule), and #3325 kept it that way:
+// what that issue removed was case DECIDING identity, not case being stored. The fold
+// lives in `resolveSubstanceKey` below, where names are MATCHED; it never reaches here,
+// so no normalizer can ever hand back "Mdma".
 export function normalizeSubstanceName(name: string): string {
   return name.trim().replace(/\s+/g, " ").slice(0, MAX_SUBSTANCE_NAME_LENGTH);
 }
@@ -513,7 +525,21 @@ export function isCustomSubstanceKey(key: string): boolean {
 // can never shadow the catalog with a second ledger; anything else is a normalized custom
 // name. Empty input -> null (nothing to log). Every write boundary goes through this, so
 // normalization happens once, at the edge (AGENTS.md).
-export function resolveSubstanceKey(input: string): SubstanceKey | null {
+//
+// `known` is this profile's OWN spellings, first-seen first (#3325). When it is given and
+// one of them folds equal to the typed name, that STORED spelling comes back, so a typed
+// "kratom" joins the existing "Kratom" card rather than opening a second ledger beside
+// it. Nothing is ever folded INTO storage — the key returned is always a curated key or a
+// verbatim spelling — so "MDMA" keeps its capitals. The symptom twin takes the same
+// argument, from the same shared matcher (lib/vocabulary-fold.ts).
+//
+// The parameter is OPTIONAL because this also runs client-side, where the profile's
+// ledger isn't reachable. Every WRITE path resolves through
+// `resolveProfileVocabularyKey()` (lib/vocabulary-store.ts), which supplies it.
+export function resolveSubstanceKey(
+  input: string,
+  known?: readonly SubstanceKey[]
+): SubstanceKey | null {
   const raw = input.trim();
   if (!raw) return null;
   if (isSubstance(raw)) return raw;
@@ -522,7 +548,9 @@ export function resolveSubstanceKey(input: string): SubstanceKey | null {
     if (s === lower || SUBSTANCE_DEFS[s].label.toLowerCase() === lower)
       return s;
   }
-  return normalizeSubstanceName(raw) || null;
+  const norm = normalizeSubstanceName(raw);
+  if (!norm) return null;
+  return known ? (matchFoldedVocabulary(norm, known) ?? norm) : norm;
 }
 
 // ---- Naming one at a SURFACE (#3326) ---------------------------------------
@@ -543,13 +571,16 @@ export type SubstanceNameResult =
   | { ok: true; key: SubstanceKey }
   | { ok: false; reason: SubstanceNameRejection };
 
-export function validateSubstanceName(input: string): SubstanceNameResult {
+export function validateSubstanceName(
+  input: string,
+  known?: readonly SubstanceKey[]
+): SubstanceNameResult {
   // Collapse FIRST, so "  Kratom  " is measured at 6 characters rather than 10 — the
   // length that is refused has to be the length that would be stored.
   const collapsed = input.trim().replace(/\s+/g, " ");
   if (collapsed.length > MAX_SUBSTANCE_NAME_LENGTH)
     return { ok: false, reason: "too-long" };
-  const key = resolveSubstanceKey(collapsed);
+  const key = resolveSubstanceKey(collapsed, known);
   if (key === null) return { ok: false, reason: "empty" };
   return { ok: true, key };
 }

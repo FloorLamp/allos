@@ -427,11 +427,57 @@ describe("trackSubstanceUseAction (#3326)", () => {
 
     const result = await trackSubstanceUseAction(fd({ name: "MDMA" }));
     expect(result.ok && result.label).toBe("MDMA");
-    // #3325 owns folding, in the symptom vocabulary and this one at once. Until then
-    // two casings are two substances, and this surface must not pre-empt the fix by
-    // folding one domain alone.
+    // #3325 folded case for MATCHING and left it alone for DISPLAY. This fixture used
+    // to pin the DEFECT — two casings, two substances — with a note that folding one
+    // domain alone would re-fork the model. Both domains fold now, so the second
+    // casing joins the first substance and the capitals survive.
     await trackSubstanceUseAction(fd({ name: "mdma" }));
-    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["MDMA", "mdma"]);
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["MDMA"]);
+  });
+
+  it("folds three casings onto the first-seen spelling, and says which one took the log (#3325)", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-fold", login.id);
+    actAs(login, profile);
+
+    await trackSubstanceUseAction(fd({ name: "Kratom" }));
+    const lower = await trackSubstanceUseAction(fd({ name: "kratom" }));
+    const upper = await trackSubstanceUseAction(fd({ name: "  KRATOM " }));
+
+    // ONE substance, ONE label — and the result NAMES the card the use landed on, which
+    // is what keeps the fold from being a silent redirect: the toast reads
+    // "Kratom: 1 logged today" for somebody who typed "kratom".
+    expect(lower).toMatchObject({
+      ok: true,
+      substance: "Kratom",
+      label: "Kratom",
+    });
+    expect(upper).toMatchObject({
+      ok: true,
+      substance: "Kratom",
+      label: "Kratom",
+    });
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["Kratom"]);
+    // Three uses on one ledger, not one use on three.
+    expect(getSubstanceWeekState(profile.id, "Kratom").count).toBe(3);
+    expect(getSubstanceDailyTotals(profile.id, "kratom")).toEqual([]);
+  });
+
+  it("does not fold across profiles — another profile's spelling is not mine", async () => {
+    const loginA = createLogin();
+    const profileA = createProfile("su-track-fold-a", loginA.id);
+    actAs(loginA, profileA);
+    await trackSubstanceUseAction(fd({ name: "Kratom" }));
+
+    const loginB = createLogin();
+    const profileB = createProfile("su-track-fold-b", loginB.id);
+    actAs(loginB, profileB);
+    const mine = await trackSubstanceUseAction(fd({ name: "kratom" }));
+
+    // The vocabulary is the profile's own ledger, so B's card is spelled B's way.
+    expect(mine).toMatchObject({ ok: true, substance: "kratom" });
+    expect(getLoggedSubstanceKeys(profileB.id)).toEqual(["kratom"]);
+    expect(getLoggedSubstanceKeys(profileA.id)).toEqual(["Kratom"]);
   });
 
   it("refuses for a known minor, like every other write on this surface", async () => {

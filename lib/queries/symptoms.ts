@@ -49,6 +49,14 @@ export function getSymptomSeveritiesOnDate(
 // The distinct CUSTOM symptom names this profile has ever logged (not the curated
 // catalog) — the vocabulary the #203 rename/delete management UI operates on and that the
 // bar shows as extra chips. Newest-used first.
+//
+// THIS ANSWERS "WHAT AM I LIKELY TO TYPE NEXT?" — a SUGGESTION RANKING, which is why the
+// order is newest-used. Do not merge it with `profileVocabulary()` in
+// lib/vocabulary-store.ts, which answers the different question "which spelling of this
+// name is canonical?" and is therefore ordered FIRST-SEEN. The two lists hold the same
+// strings and disagree only where a profile carries two spellings of one name (#3325),
+// and that coincidence is today's data, not evidence they are one question: unifying them
+// would make whichever one lost its ordering worse.
 export function getCustomSymptomNames(profileId: number): string[] {
   const rows = db
     .prepare(
