@@ -122,6 +122,18 @@
           "title": "A dose amount Allos cannot read now says so, instead of quietly counting as nothing",
           "kind": "feature",
           "issues": [3320]
+        },
+        {
+          "pr": 3401,
+          "title": "Every dialog now leaves the same gap under its title, instead of eighteen of them leaving a wider one",
+          "kind": "fix",
+          "issues": [3361]
+        },
+        {
+          "pr": 3406,
+          "title": "A training goal states what it is from the thing you picked, and says the number you are starting from",
+          "kind": "feature",
+          "issues": [3220]
         }
       ]
     },
