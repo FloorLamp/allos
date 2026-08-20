@@ -73,6 +73,25 @@ const CONSUMERS = [
     host: "components/ActivityForm.tsx",
   },
   {
+    // THE SECOND CHIPS FILE BEHIND ONE HOST (#3336) — the mirror of the visit pair
+    // below, which is one chips file behind two hosts.
+    //
+    // Its chip states a strength part's sets as the ONE compact notation every other
+    // surface renders — "60 kg × 8 × 3" — and what opens behind it is THE SET GRID
+    // ITSELF, not a FactEditorHost panel. That is the pattern's own reading, not an
+    // exemption from it: #3218's preconditions exclude a surface whose fields are free
+    // numeric entry (the measurements form is the recorded counter-case), and #3228
+    // invokes that workbench exclusion by name for this grid and for live mode. So this
+    // consumer takes the chip half and leaves the panel half alone.
+    //
+    // It is registered against the activity editor's EXISTING host because that is what
+    // the census below actually asks — which files import the primitive — and because
+    // ActivityForm is genuinely where this editor's one fact panel lives (#3334).
+    name: "the activity editor's compact set notation (#3336)",
+    chips: "components/activity-form/StrengthSets.tsx",
+    host: "components/ActivityForm.tsx",
+  },
+  {
     // THE FIRST DOM-COLLECTED CONSUMER (#3219) — a different "first" from the one
     // above, and the two are worth reading together. The three consumers before this
     // all hand their action a FormData they built themselves; this one is
