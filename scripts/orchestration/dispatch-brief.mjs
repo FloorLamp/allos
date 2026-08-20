@@ -469,6 +469,28 @@ ${MIGRATION_LINES}
   landed: the symbols you added, the deletions you made, and above all the REVERTS —
   #2774 checked that a \`touch-manipulation\` class it had deliberately reverted was
   still absent THROUGH the merge, which is a thing ancestry could never have told it.
+- A SIGNAL MUST BE DISTINGUISHABLE FROM ITS OWN TEST FIXTURE. When you add
+  instrumentation that announces a rare event, the test you write to exercise it
+  forges that event ON PURPOSE — and if the forged occurrence prints the same thing
+  the real one does, YOUR ONE REAL SIGNAL ARRIVES PRE-BURIED in the output of the
+  test that proves the signal works. Measured 2026-08-20 on #3368: a lost-submit
+  rescue was made to log when it fires, and its regression test forges a lost click on
+  THE VERY CONTROL AND ROUTE the original sighting came from, so three deliberate hits
+  per run sat in the grep output looking exactly like the thing the grep is for.
+  THE FIX IS NOT TO SUPPRESS THE TEST'S COPY — a log line that never executes in CI is
+  untested code that breaks on the day it matters, and the forged lines double as
+  proof the announcement machinery still works. MARK IT INSTEAD: have the page or the
+  fixture declare that this occurrence is forged, and print the two cases as different
+  sentences ("FORGED BY A SPEC on purpose" vs "NOT forged — this is real"). Verify by
+  running the affected specs and counting: the number of marked lines must equal the
+  number of forgeries, and nothing else may print.
+  AND WHEN A HYGIENE GATE BLOCKS THE OBVIOUS ROUTE, THAT IS USUALLY THE GATE BEING
+  RIGHT. That lane tried \`test.info()\` to name the spec, which needs
+  \`@playwright/test\` in helpers.ts — forbidden by lib/__tests__/e2e-hygiene.test.ts —
+  and importing the extended \`test\` from ./fixtures would have been a cycle. It did
+  NOT add an allow-list entry. Widening a hygiene guard to buy a diagnostic nicety is
+  the wrong trade, and the design the guard forced (the page declares its own forgery)
+  is better than the one it blocked.
 - LET INSTRUMENTATION SURVIVE ITS OWN USEFULNESS. A click log or a touch log that
   pins nothing and backs no assertion looks exactly deletable, and a reviewer WILL
   reach for it — write the comment above it addressed to that reviewer specifically.
