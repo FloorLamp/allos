@@ -333,16 +333,50 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const tooLong = "kava".repeat(15) + "x";
     expect(tooLong.length).toBe(61);
     await settledFill(page, page.getByTestId("track-substance-name"), tooLong);
-    await page.getByTestId("track-substance-save").click();
 
+    // THE SUBMIT IS RETRIED, AND THE REASON IS NOT LATENCY — read this before
+    // "simplifying" it to a bare `.click()`, which is what it was when it went red.
+    //
+    // This refusal is computed ENTIRELY on the client: TrackSubstanceControl's
+    // handler calls validateSubstanceName, calls setError, and RETURNS — it never
+    // reaches the Server Action. So the error paragraph appears on the very next
+    // React commit or it never appears at all, and a bigger ceiling on the assertion
+    // below would be a budget spent waiting for something that was never produced.
+    // The inner ceiling is deliberately SHORT for that reason.
+    //
+    // What actually went wrong in CI (run 32349915874, e2e-changed, repeat 2 of 3)
+    // was a LOST submit: repeat 1 of this same test passed in 537 ms and repeat 2
+    // spent the whole 5 s ceiling with `track-substance-error` absent from the DOM,
+    // which is only reachable if the handler never ran. It did not reproduce here —
+    // ~100 local trials, including the full CI shape (both changed specs together,
+    // --repeat-each=3, 2 workers) and a CDP `Emulation.setCPUThrottlingRate` probe at
+    // rate 20 both with and without the hydration waits, 10/10 green — so the trigger
+    // is not pinned and the conservative shape is the honest one.
+    //
+    // A RETRY IS SAFE HERE, WHICH IS NOT TRUE OF MOST CLICKS. `hydratedClick` is the
+    // usual answer to a lost tap, but it cannot help this one: the panel's form is
+    // CREATED by the toggle interaction, so it is client-rendered and carries React's
+    // fibers from birth — the hydration probe passes instantly and the click it then
+    // makes is the same bare click. And unlike the toggle it sits behind
+    // (`setOpen(v => !v)`, where a second tap undoes the first), re-submitting a
+    // refused name is IDEMPOTENT: the handler returns before any write, so every
+    // extra attempt can only set the same error string. Nothing accumulates.
     const error = page.getByTestId("track-substance-error");
-    await expect(error).toBeVisible();
+    await expect(async () => {
+      await page.getByTestId("track-substance-save").click();
+      await expect(
+        error,
+        "the submit did not render a refusal — handler never ran"
+      ).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000, intervals: [200, 500, 1000] }); // topass-ok: a client-only submit with no POST and no navigation to await, so there is no single awaitable event; safe to re-dispatch because the refusal path writes nothing and can only re-set the same error
     await expect(error).toContainText("60");
 
     // Nothing was created under any name — not the full one, and not a 60-character
-    // near-miss of it. This is an ABSENCE assertion, so it is deliberately made
-    // AFTER the error above has already proven the round trip finished: a bigger
-    // ceiling here could only hide a real write, never reveal one.
+    // near-miss of it. This is an ABSENCE assertion, and it is deliberately made
+    // AFTER the presence assertion above: that error rendering is proof the handler
+    // ran and refused BEFORE reaching the Server Action, so there is no in-flight
+    // write this could race. A bigger ceiling here could only hide a real write,
+    // never reveal one.
     await expect(page.getByTestId(`substance-card-${tooLong}`)).toHaveCount(0);
     await expect(
       page.getByTestId(`substance-card-${tooLong.slice(0, 60)}`)
