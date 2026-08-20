@@ -66,6 +66,7 @@ import {
   getMedicationsMissingRxcuiCount,
   getMedicationMissingRxcuiSoleId,
   getFailedExtractionDocumentCount,
+  getUnreadableDoseAmounts,
   getLatestMetricSample,
   getBioAgeReadings,
   hasImportedSmokingHistory,
@@ -406,6 +407,7 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     hasImportedSmokingHistory(profileId)
   );
   const sex = getProfileSex(profileId);
+  const unreadableDoses = getUnreadableDoseAmounts(profileId);
   const inputs: DataQualityInputs = {
     age: getProfileAge(profileId),
     sexKnown: sex !== null,
@@ -425,6 +427,13 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
       null,
     failedExtractions: getFailedExtractionDocumentCount(profileId),
     riskAttributesReviewed: getRiskAttributesReviewed(profileId),
+    // Legacy dose amounts nothing can read (#3320). Gathered as the affected ROWS so
+    // the detector can name both the count and the surface to fix them on; the read
+    // owns no SQL (it projects the cached, profile-scoped intake reads).
+    unreadableDoseAmounts: unreadableDoses.length,
+    unreadableDoseAmountItem: unreadableDoses[0]
+      ? { id: unreadableDoses[0].itemId, kind: unreadableDoses[0].kind }
+      : null,
   };
   return detectDataQualityGaps(inputs);
 }

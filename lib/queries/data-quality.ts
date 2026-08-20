@@ -1,9 +1,14 @@
-// Structural data-quality gathers (issue #1045). The two COUNT reads the pure gap
-// detectors (lib/data-quality.ts) can't derive from other query layers: active
-// medications with no confirmed RxCUI (name-only safety matching), and documents whose
-// extraction FAILED (imported but contributing nothing). Both are profile-scoped
-// directly (the lib/__tests__/profile-scoping.test.ts guard walks all of lib/).
+// Structural data-quality gathers (issue #1045). The reads the pure gap detectors
+// (lib/data-quality.ts) can't derive from other query layers: active medications with
+// no confirmed RxCUI (name-only safety matching), documents whose extraction FAILED
+// (imported but contributing nothing), and dose amounts nothing can read (#3320). The
+// two COUNTs are profile-scoped directly (the lib/__tests__/profile-scoping.test.ts
+// guard walks all of lib/); the dose read owns no SQL and projects the profile-scoped
+// intake reads.
 import { db } from "../db";
+import { readDoseQuantity } from "../dri";
+import { getIntakeItems, getIntakeDoses } from "./intake/schedule";
+import type { IntakeItemKind } from "../types/intake";
 
 // Read a single scalar COUNT(*) alias `c`.
 function scalar(row: unknown): number {
@@ -55,4 +60,41 @@ export function getFailedExtractionDocumentCount(profileId: number): number {
       )
       .get(profileId)
   );
+}
+
+// ---- Dose amounts nothing can read (#3320) ----
+
+// The LIVE dose rows of ACTIVE items whose amount states a number the separator rule
+// refuses (`"2,5 g"` — 2.5 g or 25 g, and nothing in the row says which; `"10.000 IU"`
+// — ten, or ten thousand). #3153 stopped the write path storing new ones; rows written
+// before that fix are still there, and since a dose keeps no reading beside its text,
+// nothing was ever stored wrong — the amount simply reads as ABSENT now, and the
+// upper-limit and RDA totals skip it without saying so. This read is what makes the
+// skip visible.
+//
+// NO SQL OF ITS OWN, and it could not have any: the rule lives in `readDoseQuantity`
+// and SQLite cannot apply it. A GLOB/regex restatement would be a second copy of the
+// rule #3153 finished unifying, and a census that disagrees with the engine it
+// describes is worse than none. So this projects the already-cached, profile-scoped
+// item and dose reads and asks the shipped function.
+//
+// Scope, deliberately: ACTIVE items only (an inactive item is out of the safety stack,
+// the same boundary getMedicationsMissingRxcuiCount draws) and LIVE doses only
+// (getIntakeDoses excludes retired rows — a retired dose is history, not a number any
+// total is reaching for today).
+export function getUnreadableDoseAmounts(
+  profileId: number
+): { itemId: number; kind: IntakeItemKind }[] {
+  const kindById = new Map<number, IntakeItemKind>();
+  for (const item of getIntakeItems(profileId)) {
+    if (item.active) kindById.set(item.id, item.kind);
+  }
+  const out: { itemId: number; kind: IntakeItemKind }[] = [];
+  for (const dose of getIntakeDoses(profileId)) {
+    const kind = kindById.get(dose.item_id);
+    if (!kind) continue;
+    if (readDoseQuantity(dose.amount).kind !== "unreadable") continue;
+    out.push({ itemId: dose.item_id, kind });
+  }
+  return out;
 }
