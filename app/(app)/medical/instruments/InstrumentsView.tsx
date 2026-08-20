@@ -95,7 +95,11 @@ export default function InstrumentsView({
   return (
     <div
       ref={containerRef}
-      className="space-y-4 rounded-xl border border-black/10 p-4 dark:border-white/10"
+      // A dialog BODY, and nothing else: this picker's only mount is the "Add
+      // screening" modal in app/(app)/records/MentalHealthSection.tsx, so the
+      // dialog panel already draws the border, radius and padding this used to
+      // draw a second time inside it (#3361).
+      className="space-y-4"
       data-testid="instruments-form"
     >
       {/* Instrument picker */}
