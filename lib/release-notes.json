@@ -68,6 +68,18 @@
           "title": "Six pages nobody opens move into one Plan and review group, so the nav is shorter without losing anything",
           "kind": "fix",
           "issues": [3079]
+        },
+        {
+          "pr": 3347,
+          "title": "An activity states the gear it used, with the picker one tap behind instead of always on screen",
+          "kind": "fix",
+          "issues": [3334]
+        },
+        {
+          "pr": 3348,
+          "title": "A protocol reads as the sentence it is \u2014 practice, cadence and window as chips you tap to change",
+          "kind": "feature",
+          "issues": [3219]
         }
       ]
     },
