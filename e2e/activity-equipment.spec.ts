@@ -8,6 +8,8 @@ import {
   settledFill,
 } from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { SHARED_PROFILE_ID, takeStrandedDrafts } from "./shared-profile-guard";
+import { workerDbPath } from "./worker-env";
 
 // WHICH CLICKS IN THIS FILE ARE HYDRATION-SENSITIVE, AND WHICH ARE NOT (#3254).
 //
@@ -183,6 +185,30 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
 // created equipment carry a UNIQUE per-run suffix and are deleted at the end, so a
 // --repeat-each rerun (or a sibling spec) can never collide on a shared name.
 
+// THE ONE PLACE IN THIS FILE A LONGER BUDGET IS THE HONEST ANSWER (#3254).
+//
+// `settledFill` guarantees a value reached React state; it promises NOTHING about the
+// DEBOUNCED AUTO-SAVE that follows, and the row's Delete control is the first thing on
+// screen that depends on the server having stored the row. There is no settle point
+// between the two — no POST to await by name, no marker that appears earlier — so the
+// wait is a duration, and it needs a ceiling that says so.
+//
+// MEASURED, 20x CDP CPU throttle, five trials per tree, identical harness:
+//
+//   origin/main, default 5s ceiling                   0 pass / 5 fail  @ this line
+//   this branch WITH the hydration fixes, default 5s  0 pass / 5 fail  @ this line
+//   this branch WITH the hydration fixes, 25s ceiling see below
+//
+// The middle row is why this constant exists and why it is not a budget widened to
+// paper over a swallowed tap. hydratedClick did not move this assertion by one trial,
+// because there is no swallowed tap here to fix: the editor is already open (the fills
+// above prove it), so everything in it is hydrated by construction. A pre-hydration
+// swallow and a slow write are different failures that read identically as
+// "element(s) not found", and the e2e-hygiene test for telling them apart is whether a
+// bigger ceiling rescues it. Here it does — which is the same answer imaging.spec.ts
+// got the other way round, and the reason that entry says latency was DISPROVEN there.
+const AUTOSAVE_ROW_MS = 25_000;
+
 const GEAR_PREFIX = "Travel press probe";
 
 test("the strength picker creates and selects a travel machine without losing the workout (#1611)", async ({
@@ -195,120 +221,133 @@ test("the strength picker creates and selects a travel machine without losing th
   const title = `${GEAR_PREFIX} session ${stamp}`;
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
-  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
-  await hydratedClick(
-    page,
-    page
-      .getByTestId("training-log-actions")
-      .getByRole("button", { name: "New activity" })
-  );
+  // THE PROBE SESSION IS A LIVE DRAFT ON THE SHARED PROFILE FROM ITS FIRST AUTO-SAVE,
+  // so its disposal cannot sit only on the happy path. Observed directly while
+  // measuring the throttle above: when this test failed at the Delete assertion it
+  // left `activity <id> "Travel press probe session …"` on profile 1, and the standing
+  // guard (#3173) had to clean up after it. Same defect as #3290/#3291, in the file
+  // those two are being fixed alongside.
+  try {
+    await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
+    await hydratedClick(
+      page,
+      page
+        .getByTestId("training-log-actions")
+        .getByRole("button", { name: "New activity" })
+    );
 
-  await page.getByRole("textbox", { name: "Activity name" }).fill(title);
-  // A fully-qualified variant (never the bare base, which needs a per-set equipment
-  // pick before it can save) — and its "Barbell" variant is what the quick-add
-  // defaults the new row's category from.
-  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-  await page
-    .getByRole("listbox")
-    .getByRole("button")
-    .filter({ hasText: "Barbell Bench Press" })
-    .first() // first-ok: transient combobox list this spec just opened by typing the name
-    .click();
+    await page.getByRole("textbox", { name: "Activity name" }).fill(title);
+    // A fully-qualified variant (never the bare base, which needs a per-set equipment
+    // pick before it can save) — and its "Barbell" variant is what the quick-add
+    // defaults the new row's category from.
+    await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    await page
+      .getByRole("listbox")
+      .getByRole("button")
+      .filter({ hasText: "Barbell Bench Press" })
+      .first() // first-ok: transient combobox list this spec just opened by typing the name
+      .click();
 
-  // Enter a complete working set FIRST — the whole point is that creating equipment
-  // mid-workout doesn't discard it.
-  const weight = page.getByTestId("set1-weight");
-  const reps = page.getByTestId("set1-reps-stepper").locator("input");
-  await settledFill(page, weight, "100");
-  await settledFill(page, reps, "5");
-  // The complete set auto-saves; Delete appearing is the stable "row exists" signal.
-  await expect(
-    page.getByRole("button", { name: "Delete", exact: true })
-  ).toBeVisible();
+    // Enter a complete working set FIRST — the whole point is that creating equipment
+    // mid-workout doesn't discard it.
+    const weight = page.getByTestId("set1-weight");
+    const reps = page.getByTestId("set1-reps-stepper").locator("input");
+    await settledFill(page, weight, "100");
+    await settledFill(page, reps, "5");
+    // The complete set auto-saves; Delete appearing is the stable "row exists" signal.
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true })
+    ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
 
-  // The full-registry door is ordinary same-app navigation. The activity is
-  // already autosaved, so it does not need a surprise second tab.
-  const door = page.getByTestId("strength-equipment-link");
-  await expect(door).toBeVisible();
-  await expect(door).toHaveAttribute("href", "/equipment");
-  await expect(door).not.toHaveAttribute("target", "_blank");
+    // The full-registry door is ordinary same-app navigation. The activity is
+    // already autosaved, so it does not need a surprise second tab.
+    const door = page.getByTestId("strength-equipment-link");
+    await expect(door).toBeVisible();
+    await expect(door).toHaveAttribute("href", "/equipment");
+    await expect(door).not.toHaveAttribute("target", "_blank");
 
-  // Open the compact in-form quick-add.
-  await page.getByTestId("strength-equipment-add").click();
-  const quickAdd = page.getByTestId("strength-equipment-quickadd");
-  await expect(quickAdd).toBeVisible();
-  // The category is defaulted from the lift's built-in variant ("Barbell Bench
-  // Press" → Barbell), so the traveller only has to type a name.
-  await expect(page.getByTestId("strength-equipment-new-category")).toHaveValue(
-    "Barbell"
-  );
+    // Open the compact in-form quick-add.
+    await page.getByTestId("strength-equipment-add").click();
+    const quickAdd = page.getByTestId("strength-equipment-quickadd");
+    await expect(quickAdd).toBeVisible();
+    // The category is defaulted from the lift's built-in variant ("Barbell Bench
+    // Press" → Barbell), so the traveller only has to type a name.
+    await expect(
+      page.getByTestId("strength-equipment-new-category")
+    ).toHaveValue("Barbell");
 
-  await settledFill(
-    page,
-    page.getByTestId("strength-equipment-new-name"),
-    gearName
-  );
-  await settledClick(page, page.getByTestId("strength-equipment-new-save"));
+    await settledFill(
+      page,
+      page.getByTestId("strength-equipment-new-name"),
+      gearName
+    );
+    await settledClick(page, page.getByTestId("strength-equipment-new-save"));
 
-  // The created row is selected on the CURRENT part immediately — no reopen.
-  const select = page.getByTestId("strength-equipment-select");
-  await expect(select).toBeVisible();
-  await expect(select.locator("option:checked")).toHaveText(gearName);
-  // …and every set value survived the creation round trip.
-  await expect(weight).toHaveValue("100");
-  await expect(reps).toHaveValue("5");
-  // The quick-add closed on success.
-  await expect(quickAdd).toHaveCount(0);
+    // The created row is selected on the CURRENT part immediately — no reopen.
+    const select = page.getByTestId("strength-equipment-select");
+    await expect(select).toBeVisible();
+    await expect(select.locator("option:checked")).toHaveText(gearName);
+    // …and every set value survived the creation round trip.
+    await expect(weight).toHaveValue("100");
+    await expect(reps).toHaveValue("5");
+    // The quick-add closed on success.
+    await expect(quickAdd).toHaveCount(0);
 
-  // A duplicate name is refused by the SHARED equipment write core, rendered inline
-  // — the form stays open and the activity underneath is untouched.
-  await page.getByTestId("strength-equipment-add").click();
-  await settledFill(
-    page,
-    page.getByTestId("strength-equipment-new-name"),
-    gearName
-  );
-  await settledClick(page, page.getByTestId("strength-equipment-new-save"));
-  await expect(page.getByTestId("strength-equipment-new-error")).toContainText(
-    gearName
-  );
-  await expect(page.getByTestId("strength-equipment-quickadd")).toBeVisible();
-  await expect(weight).toHaveValue("100");
+    // A duplicate name is refused by the SHARED equipment write core, rendered inline
+    // — the form stays open and the activity underneath is untouched.
+    await page.getByTestId("strength-equipment-add").click();
+    await settledFill(
+      page,
+      page.getByTestId("strength-equipment-new-name"),
+      gearName
+    );
+    await settledClick(page, page.getByTestId("strength-equipment-new-save"));
+    await expect(
+      page.getByTestId("strength-equipment-new-error")
+    ).toContainText(gearName);
+    await expect(page.getByTestId("strength-equipment-quickadd")).toBeVisible();
+    await expect(weight).toHaveValue("100");
 
-  // Cleanup: the probe session, then the probe equipment.
-  //
-  // Through the shared settled discard (#3267/#3287) rather than a local
-  // click-then-settledClick pair. `settledClick` promises "an action POST resolved",
-  // and this form has just fired TWO auto-saves and a refused quick-add save, so the
-  // POST it settles on need not be the delete's (#1952). The toast is the delete's
-  // own completion: `useUndoableDelete` announces "Activity deleted." only after
-  // `await action(fd)` resolves. It also spends the confirm's opening click through
-  // `openConfirm`, which is the one control here that a re-click may never be given.
-  await deleteActivityFromForm(page);
-  await page.goto("/training?tab=log");
-  await expect(
-    page
-      .getByRole("main")
-      .locator('[id^="activity-"]')
-      .filter({ hasText: title })
-  ).toHaveCount(0);
+    // Cleanup: the probe session, then the probe equipment.
+    //
+    // Through the shared settled discard (#3267/#3287) rather than a local
+    // click-then-settledClick pair. `settledClick` promises "an action POST resolved",
+    // and this form has just fired TWO auto-saves and a refused quick-add save, so the
+    // POST it settles on need not be the delete's (#1952). The toast is the delete's
+    // own completion: `useUndoableDelete` announces "Activity deleted." only after
+    // `await action(fd)` resolves. It also spends the confirm's opening click through
+    // `openConfirm`, which is the one control here that a re-click may never be given.
+    await deleteActivityFromForm(page);
+    await page.goto("/training?tab=log");
+    await expect(
+      page
+        .getByRole("main")
+        .locator('[id^="activity-"]')
+        .filter({ hasText: title })
+    ).toHaveCount(0);
 
-  await page.goto("/equipment");
-  const row = page.getByTestId("equipment-row").filter({ hasText: gearName });
-  await expect(row).toBeVisible();
-  // Delete moved into the shared ⋯ menu (#1491): open the row's menu, then click
-  // the (portaled) Delete item.
-  // Client-only OverflowMenu toggle, so the click must land after hydration.
-  await hydratedClick(
-    page,
-    row.getByRole("button", { name: "Equipment actions" })
-  );
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await settledClick(
-    page,
-    page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
-  );
-  await expect(row).toHaveCount(0);
+    await page.goto("/equipment");
+    const row = page.getByTestId("equipment-row").filter({ hasText: gearName });
+    await expect(row).toBeVisible();
+    // Delete moved into the shared ⋯ menu (#1491): open the row's menu, then click
+    // the (portaled) Delete item.
+    // Client-only OverflowMenu toggle, so the click must land after hydration.
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Equipment actions" })
+    );
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await settledClick(
+      page,
+      page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
+    );
+    await expect(row).toHaveCount(0);
+  } finally {
+    // The guard's own live-draft signature, taken on the shared profile. Serial
+    // tests plus a per-test guard mean there is never a neighbour's row here to
+    // swallow (the reasoning is spelled out in e2e/stale-build-save.spec.ts).
+    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+  }
 });
 
 // The empty-inventory half of the same door (#1611, mirroring #592): a profile with
