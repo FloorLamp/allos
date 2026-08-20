@@ -26,6 +26,17 @@ import { hydratedClick, settledClick, settledFill } from "./helpers";
 //   4. LIVE MODE ALWAYS SHOWS THE GRID. The grid is the job in a gym session — the
 //      #3218 pattern's workbench exclusion, which #3228 invokes by name.
 //
+// THREE MUTANTS WERE RUN AGAINST THESE TESTS, and each dies at the assertion under
+// test — a green suite over a correct tree says nothing about what it can see:
+//
+//   | mutant                                            | dies at                       |
+//   |---------------------------------------------------|-------------------------------|
+//   | `partSetsSummary` stops asking whether the run is  | the non-uniform claim: the    |
+//   | uniform                                            | collapse control is still     |
+//   |                                                    | there on 5, 5, 6              |
+//   | the `live` exclusion is dropped                    | the live grid read-back       |
+//   | collapsing truncates the part's sets               | the collapse round-trip       |
+//
 // Fixture ownership (#868, docs/internals/e2e-hygiene.md failure class 1): the probe
 // activity carries a UNIQUE per-run title and every lookup and cleanup keys on it, so
 // a --repeat-each rerun or a sibling spec cannot collide with it. A start-of-test
@@ -135,7 +146,13 @@ async function sweepProbes(page: Page): Promise<void> {
 
 // Log a strength session of PROBE_SETS identical sets and leave the editor open on it.
 // Returns the probe's unique title.
-async function logUniformProbe(page: Page): Promise<string> {
+//
+// `finish` decides which side of the LIVE boundary the probe lands on, and the
+// difference is not cosmetic: a manual session with a start time and no end time is
+// what `getWorkoutPresence` reads as a workout IN PROGRESS (#921), so reopening it
+// resumes LIVE mode and the grid stays — which is the fourth claim above, and is also
+// how the first draft of this spec failed. A finished session reopens in plain editing.
+async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await page.goto("/training?tab=log");
   await page
     .getByTestId("training-log-actions")
@@ -158,6 +175,15 @@ async function logUniformProbe(page: Page): Promise<string> {
   // debounce and read a two-set session, which would compress just the same and hide
   // the miss.
   await stored;
+
+  if (finish) {
+    // An end time is what takes the session out of "in progress" — the pinned e2e
+    // timezone puts local now at 13:mm (e2e/pinned-timezone.ts), so 23:59 is always
+    // after the start the create form stamped.
+    const ended = savePostWith(page, /23:59/);
+    await page.getByTestId("end-time-input").fill("23:59");
+    await ended;
+  }
   return title;
 }
 
@@ -167,7 +193,7 @@ test("a uniform run of sets states itself, and a save behind it still writes eve
   test.slow(); // local next dev compiles /training on first hit
   await sweepProbes(page);
 
-  const title = await logUniformProbe(page);
+  const title = await logUniformProbe(page, true);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
 
@@ -249,40 +275,30 @@ test("live mode shows the full grid however uniform the run is (#3336/#3228)", a
   test.slow();
   await sweepProbes(page);
 
-  const title = await logUniformProbe(page);
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  try {
+    // A session with a start time and no end time IS a workout in progress (#921), so
+    // this probe stays on the live side of the boundary — and reopening it RESUMES the
+    // live session rather than opening a plain edit (`preserveCurrentWorkout` in
+    // ActivityEditorProvider). That is the reachable case the exclusion exists for: you
+    // logged three identical sets, the tab reloaded, and the workbench you are standing
+    // at must come back as the workbench.
+    const title = await logUniformProbe(page, false);
+    await page.keyboard.press("Escape");
 
-  // A live session is a workbench: you are reading one row and checking it off, so the
-  // sets never state themselves however uniform they are. Reached the way #340 makes it
-  // reachable — start a live workout, then edit an existing activity, which resumes the
-  // live session onto it (the flow e2e/live-workout.spec.ts pins).
-  await page.goto("/training?tab=log");
-  await settledClick(page, page.getByRole("main").getByTestId("start-workout"));
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.waitForURL(/\/training\/activity\/\d+$/);
-  await page
-    .getByRole("button", { name: "Minimize workout", exact: true })
-    .click();
-
-  await page.goto("/training?tab=log");
-  await openEditorFromRow(page, cardsByTitle(page, title));
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  // The present peer is the grid itself, so the absence below is measured against a
-  // part that has demonstrably rendered its rows.
-  await expect(page.getByTestId("set1-weight")).toHaveValue(PROBE_WEIGHT);
-  await expect(page.getByTestId("set-summary")).toHaveCount(0);
-  await expect(page.getByTestId("set-summary-collapse")).toHaveCount(0);
-
-  // Finish the live session and discard its empty row, exactly as the live-workout
-  // spec does, so no dock is left standing for the next test on this database.
-  await page.getByTestId("finish-workout").click();
-  await page.getByTestId("recap-save").click();
-  await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
-
-  // Cleanup: the probe, from the settled editor.
-  await confirmDelete(page);
-  await page.goto("/training?tab=log");
-  await expect(cardsByTitle(page, title)).toHaveCount(0);
-  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+    await page.goto("/training?tab=log");
+    await openEditorFromRow(page, cardsByTitle(page, title));
+    await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+    // The present peer is the grid itself, so the absence below is measured against a
+    // part that has demonstrably rendered its rows — not against an editor that has
+    // not arrived yet.
+    await expect(page.getByTestId("set1-weight")).toHaveValue(PROBE_WEIGHT);
+    await expect(page.getByTestId("set-summary")).toHaveCount(0);
+    await expect(page.getByTestId("set-summary-collapse")).toHaveCount(0);
+  } finally {
+    // From a finally, because a started-but-unended activity on the shared profile is
+    // an ACTIVE workout for every later spec on this worker (#3173) — an earlier
+    // failure must not be allowed to skip the disposal.
+    await sweepProbes(page);
+    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+  }
 });
