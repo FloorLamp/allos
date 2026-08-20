@@ -8,7 +8,7 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone, setProfileSetting } from "../../lib/settings";
-import { setFixtureTimezone } from "../fixture-timezones";
+import { clearFixtureTimezone } from "../fixture-timezones";
 import {
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
@@ -112,10 +112,22 @@ export function seedRestCard(): void {
   // clears its own fixture rows first. Synthetic values only; relative dates never stale.
   {
     const rcId = adultFixtureProfileId(REST_CARD_PROFILE);
-    // Pin this dedicated profile to UTC so the spec's per-test reset (which rebuilds
-    // the same signal state from frozenNow()'s UTC date) and this seed agree on the
-    // calendar date regardless of the prelude-pinned zone or the run's start hour.
-    setFixtureTimezone(db, rcId, "rest-card", "UTC");
+    // THIS PROFILE FOLLOWS THE RUN'S ROTATING PIN, and used to be pinned to UTC
+    // (#3337). The seed and the spec's per-test reset still have to agree on the
+    // calendar date, and they still do: the pin puts local at 13:mm at every UTC start
+    // hour, so the profile-local date ALWAYS equals the frozen instant's UTC date (see
+    // e2e/pinned-timezone.ts). The reset's `frozenNow().toISOString().slice(0, 10)` is
+    // therefore the same day this seed computes, without a second calendar.
+    //
+    // The opt-out had to go because this spec asserts dashboard atoms, which is the
+    // pairing e2e/fixture-timezones.ts forbids: a UTC-pinned profile's local
+    // minute-of-day is the run's real UTC start hour, so any candidate carrying
+    // local-time-of-day timing moves lane by the hour the suite happened to start.
+    // Nothing had fired here yet — this fixture's atoms are coaching recommendations,
+    // not the sleep readings that fired in #3337 — but its 04:00 local wake sits inside
+    // `sleepArrivedInWakeWindow` for runs starting [04:00, 07:00) UTC, so it was one
+    // dashboard assertion away from the same three-hours-a-day red.
+    clearFixtureTimezone(db, rcId);
     const rcToday = today(rcId);
     const rcPrevNight = shiftDateStr(rcToday, -1);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rcId);
