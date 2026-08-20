@@ -51,7 +51,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+export const REPO_ROOT = path.resolve(
+  fileURLToPath(new URL("..", import.meta.url))
+);
 
 const SCAN_DIRS = ["app", "components", "lib"];
 
@@ -63,7 +65,7 @@ export const HOST_MODULES: Record<string, string> = {
   "components/BottomSheet.tsx":
     "the primitive — a sheet below `md`, a centred card above (#2774)",
   "components/ModalShell.tsx":
-    "the responsive dialog — a thin wrapper over BottomSheet's `presentation=\"dialog\"`",
+    'the responsive dialog — a thin wrapper over BottomSheet\'s `presentation="dialog"`',
   "components/ConfirmDialog.tsx":
     "the shared confirm — ONE instance mounted by ConfirmProvider, reached through a hook",
 };
@@ -333,9 +335,9 @@ export function importedBindings(file: SourceFile): ImportedBinding[] {
  */
 function bindingIsUsed(code: string, local: string): boolean {
   const body = code.replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "");
-  return new RegExp(`\\b${local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
-    body
-  );
+  return new RegExp(
+    `\\b${local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`
+  ).test(body);
 }
 
 // ── Self-declared dialogs ────────────────────────────────────────────────────

@@ -68,9 +68,10 @@ describe("dialog census — the register over the real tree", () => {
   it("keeps the host modules where the failure messages say they are", () => {
     const onDisk = new Set(readSourceFiles().map((f) => f.rel));
     for (const rel of Object.keys(HOST_MODULES)) {
-      expect(onDisk.has(rel), `${rel} is named as a host but is not on disk`).toBe(
-        true
-      );
+      expect(
+        onDisk.has(rel),
+        `${rel} is named as a host but is not on disk`
+      ).toBe(true);
     }
   });
 
