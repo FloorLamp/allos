@@ -11,7 +11,7 @@
 // home, the revert clears it and answers with both zones for the tell-after, and a
 // dismissal is scoped to the zone it dismissed.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import {
@@ -49,6 +49,16 @@ function ownProfile(name: string, tz: string) {
 beforeEach(() => {
   revalidate.mockClear();
   process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
+});
+
+// `process.env` is PROCESS-global and this tier shares a worker across files, so a
+// frozen clock left standing here is a frozen clock for every file that runs after
+// — which reads as a fault in THEIR code, at a date none of them chose. Leaving it
+// set cost three unrelated files a red (a PRN countdown "in ~2655.7h", a niggle
+// dated "today" instead of "yesterday", a digest slot that had turned over) before
+// this line existed.
+afterEach(() => {
+  delete process.env.ALLOS_TEST_NOW;
 });
 
 describe("acceptTravelTimezone", () => {
