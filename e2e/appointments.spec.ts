@@ -319,9 +319,17 @@ test.describe("Visits — single Add visit entry (#566)", () => {
     // A clearly-past date flips the entry to the encounter (clinical) shape. The flip
     // mounts a fresh form, whose editor starts closed — so the chips are what comes
     // back, not the panel the date was typed into.
+    //
+    // AND NOTHING IS DISMISSED AFTERWARDS. An Escape used to sit here, copied from the
+    // date fills elsewhere in this file, where it closes the DateField popover before
+    // it can swallow the Done click behind it. Here there is no popover left to close:
+    // the flip unmounts the entire branch, and the popover goes with it. The key was a
+    // no-op only because `FactEditorHost` marked itself an escape layer whether or not
+    // an editor was open, so the dialog answered no Escape at all (#3409) — with that
+    // fixed, a stray press is a dismissal, and this test would lose the surface it is
+    // about halfway through. The two assertions below are what proves the flip landed.
     await openVisitFact(add, "when");
     await add.getByLabel("Date", { exact: true }).fill("2020-01-15");
-    await page.keyboard.press("Escape");
     await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
       "data-tense",
       "past"
@@ -330,10 +338,10 @@ test.describe("Visits — single Add visit entry (#566)", () => {
     await expect(add.getByTestId("visit-more-diagnoses")).toBeVisible();
     await add.getByTestId("visit-fact-more").click();
 
-    // A clearly-future date flips it back to the appointment (scheduling) shape.
+    // A clearly-future date flips it back to the appointment (scheduling) shape — same
+    // fresh mount, same reason there is nothing here to dismiss.
     await openVisitFact(add, "when");
     await add.getByLabel("Date", { exact: true }).fill("2099-01-15");
-    await page.keyboard.press("Escape");
     await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
       "data-tense",
       "upcoming"

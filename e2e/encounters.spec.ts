@@ -3,12 +3,14 @@ import Database from "better-sqlite3";
 import {
   expectNoClippedContent,
   followLink,
+  hydratedClick,
   settledBoxes,
   settledClick,
   settledFill,
 } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { withVisitFact } from "./visit-form-helpers";
+import { openVisitFact, withVisitFact } from "./visit-form-helpers";
+import { expectFactEscapeGrammar } from "./fact-escape-helpers";
 
 // THIS worker's database (#1538): workerDbPath() resolves the same file this
 // worker's app server was booted against. A raw connection (not lib/db) avoids
@@ -509,5 +511,45 @@ test.describe("Visit detail — source-stated diagnosis ranks (#2589)", () => {
     await expect(group.locator(".sr-only")).toHaveText(SPOKEN.join("; "));
     // Hover recovers the same thing for a sighted reader.
     await expect(group).toHaveAttribute("title", SPOKEN.join("\n"));
+  });
+});
+
+// #3409: the Add visit dialog could not be closed with Escape, on either tense.
+//
+// BOTH VISIT FORMS KEEP THEIR FactEditorHost MOUNTED — a field the browser cannot see
+// is a field these whole-row writes CLEAR (#2359) — and the host used to declare itself
+// an escape layer for as long as it was mounted rather than for as long as an editor was
+// open. `useFocusTrap` yields Escape to any layer inside the trapped panel, so it yielded
+// every press to one nobody had opened and the dialog stood there.
+//
+// TWO TENSES, TWO ASSERTIONS, in one dialog: an appointment and an encounter are two of
+// the four consumers this shipped in, they are separate components behind one toggle, and
+// "the other branch presumably does the same" is the reasoning that let this reach four
+// forms in the first place. NON-MUTATING — nothing is typed and nothing is saved, so the
+// dialog owes no discard confirm and this test owns no fixture to clean up.
+test.describe("Add visit answers Escape once nothing is open (#3409)", () => {
+  test("both tenses close on Escape, and not before the editor has", async ({
+    page,
+  }) => {
+    test.slow();
+
+    for (const tense of ["upcoming", "past"] as const) {
+      await page.goto("/records/history/visits?new=1");
+      const add = page.getByTestId("visits-add");
+      await expect(add).toBeVisible();
+
+      // Routing, not an assertion: the derived tense depends on the default date, and
+      // only the branch that is NOT showing offers a button to reach the other one.
+      const toggle = add.getByTestId("visit-tense-toggle");
+      if ((await toggle.getAttribute("data-tense")) !== tense)
+        await hydratedClick(page, add.getByTestId(`visit-tense-${tense}`));
+      await expect(toggle).toHaveAttribute("data-tense", tense);
+
+      await expectFactEscapeGrammar(page, {
+        form: add,
+        row: add.getByTestId("visit-fact-row"),
+        openFact: () => openVisitFact(add, "reason"),
+      });
+    }
   });
 });
