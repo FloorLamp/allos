@@ -2013,6 +2013,21 @@ async function redispatchLostSubmit(
   // the thing the grep is for, and the one signal this instrumentation exists to
   // give would arrive pre-buried. A page that forged its own loss declares it, so
   // the two are never confusable and the reader has nothing to subtract by hand.
+  //
+  // AND DO NOT TURN THE MARK INTO AN EXEMPTION. The obvious next step from here is
+  // to make this log conditional on `__allosForgedLostSubmit` being UNSET, so a
+  // forged run prints nothing and a grep over CI comes back clean. Do not.
+  //
+  // Those forged lines are the ONLY execution this announcement path gets in CI.
+  // Suppress them and it becomes untested code that runs for the first time on the
+  // day it matters — which is the #3260 shape exactly: an opt-out whose stated
+  // reason had gone false, nothing anywhere checking that it was still true, and
+  // main red three hours a day for weeks before anyone noticed. Their ABSENCE from
+  // a run is itself the thing worth investigating, so the silence carries
+  // information an exemption would destroy.
+  //
+  // If the output ever needs quieting, the answer is a BETTER MARKER, never a
+  // suppressed one.
   const provenance = control.forged
     ? `This page set __allosForgedLostSubmit, so the loss was FORGED BY A SPEC on ` +
       `purpose and proves only that the rescue works.`
