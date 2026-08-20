@@ -237,7 +237,7 @@ test("the label's proposal is marked suggested, and stops being once the person 
   ).toHaveCount(1);
 });
 
-test("Done returns focus to the fact's chip, to its replacement, or to the row (#3311)", async ({
+test("Done returns focus to the chip, to its replacement, or to where the fact went (#3311)", async ({
   page,
 }, testInfo) => {
   // WHERE FOCUS IS after an editor closes, asserted three times because the primitive
@@ -257,14 +257,15 @@ test("Done returns focus to the fact's chip, to its replacement, or to the row (
   await closeEditor(page, modal);
   await expect(form.getByTestId("intake-fact-dose")).toBeFocused();
 
-  // TWO: the fact has NO chip, because an optional fact with nothing to state lives
-  // behind the trailing affordance. Nothing carries its key, so the row itself takes
-  // focus — not <body>, which is where this used to land. The row is focusable without
-  // being a tab stop and contains the chips, so Tab from here continues into the row.
+  // TWO: the fact has NO chip, because an optional fact left with nothing to state goes
+  // back behind the trailing affordance. Focus follows it there — that is where the
+  // person would reach for it again, and it is the control they passed through to get
+  // to the editor in the first place. Not the row, which would be true but unhelpful,
+  // and not <body>, which is where this used to land.
   await openFact(page, "notes", modal);
   await closeEditor(page, modal);
   await expect(form.getByTestId("intake-fact-notes")).toHaveCount(0);
-  await expect(form.getByTestId("intake-fact-row")).toBeFocused();
+  await expect(form.getByTestId("intake-fact-more")).toBeFocused();
 
   // THREE: the fact was stated for the first time, so the chip that reaches focus is not
   // the control that opened the editor — it did not exist then. This is the case the
@@ -273,4 +274,53 @@ test("Done returns focus to the fact's chip, to its replacement, or to the row (
   await settledFill(page, notes.getByLabel("Notes"), "half a scoop");
   await closeEditor(page, modal);
   await expect(form.getByTestId("intake-fact-notes")).toBeFocused();
+});
+
+test("focus returns to the rule sentence that was opened, not to the panel's first door (#3311)", async ({
+  page,
+}) => {
+  // THE CASE THAT MAKES THE FOCUS KEY AND THE PANEL KEY TWO QUESTIONS. Every rule
+  // sentence and the "+ rule" prompt open the ONE rules builder, so a restore keyed on
+  // the panel has only one answer for four doors: clicking the second rule returns to
+  // the first, and tapping "+ rule" returns to a rule the person never touched. Both are
+  // right answers to "which editor is this" and wrong answers to "where was I".
+  //
+  // Not a mechanism built in anticipation — intake draws multiple rule chips today, and
+  // this test arranges exactly that.
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const modal = page.getByRole("dialog", { name: "Add supplement" });
+  const form = modal.getByTestId("intake-item-form");
+  await expect(form).toBeVisible();
+
+  // SAMe's label proposes one rule, so the row starts with a sentence already in it.
+  await form.getByLabel("Name").fill("SAMe");
+  await page
+    .locator('ul[role="listbox"] button', { hasText: "SAMe" })
+    .first() // first-ok: transient combobox list this test just opened
+    .click();
+  const rules = form.getByTestId("intake-fact-rule");
+  await expect(rules).toHaveCount(1);
+
+  // ADD A SECOND from the "+ rule" prompt. That prompt PERSISTS beside the sentences it
+  // adds, so focus comes back to it — the person is most likely to add another, and the
+  // chip they used is still there to return to.
+  const addRule = form.getByTestId("intake-add-rule");
+  await hydratedClick(page, addRule);
+  await hydratedClick(page, form.getByTestId("intake-rule-add-only-when"));
+  await closeEditor(page, modal);
+  await expect(rules).toHaveCount(2);
+  await expect(addRule).toBeFocused();
+
+  // NOW OPEN THE SECOND SENTENCE. Keyed on the panel this would return focus to the
+  // first; keyed on the chip it returns here. The disclosure is the button carrying
+  // aria-expanded — the × beside it is a different control.
+  const second = rules.nth(1).locator("button[aria-expanded]"); // nth-ok: this test just created the second rule itself
+  await hydratedClick(page, second);
+  await expect(form.getByTestId("intake-editor")).toHaveAttribute(
+    "data-panel",
+    "rules"
+  );
+  await closeEditor(page, modal);
+  await expect(second).toBeFocused();
 });

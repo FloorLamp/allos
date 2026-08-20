@@ -1119,13 +1119,13 @@ export default function IntakeItemForm({
           <IntakeFactRow
             summary={summary}
             openEditor={openPanel}
-            onOpen={(key) => {
+            onOpen={(key, focusKey) => {
               setRulesStartOnMenu(false);
-              setOpenPanel(key);
+              setOpenPanel(key, focusKey);
             }}
-            onAddRule={() => {
+            onAddRule={(focusKey) => {
               setRulesStartOnMenu(true);
-              setOpenPanel("rules");
+              setOpenPanel("rules", focusKey);
             }}
             onRemoveRule={(id) =>
               setRules((current) => current.filter((r) => r.id !== id))

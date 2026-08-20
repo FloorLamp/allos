@@ -20,7 +20,8 @@ import {
 // still posts with the form (#2014). A consumer must therefore keep its editor state
 // outside the host.
 //
-// AND BOTH RETURN FOCUS TO THE CHIP, not merely to the chip row (#3311). Opening an
+// AND BOTH RETURN FOCUS TO THE CHIP THAT OPENED THE EDITOR, not merely to the row and
+// not merely to the panel's first door (#3311). Opening an
 // editor unmounts the chip that was activated, so without this focus falls to <body> and
 // stays there: someone navigating by keyboard states a fact and finds the next Tab
 // starting from the top of the document. See `restoreFact` in useFactEditor for why the
@@ -51,13 +52,16 @@ export function useFactEditor<K extends string>({
   initial?: K | null;
 }): {
   openEditor: K | null;
-  open: (key: K) => void;
+  // `focusKey` is the CHIP that opened this panel, when the two are not the same
+  // question — several chips can open one editor. Defaults to the panel key, which is
+  // right whenever a panel has exactly one door. See FactChipRow's header.
+  open: (key: K, focusKey?: string) => void;
   close: () => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
 } {
   const [openEditor, setOpenEditor] = useState<K | null>(initial);
 
-  // WHICH FACT FOCUS GOES BACK TO, and note that it is a KEY rather than the element the
+  // WHICH CHIP FOCUS GOES BACK TO, and note that it is a KEY rather than the element the
   // person activated (#3311).
   //
   // The obvious implementation — capture `document.activeElement` on open, call
@@ -65,14 +69,22 @@ export function useFactEditor<K extends string>({
   // cases. Opening an editor unmounts the entire chip row, so when the row comes back
   // every chip is a freshly created DOM node and the captured one is disconnected. The
   // captured element is not stale only when a fact stated for the first time replaces
-  // its "+ thing" prompt; it is stale always. A key still names the fact across that
-  // remount, so the row is asked for the chip rather than told which element to use.
-  const restoreFact = useRef<K | null>(null);
+  // its "+ thing" prompt; it is stale always. A key still names the chip across that
+  // remount, so the row is asked for it rather than told which element to use.
+  //
+  // It is the CHIP's key, not the panel's: the intake form draws one chip per rule
+  // sentence and all of them open the one rules builder, so a panel key would return
+  // focus to the first rule no matter which one was opened.
+  const openedFrom = useRef<string | null>(null);
+  const restoreFocus = useRef<string | null>(null);
 
-  const open = useCallback((key: K) => setOpenEditor(key), []);
+  const open = useCallback((key: K, focusKey?: string) => {
+    openedFrom.current = focusKey ?? key;
+    setOpenEditor(key);
+  }, []);
 
   const close = useCallback(() => {
-    restoreFact.current = openEditor;
+    if (openEditor != null) restoreFocus.current = openedFrom.current;
     setOpenEditor(null);
   }, [openEditor]);
 
@@ -107,17 +119,25 @@ export function useFactEditor<K extends string>({
   // sat on <body>.
   useEffect(() => {
     if (openEditor !== null) return;
-    const key = restoreFact.current;
-    restoreFact.current = null;
+    const key = restoreFocus.current;
+    restoreFocus.current = null;
     const scope = scopeRef.current;
     if (key == null || scope == null) return;
-    // The chip for that fact when the row still states it. When it does not — an
-    // optional fact left empty goes back behind the trailing affordance, so no chip
-    // carries its key — the row itself takes focus rather than <body>.
-    const chip = scope.querySelector<HTMLElement>(
-      `[data-fact-key="${CSS.escape(key)}"]`
-    );
-    (chip ?? scope.querySelector<HTMLElement>("[data-fact-row]"))?.focus();
+    // FOCUS LANDS WHERE THE THING YOU JUST DID NOW LIVES, in three tiers.
+    //
+    // The chip itself, when the row still draws it. Otherwise the trailing affordance:
+    // an optional fact left empty has no chip of its own and has gone back inside that
+    // one control, so that is where the person would reach for it again — returning to
+    // the row instead would be true but unhelpful. Only a surface with no trailing
+    // affordance at all (the sleep dialog has none by design — its facts are all
+    // essential) falls through to the row, which beats <body> and nothing else.
+    const target =
+      scope.querySelector<HTMLElement>(
+        `[data-focus-key="${CSS.escape(key)}"]`
+      ) ??
+      scope.querySelector<HTMLElement>("[data-fact-more]") ??
+      scope.querySelector<HTMLElement>("[data-fact-row]");
+    target?.focus();
   }, [openEditor, scopeRef]);
 
   return { openEditor, open, close, onKeyDown };
