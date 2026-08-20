@@ -439,6 +439,21 @@ ${MIGRATION_LINES}
   AND THE ANSWER MUST MEAN WHAT YOU THINK: \`--is-ancestor\` asks "do these share
   history", which after a SQUASH merge is NOT "is my work in main" — post-merge, ask
   about CONTENT. Same command, opposite verdicts, both correct.
+- VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
+  above, because two lanes reached for it independently on the same night and both
+  were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
+  says NO and that NO is CORRECT. Do not "fix" it. Ask instead whether the CONTENT
+  landed: the symbols you added, the deletions you made, and above all the REVERTS —
+  #2774 checked that a \`touch-manipulation\` class it had deliberately reverted was
+  still absent THROUGH the merge, which is a thing ancestry could never have told it.
+- LET INSTRUMENTATION SURVIVE ITS OWN USEFULNESS. A click log or a touch log that
+  pins nothing and backs no assertion looks exactly deletable, and a reviewer WILL
+  reach for it — write the comment above it addressed to that reviewer specifically.
+  Keeping it is what makes the NEXT red self-describing instead of a bare "element
+  not found". In the #2774 investigation every one of four eliminated hypotheses came
+  from making the test say MORE on failure, not less, and the final rewrite could
+  drop an assertion only because the instrumentation licensing that drop was already
+  paid for. Scaffolding that earned a diagnosis is not scaffolding any more.
 - Never typecheck with bare npx tsc --noEmit. npm run typecheck runs next typegen
   first, and a fresh worktree has no .next/types, so bare tsc reports three
   TS2578 "Unused '@ts-expect-error'" in lib/__tests__/revalidate-route.test.ts.
