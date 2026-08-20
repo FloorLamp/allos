@@ -43,6 +43,7 @@ import {
   applyProductSeed,
   bottleForOptionLabel,
   bottleOptionLabel,
+  bottlesForKindDoor,
   itemSeedFromPool,
   type SupplyOption,
 } from "@/lib/supply-product";
@@ -508,7 +509,10 @@ export default function IntakeItemForm({
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
     // supply_id on this item's own save, and lends its members' kind — a bottle has
     // none of its own, so one with nothing linked yet falls through to the ask.
-    const bottle = bottleForOptionLabel(bottles, picked);
+    const bottle = bottleForOptionLabel(
+      bottlesForKindDoor(bottles, lockedKind),
+      picked
+    );
     if (bottle) {
       onPickSupply(bottle);
       return;
@@ -969,9 +973,15 @@ export default function IntakeItemForm({
 
   // Bottles lead: a bottle the household already has is a more specific answer than a
   // vocabulary entry with the same name, and it is the one that carries a count.
+  //
+  // BOTH HALVES OF THIS LIST ANSWER TO THE DOOR (#3270). The catalog half always did;
+  // the bottle half did not, so the Add supplement door listed the household's
+  // medications and picking one wrote a supplement named Ibuprofen — a locked door
+  // cannot be corrected, so nothing asked and nothing showed. `bottleFitsKindDoor`
+  // holds the rule and the no-sibling ruling.
   const nameOptions = useMemo(
     () => [
-      ...bottles.map(bottleOptionLabel),
+      ...bottlesForKindDoor(bottles, lockedKind).map(bottleOptionLabel),
       ...(lockedKind === "supplement"
         ? catalogOptions.supplements
         : lockedKind === "medication"
