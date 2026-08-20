@@ -325,6 +325,12 @@ test.describe("substance use (#998/#1078/#1085)", () => {
 
   // A LOST CLICK ON THIS BUTTON IS RESCUED, AND STILL LOGS EXACTLY ONE USE (#3359).
   //
+  // THIS IS A TEST OF `e2e/helpers.ts` AND IT LIVES HERE ON PURPOSE — do not move it
+  // to a spec of its own. It needs a profile it may write to and then undo, and this
+  // file already OWNS one (#868) and runs serially against it; a standalone spec
+  // would either duplicate that fixture or write into a shared profile, which is
+  // exactly the hazard the ownership rule exists to prevent.
+  //
   // `settledClick` re-dispatches a click it can prove was never delivered to its
   // control. That is a retry on a WRITE — logging a use — so the thing that has to
   // be true is not "it recovers" but "it recovers without logging twice", and a
@@ -354,6 +360,12 @@ test.describe("substance use (#998/#1078/#1085)", () => {
         '[data-testid="track-substance-save"]'
       ) as HTMLButtonElement | null;
       if (!btn) throw new Error("no save button to forge a lost click against");
+      // Declare the forgery ON THE PAGE, so the rescue's own log line can say this
+      // loss was deliberate. Without it this test prints three per run that are
+      // indistinguishable from a real recurrence on the same control (e2e/helpers.ts).
+      (
+        window as unknown as { __allosForgedLostSubmit?: boolean }
+      ).__allosForgedLostSubmit = true;
       const once = () => {
         btn.disabled = true;
         setTimeout(() => {

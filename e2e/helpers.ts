@@ -1938,13 +1938,23 @@ async function redispatchLostSubmit(
   if (click.error) return;
   // Proof 1: nothing left the browser.
   if (wait.issuedCount() > 0) return;
-  // Proof 3, first because it is the cheap local read.
+  // Proof 3, first because it is the cheap local read. The label comes back on the
+  // same round trip because the announcement below needs it and the failure path
+  // must not pay for a second one.
   const control = await probeHandle
     ?.evaluate((el) => {
       const c = el as HTMLButtonElement | HTMLInputElement;
+      const testId = c.getAttribute("data-testid");
       return {
         formSubmit: c.form != null && c.type === "submit",
         idle: !c.disabled && c.getAttribute("aria-busy") !== "true",
+        label: testId
+          ? `[${testId}]`
+          : `<${c.tagName.toLowerCase()}> "${(c.textContent ?? "").trim().slice(0, 40)}"`,
+        // A spec that LOSES A CLICK ON PURPOSE says so on the page it forged it on.
+        forged:
+          (window as unknown as { __allosForgedLostSubmit?: boolean })
+            .__allosForgedLostSubmit === true,
       };
     })
     .catch(() => null);
@@ -1975,6 +1985,43 @@ async function redispatchLostSubmit(
       `nothing could have been written; the click was re-dispatched ONCE (#3359). ` +
       `This message means the SECOND one was lost too — that is a finding about ` +
       `the page, not about this contract.`
+  );
+  // A RESCUE THAT SUCCEEDS MUST STILL ANNOUNCE ITSELF. Do not remove this line, and
+  // do not make it conditional on the test failing.
+  //
+  // `wait.note` only reaches a reader if the SECOND click is lost too, because it
+  // is printed by the timeout's diagnosis. So without this log a WORKING rescue is
+  // completely silent — and this helper runs in several hundred specs. If the app
+  // ever genuinely starts losing submits, every one of those specs would quietly
+  // retry past it and stay green, and the suite would be answering "does a second
+  // click work?" when the question asked was "does a click work?". That is the same
+  // shape as an absence assertion whose bug's window has closed: the check still
+  // passes, against the very defect it exists to catch, and nothing on screen says
+  // so.
+  //
+  // The economics only work if it is loud in exactly one direction. A rescue that
+  // never fires costs nothing and prints nothing; a rescue that fires puts the
+  // control, the page and the shape into the run's output, so ONE grep over a CI
+  // run answers "is the app losing submits, and where" — which is the question this
+  // instrumentation exists for and the question silence forecloses.
+  //
+  // MARKING THE DELIBERATE ONE IS NOT DECORATION. `substance-use.spec.ts` forges a
+  // lost click on purpose, to pin that a rescue still logs exactly one use — and it
+  // forges it on THE VERY CONTROL AND ROUTE #3359 was seen on, so its line would
+  // otherwise be character-for-character identical to a real sighting. Three
+  // deliberate hits per run would then sit in the grep output looking exactly like
+  // the thing the grep is for, and the one signal this instrumentation exists to
+  // give would arrive pre-buried. A page that forged its own loss declares it, so
+  // the two are never confusable and the reader has nothing to subtract by hand.
+  const provenance = control.forged
+    ? `This page set __allosForgedLostSubmit, so the loss was FORGED BY A SPEC on ` +
+      `purpose and proves only that the rescue works.`
+    : `NOT forged: if this line is in a GREEN run, the app lost a submit and the ` +
+      `spec only passed because of the retry.`;
+  console.log(
+    `[settledClick] LOST-SUBMIT RESCUE (#3359): re-dispatching a click on ` +
+      `${control.label} at ${new URL(page.url()).pathname} — the first one ` +
+      `${shape}. ${provenance}`
   );
   await locator.click({ timeout: LOST_SUBMIT_PROOF_MS }).catch(() => {
     // A second click that cannot land adds nothing to the diagnosis the caller is
