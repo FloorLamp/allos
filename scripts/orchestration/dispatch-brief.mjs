@@ -604,7 +604,14 @@ ${MIGRATION_LINES}
   its COMPANY, not its behaviour.
   So a red in a spec you did not touch, on a PR that adds a spec file, is a THIRD
   possibility beside "mine" and "contention": a latent co-residency bug your
-  re-partition exposed. Diff the plan (\`tsx scripts/e2e-shard-plan.ts N 12\`) between
+  re-partition exposed.
+  AND THE RE-PARTITION IS NOT THE FAILURE — IT ONLY CHANGES THE DICE. Same PR, same
+  commit, same partition: a plain re-run went GREEN. So adding a spec permanently
+  changes WHO a spec's neighbours are, and whether the latent bug then fires is a
+  FURTHER ROLL. The consequence is the one that catches people: a lane that adds a
+  spec, reds once, and re-runs to green HAS NOT DISPROVED ANYTHING — it has only
+  declined to roll again. Report the re-partition you caused either way; a green
+  re-run is not a clean bill for the spec whose company you changed. Diff the plan (\`tsx scripts/e2e-shard-plan.ts N 12\`) between
   your branch and a control to see whose neighbours you changed, and say so.
   DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
   a suite that cannot grow without hiding failures is measuring less every time.
