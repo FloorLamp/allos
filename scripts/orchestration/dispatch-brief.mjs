@@ -551,6 +551,18 @@ ${MIGRATION_LINES}
   script scoping itself to your diff, not a gate you missed. Report its output verbatim.
   Give that Bash call an explicit long timeout; if it cannot fit one tool call
   under contention, run the same gates individually in the same order.
+- WHEN A CONTROL RUN IS SAMPLING A RACE, DO NOT RUN IT MORE TIMES — REMOVE THE RACE
+  AND MEASURE THE QUANTITY UNDERNEATH. Repeats can only ever make a verdict PROBABLE,
+  and on an intermittent failure a green control proves nothing at all: it has just
+  not rolled again. Measured 2026-08-20 on #3384, where a lane was told to run repeats
+  at two commits to decide whether a neighbouring PR had caused a 5px overflow. It did
+  something better — it waited for the content the spec was racing, then read
+  scrollWidth/clientWidth directly at both commits: 363/358 either side, IDENTICAL.
+  One run each, and it exonerated a commit the lane had every incentive to blame.
+  The general form: a flaky comparison is usually a measurement taken at an unstable
+  moment. Find what makes the moment unstable, wait for it, and the comparison becomes
+  a single reading instead of a sample. Run the repeats too if you like — but say
+  plainly which of the two carried your verdict.
 - A FAILURE IN CODE YOU DID NOT TOUCH IS CONTENTION UNTIL PROVEN OTHERWISE. Up to
   five agents share four cores here, and measured load has reached 22 — a starved
   tier fails in specs nobody edited and reads exactly like a regression. Before
