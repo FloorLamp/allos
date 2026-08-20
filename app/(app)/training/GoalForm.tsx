@@ -37,11 +37,11 @@ import GoalFactRow, {
 import {
   GOAL_FACT_NOUNS,
   GOAL_KIND_LABEL,
-  bodyTargetUnit,
+  firstGoalProblem,
   goalFactSummary,
+  goalStartingFrom,
   goalSubjectOptions,
   kindForSubjectGroup,
-  startingFromFactLabel,
   type GoalSubjectOption,
 } from "@/lib/goal-facts";
 import { createGoal, updateGoal } from "./goal-actions";
@@ -473,59 +473,19 @@ export default function GoalForm({
   }
 
   // ── Where this goal is starting from (#3220) ──────────────────────────────
-  const startingFrom = (() => {
-    if (kind === "exercise") {
-      const best = exerciseBests[exerciseHistoryKey(exercise)];
-      if (!best) return null;
-      if (metric === "weight")
-        return best.weightKg == null
-          ? null
-          : startingFromFactLabel({
-              value: round(kgTo(best.weightKg, weightUnit), 1),
-              unit: weightUnit,
-            });
-      if (metric === "reps")
-        return best.reps == null
-          ? null
-          : startingFromFactLabel({ value: best.reps, unit: "reps" });
-      if (metric === "hold")
-        return best.durationSec == null
-          ? null
-          : startingFromFactLabel({
-              value: best.durationSec,
-              unit: null,
-              asDuration: true,
-            });
-      // The `sets` metric counts, per session, the sets clearing this goal's OWN rep
-      // bar — a property of the target, not of the movement's history. See
-      // getExerciseBests.
-      return null;
-    }
-    if (kind === "body") {
-      const latest = latestBodyMetrics[bodyMetric] ?? null;
-      if (latest == null) return null;
-      return startingFromFactLabel({
-        value:
-          bodyMetric === "weight"
-            ? round(kgTo(latest, weightUnit), 1)
-            : latest,
-        unit: bodyTargetUnit(bodyMetric, weightUnit),
-      });
-    }
-    if (kind === "biomarker") {
-      if (!bioOption || bioOption.latest == null) return null;
-      return startingFromFactLabel({
-        value: bioOption.latest,
-        unit: bioOption.latestUnit,
-      });
-    }
-    const typed = Number(currentValue.trim());
-    if (!currentValue.trim() || !Number.isFinite(typed)) return null;
-    return startingFromFactLabel({
-      value: typed,
-      unit: unitText.trim() || null,
-    });
-  })();
+  const startingFrom = goalStartingFrom({
+    kind,
+    exerciseBest: exerciseBests[exerciseHistoryKey(exercise)] ?? null,
+    metric,
+    bodyLatest: latestBodyMetrics[bodyMetric] ?? null,
+    bodyMetric,
+    biomarkerLatest: bioOption?.latest ?? null,
+    biomarkerUnit: bioOption?.latestUnit ?? null,
+    currentValue,
+    freeformUnit: unitText,
+    toDisplayWeight: (kg) => round(kgTo(kg, weightUnit), 1),
+    weightUnit,
+  });
 
   const summary = goalFactSummary(
     {
@@ -606,54 +566,26 @@ export default function GoalForm({
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * The first fact that would make the write refuse, and the panel holding it.
-   *
-   * WHY THIS EXISTS AT ALL, rather than the `required` attributes it replaces: a
-   * `required` field inside a CLOSED panel is `hidden`, and the browser refuses to
-   * validate a hidden control — it blocks the submit with "An invalid form control is
-   * not focusable" and shows the person nothing. So the form asks the question
-   * itself and OPENS the fact that needs answering, which is the affordance the chip
-   * row makes possible.
-   */
-  function firstProblem(): { panel: GoalOpenPanel; message: string } | null {
-    if (kind === "exercise") {
-      if (!exercise.trim())
-        return { panel: "subject", message: "Pick the exercise this goal is about." };
-      if (metric === "weight" && !targetWeight.trim())
-        return { panel: "target", message: "Enter the weight you're aiming for." };
-      if (metric === "reps" && !targetReps.trim())
-        return { panel: "target", message: "Enter the reps you're aiming for." };
-      if (metric === "sets" && (!targetSets.trim() || !targetReps.trim()))
-        return { panel: "target", message: "Enter both the sets and the reps." };
-      if (metric === "hold" && !targetDuration.trim())
-        return { panel: "target", message: "Enter the hold you're aiming for." };
-      if (showLoadContext && selectedContext === "")
-        return { panel: "equipment", message: "Pick the machine this target is for." };
-      return null;
-    }
-    if (kind === "body")
-      return bodyTarget.trim()
-        ? null
-        : { panel: "target", message: "Enter the number you're aiming for." };
-    if (kind === "biomarker") {
-      if (!bioOption)
-        return { panel: "subject", message: "Pick the lab or vital this goal is about." };
-      return bioTarget.trim()
-        ? null
-        : { panel: "target", message: "Enter the number you're aiming for." };
-    }
-    return titleText.trim()
-      ? null
-      : { panel: "subject", message: "Name this goal." };
-  }
+  const problem = firstGoalProblem({
+    kind,
+    exercise,
+    metric,
+    targetWeight,
+    targetReps,
+    targetSets,
+    targetDuration,
+    machineUnchosen: showLoadContext && selectedContext === "",
+    bodyTarget,
+    biomarkerPicked: bioOption != null,
+    biomarkerTarget: bioTarget,
+    title: titleText,
+  });
 
   async function submit(fd: FormData) {
     setError(null);
-    const problem = firstProblem();
     if (problem) {
       setError(problem.message);
-      openPanel(problem.panel);
+      openPanel(problem.fact);
       return;
     }
     let result: FormResult;

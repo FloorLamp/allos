@@ -7,6 +7,7 @@ import {
   settledFill,
 } from "./helpers";
 import { loginAs } from "./nav";
+import { closeGoalFact, openGoalFact } from "./goal-form-helpers";
 import {
   E2E_LOGIN_LAB_GOAL,
   E2E_MEMBER_PASSWORD,
@@ -123,29 +124,42 @@ test.describe("goals can target a lab value (#1853)", () => {
     });
     try {
       await page.goto("/training?tab=goals");
-      // "New goal" opens the modal (setModal) and the kind pill is a state chip —
-      // neither posts. The combobox the form renders is the signal.
+      // "New goal" opens the modal (setModal), and since #3220 it lands ON the
+      // subject pick — the one picker holding all three goal vocabularies, whose
+      // pick DERIVES the kind. Neither posts anything; the combobox is the signal.
       await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
-      await hydratedClick(page, page.getByTestId("goal-kind-biomarker"));
+      const form = page.getByTestId("goal-form");
+      await expect(form).toBeVisible();
 
       const field = page.locator(
-        'input[role="combobox"][aria-label="Lab or vital"]'
+        'input[role="combobox"][aria-label="What to track"]'
       );
       const listbox = await openCombobox(page, field);
 
-      // The relevance view, not an A–Z list. "Albumin" is alphabetically first of
-      // the profile's three analytes and is exactly what an A–Z picker led with;
-      // here it is LAST of the three, behind the overdue draw and the flagged one,
-      // under a header that says why. Same groups, same order as every other
-      // biomarker picker (#1675).
-      await expect(options(listbox).nth(0)).toHaveText(LAB_GOAL_OVERDUE);
-      await expect(options(listbox).nth(1)).toHaveText(LAB_GOAL_TRACKED);
-      await expect(options(listbox).nth(2)).toHaveText(LAB_GOAL_IN_RANGE);
-      await expect(groups(listbox)).toHaveText([
+      // THE ANALYTES KEEP THEIR OWN RANKED, GROUP-HEADED ORDER (#1675), which is what
+      // merging three vocabularies into one picker must not cost them. "Albumin" is
+      // alphabetically first of the profile's three analytes and is exactly what an
+      // A–Z picker led with; here it is LAST of the three, behind the overdue draw
+      // and the flagged one, under a header that says why.
+      //
+      // Asked as the LAST three headers and as the analytes' order RELATIVE to each
+      // other, rather than by absolute index: the training vocabularies precede them
+      // and how many rows those contribute is a property of the profile's own
+      // history, not of this picker.
+      const headers = await groups(listbox).allTextContents();
+      expect(headers.slice(-3)).toEqual([
         RELEVANT_GROUP,
         YOUR_GROUP,
         ALL_GROUP,
       ]);
+      const labels = await options(listbox).allTextContents();
+      expect(labels.indexOf(LAB_GOAL_OVERDUE)).toBeGreaterThan(-1);
+      expect(labels.indexOf(LAB_GOAL_OVERDUE)).toBeLessThan(
+        labels.indexOf(LAB_GOAL_TRACKED)
+      );
+      expect(labels.indexOf(LAB_GOAL_TRACKED)).toBeLessThan(
+        labels.indexOf(LAB_GOAL_IN_RANGE)
+      );
 
       // Typing is the app-wide fuzzy search, FLAT — no group headers, and the best
       // match leads. That is this assertion's whole point.
@@ -168,15 +182,32 @@ test.describe("goals can target a lab value (#1853)", () => {
         .click();
       await expect(field).toHaveValue(LAB_GOAL_OVERDUE);
 
+      // THE PICK DERIVED THE KIND, and says that it did rather than inferring it
+      // silently (#3216/#3220): an analyte makes this a lab goal, marked as a
+      // suggestion and one tap from correction.
+      await closeGoalFact(form);
+      await expect(form.getByTestId("goal-fact-subject")).toHaveText(
+        LAB_GOAL_OVERDUE
+      );
+      const kindChip = form.getByTestId("goal-fact-kind");
+      await expect(kindChip).toHaveText("Lab or vital");
+      await expect(kindChip).toHaveAttribute("data-suggested", "1");
+
       // The unit label and the reference hint follow the picked analyte, so the
       // number is typed beside the thresholds the app already holds rather than
       // blind next to them.
+      await openGoalFact(form, "target");
       await expect(
         page.getByTestId("goal-clinical-result-reference")
       ).toContainText(/Reference/);
 
       await hydratedClick(page, page.getByTestId("goal-direction-below"));
       await settledFill(page, page.getByLabel(/Target value/), "6.5");
+      await closeGoalFact(form);
+      // The row now states the sentence the write will store.
+      await expect(form.getByTestId("goal-fact-target")).toHaveText(
+        "under 6.5 %"
+      );
       await settledClick(
         page,
         page.getByRole("button", { name: "Create goal" })

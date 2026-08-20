@@ -103,6 +103,23 @@ const CONSUMERS = [
     chips: "components/encounters/VisitFactRow.tsx",
     host: "app/(app)/encounters/EncounterForm.tsx",
   },
+  {
+    // THE LAST OF THE FIVE QUEUED ADOPTERS (#3220), and the largest DOM-collected
+    // surface in the tree: 30 named inputs across four kind branches, of which a given
+    // goal uses six. It is also the first consumer whose SEEDING PICK decides which
+    // fields exist at all — the subject pick derives the kind, so the chip that states
+    // the kind is marked as a suggestion and opens the same editor the subject does.
+    //
+    // Its previously-uncontrolled fields stay DOM-owned for the reason the protocol row
+    // above records, and its closed panels stay mounted for the same one. The single
+    // exception is the exercise target's metric-conditional block, which mounts only
+    // the inputs its metric uses: on a REPS goal `target_weight_kg` is read as a weight
+    // FLOOR by `bestValueForGoal`, so a leftover number would silently change which
+    // sets count. e2e/goal-facts.spec.ts pins both.
+    name: "the training-goal form (#3220)",
+    chips: "components/training/GoalFactRow.tsx",
+    host: "app/(app)/training/GoalForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
