@@ -182,6 +182,12 @@
           "title": "A blood pressure or resting heart rate quiet for a year stops showing a stale number and says when it stopped",
           "kind": "fix",
           "issues": [3226]
+        },
+        {
+          "pr": 3261,
+          "title": "Adding a medication or supplement is one form that starts with the name and shows what it will save",
+          "kind": "feature",
+          "issues": [3216]
         }
       ]
     },

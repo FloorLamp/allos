@@ -400,6 +400,13 @@ ${nodeLine}
   \`mcp__github__get_job_logs\` with \`return_content: true\`, and that is the justified
   exception to "use curl REST, not the MCP tools". Note its tail lands in the runner's
   post-job cleanup, so ask for enough \`tail_lines\` (~140) to reach the test summary.
+- BUT REACH FOR THE ANNOTATIONS FIRST — plain REST, no MCP, and it gives you the
+  FAILING TEST AND ITS ASSERTION directly:
+      GET /repos/FloorLamp/allos/commits/<sha>/check-runs
+      then follow each failed run's \`output.annotations_url\`
+  Use this before a log tail. On 2026-08-19 \`get_job_logs\` returned the SAME capped
+  window no matter what \`tail_lines\` was set to, several times, and the annotations
+  endpoint answered every one of those questions in a single call.
 - DIAGNOSING A CI-ONLY FAILURE: it may be TIMING rather than co-residency. A tap that
   lands pre-hydration is swallowed with no error — Playwright's actionability checks
   pass, because the element is fine — and the next assertion fails as "element(s) not
@@ -412,6 +419,26 @@ ${issueLines}
 ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
+- RUN THE AFFECTED SPECS, NOT THE CHANGED ONES. They are different sets and the
+  difference is where CI catches you. When a change makes a previously
+  UNCONDITIONAL element CONDITIONAL — a field moving behind a disclosure, a row
+  behind a fold — EVERY spec that addresses that element is affected whether or not
+  you edited it, and \`e2e-changed\` cannot see them because it selects on files
+  edited. #3216 ran its 25 changed spec files green (267 tests) while three affected
+  specs it had never touched were red. The sweep that works: enumerate the moved
+  markers FROM THE COMPONENTS — testids AND accessible labels, since a spec using
+  getByLabel names no testid — then grep the whole tree. Over-matching costs a
+  minute; missing costs a CI round. Recipe in docs/internals/e2e-hygiene.md.
+- VERIFY STATE AT REPORT TIME, BY ASKING RATHER THAN REMEMBERING. A command's output
+  is a claim about the moment it ran, and your gates take 20-40 minutes while this
+  repo merges roughly every 20. \`git merge-base --is-ancestor origin/main HEAD\`
+  (exit 0) ASKS; the output of \`git merge\` REMEMBERS. Same split for CI status,
+  branch/remote agreement, and "the tree was clean when I started". The trap is not
+  carelessness — the remembered answer was GENUINELY TRUE, so nothing feels wrong
+  while you report it.
+  AND THE ANSWER MUST MEAN WHAT YOU THINK: \`--is-ancestor\` asks "do these share
+  history", which after a SQUASH merge is NOT "is my work in main" — post-merge, ask
+  about CONTENT. Same command, opposite verdicts, both correct.
 - Never typecheck with bare npx tsc --noEmit. npm run typecheck runs next typegen
   first, and a fresh worktree has no .next/types, so bare tsc reports three
   TS2578 "Unused '@ts-expect-error'" in lib/__tests__/revalidate-route.test.ts.
@@ -434,6 +461,16 @@ ${MIGRATION_LINES}
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
+- DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
+  e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
+  e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
+  DEFAULT_INTAKE_REMINDER_MINUTES.Midday, so a profile following it sits at the
+  centre of a meal window at every UTC start hour. A profile pinned to UTC instead
+  has a local minute-of-day equal to the run's REAL UTC start hour, so anything
+  carrying meal-window timing goes dark once the last window closes. #3260 was a
+  main-red from exactly this: green 21 hours a day, red the other 3, for weeks —
+  and the opt-out survived because its stated reason had gone false and nothing
+  checks that a \`why\` still describes its seed.
 - Any e2e fixture whose feature groups by profile-LOCAL date/time MUST build instants
   via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never naive
   \`\${day}THH:MM\` strings — the seed pins a ROTATING per-run instance timezone
