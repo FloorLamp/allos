@@ -109,8 +109,18 @@ const CONFIRM_HOOKS = ["useConfirm", "useOptionalConfirm", "useConfirmOpen"];
 // The guard over this register (lib/__tests__/dialog-census.test.ts) therefore
 // fails on a hostless dialog that is NOT recorded, and on a recorded one that is
 // no longer hostless. It deliberately does NOT fail on the recorded set itself —
-// a build error on all seven would force the owner's open design call to be made
-// seven times over by whoever next touched the tree.
+// a build error on every recorded entry would force the owner's open design call
+// to be made once per entry by whoever next touched the tree.
+//
+// No count is written in this file's prose ON PURPOSE, and it is not squeamishness:
+// this comment said SEVEN while the register below held NINE, having gone stale the
+// moment two entries were added. A hand-maintained number drifting from the thing it
+// counts is the exact failure #3405 exists to end, and it had reproduced itself
+// inside the file whose whole subject is a count that was wrong three times. A
+// reader who checks a number against the register and finds a discrepancy has no way
+// to know which side is right. Where a count is genuinely useful, DERIVE it — the
+// guard's failure message reads Object.keys(HOSTLESS_DIALOGS).length — and where it
+// is only rhetorical, say "every entry".
 export const HOSTLESS_DIALOGS: Record<string, string> = {
   "components/MergeConflictDialog.tsx":
     "the #3405 straggler: own portal, own scrim, own z-index, own focus behaviour — and not even the shared useFocusTrap. Its comment says it COPIED ModalShell's behaviour rather than using it. Status undecided (#3405).",

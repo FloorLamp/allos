@@ -17,8 +17,8 @@ import {
 // converge onto the host or are named in docs/internals/overlays.md as sanctioned
 // exceptions, and says in as many words that this "is a design call about the
 // convergence's boundary, not something a lane should decide". A build error on
-// all nine would force that unmade call to be made nine times over by whoever
-// next touched the tree.
+// every recorded entry would force that unmade call to be made once per entry by
+// whoever next touched the tree.
 //
 // THE OTHER HALF OF THIS FILE IS THE PART THAT MATTERS. A census that runs green
 // over a tree which complies has told you nothing about what it can SEE. So below
@@ -42,7 +42,11 @@ describe("dialog census — the register over the real tree", () => {
       CENSUS.unrecordedHostless,
       "This component renders a modal dialog of its own and goes through none of " +
         "the dialog hosts. Run `npm run census:dialogs -- --hostless` to see what " +
-        "it answers for itself. It is not automatically wrong — nine components " +
+        // Derived, not typed: this sentence is a claim about the register, so it
+        // reads the register. The prose version of it had already gone stale.
+        `it answers for itself. It is not automatically wrong — ${
+          Object.keys(HOSTLESS_DIALOGS).length
+        } components ` +
         "already sit here — but it must be RECORDED in HOSTLESS_DIALOGS in " +
         "scripts/dialog-census-core.ts, stating factually what it hand-rolls, so the next " +
         "sweep of this family sees it. Silently belonging to no host is the " +
@@ -264,7 +268,7 @@ describe("dialog census — what it can SEE", () => {
        }`
     );
     // The spelling this repo actually uses. A census that looked for a
-    // `<ConfirmDialog>` element would have been blind to all 35 of these.
+    // `<ConfirmDialog>` element would have been blind to every one of these.
     expect(entry?.kind).toBe("confirm-caller");
   });
 
