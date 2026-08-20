@@ -292,7 +292,7 @@ export default function AppointmentForm({
       <div ref={factScopeRef} onKeyDown={onFactKeyDown}>
         {!editorOpen && (
           <VisitFactRow
-            testId="appointment-fact-row"
+            testId="visit-fact-row"
             summary={summary}
             openEditor={openEditor}
             onOpen={openFact}
@@ -303,8 +303,8 @@ export default function AppointmentForm({
             named input below is in the FormData of every save regardless of which
             editors were opened, and stays visible to the dirty-form registry. */}
         <FactEditorHost
-          testId="appointment-fact-editor"
-          doneTestId="appointment-fact-editor-done"
+          testId="visit-fact-editor"
+          doneTestId="visit-fact-editor-done"
           panel={openEditor ?? undefined}
           className={
             editorOpen

@@ -243,7 +243,7 @@ export default function EncounterForm({
       <div ref={factScopeRef} onKeyDown={onFactKeyDown}>
         {!editorOpen && (
           <VisitFactRow
-            testId="encounter-fact-row"
+            testId="visit-fact-row"
             summary={summary}
             openEditor={openEditor}
             onOpen={openFact}
@@ -253,8 +253,8 @@ export default function EncounterForm({
         {/* MOUNTED ALWAYS, hidden when nothing is open — a field the browser cannot see
             is a field this whole-row write CLEARS (#2359). */}
         <FactEditorHost
-          testId="encounter-fact-editor"
-          doneTestId="encounter-fact-editor-done"
+          testId="visit-fact-editor"
+          doneTestId="visit-fact-editor-done"
           panel={openEditor ?? undefined}
           className={
             editorOpen

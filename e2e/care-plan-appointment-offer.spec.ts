@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import { settledSelect } from "./helpers";
+import { withVisitFact } from "./visit-form-helpers";
 
 // Close the care-plan loop on appointment completion (issue #658): completing a
 // visit OFFERS to close the open care-plan items it matches (by kind/title/date
@@ -59,8 +60,12 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await page.getByTestId("add-visit-panel-toggle").click();
     const visitDialog = page.getByRole("dialog", { name: "Add visit" });
     const upcoming = page.getByTestId("visits-upcoming");
-    await visitDialog.getByLabel("Reason / title").fill(APPT);
-    await visitDialog.getByLabel("Kind (optional)").selectOption("screening");
+    await withVisitFact(visitDialog, "reason", async () => {
+      await visitDialog.getByLabel("Reason / title").fill(APPT);
+    });
+    await withVisitFact(visitDialog, "kind", async () => {
+      await visitDialog.getByLabel("Kind (optional)").selectOption("screening");
+    });
     await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 

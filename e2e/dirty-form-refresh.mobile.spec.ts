@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
 import { workerAuthPath, workerDbPath } from "./worker-env";
+import { withVisitFact } from "./visit-form-helpers";
 
 // Who a pull-to-refresh belongs to while a record form holds unsaved input
 // (issues #1878, #2725, #2774).
@@ -173,9 +174,16 @@ test("a pull stands down under a converged record sheet, and refreshes the momen
     // phone is a body-locking, drag-owning sheet.
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
-    const title = dialog.getByLabel("Reason / title");
-    await expect(title).toBeVisible();
-    await title.fill("E2E pull-under-sheet visit");
+    // The title sits behind a fact chip now (#3223), and its panel is CLOSED again
+    // before the registry is asked — which is the state that matters here. A field
+    // whose panel unmounted would be invisible to the registry, and a field bound to
+    // React state could never be dirty at all (React syncs `defaultValue` onto a
+    // controlled field, and the registry reads `defaultValue` as the saved value).
+    await withVisitFact(dialog, "reason", async () => {
+      const title = dialog.getByLabel("Reason / title");
+      await expect(title).toBeVisible();
+      await title.fill("E2E pull-under-sheet visit");
+    });
     await expect(registry).toHaveAttribute("data-dirty", "1");
 
     // THE FLIPPED PIN. The sheet owns the vertical drag, so the pull does not

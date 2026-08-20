@@ -6,6 +6,11 @@ import {
   touchSwipe,
   touchSwipeFrom,
 } from "./helpers";
+import {
+  closeVisitFact,
+  openVisitFact,
+  withVisitFact,
+} from "./visit-form-helpers";
 
 // The #2774 convergence, from the outside: ModalShell's consumers now render the
 // ONE responsive dialog primitive, so on a phone they are sheets that OWN THE
@@ -310,9 +315,13 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
   const dialog = await openAddVisit(page);
-  const title = dialog.getByLabel(TITLE_FIELD);
-  await expect(title).toBeVisible();
-  await title.fill(DRAFT);
+  // Behind a fact chip since #3223, and typed with the panel closed again afterwards —
+  // the guard has to see input that is mounted but not on screen.
+  await withVisitFact(dialog, "reason", async () => {
+    const title = dialog.getByLabel(TITLE_FIELD);
+    await expect(title).toBeVisible();
+    await title.fill(DRAFT);
+  });
   // Measured after the typing as well as after the animation: what has to come
   // back is the panel as it stands when the flick starts.
   const atRest = await restingPanelTop(dialog);
@@ -343,7 +352,9 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
         "keeping the edit must settle the form back to rest, not leave it parked off the bottom edge",
     })
     .toBe(atRest);
-  await expect(title).toHaveValue(DRAFT);
+  // Read back through the CHIP rather than by re-opening the editor: opening a panel
+  // changes the panel's height, and this test is measuring geometry against `atRest`.
+  await expect(dialog.getByTestId("visit-fact-reason")).toContainText(DRAFT);
 
   // And the guard is not spent: the SAME gesture asks again, and this time the
   // answer is discard. Refusing a dismissal must not disarm the surface.
@@ -364,9 +375,11 @@ test("a scrim tap on a dirty form asks first too", async ({ page }) => {
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
   const dialog = await openAddVisit(page);
-  const title = dialog.getByLabel(TITLE_FIELD);
-  await expect(title).toBeVisible();
-  await title.fill(DRAFT);
+  await withVisitFact(dialog, "reason", async () => {
+    const title = dialog.getByLabel(TITLE_FIELD);
+    await expect(title).toBeVisible();
+    await title.fill(DRAFT);
+  });
 
   await tapScrim(page);
   const confirm = page.getByTestId("confirm-dialog");
@@ -385,7 +398,13 @@ test("a clean converged form dismisses in one gesture, with no question", async 
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
   const dialog = await openAddVisit(page);
+  // THE NEGATIVE CONTROL, so the chips are DRIVEN without anything being edited: the
+  // disclosure is opened and closed exactly as in the tests above, and the only
+  // difference is that no value changed. Asserting on the untouched title field alone
+  // would test "a form nobody opened" rather than "a form somebody browsed".
+  await openVisitFact(dialog, "reason");
   await expect(dialog.getByLabel(TITLE_FIELD)).toBeVisible();
+  await closeVisitFact(dialog);
   await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
     dy: 260,
   });

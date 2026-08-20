@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import FactChipRow, {
   FactChip,
   FactMoreChip,
 } from "@/components/facts/FactChipRow";
 import {
   moreFactsLabel,
+  VISIT_FACT_NOUNS,
   type VisitFactKey,
   type VisitFactSummary,
 } from "@/lib/visit-facts";
@@ -13,21 +15,23 @@ import {
 // The summary row of the visit pair (#3223), in the shared facts-with-editors grammar
 // (#3218). Everything about how a chip looks, announces itself and discloses its editor
 // lives in `components/facts/FactChipRow`; this file supplies only which facts a visit
-// states, in what order, and which trailing affordance holds the absent ones.
+// states, in what order, and what the trailing affordance holds.
 //
 // ONE ROW SERVES BOTH TENSES, which is the point of #3223: the appointment form and the
-// encounter form mount THIS, so a person who books a visit and a person who logs one
-// that already happened are answering the same six questions in the same words. The two
-// Server Actions and their two tables stay separate behind it.
+// encounter form mount THIS, so booking a visit and logging one that already happened
+// are the same six questions in the same words. The two Server Actions and their two
+// tables stay separate behind it.
 //
-// IT HAS A TRAILING AFFORDANCE, unlike the sleep dialog's row and the activity editor's.
-// A visit's optional facts really can all be empty — most logged visits carry no
-// diagnoses and no notes — and five dashed prompts for things nobody is going to fill in
-// is the "wall of fields" the pattern exists to replace. So an absent optional renders
-// NO chip and lives behind one control that names what it holds. That also makes this
-// the first consumer where useFactEditor's SECOND focus tier is the one that answers: a
-// fact edited back to empty has no chip to return to, and focus lands on the affordance
-// it just went back inside.
+// THE TRAILING AFFORDANCE OPENS A MENU, not the first fact it holds — the shape #3219
+// settled on, and worth matching rather than answering a second way. A visit's optional
+// facts really can all be empty (most logged visits carry no diagnoses and no notes), so
+// the affordance routinely holds three or four; opening the first would make the other
+// three unreachable in one gesture, and would make "add notes" mean "add reason". The
+// menu names each one, so "more" never means "somewhere in here".
+//
+// AND IT MAKES THIS THE FIRST CONSUMER WHERE useFactEditor's SECOND FOCUS TIER ANSWERS.
+// A fact edited back to empty has no chip to return to; focus lands on the affordance it
+// has gone back inside, which is where the person would reach for it again.
 
 export default function VisitFactRow({
   testId,
@@ -40,11 +44,8 @@ export default function VisitFactRow({
   openEditor: VisitFactKey | null;
   onOpen: (key: VisitFactKey) => void;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
   const moreLabel = moreFactsLabel(summary.absent);
-  // The affordance opens the FIRST fact it holds. It is one control over several facts,
-  // so its own identity is not any of their keys — hence the explicit focus key relayed
-  // through `onOpen`, exactly the chip-vs-panel split the primitive's header describes.
-  const firstAbsent = summary.absent[0];
 
   return (
     <FactChipRow testId={testId}>
@@ -71,14 +72,46 @@ export default function VisitFactRow({
           }
         />
       ))}
-      {moreLabel && firstAbsent && (
-        <FactMoreChip
-          testId="visit-fact-more"
-          focusKey="more"
-          label={moreLabel}
-          expanded={summary.absent.includes(openEditor as VisitFactKey)}
-          onOpen={() => onOpen(firstAbsent)}
-        />
+      {moreLabel && (
+        <>
+          <FactMoreChip
+            testId="visit-fact-more"
+            // The affordance's OWN identity, not any of the facts it holds (#3311) —
+            // it is one control over several, which is exactly the chip-vs-panel split
+            // the primitive's header describes.
+            focusKey="more"
+            label={moreLabel}
+            // `aria-expanded` states whether the MENU is open, which is what this
+            // control actually discloses. The editor it eventually opens is the chip's
+            // business, not this one's.
+            expanded={moreOpen}
+            onOpen={() => setMoreOpen((v) => !v)}
+          />
+          {moreOpen && (
+            <span
+              role="menu"
+              aria-label="Add another detail"
+              data-testid="visit-fact-more-menu"
+              className="inline-flex flex-wrap items-center gap-1.5"
+            >
+              {summary.absent.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="menuitem"
+                  data-testid={`visit-more-${key}`}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onOpen(key);
+                  }}
+                  className="tap-target rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+                >
+                  {VISIT_FACT_NOUNS[key]}
+                </button>
+              ))}
+            </span>
+          )}
+        </>
       )}
     </FactChipRow>
   );
