@@ -18,6 +18,10 @@ import { describe, expect, it } from "vitest";
 //   3. No overlay surface hand-rolls a slide (raw transform/transition/keyframe).
 //   4. The `.overlay-*` class names are produced by lib/motion.ts alone, and the
 //      drag recognizer is components/overlay/useDragGesture.ts alone.
+//   5. A full-viewport overlay that SCROLLS ITSELF contains its overscroll, and
+//      a portal dialog that hosts a FORM uses the converged host (#2774).
+//   6. Every `presentation="centered"` call site — the recorded opt-out from the
+//      phone sheet idiom — is registered with its justification (#2774).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
@@ -53,11 +57,13 @@ const OVERLAY_SURFACES = new Map<string, string>([
 // #1469 scopes desktop dialogs and popovers out: different anatomy (centred, no
 // bottom edge to flick toward, no safe-area inset to clear). They may adopt the
 // tokens later; until then each one is recorded here on purpose.
+//
+// components/ModalShell.tsx used to head this list. It is no longer here because
+// it is no longer a portal at all: #2774 made it a thin WRAPPER over
+// BottomSheet's `presentation="dialog"`, so its 34 consumers render the one
+// responsive primitive — a sheet below `md`, a centred card above — and the app
+// has one dialog implementation instead of two.
 const OTHER_PORTAL_OVERLAYS = new Map<string, string>([
-  [
-    "components/ModalShell.tsx",
-    "the centred desktop modal — the sheet's non-thumb-reachable sibling; out of scope per #1469",
-  ],
   [
     "components/MergeConflictDialog.tsx",
     "centred decision dialog, its own anatomy (no anchored edge)",
@@ -93,6 +99,28 @@ const RAW_DRAG_LISTENER_ALLOW = new Map<string, string>([
   [
     "components/ImageCropper.tsx",
     "drags the crop box within a fixed frame — content manipulation, not an overlay gesture",
+  ],
+]);
+
+// ── Rule 5b: portal dialogs allowed to host a form outside the converged host ─
+// #2774 converged every form-hosting dialog onto ONE primitive. A raw portal
+// that puts a form on screen beside it is the second engine growing back, so it
+// has to say here why its form cannot live in the shared host.
+const RAW_FORM_PORTAL_ALLOW = new Map<string, string>([]);
+
+// ── Rule 6: the recorded opt-outs from the phone sheet idiom (#2774) ─────────
+// The owner's decision is SHEETS ON PHONES for every converged consumer.
+// `presentation="centered"` is the exception, and an exception is recorded, not
+// smuggled: each surface here has an ANATOMY reason it is not flickable at any
+// width. "It looks better centred" is not one of them.
+const CENTERED_PRESENTATION = new Map<string, string>([
+  [
+    "components/CommandPalette.tsx",
+    "the command palette — a keyboard surface whose body is a search field over a result list; no bottom edge to flick toward, and already scoped out of #1469",
+  ],
+  [
+    "components/photo/PhotoCapture.tsx",
+    "the camera fallback — a live viewfinder the user is aiming, where flick-to-dismiss is a gesture collision rather than an affordance",
   ],
 ]);
 
@@ -138,6 +166,72 @@ const byPath = new Map(FILES.map((f) => [f.rel, f.text]));
 // regardless of what it is called.
 function isPortalOverlay(text: string): boolean {
   return text.includes("createPortal") && text.includes("fixed inset-0");
+}
+
+// The file with every comment blanked out but its LINE NUMBERS intact, so a
+// scan reports the offending line and never the prose describing the rule. The
+// per-line `//` strip the older rules do is not enough on its own: two of these
+// scans first reported a `/* … */` block that merely NAMED `overflow-y-auto`
+// and a doc comment that spelled `<form>`, which is the "checks a rendering of
+// the property rather than the property" failure in its cheapest form.
+function withoutComments(text: string): string {
+  const out: string[] = [];
+  let inBlock = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "\n") {
+      out.push(ch);
+      continue;
+    }
+    if (inBlock) {
+      if (ch === "*" && text[i + 1] === "/") {
+        inBlock = false;
+        out.push("  ");
+        i += 1;
+      } else out.push(" ");
+      continue;
+    }
+    // A QUOTED STRING is copied through verbatim, comment openers and all. This
+    // is not fussiness: `accept="image/*"` in components/photo/PhotoCapture.tsx
+    // opened a phantom block comment that blanked the next 150 lines, and the
+    // register scan below then reported the file as no longer opting out of the
+    // sheet idiom — a scan reading a green it never checked, from source it had
+    // silently thrown away.
+    if (ch === '"' || ch === "'" || ch === "`") {
+      out.push(ch);
+      i += 1;
+      while (i < text.length && text[i] !== ch) {
+        if (text[i] === "\\") {
+          out.push(text[i], text[i + 1] ?? "");
+          i += 2;
+          continue;
+        }
+        out.push(text[i]);
+        i += 1;
+      }
+      out.push(text[i] ?? "");
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      inBlock = true;
+      out.push("  ");
+      i += 1;
+      continue;
+    }
+    // A `//` comment runs to the end of the line, and anything inside it —
+    // including a `/*` — is prose. Scanning left to right rather than running
+    // two regexes over the whole file is what keeps that true.
+    if (ch === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        out.push(" ");
+        i += 1;
+      }
+      i -= 1;
+      continue;
+    }
+    out.push(ch);
+  }
+  return out.join("");
 }
 
 // A hand-rolled slide: moving a panel with a transform/transition/keyframe the
@@ -301,6 +395,94 @@ describe("overlay motion chokepoint", () => {
     ).toEqual([]);
   });
 
+  // THE #2774 DEFECT, stated where a new surface will meet it. ModalShell
+  // rendered `fixed inset-0 overflow-y-auto` and scrolled ITSELF over an
+  // unlocked body: a drag its scroller declined chained straight out to the
+  // document, so the page underneath drifted and on release sat somewhere other
+  // than where the dialog was opened from. Every other full-viewport overlay in
+  // the app has the same shape available to it for the price of one class.
+  //
+  // Matched per CLASS STRING rather than per file, because "the file mentions
+  // overscroll-contain somewhere" is exactly the cheaper question: a file with
+  // two scrollers, one of them contained, would pass it while still chaining.
+  it("a full-viewport overlay's own scroller contains its overscroll", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of FILES) {
+      if (!isPortalOverlay(text)) continue;
+      withoutComments(text)
+        .split("\n")
+        .forEach((code, i) => {
+          if (!/\boverflow-y-auto\b/.test(code)) return;
+          if (/\boverscroll-contain\b/.test(code)) return;
+          offenders.push(`${rel}:${i + 1}`);
+        });
+    }
+    expect(
+      offenders,
+      "This scroller is inside a surface that covers the viewport, so when it " +
+        "declines a drag the document takes it and the page moves BEHIND the " +
+        "overlay (#2774). Add `overscroll-contain` to the same element. A locked " +
+        "body is the other half of the answer and not a substitute: the lock is " +
+        "held only while the surface is mounted, and a nested surface can release " +
+        "it first."
+    ).toEqual([]);
+  });
+
+  it("a portal dialog that hosts a form uses the converged host", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of FILES) {
+      if (!isPortalOverlay(text)) continue;
+      if (OVERLAY_SURFACES.has(rel)) continue;
+      if (RAW_FORM_PORTAL_ALLOW.has(rel)) continue;
+      if (!/<form[\s>]/.test(withoutComments(text))) continue;
+      offenders.push(rel);
+    }
+    expect(
+      offenders,
+      "A dialog that puts a FORM on screen renders through the converged host " +
+        "(components/ModalShell.tsx, a thin wrapper over BottomSheet's " +
+        '`presentation="dialog"`), so it inherits the sheet-below-`md` ' +
+        "presentation, the locked body, the one scroll owner, the declared size " +
+        "and the dirty-discard confirm. Hand-rolling the portal re-creates the " +
+        "second dialog primitive #2774 retired. If the form genuinely cannot live " +
+        "there, add the file to RAW_FORM_PORTAL_ALLOW with the reason. See " +
+        "docs/internals/overlays.md's host decision table."
+    ).toEqual([]);
+  });
+
+  it("records every opt-out from the phone sheet idiom", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of FILES) {
+      if (!/presentation=\{?["']centered["']/.test(withoutComments(text)))
+        continue;
+      if (CENTERED_PRESENTATION.has(rel)) continue;
+      offenders.push(rel);
+    }
+    expect(
+      offenders,
+      "Sheets on phones is the decision for every converged consumer (#2774). " +
+        '`presentation="centered"` opts a surface out of it, and an opt-out is ' +
+        "RECORDED, not smuggled: add the file to CENTERED_PRESENTATION with the " +
+        "ANATOMY reason it is not flickable at any width — the way the command " +
+        "palette and the camera fallback are."
+    ).toEqual([]);
+    // And the register does not outlive its call sites.
+    const stale = [...CENTERED_PRESENTATION.keys()].filter(
+      (rel) =>
+        !/presentation=\{?["']centered["']/.test(
+          withoutComments(byPath.get(rel) ?? "")
+        )
+    );
+    expect(
+      stale,
+      "This surface no longer opts out of the sheet idiom — drop it from the " +
+        "register rather than leaving the next reader to check."
+    ).toEqual([]);
+    for (const [, why] of CENTERED_PRESENTATION) {
+      expect(why.length).toBeGreaterThan(20);
+    }
+  });
+
   it("keeps the allowlists honest", () => {
     const stale: string[] = [];
     for (const rel of OTHER_PORTAL_OVERLAYS.keys()) {
@@ -312,6 +494,12 @@ describe("overlay motion chokepoint", () => {
     for (const rel of RAW_DRAG_LISTENER_ALLOW.keys()) {
       const text = byPath.get(rel);
       if (text == null) stale.push(`${rel} (gone from disk)`);
+    }
+    for (const rel of RAW_FORM_PORTAL_ALLOW.keys()) {
+      const text = byPath.get(rel);
+      if (text == null) stale.push(`${rel} (gone from disk)`);
+      else if (!/<form[\s>]/.test(withoutComments(text)))
+        stale.push(`${rel} (no longer hosts a form)`);
     }
     for (const [, why] of [...OVERLAY_SURFACES, ...OTHER_PORTAL_OVERLAYS]) {
       // A justification that says nothing is an allowlist entry nobody can review.

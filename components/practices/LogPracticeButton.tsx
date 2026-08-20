@@ -427,7 +427,7 @@ export default function LogPracticeButton({
         <ModalShell
           title={`Log ${practice}`}
           onClose={() => setDetailsOpen(false)}
-          className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+          size="sm"
         >
           <form
             onSubmit={onDetailedSubmit}

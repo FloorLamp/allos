@@ -4,26 +4,42 @@ import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
 import { workerAuthPath, workerDbPath } from "./worker-env";
 
-// The complementary half of the dirty-form registry (issue #1878): a refresh the
-// USER asked for is never deferred.
+// Who a pull-to-refresh belongs to while a record form holds unsaved input
+// (issues #1878, #2725, #2774).
 //
-// Pull-to-refresh is the sharpest case. It exists only in the installed PWA,
-// where there is no URL bar and therefore no other way to say "give me current
-// data" — a gesture whose entire meaning is that request. Swallowing it because
-// some form on the page is dirty would be its own bug, and a worse one than the
-// wipe: the user would pull, see nothing happen, and have no recourse.
+// ── THE RULING THIS SPEC WAS UPDATED TO (#2774, consequence A) ───────────────
 //
-// So the distinction is an opt-in at the call site, not a heuristic: the chrome
-// actors call `useChromeRefresh`, PullToRefresh keeps calling `router.refresh()`
-// itself. This spec proves that from the outside — with a record form genuinely
-// dirty, the pull still refreshes, and the registry never even hears about it
-// (`data-owed` stays 0, so nothing was queued and silently swallowed).
+// It used to pin the opposite: that a pull STILL refreshes while a ModalShell
+// record form holds unsaved input. That was correct for the tree it was written
+// against and is deliberately flipped here — DO NOT "fix" it back.
 //
-// Since the #1878 ruling the chrome half includes the toasters' POLL, which now
-// observes over a route handler so only `useChromeRefresh` can repaint. That makes
-// this spec sharper rather than redundant: one page, one dirty form, both actors
-// firing — the user's pull goes through immediately, and the poll's repaint sits
-// owed at the same moment. Neither behaviour is inferable from the other.
+// The reason is not a change of mind about #1878. It is that the surface
+// changed. ModalShell was a centred card with no gesture of any kind, so a pull
+// under it could not be anybody else's gesture; #2774 converged its consumers
+// onto the responsive sheet primitive, which is a BODY-LOCKING, DRAG-OWNING
+// surface. `lib/pull-to-refresh.ts`'s clause 1 asks exactly one question — does
+// an overlay own the vertical drag — and the honest answer for these surfaces is
+// now yes. Standing down is that rule applying, not a new attention heuristic
+// sneaking in through the back door.
+//
+// #1878's spirit survives intact, in three pieces this spec pins:
+//
+//   1. NO SILENT DEFERRAL. The pull under the sheet is REFUSED, not queued: the
+//      registry never hears about it (`data-owed` stays 0), so there is no
+//      swallowed request sitting in a queue the user cannot see.
+//   2. THE RECOURSE IS ONE GESTURE AWAY. Close the sheet and pull: it refreshes
+//      immediately. Nothing about the page is stuck.
+//   3. THE INSTALLED-APP CONCERN — "there is no URL bar, so a pull is the only
+//      way to ask" — is answered by #2471: deploys reload themselves.
+//
+// ── The half that did not change ─────────────────────────────────────────────
+//
+// The CHROME's refresh is still deferred while a form is dirty, and it is still
+// deferred by WHO ASKED rather than by anything about the page: the toasters'
+// poll observes over a route handler so only `useChromeRefresh` can repaint, and
+// its repaint sits owed while the same form is dirty. Both actors fire in the
+// same breath on one page here, which is what makes this a spec about ownership
+// rather than two unrelated assertions.
 //
 // The two emulation seams (standalone display-mode, and counting refreshes at
 // all) are the ones e2e/pull-to-refresh.mobile.spec.ts documents; this reuses
@@ -124,7 +140,7 @@ async function pullDown(page: Page, distance: number) {
 test.beforeEach(cleanup);
 test.afterAll(cleanup);
 
-test("a pull-to-refresh still refreshes while a record form holds unsaved input", async ({
+test("a pull stands down under a converged record sheet, and refreshes the moment it closes", async ({
   browser,
 }) => {
   test.slow();
@@ -146,39 +162,49 @@ test("a pull-to-refresh still refreshes while a record form holds unsaved input"
     await expect(indicator).toHaveAttribute("data-refreshes", "0");
     await expect(registry).toHaveAttribute("data-dirty", "0");
 
-    // Make the form genuinely dirty — the exact state that defers a CHROME
-    // refresh.
+    // CONTROL, before anything is open: the pull works on this page, in this
+    // context, at this scroll position. Without it "it did not refresh" below
+    // would be satisfied by a gesture that never armed for some unrelated
+    // reason — the cheaper question wearing the same green.
+    await pullDown(page, 200);
+    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+
+    // Make the form genuinely dirty, inside the converged dialog — which on a
+    // phone is a body-locking, drag-owning sheet.
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
     const title = dialog.getByLabel("Reason / title");
     await expect(title).toBeVisible();
-    await title.fill("E2E pull-through-dirty visit");
+    await title.fill("E2E pull-under-sheet visit");
     await expect(registry).toHaveAttribute("data-dirty", "1");
 
-    // The user asks for current data anyway.
+    // THE FLIPPED PIN. The sheet owns the vertical drag, so the pull does not
+    // arm at all: the count stays where the control left it.
     await pullDown(page, 200);
-
-    // It happened. Counting the calls is what makes this a fact rather than an
-    // absence of symptoms.
     await expect(indicator).toHaveAttribute("data-refreshes", "1");
-    // And it never entered the registry: nothing was owed, so nothing was
-    // queued-and-swallowed on the way.
+    // And it was REFUSED, not queued: nothing entered the registry, so there is
+    // no swallowed request the user cannot see. That is #1878's actual
+    // requirement, and it still holds.
     await expect(registry).toHaveAttribute("data-owed", "0");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
 
     // The form is still dirty. Now the CHROME acts, on the same page, in the same
     // breath: the background extraction finishes and the toaster's poll sees it.
-    // Its repaint is owed — the opposite treatment from the pull above, decided by
-    // WHO asked rather than by anything about the page.
+    // Its repaint is owed — deferred by WHO asked, exactly as before.
     finishDocument();
     await expect(page.getByText(`${DOC}: imported 2 records.`)).toBeVisible({
       timeout: 20_000,
     });
     await expect(registry).toHaveAttribute("data-owed", "1");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
-    // The user's pull is untouched by any of it — still exactly the one refresh
-    // they asked for, never re-run and never rolled into the chrome's debt.
-    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+
+    // THE RECOURSE. Close the sheet and pull again: the page is released and the
+    // refresh the user asked for happens immediately. This is the half that
+    // keeps the stand-down from being a dead end.
+    await hydratedClick(page, dialog.getByRole("button", { name: "Close" }));
+    await expect(dialog).toHaveCount(0);
+    await pullDown(page, 200);
+    await expect(indicator).toHaveAttribute("data-refreshes", "2");
   } finally {
     await context.close();
   }

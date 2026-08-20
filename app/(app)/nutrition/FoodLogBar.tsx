@@ -1643,7 +1643,6 @@ export default function FoodLogBar({
         <ModalShell
           title="Dietary preferences"
           onClose={() => setPreferencesOpen(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         >
           <div className="mt-4 min-h-0 overflow-y-auto pr-1">
             <DietaryPreferencesForm
@@ -1675,7 +1674,7 @@ export default function FoodLogBar({
             setEditing(null);
             setDraft(null);
           }}
-          className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+          size="sm"
         >
           <div data-testid="food-correct-modal" className="mt-4 space-y-3">
             <p
