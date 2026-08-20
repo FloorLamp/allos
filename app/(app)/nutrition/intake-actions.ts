@@ -58,6 +58,7 @@ import {
   serializeRxcuiIngredients,
 } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
+import { readDoseQuantity, unreadableDoseAmountMessage } from "@/lib/dri";
 import {
   normalizeIngredientDrafts,
   unreadableAmountMessage,
@@ -394,6 +395,22 @@ function parseDoses(formData: FormData): DoseInput[] {
       ];
 }
 
+// A dose amount whose number cannot be read STOPS THE SAVE (#3153), exactly as an
+// unreadable ingredient amount does. The dose amount is the number the upper-limit
+// warnings are computed from, and every alternative to refusing stores a guess on a
+// safety surface: "1,000 mg" used to land as a schema-valid ZERO that contributed
+// nothing to a niacin total 28x over the limit, and "2,5 g" as ten times the dose
+// meant. Storing null instead would be just as quiet — unlike an ingredient row, a
+// dose keeps no `amount_text` alongside its reading, so nothing downstream could ever
+// tell that a number had been dropped. Refusing is the only answer the person can see
+// and correct. Returns the offending text (possibly "") or null when every dose reads.
+function unreadableDoseAmount(doses: readonly DoseInput[]): string | null {
+  const bad = doses.find(
+    (d) => readDoseQuantity(d.amount).kind === "unreadable"
+  );
+  return bad ? (bad.amount ?? "") : null;
+}
+
 // Stamp created_at so the adherence-pattern window starts at the dose's real birth,
 // not the parent item's (#430). SQLite forbids datetime('now') as an ADD COLUMN
 // default, so the write path sets it explicitly — from the CLOCK SEAM (sqlNow,
@@ -604,6 +621,9 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     );
   }
   const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
+  const badDoseAmount = unreadableDoseAmount(doses);
+  if (badDoseAmount != null)
+    return formError(unreadableDoseAmountMessage(badDoseAmount));
   const pairs = parsePairs(formData);
   const ingredients = parseIngredients(formData);
   if (ingredients && !ingredients.ok) {
@@ -767,6 +787,9 @@ export async function updateIntakeItem(
     return formError("Enter an end date that isn't in the future.");
   }
   const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
+  const badDoseAmount = unreadableDoseAmount(doses);
+  if (badDoseAmount != null)
+    return formError(unreadableDoseAmountMessage(badDoseAmount));
   const pairs = parsePairs(formData);
   const ingredients = parseIngredients(formData);
   if (ingredients && !ingredients.ok) {

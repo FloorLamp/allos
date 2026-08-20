@@ -19,6 +19,8 @@ import {
   fmtAmount,
   elementalReading,
   doseUnitCount,
+  readDoseQuantity,
+  type DoseUnit,
   type StackItem,
   type StackIngredient,
 } from "../dri";
@@ -74,6 +76,247 @@ describe("parseQuantity", () => {
     expect(parseQuantity("1 scoop")).toBeNull();
     expect(parseQuantity(null)).toBeNull();
     expect(parseQuantity("")).toBeNull();
+  });
+});
+
+// EVERY SEPARATOR SHAPE, IN ONE TABLE (issue #3153).
+//
+// A table rather than a handful of cases, because the defect this pins is a
+// PLAUSIBLE-LOOKING NUMBER. "1,000 mg" did not throw and did not return null — it
+// returned a confident 0, because the old pattern could not span the comma and
+// matched the "000". One happy-path example would have proved nothing about that; the
+// only useful assertion is the exhaustive one, so each row states the reading and each
+// refusal states that it is a refusal.
+//
+// `expected` is the value in the stated unit, or "unreadable" when the string carries
+// a number against a unit that cannot be resolved to one reading, or "none" when there
+// is no number+unit in it at all. The last two both surface as null from
+// parseQuantity; readDoseQuantity is what tells them apart, and the write boundary
+// needs that difference to know whether to refuse a save.
+describe("parseQuantity separators (#3153)", () => {
+  const cases: Array<{
+    amount: string | null;
+    expected: number | "unreadable" | "none";
+    unit?: DoseUnit;
+    why: string;
+  }> = [
+    // ── plain: unchanged, and here so a regression in the common case is loud ──
+    { amount: "400 mg", expected: 400, unit: "mg", why: "plain integer" },
+    { amount: "5000 IU", expected: 5000, unit: "iu", why: "plain integer IU" },
+    { amount: "200 mcg", expected: 200, unit: "mcg", why: "plain integer mcg" },
+
+    // ── thousands separator: THE BUG. Every one of these returned 0 before. ──
+    {
+      amount: "1,000 mg",
+      expected: 1000,
+      unit: "mg",
+      why: "the niacin label in the issue; read as 0 before",
+    },
+    {
+      amount: "5,000 IU",
+      expected: 5000,
+      unit: "iu",
+      why: "the vitamin D label in the issue; read as 0 before",
+    },
+    {
+      amount: "1,500 mg",
+      expected: 1500,
+      unit: "mg",
+      why: "read as 500 before — wrong without ever looking wrong",
+    },
+    {
+      amount: "10,000 IU",
+      expected: 10000,
+      unit: "iu",
+      why: "two leading digits before the group",
+    },
+    {
+      amount: "1,234,567 mcg",
+      expected: 1234567,
+      unit: "mcg",
+      why: "more than one group",
+    },
+
+    // ── decimal point: unchanged, and these are the shipped catalog shapes ──
+    { amount: "1.5 g", expected: 1.5, unit: "g", why: "one decimal place" },
+    { amount: "0.5 g", expected: 0.5, unit: "g", why: "leading zero decimal" },
+    { amount: "1.25 mg", expected: 1.25, unit: "mg", why: "two decimal places" },
+    { amount: "0.19 mg", expected: 0.19, unit: "mg", why: "supplement-catalog" },
+    { amount: "2.5mg", expected: 2.5, unit: "mg", why: "no space before unit" },
+    {
+      amount: "1000.500 mg",
+      expected: 1000.5,
+      unit: "mg",
+      why: "four leading digits cannot be a thousands group, so it reads",
+    },
+
+    // ── decimal comma: REFUSED. 2,5 is 2.5 in Berlin and 25 in Boston. ──
+    {
+      amount: "2,5 g",
+      expected: "unreadable",
+      why: "the issue's 10x case: read as 5 g = 5000 mg before",
+    },
+    {
+      amount: "1,00 mg",
+      expected: "unreadable",
+      why: "two digits after the comma is no grouping anyone writes",
+    },
+    {
+      amount: "1,0000 mg",
+      expected: "unreadable",
+      why: "four digits after the comma is not a group either",
+    },
+
+    // ── period sitting where a thousands group would: REFUSED, same coin flip ──
+    {
+      amount: "10.000 IU",
+      expected: "unreadable",
+      why: "ten thousand IU on a European label, or ten; unknowable",
+    },
+    { amount: "1.000 mg", expected: "unreadable", why: "1000 mg, or 1 mg" },
+    { amount: "2.500 mg", expected: "unreadable", why: "2500 mg, or 2.5 mg" },
+
+    // ── both separators: the comma has already named itself, so the period reads ──
+    {
+      amount: "1,234.5 mg",
+      expected: 1234.5,
+      unit: "mg",
+      why: "comma group settles which separator is which",
+    },
+    {
+      amount: "1,000.500 mg",
+      expected: 1000.5,
+      unit: "mg",
+      why: "same, with the otherwise-ambiguous three decimal places",
+    },
+
+    // ── no unit / unknown unit: none, not unreadable. Nothing to refuse. ──
+    { amount: "1 capsule", expected: "none", why: "a count, not a quantity" },
+    { amount: "2", expected: "none", why: "a bare count" },
+    {
+      amount: "10 ml",
+      expected: "none",
+      why: "a volume is not a dose unit we convert (#2856)",
+    },
+    { amount: "1,000 capsules", expected: "none", why: "grouped, but no unit" },
+    { amount: "", expected: "none", why: "empty" },
+    { amount: null, expected: "none", why: "absent" },
+    {
+      amount: "Proprietary blend",
+      expected: "none",
+      why: "no digits at all",
+    },
+
+    // ── the scan is unchanged: first unit-bearing number wins, wherever it sits ──
+    {
+      amount: "2000 IU / 100 mcg",
+      expected: 2000,
+      unit: "iu",
+      why: "combo amount, leading nutrient",
+    },
+    {
+      amount: "2 capsules (500 mg)",
+      expected: 500,
+      unit: "mg",
+      why: "a count before the mass does not become the quantity",
+    },
+    {
+      amount: "2 capsules (1,000 mg)",
+      expected: 1000,
+      unit: "mg",
+      why: "both behaviours at once — the count is skipped AND the group reads",
+    },
+    {
+      amount: "Vitamin C, 500 mg",
+      expected: 500,
+      unit: "mg",
+      why: "a comma belonging to PROSE must not block the number after it",
+    },
+    {
+      amount: "50 µg",
+      expected: 50,
+      unit: "mcg",
+      why: "micro sign normalizes",
+    },
+    { amount: "50 ug", expected: 50, unit: "mcg", why: "ascii ug normalizes" },
+  ];
+
+  for (const c of cases) {
+    it(`${JSON.stringify(c.amount)} — ${c.why}`, () => {
+      const reading = readDoseQuantity(c.amount);
+      if (typeof c.expected === "number") {
+        expect(reading).toEqual({
+          kind: "quantity",
+          value: c.expected,
+          unit: c.unit,
+        });
+        expect(parseQuantity(c.amount)).toEqual({
+          value: c.expected,
+          unit: c.unit,
+        });
+      } else {
+        expect(reading.kind).toBe(c.expected);
+        // Both refusals reach the totals as "nothing to add" — never a number.
+        expect(parseQuantity(c.amount)).toBeNull();
+      }
+    });
+  }
+});
+
+// The harm the issue is actually about: the number feeds the upper-limit warnings, so
+// a dose that could not be read is a warning that never fires. These assert through
+// stackUlWarnings rather than the parser, because that is where a person would have
+// seen it — or in this case, not seen it.
+describe("a grouped dose amount reaches the UL warnings (#3153)", () => {
+  it("warns on niacin at 1,000 mg, which was silently zero", () => {
+    const [warning] = stackUlWarnings(
+      [active("Niacin", ["1,000 mg"])],
+      40,
+      "male"
+    );
+    expect(warning).toBeDefined();
+    expect(warning.total).toBe(1000);
+    // The same stack written without the separator has always warned; the separator
+    // was the entire difference between a warning and silence.
+    const [plain] = stackUlWarnings(
+      [active("Niacin", ["1000 mg"])],
+      40,
+      "male"
+    );
+    expect(plain.total).toBe(warning.total);
+  });
+
+  it("counts a 5,000 IU vitamin D dose that used to count as zero", () => {
+    const [grouped] = summarizeStack(
+      [active("Vitamin D3", ["5,000 IU"])],
+      40,
+      "male"
+    );
+    const [plain] = summarizeStack(
+      [active("Vitamin D3", ["5000 IU"])],
+      40,
+      "male"
+    );
+    expect(grouped.total).toBeGreaterThan(0);
+    expect(grouped.total).toBe(plain.total);
+  });
+
+  it("contributes NOTHING for an unreadable amount, rather than 10x", () => {
+    // "2,5 g" of magnesium used to read as 5 g and raise a warning at ten times the
+    // dose meant. Absent is the honest reading; the write boundary is what stops a
+    // NEW one being stored (intake-actions), so nothing here invents a number.
+    const warnings = stackUlWarnings(
+      [active("Magnesium Glycinate", ["2,5 g"])],
+      40,
+      "male"
+    );
+    expect(warnings).toEqual([]);
+    const [total] = summarizeStack(
+      [active("Magnesium Glycinate", ["2,5 g"])],
+      40,
+      "male"
+    );
+    expect(total).toBeUndefined();
   });
 });
 

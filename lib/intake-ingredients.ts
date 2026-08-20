@@ -21,6 +21,7 @@
 // CONFIRM-NEVER-SILENT (#798). Nothing in this module writes. Catalog prefill and
 // the parse below produce FORM STATE; the user's save is the write.
 
+import { readGroupedNumber } from "./dri";
 import type { IngredientUnit } from "./dri";
 
 // One label ingredient of an intake item, as stored. `amount`/`unit` are the
@@ -109,14 +110,14 @@ export type IngredientAmountReading =
 // Refusal surfaces as an error on the form naming the offending string (see
 // normalizeIngredientDrafts), so the person corrects their own label text. Nothing is
 // stored, nothing is silently dropped, and no number is invented.
+//
+// THE SEPARATOR RULE ITSELF NOW LIVES IN lib/dri.ts (readGroupedNumber, #3153), shared
+// with the DOSE half, which carried the identical defect and no fix. Only the
+// whole-string framing is local: an ingredient amount must be ONE quantity end to end,
+// while a dose amount is free text that gets scanned. What "1,000" and "2,5" mean is
+// one question, and it now has exactly one answer.
 const AMOUNT_RE =
   /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(mcg|\u00b5g|ug|mg|g|iu)$/i;
-
-// A bare number whose period sits exactly where a thousands separator would: one to
-// three digits, a period, exactly three digits, and nothing else. Deliberately NOT
-// applied to a value that already carries a comma group, which has settled the
-// question in the other direction.
-const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 
 // Mass converts to milligrams or micrograms: grams fold to mg at the boundary
 // (canonical-units-at-the-write-boundary), mcg stays mcg so a 100 mcg label does not
@@ -139,9 +140,8 @@ export function readIngredientAmount(
     // thing from a quantity we could not read.
     return /\d/.test(raw) ? { kind: "unreadable" } : { kind: "none" };
   }
-  if (AMBIGUOUS_PERIOD_GROUPING.test(m[1])) return { kind: "unreadable" };
-  const value = Number(m[1].replace(/,/g, ""));
-  if (!Number.isFinite(value)) return { kind: "unreadable" };
+  const value = readGroupedNumber(m[1]);
+  if (value == null) return { kind: "unreadable" };
   const u = m[2].toLowerCase();
   if (u === "g") return { kind: "quantity", amount: value * 1000, unit: "mg" };
   const unit = u === "\u00b5g" || u === "ug" ? "mcg" : u;
