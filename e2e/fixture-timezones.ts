@@ -65,12 +65,28 @@ import type Database from "better-sqlite3";
 // banner is describing the fixture accurately. Suppressing it for the suite's
 // convenience would have made every travel assertion in the suite meaningless.
 //
-// What it costs you: an extra element at the top of the shell on those pages. A
-// spec that measures vertical geometry, or that assumes the first child of the
+// WHAT IT COSTS YOU, WITH THE NUMBER (#3364): the banner is 130px tall at phone
+// width — 110px box plus the 20px its `mb-5` displaces with — and it renders
+// between `</ShellChrome>` and `{children}` in app/(app)/layout.tsx. So on these
+// profiles' pages EVERY vertical offset below the app shell is 130px larger than it
+// is on a pin-following profile. That is a real element that is legitimately there,
+// not slack to absorb: a geometry assertion on one of these pages has to account
+// for it, and one that quietly widens its tolerance instead stops measuring the
+// thing it exists for.
+//
+// The number is measured, not estimated, and it was expensive: the Trends context
+// bar read `Expected: 57  Received: 187` on CI three times before anyone put a
+// ruler on the banner, and 187 − 57 is this element exactly. It is a PHONE-width
+// reading (390px) — the layout wraps differently at other widths, so measure rather
+// than assume if your spec runs wider.
+//
+// A spec that measures vertical geometry, or that assumes the first child of the
 // content container is its own surface, will read the banner instead. If yours
 // does, either follow the pin (most fixtures should) or give the spec's context the
 // same zone as the override so device and profile agree again — per-context
-// `timezoneId`, the way e2e/travel-timezone.spec.ts sets its own.
+// `timezoneId`, the way e2e/travel-timezone.spec.ts sets its own. And when a band
+// you did not expect opens up between two elements, `bandStory` in e2e/helpers.ts
+// names what is standing there instead of leaving you an integer.
 export const FIXTURE_TIMEZONE_OVERRIDES = {
   weather: {
     kind: "own-zone",
