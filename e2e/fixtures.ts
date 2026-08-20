@@ -452,6 +452,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // One question, once per worker, before its first test (see the guard above).
       // The demo template is seeded by scripts/seed.ts alone and stays UTC on
       // purpose — its specs are time-neutral — so it has no pin to agree with.
+      //
+      // DO NOT "STRENGTHEN" THIS INTO `assert seeded === "UTC"`. It sounds stricter
+      // and is weaker: it would hard-code a SECOND source of truth for a zone
+      // scripts/seed.ts already decides, so the day the demo seed's zone changes,
+      // this fails for a reason that has nothing to do with the clock agreement it
+      // is here to check. A skip that names its reason is honest; an assertion that
+      // duplicates somebody else's decision is a second producer of it.
       if (!demo) assertSeedAndBrowserShareOneZone(dbPath, pinnedZone());
 
       await use({ index: idx, slot, baseURL, port, dbPath, dir, demo });
