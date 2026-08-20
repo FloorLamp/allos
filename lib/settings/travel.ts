@@ -13,7 +13,11 @@
 // was declined), and the banner they feed exists only for the login's OWN profile,
 // so there is never a second login with a different answer for the same row.
 
-import { getProfileSetting, setProfileSetting, deleteProfileSetting } from "./kv";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  deleteProfileSetting,
+} from "./kv";
 import { getTimezone, setTimezone } from "./display";
 import { isValidTimezone } from "../timezone";
 import { instantNow, now as clockNow } from "../clock";
@@ -87,7 +91,11 @@ export function switchProfileTimezone(
     record,
     clockNow()
   );
-  setProfileSetting(profileId, SWITCHES_KEY, serializeTimezoneSwitches(history));
+  setProfileSetting(
+    profileId,
+    SWITCHES_KEY,
+    serializeTimezoneSwitches(history)
+  );
   if (homeZone) setProfileSetting(profileId, HOME_KEY, homeZone);
   else clearHomeTimezone(profileId);
   return record;

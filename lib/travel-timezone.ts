@@ -119,9 +119,7 @@ export function neverOccurred(sw: TimezoneSwitch, p: LocalPosition): boolean {
 export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
   const r = resolveSwitch(sw);
   if (!r || r.direction !== "backward") return false;
-  return (
-    comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0
-  );
+  return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
 // EXCUSED: this profile-local slot never occurred, under ANY of the switches on

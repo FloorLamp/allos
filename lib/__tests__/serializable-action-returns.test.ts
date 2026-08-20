@@ -355,9 +355,7 @@ type Census = {
   "app/(app)/training/video-actions.ts": Expect<
     ActionsAreSerializable<typeof M80>
   >;
-  "app/(app)/travel-actions.ts": Expect<
-    ActionsAreSerializable<typeof MTravel>
-  >;
+  "app/(app)/travel-actions.ts": Expect<ActionsAreSerializable<typeof MTravel>>;
   "app/(app)/trends/actions.ts": Expect<ActionsAreSerializable<typeof M81>>;
   "app/(app)/trends/body-actions.ts": Expect<
     ActionsAreSerializable<typeof M82>

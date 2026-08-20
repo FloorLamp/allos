@@ -28,7 +28,11 @@ import {
 import { travelExcusalResolver } from "@/lib/travel-excusal";
 import { isExcusedSlot, isRepeatedSlot } from "@/lib/travel-timezone";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
-import { getIntakeItems, getIntakeDoses, getIntakeLogsInRange } from "@/lib/queries";
+import {
+  getIntakeItems,
+  getIntakeDoses,
+  getIntakeLogsInRange,
+} from "@/lib/queries";
 import {
   getHomeTimezone,
   getTimezone,
@@ -142,9 +146,9 @@ describe("the one-tap switch answers in the new zone (#3263 §2)", () => {
     const profileId = makeProfile("switch-answers", NY);
     // Before: 10:00 on 2026-05-01, New York.
     expect(today(profileId)).toBe(SWITCH_DAY);
-    expect(minuteOfDayInTz(getTimezone(profileId), new Date(SWITCH_INSTANT))).toBe(
-      10 * 60
-    );
+    expect(
+      minuteOfDayInTz(getTimezone(profileId), new Date(SWITCH_INSTANT))
+    ).toBe(10 * 60);
     const before = localDayRange(getTimezone(profileId), SWITCH_DAY);
 
     switchProfileTimezone(profileId, TOKYO, NY);
@@ -153,13 +157,15 @@ describe("the one-tap switch answers in the new zone (#3263 §2)", () => {
     // request, no cache to wait out.
     expect(getTimezone(profileId)).toBe(TOKYO);
     expect(today(profileId)).toBe(SWITCH_DAY);
-    expect(minuteOfDayInTz(getTimezone(profileId), new Date(SWITCH_INSTANT))).toBe(
-      23 * 60
-    );
+    expect(
+      minuteOfDayInTz(getTimezone(profileId), new Date(SWITCH_INSTANT))
+    ).toBe(23 * 60);
     const after = localDayRange(getTimezone(profileId), SWITCH_DAY);
     // The day itself moved 13 hours earlier in absolute terms.
     expect(after.startUtc).not.toBe(before.startUtc);
-    expect(Date.parse(after.startUtc)).toBeLessThan(Date.parse(before.startUtc));
+    expect(Date.parse(after.startUtc)).toBeLessThan(
+      Date.parse(before.startUtc)
+    );
   });
 
   it("records the zone left behind as home, and the seam it left in the clock", () => {
@@ -243,8 +249,12 @@ describe("eastward: the vanished slot is excused, not missed (#3263 §4)", () =>
 
     // The log outranks the clock: a dose somebody took is taken, and excusing it
     // would erase a day of real adherence.
-    expect(stateOn(stripFor(profileId, evening.itemId), SWITCH_DAY)).toBe("taken");
-    expect(adherenceSummary(stripFor(profileId, evening.itemId)).takenDays).toBe(1);
+    expect(stateOn(stripFor(profileId, evening.itemId), SWITCH_DAY)).toBe(
+      "taken"
+    );
+    expect(
+      adherenceSummary(stripFor(profileId, evening.itemId)).takenDays
+    ).toBe(1);
   });
 
   it("leaves the next day fully normal", () => {

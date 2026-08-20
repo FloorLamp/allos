@@ -37,12 +37,16 @@ describe("windowSlotMinute", () => {
 describe("isDoseSlotExcused", () => {
   it("excuses a bucketed dose whose hour the switch jumped over", () => {
     for (const bucket of ["Midday", "Evening", "Before sleep"] as const) {
-      expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, bucket, DAY)).toBe(true);
+      expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, bucket, DAY)).toBe(
+        true
+      );
     }
   });
 
   it("leaves a dose whose hour happened before the jump alone", () => {
-    expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Morning", DAY)).toBe(false);
+    expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Morning", DAY)).toBe(
+      false
+    );
   });
 
   it("NEVER excuses an Anytime dose", () => {
@@ -50,7 +54,9 @@ describe("isDoseSlotExcused", () => {
     // not impossible. Excusing it would drop from the denominator a dose the person
     // could still have taken and was never asked about — the same error the other
     // way round.
-    expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Anytime", DAY)).toBe(false);
+    expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Anytime", DAY)).toBe(
+      false
+    );
   });
 
   it("follows the profile's own configured time, not the default", () => {
@@ -62,9 +68,9 @@ describe("isDoseSlotExcused", () => {
   });
 
   it("excuses nothing on another day, or with no switches at all", () => {
-    expect(isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Evening", "2026-05-02")).toBe(
-      false
-    );
+    expect(
+      isDoseSlotExcused([FLIGHT], DEFAULT_SLOTS, "Evening", "2026-05-02")
+    ).toBe(false);
     expect(isDoseSlotExcused([], DEFAULT_SLOTS, "Evening", DAY)).toBe(false);
   });
 });

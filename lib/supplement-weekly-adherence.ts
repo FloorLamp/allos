@@ -13,8 +13,7 @@ export interface SupplementAdherenceDayInput {
 // as a day with nothing due. That keeps the rail out of the false-miss it exists to
 // avoid; the month calendar is where the excusal is NAMED.
 export type WeeklyAdherenceState =
-  | Exclude<AdherenceState, "excused">
-  | "pending";
+  Exclude<AdherenceState, "excused"> | "pending";
 
 export interface SupplementAdherenceDay extends SupplementAdherenceDayInput {
   intended: number;

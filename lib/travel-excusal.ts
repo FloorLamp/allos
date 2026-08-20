@@ -15,7 +15,10 @@
 // denominator that the person could still have taken and was never asked about.
 
 import { timeBucket, type TimeBucket } from "./intake-schedule";
-import { bucketWindow, type ReminderWindow } from "./notifications/intake-format";
+import {
+  bucketWindow,
+  type ReminderWindow,
+} from "./notifications/intake-format";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { getNotifySchedule } from "./settings/notifications";
 import { getTravelSwitches } from "./settings/travel";
@@ -41,7 +44,11 @@ export function isDoseSlotExcused(
 ): boolean {
   if (bucket === "Anytime") return false;
   const window = bucketWindow(bucket);
-  return isExcusedSlot(switches, date, windowSlotMinute(window, slotMinutes[window]));
+  return isExcusedSlot(
+    switches,
+    date,
+    windowSlotMinute(window, slotMinutes[window])
+  );
 }
 
 // A dose-level excusal predicate for one profile, resolved once. `time_of_day` is

@@ -39,12 +39,7 @@ export const DOSE_HISTORY_DAYS = 90;
 // person, so it is its own state rather than a quiet subtraction — out of the
 // denominator like "skipped", but named, counted and legended on its own line.
 export type AdherenceState =
-  | "taken"
-  | "partial"
-  | "skipped"
-  | "missed"
-  | "excused"
-  | "na";
+  "taken" | "partial" | "skipped" | "missed" | "excused" | "na";
 
 // Whether a dose's slot never occurred on a profile-local day, keyed by the dose's
 // raw `time_of_day` column. Structural on purpose: the resolver that answers it
