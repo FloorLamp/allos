@@ -131,6 +131,13 @@ margin. Be careful reading the tree for a precedent, though — a `mt-4` on the
 element BELOW a `<p className="mt-2">` description is a description-to-form gap,
 not a title gap, and six dialogs legitimately have one.
 
+The gap ABOVE a dialog FOOTER stays with the call site, and that is a decision
+rather than the sweep running out of steam (#3401). The host draws no footer, so
+there is no host counterpart for a footer's `mt-4` to agree with — it is content
+rhythm, the same category as `ProtocolForm`'s `sm:flex-row` above, not chrome.
+Three bodies do it today, all `mt-4 flex justify-end`, and all three are right.
+Do not "finish the job" by hoisting that gap to the host.
+
 ### A form with two mounts uses an escape hatch, not a fifth spelling
 
 Some forms are genuinely mounted both ways: a standalone card on a page AND a
