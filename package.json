@@ -21,6 +21,7 @@
     "reconcile": "tsx scripts/orchestration/reconcile-tracker.ts",
     "reconcile:apply": "tsx scripts/orchestration/reconcile-apply.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
+    "census:dose-amounts": "tsx scripts/dose-amount-census.ts",
     "seed": "tsx scripts/seed.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",
     "notify": "tsx scripts/notify.ts",
