@@ -691,6 +691,25 @@ ${MIGRATION_LINES}
   ($SCRATCH/gates-${opts.branch.split("/").pop()}.log, never gates.log): the logs are
   what collide in practice — two clusters appending to one gates.log interleaved their
   vitest output, and each read the other's failures as its own.
+- NEVER \`git stash\` — NOT \`push\`, NOT \`pop\`, NOT \`-u\`. THE STASH STACK IS SHARED
+  ACROSS EVERY WORKTREE, because they share one .git. A \`pop\` in YOUR tree takes
+  whatever is on top of the stack — which may be another agent's, or the
+  orchestrator's — dumps it into YOUR working copy, and CONSUMES the entry.
+  Measured 2026-08-20 on #3220: a lane stashed to diff a shard plan, popped, and
+  received five files it had never touched, including a DELETION. Nothing was lost
+  only because the lane noticed, restored its tree from HEAD, and re-created the
+  stash by hand with a patch copy — and because its own work was already committed.
+  WORSE, THE ENTRY IT NEARLY DESTROYED WAS A REVERT OF A MERGED FIX. Silently applied,
+  it would have re-broken a shipped safety fix and deleted that fix's test file, in a
+  tree whose owner had no reason to look.
+  AND IT APPLIED CLEANLY — no conflict, nothing to notice. That is the part that
+  defeats "I would spot it": a stash from another lane's base lands silently, and the
+  only signal is a diffstat you had no reason to read. If you ever DO meet an
+  unexpected stash entry, read its diffstat before trusting it; a clean apply is not
+  evidence it belongs to you.
+  If you need a clean tree: COMMIT (your work must be pushed anyway — see the hard
+  gate above), or copy files to $SCRATCH with branch-unique names, or use a second
+  worktree. All three are safe; the stash is the only one that reaches across lanes.
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
   harness name. Sibling clusters run the same binaries in this container, so a pattern
   kill takes their runs down with yours and they have no way to tell that from a real
