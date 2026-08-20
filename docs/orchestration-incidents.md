@@ -821,3 +821,35 @@ Worth naming the shape, because it is the same one this file keeps recording fro
 angles: **a check that answers a cheaper question than the one being asked.** "Were
 these checks green?" is cheaper than "were these checks green about the tree we are
 about to create", and the first is what every available field reports.
+
+## The merge-base rule, and what it cost to follow literally (2026-08-20)
+
+The rule added earlier the same day — a second merge needs checks that ran on a base
+containing the first — fired **four times within ninety minutes** of being written.
+Three of those were real:
+
+| PR    | stale against | shared surface                                                               |
+| ----- | ------------- | ---------------------------------------------------------------------------- |
+| #3388 | #3386         | `QuickEntryProvider.tsx` — the exact host the other's assertion measured     |
+| #3392 | #3388         | dialog body chrome vs. an assertion on a dialog body's scroll extent         |
+| #3396 | #3392         | **none** — `FoodLogBar` CSS and one mobile spec, against `lib/` data-quality |
+
+The first two justified the cycle. On #3388 the interaction was closer than the file
+list suggested, and only reading the diff found it: I had flagged it as "dialog body
+chrome" while what it actually changed was the host the other PR measured.
+
+The third is the problem. Merges were landing every ten minutes or so, and a rule
+that says "re-run whenever a merge happened during your CI" makes every PR
+perpetually stale in a busy hour — which is not a strict rule, it is a rule that gets
+abandoned. That is worse than a rule with a stated exception, because the abandonment
+is silent and nobody records when it started.
+
+So the step now reads: re-run, **or write down why the two file sets cannot
+interact**. The judgment is allowed and the judgment is written, which is the whole
+difference from where this started. The failure that produced the rule was not a
+missing check — it was "I judged the risk low" as an unstated assumption. A stated
+one can be read back, disagreed with, and found wrong afterwards.
+
+Worth noting what the check costs: one REST read of each PR's file list, compared for
+overlap. On #3396 that was ten filenames against two, with no path by which nutrition
+CSS could change a data-quality finding's existence or a query count.
