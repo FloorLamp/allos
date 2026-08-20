@@ -513,6 +513,21 @@ ${MIGRATION_LINES}
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
+- \`e2e (N)\` IS NOT \`--shard=N/12\`, and reaching for the obvious spelling gives you a
+  FALSE GREEN off the wrong 113 tests. CI builds each shard from a DURATION-BALANCED
+  plan (scripts/e2e-shard-plan.ts over e2e/spec-durations.json); Playwright's own
+  count-based \`--shard\` is only the fallback that script emits when the manifest is
+  MISSING, so the two partitions genuinely differ. Measured 2026-08-20 on PR #3357:
+  the two specs failing in \`e2e (1)\` land in Playwright's shard 12, and shard 12 was
+  GREEN in that same CI run — so \`--shard=1/12\` would have "reproduced" the failure
+  by running neither of them. Reproduce a named CI shard with the plan, exactly as
+  the script's own header shows:
+      mapfile -t ARGS < <(npx tsx scripts/e2e-shard-plan.ts 1 12)
+      npx playwright test "\${ARGS[@]}"
+  And when you argue "my diff did not move shard composition", CHECK it rather than
+  asserting it: diff the plan output between your branch and origin/main. Composition
+  moves when a .spec.ts file is ADDED or REMOVED, or when e2e/spec-durations.json
+  changes — editing an existing spec does not move it.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
