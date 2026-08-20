@@ -195,7 +195,8 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       exact: true,
     });
     await situation.fill(CUSTOM_SITUATION);
-    await addForm
+    // Portaled listbox (#3271) — resolved from the page, not the form.
+    await page
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${CUSTOM_SITUATION}`) })
       .click();
@@ -222,7 +223,8 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("combobox", { name: "Situation", exact: true })
       .fill("E2EMig");
     await expect(
-      addForm
+      // Portaled listbox (#3271) — resolved from the page, not the form.
+      page
         .getByRole("listbox")
         .getByRole("button")
         .filter({ hasText: CUSTOM_SITUATION })
@@ -250,13 +252,14 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // shard-2 `medication-prefill` strict-mode double-match).
     await amount.fill("500 mg");
     await expect(amount).toHaveValue("500 mg");
-    await expect(addCard.getByRole("listbox")).toBeVisible();
+    // Portaled listbox (#3271): open/closed is asked of the page, not the dialog.
+    await expect(page.getByRole("listbox")).toBeVisible();
 
     // Focusing the sibling select dismisses the dropdown (blur-close), so the "Add
     // dose" button beneath it is no longer obscured and the click lands — a second
     // dose row appears.
     await doseEditor.getByLabel("Time of day").selectOption("Morning");
-    await expect(addCard.getByRole("listbox")).toHaveCount(0);
+    await expect(page.getByRole("listbox")).toHaveCount(0);
     await doseEditor
       .getByRole("button", { name: "Add dose", exact: true })
       .click();

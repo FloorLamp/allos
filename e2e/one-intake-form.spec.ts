@@ -23,7 +23,9 @@ test("changing only the formulation chip adds the children's suspension, in a 39
   const name = `Ibuprofen susp ${testInfo.repeatEachIndex}-${testInfo.retry}`;
   const nameField = form.getByLabel("Name");
   await nameField.fill("Ibuprofen");
-  await panel
+  // The listbox is PORTALED to <body> (#3271) — resolved from the page, not the
+  // panel that owns the field. One list is open at a time, so this is unambiguous.
+  await page
     .locator('ul[role="listbox"] button', { hasText: "Advil" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
@@ -76,7 +78,8 @@ test("the default path is two taps in the supplement modal, with no editor opene
 
   // TAP ONE: the pick. It seeds the catalog's dose and food relationship.
   await form.getByLabel("Name").fill("Magnesium Glycinate");
-  await modal
+  // Portaled listbox (#3271) — resolved from the page, not the modal.
+  await page
     .locator('ul[role="listbox"] button', { hasText: "Magnesium Glycinate" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
