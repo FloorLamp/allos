@@ -1640,10 +1640,31 @@ export default function FoodLogBar({
               lifts it from the 42px `py-2.5` control it was — under the app's
               own 44px `tap-target` floor — to the food rows' height. */}
           <div className="space-y-1.5">
-            {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
-            {activeDate === today && proteinQuickAdd}
-            {proteinSplit < quickGroups.length &&
-              rows(quickGroups.slice(proteinSplit))}
+            {/* THE QUICK ROWS HAVE A NAME, and the reason is the disclosure below
+                them. Since #3362 the overflow control is a citizen of this same
+                list, so its rows — collapsed, but in the DOM — sit under
+                `food-quick-log` too. Three specs had to spell out an exclusion to
+                keep saying "the quick rows", and only ONE of them failed loudly
+                when it went unsaid: `food-log.spec.ts`'s #2225 head-of-the-ranking
+                test. The other two would have stayed GREEN while measuring
+                something weaker — `nutrition-composition`'s `toHaveCount(6)`
+                becoming "the catalog has N", and `protein-quickadd`'s
+                `rowsAbove < rows` comparing against an inflated ceiling. A fourth
+                spec would not know to exclude either, and would fail the same
+                silent way. So the answer lives here, once, in the DOM that owns
+                it: everything inside this element is a row of the list; the
+                disclosure and everything it reaches is outside it.
+
+                The nested `space-y-1.5` is deliberate and changes no pixel — the
+                gaps between these children and the gap from this element to the
+                disclosure are the same 6px they were when all of them were
+                siblings. */}
+            <div data-testid="food-quick-rows" className="space-y-1.5">
+              {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
+              {activeDate === today && proteinQuickAdd}
+              {proteinSplit < quickGroups.length &&
+                rows(quickGroups.slice(proteinSplit))}
+            </div>
             {moreGroups.length > 0 && (
               <details data-testid="food-more-groups" className="group">
                 <summary

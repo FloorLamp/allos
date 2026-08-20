@@ -268,17 +268,16 @@ test.describe("the food overflow disclosure matches the list it extends (#3362)"
       // THE LIST the disclosure now belongs to, taken from the disclosure itself
       // rather than named by a class — that is the relationship under test.
       const list = details.parentElement as HTMLElement;
-      // Its immediate neighbour above. NOT necessarily a row list: on a profile
-      // that tracks protein the quick-add card sits in this same list, and the
-      // gap being the list's own gap is exactly what must hold for either.
+      // Its immediate neighbour above — the quick rows, as one element.
       const above = details.previousElementSibling as HTMLElement;
       // Quick rows only — anything inside the (closed) disclosure is the overflow
-      // this control REACHES, not the list it belongs to.
-      const rows = (
-        Array.from(
-          list.querySelectorAll('li[data-testid^="food-group-"]')
-        ) as HTMLElement[]
-      ).filter((row) => !details.contains(row));
+      // this control REACHES, not the list it belongs to. `food-quick-rows` is
+      // where that line is drawn, so this reads it rather than re-deriving it.
+      const rows = Array.from(
+        list.querySelectorAll(
+          '[data-testid="food-quick-rows"] li[data-testid^="food-group-"]'
+        )
+      ) as HTMLElement[];
       const rowBoxes = rows.map((row) => row.getBoundingClientRect());
       const last = rowBoxes.at(-1);
       const detailsBox = details.getBoundingClientRect();
