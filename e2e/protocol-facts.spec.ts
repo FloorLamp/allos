@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledClick } from "./helpers";
+import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   closeProtocolFact,
@@ -24,6 +24,13 @@ import {
 // field it CLEARS (#2359), and an unmounted field is invisible to the dirty-form
 // registry, which skips anything where `!field.isConnected` — so dismissing the dialog
 // would throw the entry away with no "Discard your changes?" to stop it.
+
+/** Tap the scrim where the centred dialog panel does not cover it. */
+async function tapScrimCorner(page: import("@playwright/test").Page) {
+  const backdrop = page.getByTestId("modal-shell-backdrop");
+  await awaitHydrated(backdrop);
+  await backdrop.click({ position: { x: 4, y: 4 } });
+}
 
 async function openNewProtocol(page: import("@playwright/test").Page) {
   await page.goto("/longevity#protocols");
@@ -125,10 +132,42 @@ test.describe("protocol facts-with-editors (#3219)", () => {
       await form.getByLabel("Notes").fill("something worth keeping");
     });
 
+    // WHY THIS FIELD IS NOT CONTROLLED, asserted rather than commented, because the
+    // failure it prevents is silent and this assertion is what makes the next one
+    // self-describing.
+    //
+    // The registry ends its decision at `current !== serverValue`, and `serverValue`
+    // is the DOM `defaultValue` — which React KEEPS IN SYNC with `value` on a
+    // controlled field. So a controlled input reports current === serverValue
+    // forever and can never be dirty, however mounted it is. Without this line, that
+    // regression shows up as "the confirm below didn't appear", which reads as a
+    // broken scrim or a broken guard and sends the reader anywhere but here.
+    const notesOwnership = await page.evaluate(() => {
+      const ta = document.querySelector(
+        'textarea[name="notes"]'
+      ) as HTMLTextAreaElement | null;
+      return (
+        ta && { value: ta.value, def: ta.defaultValue, live: ta.isConnected }
+      );
+    });
+    expect(
+      notesOwnership,
+      "the notes field must still be in the document with its panel closed"
+    ).toMatchObject({ live: true, value: "something worth keeping" });
+    expect(
+      notesOwnership?.def,
+      "the notes field must stay DOM-owned: React syncs defaultValue onto a controlled field, and the dirty registry reads defaultValue as the saved value"
+    ).toBe("");
+
     // A scrim tap is a GESTURE dismissal, which is the one ModalShell guards
     // (#2774): it asks before throwing a dirty form away. Escape and the Close
     // button are deliberately unguarded, so neither would test this.
-    await hydratedClick(page, page.getByTestId("modal-shell-backdrop"));
+    //
+    // AIMED AT A CORNER, not at the backdrop's centre. The scrim is `fixed inset-0`,
+    // so its centre is underneath the centred dialog panel and a default click
+    // resolves to "subtree intercepts pointer events" — which reads as a broken
+    // scrim rather than as a mis-aimed tap.
+    await tapScrimCorner(page);
 
     const confirm = page.getByTestId("confirm-dialog");
     // A PRESENCE assertion, and the generous default ceiling is honest on one: no
@@ -149,8 +188,10 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     );
     await closeProtocolFact(form);
 
-    await hydratedClick(page, page.getByTestId("modal-shell-backdrop"));
-    await settledClick(page, confirm.getByRole("button", { name: "Discard" }));
+    await tapScrimCorner(page);
+    // Discard is a pure CLIENT action — it closes the dialog and posts nothing — so
+    // `hydratedClick`, not `settledClick`.
+    await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
     await expect(form).toHaveCount(0);
   });
 
@@ -175,8 +216,15 @@ test.describe("protocol facts-with-editors (#3219)", () => {
       await form.locator("#pr-end-new").fill(end);
       await page.keyboard.press("Escape");
     });
+    // A WELLNESS practice, deliberately, because the weekly RANGE is a wellness
+    // concept: `parseScopedPractice` honours `per_week_max` only for that scope and
+    // drops it for an activity type or a food group. Picking "sport" here would
+    // store no ceiling at all, and the chip would be right to say "2×/week" — the
+    // assertion below would then be testing the fixture rather than the read-back.
     await withProtocolFact(form, "practice", async () => {
-      await form.getByTestId("protocol-practice-type").selectOption("sport");
+      await form
+        .getByTestId("protocol-practice-type")
+        .selectOption({ label: "Sauna" });
     });
     await withProtocolFact(form, "cadence", async () => {
       await form.getByTestId("protocol-practice-per-week").fill("2");
@@ -211,7 +259,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     // sentence the protocol already is.
     await expect(editForm.getByLabel("Name")).toHaveValue(uniqueName);
     await expect(editForm.getByTestId("protocol-fact-practice")).toContainText(
-      "Sport"
+      "Sauna"
     );
     // The range, not just the floor: `perWeekMax` is a stored fact and a chip that
     // dropped it would read as a narrower protocol than the one on disk.

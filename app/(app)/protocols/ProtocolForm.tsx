@@ -205,12 +205,27 @@ export default function ProtocolForm({
     );
   });
 
-  // EVERY FACT THE CHIP ROW STATES IS STATE (#3219), which is a change of ownership
-  // and not only of layout. The row states what Save will write, so the form has to
-  // KNOW each value as it changes — an uncontrolled input tells React nothing, and a
-  // chip reading a stale default is worse than no chip at all. The inputs stay named
-  // and stay MOUNTED (see the editor host below), so the FormData the action receives
-  // is the one it received before, field for field.
+  // THE ROW NEEDS EVERY VALUE AS IT CHANGES, because it states what Save will write
+  // and a chip reading a stale default is worse than no chip at all. But WHO OWNS the
+  // value is a separate question from who reads it, and the answer here is: the DOM
+  // still does, for every plain field.
+  //
+  // A CONTROLLED FIELD IS INVISIBLE TO THE DIRTY-FORM REGISTRY, which is not obvious
+  // and cost this change a round to find. `fieldHoldsUnsavedInput` ends at
+  // `current !== serverValue`, and `serverValue` is the DOM `defaultValue`
+  // (lib/dirty-forms.ts, components/DirtyFormRegistry.tsx) — which React KEEPS IN
+  // SYNC with `value` on a controlled input. So a controlled field reports
+  // current === serverValue forever, the registry reads that as "saved, not
+  // pending", and ModalShell's "Discard your changes?" guard never fires. Measured
+  // in the browser, not reasoned about: with `value={notes}` the textarea reported
+  // `value` and `defaultValue` both equal to the typed text while `isConnected` was
+  // true — so the field was mounted, exactly as intended, and still invisible.
+  //
+  // These five were plain uncontrolled inputs before #3219 and are the only ones the
+  // registry could ever see (a DateField and a Combobox are React-controlled
+  // internally whatever this file passes them). So they STAY uncontrolled —
+  // `defaultValue` seeds them, the DOM owns them, and `onChange` mirrors into state
+  // that only the chips read.
   const [name, setName] = useState(
     protocol?.name ?? initialTemplate?.name ?? ""
   );
@@ -304,11 +319,9 @@ export default function ProtocolForm({
     },
   });
 
-  // Seeding a template used to work by REMOUNTING the whole field block (a React
-  // `key` over the template id) so every `defaultValue` re-applied. The facts are
-  // controlled now, so the seed is an explicit assignment — which is also what makes
-  // "create, then create another" clear the form, since a native `form.reset()` does
-  // nothing to a controlled input.
+  // Seeding a template remounts the field block (the `key` below), which re-applies
+  // every `defaultValue`; this resets the MIRRORS and the controlled pickers to match,
+  // so the chips state the seeded protocol rather than the previous one.
   function resetToTemplate(id: string) {
     const next = protocolTemplateById(id);
     const available = new Set(options.map((option) => option.key));
@@ -361,7 +374,12 @@ export default function ProtocolForm({
       router.push(result.redirectTo);
       return;
     }
-    if (!editing) resetToTemplate("");
+    if (!editing) {
+      // The uncontrolled fields go back to their defaults the way they always did;
+      // `resetToTemplate` takes the mirrors and the pickers with them.
+      formRef.current?.reset();
+      resetToTemplate("");
+    }
     onDone?.();
   }
 
@@ -380,7 +398,13 @@ export default function ProtocolForm({
         noun="protocol"
         className="mx-4 sm:mx-6"
       />
+      {/* THE TEMPLATE-SEED REMOUNT STAYS (#571), and #3219 needs it more than
+          before. The five plain fields below are uncontrolled on purpose — see the
+          state block — so a new template's `defaultValue` only lands when they
+          remount. `resetToTemplate` resets the mirrors in the same gesture, which is
+          what keeps the chips and the DOM saying the same thing. */}
       <div
+        key={editing ? "editing" : templateId || "blank"}
         className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 sm:px-6"
         data-testid="protocol-form-scroll"
       >
@@ -428,7 +452,7 @@ export default function ProtocolForm({
               id={`pr-name-${uid}`}
               name="name"
               className="input"
-              value={name}
+              defaultValue={protocol?.name ?? activeTemplate?.name ?? ""}
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Creatine 5 g/day, Sauna 4×/week"
               required
@@ -555,7 +579,9 @@ export default function ProtocolForm({
                     min={1}
                     max={14}
                     className="input"
-                    value={perWeek}
+                    defaultValue={
+                      practice?.perWeek ?? activeTemplate?.practicePerWeek ?? ""
+                    }
                     onChange={(event) => setPerWeek(event.target.value)}
                     placeholder="3"
                     data-testid="protocol-practice-per-week"
@@ -572,7 +598,7 @@ export default function ProtocolForm({
                     min={1}
                     max={14}
                     className="input"
-                    value={perWeekMax}
+                    defaultValue={practice?.perWeekMax ?? ""}
                     onChange={(event) => setPerWeekMax(event.target.value)}
                     placeholder="5"
                     data-testid="protocol-practice-per-week-max"
@@ -624,7 +650,7 @@ export default function ProtocolForm({
                     id={`pr-equipment-${uid}`}
                     name="equipment_id"
                     className="input"
-                    value={equipmentId}
+                    defaultValue={protocol?.equipment_id ?? ""}
                     onChange={(event) => setEquipmentId(event.target.value)}
                     data-testid="protocol-equipment"
                   >
@@ -682,7 +708,7 @@ export default function ProtocolForm({
                 name="notes"
                 className="input"
                 rows={4}
-                value={notes}
+                defaultValue={protocol?.notes ?? activeTemplate?.notes ?? ""}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="What are you changing, and what will stay constant?"
               />
