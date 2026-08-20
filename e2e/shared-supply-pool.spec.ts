@@ -188,8 +188,12 @@ test.describe("shared supply pools", () => {
       await panel
         .getByRole("combobox", { name: "Name" })
         .fill(SUPPLY_SHARED_BOTTLE);
+      // The listbox is PORTALED to <body> (#3271), so the rows are not inside the
+      // panel that owns the field. One list is open at a time, so asking the page
+      // is not ambiguous — and the bottle name is spec-owned, so nothing else on
+      // the page can match it.
       await expect(
-        panel
+        page
           .getByTestId("combobox-option")
           .filter({ hasText: SUPPLY_SHARED_BOTTLE })
       ).toHaveCount(1);
@@ -206,7 +210,7 @@ test.describe("shared supply pools", () => {
       // The listbox is genuinely open — otherwise the absence below is vacuous.
       await expect(name).toHaveAttribute("aria-expanded", "true");
       await expect(
-        dialog
+        page
           .getByTestId("combobox-option")
           .filter({ hasText: SUPPLY_SHARED_BOTTLE })
       ).toHaveCount(0);

@@ -160,7 +160,11 @@ test("build a custom routine, edit it, activate and deactivate (#739)", async ()
   const slot2 = day1.getByTestId("builder-slot").nth(1);
   const combo2 = slot2.getByRole("combobox");
   await combo2.fill("My Secret Hip Lift");
-  await slot2.getByRole("button", { name: /custom lift/ }).click();
+  // The free-text row is in the PORTALED listbox (#3271), not inside the slot.
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: /custom lift/ })
+    .click();
   await expect(slot2.getByTestId("slot-candidate")).toContainText(
     "My Secret Hip Lift"
   );
