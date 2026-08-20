@@ -1,11 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import {
-  deleteActivityFromForm,
-  hydratedClick,
-  settledClick,
-} from "./helpers";
+import { deleteActivityFromForm, hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -93,7 +89,10 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     let stranded: StrandedDraft[] = [];
     try {
       await page.goto("/training?tab=log");
-      await hydratedClick(page, page.getByRole("main").getByTestId("start-workout"));
+      await hydratedClick(
+        page,
+        page.getByRole("main").getByTestId("start-workout")
+      );
       await expect(page.getByTestId("live-workout-panel")).toBeVisible();
       await expect(page.getByTestId("finish-workout")).toHaveText(
         `Finish workout — ${OWN_OTHER_PROFILE}`
