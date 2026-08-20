@@ -323,6 +323,78 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
   });
 
+  // A LOST CLICK ON THIS BUTTON IS RESCUED, AND STILL LOGS EXACTLY ONE USE (#3359).
+  //
+  // THIS IS A TEST OF `e2e/helpers.ts` AND IT LIVES HERE ON PURPOSE — do not move it
+  // to a spec of its own. It needs a profile it may write to and then undo, and this
+  // file already OWNS one (#868) and runs serially against it; a standalone spec
+  // would either duplicate that fixture or write into a shared profile, which is
+  // exactly the hazard the ownership rule exists to prevent.
+  //
+  // `settledClick` re-dispatches a click it can prove was never delivered to its
+  // control. That is a retry on a WRITE — logging a use — so the thing that has to
+  // be true is not "it recovers" but "it recovers without logging twice", and a
+  // double-logged use is a wrong number in somebody's record rather than a red test.
+  // This pins that, on the one control the defect was seen on.
+  //
+  // The forge is the real mechanism, not an approximation of it: disabling the
+  // button between mousedown and mouseup is what Chromium needs to drop the click
+  // entirely (it dispatches no mouse events at all to a disabled form control), so
+  // the page reaches exactly the state #3359's CI annotation described — a click
+  // Playwright reports as done, an idle enabled control, and no POST ever issued.
+  // Re-enabling after 30 ms leaves the second dispatch a control to land on; a
+  // rescue that could not be re-clicked would prove nothing about double-writing.
+  test("a click the browser never delivers is re-dispatched, and still logs exactly one use (#3359)", async () => {
+    const NAME = "Kava 6";
+    await page.goto("/records/specialty/substance-use");
+
+    const card = page.getByTestId(`substance-card-${NAME}`);
+    const before = (await card.count()) > 0 ? await weekCount(page, NAME) : 0;
+
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    await expect(page.getByTestId("track-substance-form")).toBeVisible();
+    await settledFill(page, page.getByTestId("track-substance-name"), NAME);
+
+    await page.evaluate(() => {
+      const btn = document.querySelector(
+        '[data-testid="track-substance-save"]'
+      ) as HTMLButtonElement | null;
+      if (!btn) throw new Error("no save button to forge a lost click against");
+      // Declare the forgery ON THE PAGE, so the rescue's own log line can say this
+      // loss was deliberate. Without it this test prints three per run that are
+      // indistinguishable from a real recurrence on the same control (e2e/helpers.ts).
+      //
+      // A LOCAL FLAG ON PURPOSE: one setter here, one reader in `redispatchLostSubmit`,
+      // documented at both ends. Do not promote it to a shared export yet — a shared
+      // primitive with a single caller invites a second caller that does not quite
+      // fit. THE PROMOTION CONDITION IS A SECOND FORGING SITE: when some other spec
+      // needs to forge a lost click, give this key a named export and a type, and
+      // change both ends together.
+      (
+        window as unknown as { __allosForgedLostSubmit?: boolean }
+      ).__allosForgedLostSubmit = true;
+      const once = () => {
+        btn.disabled = true;
+        setTimeout(() => {
+          btn.disabled = false;
+        }, 30);
+        btn.removeEventListener("mousedown", once, true);
+      };
+      btn.addEventListener("mousedown", once, true);
+    });
+
+    // Resolves rather than times out: the helper proved the first click never
+    // activated the form and sent a second one.
+    await settledClick(page, page.getByTestId("track-substance-save"));
+
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    // THE CLAIM. Two clicks were dispatched and exactly one use exists.
+    expect(await weekCount(page, NAME)).toBe(before + 1);
+
+    // Undo what this test logged, so the fixture is where it started.
+    await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
+  });
+
   test("a substance name over the cap is refused with a readable message, never trimmed to fit (#3326)", async () => {
     await page.goto("/records/specialty/substance-use");
     await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
