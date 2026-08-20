@@ -407,7 +407,15 @@ export default function PhotoCapture({
       />
 
       {stage.kind !== "closed" ? (
-        <ModalShell title={triggerLabel} onClose={close}>
+        <ModalShell
+          title={triggerLabel}
+          onClose={close}
+          // A RECORDED anatomy exception to the #2774 convergence: this hosts a
+          // live camera preview, and a flick-to-dismiss over a viewfinder the
+          // user is aiming is a gesture collision, not an affordance. Registered
+          // with its reason in lib/__tests__/overlay-motion-chokepoint.test.ts.
+          presentation="centered"
+        >
           <div className="space-y-3">
             {stage.kind === "camera" ? (
               <>

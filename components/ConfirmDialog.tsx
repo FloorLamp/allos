@@ -198,6 +198,17 @@ export function useConfirm(): ConfirmFn {
   return ctx;
 }
 
+// The confirm function if a provider is mounted above, or null. For a SHARED
+// PRIMITIVE that would like to ask a question but must stay renderable without
+// the app shell — the same posture useConfirmOpen takes, and for the same
+// reason: a dialog host (components/ModalShell.tsx) is used on the share view
+// and could be used on any future unauthenticated surface, and "there is no
+// provider here" has an honest answer that is not a crash. The cost of the
+// fallback is one skipped confirm on a page with no registry to be dirty in.
+export function useOptionalConfirm(): ConfirmFn | null {
+  return useContext(ConfirmContext);
+}
+
 // True while a confirm is on screen. For a surface that must stand down when a
 // decision opens over it — see OverflowMenu, whose click-away backdrop otherwise
 // outlives the interaction that opened the dialog (#2599).

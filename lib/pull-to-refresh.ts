@@ -48,21 +48,26 @@
 // is a sibling of the panel and inside no dialog at all.
 //
 // WHAT THIS DELIBERATELY DOES NOT ASK IS "is a modal open?" — that was the first
-// version and it was WRONG. It was added to catch four surfaces that never lock
-// (ModalShell and its 31 consumers, MergeConflictDialog, PhotoGallery,
-// FitnessTestTimer), but standing down under those is not a fix, it is a second
-// bug: none of the four has a touch gesture of any kind, so none can produce the
-// drag this clause exists to refuse, and a pull under one of them is a contract
-// the suite already pins. `e2e/dirty-form-refresh.mobile.spec.ts` asserts that a
-// pull STILL REFRESHES while a record form (an `aria-modal` ModalShell) holds
-// unsaved input — per #1878 a refresh the USER asked for is never deferred, and
-// installed there is no other way to ask, so swallowing it would leave someone
-// pulling with no recourse.
+// version and it was WRONG. It was added to catch surfaces that never lock, but
+// standing down under a surface with no gesture at all is not a fix, it is a
+// second bug: it cannot produce the drag this clause exists to refuse, so the
+// pull is simply swallowed and the person pulling has no recourse.
 //
 // The two questions are not interchangeable. "Is a modal open" is about
 // ATTENTION; this is about whether an overlay owns the vertical DRAG. A new fact
 // belongs here only if it names a surface that owns the gesture, and it owes
 // this module a test in BOTH directions.
+//
+// #2774 IS THAT DISTINCTION DOING ITS JOB, and it is worth reading before
+// touching this clause. The record-form dialogs used to be the headline example
+// of a surface this must NOT stand down under — a centred ModalShell card with
+// no touch handler anywhere in it. Converging them onto the sheet primitive made
+// them body-locking, drag-owning surfaces, so this clause now refuses a pull
+// under them — with no edit to this file, because the fact it reads changed
+// rather than the rule. `e2e/dirty-form-refresh.mobile.spec.ts` was updated to
+// that ruling (deliberately, with the rationale in the spec) and pins both
+// halves: the pull is REFUSED rather than queued, and closing the sheet makes it
+// work again.
 export interface ViewportOwnershipFacts {
   // Has an overlay locked body scroll? (`document.body.style.overflow`.)
   bodyScrollLocked: boolean;

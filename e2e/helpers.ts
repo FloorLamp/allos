@@ -189,7 +189,17 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
 // tree with handlers on it, and it is the signal `hydratedClick` gates on. Kept in
 // one place so a second caller cannot invent a slightly different probe — this is a
 // TRUTH about React's DOM, and two spellings of it would drift.
-async function awaitHydrated(el: Locator, timeout: number): Promise<void> {
+// Wait until React has claimed this node — the probe behind hydratedClick.
+//
+// Exported because a coordinate TAP cannot go through hydratedClick: that clicks
+// an element's centre, and a full-viewport scrim's centre is covered by the panel
+// it dims, so the click would be refused for interception. The wait is the half
+// that matters (#2742: a tap landing before the handler is live is swallowed with
+// no error), so it is shared rather than copied into the spec.
+export async function awaitHydrated(
+  el: Locator,
+  timeout = 10_000
+): Promise<void> {
   await expect(el).toBeVisible();
   await expect(async () => {
     const hydrated = await el.evaluate((node) =>
@@ -790,6 +800,16 @@ export async function followLink(
 // WORKS for a client-state button whose effect is a re-render (a disclosure, an
 // expander). For a click that fires a Server Action use settledClick; for one that
 // navigates use followLink.
+//
+// DOES NOT WORK ON A FULL-VIEWPORT SCRIM, and the reason is structural rather
+// than incidental: this clicks the element's CENTRE, and an overlay's backdrop is
+// dimming a panel that sits over its own middle, so the click is refused for
+// interception by whatever it dims. Reach for `awaitHydrated` (exported just
+// above) and then dispatch the tap at a coordinate the panel cannot cover — the
+// wait is the half that matters, and it is the half this shares. #2774's
+// e2e/dialog-convergence.mobile.spec.ts is the worked example: the same tap,
+// unwaited, was swallowed in CI three runs running with the scrim proven under
+// the finger and the handler never firing.
 export async function hydratedClick(
   page: Page,
   button: Locator,

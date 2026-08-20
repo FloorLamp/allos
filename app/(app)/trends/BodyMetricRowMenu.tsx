@@ -181,7 +181,7 @@ function EditMeasureDialog({
       title={`Edit ${measure.label.toLowerCase()} — ${dateLabel}`}
       onClose={onClose}
       initialFocusRef={inputRef}
-      className="w-full max-w-sm rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+      size="sm"
     >
       <div className="mt-4 space-y-4" data-testid="body-metric-edit-dialog">
         <label className="label block">

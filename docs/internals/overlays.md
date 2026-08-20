@@ -44,6 +44,40 @@ workout" and reopen the docked session with its epoch untouched, and both
 `openLive`/`openSession` enforce that internally so a stale caller can't stomp
 it either. See [stateful affordances](./stateful-affordances.md).
 
+## Choosing a host for a new surface
+
+One rule, so a new form does not pick its host by looking at whichever neighbour
+it happened to open next to. Read down the left column; the first row that
+describes the surface is the answer.
+
+| The surface is…                                                          | Host                                                | Why                                                                                                                       |
+| ------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| a TRANSACTIONAL capture or decision — a record form, a picker, a confirm | `components/ModalShell.tsx` (the responsive dialog) | Sheet below `md`, centred card above, body locked, one scroll owner, declared size. Dismissal means discard.              |
+| a SESSION that survives navigation — a live workout                      | `components/ActivityOverlay.tsx` (the dock)         | "Away" means still running. Its drag resolves to **minimize**; it must never become discardable.                          |
+| a RARE-CADENCE page entry — lab results, imaging                         | `components/AddEntryPanel.tsx`                      | Inline in a reading column, modal in a hub rail (#1497). What "modal" renders as is the row above; the rule is unchanged. |
+| MENU or NAVIGATION                                                       | the sheet / `components/MobileNav.tsx` drawer       | Dismissal is close, nothing is lost, and the drawer owns the edge swipe.                                                  |
+| an ANCHORED desktop context — a control's own detail                     | the #3154 popover                                   | Anchored to its trigger rather than to the viewport; its own anatomy, deliberately outside this convergence.              |
+
+Two consequences worth stating outright, because both were decided rather than
+discovered (#2774):
+
+- **Sheets on phones, for every converged consumer.** An exception is an ANATOMY
+  fact — a surface with no bottom edge to flick toward at any width — and it is
+  RECORDED, not smuggled: it passes `presentation="centered"` and lands in
+  `CENTERED_PRESENTATION` in the chokepoint test with its reason. The command
+  palette (a search field over a result list) and the camera fallback (a live
+  viewfinder) are the two.
+- **Width is DECLARED, not styled.** `size: "sm" | "md" | "lg"`
+  (`OVERLAY_PANEL_MAX_WIDTH`) replaced thirty per-host `max-w-*` overrides.
+  Content stays intrinsic (#2014); this is the container half of that rule.
+
+A dirty form gets one more thing for free: a gesture dismissal — a flick, a
+scrim tap — routes through the app's `ConfirmDialog` when the hosted form holds
+unsaved input. Escape and the Close button do not, because those are targeted
+actions on a named control; a flick and a scrim tap are the two a hand produces
+by accident. A clean form still dismisses in one gesture, which is what keeps
+the confirm from becoming a click-through.
+
 ## What IS shared
 
 `components/overlay/` — the one import an overlay surface needs:
@@ -182,7 +216,17 @@ is never the only way to do anything.
 4. an `.overlay-*` class name is written anywhere but `lib/motion.ts`;
 5. a second raw drag recognizer appears (allowlisted: pull-to-refresh, which
    asks a different question and has its own pure classifier; the image cropper,
-   whose drag manipulates content rather than the overlay).
+   whose drag manipulates content rather than the overlay);
+6. a full-viewport overlay's own scroller does not contain its overscroll — the
+   #2774 defect, where a drag the scroller declined chained out to the document
+   and moved the page BEHIND the overlay;
+7. a portal dialog hosts a `<form>` without going through the converged host, or
+   opts out of the phone sheet idiom without recording why.
+
+`lib/__tests__/scroll-lock.test.ts` pins the other half of #2774: the body-scroll
+lock is reference-counted, so a dialog opened over an open sheet leaves the page
+held until the LAST surface closes — in either closing order. The DOM-level stack
+is pinned in `e2e/dialog-convergence.mobile.spec.ts`.
 
 `lib/__tests__/motion-tokens.test.ts` pins the CSS duration/easing to the JS
 ones — the number exists in both because one times the paint and the other times

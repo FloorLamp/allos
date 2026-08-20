@@ -21,11 +21,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  HOST_INHERITED,
   KIND_PROSE,
   KIND_REISSUE,
   RECONCILE_DATE_GUARD,
   RECONCILE_PREFIXES,
+  hasHostInheritedToken,
   inertTokens,
+  keyboardFamilyValid,
   isReissuableKind,
   messageExpiry,
   owningFamily,
@@ -197,6 +200,92 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
         `"${e.prefix}" must be owned OR inert, not both and not neither`
       ).toBe(true);
     }
+  });
+
+  // ── HOST-INHERITED TOKENS (#2460) ─────────────────────────────────────────
+  //
+  // `usual:` decorates two message families and must elect NEITHER. The properties
+  // below are the ones a mis-registration would break, and each is falsified by a
+  // different one-line mutant: registering it `intake-dose` breaks the food case,
+  // registering it `food` breaks the dose case, and dropping the HOST_INHERITED skip
+  // in `owningFamily` breaks BOTH the moment the token sorts first — which it always
+  // does, because the bundle sits above the rows it upgrades.
+  describe("a host-inherited token never elects the keyboard's family", () => {
+    const DOSE = [
+      "all:7:Morning:2026-08-19",
+      "take:7:41:9:2026-08-19",
+      "skip:7:41:9:2026-08-19",
+    ];
+    const FOOD = ["food:7:Morning:2026-08-19:berries", "foodmore:7:Morning"];
+    const USUAL = "usual:7:1201";
+
+    // Every ORDER of the same buttons, so the answer cannot depend on where the
+    // host-inherited token happens to sort. A keyboard is a list, and the send plan
+    // puts `usual:` first.
+    function permutations<T>(items: readonly T[]): T[][] {
+      if (items.length <= 1) return [[...items]];
+      return items.flatMap((item, i) =>
+        permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((r) => [
+          item,
+          ...r,
+        ])
+      );
+    }
+
+    it("dose tokens + usual resolve to intake-dose, in every button order", () => {
+      const orders = permutations([...DOSE, USUAL]);
+      expect(orders.length).toBe(24);
+      for (const order of orders) {
+        expect(owningFamily(order, tokenPrefix), order.join(" | ")).toBe(
+          "intake-dose"
+        );
+      }
+    });
+
+    it("food tokens + usual resolve to food, in every button order", () => {
+      const orders = permutations([...FOOD, USUAL]);
+      expect(orders.length).toBe(6);
+      for (const order of orders) {
+        expect(owningFamily(order, tokenPrefix), order.join(" | ")).toBe(
+          "food"
+        );
+      }
+    });
+
+    it("the same keyboard resolves differently ONLY because of its host's tokens", () => {
+      // The whole point, stated as one comparison: one token, two hosts, two answers.
+      expect(owningFamily([USUAL, ...DOSE], tokenPrefix)).toBe("intake-dose");
+      expect(owningFamily([USUAL, ...FOOD], tokenPrefix)).toBe("food");
+    });
+
+    it("a keyboard of only host-inherited tokens is INVALID, not merely unowned", () => {
+      expect(owningFamily([USUAL], tokenPrefix)).toBeNull();
+      expect(hasHostInheritedToken([USUAL], tokenPrefix)).toBe(true);
+      // Invalid: nothing would own it, so nothing would ever reconcile it.
+      expect(keyboardFamilyValid([USUAL], tokenPrefix)).toBe(false);
+    });
+
+    it("a host-inherited token is legal on a keyboard that has a family to inherit", () => {
+      expect(keyboardFamilyValid([USUAL, ...DOSE], tokenPrefix)).toBe(true);
+      expect(keyboardFamilyValid([USUAL, ...FOOD], tokenPrefix)).toBe(true);
+    });
+
+    it("validity says nothing about keyboards that carry no host-inherited token", () => {
+      // A keyboard with no family at all (a fully collapsed digest) is unowned but
+      // legal — the guard is about the host-inherited token specifically, and an
+      // implementation that answered `owningFamily != null` would fail here.
+      expect(keyboardFamilyValid(["tune:7"], tokenPrefix)).toBe(true);
+      expect(owningFamily(["tune:7"], tokenPrefix)).toBeNull();
+      expect(hasHostInheritedToken(DOSE, tokenPrefix)).toBe(false);
+    });
+
+    it("`usual` is declared HOST_INHERITED in the registry, not as a family", () => {
+      const entry = reconcileEntryFor("usual");
+      expect(entry?.family).toBe(HOST_INHERITED);
+      // …and HOST_INHERITED is not a ReconcileFamily: nothing may register a
+      // reconciler for it.
+      expect(Object.keys(RECONCILE_DATE_GUARD)).not.toContain(HOST_INHERITED);
+    });
   });
 
   it("no duplicate prefixes", () => {
@@ -703,7 +792,12 @@ describe("the date-guard completeness guard (#2018)", () => {
 
   it("the declaration covers exactly the families that exist — no stale entry", () => {
     const owning = new Set(
-      RECONCILE_PREFIXES.map((e) => e.family).filter((f) => f != null)
+      RECONCILE_PREFIXES.map((e) => e.family).filter(
+        // HOST_INHERITED is not a family and has no reconciler of its own (#2460):
+        // the token takes its host message's family, so there is nothing here to
+        // declare a date guard for.
+        (f) => f != null && f !== HOST_INHERITED
+      )
     );
     expect([...FAMILIES].sort()).toEqual([...owning].sort());
   });

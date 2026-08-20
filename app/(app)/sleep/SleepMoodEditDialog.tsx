@@ -158,7 +158,7 @@ export default function SleepMoodEditDialog(
       title={title}
       onClose={onClose}
       initialFocusRef={row.sleepEditable ? sleepHoursRef : undefined}
-      className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+      size="sm"
     >
       <div className="mt-4 space-y-5" data-testid="sleep-mood-edit-dialog">
         {props.mode === "add" && (

@@ -3427,6 +3427,31 @@ exactly this reason: an un-kinded send collapses into the `other` catch-all, whi
 is the one bucket where superseding must never apply, since any two unrelated
 messages would then close each other.
 
+### A token that elects no family (#2460)
+
+`owningFamily` reads a keyboard's family off the first token that CLAIMS state. That
+made "which family owns this message" and "which tokens are on it" the same question,
+which holds only while every token belongs to one family — and the composed
+`usual:` one-tap belongs to two: it decorates the dose reminder OR the food nudge,
+whichever the window's send plan gives it to.
+
+So the registry has a third answer beside a family and inert: `family: HOST_INHERITED`.
+The token claims state (it is not inert — its message must stay alive while it stands)
+but elects nothing, and `owningFamily` skips it **regardless of position**. Position
+matters because it always sorts first, being the upgrade of the rows beneath it. Two
+consequences worth stating:
+
+- a keyboard of ONLY host-inherited tokens is **invalid**, not merely unowned — nothing
+  would reconcile it and it would sit in the chat forever. The completeness test and a
+  pre-dispatch assertion both refuse it;
+- `HOST_INHERITED` is not a `ReconcileFamily`, so nothing can register a reconciler for
+  it. The decoration rebuilds through its host's reconciler, which is why the host's
+  builders never learned the feature exists.
+
+This is NOT the answer to the `practice-list` chips question above. That list needs a
+family because its message needs reconciling on its own terms; a host-inherited token
+only works where a host message is already being reconciled.
+
 ### Prose claims reconcile too (#1913 item 4)
 
 The two declarations above are **keyboard-shaped**: "what happens when this BUTTON is

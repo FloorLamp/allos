@@ -17,7 +17,18 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
 
   const dialog = page.getByRole("dialog", { name: "New protocol" });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveClass(/max-w-3xl/);
+  // The dialog declares itself a work surface, one size up from a confirm.
+  //
+  // Pinned on the DECLARED size rather than on `toHaveClass(/max-w-3xl/)`, which
+  // is what this line used to say, for two reasons. It named a RENDERING of the
+  // size decision instead of the decision, so it went red the moment #2774
+  // replaced the per-host `max-w-*` overrides with a declared `size` even though
+  // the dialog was as wide as it ever was. And at the 390px viewport this test
+  // sets, the class it asserted CONSTRAINED NOTHING — the panel is a full-width
+  // sheet there — so the assertion could not have failed for any reason a reader
+  // would care about. What a size does to width is measured in
+  // e2e/dialog-convergence.spec.ts, at a viewport where it is observable.
+  await expect(dialog).toHaveAttribute("data-size", "md");
   const form = dialog.getByTestId("protocol-form");
   await expect(form.getByLabel("Notes")).toHaveAttribute("rows", "4");
   const picker = form.getByTestId("protocol-template-picker");

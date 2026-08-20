@@ -313,6 +313,13 @@ export const OWNED_TABLES = [
   // deletion. Its declared ON DELETE CASCADE never fires on that path — the
   // sweep runs with foreign_keys OFF — membership in THIS list is what clears it.
   "notify_post_workout_claims",
+  // What a delivered button OFFERED (#2460): one row per composed one-tap the tick
+  // minted, holding the bundle the token has no bytes to name. Profile-owned for the
+  // same reason `notify_messages` is — the offer is ABOUT a profile, and a bundle that
+  // outlived its subject would let a tap redeem an offer for someone who no longer
+  // exists. Grows with SENDS like the pointer table beside it, so it carries the same
+  // named cleanup class (#203): `pruneNotifyOffers` runs on every reconcile pass.
+  "notify_offers",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

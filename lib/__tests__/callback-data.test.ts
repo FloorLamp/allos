@@ -7,6 +7,9 @@ import {
   parseAllCallback,
   parseStackTakeCallback,
   stackTakeCallback,
+  parseUsualRoutineCallback,
+  usualRoutineCallback,
+  callbackDataFits,
   TELEGRAM_CALLBACK_DATA_MAX_BYTES,
   parseEscalationCallback,
   parsePreventiveCallback,
@@ -143,6 +146,75 @@ describe("parseStackTakeCallback (#3098)", () => {
   it("its profile id resolves against a shared chat like every tap token", () => {
     expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
     expect(resolveTapProfile({ profileId: 9 }, [1, 2, 3])).toBeNull();
+  });
+});
+
+describe("parseUsualRoutineCallback (#2460)", () => {
+  it("round-trips the mint site's token — one source of truth for the shape", () => {
+    const token = usualRoutineCallback(2, 4471);
+    expect(token).toBe("usual:2:4471");
+    expect(parseUsualRoutineCallback(token)).toEqual({
+      profileId: 2,
+      offerId: 4471,
+    });
+  });
+
+  it("rejects malformed tokens — the offer id is an id, never a free-text field", () => {
+    expect(parseUsualRoutineCallback("usual:2:")).toBeNull(); // no offer
+    expect(parseUsualRoutineCallback("usual:2:banana")).toBeNull();
+    expect(parseUsualRoutineCallback("usual:0:7")).toBeNull(); // zero profile
+    expect(parseUsualRoutineCallback("usual:2:0")).toBeNull(); // zero offer
+    expect(parseUsualRoutineCallback("usual:2:-7")).toBeNull(); // negative offer
+    expect(parseUsualRoutineCallback("usual:2:7.5")).toBeNull(); // non-integer
+    expect(parseUsualRoutineCallback("usual:2:7:Morning")).toBeNull(); // extra field
+    expect(parseUsualRoutineCallback("usual:2")).toBeNull(); // truncated
+    expect(parseUsualRoutineCallback("stacktake:2:2026-07-03:11")).toBeNull();
+    expect(parseUsualRoutineCallback(undefined)).toBeNull();
+  });
+
+  it("carries NO date — the handler resolves today server-side, so it cannot backfill", () => {
+    // The whole token, so a date field cannot be added without this failing.
+    expect(usualRoutineCallback(2, 4471).split(":")).toHaveLength(3);
+  });
+
+  it("its profile id resolves against a shared chat like every tap token", () => {
+    expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
+    expect(resolveTapProfile({ profileId: 9 }, [1, 2, 3])).toBeNull();
+  });
+});
+
+// THE BYTE CLIFF, IN BOTH DIRECTIONS (#2460). A check that only shows "a small token
+// fits" passes under a broken predicate, so the pins below are the limit itself: at 64
+// bytes it fits, at 65 it does not, and the answer is about the WHOLE token — there is
+// no shape of this that keeps part of it.
+describe("callbackDataFits — the compose-time drop rule", () => {
+  it("declares Telegram's callback ceiling", () => {
+    expect(TELEGRAM_CALLBACK_DATA_MAX_BYTES).toBe(64);
+  });
+
+  it("fits at exactly the limit and not one byte past it", () => {
+    const atLimit = "u".repeat(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
+    expect(atLimit.length).toBe(64);
+    expect(callbackDataFits(atLimit)).toBe(true);
+    expect(callbackDataFits(atLimit + "x")).toBe(false);
+  });
+
+  it("measures ENCODED bytes, not characters — a 32-char token can be over", () => {
+    // Every emoji here is 4 UTF-8 bytes: 17 characters, 68 bytes. A `.length` check
+    // would call this comfortably inside the limit and Telegram would reject it.
+    const wide = "\u{1F955}".repeat(17);
+    expect(wide.length).toBeLessThan(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
+    expect(new TextEncoder().encode(wide).length).toBe(68);
+    expect(callbackDataFits(wide)).toBe(false);
+  });
+
+  it("the stored-offer token shape is nowhere near the cliff, at implausible ids", () => {
+    // The point of the stored offer (#2460): the token is CONSTANT size, so neither
+    // growth axis that killed the named-sets shape — a third habitual group, a seventh
+    // dose — can reach it. Pinned at ids far past anything this app will mint.
+    expect(callbackDataFits(usualRoutineCallback(999999999, 999999999))).toBe(
+      true
+    );
   });
 });
 

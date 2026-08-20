@@ -416,7 +416,7 @@ export default function EditableSupplementRow({
         <ModalShell
           title={`Edit ${s.name}`}
           onClose={() => setEditing(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+          size="lg"
         >
           <div
             data-testid="supplement-edit-panel"
