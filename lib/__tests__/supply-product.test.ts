@@ -11,7 +11,10 @@ import {
   productLabel,
   bottleLabel,
   poolSurfaceKind,
+  bottleFitsKindDoor,
+  bottleSiblingKind,
 } from "../supply-product";
+import type { IntakeItemKind } from "../types/intake";
 
 describe("itemStrength", () => {
   it("takes the first non-empty active dose amount", () => {
@@ -123,5 +126,73 @@ describe("poolSurfaceKind", () => {
 
   it("defaults an orphaned bottle to the supplements surface", () => {
     expect(poolSurfaceKind([])).toBe("supplement");
+  });
+});
+
+// #3270 — WHICH BOTTLES A DOOR OFFERS, as a closed matrix rather than as a row of
+// example labels. The bug was an UNFILTERED list that rendered perfectly plausibly, so
+// every assertion available at the rendering level ("the list is non-empty", "the row
+// reads Ibuprofen — shared bottle") passed under it and discriminated nothing. The
+// question that discriminates is the pairing: for each door, each bottle kind, offered
+// or not. Enumerated exhaustively so no cell can be added, dropped or flipped without
+// this failing — including the two `true` cells the fix does NOT change, which are what
+// keeps an over-eager filter from quietly emptying the unlocked door.
+describe("bottleFitsKindDoor — the door × bottle-kind matrix", () => {
+  const doors: (IntakeItemKind | null)[] = [null, "medication", "supplement"];
+  const siblings: (IntakeItemKind | null)[] = [
+    null,
+    "medication",
+    "supplement",
+  ];
+
+  // door → sibling kind → offered. `null` sibling = a bottle nothing links yet.
+  const expected: Record<string, Record<string, boolean>> = {
+    // An unlocked door derives the kind from the pick and can be corrected, so it
+    // offers every bottle — unchanged by #3270.
+    none: { none: true, medication: true, supplement: true },
+    medication: { none: true, medication: true, supplement: false },
+    supplement: { none: true, medication: false, supplement: true },
+  };
+
+  const key = (kind: IntakeItemKind | null) => kind ?? "none";
+
+  for (const door of doors) {
+    for (const sibling of siblings) {
+      const want = expected[key(door)][key(sibling)];
+      it(`${key(door)} door ${want ? "offers" : "withholds"} a ${key(sibling)} bottle`, () => {
+        expect(bottleFitsKindDoor({ siblingKind: sibling }, door)).toBe(want);
+      });
+    }
+  }
+
+  // A bottle whose option was built before siblingKind existed carries no such field
+  // at all. Absent must read as "no sibling", not as a contradiction — otherwise the
+  // locked doors silently empty.
+  it("treats an absent siblingKind the same as a null one", () => {
+    expect(bottleFitsKindDoor({}, "supplement")).toBe(true);
+    expect(bottleFitsKindDoor({}, "medication")).toBe(true);
+  });
+
+  // The two facts the matrix rests on, asserted where they are used rather than
+  // assumed: what a bottle's own membership lends is exactly what the door compares
+  // against, and a mixed bottle leans medication (poolSurfaceKind's safety direction),
+  // so it is withheld from the supplement door.
+  it("reads a mixed-membership bottle as a medication and withholds it from Add supplement", () => {
+    const mixed = {
+      siblingKind: bottleSiblingKind([
+        { kind: "supplement" },
+        { kind: "medication" },
+      ]),
+    };
+    expect(mixed.siblingKind).toBe("medication");
+    expect(bottleFitsKindDoor(mixed, "supplement")).toBe(false);
+    expect(bottleFitsKindDoor(mixed, "medication")).toBe(true);
+  });
+
+  it("offers a bottle nobody links yet in both locked doors", () => {
+    const unlinked = { siblingKind: bottleSiblingKind([]) };
+    expect(unlinked.siblingKind).toBe(null);
+    expect(bottleFitsKindDoor(unlinked, "supplement")).toBe(true);
+    expect(bottleFitsKindDoor(unlinked, "medication")).toBe(true);
   });
 });

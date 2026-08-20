@@ -29,6 +29,13 @@ import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 // what happened (#199/#200). `movedRouteId` is the drop's activity_routes id the fold
 // re-parented onto the keeper, or null when the keeper already had a route (so the
 // drop kept its own, captured as a child by the generic delete instead).
+//
+// `movedLapIds` / `movedSegmentEffortIds` follow the SAME shape for the same reason
+// (#3193): they list what the fold actually moved, which for a source the keeper
+// already had is NOTHING. Those rows stay on the drop and are captured as children,
+// exactly like a route the keeper's own route beat. Every consumer therefore inverts
+// the real move rather than an assumed one — do not rebuild these from the drop's
+// pre-fold children.
 export interface DropFoldMove {
   dropId: number;
   movedRouteId: number | null;
@@ -37,26 +44,63 @@ export interface DropFoldMove {
   movedSegmentEffortIds: number[];
 }
 
+// Re-parent a drop's laps or segment efforts onto the keeper, PER SOURCE — the same
+// keeper-wins rule activity_telemetry and activity_routes already follow, and for the
+// same reason (#3193).
+//
+// Unlike exercise_sets, these rows are not independent training history: they are one
+// recording's description of one ride. When both members carry rows from the SAME
+// source they are twin uploads of the SAME physical traversals, so moving the drop's
+// rows makes the keeper carry every lap and every segment effort TWICE — with
+// contradictory `pr_rank`s, because the twins shadowed each other on the source's own
+// leaderboard. Someone who records every ride on two apps gets this on every ride.
+// So the keeper's own set wins whole, and the drop's same-source rows are DISCARDED:
+// left on the drop, where the undoable Training Log merge captures them as ordinary
+// children of the deleted row and the review/auto paths let the FK cascade take them.
+//
+// A source the keeper LACKS still moves — that is the gap-fill case, and it is why
+// this is a per-source rule rather than "the keeper wins if it has anything".
+//
+// The keeper's sources are read fresh on entry and NOT extended as rows move, because
+// a source here is many rows, not one: a set must move whole or not at all. Reading
+// per call still gives the N-way accumulation for free — the second drop's query sees
+// the first drop's moved rows already on the keeper, so only the first drop with a
+// given source wins that source's slot.
+//
+// Returns the ids ACTUALLY moved, so an undoable caller inverts exactly what happened
+// — a discard returns none, and undo correctly does nothing for those rows.
 function moveOwnedActivityChildren(
   table: "activity_laps" | "activity_segment_efforts",
   profileId: number,
   keepId: number,
   dropId: number
 ): number[] {
-  const ids = (
-    db
-      .prepare(
-        `SELECT id FROM ${table} WHERE profile_id = ? AND activity_id = ? ORDER BY id`
-      )
-      .all(profileId, dropId) as { id: number }[]
-  ).map((row) => row.id);
-  if (ids.length > 0) {
+  const keeperSources = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT source FROM ${table}
+            WHERE profile_id = ? AND activity_id = ?`
+        )
+        .all(profileId, keepId) as { source: string }[]
+    ).map((row) => row.source)
+  );
+  const rows = db
+    .prepare(
+      `SELECT id, source FROM ${table}
+        WHERE profile_id = ? AND activity_id = ? ORDER BY id`
+    )
+    .all(profileId, dropId) as { id: number; source: string }[];
+  const movedIds: number[] = [];
+  for (const row of rows) {
+    if (keeperSources.has(row.source)) continue;
     db.prepare(
       `UPDATE ${table} SET activity_id = ?
-        WHERE profile_id = ? AND activity_id = ?`
-    ).run(keepId, profileId, dropId);
+        WHERE id = ? AND profile_id = ? AND activity_id = ?`
+    ).run(keepId, row.id, profileId, dropId);
+    movedIds.push(row.id);
   }
-  return ids;
+  return movedIds;
 }
 
 // Fold the DISCARDED row's gap-filling fields into the KEEPER — COALESCE(keep, drop)
@@ -79,8 +123,16 @@ function moveOwnedActivityChildren(
 // `exercise_sets` are moved onto the keeper so a merge can NEVER lose typed-in
 // training history to the FK cascade. Doing it HERE fixes both merge paths at once
 // (the undoable Training Log merge and the plain-delete Review resolver) — neither caller
-// can forget it. It is strictly safe: PR detection + volume math already handle
-// multi-exercise activities, so the keeper simply carries both rows' sets.
+// can forget it. For `exercise_sets` the union is strictly safe: PR detection + volume
+// math already handle multi-exercise activities, so the keeper simply carries both
+// rows' sets, and two members' typed-in sets are two real pieces of history.
+//
+// That reasoning is specific to typed-in sets and does NOT generalize to the recorded
+// children (#3193). A route, a telemetry snapshot, laps and segment efforts are each
+// one recording's account of ONE ride, so a same-source duplicate is the same ride
+// described twice and a union double-counts it. Those four follow keeper-wins instead:
+// the keeper's own account is kept and the drop's is discarded, while a source the
+// keeper lacks still moves. See moveOwnedActivityChildren above.
 export function writeActivityFold(
   profileId: number,
   keepId: number,
@@ -140,7 +192,8 @@ export function writeActivityFold(
     // cannot cascade away a Strava ride's sensor history. Telemetry is unique per
     // activity/source, so keep an existing keeper snapshot for a conflicting source.
     // Undoable merges capture the duplicate left on the drop; permanent merges still
-    // retain the keeper's same-source snapshot.
+    // retain the keeper's same-source snapshot. Laps and segment efforts below follow
+    // the same keeper-wins-per-source rule (#3193) — they describe the same ride.
     const keeperTelemetrySources = new Set(
       (
         db

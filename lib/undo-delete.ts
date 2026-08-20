@@ -197,6 +197,11 @@ export interface MergeUndoContext {
   // Profile-owned cycling children moved onto the keeper before the drop's
   // cascade delete. Optional so an undo payload captured by an older build remains
   // restorable during the 24-hour undo window after deployment.
+  //
+  // These list what the merge ACTUALLY moved, not what the drop owned. A source the
+  // keeper already had is not moved at all (#3193) — those rows stayed on the drop and
+  // ride in this same payload as ordinary captured children, so undo restores them
+  // with the row itself and must NOT also move them off the keeper.
   movedTelemetryIds?: number[];
   movedLapIds?: number[];
   movedSegmentEffortIds?: number[];
