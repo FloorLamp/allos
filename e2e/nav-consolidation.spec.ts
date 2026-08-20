@@ -202,19 +202,25 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 // both directions — the exact children, and each child reached with the group
 // auto-expanding around it.
 
-// Every child of the group, in registry order. Progress photos rides the `progress`
-// relevance bit and Wellness the `wellness` one; the shared admin fixture (profile
-// 1) has data for both, which is what makes an EXACT list assertable here.
+// The group's children AS THE SHARED ADMIN FIXTURE SEES THEM, in registry order.
+//
+// PROGRESS PHOTOS IS THE SIXTH CHILD AND IS DELIBERATELY ABSENT HERE: it rides the
+// `progress` relevance bit, and profile 1 seeds no progress photos — which is why
+// it was missing from TOP_LEVEL_ORDER before this change too. Listing it would
+// assert a row that cannot render for this fixture. Its membership is pinned where
+// it can be: as text in lib/__tests__/nav-routes.test.ts, and behaviorally in
+// e2e/progress-photos.spec.ts, which watches the row appear inside this group the
+// moment that profile's first photo lands (and, being on /progress at the time,
+// proves the same auto-expansion the case below asserts for the others).
 const PLAN_REVIEW_CHILDREN = [
   "Upcoming",
   "Timeline",
   "Wellness",
   "Longevity",
   "Household",
-  "Progress photos",
 ];
 
-test("the episodic group holds exactly its six children, and none of them is a top-level row (#3079)", async ({
+test("the episodic group holds exactly its children, and none of them is a top-level row (#3079)", async ({
   page,
 }) => {
   await page.goto("/");
@@ -232,8 +238,11 @@ test("the episodic group holds exactly its six children, and none of them is a t
   // The group's panel — NOT the whole nav — so "exactly these, in this order" is a
   // statement about MEMBERSHIP. Read from the panel the header controls, which is
   // the only handle that survives the group being re-styled or re-wrapped.
+  // Read by ATTRIBUTE rather than as a `#id` selector: the panel id is derived
+  // from the group's label, and an id selector is the one consumer that cares
+  // whether that derivation left punctuation behind.
   const panelId = await header.getAttribute("aria-controls");
-  const panel = nav.locator(`#${panelId}`);
+  const panel = nav.locator(`[id="${panelId}"]`);
   await expect(panel.getByRole("link")).toHaveText(PLAN_REVIEW_CHILDREN);
 });
 
@@ -247,7 +256,6 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
     Wellness: "/wellness",
     Longevity: "/longevity",
     Household: "/household",
-    "Progress photos": "/progress",
   };
   for (const [label, href] of Object.entries(HREFS)) {
     await page.goto(href);

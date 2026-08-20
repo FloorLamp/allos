@@ -122,11 +122,16 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     // an ungated sibling, makes the absence a real observation again. Same shape as
     // the #1522 medicine-cabinet case in e2e/nav-consolidation.spec.ts.
     await page.goto("/");
-    const aside = page.locator("aside");
-    await aside.getByRole("button", { name: "Plan & review" }).click();
-    await expect(aside.getByRole("link", { name: "Timeline" })).toBeVisible();
+    // `aside nav`, not `aside`: FrequentPages (#1416) renders its shortcuts as
+    // plain links in the same aside, so an aside-wide role query can collide with
+    // a shortcut carrying the same label.
+    const sidebarNav = page.locator("aside nav");
+    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      aside.getByRole("link", { name: "Progress photos" })
+      sidebarNav.getByRole("link", { name: "Timeline" })
+    ).toBeVisible();
+    await expect(
+      sidebarNav.getByRole("link", { name: "Progress photos" })
     ).toHaveCount(0);
     await page.goto("/progress");
     await expect(

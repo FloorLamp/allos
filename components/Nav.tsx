@@ -456,7 +456,17 @@ function NavGroup({
   const expanded = open || active;
   if (children.length === 0) return null;
   const Icon = group.icon;
-  const panelId = `nav-group-${group.group.replace(/\s+/g, "-").toLowerCase()}`;
+  // Slugified on EVERY non-alphanumeric run, not just whitespace. Ids are only
+  // ever consumed through `aria-controls`, which takes them verbatim — but a
+  // label like "Plan & review" (#3079) would otherwise put an `&` in the id, and
+  // while that is legal HTML it is not a valid CSS id SELECTOR, so anything
+  // reaching for the panel by `#id` (a test, a future style hook) breaks on a
+  // group whose name has punctuation in it. Group labels are author-controlled
+  // ASCII, so a plain [^a-z0-9] run is the whole rule.
+  const panelId = `nav-group-${group.group
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
   return (
     <div className="flex flex-col gap-0.5">
       <button

@@ -33,7 +33,13 @@ import type { Page, Route } from "@playwright/test";
 // held — holding it would stall the sidebar rather than the navigation, and the
 // two are only distinguishable by that header.
 
-const DESTINATION = "/timeline";
+// A TOP-LEVEL row. #3079 moved Timeline, which this used to tap, into the
+// collapsed "Plan & review" group — a row inside a closed disclosure is not in the
+// DOM at all, so the locator below would have failed as "link never visible",
+// which reads like a PendingNavLink regression and is not one. What #1956 is about
+// is the tap→acknowledgement window on a sidebar row; any row exercises it, and
+// /settings has no redirect of its own to confuse the held navigation.
+const DESTINATION = "/settings";
 
 /** A promise the test resolves to let the held navigation complete. */
 function heldNavigation(): {
@@ -93,7 +99,7 @@ test("a sidebar tap shows the row is opening before the destination arrives (#19
 
   // The row says it heard, while the destination is still being held.
   await expect(link.getByTestId("nav-link-pending")).toBeVisible();
-  await expect(link.getByRole("status")).toHaveText(/Opening Timeline/);
+  await expect(link.getByRole("status")).toHaveText(/Opening Settings/);
   // …and the page has NOT moved yet, so this really is the silent window.
   expect(new URL(page.url()).pathname).toBe("/");
 

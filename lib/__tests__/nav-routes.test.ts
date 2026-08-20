@@ -317,7 +317,9 @@ describe("nav ↔ route consistency", () => {
     expect(topLevel).toContain('href: "/settings"');
     expect(topLevel).not.toContain('group: "Plan & review"');
 
-    const missing = GROUPED_HREFS.filter((h) => !group.includes(`href: "${h}"`));
+    const missing = GROUPED_HREFS.filter(
+      (h) => !group.includes(`href: "${h}"`)
+    );
     expect(
       missing,
       `these left the "Plan & review" group: ${missing.join(", ")}`

@@ -184,12 +184,10 @@ test.describe("Household view for members (issue #31)", () => {
     // role query is a strict-mode collision when the house is sick.
     // #3079 moved Household into the collapsed "Plan & review" group, so the row
     // is one disclosure away; the multi-profile gate it demonstrates is unchanged.
-    await memberPage
-      .getByRole("button", { name: "Plan & review" })
-      .first() // first-ok: the shared SidebarContent mounts one nav per viewport
-      .click();
+    const memberNav = memberPage.locator("aside nav");
+    await memberNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      memberPage.getByRole("link", { name: "Household", exact: true })
+      memberNav.getByRole("link", { name: "Household", exact: true })
     ).toBeVisible();
 
     await memberPage.goto("/household");
@@ -287,13 +285,9 @@ test.describe("Household view for members (issue #31)", () => {
     // (#3079) is EXPANDED first, with an ungated sibling proving the expansion —
     // otherwise this count reads 0 because the group is collapsed and the
     // requiresMultiProfile gate goes untested while staying green.
-    await memberPage
-      .getByRole("button", { name: "Plan & review" })
-      .first() // first-ok: the shared SidebarContent mounts one nav per viewport
-      .click();
-    await expect(
-      memberPage.getByRole("link", { name: "Timeline" }).first()
-    ).toBeVisible();
+    const soloNav = memberPage.locator("aside nav");
+    await soloNav.getByRole("button", { name: "Plan & review" }).click();
+    await expect(soloNav.getByRole("link", { name: "Timeline" })).toBeVisible();
     await expect(
       memberPage.getByRole("link", { name: "Household" })
     ).toHaveCount(0);
