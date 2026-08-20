@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { SleepMoodHistoryRow } from "@/lib/sleep-summary";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
 
@@ -11,6 +12,7 @@ export default function SleepLogAction({
   label = "Add entry",
   className = "btn btn-sm",
   testId,
+  formatPrefs,
 }: {
   history: SleepMoodHistoryRow[];
   today: string;
@@ -18,6 +20,8 @@ export default function SleepLogAction({
   label?: string;
   className?: string;
   testId?: string;
+  // So the night chip reads a date the way the rest of the page does.
+  formatPrefs?: DisplayFormatPrefs;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -38,6 +42,7 @@ export default function SleepLogAction({
           defaultDate={today}
           minDate={minDate}
           maxDate={today}
+          formatPrefs={formatPrefs}
           onClose={() => setOpen(false)}
         />
       )}

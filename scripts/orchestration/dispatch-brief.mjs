@@ -473,6 +473,20 @@ ${MIGRATION_LINES}
   origin/main control worktree and show it failing there too. Report the
   comparison, not the first red. Two agents were saved from a false regression
   report this way on 2026-08-15 only because they thought of it themselves.
+- A GENEROUS CEILING IS HONEST ON A *PRESENCE* ASSERTION AND DANGEROUS ON AN
+  *ABSENCE* ONE. This is the rule to reach for before arguing about timeouts at all.
+  Waiting longer cannot make a row that was never created appear — so if the write is
+  genuinely broken, a presence assertion still fails and the budget cost you nothing.
+  Waiting longer CAN let a bug's window close under an absence assertion, which then
+  passes against the very bug it exists to catch: that is why #3287's dedicated spec
+  asserts NOTHING after its discard, and why a retrying toHaveCount(0) is the shape to
+  distrust. A slow write and a swallowed pre-hydration tap read IDENTICALLY as
+  "element(s) not found"; the discriminator is whether a bigger ceiling rescues it, and
+  the answer only means something on a presence. Measured both ways in the tree:
+  activity-equipment.spec.ts (hydratedClick 0/5 -> 0/5, ceiling 0/5 -> 4/5, so latency)
+  and imaging.spec.ts (the opposite verdict, so latency DISPROVEN). If you add a
+  ceiling, NAME it as a constant and put the measurement in the comment — the number
+  alone is indistinguishable from a guess.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.

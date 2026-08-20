@@ -20,6 +20,18 @@
           "title": "Allos notices when you are in another timezone, moves your day on one tap, and excuses the slots the clock skipped",
           "kind": "feature",
           "issues": [3263]
+        },
+        {
+          "pr": 3298,
+          "title": "The Add supplement door lists only supplement bottles, so a household medication can no longer be filed as one",
+          "kind": "fix",
+          "issues": [3270]
+        },
+        {
+          "pr": 3302,
+          "title": "A ride recorded on two apps no longer shows every segment and lap twice, with two different PR medals",
+          "kind": "fix",
+          "issues": [3193]
         }
       ]
     },
