@@ -182,15 +182,30 @@ export default function SleepMoodEditDialog(
     sleepTotalMinutes != null &&
     sleepTotalMinutes !== originalSleepMinutes;
   const moodChanged = valence != null && valence !== row.valence;
-  // ONE QUESTION, ONE COMPUTATION (#3356). This dialog is not a `<form>` and has no
-  // named controls, so the dirty-form registry could only ever answer "clean" about
-  // it — and a flick or a scrim tap on its ModalShell discarded a stated mood with
-  // nothing asking. Publishing this as `data-unsaved` is what the guard reads.
+  const hasSomethingToSave = sleepChanged || moodChanged;
+
+  // WHAT THE DISCARD GUARD READS (#3356). This dialog is not a `<form>` and has not
+  // one named control — it composes its save by hand out of the state above — so the
+  // dirty-form registry could only ever answer "clean" about it, and a flick or a
+  // scrim tap on its host ModalShell discarded a stated mood with nothing asking.
+  // `data-unsaved` on the body below is the answer it gives instead.
   //
-  // NOT NEW STATE, and it must not become any: this is the SAME value the Save button
-  // is enabled by, three lines of JSX below. If a change ever needs the marker and the
-  // Save button to disagree, that is a bug in the change.
-  const hasUnsavedEdit = sleepChanged || moodChanged;
+  // AND IT IS DELIBERATELY NOT `hasSomethingToSave`, which is the obvious thing to
+  // reach for and is WRONG here. On the add path a blank night borrows the profile's
+  // typical duration (#846) — saveable the instant the dialog opens, and nobody typed
+  // it. Publishing that as unsaved input puts a "Discard your changes?" in front of a
+  // person who has done nothing but open the dialog, which is the click-through the
+  // guard exists to avoid. The registry draws the same line for its own fields:
+  // dirty means EDITED, never merely "holds a value".
+  //
+  // So this is the other question — has anything moved since this opened? — asked the
+  // way `lib/offline/drafts.ts#shouldPersistDraft` and the activity editor's autosave
+  // both ask it: one signature, compared against the one the surface mounted with.
+  const stateSignature = [date, sleepHours, sleepMinutes, valence ?? ""].join(
+    "|"
+  );
+  const openedWith = useRef(stateSignature);
+  const hasUnsavedEdit = stateSignature !== openedWith.current;
 
   const summary = sleepFactSummary({
     // An edit's date is stated by the dialog's own title and is not editable, so it is
@@ -208,7 +223,7 @@ export default function SleepMoodEditDialog(
   });
 
   async function save() {
-    if (dateInvalid || sleepInvalid || !hasUnsavedEdit) return;
+    if (dateInvalid || sleepInvalid || !hasSomethingToSave) return;
     setPending(true);
     setError(null);
     try {
@@ -364,7 +379,9 @@ export default function SleepMoodEditDialog(
         //
         // TO THE READER WHO WANTS TO DELETE IT as untested instrumentation: it is not
         // instrumentation, it is the signal the guard runs on, and
-        // e2e/sleep-page.spec.ts dismisses this dialog by GESTURE to prove it.
+        // e2e/sleep-page.spec.ts dismisses this dialog by GESTURE to prove it. That
+        // spec also asserts it reads "false" on open, which is the half a borrowed
+        // duration would quietly break.
         data-unsaved={hasUnsavedEdit ? "true" : "false"}
         onKeyDown={onKeyDown}
       >
@@ -411,7 +428,9 @@ export default function SleepMoodEditDialog(
           <button
             type="button"
             className="btn"
-            disabled={pending || dateInvalid || sleepInvalid || !hasUnsavedEdit}
+            disabled={
+              pending || dateInvalid || sleepInvalid || !hasSomethingToSave
+            }
             onClick={save}
             data-testid="sleep-mood-edit-save"
           >
