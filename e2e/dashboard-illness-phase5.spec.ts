@@ -258,7 +258,8 @@ async function expand(cockpit: Locator) {
 
 async function pickMedication(page: Page, scope: Page | Locator, name: string) {
   await settledFill(page, scope.getByRole("combobox", { name: "Name" }), name);
-  const option = scope
+  // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
+  const option = page
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })

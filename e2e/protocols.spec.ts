@@ -40,13 +40,20 @@ test.describe("protocols create → compare (issue #161)", () => {
     // biomarker order comes from the shared relevance rank (#1675). Seeded LDL
     // is starred, so it reaches the first eight options instead of being buried
     // in the old alphabetical biomarker tail.
+    // The option rows are in the PORTALED listbox (#3271), not inside the form —
+    // addressed through it so they cannot be confused with a same-named control
+    // on the page behind.
+    const outcomeOptions = page.getByRole("listbox");
     await expect(
-      form.getByRole("button", { name: "LDL Cholesterol", exact: true })
+      outcomeOptions.getByRole("button", {
+        name: "LDL Cholesterol",
+        exact: true,
+      })
     ).toBeVisible();
     await outcomeSearch.fill("Body weight");
-    await form.getByRole("button", { name: "Body weight" }).click();
+    await outcomeOptions.getByRole("button", { name: "Body weight" }).click();
     await outcomeSearch.fill("Resting heart rate");
-    await form
+    await outcomeOptions
       .getByRole("button", { name: "Resting heart rate", exact: true })
       .click();
     await form.getByRole("button", { name: "Create protocol" }).click();
@@ -115,9 +122,14 @@ test.describe("protocols create → compare (issue #161)", () => {
     const outcomeListbox = page.getByRole("listbox");
     await expect(outcomeListbox).toBeVisible();
     await expect(chooseOutcomes).toHaveCSS("z-index", "20");
-    await expect(outcomeListbox).toHaveCSS("z-index", "50");
+    // The list is portaled to <body> now (#3271) and takes the layer a picker
+    // opened from inside a dialog needs — above the sheet/dialog host's `z-60`,
+    // the same one the portaled date calendar takes. It used to be `z-50`, which
+    // only ever had to beat this inline form; stacking is not what keeps it
+    // unclipped any more, because z-index cannot escape an ancestor's clip box.
+    await expect(outcomeListbox).toHaveCSS("z-index", "70");
     await chooseSearch.fill("Body weight");
-    const weightOption = chooseOutcomes.getByRole("button", {
+    const weightOption = outcomeListbox.getByRole("button", {
       name: /^Body weight [−+±]\d/,
     });
     await expect(weightOption).toBeVisible();
