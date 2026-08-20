@@ -25,6 +25,20 @@ import type { ReactNode } from "react";
 // THIS PRIMITIVE OWNS NO DOMAIN LOGIC AND NO STORE. Each consumer supplies its facts, its
 // editors, and its existing action; the chips are presentation over the same write.
 //
+// EVERY DISCLOSURE NAMES ITSELF, as `data-focus-key`, and that is what lets focus come
+// back (#3311). Opening an editor unmounts this whole row, so when it returns EVERY chip
+// is a new DOM node — the element the person activated is gone, not merely moved. A key
+// survives that; an element reference cannot. See useFactEditor in FactEditorHost.
+//
+// AND IT IS THE CHIP'S OWN IDENTITY, NOT ITS PANEL'S. "Which editor does this open" and
+// "where was I" are two questions, and a chip is not always the only answer to the first:
+// the intake form draws one chip per rule SENTENCE and all of them open the one rules
+// builder. Keyed on the panel, clicking the third rule returns focus to the first, and
+// tapping "+ rule" returns focus to a rule the person did not touch — right answers to
+// the wrong question. So the panel key is an argument to `open()`, and `focusKey` is
+// per-chip. The chip hands its own key to `onOpen`, so a consumer relays it rather than
+// spelling it twice and letting the two drift.
+//
 // WHAT IS DELIBERATELY *NOT* A CONSUMER: a surface whose fields are free numeric entry
 // rather than discrete facts — the measurements form is the recorded counter-case. The
 // pattern is a tool, not a mandate.
@@ -70,6 +84,21 @@ const MISSING_CHIP =
 // The row itself: the facts in reading order, wrapping on narrow viewports. Consumers
 // pass their chips as children so a surface can order its own facts and append its own
 // trailing affordances without this component knowing any of their names.
+//
+// THE ROW IS THE FALLBACK FOCUS TARGET (#3311), which is why it is focusable at all. When
+// an editor closes and the fact it edited has no chip — an optional fact left empty goes
+// back behind the trailing affordance — there is nothing to return to, and leaving focus
+// on <body> drops a keyboard user at the top of the document. `tabIndex={-1}` makes the
+// row focusable WITHOUT adding a tab stop, and because the row CONTAINS the chips, Tab
+// from it continues into the row in document order rather than skipping past it.
+//
+// AND IT SHOWS A RING WHEN IT HAS FOCUS. A focusable element that gives no sign it is
+// focused is its own defect, and shipping one inside a fix for a keyboard defect would
+// be a poor trade. `focus:` rather than `focus-visible:` on purpose: this element is
+// never tabbed to and never clicked, so the only way it takes focus is the one
+// programmatic call below — and programmatic focus does not reliably match
+// :focus-visible after a pointer interaction, which is exactly when the indicator would
+// go missing. A ring around a waypoint you are meant to leave immediately is correct.
 export default function FactChipRow({
   testId,
   className,
@@ -82,7 +111,9 @@ export default function FactChipRow({
   return (
     <div
       data-testid={testId}
-      className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}
+      data-fact-row="true"
+      tabIndex={-1}
+      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden ${className ?? ""}`}
     >
       {children}
     </div>
@@ -97,6 +128,7 @@ export default function FactChipRow({
 // it, never a click-target overlapping the first.
 export function FactChip({
   label,
+  focusKey,
   state = "stated",
   expanded,
   onOpen,
@@ -106,9 +138,17 @@ export function FactChip({
   remove,
 }: {
   label: ReactNode;
+  // THIS CHIP's own identity, unique within the row — not its panel's (see the header).
+  // Emitted as `data-focus-key` so the editor can hand focus back to exactly this chip
+  // (#3311). Required, because a consumer that forgets loses the return path with
+  // nothing on screen to show for it.
+  focusKey: string;
   state?: FactChipState;
   expanded: boolean;
-  onOpen: () => void;
+  // Handed this chip's `focusKey`, so a consumer whose chips and panels do not
+  // correspond one-to-one relays it to `open(panel, focusKey)` instead of writing the
+  // same key in two places.
+  onOpen: (focusKey: string) => void;
   testId?: string;
   // An annotation the consumer renders inside the chip — the datasets supplied this and
   // the person has not touched it (#846), and so on. The primitive does not name it.
@@ -124,9 +164,10 @@ export function FactChip({
         type="button"
         data-testid={testId}
         data-fact-state={state}
+        data-focus-key={focusKey}
         {...suggestedAttrs(suggested)}
         aria-expanded={expanded}
-        onClick={onOpen}
+        onClick={() => onOpen(focusKey)}
         className={state === "missing" ? MISSING_CHIP : STATED_CHIP}
       >
         {label}
@@ -143,8 +184,9 @@ export function FactChip({
     >
       <button
         type="button"
+        data-focus-key={focusKey}
         aria-expanded={expanded}
-        onClick={onOpen}
+        onClick={() => onOpen(focusKey)}
         className="text-left"
       >
         {label}
@@ -168,21 +210,27 @@ export function FactChip({
 // form already knows it wants.
 export function FactAddChip({
   label,
+  focusKey,
   expanded,
   onOpen,
   testId,
 }: {
   label: string;
+  // This prompt's own identity — see FactChip's `focusKey` (#3311). It PERSISTS after
+  // the fact is added (the intake form keeps "+ rule" beside the rules it states), so
+  // focus returns here rather than to whichever chip the addition produced.
+  focusKey: string;
   expanded: boolean;
-  onOpen: () => void;
+  onOpen: (focusKey: string) => void;
   testId?: string;
 }) {
   return (
     <button
       type="button"
       data-testid={testId}
+      data-focus-key={focusKey}
       aria-expanded={expanded}
-      onClick={onOpen}
+      onClick={() => onOpen(focusKey)}
       className="tap-target inline-flex items-center gap-1 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
     >
       <IconPlus className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
@@ -196,21 +244,30 @@ export function FactAddChip({
 // names them (see `moreFactsLabel` in each consumer's fact module).
 export function FactMoreChip({
   label,
+  focusKey,
   expanded,
   onOpen,
   testId,
 }: {
   label: string;
+  // This affordance's own identity — see FactChip's `focusKey` (#3311).
+  focusKey: string;
   expanded: boolean;
-  onOpen: () => void;
+  onOpen: (focusKey: string) => void;
   testId?: string;
 }) {
   return (
     <button
       type="button"
       data-testid={testId}
+      data-focus-key={focusKey}
+      // WHERE AN ABSENT OPTIONAL FACT GOES, and so where focus goes when the fact that
+      // was just edited has no chip of its own: it is in here (#3311). Marked for the
+      // primitive rather than found by a consumer testid, because this is the one
+      // trailing affordance by contract — see FactEditorHost's restore.
+      data-fact-more="true"
       aria-expanded={expanded}
-      onClick={onOpen}
+      onClick={() => onOpen(focusKey)}
       className="tap-target rounded-full px-3 py-1.5 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
     >
       {label}

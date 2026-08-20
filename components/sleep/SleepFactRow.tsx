@@ -28,6 +28,9 @@ export default function SleepFactRow({
         <FactChip
           key={chip.key}
           testId={`sleep-fact-${chip.key}`}
+          // One chip, one panel here, so this surface never has to tell the two keys
+          // apart: the chip's focus identity is its fact key (#3311).
+          focusKey={chip.key}
           label={chip.label}
           state={chip.state}
           expanded={openEditor === chip.key}

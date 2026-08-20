@@ -525,6 +525,12 @@ test.describe("Sleep page (#1066)", () => {
     await dialog.getByTestId("sleep-editor-done").click();
     await expect(editor).toHaveCount(0);
     await expect(factRow).toBeVisible();
+    // AND FOCUS IS BACK ON THE CHIP THAT OPENED IT (#3311). Asserted as where focus IS,
+    // not that a focus call happened: opening the editor unmounted this chip, so the
+    // element that was clicked no longer exists and only the primitive's fact key can
+    // find its replacement. Before this, focus sat on <body> and the next Tab started
+    // from the top of the document.
+    await expect(dialog.getByTestId("sleep-fact-night")).toBeFocused();
 
     await dialog.getByTestId("sleep-fact-duration").click();
     await expect(
@@ -570,7 +576,13 @@ test.describe("Sleep page (#1066)", () => {
     await expect(dialog.getByTestId("sleep-editor")).toHaveCount(0);
     await expect(dialog.getByTestId("sleep-fact-row")).toBeVisible();
 
-    // And the SECOND Escape reaches the dialog, exactly as it did before any of this.
+    // Esc and Done are the same gesture, so Esc lands focus in the same place (#3311).
+    await expect(dialog.getByTestId("sleep-fact-mood")).toBeFocused();
+
+    // And the SECOND Escape reaches the dialog, exactly as it did before any of this —
+    // which is the assertion the focus return had to leave standing. Focus now sits on
+    // a chip inside the modal rather than on <body>, and a chip is not an escape layer,
+    // so the shared window-capture trap still answers this one.
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
   });

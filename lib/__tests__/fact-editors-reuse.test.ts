@@ -100,7 +100,7 @@ function factPrimitiveImporters(): string[] {
 }
 
 describe("the facts-with-editors primitive carries the contract (#3218)", () => {
-  it("each chip variant's source puts aria-expanded on its disclosure button", () => {
+  it("each chip variant's source puts aria-expanded and data-focus-key on its disclosure button", () => {
     // Three disclosure variants — the stated/missing fact, the "+ thing" prompt, the
     // trailing "more" — and a chip that is not a disclosure is the one bug invisible to
     // sighted testing.
@@ -118,6 +118,18 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
       ).toBeTruthy();
       expect(body, `${variant} renders a disclosure`).toContain(
         "aria-expanded={expanded}"
+      );
+      // And NAMES ITSELF (#3311). Opening an editor unmounts the whole chip row, so the
+      // element the person activated is gone by the time the editor closes; this key is
+      // what useFactEditor asks the row for to put focus back. A variant that stops
+      // emitting it loses the return path silently — nothing is visibly wrong on
+      // screen, and the next Tab starts from the top of the document.
+      //
+      // Asked as the CHIP's key rather than the panel's, because they are two questions
+      // and the intake form answers them differently: one chip per rule sentence, all
+      // opening the one rules builder.
+      expect(body, `${variant} names itself for focus return`).toContain(
+        "data-focus-key={focusKey}"
       );
     }
     // The removable chip's × is the one button that is NOT a disclosure; it carries an
@@ -138,18 +150,16 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
     // drifts.
     expect(chipRow.match(/"data-suggested":/g)?.length).toBe(1);
 
-    // TO THE REVIEWER REACHING FOR THE NEXT LINE: it names a private call expression and
-    // goes red on a harmless rename, which normally decides it. Keep it anyway. The
-    // REMOVABLE branch has no unconditional runtime pin — the intake spec's marking
-    // assertion sits behind `if (await suggested.count())`, so it asserts nothing when no
-    // seeded rule matches and passes either way (#3318). Until that guard goes, this
-    // brittle source claim is the only check on that branch that cannot silently skip,
-    // and trading a false red for a false green is the worse trade. When #3318 makes the
-    // e2e assertion unconditional, delete this line — the one above it is the durable
-    // half, because it asks about the ATTRIBUTE, which is the contract, not about the
-    // code that produces it.
-    const chip = exportedFunctionSource(chipRow, "FactChip");
-    expect(chip?.match(/suggestedAttrs\(suggested\)/g)?.length).toBe(2);
+    // A SECOND ASSERTION USED TO STAND HERE counting `suggestedAttrs(suggested)` call
+    // sites, and it is gone on purpose (#3318) rather than lost. It named a private call
+    // expression and went red on a harmless rename; it was kept only because the
+    // REMOVABLE branch had no unconditional runtime pin — the intake spec's marking
+    // assertion sat behind `if (await suggested.count())` and asserted nothing when no
+    // seeded rule matched. `e2e/one-intake-form.spec.ts` now picks a catalog entry whose
+    // label ALWAYS proposes a rule and asserts "1" and then "0" on that chip with no
+    // guard, so the runtime claim can no longer skip and the brittle stand-in has done
+    // its job. The line above stays: it asks about the ATTRIBUTE, which is the contract,
+    // not about the code that produces it.
   });
 
   it("the chip row's source declares data-fact-state and a dashed missing variant", () => {
@@ -170,6 +180,32 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
     expect(editorHost).toContain('getAttribute("role") === "combobox"');
     expect(editorHost).toContain('getAttribute("aria-expanded") === "true"');
     expect(editorHost).toContain("doneLabel");
+  });
+
+  it("the editor host's source restores focus in three tiers, ending at the row", () => {
+    // A SOURCE CLAIM, and named as one, because the last tier has no runtime pin and
+    // cannot get one from either consumer today (#3311).
+    //
+    // Focus goes to the chip, else to the trailing affordance the absent fact went back
+    // inside, else to the row. The e2e specs cover the first two against a real browser:
+    // one-intake-form.spec.ts asserts the chip, the replacement chip, the trailing
+    // affordance, and the rule sentence that was opened rather than the first.
+    //
+    // THE ROW TIER IS UNREACHABLE FROM THE TWO SURFACES THAT EXIST. Intake renders a
+    // trailing affordance whenever a fact is absent, so tier two always answers there;
+    // the sleep dialog has no trailing affordance but every one of its three facts
+    // always draws a chip, so tier one always answers there. It is the floor for the
+    // queued adopters (#3219-#3223) — a surface with neither — and without it that
+    // combination silently lands on <body>, which is the whole defect. So it is pinned
+    // where it CAN be pinned, rather than deleted for being untestable or claimed as
+    // covered by a test that never reaches it.
+    expect(editorHost).toContain('[data-focus-key="');
+    expect(editorHost).toContain(
+      'querySelector<HTMLElement>("[data-fact-more]")'
+    );
+    expect(editorHost).toContain(
+      'querySelector<HTMLElement>("[data-fact-row]")'
+    );
   });
 
   it("neither primitive module imports lib, a draft store, a form or an action", () => {
@@ -240,6 +276,10 @@ describe.each(CONSUMERS)("$name consumes the primitive", (consumer) => {
     // Including the suggestion marking: a consumer supplies the WORDING through `badge`
     // and the boolean through `suggested`, never the attribute itself.
     expect(chips).not.toContain("data-suggested=");
+    // Same for the focus key (#3311): the consumer NAMES each chip through `focusKey`
+    // and the primitive decides what attribute that becomes.
+    expect(chips).not.toContain("data-focus-key=");
+    expect(chips).toContain("focusKey=");
   });
 
   it("imports the shared editor host and writes no Escape handling itself", () => {
@@ -249,6 +289,11 @@ describe.each(CONSUMERS)("$name consumes the primitive", (consumer) => {
     expect(host).toContain("useFactEditor");
     // The Esc contract lives in the primitive, so no consumer re-implements it.
     expect(host).not.toContain('"Escape"');
+    // And it hands the primitive the region the chips and the editor share, which is
+    // what lets focus come back to the chip on close (#3311). Required by the hook's
+    // type too — this says out loud that forgetting it is a contract break, because the
+    // symptom is invisible: nothing on screen is wrong, focus is just on <body>.
+    expect(host).toContain("scopeRef");
   });
 });
 

@@ -62,6 +62,13 @@ export default function IntakeRulesEditor({
     (t) => others.length > 0 || (t !== "keep-apart" && t !== "take-together")
   );
 
+  // EDITING AN OFFER MAKES IT THEIRS, which is why every patch clears `suggested`.
+  // The mark means "the label data proposed this and the person has not touched it"
+  // (#846/#1505) — once they have changed the sentence, that is no longer true, and a
+  // chip still reading "suggested" would be claiming they had not. It is the difference
+  // between prefilling and asserting, so it is not cosmetic: `data-suggested` flips
+  // from "1" to "0" on the chip, tracked-and-false rather than absent, and
+  // e2e/one-intake-form.spec.ts pins both ends of that transition (#3318).
   function patch(id: string, next: Partial<IntakeRule>) {
     setRules(
       rules.map((r) =>
