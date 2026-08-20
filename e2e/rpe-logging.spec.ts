@@ -8,7 +8,9 @@ import {
 } from "./helpers";
 
 // Issue #743: the optional per-set RPE selector round-trips through the activity
-// form. Issue #3335: and it is not there at all until you ask for it.
+// form — log a set with a rating, reload the page, reopen the stored session, and
+// the selector shows the persisted value. Driven end-to-end against the seeded DB.
+// Issue #3335: and the column is not there at all until you ask for it.
 //
 // #3335 made the column OPT-IN, so this spec now owns three claims the round-trip
 // alone never made:
@@ -26,8 +28,7 @@ import {
 // login here starts on the OPTED-OUT side of the new boundary. Each test that turns
 // the column on turns it back off before it leaves, because the opt-in row is
 // profile-scoped and outlives the spec — a leaked row would put an extra control in
-// the set-options band that the phone-geometry specs measure — log a set with a rating, reload the page, reopen the stored session, and
-// the selector shows the persisted value. Driven end-to-end against the seeded DB.
+// the set-options band that the phone-geometry specs measure.
 //
 // Fixture ownership (#868, docs/internals/e2e-hygiene.md failure class 1): the probe
 // activity carries a UNIQUE per-run title and the spec keys every lookup/cleanup on

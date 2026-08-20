@@ -998,9 +998,14 @@ export default function StrengthSets({
           moment someone wants it. It is the one control here that is PROFILE-wide
           — per-side and intent belong to the part — which its label says.
 
-          `!timed` adds no case to the row's visibility: a rep-based part is either
-          unilateral (showPerSide) or bilateral (intent.applies). It is named
-          anyway so the condition still reads as the union of what the row holds. */}
+          `!timed` is what guarantees the opt-in is REACHABLE on every rep-based
+          part. For almost all of them it changes nothing — a rep-based part is
+          normally either unilateral (showPerSide) or bilateral (intent.applies,
+          which is `!isTimed && !perSide`). The gap it closes is the part whose
+          NAME is not unilateral but whose loaded sets carry right-side values, so
+          groupEditSets marked it perSide: showPerSide is false (name-based) and
+          applies is false (perSide-based), and before this the row — and with it
+          the opt-in — had nowhere to appear. */}
       {(showPerSide || intent.applies || !timed) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
           {showPerSide && (
