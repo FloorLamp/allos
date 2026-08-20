@@ -35,6 +35,95 @@ const session = vi.hoisted(() => ({
   accessible: [] as SessionProfile[],
 }));
 
+// A REAL memoizing stand-in for `lib/request-cache`'s `cache()` (#3369).
+//
+// WHY. `lib/request-cache.ts` is `React.cache ?? ((fn) => fn)`, and its own comment
+// says the rest: outside a Next server request React.cache has no dispatcher and
+// simply calls through. So in this tier every `cache()`-wrapped read executes once
+// per CALLER, and the number counted below overstated what a production render pays
+// by roughly 30 statements per persona (#3369 measured household 297 -> 267,
+// biohacker 305 -> 258; the trace's top "offender", `getSleepSessions`' two
+// statements at 9x each, collapses to one). A budget policed by an overstating meter
+// polices a number nobody pays, so the meter gets the memo first and the reductions
+// it is used to measure come after.
+//
+// THE SCOPE IS ONE RENDER, AND NOT ONE BYTE MORE. React's `cache()` lifetime is
+// exactly one server request. Here that scope is opened around each `Dashboard()`
+// call by `renderDashboard` below and closed when it settles; outside it this
+// wrapper calls straight through, which is also what production does outside a
+// request (scripts/seed.ts, the notify sidecar). That matters in both directions:
+// persona seeding runs between renders and must not read through another persona's
+// memo, and a memo that outlived a render would UNDERSTATE the budget — the wrong
+// direction for a meter, because it hides queries someone is really paying for.
+//
+// THE KEYING IS REACT'S KEYING. React memoizes on the positional arguments by
+// identity, so this walks a Map trie of the argument list rather than serializing a
+// key. Two structurally equal but distinct objects miss in React and miss here; a
+// serialized key would have hit, memoized harder than production, and understated.
+// FAITHFUL EXCEPT IN THE SAFE DIRECTION, DELIBERATELY. Exactness against a canary
+// React this tier cannot import is not on offer, so what is guaranteed instead is
+// the DIRECTION of every deviation: this mock may count HIGH but never low. A meter
+// that cannot under-report is the only property a budget actually needs. Errors are
+// the live example — React caches a throw for the request and this does not, so a
+// re-thrown read would count twice here and once in production. Do not "fix" that
+// toward exactness: memoizing throws moves the deviation to the unsafe side, and a
+// read that throws fails the render outright anyway, so there is nothing to buy.
+//
+// A single module-level slot rather than AsyncLocalStorage, for the same reason
+// `lib/tick-cache.ts` uses one: the loop below awaits one render at a time.
+const requestCache = vi.hoisted(() => {
+  interface MemoNode {
+    children: Map<unknown, MemoNode>;
+    filled: boolean;
+    value: unknown;
+  }
+  const node = (): MemoNode => ({
+    children: new Map(),
+    filled: false,
+    value: undefined,
+  });
+  const childOf = (parent: MemoNode, key: unknown): MemoNode => {
+    const existing = parent.children.get(key);
+    if (existing) return existing;
+    const created = node();
+    parent.children.set(key, created);
+    return created;
+  };
+  let open: Map<symbol, MemoNode> | null = null;
+  return {
+    cache: <A extends unknown[], R>(fn: (...args: A) => R) => {
+      const identity = Symbol(fn.name || "cached");
+      return (...args: A): R => {
+        const scope = open;
+        if (!scope) return fn(...args);
+        let root: MemoNode | undefined = scope.get(identity);
+        if (!root) {
+          root = node();
+          scope.set(identity, root);
+        }
+        let current: MemoNode = root;
+        for (const arg of args) current = childOf(current, arg);
+        if (current.filled) return current.value as R;
+        const value = fn(...args);
+        current.filled = true;
+        current.value = value;
+        return value;
+      };
+    },
+    /** Run `fn` with one request's worth of memoization open. */
+    async during<T>(fn: () => Promise<T>): Promise<T> {
+      open = new Map();
+      try {
+        return await fn();
+      } finally {
+        open = null;
+      }
+    },
+  };
+});
+
+vi.mock("@/lib/request-cache", () => ({ cache: requestCache.cache }));
+
 vi.mock("@/lib/auth", async (importActual) => {
   const actual = await importActual<typeof import("@/lib/auth")>();
   return {
@@ -212,6 +301,14 @@ describe("actual atomic dashboard manifests", () => {
     ).id;
     const trace = installStatementTrace();
     const { default: Dashboard } = await import("../../app/(app)/page");
+    // One call = one request, so one request-cache scope. Everything outside this
+    // helper — persona seeding above all — runs unmemoized, exactly as production
+    // does outside a request.
+    const renderDashboard = () =>
+      requestCache.during(
+        async () =>
+          (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>
+      );
 
     for (const persona of PERSONAS) {
       const before = new Set(allProfileIds());
@@ -223,8 +320,7 @@ describe("actual atomic dashboard manifests", () => {
         (profile) => profile.id === profileId
       )!;
       trace.clear();
-      const element =
-        (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>;
+      const element = await renderDashboard();
       expect(element.type).toBe(DashboardPlacementCanvas);
       manifests.set(persona.name, element.props.placements);
       standingPresentations.set(
@@ -240,8 +336,7 @@ describe("actual atomic dashboard manifests", () => {
         )!;
         session.profile = switched;
         switchedHouseholdProfileId = switched.id;
-        const switchedElement =
-          (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>;
+        const switchedElement = await renderDashboard();
         switchedHouseholdManifest = switchedElement.props.placements;
         session.profile = session.accessible.find(
           (profile) => profile.id === profileId
@@ -480,13 +575,113 @@ describe("actual atomic dashboard manifests", () => {
     );
   });
 
-  it("does not exceed the phase-5 interactive-cockpit query budget", () => {
-    for (const [persona, count] of queryCounts) {
-      // Phase 5 restores the real symptom, temperature, medication, and episode
-      // controls. Their reads are batched once per sick profile; the integrated
-      // household fixture deliberately has three sick profiles, while the separate
-      // multi-episode pin proves episode cardinality does not increase them.
-      expect(count, persona).toBeLessThanOrEqual(535);
-    }
+  // THE DASHBOARD QUERY BUDGET (#3096, #3151, #3184, #3164, #3369).
+  //
+  // How many database statements one dashboard render issues, per seeded persona,
+  // with the memoizing request cache installed at the top of this file — so these
+  // are the queries a production render actually pays, not the test tier's
+  // once-per-caller inflation of them.
+  //
+  // MEASURED, NOT CHOSEN. Every number below was read off a run of this file on
+  // main; none is a target, a round number, or a ceiling with headroom baked in.
+  // That is what lets the assertion report a DELTA: a red says whether the change
+  // in front of you spent the queries or whether main already had.
+  //
+  // HOW TO REFRESH. Run this file, read the failure — it prints the paste-ready
+  // block — and paste it here IN THE SAME COMMIT as the change that moved it.
+  // A LEGITIMATE refresh comes with a sentence saying which reads moved and why:
+  // a new dashboard surface that gathers, a candidate builder that now asks one
+  // more question, or (the good direction) a dedup that removed some. Editing a
+  // number so CI goes green, with no account of what moved, is the failure this
+  // table exists to make visible — a stale-high baseline silently absorbs the next
+  // regression, which is exactly how the old single cap stopped meaning anything.
+  const QUERY_BASELINE: Record<string, number> = {
+    bodybuilder: 243,
+    "marathon-runner": 240,
+    household: 267,
+    pregnant: 237,
+    "diabetic-cgm": 248,
+    biohacker: 258,
+  };
+
+  // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
+  // on how far the baseline may be refreshed upward before the refresh needs a
+  // conversation rather than a paste.
+  //
+  // DERIVED FROM THE BASELINES, WHICH IS THE ONLY WAY IT CAN FIRE. This was the
+  // historical phase-5 cap of 535 (#3184) until the memoizing request cache above
+  // showed what a render really costs. Against the heaviest persona's 267 that left
+  // ~270 statements of slack — a bound at twice the real number, which is decoration
+  // rather than a bound, and decoration is exactly what the single cap had already
+  // decayed into by the time #3164 filed against it. So it is re-derived here:
+  //
+  //   household 267 (the heaviest baseline) + 23 headroom = 290
+  //
+  // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
+  // conversation. The integrated household fixture carries four profiles, so a new
+  // per-profile dashboard read costs four statements there; 23 is about five such
+  // reads, or one new gathering surface. Ordinary work pastes its refreshed baseline
+  // and moves on; a change that needs more than a whole new surface's worth of
+  // queries has to say so out loud.
+  //
+  // RE-DERIVE IT WHENEVER THE BASELINES MOVE MATERIALLY DOWN — same one-line edit.
+  // #3369's items 1 and 2 (deferring the closed tail's gathers, and cache()-wrapping
+  // the residual duplicates) are each expected to take a bite out of these numbers;
+  // when they do, this number follows them down. A ceiling left behind by a
+  // reduction stops being able to fire, and then it is decoration again.
+  const QUERY_CEILING = 290;
+
+  it("dashboard query budget: each persona matches its recorded main baseline", () => {
+    // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
+    // place it can ever speak. A measured count above the ceiling has necessarily
+    // drifted off its baseline first, so the drift assertion below would have thrown
+    // and a ceiling checked against `queryCounts` could never be reached. What the
+    // backstop is actually for is a REFRESH: someone pastes a table that has grown
+    // past what a paste may decide alone. That is a question about the pasted
+    // numbers, so it is asked of them, and asked BEFORE the drift check so a bad
+    // paste is named as a bad paste instead of hiding behind whatever else moved.
+    const overCeiling = Object.entries(QUERY_BASELINE)
+      .filter(([, baseline]) => baseline > QUERY_CEILING)
+      .map(
+        ([persona, baseline]) =>
+          `${persona}: recorded baseline ${baseline} is over the ${QUERY_CEILING} backstop by ${baseline - QUERY_CEILING}`
+      );
+    expect(
+      overCeiling,
+      "A recorded baseline is past the backstop.\n" +
+        "The baseline table is refreshed by pasting; this is the bound on what a\n" +
+        "paste may decide on its own. Growth this large is a design conversation\n" +
+        "about what the dashboard gathers — not a number to raise so CI goes green.\n" +
+        "Raising QUERY_CEILING is a legitimate outcome of that conversation, with\n" +
+        "the reasoning written into its comment the way the current number's is."
+    ).toEqual([]);
+
+    const drift = [...queryCounts].flatMap(([persona, count]) => {
+      const baseline = QUERY_BASELINE[persona];
+      if (baseline === undefined) {
+        return [`${persona}: ${count} queries, but no recorded baseline`];
+      }
+      if (count === baseline) return [];
+      const delta = count - baseline;
+      return [
+        `${persona}: ${count} queries, baseline ${baseline} ` +
+          `(${delta > 0 ? `+${delta} spent by this change` : `${delta} recovered by this change`})`,
+      ];
+    });
+
+    const refreshed = [...queryCounts]
+      .map(([persona, count]) => `    ${JSON.stringify(persona)}: ${count},`)
+      .join("\n");
+
+    expect(
+      drift,
+      "Dashboard query counts moved off the recorded baseline.\n" +
+        "Each line names one persona: what it measures now, what MAIN measures, and\n" +
+        "the difference — which is this change's own cost, not main's. A positive\n" +
+        "delta is queries the diff in front of you added; a negative one is queries\n" +
+        "it removed. Either way the fix is the same: account for the move in the\n" +
+        "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
+        `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
+    ).toEqual([]);
   });
 });

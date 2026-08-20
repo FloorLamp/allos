@@ -20,6 +20,28 @@ import {
 // still posts with the form (#2014). A consumer must therefore keep its editor state
 // outside the host.
 //
+// "OUTSIDE THE HOST" IS ABOUT LIFETIME, NOT ABOUT OWNERSHIP — and the difference used to
+// matter enough to lose someone's typing (#3352). The sentence above says the state must
+// SURVIVE a panel closing; it does not say the field's `value` has to become a React
+// prop. Taking it as the latter on a DOM-COLLECTED form — a form element that hands its
+// Server Action whatever FormData the browser gathers from the named inputs mounted at
+// submit — turned every converted field CONTROLLED, and the dirty-form registry read the
+// DOM `defaultValue` as the server's value — which React syncs onto a controlled field
+// to match its `value`. So the field compared equal to itself, reported clean forever,
+// and its discard guard vanished with no test noticing.
+//
+// That hole is closed in the registry itself (components/DirtyFormRegistry.tsx keeps
+// the default it read at registration and stops believing a live default that has
+// moved onto exactly what the user typed), so a consumer may now write either kind and
+// keep its guard. Two things are still worth knowing:
+//
+//   * The CHEAPEST way to keep editor state outside the host is a field that is merely
+//     hidden rather than unmounted — the DOM already holds the value, and nothing has to
+//     mirror it. `ProtocolForm` does this for most of its fields.
+//   * A controlled field that AUTOSAVES needs `data-server-value` to say what the server
+//     now holds; without it the DOM cannot tell a saved value from a mirrored one, and
+//     the field stays dirty until the form submits, resets or unmounts.
+//
 // AND BOTH RETURN FOCUS TO THE CHIP THAT OPENED THE EDITOR, not merely to the row and
 // not merely to the panel's first door (#3311). Opening an
 // editor unmounts the chip that was activated, so without this focus falls to <body> and

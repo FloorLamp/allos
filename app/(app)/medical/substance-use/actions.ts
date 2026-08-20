@@ -26,6 +26,7 @@ import {
   instrumentMaxTotal,
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
+import { profileVocabulary } from "@/lib/vocabulary-store";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import {
   logSubstanceUnitCore,
@@ -222,6 +223,14 @@ function logOneUnit(
 // Alcohol card's own tap does. Nothing a person INVENTS lands there — `substanceDef`
 // gives every custom key the substance-log ledger, always.
 //
+// NOR DOES IT SHADOW A NAME THE PERSON ALREADY USES (#3325). This is the one place a
+// custom substance key is MINTED, so it is the one place the case-fold belongs: the
+// name is validated and resolved against THIS PROFILE'S own spellings, first-seen
+// first, so a typed "kratom" joins the existing "Kratom" card rather than opening a
+// second ledger that also looks correct. Case is still stored verbatim — "MDMA" keeps
+// its capitals — because the fold is only ever COMPARED (lib/vocabulary-fold.ts).
+// The keyed taps below stay bare: their key came from a card the app just rendered.
+//
 // The resolved key rides back so the caller can name what it actually logged: someone
 // who types "alcohol" is told the drink landed on Alcohol rather than being left to
 // wonder where their new card went.
@@ -235,7 +244,10 @@ export async function trackSubstanceUseAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const name = validateSubstanceName(String(formData.get("name") ?? ""));
+  const name = validateSubstanceName(
+    String(formData.get("name") ?? ""),
+    profileVocabulary("substance", profile.id)
+  );
   if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
   const logged = logOneUnit(profile.id, name.key);
   if (!logged.ok) return logged;
