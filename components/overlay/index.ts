@@ -32,6 +32,11 @@ export { useOverlayDrag, type OverlayDragOptions } from "./useOverlayDrag";
 export { default as OverlayDragHandle } from "./OverlayDragHandle";
 export { useBottomEdgeClaim } from "./useBottomEdgeClaim";
 export {
+  useAnchoredPopover,
+  type AnchoredAlign,
+  type AnchoredPosition,
+} from "./useAnchoredPopover";
+export {
   OVERLAY_SCRIM,
   OVERLAY_SCRIM_TINT,
   OVERLAY_SCRIM_TINT_SM,

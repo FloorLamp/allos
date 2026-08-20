@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type SetStateAction,
-} from "react";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
+import { useAnchoredPopover } from "@/components/overlay";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import {
   dateStrInTz,
@@ -33,8 +27,6 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = monthNames("long");
 const PANEL_WIDTH = 288; // matches w-72
-const GAP = 4; // matches mt-1
-const MARGIN = 8; // keep the panel this far from the viewport edges
 
 // True only for a real calendar date in ISO form (shared helper — see lib/date).
 const validISO = isRealIsoDate;
@@ -83,9 +75,18 @@ export default function DateField({
   const inputRef = useRef<HTMLInputElement>(null);
   // The calendar is portaled to <body> and positioned `fixed` from the field's
   // bounding rect so it's never clipped by an `overflow` ancestor (e.g. the
-  // training log editor's max-h scroll container). See OverflowMenu for the pattern.
-  const popRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  // training log editor's max-h scroll container). The placement is the shared
+  // hook (#3271) — this file used to carry its own near-copy of OverflowMenu's,
+  // which is how it came to be the one MISSING the #2839 layout-shift tracking.
+  const {
+    pos,
+    attachPanel,
+    panelRef: popRef,
+  } = useAnchoredPopover({
+    open,
+    anchorRef: ref,
+    fallbackWidth: PANEL_WIDTH,
+  });
 
   // Is this ISO date outside the optional [min, max] window? Plain string
   // comparison works because ISO yyyy-mm-dd sorts chronologically.
@@ -149,36 +150,7 @@ export default function DateField({
     }
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  // Position the portaled panel below the field, flipping above when it won't
-  // fit, and track scroll (in any ancestor, hence capture) and resize.
-  const reposition = useCallback(() => {
-    const anchor = ref.current;
-    if (!anchor) return;
-    const r = anchor.getBoundingClientRect();
-    const ph = popRef.current?.offsetHeight ?? 0;
-    let top = r.bottom + GAP;
-    if (top + ph > window.innerHeight - MARGIN && r.top - GAP - ph > MARGIN)
-      top = r.top - GAP - ph;
-    let left = r.left;
-    left = Math.max(
-      MARGIN,
-      Math.min(left, window.innerWidth - PANEL_WIDTH - MARGIN)
-    );
-    setPos({ top, left });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    reposition();
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    return () => {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    };
-  }, [open, reposition]);
+  }, [open, popRef]);
 
   const cells = monthGridCells(cursor.y, cursor.m, weekStart);
 
@@ -283,7 +255,7 @@ export default function DateField({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            ref={popRef}
+            ref={attachPanel}
             data-testid="date-field-calendar"
             data-escape-layer="true"
             style={{

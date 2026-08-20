@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
+import { useAnchoredPopover } from "@/components/overlay";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
 // extracted-observations table. The caller owns the open state (so it can also lift
@@ -24,14 +17,18 @@ import { useLatestRef } from "@/components/useLatestRef";
 // bounding rect, so it's never clipped by an `overflow` ancestor (e.g. a table
 // inside a max-h scroll container). It right-aligns under the trigger, flips
 // above when there isn't room below, and follows scroll/resize while open.
+//
+// That placement is components/overlay/useAnchoredPopover.ts now (#3271) — this
+// file is where it was first written, and the third caller (the combobox
+// listbox) is what turned two near-copies into one shared hook. The behaviour
+// here is unchanged, including the #2839 layout-shift tracking, which the hook
+// carries because this file taught it.
 export const MENU_ITEM =
   "block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800";
 export const MENU_ITEM_DANGER =
   "block w-full px-3 py-1.5 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950";
 
 const MENU_WIDTH = 160; // matches w-40
-const GAP = 4;
-const MARGIN = 8; // keep the panel this far from the viewport edges
 
 // What a menu action may resolve with. `void` keeps the render-time message (the
 // additive case). A RESULT lets the toast come from the write's OUTCOME instead of the
@@ -78,13 +75,20 @@ export default function OverflowMenu({
   const toast = useToast();
   const confirmOpen = useConfirmOpen();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  // null until measured; kept hidden until then so the panel never paints at a
-  // stale position.
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  // `pos` is null until measured; the panel stays hidden until then so it never
+  // paints at a stale position.
+  const { pos, attachPanel } = useAnchoredPopover({
+    open,
+    anchorRef: triggerRef,
+    // Right-aligned under the kebab, which sits at the row's trailing edge.
+    align: "end",
+    fallbackWidth: MENU_WIDTH,
+    // Some menu flows expand into a wider picker while staying open; re-anchor
+    // after that width changes.
+    remeasureKey: panelClassName,
+  });
 
   const close = () => {
-    setPos(null);
     onOpenChange(false);
   };
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
@@ -109,62 +113,6 @@ export default function OverflowMenu({
     }
     toast((result && result.message) || message);
   };
-
-  const reposition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (!trigger) return;
-    const r = trigger.getBoundingClientRect();
-    const mh = menu?.offsetHeight ?? 0;
-    const mw = menu?.offsetWidth ?? MENU_WIDTH;
-    // Below the trigger by default; flip above when it wouldn't fit and there's
-    // more room up top.
-    let top = r.bottom + GAP;
-    if (top + mh > window.innerHeight - MARGIN && r.top - GAP - mh > MARGIN)
-      top = r.top - GAP - mh;
-    // Right-align to the trigger, clamped into the viewport.
-    let left = r.right - mw;
-    left = Math.max(MARGIN, Math.min(left, window.innerWidth - mw - MARGIN));
-    setPos({ top, left });
-  }, []);
-
-  // The portal node entering the DOM is the event that makes measurement possible.
-  // Measure from that ref callback before the panel becomes visible; subsequent
-  // scroll/resize callbacks keep it aligned.
-  const attachMenu = useCallback(
-    (node: HTMLDivElement | null) => {
-      menuRef.current = node;
-      if (node) reposition();
-    },
-    [reposition]
-  );
-
-  // Track scroll (in any ancestor, hence capture) and resize while open — and
-  // LAYOUT SHIFT, which fires neither: content growing above the trigger (a
-  // lazily-loaded chart bundle mounting is the #2839 sighting) moves the trigger
-  // without any scroll or resize event, leaving the fixed-position panel
-  // floating where the trigger used to be. Document height is a proxy that
-  // covers exactly that class, and ResizeObserver only fires on actual size
-  // change, so this is quiet while the page is still.
-  useLayoutEffect(() => {
-    if (!open) return;
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    const ro = new ResizeObserver(reposition);
-    ro.observe(document.documentElement);
-    return () => {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-      ro.disconnect();
-    };
-  }, [open, reposition]);
-
-  // Some menu flows expand into a wider picker while staying open. Re-anchor
-  // after that width changes so the panel remains aligned with its trigger and
-  // clamped inside the viewport.
-  useLayoutEffect(() => {
-    if (open) reposition();
-  }, [open, panelClassName, reposition]);
 
   // A DECISION opened over this menu ends it (#2599).
   //
@@ -203,13 +151,12 @@ export default function OverflowMenu({
         ref={triggerRef}
         type="button"
         onClick={() => {
+          // A new open episode must measure before painting rather than reuse
+          // the previous one's position while the portal ref is attaching. The
+          // shared hook drops the position on close, so opening always starts
+          // unmeasured — and hidden — without this having to say so.
           if (open) close();
-          else {
-            // A new open episode must measure before painting; never reuse the
-            // previous episode position while the portal ref is attaching.
-            setPos(null);
-            onOpenChange(true);
-          }
+          else onOpenChange(true);
         }}
         aria-label={label}
         title={label}
@@ -228,7 +175,7 @@ export default function OverflowMenu({
             {/* click-away backdrop */}
             <div className="fixed inset-0 z-40" onClick={close} />
             <div
-              ref={attachMenu}
+              ref={attachPanel}
               role="menu"
               style={{
                 position: "fixed",
