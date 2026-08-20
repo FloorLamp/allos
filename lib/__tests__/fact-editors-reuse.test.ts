@@ -60,6 +60,16 @@ const CONSUMERS = [
     chips: "components/sleep/SleepFactRow.tsx",
     host: "app/(app)/sleep/SleepMoodEditDialog.tsx",
   },
+  {
+    // THE FIRST DOM-COLLECTED CONSUMER (#3219). The two above build their FormData
+    // from state by hand, which is the only reason a closed editor could safely
+    // UNMOUNT. This one is `<form action={handle}>`, so its closed panels stay
+    // mounted and merely hidden — the primitive's other documented reading, and the
+    // one #2014 states. e2e/protocol-facts.spec.ts pins both halves at runtime.
+    name: "the protocol form (#3219)",
+    chips: "components/protocols/ProtocolFactRow.tsx",
+    host: "app/(app)/protocols/ProtocolForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
