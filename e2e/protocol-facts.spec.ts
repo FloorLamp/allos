@@ -195,6 +195,34 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     await expect(form).toHaveCount(0);
   });
 
+  test("a protocol form nobody typed into dismisses in one gesture", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // THE NEGATIVE CONTROL for the test above, and it is what stops that one being
+    // green for the wrong reason. "The confirm appeared" only means the registry saw
+    // the typing if the confirm does NOT appear when there is nothing to see —
+    // otherwise a guard that asked on every gesture would satisfy it just as well.
+    const form = await openNewProtocol(page);
+
+    // Chips are opened and closed WITHOUT editing anything, so the disclosures have
+    // been driven exactly as in the test above and the only difference is that no
+    // value changed. A control that skipped this would be testing "an untouched
+    // form" rather than "an untouched form somebody browsed".
+    await openProtocolFact(form, "notes");
+    await closeProtocolFact(form);
+
+    await tapScrimCorner(page);
+
+    // Asserted as the DISMISSAL, never as "no confirm is visible". A retrying
+    // absence assertion is the shape to distrust: it passes the moment the confirm
+    // has not rendered YET. This one cannot pass early — if a confirm had
+    // intercepted the gesture the dialog would still be standing, and no amount of
+    // waiting makes a blocked dialog disappear.
+    await expect(form).toHaveCount(0);
+  });
+
   test("edit mode's chips read back the stored protocol", async ({ page }) => {
     test.slow();
 
