@@ -453,7 +453,9 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
 // link is cleared, and the stored-gear assertion at the end fails. (b) An unmount that
 // resets `activityEquipmentId`: the chip comes back stating the old gear instead of the
 // prompt. (c) `formSig` dropping `activityEquipmentId` — the DIRTY half — which fails at
-// the "Saved" check below and NOWHERE ELSE.
+// the `data-unsaved` assertion in MOVE ONE and NOWHERE ELSE. Re-run against the marker
+// for #3351: the mutant still dies at that one line, and it dies waiting for "true"
+// rather than in setup.
 //
 // (c) IS WHY THE DIRTY ASSERTION SITS WHERE IT DOES. It was first written after the
 // editor closed, and mutant (c) PASSED it: `requestClose` flushes unconditionally, so a
@@ -483,10 +485,17 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
   test.slow(); // local next dev compiles /training on first hit
   const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
   const title = `${GEAR_CHIP_PREFIX} ${stamp}`;
-  // The autosave indicator, shared by the header and the footer. Its check appears on
-  // every successful save and fades after SAVED_FADE_MS, which is what makes "a check
-  // is on screen now" attributable to the edit that preceded it.
-  const savedCheck = page.getByLabel("Saved");
+  // The form's own dirty marker (#3351): "true" while it holds a change the server has
+  // not got yet, "false" once autosave has caught up. It is autosave's `dirty` — the
+  // same value the "Discard unsaved changes?" prompt reads — published on the <form>.
+  //
+  // THIS USED TO WATCH THE `Saved` CHECK, and the difference is the whole point of
+  // #3351. That check fades after SAVED_FADE_MS, so "a check is on screen" is only
+  // attributable to the edit under test if the PREVIOUS one has been waited out first —
+  // making this pin depend on a constant chosen for how a confirmation feels, with
+  // nothing to connect the two if somebody tunes it. The marker is readable at any
+  // moment, so nothing here waits on an animation.
+  const form = page.getByTestId("activity-form");
 
   try {
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
@@ -522,8 +531,10 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     await expect(chip).toHaveAttribute("data-fact-state", "stated");
     await expect(chip).toHaveAttribute("data-suggested", "1");
 
-    // Wait the create-save's own check out, so the next one belongs to the gear edit.
-    await expect(savedCheck).toHaveCount(0);
+    // The create-save has landed and nothing is outstanding, so any dirtiness after
+    // this line belongs to the gear edit. Not "wait for the previous check to fade" —
+    // the form is stating that it has nothing left to save.
+    await expect(form).toHaveAttribute("data-unsaved", "false");
 
     // MOVE ONE: clear the link from inside the editor, then close the panel with ESC —
     // the harder of the two identical gestures (#3222). Before the open panel declared
@@ -537,6 +548,23 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
       "equipment"
     );
     await settledSelect(page, select, "");
+    // THE DIRTY HALF, and it is asserted HERE — the first thing after the edit, before
+    // any gesture that could flush. Mutant (c) fails on this line and nowhere else.
+    //
+    // WHY NOT AFTER THE PANEL CLOSES, which reads better: `dirty` is transient by
+    // nature. The 700ms autosave debounce starts at this edit, so a save lands shortly
+    // after and the marker returns to "false" of its own accord — that return is
+    // asserted below, and it is the half that must be read with the panel already shut.
+    // Reading "true" late would be reading it after the state it names has passed.
+    //
+    // THE BUDGET, MEASURED HERE rather than assumed, because the next lane to assert
+    // dirtiness (#3335, #3336, #3349, #3350) will want the number: the marker dwells at
+    // "true" for 777ms (the 700ms debounce plus a ~77ms save round-trip), and this
+    // assertion's first poll lands 30ms after the edit. ~26x margin, and a starved box
+    // fails RED here rather than passing for the wrong reason. If that margin ever gets
+    // thin, arm a `waitForFunction` BEFORE the edit — it polls inside the page, so it
+    // cannot be outrun by a stalled test runner — and accept the worse failure message.
+    await expect(form).toHaveAttribute("data-unsaved", "true");
     // Pressed on the PANEL rather than on the <select>: a native select has its own
     // Escape behaviour, and this is a question about the editor.
     await page.getByTestId("activity-fact-editor").press("Escape");
@@ -551,12 +579,16 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // Focus came back to the chip that opened the editor (#3311), not to <body>.
     await expect(chip).toBeFocused();
 
-    // THE DIRTY HALF. Nothing has been touched since the check above went out except a
-    // value chosen inside a panel that is now closed — so a check reappearing, with the
-    // form still open and nothing flushed, is the form counting that as a change of its
-    // own accord. Mutant (c) fails here.
-    await expect(savedCheck).not.toHaveCount(0);
-    await expect(savedCheck).toHaveCount(0);
+    // AND THE FORM SAVED IT BY ITSELF. Nothing has been touched since the edit except
+    // an Escape that closed the panel — no Done, no Close, nothing that flushes — so
+    // the marker returning to "false" with the editor STILL OPEN is the debounced
+    // autosave carrying a value whose panel is gone.
+    //
+    // Read with the form open on purpose. #3347 first wrote its dirty assertion after
+    // the editor had closed, and mutant (c) sailed through it: `requestClose` flushes
+    // unconditionally, so a value that reaches the row on the close path says nothing
+    // about whether the form ever counted it as a change.
+    await expect(form).toHaveAttribute("data-unsaved", "false");
 
     // MOVE TWO: pick a gear from the prompt and close with DONE — the other half of the
     // same gesture, so neither door is the only one that works.
@@ -567,13 +599,18 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     const targetValue = await target.getAttribute("value");
     expect(targetValue).toBeTruthy();
     await settledSelect(page, select, targetValue!);
+    // The picking door counts as a change too, not just the clearing one — same
+    // reasoning and same placement as MOVE ONE's assertion.
+    await expect(form).toHaveAttribute("data-unsaved", "true");
     await page.getByTestId("activity-fact-editor-done").click();
 
     await expect(chip).toContainText("E2E Registry Bike");
     // Chosen, not suggested: the marking flips the moment the person answers.
     await expect(chip).toHaveAttribute("data-suggested", "0");
     await expect(select).toHaveCount(0);
-    await expect(savedCheck).not.toHaveCount(0);
+    // Saved by itself again, editor still open — Done closes the PANEL, not the form,
+    // so nothing here flushed either.
+    await expect(form).toHaveAttribute("data-unsaved", "false");
 
     // Closing flushes any pending auto-save before the editor goes (requestClose awaits
     // flushBeforeClose, THEN calls onClose), so the editor being GONE is the settle

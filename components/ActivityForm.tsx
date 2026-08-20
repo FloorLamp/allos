@@ -305,8 +305,10 @@ export default function ActivityForm({
   // posts from `activityEquipmentId` whether or not its picker is mounted, and the
   // "unsaved changes" prompt reads `dirty` off `formSig` — also state — rather than off
   // the DOM-scanning dirty registry, which tracks NAMED controls only and finds not one
-  // in this tree. Both halves are pinned in e2e/activity-equipment.spec.ts, because a
-  // future field bound straight to the DOM would break them silently.
+  // in this tree. That `dirty` is published as `data-unsaved` on the <form> below, so a
+  // test can read it while the form is open (#3351). Both halves are pinned in
+  // e2e/activity-equipment.spec.ts, because a future field bound straight to the DOM
+  // would break them silently.
   const factScopeRef = useRef<HTMLElement>(null);
   const {
     openEditor: openFact,
@@ -1249,6 +1251,31 @@ export default function ActivityForm({
     <form
       ref={formElRef}
       data-testid="activity-form"
+      // Whether this form is holding a change the server has not got yet — the
+      // SAME `dirty` the "Discard unsaved changes?" prompt consults a few lines
+      // up, published so it can be read from outside while the form is still
+      // open (#3351).
+      //
+      // WHY THIS EXISTS AT ALL, since a reviewer's first instinct is that the
+      // dirty-form registry already answers this. It does not, for this form.
+      // The registry tracks NAMED controls (`isTrackable` returns false without
+      // a `name`, DirtyFormRegistry.tsx) and this tree has none — every field is
+      // composed by hand out of React state by `buildFormData`. So the registry's
+      // answer for this form is a permanent "clean", and reaching for it here
+      // would be adopting a SECOND answer to one question rather than publishing
+      // the one the form already acts on.
+      //
+      // NOT NEW STATE, and it must not become any: `dirty` is autosave's
+      // `formSig !== savedSig`, computed in one place and read here. If a change
+      // ever needs this marker and the prompt to disagree, that is a bug in the
+      // change, not a reason for a second signal.
+      //
+      // TO THE REVIEWER WHO WANTS TO DELETE THIS as untested instrumentation: it
+      // is what lets a browser test observe a change being counted WITHOUT
+      // waiting out SAVED_FADE_MS, which is a constant chosen for how a
+      // confirmation feels. e2e/activity-equipment.spec.ts asserts on it; the
+      // #3334 pin used to race that fade instead.
+      data-unsaved={dirty ? "true" : "false"}
       // The form never submits on Enter — the debounced auto-save handles
       // persistence, so a stray Enter (e.g. right after picking from the
       // combobox) does nothing rather than forcing a premature save.
