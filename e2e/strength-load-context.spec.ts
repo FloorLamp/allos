@@ -8,6 +8,7 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
+import { closeGoalFact, openGoalFact } from "./goal-form-helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_LOAD_CONTEXT,
@@ -153,6 +154,8 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    const form = page.getByTestId("goal-form");
+    await expect(form).toBeVisible();
 
     // No exercise chosen yet → nothing to disambiguate, so no picker at all. The
     // door only appears where a goal is exercise-scoped AND the lift has more than
@@ -162,20 +165,50 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     // Typing IS the selection here: the combobox's onChange feeds the form's
     // `exercise` state directly, so the picker reacts to the exact logged name
     // without depending on the dropdown's internals.
+    //
+    // SINCE #3220 the picker lives in the goal form's SUBJECT editor, which a create
+    // lands on already open — there is nothing else a new goal could be about — and
+    // using it DERIVES the kind: a lift makes this a strength goal.
+    await expect(form.getByTestId("goal-editor")).toHaveAttribute(
+      "data-panel",
+      "subject"
+    );
     await settledFill(
       page,
       dialog.getByRole("combobox", { name: "Activity" }),
       LOAD_CONTEXT_LIFT
     );
+    // Typing leaves the combobox's portaled listbox open, and it floats over the
+    // panel's Done button; Escape belongs to the listbox first (`closeStopsPropagation`).
+    await page.keyboard.press("Escape");
+    await closeGoalFact(form);
+    await expect(form.getByTestId("goal-fact-kind")).toHaveText(
+      "Exercise goal"
+    );
+    // Derived, not stated: the chip says so, so the person can correct it (#3216).
+    await expect(form.getByTestId("goal-fact-kind")).toHaveAttribute(
+      "data-suggested",
+      "1"
+    );
 
     // The lift has been logged on two machines whose loads aren't comparable, so a
     // WEIGHT target has to say which one — the alternative is silently taking the
     // maximum across them, which is the bug.
+    //
+    // THE DEMAND IS NOW THE DASHED CHIP rather than the select's `required`
+    // attribute, and that is a deliberate trade (#3220): a `required` control inside
+    // a CLOSED fact panel is `hidden`, and a browser refuses to validate a hidden
+    // control — it blocks the submit with "not focusable" and shows the person
+    // nothing at all. So the row states the demand where it can be seen, and
+    // `firstGoalProblem` re-asks it at submit and opens this very editor.
+    const machineChip = form.getByTestId("goal-fact-equipment");
+    await expect(machineChip).toHaveAttribute("data-fact-state", "missing");
+
+    await openGoalFact(form, "equipment");
     const picker = page.getByTestId("goal-load-context");
     await expect(picker).toBeVisible();
     const select = page.locator("#goal-equipment");
     await expect(select).toHaveValue("");
-    await expect(select).toHaveJSProperty("required", true);
     await expect(picker).toContainText(LOAD_CONTEXT_HOME);
     await expect(picker).toContainText(LOAD_CONTEXT_HOTEL);
     // "Any machine" stays available as a DELIBERATE answer — required means a
@@ -186,12 +219,16 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
 
     // A rep target is not load-sensitive in the same way, so it keeps the
     // movement-wide default rather than forcing a machine.
-    // A metric pill (setMetric) — the required/value assertions below are the signal.
+    await openGoalFact(form, "target");
     await hydratedClick(
       page,
-      dialog.getByRole("button", { name: "Reps", exact: true })
+      form.getByRole("button", { name: "Reps", exact: true })
     );
-    await expect(select).toHaveJSProperty("required", false);
+    await closeGoalFact(form);
+    // The chip stops accusing, and states the movement-wide answer instead.
+    await expect(machineChip).toHaveAttribute("data-fact-state", "stated");
+    await expect(machineChip).toHaveText("any machine");
+    await openGoalFact(form, "equipment");
     await expect(select).toHaveValue("any");
 
     // Read-only spec: nothing is submitted, so --repeat-each stays clean. The stored

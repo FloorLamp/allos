@@ -502,6 +502,19 @@ ${MIGRATION_LINES}
   context (\`-n\`, \`-B\`/\`-A\`) rather than the count, and open the file before believing a
   zero. A wrong verification is more expensive than none, because the work it invents
   looks justified.
+  AND THE THIRD DIRECTION IS THE BEST DISGUISED: a check can fail toward A PLAUSIBLE
+  CORRECTION OF WORK THAT WAS ALREADY RIGHT. "Missing, go add it" and "still present,
+  go remove it" both feel like DISCOVERIES; this one feels like DILIGENCE. Measured
+  2026-08-20 on #3404: a lane had a count right, re-censused with a file-level grep,
+  made it wrong, and was about to ship the wrong number into a doc whose entire value
+  is being checkable — because the file it added matched only on a MENTION of the
+  symbol inside a comment.
+  THE DEFENCE IS NOT SKEPTICISM ABOUT THE NUMBER. It is asking WHAT THE CHECK IS
+  MATCHING ON: a filename grep for a symbol matches comments (over-matches) and misses
+  anything that hand-rolls the thing instead of importing it (under-matches), so it is
+  wrong in both directions at once. Match on the IMPORT, or on whatever actually
+  constitutes membership. That same question then found a whole component nobody's
+  census had ever seen (#3405).
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
