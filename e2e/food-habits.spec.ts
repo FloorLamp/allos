@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick, settledClick } from "./helpers";
+import { withProtocolFact } from "./protocol-form-helpers";
 // Food-habit targets (issue #580): the /nutrition Weekly habits card shows a food_group
 // frequency target with its #579-rollup progress, and a new habit can be tracked/removed.
 // The seed plants a "fatty fish 2×/week" habit. Idempotent — the tracked-then-removed
@@ -61,10 +62,15 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   await main.getByTestId("new-protocol-toggle").click();
   const form = page.getByTestId("protocol-form");
   await form.getByLabel("Name").fill(protocolName);
-  await form
-    .getByTestId("protocol-practice-type")
-    .selectOption("food_group:shellfish");
-  await form.getByTestId("protocol-practice-per-week").fill("2");
+  // The practice and its cadence are two facts behind two chips now (#3219).
+  await withProtocolFact(form, "practice", async () => {
+    await form
+      .getByTestId("protocol-practice-type")
+      .selectOption("food_group:shellfish");
+  });
+  await withProtocolFact(form, "cadence", async () => {
+    await form.getByTestId("protocol-practice-per-week").fill("2");
+  });
   await form.getByRole("button", { name: "Create protocol" }).click();
   await page.waitForURL(/\/protocols\/\d+/);
   const protocolUrl = page.url();
