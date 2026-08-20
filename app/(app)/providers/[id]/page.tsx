@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  IconBuildingHospital,
-  IconStethoscope,
-} from "@tabler/icons-react";
+import { IconBuildingHospital, IconStethoscope } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";

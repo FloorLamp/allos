@@ -57,7 +57,9 @@ export default function BackLink({
           <PendingIconSlot
             pending={pending}
             size="h-4 w-4"
-            icon={<IconArrowLeft className="h-4 w-4" stroke={1.75} aria-hidden />}
+            icon={
+              <IconArrowLeft className="h-4 w-4" stroke={1.75} aria-hidden />
+            }
           />
           {label}
         </>
