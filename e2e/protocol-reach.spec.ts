@@ -6,6 +6,7 @@ import {
   settledClick,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { openProtocolFact, withProtocolFact } from "./protocol-form-helpers";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
 // widget, and the direct intake-item link. The default specs run authenticated as
@@ -23,6 +24,12 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
 
     // The add form offers the seeded Creatine supplement as an intervention.
     await main.getByTestId("new-protocol-toggle").click();
+    // The intake link sits behind the row's `link` fact since #3219, and with
+    // nothing linked yet that fact has no chip of its own — it is reached through
+    // the one trailing affordance, which is what `openProtocolFact` routes.
+    const addForm = page.getByTestId("protocol-form");
+    await expect(addForm).toBeVisible();
+    await openProtocolFact(addForm, "link");
     const select = page.getByTestId("protocol-intake-item");
     await expect(select).toBeVisible();
     await expect(
@@ -75,9 +82,11 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     await main.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await form.locator("#pr-start-new").fill(start);
-    // Dismiss the DateField popover so it doesn't intercept the outcome picker.
-    await page.keyboard.press("Escape");
+    await withProtocolFact(form, "window", async () => {
+      await form.locator("#pr-start-new").fill(start);
+      // Dismiss the DateField popover so it doesn't intercept the panel's Done.
+      await page.keyboard.press("Escape");
+    });
     await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");
     // The option row is in the PORTALED listbox (#3271), not inside the form.
     await page
