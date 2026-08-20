@@ -238,6 +238,9 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
       key: "prescription",
       label: f.rx ? join(["prescription", f.prescriber.trim() || null]) : "OTC",
       state: "stated",
+      // Stated by the person, never borrowed: no prefill field resolves to this fact
+      // (see PrefillField), so it is tracked-and-false rather than untracked.
+      suggested: false,
     });
     pushOptional(
       chips,

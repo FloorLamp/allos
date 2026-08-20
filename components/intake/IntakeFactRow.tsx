@@ -43,6 +43,9 @@ export default function IntakeFactRow({
           state={chip.state}
           expanded={openEditor === chip.key}
           onOpen={() => onOpen(chip.key)}
+          // The machine-readable marking comes from the primitive (#3222); the wording
+          // below is this form's own, and stays that way.
+          suggested={chip.suggested}
           badge={
             chip.suggested && (
               <span
