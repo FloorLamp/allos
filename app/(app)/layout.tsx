@@ -68,6 +68,7 @@ import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
+import { getRpeTracking } from "@/lib/rpe-tracking";
 import { today } from "@/lib/db";
 import { requestNowMs } from "@/lib/request-now";
 
@@ -162,6 +163,10 @@ export default async function AppLayout({
   // the injury axis (#221/#1115).
   const recoveringContext = getFormRecoveringContext(profile.id);
   const plateauHints = buildActivePlateauHints(profile.id, now);
+  // The set grid's effort column is opted into (#3335): this is null unless the
+  // profile holds the opt-in row, and null is the whole reason no surface can render
+  // an RPE control for someone who never asked for one.
+  const rpeTracking = getRpeTracking(profile.id);
   // Derived workout presence (#921) for the app-wide minimized dock: on a fresh load
   // (or another device) the dock hydrates from this gather + the persisted #451 draft
   // instead of client memory. Acting-profile-scoped. `liveStartEpochMs` places the elapsed clock off the real
@@ -317,6 +322,7 @@ export default async function AppLayout({
                       deloadContext={deloadContext}
                       recoveringContext={recoveringContext}
                       plateauHints={plateauHints}
+                      rpeTracking={rpeTracking}
                       presence={presence}
                       liveEditData={liveEditData}
                       liveStartEpochMs={liveStartEpochMs}

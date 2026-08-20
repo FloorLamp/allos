@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { expectNoClippedContent, settledFill } from "./helpers";
+import { expectNoClippedContent, setRpeColumn, settledFill } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
@@ -152,6 +152,14 @@ test("each set groups its identity and options above its values at 390px (#1612)
   await openEditor(page);
   await pickActivity(page, "Barbell Bench Press");
 
+  // #1612's contract is about a toolbar that carries RPE, warm-up and remove, and
+  // #3335 made the effort column opt-in — so this test now OPTS IN rather than
+  // inheriting it. Left alone the spec would still be green while measuring a band
+  // two controls wide, and the three-band regression it exists to catch would go
+  // untested for the column that caused it. Turned back off before the test leaves,
+  // since the row is profile-scoped and outlives the spec.
+  await setRpeColumn(page, true);
+
   // Three sets, the reported case. Each `+ Add set` needs the previous set
   // complete, so this fills as it goes; the completed sets make the draft
   // savable, which is why the test deletes its row at the end.
@@ -226,6 +234,7 @@ test("each set groups its identity and options above its values at 390px (#1612)
   expect(Math.abs(headingBox.x - values1.x)).toBeLessThanOrEqual(6);
 
   await expectNoClippedContent(page);
+  await setRpeColumn(page, false);
   await cleanUpDraft(page);
 });
 
@@ -238,6 +247,12 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
 }) => {
   await openEditor(page);
   await pickActivity(page, "Hammer Curl");
+
+  // Same reason as the sibling test above (#3335): the toolbar #1612 specified
+  // carries RPE, warm-up and remove, and the effort column is now opted into. Left
+  // on the default side this would measure the per-side stacking against a band two
+  // controls wide — still green, and no longer the widest case it exists to hold.
+  await setRpeColumn(page, true);
 
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
@@ -260,5 +275,6 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   expect(values.x + values.width).toBeLessThanOrEqual(viewport.width);
 
   await expectNoClippedContent(page);
+  await setRpeColumn(page, false);
   await page.goto("/training?tab=log");
 });
