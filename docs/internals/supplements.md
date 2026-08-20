@@ -1349,3 +1349,48 @@ supplements tab and the biomarker detail page both format it through
 `components/CuratedSupplementSuggestions.tsx`. A covered family yields identical
 output on every run with no model call — pinned in both the pure and the DB tier,
 because that determinism is the entire point.
+
+## Dose amounts that can't be read (#3153, #3320)
+
+A dose row stores **only the text that was typed** — `intake_item_doses.amount
+TEXT`, migration 011, and nothing since adds a numeric column beside it. Every
+number is derived at read time by `readDoseQuantity` (`lib/dri.ts`), which reads
+the first number+unit whole and hands the number to `readGroupedNumber`.
+
+**The rule refuses rather than resolves.** `"1,000 mg"` is a thousands group and
+reads 1000. `"2,5 g"` is 2.5 g or 25 g, `"10.000 IU"` is ten or ten thousand, and
+nothing in the row says which — so those read as `unreadable` and no total counts
+them. Before #3153 the scan was anchored at `\d+(?:\.\d+)?`, which cannot span a
+comma: on `"1,000 mg"` it matched the `"000"` and returned a confident **zero**,
+so a niacin dose 28x over the upper limit contributed nothing to the total it was
+over. The write boundary (`intake-actions.ts`) now refuses an unreadable amount
+instead of storing a guess.
+
+**Legacy rows needed no repair, which is the part worth remembering.** Because
+the reading was never persisted, #3153's fix corrected every recoverable row the
+moment it merged — `"1,000 mg"` reads 1000 today with no migration and no
+backfill. That is the inverse of the ingredient half, where
+`readIngredientAmount` writes a derived amount **beside** `amount_text` and a bad
+reading really is on disk. For doses there was nothing to correct, only something
+to make visible.
+
+**What was left was silence.** An unreadable amount is honest — better than a
+fabricated number — but nothing said the upper-limit total and the RDA share were
+skipping the dose. The `dose-amount-unreadable` data-quality gap
+(`lib/data-quality.ts`) names the count and links the item so the person can
+retype it; it covers live doses on active items, because a retired dose reaches no
+total. **No remedy may guess a locale for an ambiguous string**, legacy data
+included: a silent wrong number in a health record is worse than the absence it
+replaces.
+
+**Measuring the population.** `npm run census:dose-amounts [path]` partitions
+every stored dose amount into six buckets (untouched, no quantity, repaired-from-
+zero, repaired-from-wrong, unreadable-with-a-restated-amount,
+unreadable-with-nothing-to-recover), split live/retired. It is read-only, opens
+the file directly so counting can never migrate what it measures, and prints
+amount strings and counts only. The classification is `lib/dose-amount-census.ts`
+and it **imports** the shipped rule — a SQL or regex restatement would be a second
+version of the rule #3153 unified, and a census that disagrees with the engine it
+describes is worse than none. The one re-implementation there is the _pre-fix_
+pattern, kept to answer "what did this row read as yesterday": the artifact being
+measured, not a rule.
