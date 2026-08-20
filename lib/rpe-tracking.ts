@@ -1,4 +1,8 @@
-import { getProfileSetting, setProfileSetting, deleteProfileSetting } from "@/lib/settings/kv";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  deleteProfileSetting,
+} from "@/lib/settings/kv";
 import { mintRpeTracking, type RpeTracking } from "@/lib/rpe";
 
 // Whether a profile logs per-set RPE (#3335) — the opt-in seam for the set grid's
