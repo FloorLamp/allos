@@ -1,6 +1,29 @@
 {
   "days": [
     {
+      "date": "2026-08-20",
+      "entries": [
+        {
+          "pr": 3255,
+          "title": "Dialogs present the same way everywhere, and scroll inside themselves instead of moving the page behind them",
+          "kind": "fix",
+          "issues": [2774]
+        },
+        {
+          "pr": 3268,
+          "title": "One Telegram button logs your usual for the window: the habitual foods and the doses still owed that day",
+          "kind": "feature",
+          "issues": [2460]
+        },
+        {
+          "pr": 3281,
+          "title": "Allos notices when you are in another timezone, moves your day on one tap, and excuses the slots the clock skipped",
+          "kind": "feature",
+          "issues": [3263]
+        }
+      ]
+    },
+    {
       "date": "2026-08-19",
       "entries": [
         {
@@ -182,6 +205,12 @@
           "title": "A blood pressure or resting heart rate quiet for a year stops showing a stale number and says when it stopped",
           "kind": "fix",
           "issues": [3226]
+        },
+        {
+          "pr": 3261,
+          "title": "Adding a medication or supplement is one form that starts with the name and shows what it will save",
+          "kind": "feature",
+          "issues": [3216]
         }
       ]
     },
