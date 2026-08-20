@@ -783,3 +783,41 @@ warning that fires after the last moment it could have helped is not a weaker
 guard than a refusal, it is not a guard. Both of the other retirement guards in
 that file say so in their own comments, and I wrote those comments. The check
 that got this wrong was sitting between them.
+
+## Two greens against two different bases (2026-08-20)
+
+`main` went red on `mobile-clipping.mobile.spec.ts:206` — a dialog body scrollable
+by 5px, on a spec that had been 18/18 green on its own PR that morning.
+
+Both halves were green, and neither green was about the tree that resulted:
+
+|                                                                    | merged     | its CI base        |
+| ------------------------------------------------------------------ | ---------- | ------------------ |
+| #3379 — adds the spec, scopes `FoodLogBar`'s bleed to `md:`        | `bc329883` | main without #3370 |
+| #3370 — `ModalShell` / `DirtyFormRegistry` / the dirty-form marker | `e050a80b` | main without #3379 |
+
+Twenty minutes apart. Both 18/18. I verified each head's `check-runs` myself, which
+is the discipline this file already argues for, and it did not help: the check runs
+were real, complete, and computed against a base that no longer existed by the time
+the second merge landed.
+
+Two different shards then failed at exactly **5**. That number is the useful part of
+the receipt: co-residency and contention give timeouts, or they give different numbers
+each run. The same wrong value from two different neighbour sets is a deterministic
+fact about the tree, and it ruled out the whole contention branch before anyone spent
+a cycle on it.
+
+The gap is that `mergeable_state` does not model this. A branch whose checks predate
+another merge still reports `clean` — `behind` is about the branch's commits, not
+about when its checks ran. So the reassuring field says the reassuring thing, and the
+runbook's existing "a behind-only PR's green can be stale" caution never fires,
+because the PR is not behind.
+
+The rule now in the pipeline is a timestamp comparison: a second merge needs checks
+whose `started_at` is later than the previous merge. It is one REST read, and it is
+the only thing that distinguishes "green" from "green about this tree".
+
+Worth naming the shape, because it is the same one this file keeps recording from new
+angles: **a check that answers a cheaper question than the one being asked.** "Were
+these checks green?" is cheaper than "were these checks green about the tree we are
+about to create", and the first is what every available field reports.
