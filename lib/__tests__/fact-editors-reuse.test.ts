@@ -67,6 +67,20 @@ const CONSUMERS = [
     chips: "components/activity-form/ActivitySessionFactRow.tsx",
     host: "components/ActivityForm.tsx",
   },
+  {
+    // The visit pair (#3223), and the first consumer whose chips file is mounted by TWO
+    // hosts: an appointment and an encounter state the same facts in the same words, so
+    // the row is written once and each tense's form supplies its own columns and its own
+    // Server Action behind it.
+    name: "the appointment branch of the visit pair (#3223)",
+    chips: "components/encounters/VisitFactRow.tsx",
+    host: "app/(app)/encounters/AppointmentForm.tsx",
+  },
+  {
+    name: "the encounter branch of the visit pair (#3223)",
+    chips: "components/encounters/VisitFactRow.tsx",
+    host: "app/(app)/encounters/EncounterForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
