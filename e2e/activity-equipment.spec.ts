@@ -437,29 +437,39 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
 // where a field the browser cannot see is a field the save CLEARS (#2359), and that an
 // unmounted panel's value is invisible to the dirty-form registry (`recordIsDirty` skips
 // `!field.isConnected`) — so a fact moved behind a disclosure would be lost twice over,
-// once on save and once on dismiss, neither with a sound.
+// once on save and once on dismiss, the second time with no "Discard your changes?" to
+// warn anybody.
 //
 // THAT PREMISE IS FALSE FOR THIS FORM, which is why the chip could be drawn at all: the
 // <form> only `preventDefault`s, `buildFormData` composes every field by hand out of
 // React state, and the dirty registry tracks NAMED controls of which this tree has none
-// (its "unsaved changes" prompt reads autosave's `dirty`, derived from `formSig`). But
-// "it happens to be state-controlled today" is exactly the kind of fact that stops being
-// true without anyone noticing, so both halves are pinned here as BEHAVIOUR rather than
-// left to the source.
+// (the close prompt reads autosave's `dirty`, derived from `formSig`). But "it happens
+// to be state-controlled today" is exactly the kind of fact that stops being true
+// without anyone noticing, so both halves are pinned as BEHAVIOUR rather than left to a
+// reading of the source.
 //
-// THE MUTANTS THIS KILLS. (a) `buildFormData` reading the equipment <select> out of the
-// DOM instead of state — the gear never reaches the action, and the reload below shows
-// none. (b) An unmount that resets `activityEquipmentId` — the chip comes back stating
-// the old gear. (c) `formSig` dropping `activityEquipmentId`, which is the DIRTY half:
-// the gear change is the ONLY edit made after the row exists, so if the form does not
-// count it as a change, no save is ever scheduled and the reload shows the old gear.
-// Each fails on a PRESENCE assertion, which is the honest direction (a broken write
-// cannot be rescued by waiting longer).
+// THE MUTANTS, and every one of them was RUN. (a) `buildFormData` reading the equipment
+// <select> out of the DOM instead of state: with the panel closed the field is gone, the
+// link is cleared, and the stored-gear assertion at the end fails. (b) An unmount that
+// resets `activityEquipmentId`: the chip comes back stating the old gear instead of the
+// prompt. (c) `formSig` dropping `activityEquipmentId` — the DIRTY half — which fails at
+// the "Saved" check below and NOWHERE ELSE.
+//
+// (c) IS WHY THE DIRTY ASSERTION SITS WHERE IT DOES. It was first written after the
+// editor closed, and mutant (c) PASSED it: `requestClose` flushes unconditionally, so a
+// value that reaches the row on the close path says nothing about whether the form ever
+// counted it as a change. Observed with the form still open, it says exactly that.
+//
+// AND THE EDIT HAS TO BE A REAL ONE. The first draft chose the gear the recency default
+// had ALREADY selected, so `formSig` never moved and no save was ever due — the test was
+// green, and green for a reason that had nothing to do with what it claimed. Clearing to
+// "None" cannot be a no-op against a non-null default, which is why the first move is
+// the clear and not the pick.
 //
 // "Rowing" on purpose: a cardio activity with no bike/shoe affinity
 // (cardioGearCategories → []), so the picker offers every cardio implement profile 1
 // owns and the dedicated "E2E Registry Bike" is always among them. A "Running" probe
-// would narrow to Shoes and could not switch gear at all.
+// would narrow to Shoes.
 //
 // Fixture ownership (docs/internals/e2e-hygiene.md): the probe activity carries a unique
 // per-run suffix and is deleted at the end, so --repeat-each and sibling specs cannot
@@ -473,6 +483,10 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
   test.slow(); // local next dev compiles /training on first hit
   const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
   const title = `${GEAR_CHIP_PREFIX} ${stamp}`;
+  // The autosave indicator, shared by the header and the footer. Its check appears on
+  // every successful save and fades after SAVED_FADE_MS, which is what makes "a check
+  // is on screen now" attributable to the edit that preceded it.
+  const savedCheck = page.getByLabel("Saved");
 
   try {
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
@@ -494,56 +508,86 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // A duration makes the session savable, so it auto-saves and gains a real row.
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
     // Delete appearing is the stable "the server stored this row" signal — the same
-    // measured wait AUTOSAVE_ROW_MS is declared for above, for the same reason.
+    // measured wait AUTOSAVE_ROW_MS is declared for above, by the same route.
     await expect(
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
 
-    // A FRESH log opens on the recency default, and says that it did: the value was
-    // computed FOR the person, so the chip states it as a suggestion (#846). This is
-    // the create-side half of the #342 assertion the first test makes on an edit.
+    // A FRESH log opens on the recency default and SAYS that it did: the value was
+    // computed for the person rather than stated by them (#846). This is the
+    // create-side half of the #342 assertion the first test in this file makes on an
+    // edit, where a stored link is marked the other way.
     const chip = page.getByTestId("activity-fact-equipment");
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute("data-fact-state", "stated");
     await expect(chip).toHaveAttribute("data-suggested", "1");
 
+    // Wait the create-save's own check out, so the next one belongs to the gear edit.
+    await expect(savedCheck).toHaveCount(0);
+
+    // MOVE ONE: clear the link from inside the editor, then close the panel with ESC —
+    // the harder of the two identical gestures (#3222). Before the open panel declared
+    // itself an escape layer this key dismissed the whole editor and threw the entry
+    // away.
     await chip.click();
     const select = page.getByTestId("activity-equipment-select");
     await expect(select).toBeVisible();
-    const target = page
-      .getByTestId("activity-equipment-select")
-      .locator("option", { hasText: "E2E Registry Bike" });
+    await expect(page.getByTestId("activity-fact-editor")).toHaveAttribute(
+      "data-panel",
+      "equipment"
+    );
+    await settledSelect(page, select, "");
+    // Pressed on the PANEL rather than on the <select>: a native select has its own
+    // Escape behaviour, and this is a question about the editor.
+    await page.getByTestId("activity-fact-editor").press("Escape");
+
+    // Presence first — the chips are back, and the fact with nothing to state is a
+    // "+ equipment" PROMPT rather than a dashed missing essential, because a session
+    // with no gear is complete. Only then is the <select>'s absence read, at a settled
+    // point rather than left to retry its own way to green.
+    await expect(chip).toHaveText(/equipment/);
+    await expect(page.getByTestId("activity-form")).toBeVisible();
+    await expect(select).toHaveCount(0);
+    // Focus came back to the chip that opened the editor (#3311), not to <body>.
+    await expect(chip).toBeFocused();
+
+    // THE DIRTY HALF. Nothing has been touched since the check above went out except a
+    // value chosen inside a panel that is now closed — so a check reappearing, with the
+    // form still open and nothing flushed, is the form counting that as a change of its
+    // own accord. Mutant (c) fails here.
+    await expect(savedCheck).not.toHaveCount(0);
+    await expect(savedCheck).toHaveCount(0);
+
+    // MOVE TWO: pick a gear from the prompt and close with DONE — the other half of the
+    // same gesture, so neither door is the only one that works.
+    await chip.click();
+    await expect(select).toBeVisible();
+    const target = select.locator("option", { hasText: "E2E Registry Bike" });
     await expect(target).toHaveCount(1);
     const targetValue = await target.getAttribute("value");
     expect(targetValue).toBeTruthy();
     await settledSelect(page, select, targetValue!);
+    await page.getByTestId("activity-fact-editor-done").click();
 
-    // ESCAPE, not Done — the harder of the two identical gestures (#3222). Before the
-    // open panel declared itself an escape layer this key dismissed the whole editor
-    // and threw the entry away; now it returns to the chips and the SECOND one would
-    // close the editor.
-    // Pressed on the PANEL rather than on the <select>: a native select has its own
-    // Escape behaviour, and this is a question about the editor, not about the control
-    // that happens to be inside it.
-    await page.getByTestId("activity-fact-editor").press("Escape");
-    // Presence first: the chip row is back, stating the gear the person chose, and no
-    // longer claiming it was suggested. Only then is the <select>'s absence read — an
-    // absence assertion evaluated at a settled point rather than one left to retry its
-    // own way to green.
     await expect(chip).toContainText("E2E Registry Bike");
+    // Chosen, not suggested: the marking flips the moment the person answers.
     await expect(chip).toHaveAttribute("data-suggested", "0");
-    await expect(page.getByTestId("activity-form")).toBeVisible();
     await expect(select).toHaveCount(0);
-    // Focus came back to the chip that opened the editor (#3311) rather than to <body>.
-    await expect(chip).toBeFocused();
+    await expect(savedCheck).not.toHaveCount(0);
 
-    // Closing flushes the pending auto-save before the editor goes (requestClose →
-    // flushBeforeClose), so the editor being GONE is the settle point for the write —
-    // a real event to await rather than a duration to budget for. The control is
-    // "Close" and not "Done": a create-mode session on today with savable content and
-    // no end time offers "Finish workout" in the primary slot (#1124), and Close is
-    // the plain dismissal beside it.
-    await settledClick(
+    // Closing flushes any pending auto-save before the editor goes (requestClose awaits
+    // flushBeforeClose, THEN calls onClose), so the editor being GONE is the settle
+    // point for the write — a real event to await rather than a duration to budget for.
+    //
+    // hydratedClick and NOT settledClick, and the difference is the point of this
+    // control: Close posts only when a save is still outstanding. Measured here — the
+    // debounce had usually already landed, so settledClick timed out waiting for a POST
+    // that correctly never came, on a click that had in fact closed the editor.
+    //
+    // The control is "Close" and not "Done": a create-mode session on today with
+    // savable content and no end time offers "Finish workout" in the primary slot
+    // (#1124), and Close is the plain dismissal beside it.
+    await hydratedClick(
       page,
       page
         .getByTestId("activity-form-footer")
@@ -551,7 +595,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     );
     await expect(page.getByTestId("activity-form")).toHaveCount(0);
 
-    // The payoff: a gear chosen in a panel that was closed before the save reaches the
+    // The payoff: gear chosen in a panel that was closed before the save reaches the
     // stored row. Read back off the canonical activity page, through the server.
     await page.goto("/training?tab=log");
     const row = page
@@ -583,7 +627,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
   } finally {
     // The guard's own live-draft signature, taken on the shared profile — the probe is
     // a draft on profile 1 from its first auto-save, so a failure above must not leave
-    // it behind (same reasoning as the #1611 test below).
+    // it behind (same reasoning as the #1611 test above).
     takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
   }
 });
