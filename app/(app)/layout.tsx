@@ -17,6 +17,7 @@ import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import OfflineSnapshotRefresher from "@/components/OfflineSnapshotRefresher";
 import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
+import TravelTimezoneBanner from "@/components/TravelTimezoneBanner";
 import { getAppVersion } from "@/lib/version";
 import {
   hasUnseenNotes,
@@ -33,6 +34,8 @@ import {
   getTimezone,
   getWeekStart,
   getWhatsNewSeenDate,
+  getHomeTimezone,
+  getDismissedTravelZone,
 } from "@/lib/settings";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
@@ -44,7 +47,7 @@ import {
 } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
-import { writeSubjectName } from "@/lib/own-profile";
+import { isViewingSelf, writeSubjectName } from "@/lib/own-profile";
 import {
   getActivitySuggestions,
   getRecentExerciseHistory,
@@ -229,6 +232,15 @@ export default async function AppLayout({
   // gaining a date-leading one, if a heavy profile ever makes it worth measuring —
   // never the desktop waste.
   const logHabitDays = getSegmentLogDays(profile.id, now);
+  // Travel (#3263). The banner is for the login's OWN profile only — a member
+  // acting for someone else must see nothing, because this device's location says
+  // nothing about where THAT person's day should run. Resolved here so the client
+  // never has to decide whose profile it is looking at.
+  const ownProfileActing = isViewingSelf(scope);
+  const travelHomeZone = ownProfileActing ? getHomeTimezone(profile.id) : null;
+  const travelDismissedZone = ownProfileActing
+    ? getDismissedTravelZone(profile.id)
+    : null;
   const onboarding = getOnboardingState(profile.id);
   const showOnboardingReturn =
     onboarding?.status === "in_progress" &&
@@ -371,6 +383,12 @@ export default async function AppLayout({
                             ServiceWorkerRegister in the root layout. */}
                               <OnboardingReturnBanner
                                 show={showOnboardingReturn}
+                              />
+                              <TravelTimezoneBanner
+                                ownProfile={ownProfileActing}
+                                profileZone={timezone}
+                                homeZone={travelHomeZone}
+                                dismissedZone={travelDismissedZone}
                               />
                               {children}
                             </div>
