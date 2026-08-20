@@ -64,7 +64,10 @@ drift the moment one domain's rule changed, which is why #3279's lane left the d
 alone rather than fixing one half of it.
 
 The fold is **compared, never stored**: no code path leads from a fold to a key, so no
-normalizer can hand back a lower-cased label. The spelling that wins is the **first seen**
+normalizer can hand back a lower-cased label. It is also **not re-spellable in SQL** —
+SQLite's `LOWER(...)` / `COLLATE NOCASE` fold ASCII only, so a case-insensitive match written
+in SQL would disagree with the write boundary and quietly re-create the duplicate;
+`lib/__tests__/vocabulary-sql-fold-census.test.ts` fails the day anyone reaches for it. The spelling that wins is the **first seen**
 — the oldest ledger row's — so a card is never re-titled behind somebody's back, and the
 surface says which one took the log ("Kratom: 1 logged today" for a typed "kratom").
 

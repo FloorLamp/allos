@@ -71,6 +71,13 @@ Two properties keep it honest, and both are asserted in
   resolves BARE at both ends, because re-casing is precisely what a rename may be for.
   Rows that already differ only by case are left alone, with the reasoning stated in
   `lib/vocabulary-store.ts`.
+- **The fold may not be re-spelled in SQL.** The JS fold is Unicode-aware and SQLite's
+  `LOWER(...)` / `COLLATE NOCASE` are ASCII-only, so a case-insensitive MATCH
+  written in SQL would call two spellings distinct that the write boundary calls one, and
+  the duplicate would silently return. Sorting is unaffected; identity is not.
+  `lib/__tests__/vocabulary-sql-fold-census.test.ts` is the reflection guard, and it
+  points at the `biomarker_family` user-function pattern — the way SQL is meant to reach
+  a pure identity here.
 
 One subject can need TWO identities on different axes, and the strength domain is
 the worked example (#1610). `exerciseHistoryKey` answers **which movement** — it

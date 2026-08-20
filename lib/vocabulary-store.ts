@@ -55,7 +55,15 @@
 // the key it wrote. The stale variant keeps its own history, stays readable, and stays
 // editable and deletable; it simply stops being the target of new logs.
 //
-// Whether the owner would rather have a one-off merge is on #3325 as an open question.
+// ---- SQLITE'S FOLD IS NOT THIS FOLD ----------------------------------------
+//
+// `foldVocabularyName()` is Unicode-aware; SQLite's `LOWER()` / `COLLATE NOCASE` fold
+// ASCII only. A case-insensitive MATCH written in SQL over one of these columns would
+// therefore disagree with this boundary about which spellings are one entry, silently and
+// in the worst direction — the duplicate would come back. Sorting is unaffected; identity
+// is not. `lib/__tests__/vocabulary-sql-fold-census.test.ts` is the tripwire, and it names
+// the answer: register the pure fold as a SQLite user function, the way `biomarker_family`
+// calls `biomarkerFamily()` (lib/sql-functions.ts).
 
 import { db } from "./db";
 import { resolveSymptomKey } from "./symptoms";
@@ -99,6 +107,11 @@ const VOCABULARY_SPECS: Record<VocabularyDomain, VocabularySpec> = {
 // Curated keys come back too and cost nothing: they can only fold-match themselves, and
 // the domain resolver has already collapsed a curated slug or label before the fold is
 // ever consulted.
+//
+// THIS ANSWERS "WHICH SPELLING IS CANONICAL?" — IDENTITY RESOLUTION, which is why the
+// order is first-seen. `getCustomSymptomNames()` (lib/queries/symptoms.ts) holds the same
+// strings ordered newest-used, because it answers "what am I likely to type next?". Same
+// data, two questions, two orderings — neither is the other one's stale copy.
 export function profileVocabulary(
   domain: VocabularyDomain,
   profileId: number

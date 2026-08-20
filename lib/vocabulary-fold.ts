@@ -34,6 +34,13 @@
 // THIS function, and a change to what "the same name" means can only be made in one
 // place, for both, at once. `lib/vocabulary-store.ts` is its DB-side twin — the
 // profile-scoped lookup both domains resolve through.
+//
+// AND IT MUST NOT BE RE-SPELLED IN SQL. `toLowerCase()` here is Unicode-aware; SQLite's
+// `LOWER()` and `COLLATE NOCASE` fold ASCII only, so a case-insensitive match written in
+// SQL would call two spellings distinct that this function calls one, and the duplicate
+// would quietly return. `lib/__tests__/vocabulary-sql-fold-census.test.ts` fails the day
+// anyone reaches for it, and points at the `biomarker_family` user-function pattern
+// (lib/sql-functions.ts) — the way SQL is supposed to call a pure identity here.
 
 // Case- and whitespace-fold a free-text vocabulary name to its MATCHING identity.
 //
