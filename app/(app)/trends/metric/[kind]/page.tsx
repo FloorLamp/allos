@@ -529,11 +529,13 @@ export default async function TrendMetricDetailPage(props: {
             because that shared row had no space for it. The hiding was a
             consequence of the placement, not an independent constraint, and
             measuring is what settled it rather than assuming either way: at
-            390px, with the longest title in the metric catalog ("Skin
-            Temperature Variation"), the link renders its full label at 105px on
-            its own line (top 73) and the h1 takes 258px on the next (top 109),
-            both inside a 358px content box. Nothing competes, so nothing needs
-            hiding, and no icon-only variant was added — an option added on the
+            390px, with the WIDEST-RENDERING title in the metric catalog ("Skin
+            Temperature Variation", 257.5px — ahead of the equally long "Blood
+            Pressure (Diastolic)" at 250.1px), the link renders its full label
+            at 104.5px on its own line (top 73) and the h1 takes its own next
+            line (top 109), both inside a 358px content box. They are on
+            separate lines, so they cannot compete for width at all; nothing
+            needs hiding, and no icon-only variant was added — an option added on the
             hypothesis is how a shared component starts accumulating them.
             e2e/mobile-overflow.spec.ts holds the guard at 360px. */}
         <BackLink href="/trends#body" label="Back to Body" className="" />
