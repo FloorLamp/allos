@@ -597,6 +597,17 @@ ${MIGRATION_LINES}
   asserting it: diff the plan output between your branch and origin/main. Composition
   moves when a .spec.ts file is ADDED or REMOVED, or when e2e/spec-durations.json
   changes — editing an existing spec does not move it.
+  AND IF YOU DID ADD A SPEC FILE, YOU RE-PARTITIONED ALL TWELVE SHARDS. Measured
+  2026-08-20 on #3388: adding ONE spec changed shard 1 by 24 specs in and 23 out. A
+  spec you never touched stayed in shard 1 but ran beside an entirely different
+  NEIGHBOUR SET — and then failed, on a route the diff does not render on. You changed
+  its COMPANY, not its behaviour.
+  So a red in a spec you did not touch, on a PR that adds a spec file, is a THIRD
+  possibility beside "mine" and "contention": a latent co-residency bug your
+  re-partition exposed. Diff the plan (\`tsx scripts/e2e-shard-plan.ts N 12\`) between
+  your branch and a control to see whose neighbours you changed, and say so.
+  DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
+  a suite that cannot grow without hiding failures is measuring less every time.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
