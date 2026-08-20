@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
-import { hydratedClick, settledClick, followLink } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  followLink,
+} from "./helpers";
 import { medicationsToday, scheduledTodayItem } from "./med-card-helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -185,9 +190,11 @@ test.describe("shared supply pools", () => {
       await hydratedClick(page, page.getByTestId("medication-add-toggle"));
       const panel = page.getByTestId("medication-add-panel");
       await expect(panel).toBeVisible();
-      await panel
-        .getByRole("combobox", { name: "Name" })
-        .fill(SUPPLY_SHARED_BOTTLE);
+      await settledFill(
+        page,
+        panel.getByRole("combobox", { name: "Name" }),
+        SUPPLY_SHARED_BOTTLE
+      );
       // The listbox is PORTALED to <body> (#3271), so the rows are not inside the
       // panel that owns the field. One list is open at a time, so asking the page
       // is not ambiguous — and the bottle name is spec-owned, so nothing else on
@@ -206,7 +213,9 @@ test.describe("shared supply pools", () => {
       const dialog = page.getByRole("dialog", { name: "Add supplement" });
       await expect(dialog).toBeVisible();
       const name = dialog.getByRole("combobox", { name: "Name" });
-      await name.fill(SUPPLY_SHARED_BOTTLE);
+      // The assertion below is an ABSENCE, so the typed value must be known to have
+      // landed — otherwise an empty field would satisfy it for the wrong reason.
+      await settledFill(page, name, SUPPLY_SHARED_BOTTLE);
       // The listbox is genuinely open — otherwise the absence below is vacuous.
       await expect(name).toHaveAttribute("aria-expanded", "true");
       await expect(

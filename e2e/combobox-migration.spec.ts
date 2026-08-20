@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
@@ -176,7 +176,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     test.slow();
     await page.goto("/nutrition?tab=supplements");
     // The add-mode intake form lives behind the "Add supplement" modal.
-    await page.getByTestId("supplement-add-toggle").click();
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
     let addForm = page.getByRole("dialog", { name: "Add supplement" });
     await expect(addForm).toBeVisible();
 
@@ -185,7 +185,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       name: "Name",
       exact: true,
     });
-    await nameField.fill(SUPP);
+    await settledFill(page, nameField, SUPP);
     // Since #3216 "only take it when X" is a RULE SENTENCE over the same two columns
     // (condition + situation), not a When select plus a Situation combobox.
     const rules = await openFact(page, "rules", addForm);
@@ -194,7 +194,11 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       name: "Situation",
       exact: true,
     });
-    await situation.fill(CUSTOM_SITUATION);
+    // A RAW fill here is the #2742 swallow: before React owns the input the value is
+    // set on the DOM node and reverted at hydration, so the list stays on its
+    // empty-query view and the "Use “…”" row — which exists only when the typed value
+    // is not already an option — never renders. settledFill waits for the fiber.
+    await settledFill(page, situation, CUSTOM_SITUATION);
     // Portaled listbox (#3271) — resolved from the page, not the form.
     await page
       .getByRole("listbox")
@@ -212,16 +216,20 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // The custom situation is now part of the profile's vocabulary, so re-opening the
     // picker OFFERS it — the datalist's canned-only option source (the #1177 defect)
     // would never surface it. A fuzzy fragment finds it.
-    await page.getByTestId("supplement-add-toggle").click();
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
     addForm = page.getByRole("dialog", { name: "Add supplement" });
-    await addForm
-      .getByRole("combobox", { name: "Name", exact: true })
-      .fill("another");
+    await settledFill(
+      page,
+      addForm.getByRole("combobox", { name: "Name", exact: true }),
+      "another"
+    );
     const reopened = await openFact(page, "rules", addForm);
     await reopened.getByTestId("intake-rule-add-only-when").click();
-    await reopened
-      .getByRole("combobox", { name: "Situation", exact: true })
-      .fill("E2EMig");
+    await settledFill(
+      page,
+      reopened.getByRole("combobox", { name: "Situation", exact: true }),
+      "E2EMig"
+    );
     await expect(
       // Portaled listbox (#3271) — resolved from the page, not the form.
       page

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page, type BrowserContext } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledFill } from "./helpers";
 import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import Database from "better-sqlite3";
@@ -575,9 +575,14 @@ test("R3e — a draft's autosave debounce does not land a half-typed record afte
     page.getByRole("main").getByRole("button", { name: "New activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
-  await page
-    .getByPlaceholder(/What did you do/)
-    .fill("Gate probe: half-typed workout");
+  // A combobox fill must land in React STATE, not just on the DOM node: opening the
+  // listbox now carries a measurement pass (#3271), one more render that can revert a
+  // raw fill. settledFill asserts the value STUCK.
+  await settledFill(
+    page,
+    page.getByPlaceholder(/What did you do/),
+    "Gate probe: half-typed workout"
+  );
 
   await holdLogoutPost(page);
   // The activity workspace correctly makes the sidebar inert. Invoke the real
@@ -848,9 +853,11 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
   // this tab, that the 600ms autosave debounce lands, and that the selector below is the
   // one that writes. Without it, "no draft afterwards" is satisfied by a form that never
   // saved one in the first place.
-  await tabB
-    .getByPlaceholder(/What did you do/)
-    .fill("Gate probe control draft");
+  await settledFill(
+    tabB,
+    tabB.getByPlaceholder(/What did you do/),
+    "Gate probe control draft"
+  );
   await expect
     .poll(() => storedRows(tabB, "drafts"), { timeout: 15_000 })
     .not.toEqual([]);
@@ -873,9 +880,13 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
 
   // And the consequence, which is what the contract in lib/offline/draft-db.ts is about:
   // "the next login must never be offered the previous one's half-typed workout."
-  await tabB
-    .getByPlaceholder(/What did you do/)
-    .fill("Gate probe after the logout landed");
+  // ABSENCE is the assertion below, so a swallowed fill would pass it for the wrong
+  // reason — a false green, which is worse than the red. settledFill removes that.
+  await settledFill(
+    tabB,
+    tabB.getByPlaceholder(/What did you do/),
+    "Gate probe after the logout landed"
+  );
   await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
 
   expect(await storedRows(tabB, "drafts")).toEqual([]);
@@ -991,7 +1002,11 @@ test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leave
   // NON-VACUITY CONTROL: the draft lane in this tab really writes, before anything closes
   // it — so "nothing written afterwards" is about the gate rather than about a form that
   // never saved anything in the first place.
-  await tabB.getByPlaceholder(/What did you do/).fill("Barrier control draft");
+  await settledFill(
+    tabB,
+    tabB.getByPlaceholder(/What did you do/),
+    "Barrier control draft"
+  );
   await expect
     .poll(() => storedRows(tabB, "drafts"), { timeout: 15_000 })
     .not.toEqual([]);
@@ -1037,9 +1052,12 @@ test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leave
 
   // And the consequence, which is lib/offline/draft-db.ts's contract: no new PHI on a
   // device whose session the server has destroyed.
-  await tabB
-    .getByPlaceholder(/What did you do/)
-    .fill("Barrier draft after the session died");
+  // Absence again — see above.
+  await settledFill(
+    tabB,
+    tabB.getByPlaceholder(/What did you do/),
+    "Barrier draft after the session died"
+  );
   await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
   expect(await storedRows(tabB, "drafts")).toEqual([]);
   await tabB.close();
