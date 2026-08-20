@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_LOAD_CONTEXT,
@@ -157,9 +162,11 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     // Typing IS the selection here: the combobox's onChange feeds the form's
     // `exercise` state directly, so the picker reacts to the exact logged name
     // without depending on the dropdown's internals.
-    await dialog
-      .getByRole("combobox", { name: "Activity" })
-      .fill(LOAD_CONTEXT_LIFT);
+    await settledFill(
+      page,
+      dialog.getByRole("combobox", { name: "Activity" }),
+      LOAD_CONTEXT_LIFT
+    );
 
     // The lift has been logged on two machines whose loads aren't comparable, so a
     // WEIGHT target has to say which one — the alternative is silently taking the

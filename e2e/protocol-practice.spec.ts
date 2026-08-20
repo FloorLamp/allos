@@ -358,7 +358,9 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await expect(cardioChip).toHaveAttribute("aria-pressed", "true");
   const customActivity = `Protocol cardio ${iteration}`;
   await activityForm.getByPlaceholder(/What did you do/).fill(customActivity);
-  await activityForm
+  // The free-text row is in the PORTALED listbox (#3271), not inside the form.
+  await page
+    .getByRole("listbox")
     .getByRole("button", { name: /Add .* as new activity/ })
     .click();
   await expect(

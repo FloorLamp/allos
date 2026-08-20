@@ -473,6 +473,20 @@ ${MIGRATION_LINES}
   origin/main control worktree and show it failing there too. Report the
   comparison, not the first red. Two agents were saved from a false regression
   report this way on 2026-08-15 only because they thought of it themselves.
+- A GENEROUS CEILING IS HONEST ON A *PRESENCE* ASSERTION AND DANGEROUS ON AN
+  *ABSENCE* ONE. This is the rule to reach for before arguing about timeouts at all.
+  Waiting longer cannot make a row that was never created appear — so if the write is
+  genuinely broken, a presence assertion still fails and the budget cost you nothing.
+  Waiting longer CAN let a bug's window close under an absence assertion, which then
+  passes against the very bug it exists to catch: that is why #3287's dedicated spec
+  asserts NOTHING after its discard, and why a retrying toHaveCount(0) is the shape to
+  distrust. A slow write and a swallowed pre-hydration tap read IDENTICALLY as
+  "element(s) not found"; the discriminator is whether a bigger ceiling rescues it, and
+  the answer only means something on a presence. Measured both ways in the tree:
+  activity-equipment.spec.ts (hydratedClick 0/5 -> 0/5, ceiling 0/5 -> 4/5, so latency)
+  and imaging.spec.ts (the opposite verdict, so latency DISPROVEN). If you add a
+  ceiling, NAME it as a constant and put the measurement in the comment — the number
+  alone is indistinguishable from a guess.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
@@ -757,6 +771,39 @@ function cmdList() {
       );
     }
   }
+  // WORKTREES NOBODY CLAIMS — the blind spot that made the idle number LIE.
+  //
+  // Idle is "newest of branch tip, worktree write", and both are read from the
+  // objects the LEDGER names. A lane that finishes its first issue and starts the
+  // second on a NEW branch in a NEW worktree freezes both of those at the instant it
+  // moved, so a highly productive agent reads as totally still. Measured live
+  // 2026-08-20: the #3270/#3271 lane showed idle=2h10m and "silent on two requests"
+  // while it had a 21-file PR open the whole time, on agent/3271-combobox-portal in
+  // wt-combobox-portal. The stall rule was not wrong; its INPUTS were bound to the
+  // wrong objects, which is the harder failure to see because the number looks fine.
+  //
+  // So print every $SCRATCH worktree no ACTIVE dispatch claims. It costs one line
+  // when the board is clean, and it answers both directions at once: a lane that
+  // moved (branch present, work recent) and a genuinely orphaned tree left by a dead
+  // agent (the "DIRTY AND NO AGENT" case the check-in exists for). Do NOT infer a
+  // stall from a frozen ledger branch without reading this list first.
+  const claimed = new Set(active.map((d) => d.branch));
+  const stray = [...worktreePathsByBranch()]
+    .filter(
+      ([branch, dir]) => !claimed.has(branch) && dir.startsWith(STATE_DIR)
+    )
+    .map(([branch, dir]) => ({ branch, dir, idle: worktreeIdleMs(dir) }));
+  if (stray.length) {
+    console.log("Worktrees no active dispatch claims:");
+    for (const s of stray) {
+      console.log(
+        `  ${s.dir}  branch=${s.branch}  idle=${s.idle === null ? "(no trace)" : fmt(s.idle)}` +
+          "  << a lane that MOVED here reads as stalled above; check this before" +
+          " calling a stall"
+      );
+    }
+  }
+
   const note = discarded
     ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
     : "";

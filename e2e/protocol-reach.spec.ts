@@ -79,7 +79,9 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     // Dismiss the DateField popover so it doesn't intercept the outcome picker.
     await page.keyboard.press("Escape");
     await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");
-    await form
+    // The option row is in the PORTALED listbox (#3271), not inside the form.
+    await page
+      .getByRole("listbox")
       .getByRole("button", { name: "LDL Cholesterol", exact: true })
       .click();
     await settledClick(
