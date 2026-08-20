@@ -1383,6 +1383,16 @@ total. **No remedy may guess a locale for an ambiguous string**, legacy data
 included: a silent wrong number in a health record is worse than the absence it
 replaces.
 
+Two things about that scope a later reader should not have to derive. **Excluding
+retired doses is a deferral, not a discard** — `unretireDose` restores the row
+with its `amount` untouched, so the gap fires the moment the dose is schedulable
+again, which is the moment a total would reach for its number. And **the count is
+a ceiling on the safety-relevant rows, not a tally of them**: only every-day
+schedules feed the daily UL/RDA totals (#635), so a situational item's unreadable
+amount is counted while feeding no upper-limit total. The wider scope is
+deliberate — the amount is unusable for every consumer, not just the UL — but the
+number is not "doses missing from a safety total"; it is at most that many.
+
 **Measuring the population.** `npm run census:dose-amounts [path]` partitions
 every stored dose amount into six buckets (untouched, no quantity, repaired-from-
 zero, repaired-from-wrong, unreadable-with-a-restated-amount,

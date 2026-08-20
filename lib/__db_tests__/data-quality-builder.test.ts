@@ -25,6 +25,7 @@ import {
   setRiskAttributesReviewed,
 } from "@/lib/settings";
 import { dataQualityDedupeKey } from "@/lib/data-quality";
+import { unretireDose } from "@/lib/queries/intake/dose-lifecycle";
 import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
@@ -300,6 +301,23 @@ describe("dose-amount-unreadable — the legacy rows nothing can read (#3320)", 
     );
     expect(gap?.label).toBe("Retype 2 dose amounts");
     expect(gap?.ctaHref).toBe(`/medications/${medId}?action=edit`);
+  });
+
+  it("un-retiring a dose surfaces its ambiguous amount — the exclusion is a deferral", () => {
+    // What makes excluding retired rows safe rather than merely convenient: the
+    // restore path puts the row back with its `amount` untouched, so the gap arrives
+    // exactly when a total could reach for the number again.
+    const { profileId } = makeProfile("dq-dose-unretire");
+    const itemId = addItem(profileId, "Restored Supplement", "supplement");
+    const doseId = addDose(itemId, "2,5 g", 1);
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+
+    expect(unretireDose(profileId, doseId).kind).toBe("restored");
+    expect(keysOf(profileId)).toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
   });
 
   it("stays silent for a RETIRED dose and for an INACTIVE item", () => {
