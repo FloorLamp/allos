@@ -1589,7 +1589,11 @@ function installInteractionLedgerScript(): void {
     // events around the failing interaction are ever read.
     if (entries.length > 40) entries.shift();
   };
-  window.addEventListener("click", (event) => record("click", event.target, ""), true);
+  window.addEventListener(
+    "click",
+    (event) => record("click", event.target, ""),
+    true
+  );
   window.addEventListener(
     "submit",
     (event) => record("submit", event.target, ""),
