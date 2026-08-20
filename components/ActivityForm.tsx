@@ -12,6 +12,7 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import type { RpeTracking } from "@/lib/rpe";
 import {
   compositeRollup,
   inferFreeTextType,
@@ -131,6 +132,7 @@ export default function ActivityForm({
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
+  rpeTracking = null,
   onClose,
   onCloseRequestReady,
   onDeleted,
@@ -182,6 +184,10 @@ export default function ActivityForm({
   // injury axis (#221/#1115). Composed with the deload shave through contextualNextSet.
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
+  // The profile's opted-into RPE scale, or null (#3335). Null is not "off by
+  // default" — it is the absence of anything to render, which is why no strength
+  // surface can put an effort column on screen for a profile that never asked.
+  rpeTracking?: RpeTracking | null;
   onClose: () => void;
   // The containing dialog routes Escape through the same save-aware path as
   // Done, the backdrop, and the live-workout minimize control.
@@ -255,6 +261,13 @@ export default function ActivityForm({
   // Local copy so a bar created from the plate builder appears immediately in
   // both the equipment selector and the builder without waiting on a refetch.
   const [equipmentList, setEquipmentList] = useState<Equipment[]>(equipment);
+  // The same treatment for the RPE opt-in (#3335), so the column appears on the tap
+  // that asked for it rather than on the next server round-trip — the editor may be
+  // mid-session and must not lose its unsaved state to a refetch.
+  //
+  // The state holds what the ACTION answered with, never a locally minted scale:
+  // lib/rpe-tracking.ts stays the one producer even though the tap is optimistic.
+  const [rpeScale, setRpeScale] = useState<RpeTracking | null>(rpeTracking);
   // ONE editor-local append for every in-form equipment creation path — the plate
   // builder's bar (#335) and the strength picker's quick-add (#1611) — so a row
   // created mid-workout is immediately pickable on every part without a reload and
@@ -1376,6 +1389,8 @@ export default function ActivityForm({
             deloadContext={deloadContext}
             recoveringContext={recoveringContext}
             plateauHints={plateauHints}
+            rpeTracking={rpeScale}
+            onRpeTrackingChange={setRpeScale}
             currentActivityId={editData?.id ?? createdId}
             editedDate={editData?.date ?? null}
             equipmentList={equipmentList}

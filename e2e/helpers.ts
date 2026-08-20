@@ -2225,6 +2225,33 @@ export async function settledClickApplied(
 // fields apply the ghost suggestion). `.fill()` focuses before it types, so that
 // write interleaves with the clear-and-type and the first attempt lands corrupted
 // or empty; the second attempt sticks. (#1941)
+// Turn the set grid's effort column on or off from the editor's own options row
+// (#3335) — the affordance the acceptance criterion calls "discoverable without a
+// settings trip". IDEMPOTENT, so a test can assert its starting side of the
+// boundary rather than assuming a previous run left it there.
+//
+// The checkbox input is `sr-only` (BrandedCheckbox paints the visible box off the
+// peer), so the click goes to the label text, the same way the per-side toggle is
+// driven in entry-ergonomics and form-hygiene.
+//
+// Turning it ON settles on the marker that proves the router applied the answer —
+// the column itself. Turning it OFF cannot: the marker would be an ABSENCE, and a
+// retrying wait for something to vanish is the shape that passes against the bug it
+// exists to catch. So the off path settles on the Server Action POST and then reads
+// the checkbox, which is a PRESENT element either way.
+export async function setRpeColumn(page: Page, on: boolean): Promise<void> {
+  const box = page.getByTestId("rpe-tracking-checkbox");
+  await expect(box).toHaveCount(1);
+  if ((await box.isChecked()) === on) return;
+  const label = page.getByText("Rate effort (RPE)", { exact: true });
+  if (on) {
+    await settledClickApplied(page, label, page.getByTestId("set1-rpe"));
+  } else {
+    await settledClick(page, label);
+  }
+  await expect(box).toBeChecked({ checked: on });
+}
+
 export async function settledFill(
   page: Page,
   field: Locator,

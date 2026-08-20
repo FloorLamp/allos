@@ -22,6 +22,7 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import type { RpeTracking } from "@/lib/rpe";
 import type { Equipment } from "@/lib/types";
 import type { WorkoutPresence } from "@/lib/workout-presence";
 import { workoutOffer, type WorkoutOffer } from "@/lib/workout-offer";
@@ -124,6 +125,7 @@ export default function ActivityEditorProvider({
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
+  rpeTracking = null,
   presence,
   liveEditData = null,
   liveStartEpochMs = null,
@@ -151,6 +153,8 @@ export default function ActivityEditorProvider({
   // deep-link target agree on the injury axis (#221/#1115).
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
+  // The profile's opted-into RPE scale, or null (#3335) — see lib/rpe-tracking.ts.
+  rpeTracking?: RpeTracking | null;
   // Derived workout presence for the acting profile (#921), gathered server-side —
   // the source that HYDRATES the minimized dock on a fresh load / another device, so
   // an in-progress session is never invisible after a reload.
@@ -658,6 +662,7 @@ export default function ActivityEditorProvider({
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
+          rpeTracking={rpeTracking}
           // While minimized the workspace stays MOUNTED but hidden — the running
           // rest timer + elapsed clock keep ticking; the bar restores it.
           hidden={minimized}

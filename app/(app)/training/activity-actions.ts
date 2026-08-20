@@ -25,6 +25,8 @@ import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
 import { toKg, submittedWeightUnit } from "@/lib/units";
 import { saveActivityCore } from "@/lib/activity-write";
+import { setRpeTracking } from "@/lib/rpe-tracking";
+import type { RpeTracking } from "@/lib/rpe";
 import {
   discardWorkoutSession,
   discardWorkoutSessionIfEmpty,
@@ -173,6 +175,26 @@ export async function logBodyweight(
   // A bodyweight entry feeds bodyweight-lift volume/strength, so it refreshes the
   // same fitness surfaces an activity write does (plus /trends body charts).
   revalidateActivitySurfaces();
+}
+
+// Turn the set grid's per-set RPE column on or off for the acting profile (#3335).
+//
+// Reached from the strength editor's own options row, so opting in never costs a
+// settings trip. The answer is the profile's `RpeTracking` — the value the column
+// renders over — or null; the form stores what comes BACK rather than minting its
+// own, which is what keeps `lib/rpe-tracking.ts` the single producer even though the
+// toggle is optimistic on screen.
+//
+// Only /training and the dashboard read the column, and neither is what the editor
+// re-renders from, so this revalidates the same activity surfaces every other
+// editor-initiated write does rather than growing its own list.
+export async function setRpeTrackingAction(
+  on: boolean
+): Promise<{ tracking: RpeTracking | null }> {
+  const { profile } = await requireWriteAccess();
+  const tracking = setRpeTracking(profile.id, on);
+  revalidateActivitySurfaces();
+  return { tracking };
 }
 
 // MANUAL pair-merge from the Training Log (issue #64): the user picks two activities of

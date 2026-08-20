@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
 import { workerDbPath } from "./worker-env";
+import { withVisitFact } from "./visit-form-helpers";
 
 // Preventive visits/screenings in Upcoming (issues #82 + #86). The seeded
 // profile 1 is a ~40-year-old with a birthdate (scripts/seed.ts), so the pure
@@ -284,12 +285,27 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     // The create form is prefilled from the preventive item: its title and the
     // rule's mapped visit kind (skin check → screening).
     const visitDialog = page.getByRole("dialog", { name: "Add visit" });
-    await expect(visitDialog.getByLabel("Reason / title")).toHaveValue(
+    // The CHIPS state the prefill, which is the whole promise of the pattern: the
+    // person sees the sentence the Book CTA already filled in and confirms it, rather
+    // than opening two editors to check.
+    await expect(visitDialog.getByTestId("visit-fact-reason")).toContainText(
       "Skin check"
     );
-    await expect(visitDialog.getByLabel("Kind (optional)")).toHaveValue(
-      "screening"
+    await expect(visitDialog.getByTestId("visit-fact-kind")).toContainText(
+      "Screening"
     );
+    // And the fields behind them really carry it — a chip that stated a value the form
+    // would not post is the one failure the chip row could hide.
+    await withVisitFact(visitDialog, "reason", async () => {
+      await expect(visitDialog.getByLabel("Reason / title")).toHaveValue(
+        "Skin check"
+      );
+    });
+    await withVisitFact(visitDialog, "kind", async () => {
+      await expect(visitDialog.getByLabel("Kind (optional)")).toHaveValue(
+        "screening"
+      );
+    });
 
     // Save the (still-scheduled) visit — the date is prefilled to the suggested day.
     await visitDialog.getByRole("button", { name: "Add", exact: true }).click();

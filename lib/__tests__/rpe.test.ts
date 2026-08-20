@@ -4,8 +4,12 @@ import {
   stepRpe,
   fmtRpe,
   rpeSummaryText,
-  RPE_DEFAULT,
+  mintRpeTracking,
 } from "@/lib/rpe";
+
+// The scale an OPTED-IN profile steps over (#3335). A test may mint one directly;
+// production may not, and lib/__tests__/rpe-opt-in.test.ts holds that line.
+const tracking = mintRpeTracking();
 
 describe("canonicalRpe — write-boundary canonicalization (#743)", () => {
   it("passes an on-grid in-range value through unchanged", () => {
@@ -38,16 +42,28 @@ describe("canonicalRpe — write-boundary canonicalization (#743)", () => {
 
 describe("stepRpe — the set-row stepper (#743)", () => {
   it("seeds the default working rating when stepping up from blank", () => {
-    expect(stepRpe(null, 1)).toBe(RPE_DEFAULT);
+    expect(stepRpe(tracking, null, 1)).toBe(tracking.seed);
   });
   it("clears back to blank when stepping down off the floor", () => {
-    expect(stepRpe(5, -1)).toBeNull();
-    expect(stepRpe(null, -1)).toBeNull();
+    expect(stepRpe(tracking, 5, -1)).toBeNull();
+    expect(stepRpe(tracking, null, -1)).toBeNull();
   });
   it("steps by a half point and clamps at the ceiling", () => {
-    expect(stepRpe(7, 1)).toBe(7.5);
-    expect(stepRpe(8.5, -1)).toBe(8);
-    expect(stepRpe(10, 1)).toBe(10); // clamped
+    expect(stepRpe(tracking, 7, 1)).toBe(7.5);
+    expect(stepRpe(tracking, 8.5, -1)).toBe(8);
+    expect(stepRpe(tracking, 10, 1)).toBe(10); // clamped
+  });
+  // The stepper reads its bounds off the TRACKING, not off module constants —
+  // which is what makes "no tracking, no control" mean something rather than
+  // being a null-check anyone could route around.
+  it("steps over the tracked scale, floor and ceiling included", () => {
+    expect(tracking.min).toBe(5);
+    expect(tracking.max).toBe(10);
+    expect(stepRpe(tracking, tracking.max, 1)).toBe(tracking.max);
+    expect(stepRpe(tracking, tracking.min, -1)).toBeNull();
+    expect(stepRpe(tracking, tracking.min, 1)).toBe(
+      tracking.min + tracking.step
+    );
   });
 });
 

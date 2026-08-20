@@ -7,6 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
   CRISIS_OVERRIDE_CONTACT,
 } from "./fixture-logins";
+import { withVisitFact } from "./visit-form-helpers";
 
 // #997 (mental-health visit kind + shared-surface sensitivity) and #996 (passive
 // crisis-resource surface + configurable resources). Runs as E2E_LOGIN_CRISIS in its
@@ -24,8 +25,12 @@ async function bookVisit(page: Page, title: string, kind: string) {
   await expect(upcoming).toBeVisible();
   await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
   const dialog = page.getByRole("dialog", { name: "Add visit" });
-  await dialog.getByLabel("Reason / title").fill(title);
-  await dialog.getByLabel("Kind (optional)").selectOption(kind);
+  await withVisitFact(dialog, "reason", async () => {
+    await dialog.getByLabel("Reason / title").fill(title);
+  });
+  await withVisitFact(dialog, "kind", async () => {
+    await dialog.getByLabel("Kind (optional)").selectOption(kind);
+  });
   await settledClick(
     page,
     dialog.getByRole("button", { name: "Add", exact: true })

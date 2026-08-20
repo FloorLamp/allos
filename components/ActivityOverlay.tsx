@@ -7,6 +7,7 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import type { RpeTracking } from "@/lib/rpe";
 import type { Equipment } from "@/lib/types";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import { useLockBodyScroll } from "./useLockBodyScroll";
@@ -44,6 +45,7 @@ export default function ActivityOverlay({
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
+  rpeTracking = null,
   hidden = false,
   onMinimize,
   onClose,
@@ -69,6 +71,7 @@ export default function ActivityOverlay({
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
+  rpeTracking?: RpeTracking | null;
   // Minimized to the app-wide bar (#921): the workspace stays MOUNTED (so the form's
   // rest timer / elapsed clock keep running) but is display:none, and the page
   // behind is unlocked. The bar is the restore affordance.
@@ -209,6 +212,7 @@ export default function ActivityOverlay({
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
+          rpeTracking={rpeTracking}
           onClose={dismissWorkspace}
           onCloseRequestReady={registerCloseRequest}
           onDeleted={onDeleted}
