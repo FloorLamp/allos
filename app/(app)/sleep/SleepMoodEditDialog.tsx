@@ -204,8 +204,11 @@ export default function SleepMoodEditDialog(
   const stateSignature = [date, sleepHours, sleepMinutes, valence ?? ""].join(
     "|"
   );
-  const openedWith = useRef(stateSignature);
-  const hasUnsavedEdit = stateSignature !== openedWith.current;
+  // Lazy initial state rather than a ref: this IS read during render, which is what
+  // `react-hooks/refs` refuses a ref for, and "the value this mounted with" is exactly
+  // what a lazy initializer is.
+  const [openedWith] = useState(() => stateSignature);
+  const hasUnsavedEdit = stateSignature !== openedWith;
 
   const summary = sleepFactSummary({
     // An edit's date is stated by the dialog's own title and is not editable, so it is
