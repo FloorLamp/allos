@@ -30,8 +30,10 @@ test("a poisoned session heals on the next client navigation", async ({
   const sidebar = page.locator("aside nav");
   await followLink(
     page,
-    sidebar.getByRole("link", { name: "Upcoming" }),
-    /\/upcoming$/
+    // A top-level row: #3079 put Upcoming behind the collapsed "Plan & review"
+    // group, and this case only needs SOME client navigation away from "/".
+    sidebar.getByRole("link", { name: "Trends" }),
+    /\/trends$/
   );
   await expect(page.locator("html")).toHaveClass(/\bdark\b/);
 

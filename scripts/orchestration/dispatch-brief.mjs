@@ -429,6 +429,21 @@ ${MIGRATION_LINES}
   markers FROM THE COMPONENTS — testids AND accessible labels, since a spec using
   getByLabel names no testid — then grep the whole tree. Over-matching costs a
   minute; missing costs a CI round. Recipe in docs/internals/e2e-hygiene.md.
+  A MARKER SWEEP IS NECESSARY AND NOT SUFFICIENT. Both of these were measured on
+  2026-08-20 by lanes that ran a thorough marker sweep and still shipped a red:
+    * A SPEC CAN ADDRESS YOUR ELEMENT WITHOUT NAMING A MARKER. nav-pending.spec.ts
+      locates a row as \`aside nav a[href="/timeline"]\` — no testid, no accessible
+      label, nothing a marker grep can match. Collapsing a nav group removed it from
+      the DOM and the failure read as a PendingNavLink regression. So ALSO grep for
+      the raw shapes: href values, role+attribute selectors, \`locator("...")\` CSS.
+    * A SPEC CAN BREAK WITHOUT ADDRESSING YOUR ELEMENT AT ALL. timeline-chrome
+      asserts GEOMETRY — a pinned element's y within a band — and names no nav
+      marker whatsoever, so no sweep over markers of any kind reaches it. THE RULE:
+      a spec that measures position, size or overflow is affected by ANY change to
+      shared chrome, layout or stacking. If your diff touches a shell, a nav, a
+      wrapper element, or anything portalled, enumerate the geometry-asserting specs
+      SEPARATELY — grep for boundingBox, toBeInViewport, elementFromPoint, scroll
+      offsets and pixel comparisons — and run them whether or not they mention you.
 - VERIFY STATE AT REPORT TIME, BY ASKING RATHER THAN REMEMBERING. A command's output
   is a claim about the moment it ran, and your gates take 20-40 minutes while this
   repo merges roughly every 20. \`git merge-base --is-ancestor origin/main HEAD\`
@@ -439,6 +454,14 @@ ${MIGRATION_LINES}
   AND THE ANSWER MUST MEAN WHAT YOU THINK: \`--is-ancestor\` asks "do these share
   history", which after a SQUASH merge is NOT "is my work in main" — post-merge, ask
   about CONTENT. Same command, opposite verdicts, both correct.
+  AND A CONTENT CHECK CAN LIE IN THE REASSURING DIRECTION. A single-line \`grep\` for a
+  sentence reads a WRAPPED one as absent, and it fails toward "missing" — which is the
+  direction that prompts you to go and add something already there. Measured
+  2026-08-20: a lane reported a doc line missing, went to fix it, and found its
+  \`grep -c\` had only failed on a line break. A verification that manufactures work is
+  worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
+  that cannot wrap, or use \`rg -U\`, and when a content check says something is
+  missing, OPEN THE FILE before believing it.
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
