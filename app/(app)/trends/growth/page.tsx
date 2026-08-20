@@ -81,14 +81,21 @@ export default async function GrowthTrendsPage(props: {
       className="mx-auto space-y-4 md:space-y-6"
       data-testid="growth-detail-page"
     >
-      <div>
-        <BackLink href="/trends#body" label="Back to Body" className="mb-3" />
-        <PageHeader
-          className="mb-0!"
-          title="Growth Percentiles"
-          subtitle="WHO and CDC reference trajectories across height, weight, body mass index, and head circumference."
-        />
-      </div>
+      {/* No wrapper, and no margin of its own: the back link and the title are
+          direct children of the container, so the gap between them is the
+          PageContainer's `space-y-4 md:space-y-6` — the same mechanism, and the
+          same call site byte-for-byte, as the sibling /trends/metric/[kind]
+          page. This used to sit in a bare `<div>`, which blocked `space-y` and
+          left the link carrying an `mb-3` the sibling did not have: a 12px gap
+          here against 16px there, in the one hub whose grammar #3237 exists to
+          converge. Removing the wrapper removes the override rather than
+          picking between the two numbers. */}
+      <BackLink href="/trends#body" label="Back to Body" className="" />
+      <PageHeader
+        className="mb-0!"
+        title="Growth Percentiles"
+        subtitle="WHO and CDC reference trajectories across height, weight, body mass index, and head circumference."
+      />
 
       <DateRangeControl
         basePath="/trends/growth"

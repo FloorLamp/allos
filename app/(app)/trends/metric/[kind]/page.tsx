@@ -284,7 +284,7 @@ export default async function TrendMetricDetailPage(props: {
   if (!isTrendMetricSlug(kind)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" />
+        <BackLink href="/trends#body" label="Back to Body" className="" />
         <PageHeader title="Metric" />
         <EmptyState message="Unknown metric." />
       </PageContainer>
@@ -301,7 +301,7 @@ export default async function TrendMetricDetailPage(props: {
   if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" />
+        <BackLink href="/trends#body" label="Back to Body" className="" />
         <PageHeader title="Metric" />
         <EmptyState message="Unknown metric." />
       </PageContainer>

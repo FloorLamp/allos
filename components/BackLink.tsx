@@ -31,6 +31,22 @@ import type { AppRoute } from "@/lib/hrefs";
 //     repeat tap on a pending link is absorbed. Hand-rolled links got none of
 //     that; adopting the house component is how a surface picks it up.
 //
+// WHAT THIS IS NOT: a back BUTTON. `IconArrowLeft` also appears on controls that
+// REVERT IN-PAGE STATE rather than navigate — the offline page's card and
+// snapshot views, and the activity recap's step-back — and all of those are
+// `<button onClick>`, not links. They must not adopt this component, and it must
+// not grow a mode for them: `href` plus `PendingLink` IS what it guarantees — a
+// real destination, a pending state, an absorbed repeat tap — and a control that
+// changes local state has no destination to name and nothing to be pending on. A
+// non-navigating mode would dissolve the property the component exists for, on
+// behalf of consumers that do not want it.
+//
+// This matters because #3237's acceptance criterion asks for a grep finding no
+// hand-rolled `IconArrowLeft` back links, and THAT GREP IS NOT EMPTY AND IS NOT
+// MEANT TO BE: those two sites are the entire remainder. A census that greps the
+// icon and not the element type will refile this as unfinished work every time.
+// Do not "finish the job" by converting them.
+//
 // `label` is both the visible text and the accessible name, so a spec finding it
 // by `getByRole("link", { name })` needs no testid.
 export default function BackLink({
