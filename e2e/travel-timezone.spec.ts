@@ -200,10 +200,22 @@ test.describe("travel timezone banner (#3263)", () => {
       // The trip is over, so the marker that said "away" is gone.
       expect(travellerSettings().timezone_home).toBeNull();
 
+      // AND NOW NAVIGATE, which is the whole point of the tell being durable.
+      //
+      // The revert fires from an effect on the page that was open when the device
+      // came home, and this test — like a person tapping a link — leaves that page
+      // while the switch is still in flight. The document that would have shown the
+      // message is gone. If the tell lived in that component, it died with it; the
+      // day would have moved and nothing would ever have said so.
+      //
+      // It is a server fact instead, so the NEXT render owes it. This reload is the
+      // next render.
+      await page.reload();
+
       // NO PROMPT. Coming home is lossless and reverses a state the person entered
       // deliberately, so it happens and then tells (#2471).
       const notice = page.getByTestId("travel-timezone-notice");
-      await expect(notice).toBeVisible();
+      await expect(notice).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId("travel-timezone-accept")).toHaveCount(0);
       // The tell names BOTH zones — "back on home time" alone leaves the person
       // guessing which of the trip's zones the app had been running on.
