@@ -105,6 +105,30 @@ test.describe("mobile clipped-content audit (#1063)", () => {
     await expectNoClippedContent(page);
   });
 
+  // #3237 moved this page's back affordance out of the heading ROW (where it was
+  // an icon with its label `hidden sm:inline`, because the row had no space for
+  // a label) onto its own line above the title. The label stopped being hidden
+  // in the same change, so what needs proving at phone width is that it fits
+  // unhidden — with the longest title in the metric catalog under it.
+  test("/trends/metric: an unhidden back label and the longest metric title both fit a phone viewport", async ({
+    page,
+  }) => {
+    test.slow();
+    await phone(page);
+    await page.goto("/trends/metric/skin-temp");
+    // The full label, not the bare arrow it used to collapse to below `sm`.
+    await expect(
+      page.getByRole("link", { name: "Back to Body" })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Skin Temperature Variation",
+        level: 1,
+      })
+    ).toBeVisible();
+    await expectNoClippedContent(page);
+  });
+
   test("/settings/health: settings sections fit a phone viewport", async ({
     page,
   }) => {

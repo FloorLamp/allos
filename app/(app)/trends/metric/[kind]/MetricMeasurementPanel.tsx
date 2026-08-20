@@ -18,7 +18,6 @@ export default function MetricMeasurementPanel({
   label,
   title,
   subtitle,
-  leading,
   headerAction,
   ...props
 }: Omit<MeasurementsQuickAddProps, "metric" | "onSaved" | "headerSlot"> & {
@@ -26,17 +25,19 @@ export default function MetricMeasurementPanel({
   label: string;
   title: string;
   subtitle?: ReactNode;
-  leading: ReactNode;
   headerAction?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <div className="min-w-0" data-testid="metric-measurement-panel">
-      <div className="flex min-w-0 items-start gap-2 sm:block">
-        {leading}
+      {/* The back affordance used to arrive here as `leading` and sit INSIDE this
+          row below `sm`. It is the page's, not the panel's, and since #3237 the
+          page renders it above this whole block — so the row is just the heading
+          and its actions. */}
+      <div className="min-w-0">
         <PageHeader
-          className="mb-0! min-w-0 flex-1 gap-2! sm:mt-3 sm:gap-4!"
+          className="mb-0! min-w-0 gap-2! sm:gap-4!"
           title={title}
           subtitle={subtitle}
           actionAlign="start"

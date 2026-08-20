@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -94,6 +93,7 @@ import { suggestedPersonalBest } from "@/lib/peak-flow";
 import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
 import MetricMeasurementPanel from "./MetricMeasurementPanel";
+import BackLink from "@/components/BackLink";
 import {
   isMeasurementEntryAllowed,
   type MeasurementEntryMetric,
@@ -285,7 +285,7 @@ export default async function TrendMetricDetailPage(props: {
   if (!isTrendMetricSlug(kind)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink />
+        <BackLink href="/trends#body" label="Back to Body" />
         <PageHeader title="Metric" />
         <EmptyState message="Unknown metric." />
       </PageContainer>
@@ -302,7 +302,7 @@ export default async function TrendMetricDetailPage(props: {
   if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink />
+        <BackLink href="/trends#body" label="Back to Body" />
         <PageHeader title="Metric" />
         <EmptyState message="Unknown metric." />
       </PageContainer>
@@ -521,13 +521,29 @@ export default async function TrendMetricDetailPage(props: {
         className="mx-auto space-y-4 md:space-y-6"
         data-testid="metric-detail-page"
       >
+        {/* Above the title at EVERY width (#3237), and hoisted out of the ternary
+            so both header compositions get the same placement rather than each
+            carrying its own copy.
+
+            This used to ride below `sm` as a flex sibling of the heading — an
+            icon inside the header's own row, its label `hidden sm:inline`
+            because that shared row had no space for it. The hiding was a
+            consequence of the placement, not an independent constraint, and
+            measuring is what settled it rather than assuming either way: at
+            390px, with the longest title in the metric catalog ("Skin
+            Temperature Variation"), the link renders its full label at 105px on
+            its own line (top 73) and the h1 takes 258px on the next (top 109),
+            both inside a 358px content box. Nothing competes, so nothing needs
+            hiding, and no icon-only variant was added — an option added on the
+            hypothesis is how a shared component starts accumulating them.
+            e2e/mobile-overflow.spec.ts holds the guard at 360px. */}
+        <BackLink href="/trends#body" label="Back to Body" className="" />
         {meta.quickAdd === "measurements" && measurementEntry ? (
           <MetricMeasurementPanel
             metric={measurementEntry.metric}
             label={measurementEntry.label}
             title={meta.title}
             subtitle={latestSummary}
-            leading={<BackLink />}
             headerAction={starAction}
             weightUnit={weightUnit}
             defaultDate={todayStr}
@@ -547,10 +563,9 @@ export default async function TrendMetricDetailPage(props: {
             showHeadCirc={entryGates.showHeadCirc}
           />
         ) : (
-          <div className="flex min-w-0 items-start gap-2 sm:block">
-            <BackLink />
+          <div className="min-w-0">
             <PageHeader
-              className="mb-0! min-w-0 flex-1 sm:mt-3"
+              className="mb-0! min-w-0"
               title={meta.title}
               subtitle={latestSummary}
               action={starAction}
@@ -683,19 +698,6 @@ export default async function TrendMetricDetailPage(props: {
         />
       </PageContainer>
     </TrendAnnotationProvider>
-  );
-}
-
-function BackLink() {
-  return (
-    <Link
-      href="/trends#body"
-      aria-label="Back to Body"
-      className="mt-0.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1 text-sm text-brand-700 hover:bg-brand-50 hover:no-underline sm:px-2 dark:text-brand-400 dark:hover:bg-brand-950/40"
-    >
-      <IconArrowLeft className="h-4 w-4" aria-hidden />
-      <span className="hidden sm:inline">Back to Body</span>
-    </Link>
   );
 }
 

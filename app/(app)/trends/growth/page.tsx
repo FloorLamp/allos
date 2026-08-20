@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getBodyMetricDailySeries, getMetricDailyTotals } from "@/lib/queries";
@@ -24,6 +23,7 @@ import PageContainer from "@/components/PageContainer";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import DateRangeControl from "@/components/DateRangeControl";
 import { EmptyState, PageHeader } from "@/components/ui";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -83,15 +83,9 @@ export default async function GrowthTrendsPage(props: {
       data-testid="growth-detail-page"
     >
       <div>
-        <Link
-          href="/trends#body"
-          className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm text-brand-700 hover:bg-brand-50 hover:no-underline dark:text-brand-400 dark:hover:bg-brand-950/40"
-        >
-          <IconArrowLeft className="h-4 w-4" aria-hidden />
-          Back to Body
-        </Link>
+        <BackLink href="/trends#body" label="Back to Body" className="mb-3" />
         <PageHeader
-          className="mb-0! mt-3"
+          className="mb-0!"
           title="Growth Percentiles"
           subtitle="WHO and CDC reference trajectories across height, weight, body mass index, and head circumference."
         />
