@@ -72,9 +72,16 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
   // the actual sidebar rather than page.goto("/wellness"), so dropping the
   // relevance-gated registration cannot leave the empty/create surface stranded.
   await page.goto("/");
-  const wellness = page
-    .locator("aside nav")
-    .getByRole("link", { name: "Wellness", exact: true });
+  // #3079 demoted Wellness from a top-level row to a child of "Plan & review", so
+  // the sidebar path is now one disclosure longer. Walking that longer path is
+  // exactly what this case is for: it is the claim that dropping the row did not
+  // strand the practice home behind chrome nobody can open.
+  const sidebar = page.locator("aside nav");
+  await sidebar.getByRole("button", { name: "Plan & review" }).click();
+  const wellness = sidebar.getByRole("link", {
+    name: "Wellness",
+    exact: true,
+  });
   await expect(wellness).toBeVisible();
   await followLink(page, wellness, /\/wellness$/);
   await expect(
