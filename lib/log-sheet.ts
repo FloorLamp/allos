@@ -76,6 +76,11 @@ export const LOG_SEGMENT_CENSUS = {
   "log-dose": "care",
   "log-practice": "care",
   "log-mood": "care",
+  // Care, on the segment's own definition above: a substance use is something you
+  // ADMINISTER to yourself. It is not Food even for alcohol — the row offers whatever
+  // this profile tracks (#3327), and the one curated substance that happens to ride
+  // the food ledger does not get to name the segment for all the others.
+  "log-substance": "care",
   "add-document": "care",
 } as const satisfies Record<QuickLogId, LogSegmentId>;
 
@@ -86,8 +91,11 @@ export const LOG_SEGMENT_CENSUS = {
  *
  * Segments with no surviving entry are dropped entirely.
  */
-export function logSheetSegments(cycleRelevant = true): LogSegment[] {
-  const items = quickLogMenu(cycleRelevant);
+export function logSheetSegments(
+  cycleRelevant = true,
+  substanceRelevant = false
+): LogSegment[] {
+  const items = quickLogMenu(cycleRelevant, substanceRelevant);
   return SEGMENT_ORDER.map((id) => ({
     id,
     label: SEGMENT_LABELS[id],
@@ -203,6 +211,18 @@ export const LOG_DAY_SOURCES = {
   "log-stool": ["metric_samples"],
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
+  // A substance tap is one hand-entered `substance_daily_totals` row (#3327), counted
+  // on `source = 'manual'` — NOT NULL with a 'manual' default, the metric_samples
+  // spelling, so there is no null half to admit.
+  //
+  // ALCOHOL IS DELIBERATELY NOT DECLARED HERE. Its taps land on `food_daily_totals`
+  // (#860/#944 — a standard drink IS one serving of the curated alcohol group), which
+  // "log-food" already declares and the statement already counts. Naming it twice
+  // would count one tap as evidence for two segments, which is exactly the skew this
+  // census exists to make visible. The cost is stated: a profile whose ONLY substance
+  // is alcohol carries its logging evidence in Food rather than Care, which is where
+  // the row was written.
+  "log-substance": ["substance_daily_totals"],
   // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing
   // outside its own read/write/registry modules may name the table, because a
   // subjective self-rating must never feed a flag, a retest clock, a streak or

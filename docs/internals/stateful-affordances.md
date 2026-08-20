@@ -353,6 +353,18 @@ queue's own admission criterion) can no longer ship unqueued-and-unargued. The
 same #2130 mechanism gives the quick-log sheet, the palette, and the Telegram
 vocabulary a per-domain census over `lib/loggable-domains.ts`.
 
+**The censuses live in code, not in a table here** — `QUICK_LOG_DOMAIN_CENSUS`
+(`lib/quick-log.ts`), `PALETTE_DOMAIN_CENSUS`, `TELEGRAM_DOMAIN_CENSUS`, and the
+offline queue's `OFFLINE_QUEUE_COVERAGE` — because a prose copy of a `satisfies`
+record is a second answer that drifts. What belongs here is what the axis cannot say
+about itself: **a domain missing from `LOGGABLE_DOMAINS` is invisible to all four at
+once**, and no census reports it, because a census can only be total over the axis it
+is asserted against. Fasting and manual sleep are in exactly that position today
+(#3208) — real, loggable, and named by no census. Substance was the opposite case: on
+the axis, argued out of the sheet, and #3327 flipped its row from an
+`arguedExclusion(...)` to `log-substance` once both halves of the original argument
+were answered (docs/internals/substances.md).
+
 **The four feedback designs.** A new one-tap surface picks one of these; it does
 not invent a fifth.
 

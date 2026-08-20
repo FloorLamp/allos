@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
@@ -279,6 +279,108 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(page.getByTestId("substance-week-count-cannabis")).toHaveText(
       `${before} ${before === 1 ? "use" : "uses"} logged this week.`
     );
+  });
+
+  // #3326 — the entry point. #3323 shipped the whole custom vocabulary and nothing in
+  // the app could reach it; this drives the door that reaches it.
+  //
+  // The name is a low-entropy fixture word (#868), and the test is RELATIVE like every
+  // other in this file: it reads the card's count before and after, and undoes what it
+  // logged, so --repeat-each stays clean without reseeding.
+  test("name a substance and log a use in one step — no create step, and the card is a full card (#3326)", async () => {
+    const NAME = "Kava 1";
+    await page.goto("/records/specialty/substance-use");
+
+    const card = page.getByTestId(`substance-card-${NAME}`);
+    const before = (await card.count()) > 0 ? await weekCount(page, NAME) : 0;
+
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    const form = page.getByTestId("track-substance-form");
+    await expect(form).toBeVisible();
+    await settledFill(page, page.getByTestId("track-substance-name"), NAME);
+    await settledClick(page, page.getByTestId("track-substance-save"));
+
+    // The card exists because the USE does — there was no create step in between.
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    expect(await weekCount(page, NAME)).toBe(before + 1);
+
+    // Case is the person's own spelling, not a folded key (#3325 owns folding, in
+    // this vocabulary and the symptom one at once).
+    await expect(card.getByRole("heading", { name: NAME })).toBeVisible();
+
+    // A FULL card, not a lesser one: the same one-tap log/undo the curated three get.
+    await expect(page.getByTestId(`substance-log-${NAME}`)).toBeVisible();
+    await expect(page.getByTestId(`substance-undo-${NAME}`)).toBeVisible();
+
+    // And NO cap or screener framing, because nobody opted into a target — the
+    // absence of a SubstanceCapStatus is the mechanism, so there is nothing to render
+    // (docs/internals/substances.md).
+    await expect(
+      page.getByTestId(`substance-cap-progress-${NAME}`)
+    ).toHaveCount(0);
+
+    // Undo what this test logged, so the fixture is where it started.
+    await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
+  });
+
+  test("a substance name over the cap is refused with a readable message, never trimmed to fit (#3326)", async () => {
+    await page.goto("/records/specialty/substance-use");
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    await expect(page.getByTestId("track-substance-form")).toBeVisible();
+
+    // 61 characters — one over. The old normalizer would have stored the first 60
+    // and said nothing, which is a different substance than the one typed.
+    const tooLong = "kava".repeat(15) + "x";
+    expect(tooLong.length).toBe(61);
+    await settledFill(page, page.getByTestId("track-substance-name"), tooLong);
+
+    // THE SUBMIT IS RETRIED, AND THE REASON IS NOT LATENCY — read this before
+    // "simplifying" it to a bare `.click()`, which is what it was when it went red.
+    //
+    // This refusal is computed ENTIRELY on the client: TrackSubstanceControl's
+    // handler calls validateSubstanceName, calls setError, and RETURNS — it never
+    // reaches the Server Action. So the error paragraph appears on the very next
+    // React commit or it never appears at all, and a bigger ceiling on the assertion
+    // below would be a budget spent waiting for something that was never produced.
+    // The inner ceiling is deliberately SHORT for that reason.
+    //
+    // What actually went wrong in CI (run 32349915874, e2e-changed, repeat 2 of 3)
+    // was a LOST submit: repeat 1 of this same test passed in 537 ms and repeat 2
+    // spent the whole 5 s ceiling with `track-substance-error` absent from the DOM,
+    // which is only reachable if the handler never ran. It did not reproduce here —
+    // ~100 local trials, including the full CI shape (both changed specs together,
+    // --repeat-each=3, 2 workers) and a CDP `Emulation.setCPUThrottlingRate` probe at
+    // rate 20 both with and without the hydration waits, 10/10 green — so the trigger
+    // is not pinned and the conservative shape is the honest one.
+    //
+    // A RETRY IS SAFE HERE, WHICH IS NOT TRUE OF MOST CLICKS. `hydratedClick` is the
+    // usual answer to a lost tap, but it cannot help this one: the panel's form is
+    // CREATED by the toggle interaction, so it is client-rendered and carries React's
+    // fibers from birth — the hydration probe passes instantly and the click it then
+    // makes is the same bare click. And unlike the toggle it sits behind
+    // (`setOpen(v => !v)`, where a second tap undoes the first), re-submitting a
+    // refused name is IDEMPOTENT: the handler returns before any write, so every
+    // extra attempt can only set the same error string. Nothing accumulates.
+    const error = page.getByTestId("track-substance-error");
+    await expect(async () => {
+      await page.getByTestId("track-substance-save").click();
+      await expect(
+        error,
+        "the submit did not render a refusal — handler never ran"
+      ).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000, intervals: [200, 500, 1000] }); // topass-ok: a client-only submit with no POST and no navigation to await, so there is no single awaitable event; safe to re-dispatch because the refusal path writes nothing and can only re-set the same error
+    await expect(error).toContainText("60");
+
+    // Nothing was created under any name — not the full one, and not a 60-character
+    // near-miss of it. This is an ABSENCE assertion, and it is deliberately made
+    // AFTER the presence assertion above: that error rendering is proof the handler
+    // ran and refused BEFORE reaching the Server Action, so there is no in-flight
+    // write this could race. A bigger ceiling here could only hide a real write,
+    // never reveal one.
+    await expect(page.getByTestId(`substance-card-${tooLong}`)).toHaveCount(0);
+    await expect(
+      page.getByTestId(`substance-card-${tooLong.slice(0, 60)}`)
+    ).toHaveCount(0);
   });
 
   test("an alcohol weekly cap shows the calm progress line; removing it clears the line", async () => {

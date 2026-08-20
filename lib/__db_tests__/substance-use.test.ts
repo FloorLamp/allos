@@ -48,6 +48,8 @@ import {
   getAlcoholWeeklyTrend,
   getSubstanceWeeklyTrend,
   getProfileSubstanceKeys,
+  getLoggedSubstanceKeys,
+  hasLoggedSubstance,
   getAllSubstanceDailyTotals,
 } from "@/lib/queries";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
@@ -696,6 +698,60 @@ describe("custom substances (#3279)", () => {
       "nicotine",
       "cannabis",
     ]);
+  });
+
+  // #3327 — the OTHER question about a profile's substances, and the reason it needed
+  // its own read. `getProfileSubstanceKeys` answers "what is the VOCABULARY?" and
+  // always opens with the curated three, because they are the offered defaults on the
+  // page that offers them. A quick surface must not offer them to somebody who has
+  // never logged any: an empty offer is worse than no offer.
+  it("distinguishes the offered vocabulary from what this profile has actually logged", () => {
+    const p = newProfile("SU logged keys");
+    const day = today(p);
+
+    // A brand-new profile has the whole vocabulary and NOTHING logged. This is the
+    // pair the quick-log row is gated on, and the two answers differ.
+    expect(getProfileSubstanceKeys(p)).toEqual([
+      "alcohol",
+      "nicotine",
+      "cannabis",
+    ]);
+    expect(getLoggedSubstanceKeys(p)).toEqual([]);
+    expect(hasLoggedSubstance(p)).toBe(false);
+
+    // A custom substance qualifies the moment it exists, because it exists BY being
+    // logged — which is what keeps #3326's new substance reachable the same day.
+    logSubstanceUnitCore(p, "Kratom", day);
+    expect(getLoggedSubstanceKeys(p)).toEqual(["Kratom"]);
+    expect(hasLoggedSubstance(p)).toBe(true);
+
+    // A curated substance qualifies on its own rows, and only on its own: logging
+    // nicotine does not vouch for cannabis.
+    logSubstanceUnitCore(p, "nicotine", day);
+    expect(getLoggedSubstanceKeys(p)).toEqual(["nicotine", "Kratom"]);
+
+    // Alcohol's ledger is food_daily_totals (#860/#944), so its presence has to be
+    // asked of the OTHER store — a scan of substance_daily_totals alone would report
+    // a drinker as tracking nothing.
+    logFoodServingCore(p, "alcohol", day);
+    expect(getLoggedSubstanceKeys(p)).toEqual([
+      "alcohol",
+      "nicotine",
+      "Kratom",
+    ]);
+  });
+
+  it("stops offering a substance to the quick surfaces once its last row is undone", () => {
+    // The ledger-is-the-register contract reaching the quick-log gate: #3324 is the
+    // open question about whether that is right for substances, and this pins what
+    // the tree does today rather than what it should eventually do.
+    const p = newProfile("SU logged keys undo");
+    const day = today(p);
+    logSubstanceUnitCore(p, "Kratom", day);
+    expect(hasLoggedSubstance(p)).toBe(true);
+    undoSubstanceUnitCore(p, "Kratom", day);
+    expect(getLoggedSubstanceKeys(p)).toEqual([]);
+    expect(hasLoggedSubstance(p)).toBe(false);
   });
 
   it("carries a custom substance through history correction like the curated three", () => {

@@ -8,6 +8,7 @@ import {
   IconChevronRight,
   IconDroplet,
   IconToiletPaper,
+  IconFlask,
   IconFileText,
   IconHeartbeat,
   IconMoodSmile,
@@ -99,6 +100,7 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   mood: IconMoodSmile,
   droplet: IconDroplet,
   toilet: IconToiletPaper,
+  flask: IconFlask,
   document: IconFileText,
 };
 
@@ -106,6 +108,7 @@ export default function QuickLogSheet({
   open,
   onClose,
   cycleRelevant = true,
+  substanceRelevant = false,
   logHabitDays = null,
 }: {
   open: boolean;
@@ -113,6 +116,11 @@ export default function QuickLogSheet({
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
   // gating the Cycle nav entry and dashboard control atom (#1892).
   cycleRelevant?: boolean;
+  // The #3327 bit, resolved once by the app layout: this profile has a substance
+  // ledger row AND is not a known minor. Defaults FALSE, unlike every other gate
+  // here — an unthreaded caller must not offer a substance row to a profile that
+  // tracks none, which is the defect the row exists to avoid (lib/quick-log.ts).
+  substanceRelevant?: boolean;
   // Days-logged per segment over the trailing quarter (#2709), resolved once by
   // the shell. Consulted on the DASHBOARD only; null means "not gathered".
   logHabitDays?: SegmentLogDays | null;
@@ -128,7 +136,7 @@ export default function QuickLogSheet({
   } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
 
-  const segments = logSheetSegments(cycleRelevant)
+  const segments = logSheetSegments(cycleRelevant, substanceRelevant)
     .map((entry) => ({
       ...entry,
       items: entry.items.filter(

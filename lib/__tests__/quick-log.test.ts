@@ -110,6 +110,47 @@ describe("quickLogMenu", () => {
     ]);
   });
 
+  // Issue #3327 — the substance gate, and the ASYMMETRY with the period gate above
+  // is the decision, not an oversight. Hiding the period row from someone entitled to
+  // it costs them a log, so that gate defaults OPEN. Showing a substance row to a
+  // profile that tracks no substance is an offer with nothing behind it — the exact
+  // defect #3327 exists to remove — so this gate defaults CLOSED.
+  it("shows the substance row only when the substance bit is threaded true", () => {
+    expect(quickLogMenu().map((i) => i.id)).not.toContain("log-substance");
+    expect(quickLogMenu(true).map((i) => i.id)).not.toContain("log-substance");
+    expect(quickLogMenu(true, false).map((i) => i.id)).not.toContain(
+      "log-substance"
+    );
+    expect(quickLogMenu(true, true).map((i) => i.id)).toContain(
+      "log-substance"
+    );
+  });
+
+  it("gates the period and substance rows independently, not as a mode", () => {
+    const noCycle = quickLogMenu(false, true).map((i) => i.id);
+    expect(noCycle).not.toContain("log-period");
+    expect(noCycle).toContain("log-substance");
+    const noSubstance = quickLogMenu(true, false).map((i) => i.id);
+    expect(noSubstance).toContain("log-period");
+    expect(noSubstance).not.toContain("log-substance");
+  });
+
+  it("puts the substance row in Care, after mood and before the document row", () => {
+    expect(quickLogMenu(true, true).map((i) => i.id)).toEqual([
+      LOG_ACTIVITY_ID,
+      "live-workout",
+      "log-food",
+      "log-dose",
+      "log-measurements",
+      "log-practice",
+      "log-mood",
+      "log-period",
+      "log-stool",
+      "log-substance",
+      "add-document",
+    ]);
+  });
+
   it("defaults to SHOWING the period row, so an unthreaded caller never over-hides", () => {
     // The DEFAULT_NAV_RELEVANCE posture: a surface that hasn't resolved the bitset
     // must not hide a row the profile is entitled to.
@@ -169,6 +210,10 @@ describe("the registry itself", () => {
       "mood",
       "cycle",
       "stool",
+      // #3327 — the profile's OWN substances, one tap each. Gathered on open like
+      // every other body here, which is what lets it offer a substance named
+      // through #3326 minutes earlier.
+      "substance",
       "document",
     ]);
   });
@@ -252,6 +297,9 @@ describe("no time declaration on a sheet entry (#2230)", () => {
       "target",
       "training",
       "cycle",
+      // #3327 — the substance-relevance gate. Non-temporal, and added here in the
+      // same change that added it to QuickLogItem, which is what this allowlist asks.
+      "substance",
     ]);
     for (const item of QUICK_LOG_ITEMS) {
       for (const key of Object.keys(item)) {

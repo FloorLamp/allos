@@ -38,14 +38,37 @@ describe("dueDoseChipLabel", () => {
 
 describe("logSheetSegments", () => {
   it("carries exactly the entries quickLogMenu carries, once each", () => {
+    // Both gates, both ways — the view must not add, drop or duplicate a row for
+    // any combination the shell can hand it (#1892 cycle, #3327 substance).
     for (const cycle of [true, false]) {
-      const flat = quickLogMenu(cycle).map((i) => i.id);
-      const grouped = logSheetSegments(cycle).flatMap((s) =>
-        s.items.map((i) => i.id)
-      );
-      expect([...grouped].sort()).toEqual([...flat].sort());
-      expect(new Set(grouped).size).toBe(grouped.length);
+      for (const substance of [true, false]) {
+        const flat = quickLogMenu(cycle, substance).map((i) => i.id);
+        const grouped = logSheetSegments(cycle, substance).flatMap((s) =>
+          s.items.map((i) => i.id)
+        );
+        expect([...grouped].sort()).toEqual([...flat].sort());
+        expect(new Set(grouped).size).toBe(grouped.length);
+      }
     }
+  });
+
+  // #3327 — the substance row is Care, on the segment's own definition: something you
+  // ADMINISTER to yourself. Not Food, even though the one curated substance that
+  // happens to ride the food ledger is alcohol.
+  it("puts the substance row in Care, and drops it entirely when the bit is off", () => {
+    const withRow = logSheetSegments(true, true).find((s) => s.id === "care");
+    expect(withRow?.items.map((i) => i.id)).toEqual([
+      "log-dose",
+      "log-practice",
+      "log-mood",
+      "log-substance",
+      "add-document",
+    ]);
+    const without = logSheetSegments(true, false).find((s) => s.id === "care");
+    expect(without?.items.map((i) => i.id)).not.toContain("log-substance");
+    // Care survives regardless — it has four other rows — so the gate removes a
+    // row, never a segment.
+    expect(without?.items.length).toBe(4);
   });
 
   it("keeps the Body segment when the cycle bit is off", () => {

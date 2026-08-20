@@ -114,6 +114,70 @@ export function getProfileSubstanceKeys(profileId: number): SubstanceKey[] {
   return [...SUBSTANCES, ...custom];
 }
 
+// ---- WHAT THIS PROFILE ACTUALLY TRACKS (#3327) ------------------------------
+//
+// `getProfileSubstanceKeys` above answers "what is this profile's VOCABULARY?", and
+// its answer always opens with the curated three, because they are the app's offered
+// defaults on the page that offers them. That is the wrong question for a quick
+// surface: the sheet must not offer alcohol, nicotine and cannabis to somebody who has
+// never logged any of them — an empty offer is worse than no offer (#3327), and
+// #3279 ruling 3 admits a substance to the quick surfaces on DATA PRESENCE, not on the
+// vocabulary at large.
+//
+// So this asks the narrower question: which substances does this profile have a ledger
+// row for? Every custom key already qualifies by construction — the ledger IS its
+// register, so a key only appears in the DISTINCT scan because rows exist — and the
+// three curated keys are the only ones that can be present-in-vocabulary and
+// absent-in-fact, so only they need the probe. Alcohol's probe reads food_daily_totals
+// because that is alcohol's ledger (#860/#944), through the same dispatch every other
+// read here uses.
+//
+// EVER-LOGGED, not recently-logged. A frequency floor was considered and left out: a
+// substance named through #3326 this morning would sit below any such floor for weeks,
+// so the surface that just took the trouble to create it would refuse to offer it —
+// which reads as broken, not as restraint. The cost of the looser rule is one extra row
+// for somebody who logged a drink once a year ago; the cost of the tighter one is the
+// feature being invisible exactly when it is new. See the open question on #3327 if
+// this needs revisiting.
+export function getLoggedSubstanceKeys(profileId: number): SubstanceKey[] {
+  return getProfileSubstanceKeys(profileId).filter((substance) =>
+    substanceDef(substance).ledger === "food-log"
+      ? db
+          .prepare(
+            `SELECT 1 FROM food_daily_totals
+              WHERE profile_id = ? AND group_key = ? LIMIT 1`
+          )
+          .get(profileId, ALCOHOL_FOOD_GROUP) != null
+      : db
+          .prepare(
+            `SELECT 1 FROM substance_daily_totals
+              WHERE profile_id = ? AND substance = ? LIMIT 1`
+          )
+          .get(profileId, substance) != null
+  );
+}
+
+// Whether the quick-log sheet offers this profile a substance row at all. Its own
+// function rather than `getLoggedSubstanceKeys(...).length > 0` because it is read
+// once per APP-SHELL RENDER, on every route — the list is gathered later, on open, by
+// the overlay's own read action, which is both cheaper and fresher (#1468).
+export function hasLoggedSubstance(profileId: number): boolean {
+  const anyCustom = db
+    .prepare(
+      `SELECT 1 FROM substance_daily_totals WHERE profile_id = ? LIMIT 1`
+    )
+    .get(profileId);
+  if (anyCustom != null) return true;
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM food_daily_totals
+          WHERE profile_id = ? AND group_key = ? LIMIT 1`
+      )
+      .get(profileId, ALCOHOL_FOOD_GROUP) != null
+  );
+}
+
 export function getAllSubstanceDailyTotals(
   profileId: number
 ): SubstanceDailyTotal[] {

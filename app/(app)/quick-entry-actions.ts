@@ -57,6 +57,12 @@ import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import { getBristolReadings } from "@/lib/queries/bristol-stool";
+import {
+  getLoggedSubstanceKeys,
+  getSubstanceWeekState,
+} from "@/lib/queries/substance";
+import { capProgressLine, substanceDef } from "@/lib/substance-use";
+import { isMinor } from "@/lib/life-stage";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -202,6 +208,29 @@ export type QuickEntryData =
       form: "stool";
       todayCount: number;
     }
+  | {
+      // The profile's OWN substances (#3327), one tap each. Every field is resolved
+      // server-side so the panel decides nothing:
+      //
+      //   • `label` is `substanceLabel` — the curated noun, or the person's own
+      //     spelling verbatim for a custom key (#3323, and case is preserved: #3325
+      //     owns folding, in both vocabularies at once).
+      //   • `logLabel` is the substance's own verb — "Log a standard drink" for
+      //     alcohol, "Log a use" for everything else, curated or named.
+      //   • `capProgress` is `capProgressLine` and is NULL for a substance with no
+      //     target. Not "empty": there is nothing to render, because
+      //     `substanceCapStatus` is only produced where a target row exists. That
+      //     absence is the whole opt-in mechanism (docs/internals/substances.md) —
+      //     a profile that opted into no cap can receive no cap framing here, and
+      //     nothing in this payload could manufacture one.
+      form: "substance";
+      substances: {
+        key: string;
+        label: string;
+        logLabel: string;
+        capProgress: string | null;
+      }[];
+    }
   | { form: "unavailable"; message: string };
 
 export async function loadQuickEntry(
@@ -302,6 +331,40 @@ export async function loadQuickEntry(
       };
     }
     return { form: "practice", practices, today: date };
+  }
+
+  if (form === "substance") {
+    // Re-gated server-side on the SAME two facts the sheet row is gated on, so a
+    // hand-written `?quick=log-substance` deep link cannot reach the offer: the #1174
+    // adult gate the whole substance surface carries, and data presence. A profile
+    // that tracks none gets no ROW at all (lib/quick-log.ts) — this branch is what
+    // answers the deep link that skipped the row.
+    if (isMinor(getProfileAge(profile.id))) {
+      return {
+        form: "unavailable",
+        message: "This isn't available for this profile.",
+      };
+    }
+    const keys = getLoggedSubstanceKeys(profile.id);
+    if (keys.length === 0) {
+      return {
+        form: "unavailable",
+        message:
+          "No substances tracked yet. Name one under Health record \u2192 Specialty \u2192 Substance use to log it from here.",
+      };
+    }
+    return {
+      form: "substance",
+      substances: keys.map((key) => {
+        const week = getSubstanceWeekState(profile.id, key);
+        return {
+          key,
+          label: substanceDef(key).label,
+          logLabel: substanceDef(key).logLabel,
+          capProgress: week.status ? capProgressLine(week.status, key) : null,
+        };
+      }),
+    };
   }
 
   if (form === "cycle") {

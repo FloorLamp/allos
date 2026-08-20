@@ -106,6 +106,49 @@ for none.
 Screeners sit behind their own affordance for the same reason: an unadministered
 instrument has no reading, so there is nothing for the ledger-led page to show.
 
+## Naming your own, and where it can be reached from
+
+**Logging it is creating it (#3326).** A custom substance has no registration row, so
+the surface has no create step: one field on Health record › Specialty › Substance use
+takes a name and logs the first use, and the card that appears underneath is the same
+`ConsumptionSection` a curated substance gets. There is nothing else to build, because
+a custom substance is not a lesser kind of substance.
+
+**The 60-character cap is refused, not trimmed.** `resolveSubstanceKey` normalizes and
+truncates, which is right for a stored key and wrong for a person typing — 61 characters
+would silently become a different substance. `validateSubstanceName()` asks "usable
+exactly as typed?" first and then resolves through the same one normalizer, and
+`substanceNameError()` is the single wording both the form and the Server Action use.
+Deliberately no `maxLength` on the input either: the browser would clip a paste without
+a word, which is the same defect in nicer clothes.
+
+**The quick-log sheet's substance row (#3327).** `QUICK_LOG_DOMAIN_CENSUS` argued this
+domain out for years: substance logging lived beside its cap verdict, and a sheet row
+would detach the tap from the context that made it honest. #3279 ruling 1 narrowed that
+to its premise — it presumes a cap exists. The row now ships with both halves answered:
+
+- it is offered **only to a profile that has a substance ledger row**, never for the
+  vocabulary at large, and a profile that tracks none gets **no row at all** — an empty
+  offer is worse than no offer. `hasLoggedSubstance()` gates the row; the list itself is
+  `getLoggedSubstanceKeys()`, gathered on open. Both are distinct from
+  `getProfileSubstanceKeys()`, which answers the _vocabulary_ question and therefore
+  always opens with the curated three;
+- the overlay renders `capProgressLine` beside the tap for any substance whose target
+  exists, and nothing for one whose target does not — so a tap is never detached from a
+  verdict there is one to detach from, and reduction framing never reaches somebody who
+  opted into none.
+
+The gate defaults **closed** wherever it is threaded (`quickLogMenu`, `logSheetSegments`,
+`shortcutAction`), which is the opposite of the cycle gate's default and deliberately so:
+an unthreaded caller must not over-SHOW here, because the unconditional offer is the
+defect. The same two facts are re-checked server-side in `loadQuickEntry`, so a
+hand-written `?quick=log-substance` cannot reach the offer either.
+
+A substance tap is also one hand-entered row of logging evidence, so `LOG_DAY_SOURCES`
+declares `substance_daily_totals` for the Care segment. Alcohol is deliberately **not**
+declared there: its taps land on `food_daily_totals`, which the Food arm already counts,
+and naming that store twice would make one tap evidence for two segments.
+
 ## Reach
 
 Substance data stays out of share links, the emergency card, print surfaces, and every
@@ -131,3 +174,6 @@ nag toward more consumption.
 
 #998 and #1078 built the ledger and the curated three. #2380 is the doctrine.
 #3144 is the protocol tally the regimen path rides. #3279 records the rulings above.
+#3326 built the naming surface and #3327 the quick-log row. #3324 (whether a substance
+should survive going to zero) and #3325 (case-folding, in this vocabulary and the symptom
+one at once) are open and neither surface pre-empts them.
