@@ -177,7 +177,7 @@ export default async function SleepPage() {
               Sync a source
             </Link>
             <SleepLogAction
-            formatPrefs={formatPrefs}
+              formatPrefs={formatPrefs}
               history={sleepMood.history}
               today={todayStr}
               minDate={sleepMoodMinDate}

@@ -976,9 +976,9 @@ test.describe("Sleep and mood log historical editing", () => {
       // own — never with the borrowed-value marking.
       const durationChip = dialog.getByTestId("sleep-fact-duration");
       await expect(durationChip).toContainText("7 h");
-      await expect(
-        dialog.getByTestId("sleep-duration-suggested")
-      ).toHaveCount(0);
+      await expect(dialog.getByTestId("sleep-duration-suggested")).toHaveCount(
+        0
+      );
 
       await durationChip.click();
       const hours = dialog.getByTestId("sleep-history-edit-hours");
@@ -1187,9 +1187,9 @@ test.describe("Sleep and mood log historical editing", () => {
       await dialog.getByTestId("sleep-history-edit-minutes").fill("35");
       await dialog.getByTestId("sleep-editor-done").click();
       // Typing is what makes the number theirs, so the marking is gone.
-      await expect(
-        dialog.getByTestId("sleep-duration-suggested")
-      ).toHaveCount(0);
+      await expect(dialog.getByTestId("sleep-duration-suggested")).toHaveCount(
+        0
+      );
 
       await dialog.getByTestId("sleep-fact-mood").click();
       await dialog.getByTestId("sleep-history-mood-5").click();

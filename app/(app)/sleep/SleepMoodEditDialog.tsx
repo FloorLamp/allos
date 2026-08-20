@@ -10,7 +10,10 @@ import FactEditorHost, {
 import SleepFactRow from "@/components/sleep/SleepFactRow";
 import { saveSleepMoodEntry } from "./actions";
 import { isRealIsoDate } from "@/lib/date";
-import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "@/lib/format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 import { moodLabel } from "@/lib/mood";
 import {
   sleepFactSummary,
@@ -341,7 +344,11 @@ export default function SleepMoodEditDialog(
         onKeyDown={onKeyDown}
       >
         {openEditor == null ? (
-          <SleepFactRow summary={summary} openEditor={openEditor} onOpen={open} />
+          <SleepFactRow
+            summary={summary}
+            openEditor={openEditor}
+            onOpen={open}
+          />
         ) : (
           <FactEditorHost
             testId="sleep-editor"

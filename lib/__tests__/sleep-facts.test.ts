@@ -59,10 +59,10 @@ describe("the night chip's sentence", () => {
     // A sleep row is dated by the day the person WOKE, so today's entry is the night
     // that just ended.
     expect(sleepNightLabel("2026-08-20", "2026-08-20")).toBe("Last night");
-    expect(sleepNightLabel("2026-08-19", "2026-08-20")).toBe("The night before");
-    expect(sleepNightLabel("2026-08-11", "2026-08-20")).not.toMatch(
-      /night/i
+    expect(sleepNightLabel("2026-08-19", "2026-08-20")).toBe(
+      "The night before"
     );
+    expect(sleepNightLabel("2026-08-11", "2026-08-20")).not.toMatch(/night/i);
   });
 });
 
