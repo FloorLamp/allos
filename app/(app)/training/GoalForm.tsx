@@ -621,7 +621,7 @@ export default function GoalForm({
       <FactEditorHost
         testId="goal-editor"
         doneTestId="goal-editor-done"
-        panel={openEditor ?? undefined}
+        panel={openEditor}
         onDone={closePanel}
         bodyClassName="space-y-3"
         className={openEditor == null ? "hidden" : undefined}

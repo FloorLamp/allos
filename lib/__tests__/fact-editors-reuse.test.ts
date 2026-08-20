@@ -261,6 +261,24 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
     expect(editorHost).toContain("doneLabel");
   });
 
+  it("the editor host's source computes its escape-layer marker from the open panel", () => {
+    // #3409: the marker used to be a LITERAL on the panel element, and for every
+    // DOM-collected consumer the panel is hidden rather than unmounted — so it sat in
+    // the DOM at all times, `useFocusTrap` yielded every Escape to a layer nobody had
+    // opened, and four shipped dialogs could not be dismissed with Escape at all.
+    //
+    // The claim is that the attribute is an EXPRESSION over `panel`, which is the host's
+    // only record of whether an editor is open. Asked as the POSITIVE rather than as "no
+    // literal appears anywhere in this file", because the header comment quotes the
+    // literal on purpose while explaining the mechanism — a negative would fire on that
+    // quotation, which is correct and must stay (and would go on firing after any real
+    // fix, which is the worst shape a guard can take).
+    //
+    // The runtime half is where it can be observed: e2e/fact-escape-helpers.ts states
+    // the grammar once and four consumers assert it against a real browser.
+    expect(editorHost).toMatch(/data-escape-layer=\{[^}]*panel[^}]*\}/);
+  });
+
   it("the editor host's source restores focus in three tiers, ending at the row", () => {
     // A SOURCE CLAIM, and named as one, because the last tier has no runtime pin and
     // cannot get one from either consumer today (#3311).
