@@ -1129,6 +1129,15 @@ export default function StrengthSets({
           which is most of a strength session — and #3409 is what that costs: the
           surrounding overlay would stop closing on Escape.
 
+          THE TAP TRADE, recorded here rather than in a census baseline. Folding a
+          finished run costs ONE TAP to reach a set you did want to edit, and the UX
+          census counts that tap (#1510's discipline). It is bought deliberately: the
+          same fold removes nine rows of four controls each from a three-exercise
+          session, and the overwhelmingly common thing to do with a finished uniform run
+          is READ it. The trade is stated in the module because #3390 established that
+          the census baseline cannot carry an annotation in-repo — so the annotation
+          lives at the point of contact, which is where the next reader is anyway.
+
           COLLAPSE IS DISPLAY ONLY. The sets stay in `parts` state the whole time, and
           `buildActivityPayload` composes the save from that state — never from mounted
           inputs — so a set behind a closed summary still posts whole (#2359, #2014).
