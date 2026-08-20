@@ -39,6 +39,15 @@
 //      updates — so a saved field stops being unsaved input without anyone
 //      announcing it).
 //
+//      THAT LAST CLAUSE NEEDS A SERVER VALUE TO EXIST, AND FOR A CONTROLLED FIELD
+//      IT DOES NOT (#3352). React syncs the DOM `defaultValue` onto a controlled
+//      field to match its `value`, so the only thing the DOM can offer is a mirror
+//      of the current value — and comparing a value to a mirror of itself answers
+//      "clean" forever. `TrackedField.serverValue` is therefore NULLABLE, and the
+//      null case is decided by the first two clauses alone. The DOM half
+//      (components/DirtyFormRegistry.tsx) owns detecting which kind of field it is
+//      holding; this module owns what that answer MEANS.
+//
 // One question, one computation (#221): "is any form dirty right now" is
 // `isAnyFormDirty` over this state, and nothing else answers it.
 
@@ -62,18 +71,34 @@ export interface TrackedField {
    */
   baseline: string;
   /**
-   * The value the SERVER most recently rendered into the field (the DOM
-   * `defaultValue`). A field whose current value equals it is saved, not pending:
-   * this is what lets an autosave form that revalidates release itself without a
-   * second mechanism.
+   * The value the SERVER most recently rendered into the field, or `null` when
+   * nothing on the page can say what that value is.
+   *
+   * A string is the ordinary case: the DOM `defaultValue`. A field whose current
+   * value equals it is saved, not pending — which is what lets an autosave form
+   * that revalidates release itself without a second mechanism.
+   *
+   * `null` IS THE CASE #3352 EXISTS FOR. React syncs `defaultValue` onto a
+   * CONTROLLED field to match its `value`, so for such a field the DOM default is
+   * a mirror of `current` rather than an answer from the server — and reading it
+   * made every controlled field in a named form report clean forever, with its
+   * discard guard silently absent. There is no third value to read: React owns
+   * the field, so the DOM simply does not know what the server has. Saying `null`
+   * says that, instead of guessing an answer that is always "clean".
    */
-  serverValue: string;
+  serverValue: string | null;
 }
 
 /** Whether ONE field currently holds input the server does not have. */
 export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
   if (!field.touched) return false;
   if (field.current === field.baseline) return false;
+  // No knowable server value (React owns this field's `value` — see the field
+  // doc). The two remaining rules have already answered: the user edited it, and
+  // it still differs from what it held before that edit. Falling through to a
+  // comparison against a mirror of `current` is precisely the #3352 bug, because
+  // that comparison can only ever say "clean".
+  if (field.serverValue === null) return true;
   return field.current !== field.serverValue;
 }
 
