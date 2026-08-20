@@ -137,6 +137,73 @@ async function tapScrim(page: Page): Promise<void> {
   ).toBe("modal-shell-backdrop");
 }
 
+// ── THE LAST PROBE (#2774): is the tap finger #2? ────────────────────────────
+//
+// `touch-manipulation` on the scrim was tried and REVERTED: CI ran it and the
+// click log was still empty after a full two-second wait, so the double-tap
+// delay was not the reason. What survives is narrower and decides whether this
+// is a PRODUCT defect at all.
+//
+// The flick goes through `touchSwipeFrom`, which opens its OWN CDP session and
+// detaches it; the tap goes through `page.touchscreen.tap`, on the page's
+// session. Input dispatched on two different CDP sessions is not ordered
+// against each other. If the flick's lift has not been processed when the tap's
+// press arrives, the tap is a SECOND touch point — and a browser synthesises no
+// click for finger #2 of a multi-touch gesture, by definition. That would make
+// this an artefact of synthetic input that no real hand can produce, not
+// something a user ever meets.
+//
+// So log the touch sequence itself, from before the flick, and let the tap's own
+// touchstart say how many fingers the page thinks are down:
+//
+//   tap's touchstart with `touches: 2`   -> finger #2. A DRIVER artefact. The
+//                                           product is fine and the test must
+//                                           stop depending on this click.
+//   tap's touchstart with `touches: 1`   -> one finger, a live scrim, a
+//     and still no click                    committed handler, and no click:
+//                                           genuine browser gesture arbitration,
+//                                           and a real dead tap for real hands.
+//   no touchstart logged at the tap      -> the tap never reached the page, and
+//                                           neither of the above is the story.
+//
+// If this comes back unidentified, we stop probing and the chain test stops
+// depending on the browser dispatching that click (#3262 records the unknown).
+async function installTouchLog(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const store = window as unknown as Record<string, unknown>;
+    const log: unknown[] = [];
+    store.__touchLog = log;
+    // Moves are counted, not listed: ten steps per swipe would bury the two
+    // readings that matter (the flick's lift, and the tap's press).
+    let moves = 0;
+    document.addEventListener(
+      "touchmove",
+      () => {
+        moves += 1;
+      },
+      { capture: true, passive: true }
+    );
+    for (const type of ["touchstart", "touchend", "touchcancel"]) {
+      document.addEventListener(
+        type,
+        (event) => {
+          const touch = event as TouchEvent;
+          log.push({
+            type,
+            // `touches` is every finger currently down INCLUDING this one, so a
+            // press that reads 2 is the second finger of a gesture the page
+            // still believes is in progress.
+            touches: touch.touches.length,
+            changed: touch.changedTouches.length,
+            movesSoFar: moves,
+          });
+        },
+        { capture: true, passive: true }
+      );
+    }
+  });
+}
+
 /** Drag downward from high on the screen — with a sheet open, that is its scrim. */
 async function dragScrimDown(page: Page) {
   await touchSwipe(page, { x: 195, y: 90 }, { x: 195, y: 420 });
@@ -357,6 +424,9 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   await title.fill(DRAFT);
   const atRest = await restingPanelTop(dialog);
 
+  // Armed BEFORE the flick, because the reading that matters is whether the
+  // flick's LIFT was processed before the tap's press (see installTouchLog).
+  await installTouchLog(page);
   await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
     dy: 260,
   });
@@ -449,6 +519,10 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
     const panel = document.querySelector("[data-sheet-panel]");
     return {
       clicks: store.__clickLog,
+      // The whole touch sequence, flick and tap together. The LAST entry is the
+      // tap's own press: `touches: 2` there means the tap was finger #2 and the
+      // missing click is a driver artefact, not a defect.
+      touches: store.__touchLog,
       hit:
         document.elementFromPoint(195, 60)?.getAttribute("data-testid") ??
         "nothing",

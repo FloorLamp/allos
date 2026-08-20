@@ -46,10 +46,16 @@ export default function AddSupplementModal({
           onClose={() => setOpen(false)}
           size="lg"
         >
-          <div
-            data-testid="supplement-add-panel"
-            className="mt-4 min-h-0 overflow-y-auto px-1"
-          >
+          {/* Spacing and a test hook only — NO `overflow` here (#2774). This
+              used to be `min-h-0 overflow-y-auto` inside a panel this file
+              bounded itself with `max-h-[calc(100vh-2rem)]`, which made it the
+              modal's scroller. That clipped the name combobox's listbox off
+              mid-row at the modal's bottom edge, with the listbox's own
+              `max-h-56` scrollbar beside it — the two-scrollbar symptom the
+              owner reported. The host owns scrolling now, at every width, so a
+              second scroller here would only re-establish the clip: an
+              `overflow` clips whether or not it is currently scrolling. */}
+          <div data-testid="supplement-add-panel" className="mt-4 px-1">
             <IntakeItemForm
               action={addIntakeItem}
               kind="supplement"
