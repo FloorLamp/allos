@@ -1,5 +1,4 @@
 import type Database from "better-sqlite3";
-import { pinnedTimezone } from "./pinned-timezone";
 
 // Per-profile timezone overrides are a fixture design decision, not incidental
 // setup. The e2e clock rotates the instance timezone so frozen now reads near
@@ -41,8 +40,13 @@ import { pinnedTimezone } from "./pinned-timezone";
 //     not create a second calendar and their specs may assert dashboard atoms
 //     freely; `dashboard-vitals-recency` is one and is correct.
 //
-// The kind is verified against the zone actually passed, so the declaration cannot
-// quietly stop describing the call — the failure mode that produced this bug.
+// The kind is verified against the zone each call site actually passes, so the
+// declaration cannot quietly stop describing the call — the failure mode that
+// produced this bug. That check is a source scan in the same test rather than a
+// throw here, because this module is evaluated by the standalone seed process:
+// reading the frozen instant from the environment inside it would put it under
+// scripts/load-env's env-first obligation (lib/__tests__/script-env-bootstrap.test.ts)
+// for a value that never comes from a .env file at all.
 //
 // AND FOR THE TRAVEL BANNER (#3263). The BROWSER is now pinned to the run's zone
 // too (`timezoneId` in playwright.config.ts's `use:`), so the fixture device and a
@@ -120,23 +124,8 @@ export function setFixtureTimezone(
   declaration: FixtureTimezoneOverride,
   timezone: string
 ): void {
-  const entry = FIXTURE_TIMEZONE_OVERRIDES[declaration];
-  if (!entry.why.trim()) {
+  if (!FIXTURE_TIMEZONE_OVERRIDES[declaration].why.trim()) {
     throw new Error(`fixture timezone ${declaration} needs a reason`);
-  }
-  // The declared KIND has to describe the call, or the guard that reads this table
-  // is reasoning about something the seed does not do (#3337). Checked here rather
-  // than in a test because this is the moment both halves are in hand: a "run-pin"
-  // entry that is handed anything but the run's pinned zone is a second calendar
-  // wearing the label that exempts it from the dashboard-atom rule.
-  if (entry.kind === "run-pin" && process.env.ALLOS_TEST_NOW) {
-    const { zone } = pinnedTimezone(process.env.ALLOS_TEST_NOW);
-    if (timezone !== zone) {
-      throw new Error(
-        `fixture timezone ${declaration} is declared "run-pin" but was set to ${timezone}, not the run's pinned zone ${zone}. ` +
-          `Either pass the pinned zone, or declare it "own-zone" — and then it may not appear in a spec that asserts a dashboard atom.`
-      );
-    }
   }
   db.prepare(
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', ?)

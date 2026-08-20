@@ -3,11 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  FIXTURE_TIMEZONE_OVERRIDES,
-  setFixtureTimezone,
-} from "../../e2e/fixture-timezones";
-import { pinnedTimezone } from "../../e2e/pinned-timezone";
+import { FIXTURE_TIMEZONE_OVERRIDES } from "../../e2e/fixture-timezones";
 
 // #3337: THE RULE IN e2e/fixture-timezones.ts's HEADER, MADE CHECKABLE.
 //
@@ -90,17 +86,23 @@ interface CallSite {
   file: string;
   declaration: string;
   profileVar: string;
+  zoneArg: string;
 }
 
 /** Every `setFixtureTimezone(db, <profileVar>, "<declaration>", <zone>)` in the tree. */
 function callSites(): CallSite[] {
   const re =
-    /setFixtureTimezone\(\s*[\w.]+\s*,\s*([\w.]+)\s*,\s*"([^"]+)"\s*,/g;
+    /setFixtureTimezone\(\s*[\w.]+\s*,\s*([\w.]+)\s*,\s*"([^"]+)"\s*,\s*([^)]+?)\s*\)/g;
   const found: CallSite[] = [];
   for (const [file, src] of SOURCE) {
     if (file === "e2e/fixture-timezones.ts") continue;
     for (const m of src.matchAll(re))
-      found.push({ file, declaration: m[2], profileVar: m[1] });
+      found.push({
+        file,
+        declaration: m[2],
+        profileVar: m[1],
+        zoneArg: m[3].trim(),
+      });
   }
   return found;
 }
@@ -234,28 +236,31 @@ describe("a fixture with its own calendar is not asserted as a dashboard atom (#
     }
   });
 
-  it("rejects a run-pin declaration handed anything but the run's pinned zone", () => {
-    // The exemption the guard grants "run-pin" entries is only sound while the label is
-    // true, and a label nothing checks is how #3337 happened in the first place. So the
-    // seed-time check gets its own pin: mislabelling is the one way to slip a second
-    // calendar past the rule above.
-    const FROZEN = "2026-08-20T09:00:00Z";
-    const previous = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = FROZEN;
-    // Only `.prepare(...).run(...)` is ever reached, and only on the accepted path.
-    const db = {
-      prepare: () => ({ run: () => undefined }),
-    } as unknown as Parameters<typeof setFixtureTimezone>[0];
-    try {
-      expect(() =>
-        setFixtureTimezone(db, 1, "vitals-recency", "UTC")
-      ).toThrowError(/not the run's pinned zone/);
-      expect(() =>
-        setFixtureTimezone(db, 1, "vitals-recency", pinnedTimezone(FROZEN).zone)
-      ).not.toThrow();
-    } finally {
-      if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = previous;
+  it("every run-pin call site passes a zone derived from pinnedTimezone", () => {
+    // THE EXEMPTION IS ONLY SOUND WHILE THE LABEL IS TRUE. A "run-pin" entry is skipped
+    // by the check above, so a second calendar wearing that label walks straight past
+    // the rule — and a label nothing verifies is how #3337 happened.
+    //
+    // Asked of the CALL rather than of the table: the declaration is a claim about what
+    // the seed does, so the zone actually passed is the thing to read. Both current
+    // sites bind `const TZ = pinnedTimezone(frozenNow().toISOString()).zone` and pass
+    // TZ, which is exactly the shape this accepts — a literal like "UTC" is not.
+    for (const site of SITES) {
+      const entry =
+        FIXTURE_TIMEZONE_OVERRIDES[
+          site.declaration as keyof typeof FIXTURE_TIMEZONE_OVERRIDES
+        ];
+      if (entry?.kind !== "run-pin") continue;
+      const src = SOURCE.get(site.file) ?? "";
+      const derived = new RegExp(
+        `\\b(?:const|let)\\s+${site.zoneArg}\\s*=\\s*pinnedTimezone\\(`
+      );
+      expect(
+        derived.test(src),
+        `${site.declaration} is declared "run-pin" but ${site.file} passes ${site.zoneArg}, ` +
+          `which is not derived from pinnedTimezone(). Either pass the run's pinned zone, or ` +
+          `declare it "own-zone" — and then it may not be reachable from a spec asserting a dashboard atom.`
+      ).toBe(true);
     }
   });
 
