@@ -558,6 +558,23 @@ ${MIGRATION_LINES}
   origin/main control worktree and show it failing there too. Report the
   comparison, not the first red. Two agents were saved from a false regression
   report this way on 2026-08-15 only because they thought of it themselves.
+- A RACE THAT RESOLVES TOWARD THE EMPTY DOM FAILS TOWARD GREEN. Measured 2026-08-20
+  on #3384, and it is the purest form of the trap this whole brief circles. A spec
+  measured a dialog body's width WITHOUT FIRST WAITING FOR ANYTHING INSIDE IT. The
+  region renders a loading paragraph while its real content arrives — and a paragraph
+  fits any width. So the check passed by looking at a PLACEHOLDER instead of the form
+  it names, sailed through twelve shards on its own PR and twelve more on the next
+  one, and reported success without ever having examined the thing it claimed to
+  examine. It only ever failed when CI happened to be past the mount.
+  THE TELL, and it is worth learning as a signature: WHETHER you see the failure was a
+  race, but HOW BIG it was never varied. A stable wrong value with an unstable
+  occurrence means something real is being measured SOMETIMES — not that the value is
+  noise. Do not dismiss it as flake, and do not conclude the failure is deterministic
+  either (that was my own error on the same issue, corrected within the hour).
+  SO: before you measure a container, WAIT FOR THE CONTENT YOU MEAN TO MEASURE — a
+  specific child, not the container's own visibility. Any assertion about size,
+  overflow, position or count on a region that loads asynchronously is making a claim
+  about whatever happened to be there, and empty is the state that flatters you.
 - A GENEROUS CEILING IS HONEST ON A *PRESENCE* ASSERTION AND DANGEROUS ON AN
   *ABSENCE* ONE. This is the rule to reach for before arguing about timeouts at all.
   Waiting longer cannot make a row that was never created appear — so if the write is
