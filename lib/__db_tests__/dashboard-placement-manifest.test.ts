@@ -76,6 +76,13 @@ const requestCache = vi.hoisted(() => {
     filled: false,
     value: undefined,
   });
+  const childOf = (parent: MemoNode, key: unknown): MemoNode => {
+    const existing = parent.children.get(key);
+    if (existing) return existing;
+    const created = node();
+    parent.children.set(key, created);
+    return created;
+  };
   let open: Map<symbol, MemoNode> | null = null;
   return {
     cache: <A extends unknown[], R>(fn: (...args: A) => R) => {
@@ -83,19 +90,13 @@ const requestCache = vi.hoisted(() => {
       return (...args: A): R => {
         const scope = open;
         if (!scope) return fn(...args);
-        let current = scope.get(identity);
-        if (!current) {
-          current = node();
-          scope.set(identity, current);
+        let root: MemoNode | undefined = scope.get(identity);
+        if (!root) {
+          root = node();
+          scope.set(identity, root);
         }
-        for (const arg of args) {
-          let next = current.children.get(arg);
-          if (!next) {
-            next = node();
-            current.children.set(arg, next);
-          }
-          current = next;
-        }
+        let current: MemoNode = root;
+        for (const arg of args) current = childOf(current, arg);
         if (current.filled) return current.value as R;
         const value = fn(...args);
         current.filled = true;
