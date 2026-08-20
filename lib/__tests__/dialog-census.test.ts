@@ -295,6 +295,35 @@ describe("dialog census — what it can SEE", () => {
     expect(entry).toBeNull();
   });
 
+  // THESE TWO ARE THE ONLY FIXTURES THAT EXERCISE THE COMMENT STRIPPER, and they
+  // exist because disabling it left every other test in this file green. The
+  // census resists a comment NAMING a host by construction — it matches import
+  // STATEMENTS, not bare symbols — so nothing here reached `withoutComments`
+  // until a fixture put a dialog attribute itself inside prose. An untested
+  // stripper is a stripper the next reader deletes.
+  it("stays silent on a dialog attribute written inside a line comment", () => {
+    const entry = classifyOne(
+      "components/LineCommentRole.tsx",
+      `export default function LineCommentRole() {
+         // The wrapper below used to carry role="dialog" and aria-modal="true".
+         return <div className="p-4">plain content</div>;
+       }`
+    );
+    expect(entry).toBeNull();
+  });
+
+  it("stays silent on a dialog attribute written inside a block comment", () => {
+    const entry = classifyOne(
+      "components/BlockCommentRole.tsx",
+      `/* Anatomy note: a converged host renders role="dialog" for you, so a
+          consumer never writes aria-modal="true" by hand. */
+       export default function BlockCommentRole() {
+         return <div className="p-4">plain content</div>;
+       }`
+    );
+    expect(entry).toBeNull();
+  });
+
   it("stays silent on a file that only names aria-modal in prose", () => {
     const entry = classifyOne(
       "components/ProseOnly.tsx",
