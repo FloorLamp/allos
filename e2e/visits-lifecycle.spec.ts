@@ -53,6 +53,11 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     });
     await withVisitFact(visitDialog, "provider", async () => {
       await visitDialog.getByLabel("Provider").fill("E2E Lifecycle Clinic");
+      // Its listbox is still open and floats over the Done button behind it. Escape
+      // closes the LISTBOX and not the editor — the primitive yields the first Escape
+      // to an expanded combobox on purpose, so that one key does not throw the whole
+      // fact away (FactEditorHost's `onKeyDown`).
+      await page.keyboard.press("Escape");
     });
     await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();

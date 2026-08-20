@@ -219,6 +219,11 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
     // the next opens, so every value below is behind a shut panel by the time Add runs.
     await withVisitFact(add, "kind", async () => {
       await settledFill(page, add.getByLabel("Visit type"), "Office Visit");
+      // Its listbox is still open and floats over the Done button behind it. Escape
+      // closes the LISTBOX and not the editor — the primitive yields the first Escape
+      // to an expanded combobox on purpose, so that one key does not throw the whole
+      // fact away (FactEditorHost's `onKeyDown`).
+      await page.keyboard.press("Escape");
     });
     await withVisitFact(add, "when", async () => {
       await add.getByLabel("Date", { exact: true }).fill("2024-03-04");

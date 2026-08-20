@@ -152,6 +152,11 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await title.fill(MARKER);
     await withVisitFact(dialog, "provider", async () => {
       await dialog.getByLabel("Provider").fill("E2E Dirty Form Clinic");
+      // Its listbox is still open and floats over the Done button behind it. Escape
+      // closes the LISTBOX and not the editor — the primitive yields the first Escape
+      // to an expanded combobox on purpose, so that one key does not throw the whole
+      // fact away (FactEditorHost's `onKeyDown`).
+      await page.keyboard.press("Escape");
     });
     await expect(registry).toHaveAttribute("data-dirty", "1");
 

@@ -433,9 +433,13 @@ test("a refused flick does not disarm the surface — the next flick still asks"
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
   const dialog = await openAddVisit(page);
+  // Behind a fact chip since #3223, and closed again before the resting height is
+  // measured: `atRest` has to be the panel as it stands when the flick starts.
   const title = dialog.getByLabel(TITLE_FIELD);
-  await expect(title).toBeVisible();
-  await title.fill(DRAFT);
+  await withVisitFact(dialog, "reason", async () => {
+    await expect(title).toBeVisible();
+    await title.fill(DRAFT);
+  });
   const atRest = await restingPanelTop(dialog);
 
   const confirm = page.getByTestId("confirm-dialog");
@@ -521,9 +525,13 @@ test("a scrim tap after a refused flick never silently discards the form", async
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
   const dialog = await openAddVisit(page);
+  // Behind a fact chip since #3223, and closed again before the resting height is
+  // measured: `atRest` has to be the panel as it stands when the flick starts.
   const title = dialog.getByLabel(TITLE_FIELD);
-  await expect(title).toBeVisible();
-  await title.fill(DRAFT);
+  await withVisitFact(dialog, "reason", async () => {
+    await expect(title).toBeVisible();
+    await title.fill(DRAFT);
+  });
   const atRest = await restingPanelTop(dialog);
 
   // Armed BEFORE the flick: the tap's press must be readable against the flick's
@@ -635,6 +643,9 @@ test("a scrim tap after a refused flick never silently discards the form", async
     title,
     "the typing must survive a scrim tap the surface did not act on"
   ).toHaveValue(DRAFT);
+  // And it is still STATED, which is what the person about to press Add actually
+  // reads — a value that survived but stopped being stated is just as lost.
+  await expect(dialog.getByTestId("visit-fact-reason")).toContainText(DRAFT);
 });
 
 test("a dialog stacked over a sheet leaves the page held until the last one closes", async ({
@@ -650,7 +661,9 @@ test("a dialog stacked over a sheet leaves the page held until the last one clos
   expect(await bodyOverflow(page)).toBe("");
 
   const dialog = await openAddVisit(page);
-  await dialog.getByLabel(TITLE_FIELD).fill(DRAFT);
+  await withVisitFact(dialog, "reason", async () => {
+    await dialog.getByLabel(TITLE_FIELD).fill(DRAFT);
+  });
   expect(await bodyOverflow(page)).toBe("hidden");
 
   // The discard confirm opens a SECOND surface over the first.
