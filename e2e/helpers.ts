@@ -1616,9 +1616,16 @@ async function installInteractionLedger(page: Page): Promise<void> {
 }
 
 // Everything recorded in the last `windowMs` — see the note above for why this
-// takes a window rather than an instant. `null` means the ledger could not be read
-// (page closed, navigating, not running JS), which is NOT the same as "nothing
-// happened", and the callers below treat the two differently.
+// takes a window rather than an instant.
+//
+// `null` means the ledger could not be READ AT ALL: the page is closed, navigating,
+// refusing to run JS, or the init script never landed in this document. An EMPTY
+// ARRAY is a completely different answer — the ledger is installed, the renderer is
+// answering, and it saw nothing. Collapsing the two is not a cosmetic error: the
+// empty array IS the evidence in the shape this file exists for, because a click
+// that never activated its control may leave no DOM event whatsoever (Chromium
+// dispatches NO mouse events at all for a `disabled` control — measured here, and
+// it is why the re-dispatch below no longer demands a non-empty window).
 async function readInteractionLedger(
   page: Page,
   windowMs: number
@@ -1628,9 +1635,10 @@ async function readInteractionLedger(
       const w = window as unknown as {
         __allosInteractionLedger?: InteractionLedgerEntry[];
       };
+      if (!w.__allosInteractionLedger) return null;
       const now = performance.now();
       return (
-        (w.__allosInteractionLedger ?? [])
+        w.__allosInteractionLedger
           .filter((e) => e.p >= now - ms)
           // Field by field ON PURPOSE: an entry carries its target NODE, and
           // returning that from `evaluate` throws rather than serializing.
@@ -1696,10 +1704,13 @@ async function interactionLedgerReport(
     );
   if (entries.length === 0)
     return (
-      `\n[settledClick] the DOM interaction ledger recorded NOTHING since this ` +
-      `wait was armed — not one click event. Playwright dispatched a click, so ` +
-      `either the renderer never processed it or the document was replaced under ` +
-      `the wait.`
+      `\n[settledClick] the DOM interaction ledger is installed and answering, and ` +
+      `it recorded NOTHING since this wait was armed — not one click event. ` +
+      `Playwright reported the click as done, so the browser DROPPED it rather ` +
+      `than delivering it: Chromium dispatches no mouse events at all for a ` +
+      `\`disabled\` control, so a control that went disabled between mousedown and ` +
+      `mouseup produces exactly this. The control was never activated, so no ` +
+      `handler of its ran and nothing it writes was written (#3359).`
     );
   const lines = entries
     .map(
@@ -1819,11 +1830,20 @@ async function clickedControlState(
 //     page had not navigated — which also rules out a NATIVE submit by an
 //     unhydrated form (that would have navigated).
 //
-// So the handler never ran. And a click event ALWAYS fires somewhere — Chromium
-// dispatches it to the nearest common ancestor of the mousedown and mouseup targets
-// — so "never ran" means the click was RETARGETED off the control rather than lost
-// in the ether. `clickLandedOnControl` asks exactly that question, and it is the
-// proof this rescue turns on.
+// So the handler never ran, which means the browser never ACTIVATED the control.
+// There are exactly two ways that happens to a click Playwright reports as done,
+// and both were measured here against a forged control:
+//
+//   • RETARGETED — the DOM moved between mousedown and mouseup, so Chromium fires
+//     the click on the nearest common ancestor instead. A click event exists, on
+//     some other element.
+//   • DROPPED — the control was `disabled` at mouseup. Chromium dispatches NO mouse
+//     events at all for a disabled form control; it does not retarget them. There
+//     is no click event anywhere.
+//
+// The second one is not a guess: forging it is what corrected this comment, which
+// until it was measured claimed a click always fires somewhere. Both shapes answer
+// `clickLandedOnControl` with FALSE, and that is the proof this rescue turns on.
 //
 // NOT REPRODUCED LOCALLY. Five trials at CPU throttle 20, plus throttled runs at
 // 100 and 200 across the click alone, all produced a submit event and a POST. The
@@ -1846,13 +1866,17 @@ async function clickedControlState(
 //      answered or not, so an empty census is evidence rather than silence. Taken
 //      twice: once up front, and again in the same turn as the second click, so a
 //      POST that appears while the other proofs are being read still cancels it.
-//   2. NO `submit` event was recorded, and the ledger is provably ALIVE (it recorded
-//      something else in the same window). A form's handler cannot run without a
-//      submit event, and the listener is a CAPTURE listener on `window`, so it sees
-//      the event before any handler can stop its propagation. This is the load-
-//      bearing proof, and the measurement above is why: the submit event is the
-//      early, tight signal (≤224 ms at a 200× CPU squeeze) where the POST is the
-//      late, loose one (still absent at 3 s in the same trials).
+//   2. NO `submit` event was recorded, by a ledger that ANSWERED — the read proves
+//      the init script landed in this document and the renderer is running JS right
+//      now. An empty window is a positive answer, not a missing one: in the DROPPED
+//      shape above there is no DOM event to record at all, so demanding a non-empty
+//      window would switch the rescue off in half the cases it exists for. A form's
+//      handler cannot run without a submit event, and the listener is a CAPTURE
+//      listener on `window`, so it sees the event before any handler can stop its
+//      propagation. This is the load-bearing proof, and the measurement above is
+//      why: the submit event is the early, tight signal (≤224 ms at a 200× CPU
+//      squeeze) where the POST is the late, loose one (still absent at 3 s in the
+//      same trials).
 //   3. The control is a form-owned `type="submit"` that is IDLE — neither `disabled`
 //      nor `aria-busy`. The form-owned half matters because a `<button onClick>`
 //      dispatching through `useTransition` produces no submit event EVER, so proof 2
@@ -1862,10 +1886,10 @@ async function clickedControlState(
 //   4. NO click landed on the control or inside it. This is what makes proof 2 sound
 //      rather than merely suggestive. A submit-button click with no submit event has
 //      two causes, and only one of them is safe: the browser never ACTIVATED the
-//      control (retargeting — nothing ran, nothing was written), or it activated it
-//      and something suppressed the submit, which on a `type="submit"` button means
-//      an `onClick` that called `preventDefault` and may have posted on its own
-//      schedule. Proof 4 admits only the first. It also means the rescue does not
+//      control (retargeted or dropped — nothing ran, nothing was written), or it
+//      activated it and something suppressed the submit, which on a `type="submit"`
+//      button means an `onClick` that called `preventDefault` and may have posted on
+//      its own schedule. Proof 4 admits only the first. It also means the rescue does not
 //      rest on a census of the app: as of this change no `type="submit"` button in
 //      `app/` or `components/` carries an `onClick` that preventDefaults (72 submit
 //      sites, one `onClick`, in ProfileSwitcherPanel, which only calls a callback) —
@@ -1922,9 +1946,11 @@ async function redispatchLostSubmit(
     .catch(() => null);
   if (!control?.formSubmit || !control.idle) return;
   const windowMs = Date.now() - wait.armedAt;
-  // Proof 2: the ledger is alive and holds no submit event.
+  // Proof 2: the ledger answered — so it is installed and the renderer is running
+  // JS right now — and it holds no submit event. An EMPTY window is a positive
+  // answer here, not an absent one; see readInteractionLedger's note.
   const entries = await readInteractionLedger(page, windowMs);
-  if (entries === null || entries.length === 0) return;
+  if (entries === null) return;
   if (entries.some((entry) => entry.kind === "submit")) return;
   // Proof 4: the click was retargeted off the control, so it never activated it.
   if ((await clickLandedOnControl(probeHandle, windowMs)) !== false) return;
@@ -1932,12 +1958,19 @@ async function redispatchLostSubmit(
   // round trips to the page, and this is the only proof that can go stale in them.
   if (wait.issuedCount() > 0) return;
 
+  // Name WHICH of the two lost shapes this was, because they point at different
+  // things in the page: a click that went somewhere else means the DOM moved under
+  // the interaction, and no click at all means the control was disabled at mouseup.
+  const shape = entries.some((entry) => entry.kind === "click")
+    ? `was RETARGETED off this control onto another element`
+    : `was DROPPED before any DOM event — which Chromium does for a \`disabled\` ` +
+      `control, so this control was disabled at mouseup`;
   wait.note(
-    `the first click was RETARGETED off this control and produced no submit ` +
-      `event and no request within ${LOST_SUBMIT_PROOF_MS}ms, so the form was ` +
-      `never activated and nothing could have been written; the click was ` +
-      `re-dispatched ONCE (#3359). This message means the SECOND one was lost ` +
-      `too — that is a finding about the page, not about this contract.`
+    `the first click ${shape}, and produced no submit event and no request ` +
+      `within ${LOST_SUBMIT_PROOF_MS}ms, so the form was never activated and ` +
+      `nothing could have been written; the click was re-dispatched ONCE (#3359). ` +
+      `This message means the SECOND one was lost too — that is a finding about ` +
+      `the page, not about this contract.`
   );
   await locator.click({ timeout: LOST_SUBMIT_PROOF_MS }).catch(() => {
     // A second click that cannot land adds nothing to the diagnosis the caller is
