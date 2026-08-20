@@ -31,7 +31,32 @@ export const DOSE_HISTORY_DAYS = 90;
 // "skipped" (issue #232) is a DELIBERATE decision, distinct from "missed" (a
 // lapse): it is excluded from the adherence denominator, like "na" — it is neither
 // follow-through nor a lapse.
-export type AdherenceState = "taken" | "partial" | "skipped" | "missed" | "na";
+//
+// "excused" (issue #3263) is the THIRD thing that is not a lapse, and the one a
+// clock cannot tell from one: the dose's slot never occurred, because a timezone
+// switch jumped the profile's own wall clock over it. A missed dose and an
+// impossible dose look identical to arithmetic and must never look identical to the
+// person, so it is its own state rather than a quiet subtraction — out of the
+// denominator like "skipped", but named, counted and legended on its own line.
+export type AdherenceState =
+  "taken" | "partial" | "skipped" | "missed" | "excused" | "na";
+
+// Whether a dose's slot never occurred on a profile-local day, keyed by the dose's
+// raw `time_of_day` column. Structural on purpose: the resolver that answers it
+// reads settings (lib/travel-excusal.ts), and this module stays pure.
+export type SlotExcusedPredicate = (
+  timeOfDay: string | null,
+  date: string
+) => boolean;
+
+const NOTHING_EXCUSED: SlotExcusedPredicate = () => false;
+
+// What a day's dose COUNTS can resolve to. Neither "na" (that is a question about
+// dueness, decided before any counting) nor "excused" (that is a question about the
+// profile's own wall clock, which counts cannot see) is reachable from a tally —
+// so the reducer over tallies says so in its type instead of carrying two cases
+// nothing can produce.
+export type CountedDoseDayState = Exclude<AdherenceState, "na" | "excused">;
 
 export interface AdherenceDot {
   date: string;
@@ -57,6 +82,11 @@ export interface AdherenceSummary {
   // Deliberately-skipped days, surfaced as their own count rather than folded
   // into the percentage (#232).
   skippedDays: number;
+  // Days every due dose was EXCUSED on — a travel switch skipped the wall clock
+  // they sat at (#3263). Its own count for the same reason "skipped" has one: the
+  // percentage must not be the only place the reader can find out why a day is
+  // missing from it.
+  excusedDays: number;
   applicableDays: number;
 }
 
@@ -98,7 +128,7 @@ export function aggregateDoseDay(
   total: number,
   takenN: number,
   skippedN: number
-): Exclude<AdherenceState, "na"> {
+): CountedDoseDayState {
   const due = Math.max(total, 1);
   if (takenN >= due) return "taken";
   if (takenN > 0) return "partial";
@@ -143,7 +173,11 @@ export function doseStrip(
   dates: string[],
   isDue: (date: string) => boolean,
   takenDates: Set<string>,
-  skippedDates: Set<string> = new Set()
+  skippedDates: Set<string> = new Set(),
+  // A day this dose's slot never occurred on (#3263). Checked AFTER the log sets:
+  // a dose somebody logged is taken whatever the clock did to its slot, and only an
+  // unanswered slot can be excused.
+  isExcused: (date: string) => boolean = () => false
 ): AdherenceDot[] {
   return dates.map((date) => ({
     date,
@@ -153,7 +187,9 @@ export function doseStrip(
         ? "taken"
         : skippedDates.has(date)
           ? "skipped"
-          : "missed",
+          : isExcused(date)
+            ? "excused"
+            : "missed",
   }));
 }
 
@@ -231,6 +267,10 @@ export function doseWindowSince(
 export interface AdherenceStripDose extends DoseCadence {
   id: number;
   created_at?: string | null;
+  // The dose's own free-text slot ("Morning", "with dinner", "08:00"), read by the
+  // travel excusal to place it on a clock (#3263). Optional so a fixture with only
+  // ids still type-checks — an absent value simply cannot be excused.
+  time_of_day?: string | null;
 }
 
 // Per-item windowed adherence strip (issue #313, extracted from the intake
@@ -260,7 +300,11 @@ export function intakeAdherenceStrip(
   workoutDays: ReadonlySet<string>,
   situationsOn: (date: string) => Set<string>,
   takenByDose: Map<number, DoseDateStatus>,
-  tz: string
+  tz: string,
+  // Travel (#3263): which of this item's doses had their slot jumped over on a
+  // given profile-local day. Defaults to "none were", which is every profile that
+  // has never switched zones — the pre-#3263 behaviour, unchanged.
+  isExcused: SlotExcusedPredicate = NOTHING_EXCUSED
 ): AdherenceDot[] {
   const lifetimes = doses.map((d) => ({
     id: d.id,
@@ -295,15 +339,30 @@ export function intakeAdherenceStrip(
       activeSituations: situationsOn(date),
     });
     if (!applicable) return { date, state: "na" };
-    const takenN = live.reduce(
+    // TRAVEL NARROWS THE SAME DENOMINATOR (#3263), the way the calendar does
+    // (#1602) and for the same reason: get the denominator wrong and every
+    // percentage above it is confidently wrong. A dose whose slot the profile's own
+    // wall clock jumped over is dropped from the day's count — but only while it is
+    // UNANSWERED. A dose logged taken or skipped on that date was taken or skipped,
+    // and no clock arithmetic gets to overrule the log.
+    const counted = live.filter((d) => {
+      const status = takenByDose.get(d.id);
+      if (status?.taken.has(date) || status?.skipped.has(date)) return true;
+      return !isExcused(d.dose.time_of_day ?? null, date);
+    });
+    // Every due dose excused: the day asked nothing of this person, so it is not a
+    // miss and not merely "not due" — it is named, so the reader can see why the
+    // day is absent from the percentage.
+    if (counted.length === 0) return { date, state: "excused" };
+    const takenN = counted.reduce(
       (n, d) => n + (takenByDose.get(d.id)?.taken.has(date) ? 1 : 0),
       0
     );
-    const skippedN = live.reduce(
+    const skippedN = counted.reduce(
       (n, d) => n + (takenByDose.get(d.id)?.skipped.has(date) ? 1 : 0),
       0
     );
-    return { date, state: aggregateDoseDay(live.length, takenN, skippedN) };
+    return { date, state: aggregateDoseDay(counted.length, takenN, skippedN) };
   });
 }
 
@@ -345,8 +404,11 @@ export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
   // "skipped" days are a decision, not an intended dose — excluded from the
   // denominator (alongside "na"), but surfaced as their own count (#232).
   const skippedDays = settled.filter((d) => d.state === "skipped").length;
+  // "excused" days leave the denominator too (#3263) — the dose was impossible, not
+  // declined and not lapsed — and are counted separately for the same reason.
+  const excusedDays = settled.filter((d) => d.state === "excused").length;
   const applicable = settled.filter(
-    (d) => d.state !== "na" && d.state !== "skipped"
+    (d) => d.state !== "na" && d.state !== "skipped" && d.state !== "excused"
   );
   const applicableDays = applicable.length;
   const takenDays = applicable.filter((d) => d.state === "taken").length;
@@ -357,5 +419,12 @@ export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
       ? Math.round(((takenDays + partialDays * 0.5) / applicableDays) * 100)
       : null;
 
-  return { pct, takenDays, partialDays, skippedDays, applicableDays };
+  return {
+    pct,
+    takenDays,
+    partialDays,
+    skippedDays,
+    excusedDays,
+    applicableDays,
+  };
 }

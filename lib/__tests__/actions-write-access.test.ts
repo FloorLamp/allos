@@ -256,6 +256,26 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "reopenAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",
   },
+  {
+    file: "app/(app)/travel-actions.ts",
+    fn: "acceptTravelTimezone",
+    why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263 — a device zone must never move somebody else's day)",
+  },
+  {
+    file: "app/(app)/travel-actions.ts",
+    fn: "dismissTravelTimezone",
+    why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
+  },
+  {
+    file: "app/(app)/travel-actions.ts",
+    fn: "revertTravelTimezone",
+    why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
+  },
+  {
+    file: "app/(app)/travel-actions.ts",
+    fn: "acknowledgeTravelTell",
+    why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
+  },
   // --- Cross-profile / session-pointer actions (gate the TARGET, not the active
   // profile, so requireWriteAccess() would check the wrong profile) ---
   {

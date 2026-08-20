@@ -221,6 +221,20 @@ export const chartAdherenceState = {
     light: null,
     dark: null,
   },
+  // Excused by travel (#3263): the dose's slot never occurred, because a timezone
+  // switch jumped the profile's own wall clock over it. UNFILLED like `pending` and
+  // `na`, and for the same reason — there is no outcome to color, because nothing
+  // was taken and nothing was missed. Three absences now share this grid and each
+  // gets its own mark: `na` is bare (never due), `pending` takes the neutral ring
+  // (still in play), and this takes a sky ring (impossible). Every one of them also
+  // carries a title, a `data-state` and its own legend row with a count, so the
+  // rings are the secondary encoding on an identity the text already states.
+  excused: {
+    class:
+      "bg-transparent text-slate-600 ring-1 ring-inset ring-sky-400 dark:text-slate-300 dark:ring-sky-600",
+    light: null,
+    dark: null,
+  },
   na: {
     class: "bg-transparent text-slate-500 dark:text-slate-400",
     light: null,

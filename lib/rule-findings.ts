@@ -12,6 +12,7 @@
 // caption it rides alongside can never disagree ("one question, one computation").
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
+import { travelExcusalResolver } from "./travel-excusal";
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
@@ -1527,6 +1528,7 @@ export function buildAdherencePatternFindings(
   );
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
+  const isExcused = travelExcusalResolver(profileId);
   // Per-day situation resolver (#654): a past day is scored against the situations
   // active THAT day, not today's toggle applied retroactively — so a situational
   // item's pattern observations aren't distorted by a situation activated today.
@@ -1575,7 +1577,11 @@ export function buildAdherencePatternFindings(
             activeSituations: situationsOn(date),
           }),
         status?.taken ?? new Set(),
-        status?.skipped ?? new Set()
+        status?.skipped ?? new Set(),
+        // Travel (#3263): a slot the profile's own wall clock jumped over is not a
+        // lapse, and a detector that counted it would accuse somebody of a habit
+        // their flight invented.
+        (date) => isExcused(d.time_of_day, date)
       )
     );
     inputs.push({

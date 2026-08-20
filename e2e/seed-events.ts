@@ -36,6 +36,7 @@ import {
   seedSyncHistoryDay,
 } from "./seed/integrations";
 import { seedPortalHouseholds } from "./seed/portals";
+import { seedTravel } from "./seed/travel";
 import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
@@ -285,6 +286,10 @@ seedOfflineSnapshots();
 // so every existing fixture's row ids stay exactly where they were — and no shared
 // profile's lift list moves under a spec that reads it.
 seedStrengthLadderLanes();
+// Appended LAST (#3263): two new profiles + two logins for travel-timezone.spec.ts,
+// so every existing fixture's row ids stay exactly where they were — and no shared
+// profile's timezone can be moved by a spec that switches one.
+seedTravel();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world

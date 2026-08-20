@@ -16,6 +16,28 @@ import type Database from "better-sqlite3";
 // each day a run started in [21:00, 24:00) UTC and green the other 21. So: do NOT
 // opt a profile out here if its spec asserts a dashboard atom. Only fixtures whose
 // assertions are confined to their own pages belong below.
+//
+// AND FOR THE TRAVEL BANNER (#3263). The BROWSER is now pinned to the run's zone
+// too (`timezoneId` in playwright.config.ts's `use:`), so the fixture device and a
+// pin-following profile agree. A profile that opts out below no longer differs only
+// from its neighbours' calendars — it differs from the DEVICE it is being viewed
+// on, and that is precisely the condition the travel banner exists to announce. So
+// its pages carry the banner, above the content, wherever the session is acting as
+// that profile's OWN login (the banner is gated on that; a member acting for
+// someone else still sees nothing).
+//
+// THAT IS CORRECT, NOT A BUG, and the distinction is the whole reason the browser
+// was pinned rather than the banner suppressed: a profile pinned to UTC while the
+// device runs on the instance zone genuinely IS somewhere its device is not. The
+// banner is describing the fixture accurately. Suppressing it for the suite's
+// convenience would have made every travel assertion in the suite meaningless.
+//
+// What it costs you: an extra element at the top of the shell on those pages. A
+// spec that measures vertical geometry, or that assumes the first child of the
+// content container is its own surface, will read the banner instead. If yours
+// does, either follow the pin (most fixtures should) or give the spec's context the
+// same zone as the override so device and profile agree again — per-context
+// `timezoneId`, the way e2e/travel-timezone.spec.ts sets its own.
 export const FIXTURE_TIMEZONE_OVERRIDES = {
   weather: {
     why: "New York location fixture needs its weather and UV hour labels evaluated in the location timezone; sync instants are derived from the frozen clock so they cannot straddle an undeclared real-time midnight.",

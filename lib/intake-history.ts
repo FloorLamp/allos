@@ -32,6 +32,7 @@ import {
   type AdherenceDot,
 } from "./intake-adherence";
 import { isPushedIntake } from "./intake-schedule";
+import { travelExcusalResolver } from "./travel-excusal";
 import {
   classifyIntakeDeltas,
   intakeDeltaLine,
@@ -88,6 +89,10 @@ export function getIntakeHistory(
     getSituationEvents(profileId)
   );
   const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
+  // Travel (#3263): a dose whose slot a timezone switch jumped over is out of the
+  // window's denominator, so a trip cannot manufacture the low adherence that a
+  // demotion suggestion would then be built on.
+  const isExcused = travelExcusalResolver(profileId);
 
   const out: IntakeHistoryEntry[] = [];
   for (const item of items) {
@@ -100,7 +105,8 @@ export function getIntakeHistory(
         workoutDays,
         situationsOn,
         takenByDose,
-        tz
+        tz,
+        isExcused
       )
     );
     // The earliest day ANY of the item's doses could be judged from — the same bound

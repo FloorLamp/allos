@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
 import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
+import { pinnedTimezone } from "./e2e/pinned-timezone";
 
 // Browser end-to-end tier (issue: always browser-test UI features). Separate
 // from the pure unit suite (`npm test`, lib/** only) and the DB tier
@@ -134,6 +135,22 @@ export default defineConfig({
       ]
     : "list",
   use: {
+    // THE BROWSER RUNS IN THE SAME ZONE THE FIXTURE WORLD DOES (#3263).
+    //
+    // `e2e/pinned-timezone.ts` pins the PROFILES to the zone where the frozen
+    // instant reads 13:mm local. The BROWSER was never told, so it kept the
+    // runner's zone — UTC on CI. Nothing noticed while no feature compared the
+    // two, because the disagreement had no reader.
+    //
+    // The travel banner is that reader: it shows when the device's zone differs
+    // from the profile's, which under the old arrangement was TRUE ON EVERY PAGE
+    // OF EVERY SPEC. Pinning the browser here makes the two agree, so the banner
+    // stays silent for the RIGHT reason — the fixture profile really is where the
+    // fixture device is — rather than being suppressed for the tests' benefit.
+    //
+    // A spec that wants them to disagree still says so per-context, which is
+    // exactly what e2e/travel-timezone.spec.ts does.
+    timezoneId: pinnedTimezone(FROZEN_NOW).zone,
     // A placeholder only: the per-worker fixture OVERRIDES baseURL with this
     // worker's own server (PORT_BASE + parallelIndex). Nothing should reach the
     // base port unless the fixture failed to load.

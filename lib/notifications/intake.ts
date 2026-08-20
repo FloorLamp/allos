@@ -67,6 +67,7 @@ import {
   type CorrectionMessageRef,
 } from "./message-pointers";
 import { plainBody } from "./rich-text";
+import { travelExcusalResolver } from "../travel-excusal";
 
 export type { ReminderWindow, IntakeSendSlot };
 
@@ -285,6 +286,12 @@ function gatherWindowDoses(
     ? getMinutesSinceLastFoodLog(profileId)
     : null;
 
+  // TRAVEL (#3263): which of this profile's slots its own wall clock jumped over.
+  // One resolver for the whole gather, and the SAME one the adherence denominator
+  // reads — a slot the app has decided was impossible must not be counted against
+  // the person AND must not be chased. Silence over a false miss.
+  const isExcused = travelExcusalResolver(profileId);
+
   const entries: WindowDose[] = [];
   for (const dose of doses) {
     const item = itemById.get(dose.item_id);
@@ -303,6 +310,17 @@ function gatherWindowDoses(
       ) !== slot
     )
       continue;
+    // The TRAVEL gate on the SEND path (#3263), the twin of the #1602 calendar gate
+    // above: an eastward switch means this dose's hour never arrived on this
+    // profile-local day, so there is nothing to remind about. A dose ALREADY
+    // answered on that date stays in the gather — the person logged it, so the
+    // message must still show it as done, and the log outranks the clock.
+    if (
+      isExcused(dose.time_of_day, date) &&
+      !taken.has(dose.id) &&
+      !skipped.has(dose.id)
+    )
+      continue;
     // A dose is "due" on a past date when its item was due that day
     // (workout/situational logic); situations are only known as of now.
     const dd = takenByDose.get(dose.id);
@@ -319,7 +337,8 @@ function gatherWindowDoses(
           activeSituations: situationsOn(d),
         }),
       dd?.taken ?? new Set<string>(),
-      dd?.skipped ?? new Set<string>()
+      dd?.skipped ?? new Set<string>(),
+      (d) => isExcused(dose.time_of_day, d)
     );
     entries.push({
       dose,

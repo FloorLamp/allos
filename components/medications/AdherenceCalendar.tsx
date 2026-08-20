@@ -21,6 +21,7 @@ const STATE_STYLE: Record<AdherenceCalendarState, string> = {
   partial: chartAdherenceState.partial.class,
   skipped: chartAdherenceState.skipped.class,
   missed: chartAdherenceState.missed.class,
+  excused: chartAdherenceState.excused.class,
   pending: chartAdherenceState.pending.class,
   na: chartAdherenceState.na.class,
 };
@@ -30,6 +31,11 @@ const STATE_LABEL: Record<AdherenceCalendarState, string> = {
   partial: "Partial",
   skipped: "Skipped",
   missed: "Missed",
+  // A slot a timezone switch jumped over (#3263) — the day the person flew east
+  // never contained this hour, so the dose was impossible rather than missed. Named
+  // rather than folded into "Not due": the reader is owed the reason their day is
+  // short, and this is the one absence that would otherwise read as a lapse.
+  excused: "Excused (travel)",
   // Today, not yet taken and not yet late enough to call anything (#2796). "Missed"
   // here contradicted the "Mark taken" button sitting a few hundred pixels away.
   pending: "Today, not yet taken",
@@ -67,6 +73,7 @@ export default function AdherenceCalendar({
     "partial",
     "skipped",
     "missed",
+    "excused",
     "pending",
     "na",
   ];

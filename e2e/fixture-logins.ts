@@ -33,4 +33,5 @@ export * from "./logins/shared";
 export * from "./logins/situations";
 export * from "./logins/timeline";
 export * from "./logins/training";
+export * from "./logins/travel";
 export * from "./logins/trends";
