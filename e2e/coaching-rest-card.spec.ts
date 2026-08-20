@@ -11,7 +11,8 @@ import {
 } from "./fixture-logins";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { setFixtureTimezone } from "./fixture-timezones";
+import { clearFixtureTimezone } from "./fixture-timezones";
+import { pinnedTimezone } from "./pinned-timezone";
 import {
   dashboardCandidatePrefix,
   dashboardCandidateWithText,
@@ -38,20 +39,23 @@ function resetRestCardState(): void {
     if (row) {
       const rcToday = frozenNow().toISOString().slice(0, 10);
       const rcPrevNight = shiftDateStr(rcToday, -1);
-      setFixtureTimezone(db, row.id, "rest-card", "UTC");
+      // Follows the run's pin (#3337); local date == the frozen UTC date above.
+      clearFixtureTimezone(db, row.id);
+      const rcTz = pinnedTimezone(frozenNow().toISOString()).zone;
       db.prepare(
         "DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'"
       ).run(row.id);
       // The #2159 wake-day rule: the overnight window is built through the
-      // profile timezone (pinned to UTC just above), never bare `…Z` stamps.
+      // profile timezone — the run's pinned zone, as cleared to just above — never
+      // bare `…Z` stamps.
       db.prepare(
         `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
       ).run(
         row.id,
         rcToday,
-        zonedWallTimeToUtc("UTC", rcPrevNight, "23:00")!.toISOString(),
-        zonedWallTimeToUtc("UTC", rcToday, "04:00")!.toISOString()
+        zonedWallTimeToUtc(rcTz, rcPrevNight, "23:00")!.toISOString(),
+        zonedWallTimeToUtc(rcTz, rcToday, "04:00")!.toISOString()
       );
       db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(row.id);
       const insertRhr = db.prepare(
