@@ -1719,7 +1719,7 @@ export default function FoodLogBar({
           title="Dietary preferences"
           onClose={() => setPreferencesOpen(false)}
         >
-          <div className="mt-4 min-h-0 overflow-y-auto pr-1">
+          <div className="min-h-0 overflow-y-auto pr-1">
             <DietaryPreferencesForm
               excluded={excludedGroups}
               groups={groupsBySlot[FOOD_SLOTS[0]].map((group) => ({
@@ -1751,7 +1751,7 @@ export default function FoodLogBar({
           }}
           size="sm"
         >
-          <div data-testid="food-correct-modal" className="mt-4 space-y-3">
+          <div data-testid="food-correct-modal" className="space-y-3">
             <p
               data-testid="food-correct-provenance"
               className="text-xs text-slate-500 dark:text-slate-400"

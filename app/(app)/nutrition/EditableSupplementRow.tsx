@@ -420,7 +420,7 @@ export default function EditableSupplementRow({
         >
           <div
             data-testid="supplement-edit-panel"
-            className="mt-4 min-h-0 overflow-y-auto px-1"
+            className="min-h-0 overflow-y-auto px-1"
           >
             <IntakeItemForm
               action={updateIntakeItem}

@@ -309,7 +309,7 @@ export default function RoutinesManager({
           title="Adopt a template"
           onClose={() => setShowPicker(false)}
         >
-          <div className="mt-4 space-y-3" data-testid="template-picker">
+          <div className="space-y-3" data-testid="template-picker">
             {orderedTemplates.map((t) => (
               <div
                 key={t.id}

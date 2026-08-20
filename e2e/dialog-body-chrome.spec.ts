@@ -113,6 +113,102 @@ test.describe("a dialog body renders content, never chrome (#3361)", () => {
     expect(await cardChrome(form)).toEqual(NO_CARD_CHROME);
   });
 
+  test.describe("the title gap has ONE owner (#3361)", () => {
+    // Every dialog body gets its gap under the title from the HOST's content
+    // region (`mt-3` on `[data-sheet-content]`, components/BottomSheet.tsx).
+    // Call sites used to stack their own `mt-4` on top of it — 28px under a
+    // dialog title, decided by nobody. #3388 fixed the two hosts it was already
+    // touching (AddEntryPanel's modal branch, covering all seventeen
+    // `presentation="modal"` mounts, and ProtocolForm); the remaining eighteen
+    // wrappers were swept here. Between the two PRs the app was INCONSISTENT
+    // between dialogs, which reads worse than uniformly wrong, so these two
+    // tests pin both halves of the rule.
+    //
+    // MARGIN IS READ OFF THE RENDERED ELEMENT, never a class name — same reason
+    // as the rest of this file. A `toHaveClass` check goes green the day the
+    // margin arrives from somewhere else.
+
+    /** The computed top margin of an element, in CSS pixels. */
+    async function marginTopPx(el: Locator): Promise<number> {
+      return el.evaluate(
+        (node) => parseFloat(getComputedStyle(node).marginTop) || 0
+      );
+    }
+
+    test("a swept dialog body carries no top margin of its own", async ({
+      page,
+    }) => {
+      test.slow(); // next compiles /trends on first hit
+
+      await page.goto("/trends");
+      await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+
+      // WAIT FOR THE CONTENT, NOT THE CONTAINER (#3384). The body region mounts
+      // before the measurements form arrives inside it, and an empty box has a
+      // perfectly innocent margin — a read taken against the placeholder would
+      // pass without ever having looked at the thing this test names.
+      const form = page.getByTestId("measurements-quick-add");
+      await expect(form).toBeVisible();
+      await expect(
+        form.locator("#measurements-group-body-fields")
+      ).toBeVisible();
+
+      const body = page.getByTestId("log-measurements-modal-body");
+      const content = page.locator("[data-sheet-content]");
+
+      expect(
+        await marginTopPx(body),
+        "the dialog body must not add its own gap under the title"
+      ).toBe(0);
+
+      // ...and the owner is still there. Asserting only the zero would go green
+      // on a tree where the gap had been deleted outright rather than given one
+      // owner, which is a different bug with the same diff signature.
+      expect(
+        await marginTopPx(content),
+        "the host's content region owns the gap under the title"
+      ).toBeGreaterThan(0);
+    });
+
+    test("a description-to-form gap is not a title gap, and survives", async ({
+      page,
+    }) => {
+      // THE GUARD'S SILENCE, and the reason the sweep was not a `sed`. In six
+      // dialogs the first child is a `<p className="mt-2">` DESCRIPTION and the
+      // `mt-4` sits on the form BELOW it. That margin spaces the form from the
+      // sentence above, not from the title, and deleting it would collapse the
+      // two together. This is one of the six (MedicationListActions); if a
+      // future sweep takes them too, this goes red instead of shipping quietly.
+      //
+      // Read-only like the rest of this file: the dialog is opened and measured,
+      // never submitted, so no share link is created.
+      await page.goto("/medications");
+      await hydratedClick(page, page.getByTestId("medication-share-open"));
+
+      const content = page.locator("[data-sheet-content]");
+      const form = content.locator("form");
+      await expect(form).toBeVisible();
+      // The specific child this test is about, before anything is measured.
+      await expect(page.getByTestId("medication-share-create")).toBeVisible();
+
+      // `> p:first-child` — being the FIRST child is the whole discriminator
+      // between the swept set and this one, so the selector says so. An
+      // index-into-a-list locator would keep matching if the description ever
+      // stopped leading, which is exactly the case this test exists to catch,
+      // and lib/__tests__/e2e-hygiene.test.ts is right to ban that shape.
+      // (That guard scans lines, comments included, so this note names the
+      // banned form in prose rather than spelling it.)
+      const description = content.locator("> p:first-child");
+      await expect(description).toHaveCount(1);
+      await expect(description).toContainText("read-only link");
+
+      expect(
+        await marginTopPx(form),
+        "the form must stay spaced from the description above it"
+      ).toBeGreaterThan(0);
+    });
+  });
+
   test.describe("a full-bleed body between `sm` and `md`", () => {
     // THE BAND THE BUG LIVED IN, and the reason this describe sets its own
     // viewport: neither project width is inside it. The dialog panel pads `px-4`

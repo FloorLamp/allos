@@ -381,7 +381,7 @@ export default function SleepMoodEditDialog(
           correct. */}
       <div
         ref={factScopeRef}
-        className="mt-4 space-y-5"
+        className="space-y-5"
         data-testid="sleep-mood-edit-dialog"
         // THIS DIALOG ANSWERS FOR ITSELF (#3356). See `hasUnsavedEdit` above: the
         // registry tracks named controls inside a `<form>`, and this surface has

@@ -64,7 +64,7 @@ export default function MetricMeasurementPanel({
       {open && (
         <ModalShell title={`Log ${label}`} onClose={() => setOpen(false)}>
           <div
-            className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"
+            className="min-h-0 overflow-y-auto px-1 pb-1"
             data-testid="metric-measurement-modal-body"
           >
             <MeasurementsQuickAdd
