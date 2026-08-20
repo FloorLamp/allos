@@ -137,6 +137,17 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
     // because two branches that each spell it out is precisely the arrangement that
     // drifts.
     expect(chipRow.match(/"data-suggested":/g)?.length).toBe(1);
+
+    // TO THE REVIEWER REACHING FOR THE NEXT LINE: it names a private call expression and
+    // goes red on a harmless rename, which normally decides it. Keep it anyway. The
+    // REMOVABLE branch has no unconditional runtime pin — the intake spec's marking
+    // assertion sits behind `if (await suggested.count())`, so it asserts nothing when no
+    // seeded rule matches and passes either way (#3318). Until that guard goes, this
+    // brittle source claim is the only check on that branch that cannot silently skip,
+    // and trading a false red for a false green is the worse trade. When #3318 makes the
+    // e2e assertion unconditional, delete this line — the one above it is the durable
+    // half, because it asks about the ATTRIBUTE, which is the contract, not about the
+    // code that produces it.
     const chip = exportedFunctionSource(chipRow, "FactChip");
     expect(chip?.match(/suggestedAttrs\(suggested\)/g)?.length).toBe(2);
   });

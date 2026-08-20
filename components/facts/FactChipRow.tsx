@@ -46,6 +46,13 @@ export type FactChipState = "stated" | "missing";
 //
 // Absent when the consumer does not track suggestion for that fact at all, which is
 // different from tracking it and finding it false.
+//
+// A MISSING CHIP CARRIES NO MARKING, and that is the rule rather than an oversight: a
+// chip with no value cannot have borrowed one, so "not tracked" is the honest answer and
+// `data-suggested="0"` would be a claim about a value that does not exist. A STATED fact
+// the consumer never suggests is the other case — that one is tracked-and-false, and says
+// so. Written down here because four more consumers are queued behind the first two and
+// this is a reading they would otherwise each have to guess at.
 function suggestedAttrs(
   suggested: boolean | undefined
 ): Record<string, string> {
