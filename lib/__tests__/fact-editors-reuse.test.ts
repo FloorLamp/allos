@@ -63,9 +63,31 @@ const CONSUMERS = [
   {
     // The FIRST consumer that is a real <form>, and the first whose editor is not the
     // whole surface — the chips sit in one section of a long editor (#3334).
+    //
+    // It is NOT DOM-collected, which is the distinction the row below turns on: its
+    // <form> only `preventDefault`s and `buildFormData` composes every field by hand
+    // out of React state, so it carries no `name=` at all (see the note at the top of
+    // components/ActivityForm.tsx, which records that refutation).
     name: "the activity editor's session facts (#3334)",
     chips: "components/activity-form/ActivitySessionFactRow.tsx",
     host: "components/ActivityForm.tsx",
+  },
+  {
+    // THE FIRST DOM-COLLECTED CONSUMER (#3219) — a different "first" from the one
+    // above, and the two are worth reading together. The three consumers before this
+    // all hand their action a FormData they built themselves; this one is
+    // `<form action={handle}>` with twelve NAMED inputs, so the browser gathers the
+    // FormData from whatever is mounted at submit.
+    //
+    // That is why its closed panels stay mounted and merely hidden — the primitive's
+    // other documented reading, and the one #2014 states — and why it keeps its
+    // previously-uncontrolled fields DOM-owned: a controlled field's `defaultValue` is
+    // kept in sync with its value by React, and the dirty-form registry reads
+    // `defaultValue` as the saved value, so a controlled field can never be dirty.
+    // e2e/protocol-facts.spec.ts pins both halves at runtime.
+    name: "the protocol form (#3219)",
+    chips: "components/protocols/ProtocolFactRow.tsx",
+    host: "app/(app)/protocols/ProtocolForm.tsx",
   },
   {
     // The visit pair (#3223), and the first consumer whose chips file is mounted by TWO
