@@ -147,7 +147,12 @@ export default function ProtocolControls({
 
   return (
     <>
-      <div className="card space-y-3" data-testid="protocol-header">
+      {/* NOT a card (#3237): this block holds the page's own h1, and a page
+          whose identity sits inside a content container has no page-level
+          heading at all — every other detail page draws its title at page level
+          with cards BELOW it. The situation line and notes come with it; the
+          protocol's actual content keeps its own cards. */}
+      <div className="space-y-3" data-testid="protocol-header">
         {/* The shared PageHeader, not a hand-rolled <h1> (issue #1416, section D):
         this IS the protocol detail page's heading, so it gets the same treatment —
         including the compact mobile size — as every other page. */}

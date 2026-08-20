@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import {
@@ -31,6 +30,7 @@ import {
   syncRequestCopy,
 } from "@/lib/sync-requests";
 import { today } from "@/lib/db";
+import BackLink from "@/components/BackLink";
 import PortalsSurface, {
   type AccountView,
   type IdentityView,
@@ -296,12 +296,7 @@ export default async function PatientPortalsPage() {
     // full width of a desktop shell.
     <PageContainer width="flow" className="space-y-6">
       <div>
-        <Link
-          href="/data?section=import"
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-        >
-          <IconArrowLeft className="h-4 w-4" /> Import
-        </Link>
+        <BackLink href="/data?section=import" label="Import" className="" />
         <PageHeader title={def.name} />
       </div>
 

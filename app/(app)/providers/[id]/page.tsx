@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  IconArrowLeft,
   IconBuildingHospital,
   IconStethoscope,
 } from "@tabler/icons-react";
@@ -38,6 +37,7 @@ import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
 import ProviderAffiliations from "../ProviderAffiliations";
 import { NavTabsStrip } from "@/components/NavTabs";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -262,13 +262,7 @@ export default async function ProviderDetailPage(props: {
       className="mx-auto"
       data-testid="provider-detail"
     >
-      <Link
-        href="/records/care/providers"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-      >
-        <IconArrowLeft className="h-4 w-4" stroke={1.75} />
-        Back to providers
-      </Link>
+      <BackLink href="/records/care/providers" label="Back to providers" />
 
       <PageHeader
         title={provider.name}

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { Notice } from "@/components/Notice";
@@ -14,6 +13,7 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -55,12 +55,7 @@ export default async function WeatherPage(props: {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <Link
-        href="/data?section=import"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      >
-        <IconArrowLeft className="h-4 w-4" /> Import
-      </Link>
+      <BackLink href="/data?section=import" label="Import" />
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 

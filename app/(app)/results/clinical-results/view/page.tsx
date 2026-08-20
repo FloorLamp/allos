@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { metricDetailHref, CLINICAL_RESULTS_LIST_HREF } from "@/lib/hrefs";
 import { continuousReadingSlug } from "@/lib/reading-cadence";
 import {
@@ -87,6 +86,7 @@ import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
 import { resultSeriesKey } from "@/lib/saved-items";
 import ScrollFade from "@/components/ScrollFade";
+import BackLink from "@/components/BackLink";
 import {
   FitnessPercentileCard,
   fitnessContextFor,
@@ -148,12 +148,10 @@ export default async function ClinicalResultDetailPage(props: {
   if (series.length === 0) {
     return (
       <div>
-        <Link
+        <BackLink
           href={CLINICAL_RESULTS_LIST_HREF}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" /> Back to clinical results
-        </Link>
+          label="Back to clinical results"
+        />
         <PageHeader title={canonical} />
         <EmptyState
           message={`No clinical results found for “${canonical}”.`}
@@ -595,12 +593,10 @@ export default async function ClinicalResultDetailPage(props: {
 
   return (
     <div>
-      <Link
+      <BackLink
         href="/results/clinical-results"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
-      >
-        <IconArrowLeft className="h-4 w-4" /> Back to clinical results
-      </Link>
+        label="Back to clinical results"
+      />
 
       {/* One prose surface per fact (#2340). The subtitle used to append the curated
           `note`, which for at least one analyte is a near-paraphrase of the explainer

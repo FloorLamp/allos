@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IconArrowLeft, IconBarbell } from "@tabler/icons-react";
+import { IconBarbell } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getEquipmentById } from "@/lib/equipment";
@@ -22,6 +22,7 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -95,13 +96,7 @@ export default async function EquipmentDetailPage(props: {
 
   return (
     <PageContainer width="reading" data-testid="equipment-detail">
-      <Link
-        href="/equipment"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-      >
-        <IconArrowLeft className="h-4 w-4" stroke={1.75} />
-        Back to equipment
-      </Link>
+      <BackLink href="/equipment" label="Back to equipment" />
 
       <PageHeader
         title={equipment.name}

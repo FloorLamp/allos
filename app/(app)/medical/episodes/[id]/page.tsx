@@ -63,6 +63,8 @@ import PageContainer from "@/components/PageContainer";
 import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
 import { getEpisodeReopenMedRestore } from "@/lib/illness-episode-write";
 import { IconCamera } from "@tabler/icons-react";
+import BackLink from "@/components/BackLink";
+import { EPISODES_HREF } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -298,6 +300,10 @@ export default async function EpisodePage(props: {
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-5">
+      {/* The way out (#3237). This page had none — its in-card identity banner
+          (#531/#534) is a different question and is untouched below. `space-y-5`
+          on the container owns the gap, so no bottom margin here. */}
+      <BackLink href={EPISODES_HREF} label="Back to episodes" className="" />
       <EpisodeSummary
         episode={assembled}
         note={row.note}

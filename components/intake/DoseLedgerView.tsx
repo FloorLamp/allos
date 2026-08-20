@@ -39,6 +39,7 @@ import {
 } from "@/lib/timeline-format";
 import { doseLedgerHref, intakeHref } from "@/lib/hrefs";
 import type { IntakeItemKind } from "@/lib/types";
+import BackLink from "@/components/BackLink";
 
 // The ISO floor an all-time window reads from — the ledger's reader takes a `since`
 // day, and "all time" is a window with no lower bound rather than a second query.
@@ -235,17 +236,19 @@ export default function DoseLedgerView({
 
   return (
     <div data-testid="dose-ledger-page">
+      {/* A forward link is not a back (#3237). The header action still offers the
+          onward door to the item list; this is the way out of the ledger. */}
+      <BackLink
+        href={intakeHref(surface)}
+        label={
+          surface === "medication"
+            ? "Back to medications"
+            : "Back to supplements"
+        }
+      />
       <PageHeader
         title="Dose history"
         subtitle="Every dose you confirmed, across items. What was taken — not an adherence verdict."
-        action={
-          <Link
-            href={intakeHref(surface)}
-            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            {surface === "medication" ? "Medications" : "Supplements"} →
-          </Link>
-        }
       />
 
       <div className="mb-4 space-y-3">
