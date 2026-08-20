@@ -1261,7 +1261,8 @@ export async function bandStory(
       const topRect = top.getBoundingClientRect();
       const bottomRect = bottom.getBoundingClientRect();
       const gap = bottomRect.top - topRect.bottom;
-      if (gap <= 0.5) return `nothing sits between them (gap ${Math.round(gap)}px)`;
+      if (gap <= 0.5)
+        return `nothing sits between them (gap ${Math.round(gap)}px)`;
 
       const describe = (el: Element): string => {
         const style = getComputedStyle(el);

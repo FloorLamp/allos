@@ -110,15 +110,17 @@ type TestFixtures = {
 // worker's own database, against what this worker is about to pin the browser to. A
 // check that derived both from one value would be a tautology, and would have been
 // green through the whole of #3364.
-function assertSeedAndBrowserShareOneZone(dbPath: string, pinned: string): void {
+function assertSeedAndBrowserShareOneZone(
+  dbPath: string,
+  pinned: string
+): void {
   const db = new Database(dbPath, { fileMustExist: true });
   let seeded: string | undefined;
   try {
     db.pragma("busy_timeout = 5000");
     seeded = (
       db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as
-        | { value: string }
-        | undefined
+        { value: string } | undefined
     )?.value;
   } finally {
     db.close();
