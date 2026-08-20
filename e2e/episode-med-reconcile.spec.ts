@@ -90,7 +90,9 @@ async function pickMedication(
   const input = scope.getByRole("combobox", { name: "Medication" });
   await input.click();
   await input.fill(value);
-  const option = scope
+  // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
+  const root = "page" in scope ? scope.page() : scope;
+  const option = root
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: value })

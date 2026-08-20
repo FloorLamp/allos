@@ -45,7 +45,10 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   // Pick "Naproxen" from the name combobox (onPick fires the prefill; a bare fill
   // would not).
   await addCard.getByLabel("Name").fill("Naproxen");
-  await addCard
+  // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
+  // DOM any more — resolve it from the page. Only one combobox list is open at a
+  // time, so this is not ambiguous.
+  await page
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Naproxen" })
@@ -103,7 +106,10 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
   const addCard = await openFullAdd(page);
 
   await addCard.getByLabel("Name").fill("Dextromethorphan");
-  await addCard
+  // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
+  // DOM any more — resolve it from the page. Only one combobox list is open at a
+  // time, so this is not ambiguous.
+  await page
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Dextromethorphan" })
@@ -134,7 +140,10 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // and (proving "touched") leaving it as the user set it.
   await setObligation(page, "may", addCard);
   await addCard.getByLabel("Name").fill("Naproxen");
-  await addCard
+  // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
+  // DOM any more — resolve it from the page. Only one combobox list is open at a
+  // time, so this is not ambiguous.
+  await page
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Naproxen" })
@@ -174,7 +183,8 @@ test("a pediatric formulation persists from quick add to the medication list", a
     ).toContainText("No pediatric label weight-band chart");
 
     await quickAdd.getByLabel("Name").fill("Acetaminophen");
-    await quickAdd
+    // Portaled listbox (#3271) — resolved from the page, not the panel.
+    await page
       .getByRole("listbox")
       .getByRole("button")
       .filter({ hasText: "Acetaminophen" })
