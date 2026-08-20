@@ -161,6 +161,18 @@ for (;;) {
 
   if (settled) {
     if (s.failed.length) {
+      // THE VERDICT GOES TO STDOUT TOO, and that is not a cosmetic choice.
+      //
+      // A RED written only to stderr can be lost — a background runner that captures
+      // the streams separately, or interleaves them, leaves a log holding nothing but
+      // the trailing advice block, and then the EXIT CODE is the only surviving
+      // signal. Measured 2026-08-20 on PR #3307: the captured log was four lines of
+      // preamble, the reported exit code was 0, and the PR had two failing checks.
+      // The orchestrator nearly merged a red head on that log. A verdict that can be
+      // dropped by the plumbing is not a verdict — print it where the log will keep
+      // it, and keep stderr's copy for a human watching live.
+      console.log(`RED — ${s.failed.length} failing check(s):`);
+      for (const r of s.failed) console.log(`  ${r.conclusion}: ${r.name}`);
       console.error(`RED — ${s.failed.length} failing check(s):`);
       for (const r of s.failed)
         console.error(`  ${r.conclusion}: ${r.name}  ${r.html_url}`);
