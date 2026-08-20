@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   closeProtocolFact,
@@ -224,7 +229,19 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     const form = await openNewProtocol(page);
 
     await openProtocolFact(form, "situation");
-    await form.getByLabel("Situation").fill(SITUATION_TEXT);
+    // `settledFill`, NEVER a bare `fill()`, and the reason is the same mechanism this
+    // test is about. A fill dispatched before React has attached to a CONTROLLED input
+    // sets the DOM value and fires no `onChange`, so `situation` never moves and the
+    // next render puts the field back to "" — measured here, not theorised: with a
+    // bare fill this test failed roughly one run in eight, on `value: ""` with
+    // `live: true` and `inForm: true`, and it failed identically with the registry
+    // reverted, so it was never the registry.
+    //
+    // THE NEIGHBOURING TEST GETS AWAY WITH A BARE FILL AND THIS ONE CANNOT, which is
+    // the distinction worth carrying away: `notes` is DOM-owned, so the DOM keeps a
+    // value React never saw. Only a controlled field can be typed into and come back
+    // empty. Do not "tidy" this back to `fill()`.
+    await settledFill(page, form.getByLabel("Situation"), SITUATION_TEXT);
     // Tab, not Escape. The combobox's listbox is open over the Done button and would
     // swallow the click; Escape closes the listbox but also reverts the free text,
     // which would leave this test typing nothing and asserting on it.
