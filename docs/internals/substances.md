@@ -53,6 +53,37 @@ same four functions, and `docs/internals/identity-registry.md` lists them side b
 A second normalization rule for the same shape of user text would be the
 "one question, one computation" disease at the identity layer.
 
+**Case folds for matching, never for display (#3325).** Case is stored verbatim, because
+"MDMA" must not read as "Mdma" on a card heading; what #3325 removed was case DECIDING
+identity, which had made `"Kratom"` and `"kratom"` two substances with two cards and two
+ledgers, each looking correct. This is the one part of the model that is not
+re-instantiated but genuinely **shared**: both resolvers call `matchFoldedVocabulary()`
+from `lib/vocabulary-fold.ts`, and both are handed this profile's own spellings by
+`resolveProfileVocabularyKey()` in `lib/vocabulary-store.ts`. Two copies of a fold would
+drift the moment one domain's rule changed, which is why #3279's lane left the defect
+alone rather than fixing one half of it.
+
+The fold is **compared, never stored**: no code path leads from a fold to a key, so no
+normalizer can hand back a lower-cased label. It is also **not re-spellable in SQL** —
+SQLite's `LOWER(...)` / `COLLATE NOCASE` fold ASCII only, so a case-insensitive match written
+in SQL would disagree with the write boundary and quietly re-create the duplicate;
+`lib/__tests__/vocabulary-sql-fold-census.test.ts` fails the day anyone reaches for it. The spelling that wins is the **first seen**
+— the oldest ledger row's — so a card is never re-titled behind somebody's back, and the
+surface says which one took the log ("Kratom: 1 logged today" for a typed "kratom").
+
+It applies where a person **types** a name: `trackSubstanceUseAction` here,
+`logSymptomCore` on the symptom side. A key a surface hands back — correcting a day,
+setting a cap, renaming, deleting — resolves bare, because it came from a row the app
+just rendered and folding it could redirect the edit onto a neighbour.
+
+**Rows that already differ only by case are left alone**, deliberately. Merging them is an
+irreversible edit to a health record that nothing at migration time can ask about, and the
+merge rule already exists as a USER action (`renameCustomSymptom` for symptoms; the day
+rows are editable and undoable for substances) — re-implementing it in raw migration SQL,
+where the write cores are unreachable, would fork the collision semantics. So new writes
+join the first-seen card and the other spelling keeps its own history, readable and
+editable; it simply stops being the target of new logs.
+
 **No new table, and no migration.** A custom substance's identity _is_ its normalized
 name in the ledger, exactly as a custom symptom's is in `symptom_logs.symptom`. Migration
 096 declared this on day one: `substance` carries no `CHECK`, "so a future substance needs
@@ -174,6 +205,6 @@ nag toward more consumption.
 
 #998 and #1078 built the ledger and the curated three. #2380 is the doctrine.
 #3144 is the protocol tally the regimen path rides. #3279 records the rulings above.
-#3326 built the naming surface and #3327 the quick-log row. #3324 (whether a substance
-should survive going to zero) and #3325 (case-folding, in this vocabulary and the symptom
-one at once) are open and neither surface pre-empts them.
+#3326 built the naming surface and #3327 the quick-log row. #3325 folded case for matching
+in this vocabulary and the symptom one at once. #3324 (whether a substance should survive
+going to zero) is still open and no surface pre-empts it.

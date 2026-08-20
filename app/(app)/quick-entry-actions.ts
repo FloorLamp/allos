@@ -213,8 +213,9 @@ export type QuickEntryData =
       // server-side so the panel decides nothing:
       //
       //   • `label` is `substanceLabel` — the curated noun, or the person's own
-      //     spelling verbatim for a custom key (#3323, and case is preserved: #3325
-      //     owns folding, in both vocabularies at once).
+      //     spelling verbatim for a custom key (#3323). Case survives to here
+      //     unchanged: #3325 folds case for MATCHING at the write boundary, in both
+      //     vocabularies at once, and never for display.
       //   • `logLabel` is the substance's own verb — "Log a standard drink" for
       //     alcohol, "Log a use" for everything else, curated or named.
       //   • `capProgress` is `capProgressLine` and is NULL for a substance with no

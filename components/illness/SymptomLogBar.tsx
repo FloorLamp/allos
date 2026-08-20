@@ -554,7 +554,16 @@ export default function SymptomLogBar({
   }
 
   function addCustom(name: string = customDraft) {
-    const key = resolveSymptomKey(name);
+    // #3325: resolve against the spellings this profile already uses, so a typed
+    // "kratom" raises the existing "Kratom" chip instead of putting a second one beside
+    // it. The optimistic key has to agree with the one the server will write — this
+    // state is seeded once and never re-synced from props, so a divergent optimistic key
+    // would linger next to the real row until the next mount. The server re-resolves
+    // against the full ledger in first-seen order and stays authoritative; `customNames`
+    // is the same vocabulary ordered newest-used-first, which only differs where a
+    // profile already carries two spellings of one name (rows that predate this fix —
+    // see lib/vocabulary-store.ts).
+    const key = resolveSymptomKey(name, customNames);
     setCustomDraft("");
     if (!key) return;
     // One add path (#857): a typed name logs at severity 1, becoming a logged row.
