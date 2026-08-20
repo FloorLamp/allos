@@ -1460,13 +1460,19 @@ export default function ActivityForm({
               mid-edit. */}
               {sessionEquipmentType != null && (
                 <div>
-                  <div className="label">Equipment</div>
                   {openFact == null && (
-                    <ActivitySessionFactRow
-                      summary={sessionFacts}
-                      openEditor={openFact}
-                      onOpen={openFactEditor}
-                    />
+                    <>
+                      {/* The cell's own heading, matching the Intensity legend beside
+                          it. It goes with the chips: the open panel renders the
+                          picker's own "Equipment" label, and two of them on screen
+                          would be one heading too many. */}
+                      <div className="label">Equipment</div>
+                      <ActivitySessionFactRow
+                        summary={sessionFacts}
+                        openEditor={openFact}
+                        onOpen={openFactEditor}
+                      />
+                    </>
                   )}
                 </div>
               )}
