@@ -6,6 +6,7 @@ import {
   openProtocolFact,
   withProtocolFact,
 } from "./protocol-form-helpers";
+import { CUSTOM_PRACTICE_VALUE } from "@/lib/protocol-practice";
 
 // The protocol form's adoption of facts-with-editors (#3219, over #3218).
 //
@@ -24,6 +25,9 @@ import {
 // field it CLEARS (#2359), and an unmounted field is invisible to the dirty-form
 // registry, which skips anything where `!field.isConnected` — so dismissing the dialog
 // would throw the entry away with no "Discard your changes?" to stop it.
+
+/** What the controlled-field test types. Low-entropy on purpose (words, no token). */
+const CUSTOM_PRACTICE = "Grounding walk before lunch";
 
 /** Tap the scrim where the centred dialog panel does not cover it. */
 async function tapScrimCorner(page: import("@playwright/test").Page) {
@@ -193,6 +197,78 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     // `hydratedClick`, not `settledClick`.
     await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
     await expect(form).toHaveCount(0);
+  });
+
+  test("a CONTROLLED field in this form can be dirty too (#3352)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // THE THIRD STATE. The test above pins a DOM-owned field and asserts it stayed
+    // DOM-owned; this one pins the other kind, in the same form, through the same
+    // gesture. Both have to work, because the two failure modes present IDENTICALLY
+    // — "I typed something, the dialog dismissed, nothing asked" — and have opposite
+    // fixes: an unmounted field is fixed by keeping it mounted, and a controlled one
+    // is not helped by mounting at all.
+    //
+    // `practice_custom` is genuinely React-owned (`value` + `onChange` in
+    // ProtocolForm), so before #3352 it could not be dirty however mounted it was.
+    const form = await openNewProtocol(page);
+
+    await openProtocolFact(form, "practice");
+    await form
+      .getByTestId("protocol-practice-type")
+      .selectOption(CUSTOM_PRACTICE_VALUE);
+    await form.getByTestId("protocol-practice-custom").fill(CUSTOM_PRACTICE);
+    await closeProtocolFact(form);
+
+    // OWNERSHIP FIRST, and this order is load-bearing. This assertion is about REACT,
+    // not about the registry, so it survives any registry mutant — which is what
+    // makes the guard assertion below name its own cause. With a registry-state
+    // assertion in front of it instead, a controlled-field regression reds as "the
+    // deferral broke" and sends the next reader to the wrong subsystem entirely.
+    //
+    // `def === value` IS the mechanism: React syncs `defaultValue` onto a controlled
+    // field to match `value`. If this ever fails, the field was converted to
+    // DOM-owned and this test has stopped exercising the controlled case — a true
+    // and useful red, not a bug in the guard.
+    const customOwnership = await page.evaluate(() => {
+      const el = document.querySelector(
+        'input[name="practice_custom"]'
+      ) as HTMLInputElement | null;
+      return (
+        el && { value: el.value, def: el.defaultValue, live: el.isConnected }
+      );
+    });
+    expect(
+      customOwnership,
+      "the custom-practice field must still be in the document with its panel closed"
+    ).toMatchObject({ live: true, value: CUSTOM_PRACTICE });
+    expect(
+      customOwnership?.def,
+      "this test exists for a CONTROLLED field: React must have synced defaultValue onto the typed value. If it did not, this field is DOM-owned now and the controlled arm of #3352 is no longer covered here"
+    ).toBe(CUSTOM_PRACTICE);
+
+    await tapScrimCorner(page);
+
+    // A PRESENCE assertion, so the default ceiling is honest: no wait can conjure
+    // this confirm if the registry cannot see the typing, because the registry is
+    // asked synchronously on the tap.
+    const confirm = page.getByTestId("confirm-dialog");
+    await expect(
+      confirm,
+      "a controlled field the user typed into must be able to be dirty (#3352) — the registry used to compare it against a mirror of its own value, which can only ever say clean"
+    ).toBeVisible();
+    await expect(confirm).toContainText("Discard your changes?");
+
+    await hydratedClick(
+      page,
+      confirm.getByRole("button", { name: "Keep editing" })
+    );
+    await openProtocolFact(form, "practice");
+    await expect(form.getByTestId("protocol-practice-custom")).toHaveValue(
+      CUSTOM_PRACTICE
+    );
   });
 
   test("a protocol form nobody typed into dismisses in one gesture", async ({

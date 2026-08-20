@@ -103,6 +103,50 @@ describe("fieldHoldsUnsavedInput", () => {
     ).toBe(false);
   });
 
+  it("is dirty when the user edited a field whose server value is unknowable (#3352)", () => {
+    // THE CONTROLLED-FIELD CASE. React syncs the DOM `defaultValue` onto a
+    // controlled field to match its `value`, so the DOM half has no server value to
+    // offer and says so with `null` rather than handing over a mirror of `current`.
+    // Reading that mirror is the bug: `current !== serverValue` could only ever be
+    // false, so every controlled field in a named <form> reported clean forever and
+    // its discard guard was silently absent.
+    //
+    // With no server value, the first two rules have already decided: the user
+    // edited it, and it still differs from what it held before that edit.
+    expect(
+      fieldHoldsUnsavedInput(
+        field({
+          touched: true,
+          current: "Grounding walk",
+          baseline: "",
+          serverValue: null,
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("still releases an unknowable-server-value field the user edited back", () => {
+    // `null` weakens the LAST rule only. Mount and focus are still not dirtiness,
+    // and typing then undoing is still not unsaved input — otherwise a controlled
+    // field could never release, and a form that never releases is rule 3's
+    // cure-worse-than-the-disease.
+    expect(
+      fieldHoldsUnsavedInput(
+        field({ current: "Grounding walk", baseline: "", serverValue: null })
+      )
+    ).toBe(false);
+    expect(
+      fieldHoldsUnsavedInput(
+        field({
+          touched: true,
+          current: "Grounding walk",
+          baseline: "Grounding walk",
+          serverValue: null,
+        })
+      )
+    ).toBe(false);
+  });
+
   it("makes a form dirty when any one of its fields is", () => {
     expect(formHasUnsavedInput([])).toBe(false);
     expect(
