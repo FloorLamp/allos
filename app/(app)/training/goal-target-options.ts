@@ -1,7 +1,10 @@
 import {
   getCanonicalResultDefinition,
+  getClinicalObservations,
   getRankedBiomarkerOptions,
 } from "@/lib/queries";
+import { biomarkerPlots } from "@/lib/queries/biomarker-plot";
+import { biomarkerFamily } from "@/lib/canonical-name";
 import {
   getProfileSex,
   getProfileAgeOn,
@@ -37,6 +40,18 @@ export interface GoalBiomarkerOption {
   // the app already holds, rather than typed blind next to them.
   low: number | null;
   high: number | null;
+  // WHERE A GOAL ON THIS ANALYTE WOULD START FROM (#3220): the latest point of the
+  // analyte's OWN plot, in `latestUnit` — the very value `createGoal` will store as
+  // `baseline_value` and the value the goal card will read progress against. Null
+  // when the profile has no reading yet, which is the common case for most of the
+  // vocabulary and which the goal row states by saying nothing.
+  //
+  // NOT the analyte's canonical `unit` above, and the difference is not cosmetic: a
+  // plot falls back to the latest reading's own unit when the analyte has no
+  // canonical one, so a chip that borrowed `unit` could state a number beside a unit
+  // it was never measured in.
+  latest: number | null;
+  latestUnit: string | null;
 }
 
 export function getGoalBiomarkerOptions(
@@ -65,9 +80,33 @@ export function getGoalBiomarkerOptions(
       group: option.group,
     }))
   );
+  // THE STARTING POINT, batched and BOUNDED (#3220). `biomarkerPlots` takes the whole
+  // batch in one series query (#1961), but shaping is still per analyte and this list
+  // is the entire targetable vocabulary — so the batch is narrowed to the analytes
+  // this profile has actually measured. Everything else has no reading by definition
+  // and its plot would be null.
+  //
+  // Narrowed by #482 FAMILY rather than by exact name, because that is the identity a
+  // plot gathers on: a profile whose rows say "HbA1c" has measured the option spelled
+  // "Hemoglobin A1c", and an exact-name filter would report it as never measured.
+  const measuredFamilies = new Set(
+    getClinicalObservations(profileId, { current: true }).map((row) =>
+      biomarkerFamily(row.canonical_name?.trim() || row.name).toLowerCase()
+    )
+  );
+  const plots = biomarkerPlots(
+    profileId,
+    rows
+      .map((row) => row.key)
+      .filter((name) =>
+        measuredFamilies.has(biomarkerFamily(name).toLowerCase())
+      )
+  );
   return rows.map((row) => {
     const cb = getCanonicalResultDefinition(row.key);
     const ref = cb ? referenceRange(cb, sex, age, status) : null;
+    const plot = plots.get(row.key) ?? null;
+    const latest = plot?.points.at(-1) ?? null;
     return {
       name: row.key,
       label: row.label,
@@ -75,6 +114,8 @@ export function getGoalBiomarkerOptions(
       unit: cb?.unit ?? null,
       low: ref?.low ?? null,
       high: ref?.high ?? null,
+      latest: latest?.value ?? null,
+      latestUnit: latest ? (plot?.unit ?? null) : null,
     };
   });
 }
