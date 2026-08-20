@@ -24,6 +24,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   recordInstrumentScore,
   getSubstanceInstrumentReadings,
@@ -46,6 +47,8 @@ import {
   getAllSubstanceWeekStates,
   getAlcoholWeeklyTrend,
   getSubstanceWeeklyTrend,
+  getProfileSubstanceKeys,
+  getAllSubstanceDailyTotals,
 } from "@/lib/queries";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
@@ -354,12 +357,22 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     expect(left.n).toBe(0);
   });
 
-  it("refuses non-ledger substances: alcohol (food-log) and forged keys write nothing", () => {
+  // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. The "caffeine" case
+  // stood for a forged key writing nothing; the vocabulary is open now, so caffeine is a
+  // custom substance and this ledger is where it belongs. Alcohol's refusal is untouched
+  // and is the half that still matters — it is a CURATED food-log fact, so the counter
+  // ledger must keep turning it away. What replaces the forged case is a key not in
+  // canonical stored form: a caller that skipped resolveSubstanceKey would otherwise mint
+  // " Kratom " beside an existing "Kratom".
+  it("refuses alcohol (food-log) and un-normalized keys: neither writes to the counter ledger", () => {
     const p = newProfile("SU ledger guard");
     expect(logSubstanceUnitCore(p, "alcohol", today(p))).toEqual({
       kind: "unknown-substance",
     });
-    expect(logSubstanceUnitCore(p, "caffeine", today(p))).toEqual({
+    expect(logSubstanceUnitCore(p, " Kratom ", today(p))).toEqual({
+      kind: "unknown-substance",
+    });
+    expect(logSubstanceUnitCore(p, "", today(p))).toEqual({
       kind: "unknown-substance",
     });
     const n = db
@@ -638,5 +651,130 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
       `${date}T18:00:00Z`,
       `${date}T19:00:00Z`,
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3279 — the OPEN VOCABULARY, end to end. A profile names its own substance and it
+// behaves "like the curated three": one ledger, history correction, week state. The
+// pure tier owns the naming rules; this tier owns what only a real DB can show —
+// that no table, no migration and no branch was needed to carry it.
+describe("custom substances (#3279)", () => {
+  it("a logged custom substance joins the profile's vocabulary, and leaves when its last row does", () => {
+    const p = newProfile("SU custom vocab");
+    // Before anything is logged, the vocabulary is exactly the curated catalog.
+    expect(getProfileSubstanceKeys(p)).toEqual(["alcohol", "nicotine", "cannabis"]);
+
+    const day = today(p);
+    expect(logSubstanceUnitCore(p, "Kratom", day)).toEqual({
+      kind: "logged",
+      units: 1,
+      substance: "Kratom",
+    });
+    expect(getProfileSubstanceKeys(p)).toEqual([
+      "alcohol",
+      "nicotine",
+      "cannabis",
+      "Kratom",
+    ]);
+    expect(getSubstanceWeekState(p, "Kratom").count).toBe(1);
+
+    // The ledger IS the register: undo the last unit and the row is dropped, so the
+    // substance quietly leaves the vocabulary. That is why no forget-this-substance
+    // affordance exists (docs/internals/substances.md).
+    expect(undoSubstanceUnitCore(p, "Kratom", day)).toEqual({
+      kind: "undone",
+      units: 0,
+      substance: "Kratom",
+    });
+    expect(getProfileSubstanceKeys(p)).toEqual(["alcohol", "nicotine", "cannabis"]);
+  });
+
+  it("carries a custom substance through history correction like the curated three", () => {
+    const p = newProfile("SU custom history");
+    const date = shiftDateStr(today(p), -3);
+    const added = addSubstanceDailyTotalCore(p, "  Energy drinks ", {
+      date,
+      amount: 2,
+      notes: "two cans",
+    });
+    if (added.kind !== "added") throw new Error("custom history entry not added");
+
+    // Normalized ONCE at the write boundary, so the stray-whitespace spelling and the
+    // clean one are the same row rather than two neighbours.
+    const rows = getAllSubstanceDailyTotals(p).filter(
+      (r) => r.substance === "Energy drinks"
+    );
+    expect(rows).toEqual([
+      {
+        id: added.id,
+        substance: "Energy drinks",
+        date,
+        amount: 2,
+        notes: "two cans",
+      },
+    ]);
+
+    expect(
+      updateSubstanceDailyTotalCore(p, "Energy drinks", added.id, {
+        date,
+        amount: 5,
+      })
+    ).toEqual({ kind: "updated", id: added.id });
+    // The correction flows through the shared cadence ledger, so the trend sees it —
+    // the row's day may be in the current week or the previous one depending on where
+    // today() falls, which is exactly why this sums the window instead of indexing it.
+    expect(
+      getSubstanceWeeklyTrend(p, "Energy drinks", 2).reduce(
+        (n, w) => n + w.count,
+        0
+      )
+    ).toBe(5);
+
+    // A custom substance is never a food, whatever it is called: the nutrition ledger
+    // stays empty even for a name containing a curated one.
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`)
+        .get(p)
+    ).toEqual({ n: 0 });
+  });
+
+  it("stays NEUTRAL with no cap: no status, no finding, no digest line", () => {
+    const p = newProfile("SU custom neutral");
+    const day = today(p);
+    for (let i = 0; i < 9; i += 1) logSubstanceUnitCore(p, "Kratom", day);
+
+    // #3279 ruling 1. Nine uses is a fact, not a verdict. With no target row there is
+    // no SubstanceCapStatus for any surface to render — the opt-in is structural, so
+    // this is an absence of DATA, not a flag someone remembered to check.
+    const state = getSubstanceWeekState(p, "Kratom");
+    expect(state.count).toBe(9);
+    expect(state.target).toBeNull();
+    expect(state.status).toBeNull();
+    expect(buildSubstanceUseFindings(p)).toEqual([]);
+
+    // And it never nags toward MORE: a substance cap is a ceiling, so it stays out of
+    // the floor-semantics frequency rollup even once one is set.
+    db.prepare(
+      `INSERT INTO frequency_targets (scope_kind, scope_value, per_week, profile_id)
+       VALUES ('substance', 'Kratom', 3, ?)`
+    ).run(p);
+    expect(
+      getFrequencyTargetProgress(p).some(
+        (t) => t.target.scope_value === "Kratom"
+      )
+    ).toBe(false);
+
+    // With the cap now opted into, the SAME nine uses do carry a verdict — and it
+    // names the substance the person named.
+    const capped = getSubstanceWeekState(p, "Kratom");
+    expect(capped.status).not.toBeNull();
+    expect(capProgressLine(capped.status!, "Kratom")).toBe(
+      "9 uses logged this week — 6 over your 3-use weekly cap."
+    );
+    const findings = buildSubstanceUseFindings(p);
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toBe("Kratom is over your weekly target");
   });
 });

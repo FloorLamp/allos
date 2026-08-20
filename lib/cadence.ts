@@ -39,7 +39,7 @@ import {
 } from "./frequency-targets";
 import { regionsForGroup, type BodyGroup } from "./lifts";
 import { frequencyRangeState } from "./practice";
-import { isSubstance, substanceCapStatus, substanceDef } from "./substance-use";
+import { substanceCapStatus, substanceLabel } from "./substance-use";
 
 // ---------------------------------------------------------------------------
 // The axes
@@ -392,8 +392,11 @@ export interface CadenceTargetVerdict {
 // produces "the Alcohol (weekly cap) cap". One place decides, so no message builder has
 // to strip a suffix.
 export function cadenceScopeNoun(kind: string, value: string): string {
-  if (kind === "substance" && isSubstance(value))
-    return substanceDef(value).label;
+  // #3279: substanceLabel() is total over the open key space — the curated label for a
+  // curated key, the profile's own name verbatim for a custom one — so a cap set on a
+  // custom substance names itself here instead of falling through to the generic
+  // scope label.
+  if (kind === "substance") return substanceLabel(value);
   return frequencyScopeLabel(kind, value);
 }
 

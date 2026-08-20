@@ -24,7 +24,6 @@ import { practiceIdentity } from "../practice";
 import {
   ALCOHOL_FOOD_GROUP,
   substanceDef,
-  type Substance,
 } from "../substance-use";
 import type { FrequencyTarget } from "../types";
 import { parseComponents } from "../types";
@@ -254,7 +253,10 @@ export function cadenceCounts(
   // food gather even when no food_group target exists.
   const substanceValues = scopes
     .filter((s) => s.kind === "substance")
-    .map((s) => s.value as Substance);
+    // #3279: a substance scope value is a SubstanceKey — curated or a profile's own
+    // name — and substanceDef() is total over that key space, so the split below needs
+    // no membership test. Every custom substance lands in the counter ledger.
+    .map((s) => s.value);
   const foodLedgerSubstances = substanceValues.filter(
     (s) => substanceDef(s).ledger === "food-log"
   );
@@ -461,7 +463,7 @@ export function cadenceCounts(
         break;
       case "substance-ledger":
         counts =
-          substanceDef(scope.value as Substance).ledger === "food-log"
+          substanceDef(scope.value).ledger === "food-log"
             ? (foodWeeks.get(ALCOHOL_FOOD_GROUP) ?? zeros())
             : (substanceWeeks.get(scope.value) ?? zeros());
         break;
