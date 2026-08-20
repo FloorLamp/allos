@@ -447,10 +447,20 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   await expect(field).toContainText("estimated");
   const input = page.getByTestId("est-calories-input");
   await expect(input).toHaveValue(/^[1-9]\d*$/);
+  // The session equipment <select> moved BEHIND a fact chip (#3334) — same control,
+  // same .input class, one disclosure away — so its editor is opened to compare it.
+  // Dropping it from this set instead would quietly narrow what the assertion covers:
+  // the claim is that every control in this form reads as one surface, and a control
+  // that is one tap away is still in this form. The chip carries the same testid in
+  // both its shapes (a stated gear name, or the "+ equipment" prompt when the recency
+  // default finds nothing), so this does not depend on what profile 1 last rode.
+  await page.getByTestId("activity-fact-equipment").click();
+  const equipmentSelect = page.getByTestId("activity-equipment-select");
+  await expect(equipmentSelect).toBeVisible();
   const comparableControls = [
     page.getByTestId("cardio-duration"),
     input,
-    page.getByTestId("activity-equipment-select"),
+    equipmentSelect,
     page.getByRole("button", { name: "Easy", exact: true }),
   ];
   const comparableStyles = await Promise.all(
@@ -465,6 +475,9 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     1
   );
   expect(new Set(comparableStyles.map((style) => style.height)).size).toBe(1);
+  // Back to the chips, so the rest of this test drives the form's normal shape.
+  await page.getByTestId("activity-fact-editor-done").click();
+  await expect(page.getByTestId("activity-fact-equipment")).toBeVisible();
 
   // It's editable — the user can override the auto value.
   await input.fill("123");
