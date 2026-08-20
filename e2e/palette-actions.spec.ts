@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { withVisitFact } from "./visit-form-helpers";
 
 // Per-hit command-palette actions (issue #662): a FOUND entity offers contextual
 // actions routed through the EXISTING gated Server Actions — med → Log dose /
@@ -207,7 +208,9 @@ test.describe("command palette — per-hit actions (#662)", () => {
       await page.goto("/records/history/visits");
       await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
       const visitDialog = page.getByRole("dialog", { name: "Add visit" });
-      await visitDialog.getByLabel("Reason / title").fill(APPT_MARKER);
+      await withVisitFact(visitDialog, "reason", async () => {
+        await visitDialog.getByLabel("Reason / title").fill(APPT_MARKER);
+      });
       // AppointmentForm submits a Server Action; the toast below only appears once
       // it resolved, and it was being asserted on the 5s default.
       await settledClick(
