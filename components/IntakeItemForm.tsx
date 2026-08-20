@@ -36,6 +36,9 @@ import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import IntakeFactRow, {
   type IntakeOpenPanel,
 } from "@/components/intake/IntakeFactRow";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
 import IntakeKindChip from "@/components/intake/IntakeKindChip";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
@@ -196,7 +199,14 @@ export default function IntakeItemForm({
   const formRef = useRef<HTMLFormElement>(null);
   const catalogOptions = useIntakeOptions();
   const [error, setError] = useState<string | null>(null);
-  const [openPanel, setOpenPanel] = useState<IntakeOpenPanel | null>(null);
+  // The one-editor-at-a-time state and its Done/Esc contract come from the shared
+  // facts-with-editors primitive (#3218); this form supplies only its own fact keys.
+  const {
+    openEditor: openPanel,
+    open: setOpenPanel,
+    close: closePanel,
+    onKeyDown: onFormKeyDown,
+  } = useFactEditor<IntakeOpenPanel>();
   // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
   // than to correct an existing sentence.
   const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);
@@ -851,24 +861,6 @@ export default function IntakeItemForm({
       }),
   });
 
-  // Esc closes an editor exactly as Done does — the same return to the chips, so the
-  // keyboard path is never the one that traps you inside a fact.
-  //
-  // IT YIELDS THE FIRST ESCAPE TO AN OPEN PICKER. A combobox inside an editor uses
-  // Escape to close its own listbox; swallowing that would make the one key that
-  // dismisses a dropdown throw away the whole editor instead. So an Escape aimed at
-  // an EXPANDED combobox belongs to the combobox, and the next one closes the editor.
-  function onFormKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Escape" || openPanel == null) return;
-    const target = event.target as HTMLElement | null;
-    if (
-      target?.getAttribute("role") === "combobox" &&
-      target.getAttribute("aria-expanded") === "true"
-    )
-      return;
-    setOpenPanel(null);
-  }
-
   async function handle() {
     setError(null);
     if (derivation.kind == null) {
@@ -964,7 +956,7 @@ export default function IntakeItemForm({
     setRules([]);
     setSuggestedFields(new Set());
     setTouched(new Set());
-    setOpenPanel(null);
+    closePanel();
   }
 
   // Bottles lead: a bottle the household already has is a more specific answer than a
@@ -1128,21 +1120,16 @@ export default function IntakeItemForm({
             }
           />
         ) : (
-          <section
-            data-testid="intake-editor"
-            data-panel={openPanel}
+          <FactEditorHost
+            testId="intake-editor"
+            doneTestId="intake-editor-done"
+            panel={openPanel}
+            onDone={closePanel}
             className="sm:col-span-2"
+            bodyClassName="grid gap-4 sm:grid-cols-2"
           >
-            <div className="grid gap-4 sm:grid-cols-2">{renderPanel()}</div>
-            <button
-              type="button"
-              data-testid="intake-editor-done"
-              onClick={() => setOpenPanel(null)}
-              className="btn-ghost btn-sm mt-4"
-            >
-              Done
-            </button>
-          </section>
+            {renderPanel()}
+          </FactEditorHost>
         ))}
 
       {error && (
