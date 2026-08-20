@@ -13,7 +13,6 @@
 // so there is one answer to "where is this device", not two.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconPlaneTilt, IconX } from "@tabler/icons-react";
 import {
   travelOfferText,
@@ -45,7 +44,6 @@ export default function TravelTimezoneBanner({
   homeZone: string | null;
   dismissedZone: string | null;
 }) {
-  const router = useRouter();
   // Read on the CLIENT only. The server has no device zone to render, and painting
   // a guess would make the first frame disagree with the second.
   const [deviceZone, setDeviceZone] = useState<string | null>(null);
@@ -91,19 +89,23 @@ export default function TravelTimezoneBanner({
       const result = await revertTravelTimezone();
       if (result.ok && result.homeZone && result.awayZone) {
         setNotice(travelReturnText(result.homeZone, result.awayZone));
-        router.refresh();
       }
       reverting.current = false;
     })();
-  }, [prompt, router]);
+  }, [prompt]);
 
+  // NO router.refresh() on either path. Both actions end in
+  // revalidateRoute("/", "layout"), and a Server Action's response carries the
+  // freshly rendered tree — the same way the Settings timezone form has always
+  // repainted the app after a zone change. Adding one here would also force this
+  // file to declare itself chrome or user in the #1878 registry for a repaint it
+  // does not need.
   const accept = useCallback(async () => {
     if (prompt.kind !== "offer") return;
     setBusy(true);
-    const result = await acceptTravelTimezone(prompt.deviceZone);
+    await acceptTravelTimezone(prompt.deviceZone);
     setBusy(false);
-    if (result.ok) router.refresh();
-  }, [prompt, router]);
+  }, [prompt]);
 
   const dismiss = useCallback(async () => {
     if (prompt.kind !== "offer") return;
@@ -128,7 +130,8 @@ export default function TravelTimezoneBanner({
           type="button"
           onClick={() => setNotice(null)}
           className="inline-flex items-center gap-1 font-medium text-slate-600 hover:underline dark:text-slate-300"
-          aria-label="Dismiss"
+          aria-label="Dismiss the timezone notice"
+          title="Dismiss"
         >
           <IconX className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -154,7 +157,7 @@ export default function TravelTimezoneBanner({
           data-testid="travel-timezone-accept"
           disabled={busy}
           onClick={() => void accept()}
-          className="rounded-lg bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-400 dark:text-brand-950"
+          className="btn btn-sm"
         >
           Move my day
         </button>

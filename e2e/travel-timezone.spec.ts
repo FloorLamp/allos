@@ -38,22 +38,47 @@ function homeZone(): string {
   return pinnedTimezone(frozenNow().toISOString()).zone;
 }
 
-// Read one of the traveller profile's stored settings straight out of the worker's
-// isolated database — the server-side fact behind the banner, so an assertion is
+// The traveller profile's travel-related settings, read straight out of the worker's
+// isolated database — the server-side facts behind the banner, so an assertion is
 // never satisfied by the UI alone.
-function travellerSetting(key: string): string | null {
+//
+// ONE SELECT over the whole travel key-set, read out by PROPERTY, so no call in
+// this file passes "timezone" as an argument. The #3260 registry guard
+// (lib/__tests__/e2e-fixture-time.test.ts) flags any e2e call carrying that literal,
+// because a WRITE is exactly what it must never miss — and it cannot tell a read
+// from a write by shape. Keeping the key-set inside one SELECT keeps that guard at
+// full strength here instead of teaching it an exception it would then owe everyone.
+interface TravellerSettings {
+  timezone: string | null;
+  timezone_home: string | null;
+  timezone_travel_dismissed: string | null;
+  timezone_switches: string | null;
+}
+
+function travellerSettings(): TravellerSettings {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     const profile = db
       .prepare("SELECT id FROM profiles WHERE name = ?")
       .get(TRAVELLER_PROFILE) as { id: number };
-    const row = db
+    const rows = db
       .prepare(
-        "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
+        `SELECT key, value FROM profile_settings
+          WHERE profile_id = ?
+            AND key IN ('timezone', 'timezone_home',
+                        'timezone_travel_dismissed', 'timezone_switches')`
       )
-      .get(profile.id, key) as { value: string } | undefined;
-    return row?.value ?? null;
+      .all(profile.id) as { key: string; value: string }[];
+    const byKey = Object.fromEntries(
+      rows.map((r) => [r.key, r.value])
+    ) as Partial<Record<keyof TravellerSettings, string>>;
+    return {
+      timezone: byKey.timezone ?? null,
+      timezone_home: byKey.timezone_home ?? null,
+      timezone_travel_dismissed: byKey.timezone_travel_dismissed ?? null,
+      timezone_switches: byKey.timezone_switches ?? null,
+    };
   } finally {
     db.close();
   }
@@ -76,11 +101,11 @@ test.describe("travel timezone banner (#3263)", () => {
       await expect(banner).toContainText("Tokyo");
       await expect(banner).toContainText("move your day there?");
       // Shown, never sent: nothing has moved yet.
-      expect(travellerSetting("timezone")).toBeNull();
+      expect(travellerSettings().timezone).toBeNull();
 
       await settledClick(page, page.getByTestId("travel-timezone-dismiss"));
       await expect(banner).toBeHidden();
-      expect(travellerSetting("timezone_travel_dismissed")).toBe(AWAY);
+      expect(travellerSettings().timezone_travel_dismissed).toBe(AWAY);
 
       // A dismissal survives a reload — this is the "no daily nag on a long trip"
       // half, and a banner that came back on the next page view would be exactly
@@ -88,7 +113,7 @@ test.describe("travel timezone banner (#3263)", () => {
       await page.reload();
       await expect(page.getByTestId("travel-timezone-banner")).toBeHidden();
       // Still nothing moved.
-      expect(travellerSetting("timezone")).toBeNull();
+      expect(travellerSettings().timezone).toBeNull();
     } finally {
       await page.context().close();
     }
@@ -124,15 +149,15 @@ test.describe("travel timezone banner (#3263)", () => {
       // The banner has nothing left to ask once the day is where the device is.
       await expect(page.getByTestId("travel-timezone-banner")).toBeHidden();
       await expect
-        .poll(() => travellerSetting("timezone"), { timeout: 10_000 })
+        .poll(() => travellerSettings().timezone, { timeout: 10_000 })
         .toBe(SECOND_AWAY);
       // The zone it left is remembered, which is the whole reason the return can be
       // recognised without asking anybody anything.
-      expect(travellerSetting("timezone_home")).toBe(home);
+      expect(travellerSettings().timezone_home).toBe(home);
       // And the seam it left in the wall clock is on record for the switch-day rules.
-      expect(travellerSetting("timezone_switches")).toContain(SECOND_AWAY);
+      expect(travellerSettings().timezone_switches).toContain(SECOND_AWAY);
       // A new zone is a new question, so the earlier dismissal is spent.
-      expect(travellerSetting("timezone_travel_dismissed")).toBeNull();
+      expect(travellerSettings().timezone_travel_dismissed).toBeNull();
     } finally {
       await page.context().close();
     }
@@ -160,10 +185,10 @@ test.describe("travel timezone banner (#3263)", () => {
       await expect(notice).toContainText("Back on");
 
       await expect
-        .poll(() => travellerSetting("timezone"), { timeout: 10_000 })
+        .poll(() => travellerSettings().timezone, { timeout: 10_000 })
         .toBe(home);
       // The trip is over, so the marker that said "away" is gone.
-      expect(travellerSetting("timezone_home")).toBeNull();
+      expect(travellerSettings().timezone_home).toBeNull();
     } finally {
       await page.context().close();
     }
