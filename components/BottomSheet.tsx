@@ -350,8 +350,33 @@ export default function BottomSheet({
             {description}
           </p>
         )}
+        {/* THE CONTENT REGION REFUSES HORIZONTAL SCROLL (#3360). `overflow-y-auto`
+        alone is not a y-only declaration: per CSS, a non-`visible` `overflow-y`
+        forces `overflow-x` to compute to `auto`, so this region was silently a
+        horizontal scroll container too. Any mounted body with a full-bleed
+        negative margin — FoodLogBar's `-mx-2 px-2` header was the one the owner
+        hit — then handed it real overflow, and one thumb drag with a horizontal
+        component parked the whole sheet sideways with no snap-back, no scrollbar
+        on touch, and nothing saying "swipe back". Declaring the x axis costs a
+        stray bleed at most a few clipped pixels of background instead of a
+        scrollable viewport, and it holds for every future dialog body rather than
+        for the one that was reported. The `md:overflow-visible` branch below
+        still unclips BOTH axes from `md` up, which is what lets a combobox
+        listbox paint past the panel edge (e2e/wellness-practices.spec.ts).
+
+        `hidden` AND NOT `clip`, WHICH IS NOT A CHOICE. `clip` would be the
+        stronger word — it establishes no scrollport at all, so even a written
+        `scrollLeft` would have nowhere to go — but CSS does not allow it here:
+        when one axis is `clip` and the other is a scrolling value, the used value
+        of `clip` is `hidden`. Measured, not assumed: `overflow-x-clip` beside
+        `overflow-y-auto` reported computed `hidden` in Chromium. So `hidden` is
+        the strongest the y-scrolling region can be, and what it buys is the whole
+        of the reported bug — a `hidden` box is not USER-scrollable, so no thumb
+        drag moves it. A script that writes `scrollLeft` still can; the second
+        layer (bodies that do not overflow in the first place) is what closes
+        that, which is why #3360 asked for both. */}
         <div
-          className={`mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${
+          className={`mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain ${
             asDialog ? "md:overflow-visible" : ""
           }`}
           data-sheet-content

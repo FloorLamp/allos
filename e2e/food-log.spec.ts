@@ -153,9 +153,16 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
       els.map((el) => Number(el.getAttribute("data-rank")))
     );
 
-  const quickRanks = await ranksIn(
-    quick.locator('li[data-testid^="food-group-"]')
-  );
+  // THE LIST'S OWN ROWS, not everything under this section. Since #3362 the
+  // "More food groups" disclosure is a citizen of this same list — it extends it,
+  // so it lives in it — which means its (collapsed) rows are inside
+  // `food-quick-log` too. Those are what the control REACHES; they are not part
+  // of the head it sits at the end of, and counting them here would turn "the six
+  // are the head of the ranking" into a much weaker sentence that still went
+  // green.
+  const OWN_ROWS =
+    'li[data-testid^="food-group-"]:not([data-testid="food-more-groups"] li)';
+  const quickRanks = await ranksIn(quick.locator(OWN_ROWS));
   expect(quickRanks).toHaveLength(FOOD_QUICK_COUNT);
   expect(quickRanks.every((rank) => Number.isInteger(rank))).toBe(true);
   // The head of the ranking, in rank order and starting at the top.
@@ -582,7 +589,12 @@ test("a protocol deep link pins its group, and the protein control still sits by
       "data-testid",
       `food-group-${FOOD_PIN_GROUP}`
     );
-    const rows = quickLog.locator('li[data-testid^="food-group-"]');
+    // The quick rows themselves — the disclosure's rows are in this section too
+    // since #3362, and "the control leads the rows it outranks" is about the ones
+    // it is laid out beside.
+    const rows = quickLog.locator(
+      'li[data-testid^="food-group-"]:not([data-testid="food-more-groups"] li)'
+    );
     const firstRow = rows.first(); // first-ok: the pin LEADING the quick rows is the assertion, on this spec's own fixture profile
     await expect(firstRow).toHaveAttribute("data-prefilled", "true");
 
@@ -870,4 +882,49 @@ test("the eating-time chips are a today-only affordance (#2053)", async ({
 
   await hydratedClick(page, page.getByTestId("food-day-today"));
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
+});
+
+// THE FULL BLEED IS PAGE-SCOPED, AND STILL THERE WHERE IT EARNS ITS KEEP (#3360).
+//
+// `-mx-2 px-2 bg-surface/95` on the log bar's header wrapper exists so the
+// `md:sticky` frosted header paints over the page's gutter as the rows scroll
+// under it. It was unconditional, which made it 16px of real horizontal overflow
+// inside the #1468 quick-entry sheet — the region that has no gutter to bleed into
+// — and one thumb drag then parked the whole sheet sideways. Scoping the three
+// classes to `md:` removes that at the source; this pins the half that must
+// SURVIVE, so the scoping cannot later be "simplified" into deleting the bleed.
+//
+// `lg:` already unwinds the whole thing (the two-column layout gives the bar its
+// own card), so the band lives in exactly one range: [md, lg).
+test.describe("the sticky food-log header keeps its full bleed from md up (#3360)", () => {
+  test.use({ viewport: { width: 800, height: 900 } });
+
+  test("the header bleeds past its column and is painted and sticky", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+    const context = page.getByTestId("food-log-context");
+    await expect(context).toBeVisible();
+
+    const measured = await context.evaluate((el) => {
+      const parent = el.parentElement as HTMLElement;
+      const style = getComputedStyle(el);
+      return {
+        bleedLeft:
+          parent.getBoundingClientRect().left - el.getBoundingClientRect().left,
+        bleedRight:
+          el.getBoundingClientRect().right -
+          parent.getBoundingClientRect().right,
+        position: style.position,
+        // A frosted band, not a transparent one: `bg-surface/95` resolves to a
+        // colour with alpha, never to `transparent`.
+        backgroundColor: style.backgroundColor,
+      };
+    });
+    expect(measured.bleedLeft).toBeGreaterThan(0);
+    expect(measured.bleedRight).toBeGreaterThan(0);
+    expect(measured.position).toBe("sticky");
+    expect(measured.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  });
 });
