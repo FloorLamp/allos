@@ -1,8 +1,12 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 
-// The add-mode SupplementForm now lives in a modal. Saving unmounts it; reopening
-// must start from a clean form so the `critical` checkbox can never leak into the
-// next item and silently enroll it in missed-dose escalation.
+// The add-mode intake form lives in a modal. Saving unmounts it; reopening must start
+// from a clean form so the `critical` checkbox can never leak into the next item and
+// silently enroll it in missed-dose escalation.
+//
+// Since #3216 `critical` is behind the importance fact rather than a More-options
+// disclosure, so the spec opens that fact — the leak it guards is unchanged.
 
 const CRITICAL_NAME = "Reset Guard Critical Supplement";
 
@@ -13,17 +17,16 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
 
   await page.getByTestId("supplement-add-toggle").click();
   let addDialog = page.getByRole("dialog", { name: "Add supplement" });
-  await addDialog
-    .getByTestId("supplement-more-options")
-    .locator("summary")
-    .click();
-
-  let critical = addDialog.getByTestId("intake-critical-new");
 
   // ── Add a CRITICAL supplement ───────────────────────────────────────────────
   await addDialog.getByLabel("Name").fill(CRITICAL_NAME);
+  await openFact(page, "importance", addDialog);
+  let critical = addDialog.getByTestId("intake-critical-new");
   await critical.check();
   await expect(critical).toBeChecked();
+  // Closing the editor is the point: the flag must survive the return to the chips
+  // and reach the action anyway (#2014's hidden-not-unmounted rule).
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
@@ -35,12 +38,10 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
   // ── Reopening gives the next item a clean form. ─────────────────────────────
   await page.getByTestId("supplement-add-toggle").click();
   addDialog = page.getByRole("dialog", { name: "Add supplement" });
-  await addDialog
-    .getByTestId("supplement-more-options")
-    .locator("summary")
-    .click();
+  await openFact(page, "importance", addDialog);
   critical = addDialog.getByTestId("intake-critical-new");
   await expect(critical).not.toBeChecked();
+  await closeEditor(page, addDialog);
   await expect(addDialog.getByLabel("Name")).toHaveValue("");
 });
 

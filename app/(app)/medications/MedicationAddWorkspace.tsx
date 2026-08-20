@@ -5,15 +5,12 @@ import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
-import MedicationForm from "@/components/MedicationForm";
-import QuickAddMedication from "@/components/QuickAddMedication";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type { FormResult } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
-
-type AddMode = "quick" | "full";
 
 export default function MedicationAddWorkspace({
   subtitle,
@@ -41,19 +38,14 @@ export default function MedicationAddWorkspace({
   age: number | null;
   todayStr: string;
   conditions: { id: number; name: string }[];
-  // Arrived from the cabinet's "Add for another person" (#1705). The panel opens on the
-  // FULL form because that is the one carrying the shared-supply control the seed shows
-  // up in — a quick-add would link the bottle invisibly.
+  // Arrived from the cabinet's "Add for another person" (#1705). One form carries the
+  // shared-supply control the seed shows up in, so the bottle is never linked invisibly.
   initialSupply?: SupplyOption | null;
 }) {
   const [open, setOpen] = useState(initialSupply != null);
-  const [mode, setMode] = useState<AddMode>(
-    initialSupply != null ? "full" : "quick"
-  );
 
   function close() {
     setOpen(false);
-    setMode("quick");
   }
 
   return (
@@ -102,73 +94,28 @@ export default function MedicationAddWorkspace({
               Add medication
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Choose a quick entry or add full prescribing and schedule details.
+              Start with the name — everything else is a tap away.
             </p>
           </div>
 
-          <div
-            className="mt-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm dark:bg-ink-800"
-            role="tablist"
-            aria-label="Medication entry type"
-          >
-            {(
-              [
-                ["quick", "Quick add"],
-                ["full", "Full details"],
-              ] as const
-            ).map(([value, label]) => {
-              const active = mode === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  data-testid={`medication-add-${value}`}
-                  onClick={() => setMode(value)}
-                  className={`rounded-md px-3 py-1.5 font-medium transition ${
-                    active
-                      ? "bg-surface text-slate-900 shadow-xs dark:text-slate-100"
-                      : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4" role="tabpanel">
-            {mode === "quick" ? (
-              <>
-                <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-                  Name and dose, with optional as-needed reminders.
-                </p>
-                <QuickAddMedication
-                  action={action}
-                  pediatric={pediatric}
-                  onDone={close}
-                />
-              </>
-            ) : (
-              <>
-                <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-                  Prescription, schedule, refill, and safety details.
-                </p>
-                <MedicationForm
-                  action={action}
-                  allIntakeItems={allIntakeItems}
-                  stackItems={stackItems}
-                  pgxVariants={pgxVariants}
-                  pediatric={pediatric}
-                  age={age}
-                  todayStr={todayStr}
-                  conditions={conditions}
-                  initialSupply={initialSupply}
-                  onDone={close}
-                />
-              </>
-            )}
+          {/* ONE form (#3216). The quick/full tab pair is gone: the quick door existed
+              because the full form front-loaded every field, and a summary-first form
+              has no wall to route around. Prescribing, schedule, refill and safety all
+              live behind their own fact, reached only if you disagree with it. */}
+          <div className="mt-4">
+            <IntakeItemForm
+              action={action}
+              kind="medication"
+              allIntakeItems={allIntakeItems}
+              stackItems={stackItems}
+              pgxVariants={pgxVariants}
+              pediatric={pediatric}
+              age={age}
+              todayStr={todayStr}
+              conditions={conditions}
+              initialSupply={initialSupply}
+              onDone={close}
+            />
           </div>
         </section>
       ) : null}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
-import SupplementForm from "@/components/SupplementForm";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { SupplyOption } from "@/lib/supply-product";
@@ -50,8 +50,9 @@ export default function AddSupplementModal({
             data-testid="supplement-add-panel"
             className="mt-4 min-h-0 overflow-y-auto px-1"
           >
-            <SupplementForm
+            <IntakeItemForm
               action={addIntakeItem}
+              kind="supplement"
               allIntakeItems={allIntakeItems}
               stackItems={stackItems}
               pgxVariants={pgxVariants}

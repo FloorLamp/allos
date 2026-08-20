@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import {
   medicationList,
   pastMedications,
@@ -189,7 +190,7 @@ test("medication row actions open the requested detail workflow", async ({
   await expect(page.getByTestId("stop-medication-form")).toBeVisible();
 });
 
-test("Add medication opens one inline quick-add and full-details workspace", async ({
+test("Add medication opens ONE form, and it opens on the name (#3216)", async ({
   page,
 }) => {
   await page.goto("/medications");
@@ -198,45 +199,55 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
   await expect(panel).toHaveCount(0);
   await page.getByTestId("medication-add-toggle").click();
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("quick-add-medication")).toBeVisible();
 
-  await panel.getByTestId("medication-add-full").click();
-  await expect(panel.getByTestId("quick-add-medication")).toHaveCount(0);
+  // ONE form. The quick/full tab pair is gone — the quick door existed because the
+  // full form front-loaded every field, and a summary-first form has no wall to
+  // route around.
+  await expect(panel.getByTestId("intake-item-form")).toHaveCount(1);
+  await expect(panel.getByRole("tablist")).toHaveCount(0);
+
+  // It opens on the name and NOTHING else: no editors, just the facts it will save.
   const nameInput = panel.getByRole("combobox", { name: "Name" });
   await expect(nameInput).toBeVisible();
-  // Before a catalog medication is selected there is no description preview in
-  // the second column, so the identity controls should use the available width
-  // instead of leaving half the form blank.
-  const [detailsGridBox, nameInputBox] = await settledBoxes([
-    panel.getByTestId("medication-details-grid"),
-    nameInput,
-  ]);
-  expect(nameInputBox.width / detailsGridBox.width).toBeGreaterThan(0.9);
-  const scheduledStart = panel.getByLabel("Started on");
-  const scheduledStartDisplay = await scheduledStart.inputValue();
-  expect(scheduledStartDisplay).not.toBe("");
+  await expect(panel.getByTestId("intake-editor")).toHaveCount(0);
+  await expect(panel.getByTestId("intake-fact-row")).toBeVisible();
 
-  // #1505: the as-needed checkbox is now the obligation select — `may` IS as-needed,
-  // so choosing it is what turns the start date into an optional "Using since".
-  const obligation = panel.getByTestId("med-obligation");
+  // #1505: `may` IS as-needed, so choosing it is what turns the start date into an
+  // optional "Using since" — and the chip row states which it is either way.
+  const importance = await openFact(page, "importance", panel);
+  const obligation = importance.getByTestId("intake-obligation");
   await expect(obligation).toHaveValue("must"); // a medication defaults to must
-  await expect(panel.getByTestId("med-obligation-hint")).toContainText(
+  await expect(importance.getByTestId("intake-obligation-hint")).toContainText(
     /follow-up nudge/i
   );
+  await closeEditor(page, panel);
 
-  await obligation.selectOption("may");
-  const usingSince = panel.getByLabel(/Using since/);
+  const dates = await openFact(page, "stopDate", panel);
+  const scheduledStartDisplay = await dates
+    .getByLabel("Started on")
+    .inputValue();
+  expect(scheduledStartDisplay).not.toBe("");
+  await expect(dates.getByLabel("Started on")).toHaveAttribute("required");
+  await closeEditor(page, panel);
+
+  await setObligation(page, "may", panel);
+  const asNeededDates = await openFact(page, "stopDate", panel);
+  const usingSince = asNeededDates.getByLabel(/Using since/);
   await expect(usingSince).toHaveValue("");
   await expect(usingSince).not.toHaveAttribute("required");
   await expect(
-    panel.getByText("Leave blank if you don’t know when you started using it.")
+    asNeededDates.getByText(
+      "Leave blank if you don’t know when you started using it."
+    )
   ).toBeVisible();
+  await closeEditor(page, panel);
 
-  await obligation.selectOption("must");
-  await expect(panel.getByLabel("Started on")).toHaveValue(
+  await setObligation(page, "must", panel);
+  const backToScheduled = await openFact(page, "stopDate", panel);
+  await expect(backToScheduled.getByLabel("Started on")).toHaveValue(
     scheduledStartDisplay
   );
-  await expect(panel.getByLabel("Started on")).toHaveAttribute("required");
+  await closeEditor(page, panel);
 
   await page.getByTestId("medication-add-toggle").click();
   await expect(panel).toHaveCount(0);
@@ -264,7 +275,7 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   await expectNoClippedContent(page);
 
   await page.getByTestId("medication-add-toggle").click();
-  await expect(page.getByTestId("quick-add-medication")).toBeVisible();
+  await expect(page.getByTestId("intake-item-form")).toBeVisible();
   await expectNoClippedContent(page);
 });
 

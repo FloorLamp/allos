@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import {
   dismissToast,
@@ -17,12 +18,11 @@ import { openMedDetailViaHref } from "./med-card-helpers";
 // "Adherence Refill Med (e2e)" (scheduled, due) and "PRN Quicklog Med (e2e)" (PRN with
 // two administrations logged today), plus history add/edit/delete with undo. The
 // add-medication form is the "Add medication"
-// card's MedicationForm; its name combobox picks the collapsed catalog option.
+// card's intake form; its name combobox picks the collapsed catalog option.
 const PRN_MED = "PRN Quicklog Med (e2e)";
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const panel = page.getByTestId("medication-add-panel");
   await expect(panel).toBeVisible();
   return panel;
@@ -33,7 +33,6 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
 }) => {
   await page.goto("/medications");
 
-  // Open the long-tail full-details path from the single inline add workspace.
   const addCard = await openFullAdd(page);
 
   // Pick the collapsed catalog option (#851 item 14): "Ibuprofen (Advil, Motrin)".
@@ -48,43 +47,57 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
     .click();
   await expect(nameInput).toHaveValue("Ibuprofen");
 
-  // The Brand combobox offers "Generic" first (#851 item 3): open it, assert the
-  // exact "Generic" option is offered, pick it, and confirm it lands in the field.
-  const brandInput = addCard.getByRole("combobox", { name: "Brand" });
+  // The Brand combobox offers "Generic" first (#851 item 3): open the identity fact,
+  // assert the exact "Generic" option is offered, pick it, confirm it lands.
+  const identity = await openFact(page, "identity", addCard);
+  const brandInput = identity.getByRole("combobox", { name: "Brand" });
   await brandInput.click();
   await expect(
-    addCard.getByRole("button", { name: "Generic", exact: true })
+    identity.getByRole("button", { name: "Generic", exact: true })
   ).toBeVisible();
-  await addCard.getByRole("button", { name: "Generic", exact: true }).click();
+  await identity.getByRole("button", { name: "Generic", exact: true }).click();
   await expect(brandInput).toHaveValue("Generic");
+  await closeEditor(page, addCard);
 
-  // OTC by default (#851 items 1–2): NO prescriber field, the prescription-fields block
-  // isn't rendered, and the Rx toggle is present + unchecked.
-  await expect(addCard.getByLabel("Prescriber")).toHaveCount(0);
-  await expect(addCard.getByTestId("prescription-fields")).toHaveCount(0);
-  const rxToggle = addCard.getByTestId("rx-toggle");
+  // OTC by default (#851 items 1–2) — and the chip SAYS so, because "OTC" is a fact
+  // and not an absence. Behind it: no prescriber field, no prescription block, and an
+  // unchecked Rx toggle.
+  await expect(addCard.getByTestId("intake-fact-prescription")).toContainText(
+    "OTC"
+  );
+  const prescription = await openFact(page, "prescription", addCard);
+  await expect(prescription.getByLabel("Prescriber")).toHaveCount(0);
+  await expect(prescription.getByTestId("prescription-fields")).toHaveCount(0);
+  const rxToggle = prescription.getByTestId("rx-toggle");
   await expect(rxToggle).toBeVisible();
   await expect(rxToggle).not.toBeChecked();
+  await closeEditor(page, addCard);
 
   // The ibuprofen pick auto-marks it PRN via label-default prefill; if not, choose
   // May by hand — since #1505 `may` IS the as-needed shape, so selecting it is what
   // reveals the redose block and the amount-only dose row.
-  const obligation = addCard.getByTestId("med-obligation");
+  const importance = await openFact(page, "importance", addCard);
+  const obligation = importance.getByTestId("intake-obligation");
   if ((await obligation.inputValue()) !== "may")
     await obligation.selectOption("may");
+  await closeEditor(page, addCard);
 
   // The one-line redose copy (#851 item 5): the terse explainer up front, the verbose
   // confirm-discipline text tucked behind a "How it works" disclosure.
-  const redose = addCard.getByTestId("redose-block");
+  const timing = await openFact(page, "timing", addCard);
+  const redose = timing.getByTestId("redose-block");
   await expect(redose).toBeVisible();
   await expect(
     redose.getByText("Reminds you when the minimum interval has passed")
   ).toBeVisible();
   await expect(redose.getByText("How it works")).toBeVisible();
+  await closeEditor(page, addCard);
 
   // The PRN dose editor is the amount-only single row (#851 item 9): no "+ Add dose"
   // split affordance.
-  await expect(addCard.getByTestId("prn-dose-row")).toBeVisible();
+  const dose = await openFact(page, "dose", addCard);
+  await expect(dose.getByTestId("prn-dose-row")).toBeVisible();
+  await closeEditor(page, addCard);
 
   // Save. The new medication lands as a current row with the OTC badge and no Rx badge.
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
@@ -103,8 +116,9 @@ test("Rx toggle reveals and hides the prescription fields (#851 items 1–2)", a
   await page.goto("/medications");
   const addCard = await openFullAdd(page);
 
-  const rxToggle = addCard.getByTestId("rx-toggle");
-  const fields = addCard.getByTestId("prescription-fields");
+  const prescription = await openFact(page, "prescription", addCard);
+  const rxToggle = prescription.getByTestId("rx-toggle");
+  const fields = prescription.getByTestId("prescription-fields");
 
   // Hidden by default (OTC), revealed on toggle, hidden again on untoggle.
   await expect(fields).toHaveCount(0);
@@ -299,12 +313,15 @@ test("logs, edits, and deletes a historical medication dose", async ({
   await dismissToast(page, "Dose deleted.");
 
   // The administration and course correction are one write: editing immediately
-  // afterward must show the selected dose date as the new PRN start.
+  // afterward must show the selected dose date as the new PRN start. The course dates
+  // are behind the stop-date fact now, so the assertion opens it.
   await page.getByRole("button", { name: "Medication actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
-  await expect(
-    page.locator('input[type="hidden"][name="started_on"]')
-  ).toHaveValue(beforeStart);
+  const dates = await openFact(page, "stopDate");
+  // The field renders the profile's own date format, so assert the DAY it holds
+  // rather than the spelling of it.
+  const shown = await dates.getByLabel("Using since").inputValue();
+  expect(new Date(`${shown} UTC`).toISOString().slice(0, 10)).toBe(beforeStart);
 });
 
 // #2417: the medications surface carries the same one-click door onto the cross-item
