@@ -693,7 +693,7 @@ describe("the composed one-tap rides exactly one of the window's sends (#2460)",
     seedLoginTelegram(sp.profileId, TICK_CHAT);
     setTelegramBotConfig({
       telegramBotToken: "bot token 24601",
-      telegramMode: "polling",
+      telegramMode: "poll",
     });
     setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
     // Morning at 08:00, every other window off, so exactly one slot is due.

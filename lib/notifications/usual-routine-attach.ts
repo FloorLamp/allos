@@ -74,11 +74,20 @@ export interface UsualRoutineAttachment {
 // keyboard beneath it, not a sibling of any one button on it.
 export const USUAL_ROW = "usual-routine";
 
-// The sentence the message says out loud, and the button that performs it.
+// The sentence the message says out loud, and the button that performs it — or null
+// when the token does not fit Telegram's callback budget.
+//
+// THE DROP RULE LIVES HERE, at the one place a token becomes a rendered button, so
+// every path that renders one obeys it: the send-plan's mint, and every rebuild that
+// re-derives an attachment from a delivered keyboard. There is no shape of this that
+// keeps part of the offer — an offer may never name less than the tap would write
+// (#2460), the same rule #3098's per-stack one-tap ships at
+// lib/notifications/intake-format.ts.
 export function usualRoutineAttachmentFor(
   offer: UsualRoutineOffer,
   token: string
-): UsualRoutineAttachment {
+): UsualRoutineAttachment | null {
+  if (!callbackDataFits(token)) return null;
   const foodNames = offer.groups.map((slug) => foodGroupName(slug));
   const phrase = usualRoutinePhrase(foodNames, offer.doses);
   return {
@@ -151,11 +160,12 @@ export function attachmentOnKeyboard(
 //     is inherited from it for free);
 //   • the caller's consent gate said no (the bundle always contains food writes, and
 //     food-buttons-in-chat is an expressed opt-in);
-//   • the token would not fit Telegram's 64 bytes. Under the stored-offer shape that
-//     is a constant-size token and cannot happen for any plausible id — which is
-//     exactly why it is CHECKED rather than assumed: the day an id or a prefix grows,
-//     the button is DROPPED, never truncated, because an offer may never name less
-//     than the tap would write.
+//   • the token would not fit Telegram's 64 bytes (the check inside
+//     `usualRoutineAttachmentFor`). Under the stored-offer shape that is a
+//     constant-size token and cannot happen for any plausible id — which is exactly
+//     why it is CHECKED rather than assumed: the day an id or a prefix grows, the
+//     button is DROPPED, never truncated, because an offer may never name less than
+//     the tap would write.
 export function mintUsualRoutineAttachment(
   profileId: number,
   window: FoodSlot,
@@ -169,9 +179,10 @@ export function mintUsualRoutineAttachment(
     doseIds: offer.doses.map((d) => d.doseId),
   };
   const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, date, payload);
-  const token = usualRoutineCallback(profileId, offerId);
-  if (!callbackDataFits(token)) return null;
-  return usualRoutineAttachmentFor(offer, token);
+  return usualRoutineAttachmentFor(
+    offer,
+    usualRoutineCallback(profileId, offerId)
+  );
 }
 
 // The bundle a stored offer NAMES, or null when it names nothing that still stands.

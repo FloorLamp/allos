@@ -7,7 +7,10 @@ import {
   USUAL_ROW,
 } from "@/lib/notifications/usual-routine-attach";
 import { dispatchableUsual } from "@/lib/notifications/usual-routine-plan";
-import { usualRoutineCallback } from "@/lib/notifications/callback-data";
+import {
+  usualRoutineCallback,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+} from "@/lib/notifications/callback-data";
 import { usualRoutinePhrase } from "@/lib/usual-routine";
 import { plainBody } from "@/lib/notifications/rich-text";
 import type { NotificationMessage } from "@/lib/notifications/types";
@@ -38,9 +41,18 @@ function host(): NotificationMessage {
   };
 }
 
+// Every attachment below is built from a token that fits — the cliff itself is the last
+// describe in this file. Throws rather than `!` so a token that stopped fitting names
+// itself instead of surfacing as a null-deref three assertions later.
+function attachment(offer = OFFER, token = TOKEN) {
+  const a = usualRoutineAttachmentFor(offer, token);
+  if (!a) throw new Error(`token did not fit the callback budget: ${token}`);
+  return a;
+}
+
 describe("what the composed one-tap promises (#2460)", () => {
   it("the line names the FULL composed set, in the shared phrase", () => {
-    const a = usualRoutineAttachmentFor(OFFER, TOKEN);
+    const a = attachment(OFFER, TOKEN);
     // The same function the dashboard control and its accessible name use, so no
     // surface can promise this write in different words.
     expect(a.line).toContain(
@@ -54,14 +66,14 @@ describe("what the composed one-tap promises (#2460)", () => {
   });
 
   it("the button's count is every write the tap performs, both halves", () => {
-    const a = usualRoutineAttachmentFor(OFFER, TOKEN);
+    const a = attachment(OFFER, TOKEN);
     expect(a.label).toContain("(5)"); // 2 groups + 3 doses
     expect(a.label).toContain("Morning");
   });
 
   it("the count follows the offer, not the food half alone", () => {
     // Falsifies "the label counts groups": the same groups with no doses reads (2).
-    const foodOnly = usualRoutineAttachmentFor({ ...OFFER, doses: [] }, TOKEN);
+    const foodOnly = attachment({ ...OFFER, doses: [] }, TOKEN);
     expect(foodOnly.label).toContain("(2)");
     expect(foodOnly.line).not.toContain("Creatine");
   });
@@ -69,7 +81,7 @@ describe("what the composed one-tap promises (#2460)", () => {
 
 describe("attaching the bundle to a message that is already sending", () => {
   it("adds the line below the host's body and the button at the head of the keyboard", () => {
-    const a = usualRoutineAttachmentFor(OFFER, TOKEN);
+    const a = attachment(OFFER, TOKEN);
     const out = attachUsualRoutine(host(), a);
     // The host's own words are kept and the promise sits under them.
     expect(plainBody(out.body)).toBe(`Two doses pending.\n${a.line}`);
@@ -87,12 +99,12 @@ describe("attaching the bundle to a message that is already sending", () => {
     // The sweep attaches before it plans (so its keyboard comparison is honest) and the
     // send chokepoint attaches again downstream. That has to be a no-op, or the message
     // would promise the same write twice and carry two tokens for one offer.
-    const a = usualRoutineAttachmentFor(OFFER, TOKEN);
+    const a = attachment(OFFER, TOKEN);
     const once = attachUsualRoutine(host(), a);
     expect(attachUsualRoutine(once, a)).toEqual(once);
     // …and a REFRESHED attachment for the same offer replaces the stale button rather
     // than sitting beside it — which is how a reduced bundle re-renders.
-    const reduced = usualRoutineAttachmentFor({ ...OFFER, doses: [] }, TOKEN);
+    const reduced = attachment({ ...OFFER, doses: [] }, TOKEN);
     const again = attachUsualRoutine(once, reduced);
     expect(again.actions?.filter((x) => x.data === TOKEN)).toHaveLength(1);
     expect(again.actions?.[0]?.label).toBe(reduced.label);
@@ -106,7 +118,7 @@ describe("attaching the bundle to a message that is already sending", () => {
 
   it("does not mutate the message it was handed", () => {
     const original = host();
-    attachUsualRoutine(original, usualRoutineAttachmentFor(OFFER, TOKEN));
+    attachUsualRoutine(original, attachment(OFFER, TOKEN));
     expect(original.actions).toHaveLength(2);
     expect(plainBody(original.body)).toBe("Two doses pending.");
   });
@@ -130,10 +142,7 @@ describe("attaching the bundle to a message that is already sending", () => {
 // keyboard with nothing to inherit from is owned by no sweep and never dies.
 describe("a message carrying the bundle is checked before it is sent", () => {
   it("passes the ordinary case — one token, on a keyboard with a family", () => {
-    const out = attachUsualRoutine(
-      host(),
-      usualRoutineAttachmentFor(OFFER, TOKEN)
-    );
+    const out = attachUsualRoutine(host(), attachment(OFFER, TOKEN));
     expect(usualDispatchProblem(out)).toBeNull();
     expect(dispatchableUsual(out)).toEqual(out);
   });
@@ -164,7 +173,7 @@ describe("a message carrying the bundle is checked before it is sent", () => {
     // the chat forever. It is invalid, not merely unowned.
     const orphan = attachUsualRoutine(
       { title: "Morning", body: "", actions: [], kind: "food" },
-      usualRoutineAttachmentFor(OFFER, TOKEN)
+      attachment(OFFER, TOKEN)
     );
     expect(usualDispatchProblem(orphan)).toContain("inherit");
     expect(dispatchableUsual(orphan).actions).toEqual([]);
@@ -176,5 +185,69 @@ describe("a message carrying the bundle is checked before it is sent", () => {
     expect(
       usualDispatchProblem({ title: "x", body: "y", kind: "digest" })
     ).toBeNull();
+  });
+});
+
+// ── THE BYTE CLIFF, IN BOTH DIRECTIONS, AT THE BUTTON (#2460) ───────────────
+//
+// callback-data.test.ts pins the PREDICATE at the exact boundary. These pin the thing
+// the owner's ruling is actually about: what a token one byte too long does to the
+// BUTTON. Not a smaller offer, not a truncated set — no button, and no line either,
+// because the line promises the write the button performs.
+//
+// Deleting `if (!callbackDataFits(token)) return null;` leaves every other test in this
+// repo green. These are its only witnesses.
+describe("a token that does not fit removes the whole button (#2460)", () => {
+  // Real tokens are `usual:<profileId>:<offerId>` and constant-size, so these are built
+  // to the boundary directly: the check must hold for any shape the token ever takes.
+  const atLimit = `usual:4:${"7".repeat(TELEGRAM_CALLBACK_DATA_MAX_BYTES - 8)}`;
+  const oneOver = `${atLimit}7`;
+
+  it("the fixtures sit exactly on the boundary", () => {
+    expect(new TextEncoder().encode(atLimit).length).toBe(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+    expect(new TextEncoder().encode(oneOver).length).toBe(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES + 1
+    );
+  });
+
+  it("AT the limit: the attachment is composed, naming the full set", () => {
+    const a = usualRoutineAttachmentFor(OFFER, atLimit);
+    expect(a).not.toBeNull();
+    expect(a!.token).toBe(atLimit);
+    expect(a!.label).toContain("(5)");
+    for (const name of ["Fermented foods", "Berries", "Creatine"]) {
+      expect(a!.line).toContain(name);
+    }
+  });
+
+  it("ONE BYTE OVER: no attachment at all — never a shorter one", () => {
+    expect(usualRoutineAttachmentFor(OFFER, oneOver)).toBeNull();
+    // And not "the same offer with a trimmed token": a truncation would have answered
+    // something whose token was inside the budget.
+    expect(
+      usualRoutineAttachmentFor({ ...OFFER, doses: [] }, oneOver)
+    ).toBeNull();
+    expect(
+      usualRoutineAttachmentFor({ ...OFFER, groups: [] }, oneOver)
+    ).toBeNull();
+  });
+
+  it("ONE BYTE OVER: the host message is exactly what it was, line included", () => {
+    const out = attachUsualRoutine(
+      host(),
+      usualRoutineAttachmentFor(OFFER, oneOver)
+    );
+    // The whole button is gone, so the host keeps its own keyboard untouched…
+    expect(out.actions).toEqual(host().actions);
+    expect(
+      usualTokenOn([[{ callback_data: out.actions?.[0]?.data }]])
+    ).toBeNull();
+    // …and the body promises nothing, because no tap can honour it.
+    expect(plainBody(out.body)).toBe(plainBody(host().body));
+    expect(plainBody(out.body)).not.toContain("Your usual");
+    // A message that never got the decoration is a fine message to send.
+    expect(usualDispatchProblem(out)).toBeNull();
   });
 });
