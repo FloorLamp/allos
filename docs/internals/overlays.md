@@ -78,6 +78,70 @@ actions on a named control; a flick and a scrim tap are the two a hand produces
 by accident. A clean form still dismisses in one gesture, which is what keeps
 the confirm from becoming a click-through.
 
+## What a dialog BODY renders
+
+The table above says which host a surface gets. This says what goes INSIDE it,
+and it is one sentence:
+
+> **A dialog body renders content, never chrome** — no outer card, no duplicate
+> heading, no own horizontal insets except a bleed that exactly matches the
+> host's declared padding steps.
+
+The host already draws the border, the radius, the padding, the title and the
+Close control. A body that draws them again produces a bordered card floating
+inside a bordered card, with the same sentence printed twice — which is what
+the quick-entry measurements sheet did until #3361.
+
+Three consequences, each one a real defect that shipped:
+
+- **No outer card.** A body whose root carries `card`, or `rounded-xl border …
+  p-4`, is wearing standalone-page chrome inside a panel. A bare `space-y-*`
+  root is the shape. Sub-cards INSIDE a body — the Vitals/Body group boxes, the
+  per-row dose and practice cards, the routine-template picker — are deliberate
+  grouping and stay; the rule is about the body's OWN outermost box.
+- **No duplicate heading.** The host prints the title. If a body prints it too,
+  one of the two must go — either the body drops its `<h2>` or the host hides
+  its own (`titleHidden`). Prefer dropping the body's: the host's title is the
+  dialog's accessible name and it stays in the same place on every surface.
+- **A bleed steps where the PANEL steps.** A body that runs edge to edge (a
+  sticky footer, a full-width list) counteracts the panel's padding with a
+  negative margin, so the two must agree at every width. The dialog panel pads
+  `px-4` and steps to `px-6` at **`md`**, so the bleed is `-mx-4 md:-mx-6` and
+  every re-inset inside it is `px-4 md:px-6`. A bleed that stepped at `sm`
+  over-pulled half a rem per side through the whole `sm`..`md` band, and the
+  footer's edge sat past the panel's (#3361). The centred presentation steps at
+  `sm` instead — read `panelShape` in `components/BottomSheet.tsx` rather than
+  guessing, and match the presentation the body is actually mounted in.
+
+The title gap has ONE owner: the host's content region (`mt-3`). A call site
+that adds its own `mt-4` on top is not choosing a bigger gap, it is accreting
+one — 28px under a dialog title, decided by nobody.
+
+### A form with two mounts uses an escape hatch, not a fifth spelling
+
+Some forms are genuinely mounted both ways: a standalone card on a page AND a
+body inside a dialog. Those take a prop that gates the card chrome, and several
+already exist:
+
+| Form                                                 | Prop           | Dialog value |
+| ---------------------------------------------------- | -------------- | ------------ |
+| `app/(app)/trends/MeasurementsQuickAdd.tsx`          | `presentation` | `"modal"`    |
+| `app/(app)/encounters/EncounterForm.tsx`             | `embedded`     | `true`       |
+| `app/(app)/encounters/AppointmentForm.tsx`           | `embedded`     | `true`       |
+| `app/(app)/settings/profile/DietaryPreferencesForm.tsx` | `embedded`  | `true`       |
+| `app/(app)/wellness/PracticeEditor.tsx`              | `compact`      | `true`       |
+
+Three spellings of one question, and they are staying that way — renaming
+working props is churn, not convergence. **Copy one of these when a form gains
+its second mount; do not invent a fifth.** And when a mount forgets to pass it,
+the failure is silent and visual: the form simply falls back to its card
+default and the double chrome appears inside the panel. That is exactly how
+#3361's defect reached a phone.
+
+A form with only ONE mount, and that mount a dialog, needs no hatch at all — it
+just renders content. `InstrumentsView` and `SubstanceInstrumentsForm` each
+carried a border wrapper with no page mount left to serve.
+
 ## What IS shared
 
 `components/overlay/` — the one import an overlay surface needs:

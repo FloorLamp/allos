@@ -124,7 +124,9 @@ export function useQuickEntry(): QuickEntryApi {
 const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   food: { title: "Log food", ownsHeading: true },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
-  measurements: { title: "Log measurements", ownsHeading: true },
+  // #3361: the form is mounted `presentation="modal"` below, so it renders no
+  // heading of its own and the sheet prints this one.
+  measurements: { title: "Log measurements", ownsHeading: false },
   dose: { title: "Log dose", ownsHeading: false },
   practice: { title: "Log practice", ownsHeading: false },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
@@ -249,6 +251,11 @@ function QuickEntryBody({
     case "measurements":
       return (
         <MeasurementsQuickAdd
+          // A dialog body renders content, never chrome (#3361). Without this the
+          // form falls back to `presentation="card"` and draws its own card
+          // border and `<h2>` inside a panel that already draws both — the same
+          // escape hatch its two ModalShell mounts already pass.
+          presentation="modal"
           weightUnit={data.weightUnit}
           defaultDate={data.defaultDate}
           defaultStatedAt={data.statedAt}

@@ -389,14 +389,21 @@ export default function ProtocolForm({
       ref={formRef}
       action={handle}
       onKeyDown={onKeyDown}
-      className="-mx-4 -mb-4 mt-4 flex min-h-0 flex-1 flex-col sm:-mx-6 sm:-mb-6"
+      // FULL-BLEED, and the bleed has to step where the PANEL steps. Both mounts
+      // are ModalShell, whose panel pads `px-4` and steps to `px-6` at `md`
+      // (components/BottomSheet.tsx, `presentation="dialog"`) — so a bleed that
+      // stepped at `sm` over-pulled half a rem per side through the whole
+      // sm..md band and the footer's edge sat past the panel's (#3361). Every
+      // re-inset below steps at `md` for the same reason. The old `mt-4` is gone
+      // too: the host's content region already gives the title gap (#3361).
+      className="-mx-4 -mb-4 flex min-h-0 flex-1 flex-col md:-mx-6 md:-mb-6"
       data-testid="protocol-form"
     >
       {editing && <input type="hidden" name="id" value={protocol!.id} />}
       <DraftRestoreBanner
         draft={draft}
         noun="protocol"
-        className="mx-4 sm:mx-6"
+        className="mx-4 md:mx-6"
       />
       {/* THE TEMPLATE-SEED REMOUNT STAYS (#571), and #3219 needs it more than
           before. The five plain fields below are uncontrolled on purpose — see the
@@ -405,7 +412,7 @@ export default function ProtocolForm({
           what keeps the chips and the DOM saying the same thing. */}
       <div
         key={editing ? "editing" : templateId || "blank"}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 sm:px-6"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 md:px-6"
         data-testid="protocol-form-scroll"
       >
         {!editing && (
@@ -754,7 +761,7 @@ export default function ProtocolForm({
         )}
       </div>
       <div
-        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end sm:px-6"
+        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end md:px-6"
         data-testid="protocol-form-actions"
       >
         {onDone && (
