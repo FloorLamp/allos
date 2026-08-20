@@ -1124,10 +1124,17 @@ export default function StrengthSets({
           WHAT IS BEHIND IT IS THE GRID ITSELF, not a FactEditorHost panel, and that is
           deliberate. #3218's preconditions exclude a surface whose fields are free
           numeric entry (the measurements form is its recorded counter-case), and #3228
-          invokes that same workbench exclusion by name for this grid. A host would also
-          have to declare `data-escape-layer` for as long as the grid is on screen —
-          which is most of a strength session — and #3409 is what that costs: the
-          surrounding overlay would stop closing on Escape.
+          invokes that same workbench exclusion by name for this grid and for live mode.
+          The host's contract is "at most one editor on screen"; a set grid that is on
+          screen for most of a strength session is not that, and the host also takes
+          focus when it mounts — which would pull the caret out of a weight field the
+          moment a part's last set matched its neighbours.
+
+          (An earlier draft of this note also cited #3409 — the escape-layer marker being
+          unconditional. #3417 has since made the marker follow whether an editor is
+          actually open, so that particular cost is gone. The reason above is the one
+          that stands on its own, which is why the retracted half is recorded rather than
+          quietly dropped.)
 
           THE TAP TRADE, recorded here rather than in a census baseline. Folding a
           finished run costs ONE TAP to reach a set you did want to edit, and the UX
