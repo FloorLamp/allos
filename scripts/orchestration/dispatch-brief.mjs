@@ -462,6 +462,17 @@ ${MIGRATION_LINES}
   worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
   that cannot wrap, or use \`rg -U\`, and when a content check says something is
   missing, OPEN THE FILE before believing it.
+- A CONTENT CHECK MUST STATE ITS SCOPE, OR IT REPORTS ON A SCOPE IT NEVER HAD. The
+  brief already says a grep can fail toward "missing" and manufacture work. It fails
+  the OTHER way just as easily, and that way is louder: measured 2026-08-20, a lane
+  swept the whole tree for a retracted sentence, got "STILL PRESENT (bad)" from three
+  files it had never touched, and was one step from "fixing" unrelated code. Scoped to
+  the seven files it actually changed, there was exactly one hit — inside a docstring
+  that QUOTES the retracted rule in order to argue against it, which is correct and
+  must stay.
+  So: scope every content check to the files you changed, and expect a deliberate
+  quotation of the thing you removed. Both directions of this failure are the same
+  bug — a check whose scope is wider or narrower than the question being asked.
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
