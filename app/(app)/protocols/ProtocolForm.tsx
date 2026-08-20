@@ -151,7 +151,10 @@ function practiceScope(
       value: selection.slice("food_group:".length),
     };
   if (selection.startsWith("practice:"))
-    return { scopeKind: "practice", value: selection.slice("practice:".length) };
+    return {
+      scopeKind: "practice",
+      value: selection.slice("practice:".length),
+    };
   return { scopeKind: "type", value: selection };
 }
 

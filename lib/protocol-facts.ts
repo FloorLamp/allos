@@ -35,12 +35,7 @@ import { daysBetweenDateStr } from "./date";
 // The facts, in reading order. `practice` is the seeding pick and comes first because
 // it is what the rest of the sentence is about.
 export type ProtocolFactKey =
-  | "practice"
-  | "cadence"
-  | "window"
-  | "link"
-  | "situation"
-  | "notes";
+  "practice" | "cadence" | "window" | "link" | "situation" | "notes";
 
 export type ProtocolFactState = "stated" | "missing";
 
@@ -84,7 +79,10 @@ export interface ProtocolFactInput {
    * "Fatty fish" — NOT the "<x> sessions" phrase the protocol detail card uses: a chip
    * states the subject, and the counting noun belongs beside a count.
    */
-  practice: { scopeKind: "type" | "food_group" | "practice"; value: string } | null;
+  practice: {
+    scopeKind: "type" | "food_group" | "practice";
+    value: string;
+  } | null;
   /** Whole sessions per week the cadence editor holds, or null when blank/invalid. */
   perWeek: number | null;
   /** The optional weekly ceiling, or null. Ignored unless `perWeek` is set. */
@@ -150,7 +148,8 @@ export function windowFactLabel(
   if (!endDate) return `from ${formatLongDate(startDate, prefs)}`;
 
   const days = daysBetweenDateStr(startDate, endDate);
-  if (days == null || days < 0) return `until ${formatLongDate(endDate, prefs)}`;
+  if (days == null || days < 0)
+    return `until ${formatLongDate(endDate, prefs)}`;
   if (days < 7) return days === 1 ? "1 day" : `${days} days`;
   if (days % 7 === 0) {
     const weeks = days / 7;
@@ -224,13 +223,18 @@ export function protocolFactSummary(
 
   const situation = f.situation.trim();
   if (situation)
-    chips.push({ key: "situation", label: `when ${situation}`, state: "stated" });
+    chips.push({
+      key: "situation",
+      label: `when ${situation}`,
+      state: "stated",
+    });
   else more.push("situation");
 
   // A MARKER, NOT THE TEXT. Notes are a paragraph; a chip that tried to state one would
   // either truncate a sentence mid-word or blow the row apart on a narrow screen. The
   // fact the row can honestly state is THAT there are notes.
-  if (f.notes.trim()) chips.push({ key: "notes", label: "notes", state: "stated" });
+  if (f.notes.trim())
+    chips.push({ key: "notes", label: "notes", state: "stated" });
   else more.push("notes");
 
   return { chips, more, practiceAbsent: f.practice == null };

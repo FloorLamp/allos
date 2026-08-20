@@ -67,7 +67,10 @@ describe("the protocol chip row states the sentence it will write (#3219)", () =
       keys({ practice: { scopeKind: "practice", value: "Sauna" } })
     ).toEqual(["practice", "cadence", "window"]);
     expect(
-      stateOf({ practice: { scopeKind: "practice", value: "Sauna" } }, "cadence")
+      stateOf(
+        { practice: { scopeKind: "practice", value: "Sauna" } },
+        "cadence"
+      )
     ).toBe("missing");
   });
 
@@ -79,9 +82,7 @@ describe("the protocol chip row states the sentence it will write (#3219)", () =
     expect(
       labelOf({ ...withPractice, perWeek: 3, perWeekMax: 5 }, "cadence")
     ).toBe("3–5×/week");
-    expect(
-      stateOf({ ...withPractice, perWeek: 3 }, "cadence")
-    ).toBe("stated");
+    expect(stateOf({ ...withPractice, perWeek: 3 }, "cadence")).toBe("stated");
   });
 
   it("holds every absent optional behind the trailing affordance, and states it once present", () => {

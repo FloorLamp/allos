@@ -18,12 +18,7 @@ import { expect, type Locator } from "@playwright/test";
 
 /** The panels the protocol form's chip row can open. */
 export type ProtocolFactPanel =
-  | "practice"
-  | "cadence"
-  | "window"
-  | "link"
-  | "situation"
-  | "notes";
+  "practice" | "cadence" | "window" | "link" | "situation" | "notes";
 
 /**
  * Open one fact's editor, closing whichever editor is already open.
