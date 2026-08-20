@@ -166,21 +166,122 @@ export interface ParsedQuantity {
   unit: DoseUnit;
 }
 
-// Parse the leading quantity out of a dose amount string ("400 mg", "5000 IU",
-// "200 mcg", "5 g", "1.5 g"). Returns the FIRST number+unit found — so a combo
-// amount like "2000 IU / 100 mcg" (Vitamin D3 + K2) yields the leading nutrient's
-// 2000 IU. A non-quantitative amount ("1 capsule", "1 scoop", null) returns null:
-// its nutrient content is unknown, so it's excluded (documented fallback). "mcg",
-// "µg" and "ug" all normalize to mcg; unit match is case-insensitive.
-export function parseQuantity(amount: string | null): ParsedQuantity | null {
-  if (!amount) return null;
-  const m = amount.match(/(\d+(?:\.\d+)?)\s*(mcg|µg|ug|mg|g|iu)\b/i);
-  if (!m) return null;
-  const value = Number(m[1]);
-  if (!Number.isFinite(value)) return null;
+// ONE RULE FOR READING A WRITTEN NUMBER, SHARED BY BOTH HALVES OF A LABEL (#3153).
+//
+// A separator in a number is either a thousands group or a decimal point, and which
+// one it is depends on where the label was printed. The ingredient write boundary
+// settled this question first (readIngredientAmount, #2856): accept a grouping that
+// is unambiguous, REFUSE one that is not, and never guess a locale on a number that
+// feeds a safety limit. This is that same rule, lifted here so the DOSE half and the
+// INGREDIENT half cannot drift apart — two answers to "what does 2,5 mean" is the
+// fork both issues exist to prevent.
+//
+// Accepted, because the grouping itself proves the reading:
+//   "1,000"      -> 1000        digits in threes after a leading group of one to three
+//   "1,234,567"  -> 1234567
+//   "1,234.5"    -> 1234.5      a comma group has named the separator; the period is
+//                               then unambiguously the decimal
+//   "2.5", "0.19", "1.0", "1000.500"  -> ordinary decimals, untouched
+//
+// Refused (null), because two readings are equally defensible and both are wrong
+// half the time:
+//   "2,5"        1 to 3 digits, then a period, then EXACTLY three digits is the shape
+//   "10.000"     a thousands group takes; on a European label "10.000 IU" is ten
+//   "2.500"      thousand IU and reading it as 10 is a thousandfold low, while on a
+//   "1,00"       US label "2.500 mg" is 2.5. Nobody can tell from the string alone.
+//   "1,0000"
+//
+// A leading zero ("0.500") lands in the refused set too. It is a shape no label
+// writes as a thousands group, so the refusal there is stricter than it strictly
+// needs to be — kept anyway, because ONE rule that is occasionally over-cautious is
+// worth more than two rules that disagree, and the refusal is visible and correctable
+// rather than silent.
+const THOUSANDS_GROUPED = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+const PLAIN_NUMBER = /^\d+(?:\.\d+)?$/;
+const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
+
+export function readGroupedNumber(token: string): number | null {
+  const grouped = THOUSANDS_GROUPED.test(token);
+  if (!grouped && !PLAIN_NUMBER.test(token)) return null;
+  if (!grouped && AMBIGUOUS_PERIOD_GROUPING.test(token)) return null;
+  const value = Number(grouped ? token.replace(/,/g, "") : token);
+  return Number.isFinite(value) ? value : null;
+}
+
+// What a DOSE amount says about its quantity, read the same way the ingredient half
+// reads a label amount (#3153).
+//
+//   quantity   - a number and a unit that read unambiguously.
+//   none       - no number+unit in the string at all ("1 capsule", "1 scoop", "10 ml",
+//                null). Its nutrient content is unknown, so it is excluded — the
+//                long-standing documented fallback, unchanged.
+//   unreadable - a number IS there against a unit, but its separators do not resolve.
+//                Refused rather than guessed at.
+export type DoseQuantityReading =
+  | { kind: "quantity"; value: number; unit: DoseUnit }
+  | { kind: "none" }
+  | { kind: "unreadable" };
+
+// The FIRST number+unit in the string, with the number taken WHOLE.
+//
+// Taking it whole is the fix. The previous pattern read `\d+(?:\.\d+)?`, which cannot
+// span a comma, so on "1,000 mg" it did not fail — it matched the "000" and returned a
+// confident ZERO. A niacin dose of 1,000 mg (28x the 35 mg adult UL) contributed
+// nothing to the upper-limit total, and a zero meaning "we could not read this" is
+// indistinguishable from a zero meaning "none".
+//
+// NO LOOKBEHIND GUARDS THE START, AND IT DOES NOT NEED ONE — the obvious defence here
+// is unreachable, so it is deliberately absent. A first cut carried
+// `(?<!\d)(?<!\d[.,])` to stop the scan starting mid-number the way the old pattern
+// did on the "000". Mutating them out left every test green, and the reason is
+// structural: `\d+(?:[.,]\d+)*` is GREEDY over a maximal digit-and-separator run, so a
+// start inside that run can only ever end where a start at its head already ended. If
+// the run's end is followed by a unit the head match takes the whole number; if it is
+// not, every shorter match ends on a digit or a separator, which no unit can follow.
+// The guard could never change an answer. Re-adding it for safety would be adding a
+// branch nothing can reach — note that the lookbehind in LABEL_UNIT_COUNT_RE below IS
+// load-bearing, for a different reason its own comment gives.
+//
+// The scan itself is unchanged and still stops at the FIRST unit-bearing number, so a
+// combo amount ("2000 IU / 100 mcg", Vitamin D3 + K2) still yields the leading
+// nutrient's 2000 IU, and a count before a mass ("2 capsules (500 mg)") still yields
+// the mass. A comma belonging to prose rather than to a number is no obstacle either
+// ("Vitamin C, 500 mg" reads 500). "mcg", "µg" and "ug" all normalize to mcg; the unit
+// match is case-insensitive.
+const DOSE_QUANTITY_RE = /(\d+(?:[.,]\d+)*)\s*(mcg|µg|ug|mg|g|iu)\b/i;
+
+export function readDoseQuantity(amount: string | null): DoseQuantityReading {
+  if (!amount) return { kind: "none" };
+  const m = amount.match(DOSE_QUANTITY_RE);
+  if (!m) return { kind: "none" };
+  const value = readGroupedNumber(m[1]);
+  if (value == null) return { kind: "unreadable" };
   let u = m[2].toLowerCase();
   if (u === "µg" || u === "ug") u = "mcg";
-  return { value, unit: u as DoseUnit };
+  return { kind: "quantity", value, unit: u as DoseUnit };
+}
+
+// The quantity a dose amount states, for the engines that total it. `null` is "no
+// number to add here" and covers BOTH a non-quantitative amount and one that could
+// not be read — every caller already treats it as "contributes nothing", which is the
+// honest reading in both cases and never a fabricated number. Callers that must tell
+// the two apart — the write boundary, which refuses the save rather than storing a
+// dose nobody can read — use readDoseQuantity directly.
+export function parseQuantity(amount: string | null): ParsedQuantity | null {
+  const reading = readDoseQuantity(amount);
+  return reading.kind === "quantity"
+    ? { value: reading.value, unit: reading.unit }
+    : null;
+}
+
+// The message the item form shows when a dose amount could not be read. Names the
+// exact string so the person can see what to fix, and shows the shapes that work.
+export function unreadableDoseAmountMessage(amountText: string): string {
+  return (
+    `Couldn't read “${amountText}” as a dose amount. ` +
+    `Use one number and a unit — like 250 mg, 1,000 mg, 400 mcg or 5000 IU — ` +
+    `or a count like 1 capsule.`
+  );
 }
 
 // The words a dose amount uses for a COUNTABLE LABEL UNIT — the thing a Supplement
