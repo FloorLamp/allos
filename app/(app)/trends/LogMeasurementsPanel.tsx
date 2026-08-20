@@ -135,7 +135,7 @@ export default function LogMeasurementsPanel(
                   null)
                 : null;
             }}
-            className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"
+            className="min-h-0 overflow-y-auto px-1 pb-1"
             data-testid="log-measurements-modal-body"
           >
             {/* Trends → Overview → body census opens the BODY group (#2014): this affordance sits

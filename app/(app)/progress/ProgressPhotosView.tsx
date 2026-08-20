@@ -285,7 +285,7 @@ export default function ProgressPhotosView({
 
       {editing ? (
         <ModalShell title="Edit photo details" onClose={closeEdit} size="sm">
-          <div data-testid="progress-edit-modal" className="mt-4 space-y-3">
+          <div data-testid="progress-edit-modal" className="space-y-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">
               The image itself never changes — only how it&rsquo;s filed.
             </p>

@@ -126,6 +126,11 @@ The title gap has ONE owner: the host's content region (`mt-3`). A call site
 that adds its own `mt-4` on top is not choosing a bigger gap, it is accreting
 one — 28px under a dialog title, decided by nobody.
 
+This is now true everywhere: no dialog body's outermost element carries a top
+margin. Be careful reading the tree for a precedent, though — a `mt-4` on the
+element BELOW a `<p className="mt-2">` description is a description-to-form gap,
+not a title gap, and six dialogs legitimately have one.
+
 ### A form with two mounts uses an escape hatch, not a fifth spelling
 
 Some forms are genuinely mounted both ways: a standalone card on a page AND a

@@ -52,7 +52,7 @@ export default function SupplementInsightBadges({
           <div
             id="supplement-patterns-panel"
             data-testid="supplement-patterns-panel"
-            className="mt-4 min-h-0 overflow-y-auto pr-1"
+            className="min-h-0 overflow-y-auto pr-1"
           >
             {patterns}
           </div>
@@ -63,7 +63,7 @@ export default function SupplementInsightBadges({
           <div
             id="supplement-suggestions-panel"
             data-testid="supplement-suggestions-panel"
-            className="mt-4 min-h-0 overflow-y-auto pr-1"
+            className="min-h-0 overflow-y-auto pr-1"
           >
             {suggestions}
           </div>

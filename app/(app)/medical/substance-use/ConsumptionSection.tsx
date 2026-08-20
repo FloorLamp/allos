@@ -422,7 +422,7 @@ export default function ConsumptionSection({
           size="sm"
         >
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-2"
+            className="grid gap-3 sm:grid-cols-2"
             onSubmit={(event) => void addEntry(event)}
             data-testid={`substance-history-add-form-${substance}`}
           >
@@ -460,7 +460,7 @@ export default function ConsumptionSection({
           size="sm"
         >
           <form
-            className="mt-4 space-y-4"
+            className="space-y-4"
             onSubmit={(event) => void saveCap(event)}
           >
             <label className="block text-sm">
