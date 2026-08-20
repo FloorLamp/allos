@@ -275,7 +275,19 @@ export default function BottomSheet({
       data-presentation={presentation}
     >
       <div
-        className={`${OVERLAY_SCRIM} ${backdropMotion}`}
+        // `touch-manipulation` is load-bearing, not tidy-up (#2774). CI caught a
+        // scrim tap that produced NO CLICK AT ALL: the touch landed on this
+        // element, it carried a live committed `onClick`, nothing threw, and a
+        // capture-phase listener on `document` saw no click anywhere — so the
+        // browser withheld the event rather than the app dropping it. It only
+        // happens after a preceding touch gesture on this surface (a flick whose
+        // dismissal was refused), which is why the same tap from a standing start
+        // is fine. Declaring that there is no double-tap gesture to wait for
+        // takes the browser's reason to withhold away, and on a DISMISS SCRIM
+        // double-tap-to-zoom is not a behaviour anyone wants, so it costs
+        // nothing. The dead tap it prevents is the one a hand reaches for
+        // immediately after choosing "Keep editing".
+        className={`${OVERLAY_SCRIM} touch-manipulation ${backdropMotion}`}
         onClick={() => {
           // Discard the refusal signal here: a scrim tap moves no panel, so
           // there is nothing to put back, and React gives a handler's return

@@ -432,10 +432,23 @@ test("a refused flick leaves the scrim tap still guarded — the whole chain, en
   // from it is a symptom with no mechanism attached. If the landing proof above
   // passes and this still goes red, the touch reached the scrim and the surface
   // did not answer, which is a different bug and this says so.
-  const atTap = await page.evaluate(() => {
+  // Wait for a click rather than snapshotting for one. Reading the log the
+  // instant `tap()` returns cannot see a LATE dispatch, so an empty array proved
+  // "no click yet" when the claim being made was "no click ever" — a different
+  // sentence, and the weaker one. Two seconds is far longer than the ~300ms a
+  // browser withholds a tap for while it waits out a possible double-tap.
+  const atTap = await page.evaluate(async () => {
+    const store = window as unknown as Record<string, unknown>;
+    // Counted, not clocked: forty 50ms turns is two seconds without reading a
+    // wall clock, which this suite pins to its frozen instant (and its hygiene
+    // guard rightly refuses in a spec, deadline or not).
+    for (let turn = 0; turn < 40; turn += 1) {
+      if ((store.__clickLog as unknown[]).length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     const panel = document.querySelector("[data-sheet-panel]");
     return {
-      clicks: (window as unknown as Record<string, unknown>).__clickLog,
+      clicks: store.__clickLog,
       hit:
         document.elementFromPoint(195, 60)?.getAttribute("data-testid") ??
         "nothing",
