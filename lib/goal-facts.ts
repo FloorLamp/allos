@@ -174,7 +174,9 @@ export function targetFactLabel(t: GoalTargetInput): string | null {
     const duration = num(t.duration);
     const at = weight ? ` @ ${weight} ${t.weightUnit}` : "";
     if (t.metric === "weight")
-      return weight ? `${weight} ${t.weightUnit}${reps ? ` × ${reps}` : ""}` : null;
+      return weight
+        ? `${weight} ${t.weightUnit}${reps ? ` × ${reps}` : ""}`
+        : null;
     if (t.metric === "reps") return reps ? `${reps} reps${at}` : null;
     if (t.metric === "sets")
       return sets && reps ? `${sets} × ${reps}${at}` : null;
@@ -353,7 +355,11 @@ export function goalFactSummary(
 
   if (f.kind === "freeform") {
     if (f.category.trim())
-      chips.push({ key: "category", label: f.category.trim(), state: "stated" });
+      chips.push({
+        key: "category",
+        label: f.category.trim(),
+        state: "stated",
+      });
     else more.push("category");
 
     // A MARKER, NOT THE TEXT — the same reading the protocol row's notes chip takes.
@@ -505,7 +511,10 @@ export function firstGoalProblem(i: GoalProblemInput): GoalProblem | null {
   const blank = (s: string) => !s.trim();
   if (i.kind === "exercise") {
     if (blank(i.exercise))
-      return { fact: "subject", message: "Pick the exercise this goal is about." };
+      return {
+        fact: "subject",
+        message: "Pick the exercise this goal is about.",
+      };
     if (i.metric === "weight" && blank(i.targetWeight))
       return { fact: "target", message: "Enter the weight you’re aiming for." };
     if (i.metric === "reps" && blank(i.targetReps))
@@ -515,7 +524,10 @@ export function firstGoalProblem(i: GoalProblemInput): GoalProblem | null {
     if (i.metric === "hold" && blank(i.targetDuration))
       return { fact: "target", message: "Enter the hold you’re aiming for." };
     if (i.machineUnchosen)
-      return { fact: "equipment", message: "Pick the machine this target is for." };
+      return {
+        fact: "equipment",
+        message: "Pick the machine this target is for.",
+      };
     return null;
   }
   if (i.kind === "body")
@@ -532,5 +544,7 @@ export function firstGoalProblem(i: GoalProblemInput): GoalProblem | null {
       ? { fact: "target", message: "Enter the number you’re aiming for." }
       : null;
   }
-  return blank(i.title) ? { fact: "subject", message: "Name this goal." } : null;
+  return blank(i.title)
+    ? { fact: "subject", message: "Name this goal." }
+    : null;
 }

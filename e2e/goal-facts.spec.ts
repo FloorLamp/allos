@@ -49,7 +49,10 @@ async function openNewGoal(page: Page) {
  * it the right fixture for both hazards: every value below rides a field the registry
  * can see and the browser will collect.
  */
-async function chooseFreeform(page: Page, form: ReturnType<Page["getByTestId"]>) {
+async function chooseFreeform(
+  page: Page,
+  form: ReturnType<Page["getByTestId"]>
+) {
   await expect(form.getByTestId("goal-editor")).toHaveAttribute(
     "data-panel",
     "subject"
@@ -122,8 +125,14 @@ test.describe("goal facts-with-editors (#3220)", () => {
     // rather than through the card: the card renders a progress bar, and a bar can be
     // right while `category` and `unit` are null. Re-opening the stored row states
     // every value the write actually persisted.
-    await hydratedClick(page, card.getByRole("button", { name: "Goal actions" }));
-    await page.getByRole("menu").getByRole("menuitem", { name: "Edit" }).click();
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: "Goal actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Edit" })
+      .click();
     const editForm = page.getByTestId("goal-form");
     await expect(editForm).toBeVisible();
     await expect(editForm.getByTestId("goal-fact-subject")).toHaveText(title);
@@ -156,7 +165,10 @@ test.describe("goal facts-with-editors (#3220)", () => {
     await expect(editForm).toHaveCount(0);
 
     // Self-clean, so --repeat-each stays clean: this spec owns the goal it created.
-    await hydratedClick(page, card.getByRole("button", { name: "Goal actions" }));
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: "Goal actions" })
+    );
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Delete" })
@@ -165,9 +177,9 @@ test.describe("goal facts-with-editors (#3220)", () => {
       page,
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
     );
-    await expect(page.getByTestId("goal-card").filter({ hasText: title })).toHaveCount(
-      0
-    );
+    await expect(
+      page.getByTestId("goal-card").filter({ hasText: title })
+    ).toHaveCount(0);
   });
 
   test("history pre-answers the starting point, and the chip says it was borrowed", async ({
@@ -187,7 +199,9 @@ test.describe("goal facts-with-editors (#3220)", () => {
     await hydratedClick(page, form.getByTestId("goal-body-metric-weight"));
     await closeGoalFact(form);
 
-    await expect(form.getByTestId("goal-fact-subject")).toHaveText("Bodyweight");
+    await expect(form.getByTestId("goal-fact-subject")).toHaveText(
+      "Bodyweight"
+    );
     // DERIVED: using the body-metric picker is what made this a body goal.
     await expect(form.getByTestId("goal-fact-kind")).toHaveAttribute(
       "data-suggested",

@@ -984,8 +984,8 @@ export default function GoalForm({
                   </p>
                 )}
                 <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Progress tracks from your results for this marker, and advances
-                  when a new one arrives — not day by day.
+                  Progress tracks from your results for this marker, and
+                  advances when a new one arrives — not day by day.
                 </p>
               </div>
             </>
@@ -1026,7 +1026,10 @@ export default function GoalForm({
 
         {/* ── The load context (#1610) ──────────────────────────────────── */}
         {showLoadContext && (
-          <div hidden={openEditor !== "equipment"} data-testid="goal-load-context">
+          <div
+            hidden={openEditor !== "equipment"}
+            data-testid="goal-load-context"
+          >
             <label className="label" htmlFor="goal-equipment">
               Machine {contextRequired ? "" : "(optional)"}
             </label>

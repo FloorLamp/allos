@@ -182,7 +182,9 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     // panel's Done button; Escape belongs to the listbox first (`closeStopsPropagation`).
     await page.keyboard.press("Escape");
     await closeGoalFact(form);
-    await expect(form.getByTestId("goal-fact-kind")).toHaveText("Exercise goal");
+    await expect(form.getByTestId("goal-fact-kind")).toHaveText(
+      "Exercise goal"
+    );
     // Derived, not stated: the chip says so, so the person can correct it (#3216).
     await expect(form.getByTestId("goal-fact-kind")).toHaveAttribute(
       "data-suggested",

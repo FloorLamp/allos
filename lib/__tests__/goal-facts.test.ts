@@ -80,9 +80,9 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
   });
 
   it("marks a DERIVED kind as a suggestion and a chosen one as tracked-and-false", () => {
-    expect(chip({ subject: "Bench Press", kindDerived: true }, "kind")?.suggested).toBe(
-      true
-    );
+    expect(
+      chip({ subject: "Bench Press", kindDerived: true }, "kind")?.suggested
+    ).toBe(true);
     expect(
       chip({ subject: "Bench Press", kindDerived: false }, "kind")?.suggested
     ).toBe(false);
@@ -94,10 +94,9 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
     expect(chip({ subject: "Bench Press" }, "deadline")?.state).toBe("missing");
     // …and only those two. A goal with no title, category or description is
     // complete and common, so none of them may accuse the person of anything.
-    expect(s.chips.filter((c) => c.state === "missing").map((c) => c.key)).toEqual([
-      "target",
-      "deadline",
-    ]);
+    expect(
+      s.chips.filter((c) => c.state === "missing").map((c) => c.key)
+    ).toEqual(["target", "deadline"]);
   });
 
   it("holds the starting point back when history has nothing to say, and marks it as borrowed when it does", () => {
@@ -124,12 +123,18 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
 
   it("states the machine when the movement offers one, and prompts when #1610 requires a choice", () => {
     expect(
-      chip({ subject: "Chest Press", equipment: { label: "Home rack" } }, "equipment")
+      chip(
+        { subject: "Chest Press", equipment: { label: "Home rack" } },
+        "equipment"
+      )
     ).toMatchObject({ label: "Home rack", state: "stated" });
     // "Any machine" is an ANSWER, not an absence — silently folding every lane is
     // the bug #1610 exists for, so the row says which answer was given.
     expect(
-      chip({ subject: "Chest Press", equipment: { label: "any machine" } }, "equipment")
+      chip(
+        { subject: "Chest Press", equipment: { label: "any machine" } },
+        "equipment"
+      )
     ).toMatchObject({ state: "stated" });
     expect(
       chip({ subject: "Chest Press", equipment: { label: null } }, "equipment")
@@ -156,7 +161,9 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
 });
 
 describe("what each target reads (#3220)", () => {
-  const ex = (over: Partial<Extract<GoalFactInput["target"], { kind: "exercise" }>>) =>
+  const ex = (
+    over: Partial<Extract<GoalFactInput["target"], { kind: "exercise" }>>
+  ) =>
     targetFactLabel({
       kind: "exercise",
       metric: "weight",
@@ -172,7 +179,9 @@ describe("what each target reads (#3220)", () => {
     expect(ex({ weight: "100" })).toBe("100 kg");
     expect(ex({ weight: "100", reps: "5" })).toBe("100 kg × 5");
     expect(ex({ metric: "reps", reps: "12" })).toBe("12 reps");
-    expect(ex({ metric: "reps", reps: "12", weight: "60" })).toBe("12 reps @ 60 kg");
+    expect(ex({ metric: "reps", reps: "12", weight: "60" })).toBe(
+      "12 reps @ 60 kg"
+    );
     expect(ex({ metric: "sets", sets: "3", reps: "8" })).toBe("3 × 8");
     expect(ex({ metric: "hold", duration: "2:00" })).toBe("2:00 hold");
   });
@@ -185,10 +194,20 @@ describe("what each target reads (#3220)", () => {
 
   it("reads a body target in the metric's own unit and a lab target with its direction", () => {
     expect(
-      targetFactLabel({ kind: "body", metric: "weight", value: "72", weightUnit: "lb" })
+      targetFactLabel({
+        kind: "body",
+        metric: "weight",
+        value: "72",
+        weightUnit: "lb",
+      })
     ).toBe("72 lb");
     expect(
-      targetFactLabel({ kind: "body", metric: "body_fat", value: "18", weightUnit: "kg" })
+      targetFactLabel({
+        kind: "body",
+        metric: "body_fat",
+        value: "18",
+        weightUnit: "kg",
+      })
     ).toBe("18%");
     expect(
       targetFactLabel({
@@ -199,10 +218,19 @@ describe("what each target reads (#3220)", () => {
       })
     ).toBe("under 100 mg/dL");
     expect(
-      targetFactLabel({ kind: "biomarker", direction: "above", value: "30", unit: null })
+      targetFactLabel({
+        kind: "biomarker",
+        direction: "above",
+        value: "30",
+        unit: null,
+      })
     ).toBe("over 30");
-    expect(targetFactLabel({ kind: "freeform", value: "21", unit: "km" })).toBe("21 km");
-    expect(targetFactLabel({ kind: "freeform", value: "21", unit: "" })).toBe("21");
+    expect(targetFactLabel({ kind: "freeform", value: "21", unit: "km" })).toBe(
+      "21 km"
+    );
+    expect(targetFactLabel({ kind: "freeform", value: "21", unit: "" })).toBe(
+      "21"
+    );
   });
 
   it("labels the unit a body target is entered in", () => {
@@ -217,9 +245,9 @@ describe("what each target reads (#3220)", () => {
   });
 
   it("reads a hold's starting point as m:ss, because nobody says 120 s", () => {
-    expect(startingFromFactLabel({ value: 120, unit: null, asDuration: true })).toBe(
-      "from 2:00"
-    );
+    expect(
+      startingFromFactLabel({ value: 120, unit: null, asDuration: true })
+    ).toBe("from 2:00");
     expect(startingFromFactLabel({ value: 18, unit: "%" })).toBe("from 18%");
     expect(startingFromFactLabel({ value: null, unit: "kg" })).toBeNull();
   });
@@ -253,9 +281,9 @@ describe("where the goal is starting from (#3220)", () => {
   });
 
   it("converts a canonical kg through the form's own display boundary", () => {
-    expect(from({ toDisplayWeight: (kg) => Math.round(kg * 2.2), weightUnit: "lb" })).toBe(
-      "from 204 lb"
-    );
+    expect(
+      from({ toDisplayWeight: (kg) => Math.round(kg * 2.2), weightUnit: "lb" })
+    ).toBe("from 204 lb");
   });
 
   it("reads a body metric and a lab result from their own stores", () => {
@@ -271,16 +299,18 @@ describe("where the goal is starting from (#3220)", () => {
   });
 
   it("takes a freeform goal's starting point from the field, not from history", () => {
-    expect(from({ kind: "freeform", currentValue: "5", freeformUnit: "km" })).toBe(
-      "from 5 km"
-    );
+    expect(
+      from({ kind: "freeform", currentValue: "5", freeformUnit: "km" })
+    ).toBe("from 5 km");
     expect(from({ kind: "freeform", currentValue: "" })).toBeNull();
     expect(from({ kind: "freeform", currentValue: "abc" })).toBeNull();
   });
 
   it("says nothing when the store is empty, rather than claiming a zero", () => {
     expect(from({ exerciseBest: null })).toBeNull();
-    expect(from({ exerciseBest: { weightKg: null, reps: 3, durationSec: null } })).toBeNull();
+    expect(
+      from({ exerciseBest: { weightKg: null, reps: 3, durationSec: null } })
+    ).toBeNull();
     expect(from({ kind: "body", bodyLatest: null })).toBeNull();
     expect(from({ kind: "biomarker", biomarkerLatest: null })).toBeNull();
   });
@@ -320,17 +350,21 @@ describe("which fact the form must open before it can save (#3220)", () => {
     expect(problem({ metric: "hold" })?.fact).toBe("target");
     // A sets target needs BOTH halves — the action refuses one without the other.
     expect(problem({ metric: "sets", targetSets: "3" })?.fact).toBe("target");
-    expect(problem({ metric: "sets", targetSets: "3", targetReps: "8" })).toBeNull();
-    expect(problem({ kind: "body" })?.fact).toBe("target");
     expect(
-      problem({ kind: "biomarker", biomarkerPicked: true })?.fact
-    ).toBe("target");
+      problem({ metric: "sets", targetSets: "3", targetReps: "8" })
+    ).toBeNull();
+    expect(problem({ kind: "body" })?.fact).toBe("target");
+    expect(problem({ kind: "biomarker", biomarkerPicked: true })?.fact).toBe(
+      "target"
+    );
   });
 
   it("points at the machine only once the target itself is answered (#1610)", () => {
     expect(problem({ machineUnchosen: true })?.fact).toBe("equipment");
     // The target comes first: a person with neither answered is asked the question
     // they opened the form for.
-    expect(problem({ machineUnchosen: true, targetWeight: "" })?.fact).toBe("target");
+    expect(problem({ machineUnchosen: true, targetWeight: "" })?.fact).toBe(
+      "target"
+    );
   });
 });
