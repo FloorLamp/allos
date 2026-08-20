@@ -519,7 +519,8 @@ export function resolveSubstanceKey(input: string): SubstanceKey | null {
   if (isSubstance(raw)) return raw;
   const lower = raw.toLowerCase();
   for (const s of SUBSTANCES) {
-    if (s === lower || SUBSTANCE_DEFS[s].label.toLowerCase() === lower) return s;
+    if (s === lower || SUBSTANCE_DEFS[s].label.toLowerCase() === lower)
+      return s;
   }
   return normalizeSubstanceName(raw) || null;
 }

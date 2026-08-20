@@ -20,16 +20,16 @@ unknowns, and nothing more.
 
 ## The vocabulary
 
-| term                | meaning                                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------------------- |
-| **substance key**   | The stored identity of a substance: `substance_daily_totals.substance`, and `frequency_targets.scope_value` for the `substance` scope. `SubstanceKey` in `lib/substance-use.ts`. |
-| **curated key**     | One of the app's authored substances (`alcohol`, `nicotine`, `cannabis`). A closed set that may grow modestly where good defaults exist. `Substance` / `isCuratedSubstance()`. |
-| **custom key**      | A profile's own substance, stored as its normalized name. Not registered anywhere before use. `isCustomSubstanceKey()`. |
-| **unit**            | One countable use: a standard drink, a cigarette, a session. Custom substances always count in generic uses. |
-| **episodic consumption** | Countable uses aggregated to one per-day total. What a substance key names. |
-| **dosed regimen**   | A named substance taken at an amount on a cadence. **Not a substance key** — see the boundary below. |
-| **reduction cap**   | An opt-in weekly ceiling on units. A `frequency_targets` row with `scope_kind = 'substance'`. |
-| **screener**        | An opt-in screening instrument administered or entered on the substance page. |
+| term                     | meaning                                                                                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **substance key**        | The stored identity of a substance: `substance_daily_totals.substance`, and `frequency_targets.scope_value` for the `substance` scope. `SubstanceKey` in `lib/substance-use.ts`. |
+| **curated key**          | One of the app's authored substances (`alcohol`, `nicotine`, `cannabis`). A closed set that may grow modestly where good defaults exist. `Substance` / `isCuratedSubstance()`.   |
+| **custom key**           | A profile's own substance, stored as its normalized name. Not registered anywhere before use. `isCustomSubstanceKey()`.                                                          |
+| **unit**                 | One countable use: a standard drink, a cigarette, a session. Custom substances always count in generic uses.                                                                     |
+| **episodic consumption** | Countable uses aggregated to one per-day total. What a substance key names.                                                                                                      |
+| **dosed regimen**        | A named substance taken at an amount on a cadence. **Not a substance key** — see the boundary below.                                                                             |
+| **reduction cap**        | An opt-in weekly ceiling on units. A `frequency_targets` row with `scope_kind = 'substance'`.                                                                                    |
+| **screener**             | An opt-in screening instrument administered or entered on the substance page.                                                                                                    |
 
 `SubstanceDef` is the per-key display and ledger record. `substanceDef()` is **total**
 over the key space: authored fields for a curated key, derived fields for a custom one.
@@ -42,18 +42,18 @@ The substance vocabulary is `lib/symptoms.ts` re-instantiated. Both answer one q
 — "which entries exist for this profile, and what is each one called?" — so both use the
 same four functions, and `docs/internals/identity-registry.md` lists them side by side:
 
-| symptoms                | substances                             |
-| ----------------------- | -------------------------------------- |
-| `normalizeSymptomName()` | `normalizeSubstanceName()`            |
-| `resolveSymptomKey()`    | `resolveSubstanceKey()`               |
-| `isCuratedSymptom()`     | `isCuratedSubstance()`                |
-| `isCustomSymptomKey()`   | `isCustomSubstanceKey()`              |
-| `symptomLabel()`         | `substanceLabel()`                    |
+| symptoms                 | substances                 |
+| ------------------------ | -------------------------- |
+| `normalizeSymptomName()` | `normalizeSubstanceName()` |
+| `resolveSymptomKey()`    | `resolveSubstanceKey()`    |
+| `isCuratedSymptom()`     | `isCuratedSubstance()`     |
+| `isCustomSymptomKey()`   | `isCustomSubstanceKey()`   |
+| `symptomLabel()`         | `substanceLabel()`         |
 
 A second normalization rule for the same shape of user text would be the
 "one question, one computation" disease at the identity layer.
 
-**No new table, and no migration.** A custom substance's identity *is* its normalized
+**No new table, and no migration.** A custom substance's identity _is_ its normalized
 name in the ledger, exactly as a custom symptom's is in `symptom_logs.symptom`. Migration
 096 declared this on day one: `substance` carries no `CHECK`, "so a future substance needs
 no rebuild". The catalog is what widened; the column never had to.
@@ -65,7 +65,7 @@ leaves the vocabulary; that is why there is no delete-a-substance affordance to 
 
 **Which ledger a custom substance rides is not a choice.** It is `substance_daily_totals`,
 with count semantics, always. The food-log ledger is a curated fact about alcohol
-specifically — a standard drink *is* one serving of the curated `alcohol` food group
+specifically — a standard drink _is_ one serving of the curated `alcohol` food group
 (#860/#944) — and nothing a person types can be shown to be a food, so nothing typed may
 pollute the nutrition ledger.
 

@@ -278,7 +278,9 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     const login = createLogin();
     const profile = createProfile("su-bogus-substance", login.id);
     actAs(login, profile);
-    expect((await logSubstanceUnitAction(fd({ substance: "" }))).ok).toBe(false);
+    expect((await logSubstanceUnitAction(fd({ substance: "" }))).ok).toBe(
+      false
+    );
     expect((await logSubstanceUnitAction(fd({ substance: "   " }))).ok).toBe(
       false
     );
@@ -290,9 +292,9 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     actAs(login, profile);
     // Typed with stray whitespace: the action normalizes at its own boundary, so this
     // and a later clean "Kratom" are ONE ledger row, not two neighbours.
-    expect(await logSubstanceUnitAction(fd({ substance: "  Kratom " }))).toEqual(
-      { ok: true, weekCount: 1 }
-    );
+    expect(
+      await logSubstanceUnitAction(fd({ substance: "  Kratom " }))
+    ).toEqual({ ok: true, weekCount: 1 });
     expect(await logSubstanceUnitAction(fd({ substance: "Kratom" }))).toEqual({
       ok: true,
       weekCount: 2,
@@ -313,9 +315,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
         .get(profile.id)
     ).toEqual({ n: 0 });
     // And it carries NO reduction framing, because no cap was ever set (#3279 ruling 1).
-    expect(
-      getSubstanceWeekState(profile.id, "Kratom").status
-    ).toBeNull();
+    expect(getSubstanceWeekState(profile.id, "Kratom").status).toBeNull();
   });
 });
 

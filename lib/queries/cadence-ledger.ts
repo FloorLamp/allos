@@ -21,10 +21,7 @@ import {
   type MobilitySessionInput,
 } from "../mobility-coverage";
 import { practiceIdentity } from "../practice";
-import {
-  ALCOHOL_FOOD_GROUP,
-  substanceDef,
-} from "../substance-use";
+import { ALCOHOL_FOOD_GROUP, substanceDef } from "../substance-use";
 import type { FrequencyTarget } from "../types";
 import { parseComponents } from "../types";
 import { getTimezone } from "../settings";

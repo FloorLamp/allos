@@ -173,7 +173,9 @@ export async function logSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = resolveSubstanceKey(String(formData.get("substance") ?? ""));
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
@@ -195,7 +197,9 @@ export async function undoSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = resolveSubstanceKey(String(formData.get("substance") ?? ""));
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
@@ -296,7 +300,9 @@ export async function deleteSubstanceDailyTotalAction(
       error: "Couldn't find that entry.",
     };
   }
-  const substance = resolveSubstanceKey(String(formData.get("substance") ?? ""));
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   const id = Number(formData.get("id"));
   if (substance === null || !Number.isInteger(id) || id <= 0) {
     return {
@@ -327,7 +333,9 @@ export async function setSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = resolveSubstanceKey(String(formData.get("substance") ?? ""));
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   if (substance === null) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
   if (!Number.isInteger(capRaw) || capRaw < 0 || capRaw > MAX_WEEKLY_CAP) {
@@ -354,7 +362,9 @@ export async function clearSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = resolveSubstanceKey(String(formData.get("substance") ?? ""));
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   if (substance === null) return formError("Unknown substance.");
   const target = db
     .prepare(

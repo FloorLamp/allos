@@ -663,7 +663,11 @@ describe("custom substances (#3279)", () => {
   it("a logged custom substance joins the profile's vocabulary, and leaves when its last row does", () => {
     const p = newProfile("SU custom vocab");
     // Before anything is logged, the vocabulary is exactly the curated catalog.
-    expect(getProfileSubstanceKeys(p)).toEqual(["alcohol", "nicotine", "cannabis"]);
+    expect(getProfileSubstanceKeys(p)).toEqual([
+      "alcohol",
+      "nicotine",
+      "cannabis",
+    ]);
 
     const day = today(p);
     expect(logSubstanceUnitCore(p, "Kratom", day)).toEqual({
@@ -687,7 +691,11 @@ describe("custom substances (#3279)", () => {
       units: 0,
       substance: "Kratom",
     });
-    expect(getProfileSubstanceKeys(p)).toEqual(["alcohol", "nicotine", "cannabis"]);
+    expect(getProfileSubstanceKeys(p)).toEqual([
+      "alcohol",
+      "nicotine",
+      "cannabis",
+    ]);
   });
 
   it("carries a custom substance through history correction like the curated three", () => {
@@ -698,7 +706,8 @@ describe("custom substances (#3279)", () => {
       amount: 2,
       notes: "two cans",
     });
-    if (added.kind !== "added") throw new Error("custom history entry not added");
+    if (added.kind !== "added")
+      throw new Error("custom history entry not added");
 
     // Normalized ONCE at the write boundary, so the stray-whitespace spelling and the
     // clean one are the same row rather than two neighbours.
@@ -735,7 +744,9 @@ describe("custom substances (#3279)", () => {
     // stays empty even for a name containing a curated one.
     expect(
       db
-        .prepare(`SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`)
+        .prepare(
+          `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+        )
         .get(p)
     ).toEqual({ n: 0 });
   });

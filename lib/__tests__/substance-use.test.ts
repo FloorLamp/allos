@@ -409,7 +409,12 @@ describe("substance vocabulary: curated + custom (#3279)", () => {
     // The food-log ledger is a CURATED fact about alcohol (a standard drink IS one
     // serving of the curated `alcohol` food group). Nothing a person types can be shown
     // to be a food, so nothing typed may reach the nutrition ledger.
-    for (const key of ["Kratom", "Energy drinks", "MDMA", "alcohol-free beer"]) {
+    for (const key of [
+      "Kratom",
+      "Energy drinks",
+      "MDMA",
+      "alcohol-free beer",
+    ]) {
       expect(substanceDef(key).ledger).toBe("substance-log");
       expect(substanceDef(key).unitPlural).toBe("uses");
       expect(substanceUnitWord(key, 1)).toBe("use");
@@ -422,7 +427,13 @@ describe("substance vocabulary: curated + custom (#3279)", () => {
       const def = substanceDef(key);
       const text =
         `${def.label} ${def.logLabel} ${def.unitNote} ${def.freeWeekPhrase}`.toLowerCase();
-      for (const banned of ["streak", "badge", "milestone", "congrat", "sober"]) {
+      for (const banned of [
+        "streak",
+        "badge",
+        "milestone",
+        "congrat",
+        "sober",
+      ]) {
         expect(text, `${key}: banned "${banned}"`).not.toContain(banned);
       }
     }
