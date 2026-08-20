@@ -39,6 +39,12 @@
 //      updates — so a saved field stops being unsaved input without anyone
 //      announcing it).
 //
+//      THAT LAST CLAUSE NEEDS A SERVER VALUE, AND THE DOM DOES NOT SIMPLY HAVE ONE
+//      (#3352). React syncs the DOM `defaultValue` onto a CONTROLLED field to match
+//      its `value`, so reading that property gives back a mirror of `current` and
+//      the clause can only ever answer "clean". `resolveServerValue` below is how
+//      that is worked out instead, and why it is a decision rather than a read.
+//
 // One question, one computation (#221): "is any form dirty right now" is
 // `isAnyFormDirty` over this state, and nothing else answers it.
 
@@ -62,10 +68,12 @@ export interface TrackedField {
    */
   baseline: string;
   /**
-   * The value the SERVER most recently rendered into the field (the DOM
-   * `defaultValue`). A field whose current value equals it is saved, not pending:
-   * this is what lets an autosave form that revalidates release itself without a
-   * second mechanism.
+   * The value the SERVER most recently rendered into the field. A field whose
+   * current value equals it is saved, not pending: this is what lets an autosave
+   * form that revalidates release itself without a second mechanism.
+   *
+   * NOT simply the DOM `defaultValue` — see `resolveServerValue`, which is how the
+   * DOM half works this out, and why it cannot just read one property.
    */
   serverValue: string;
 }
@@ -77,9 +85,122 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
   return field.current !== field.serverValue;
 }
 
+/**
+ * WHAT THE SERVER RENDERED, given what the DOM can actually see (#3352).
+ *
+ * The DOM half used to answer this with the raw `defaultValue`, which is right for
+ * a field the DOM owns and WRONG for one React owns: React syncs `defaultValue`
+ * onto a controlled field to match its `value`. So for every controlled field in a
+ * named form, `current !== serverValue` compared a value against a copy of itself,
+ * answered "clean" forever, and the discard guard was silently absent — someone
+ * typed, dismissed, and lost the entry with nothing asking.
+ *
+ * THE AMBIGUITY IS IRREDUCIBLE, and pretending otherwise is how the bug survived.
+ * Once the live default equals the current value, two different histories produce
+ * byte-identical DOM:
+ *
+ *   1. React mirrored a controlled `value` onto the default. Nothing is saved.
+ *   2. An autosave wrote the typed value and the server re-rendered it. It IS saved.
+ *
+ * There is no third property to read that separates them, and no timing rule that
+ * survives contact with a real browser — measured, not assumed: React 19 does not
+ * commit a discrete `input` event synchronously, so "did the default move in the
+ * same task as the keystroke?" cannot be asked from an event listener at all.
+ *
+ * SO THIS RESOLVES IT BY CONSEQUENCE RATHER THAN BY EVIDENCE. Reading the
+ * ambiguous default as "the server has it" is the old bug: it drops the guard and
+ * loses what somebody typed, silently. Reading it as "React is mirroring" costs at
+ * most ONE EXTRA CONFIRM on a form that had in fact already saved — a question,
+ * answerable with "Discard", that loses nothing. The cheaper mistake wins.
+ *
+ * A form that would rather be believed can say so: `data-server-value` on the
+ * control states what the server holds, and the DOM half prefers it over all of
+ * this. That is the supported way for a controlled autosaving field to release.
+ *
+ * AND FOR AN AUTOSAVING FIELD THE COST IS NOT ONE CONFIRM — it is a form that never
+ * releases at all, holding back every chrome refresh and the automatic update reload,
+ * because an autosave neither submits nor resets. No surface in the tree is shaped
+ * that way today, and `lib/__tests__/autosave-registry-census.test.ts` is the tripwire
+ * that fires the day one is, rather than a sentence here hoping to be read.
+ */
+export function resolveServerValue(field: {
+  /** The DOM `defaultValue` right now. */
+  readonly liveDefault: string;
+  /** The DOM `defaultValue` when this field first registered, before any edit. */
+  readonly atRegistration: string;
+  /** The field's value right now. */
+  readonly current: string;
+  /** Has the user edited this field since the form last released? */
+  readonly touched: boolean;
+}): string {
+  // Untouched, or the default has not moved: nothing is ambiguous and the live
+  // default is the answer — including a genuine server re-render arriving under a
+  // field nobody has touched.
+  if (!field.touched || field.liveDefault === field.atRegistration) {
+    return field.liveDefault;
+  }
+  // The default moved, but NOT onto what the user typed. Only the server can have
+  // done that, so believe it — this is what keeps a background revalidation from
+  // being mistaken for a mirror.
+  if (field.liveDefault !== field.current) return field.liveDefault;
+  // The default moved onto exactly what the user typed: the ambiguous case above.
+  // Answer with what the server had before any of this, so the field can still be
+  // dirty. This is the whole of the #3352 fix.
+  return field.atRegistration;
+}
+
 /** Whether a form currently holds input the server does not have. */
 export function formHasUnsavedInput(fields: readonly TrackedField[]): boolean {
   return fields.some(fieldHoldsUnsavedInput);
+}
+
+/**
+ * WHICH ANSWER TO BELIEVE ABOUT ONE FORM (#3356) — the precedence rule, stated
+ * once, rather than left to whichever caller reads which signal first.
+ *
+ * Two things can answer "does this form hold unsaved input?", and they see
+ * different forms:
+ *
+ *   * THE REGISTRY sees NAMED controls inside a `<form>`. That is every form the
+ *     browser itself composes into FormData, and nothing else.
+ *   * THE FORM ITSELF, via `data-unsaved`. A form that builds its FormData by hand
+ *     out of React state has no named controls at all — `ActivityForm` has zero in
+ *     the whole file, the sleep dialog is not a `<form>` — so the registry can only
+ *     ever say "clean" about it, and a gesture dismissal threw the typing away with
+ *     nothing asking.
+ *
+ * ANYTHING THAT BELIEVES THERE IS UNSAVED WORK WINS. A declaration of `true` adds a
+ * form the registry could not see; a declaration of `false` takes NOTHING away.
+ *
+ * THIS IS NOT DOUBLE TRUTH, and the alternative was worse. The obvious rule —
+ * "a declaration wins in both directions, so one form is never described two ways" —
+ * was written first and is wrong, because it hands every form a blessed way to
+ * disarm its own discard guard while holding real named-field input. That is #3352's
+ * exact defect: a mechanism that silently removes fields from the guard while every
+ * test keeps passing. A tidier restatement of a bug is not a fix for it.
+ *
+ * It is also the same resolution `resolveServerValue` above makes, in the same
+ * direction, for the same reason: when two signals disagree about unsaved work the
+ * ambiguity is not decidable from here, so it is resolved BY CONSEQUENCE. Believing
+ * "unsaved" costs at most one confirm, answerable with "Discard". Believing "clean"
+ * costs somebody's typing, silently. Deciding the same class of question one way in
+ * one function and the other way here would be the real inconsistency.
+ *
+ * So `data-unsaved="false"` means "I have nothing to add", never "ignore my fields" —
+ * which is exactly what every adopter means by it, and no adopter has ever needed the
+ * capability this refuses. A form that says nothing keeps the behaviour it had.
+ *
+ * A form that declares `true` MUST publish its real answer rather than a convenient
+ * one; `ActivityForm` publishes autosave's own `dirty`, the same value its discard
+ * prompt reads, which is the shape to copy.
+ */
+export function unsavedAnswerForForm(form: {
+  /** What the form says about itself, or null when it says nothing. */
+  readonly declared: boolean | null;
+  /** What the registry can see of the same form's named controls. */
+  readonly tracked: boolean;
+}): boolean {
+  return form.declared === true || form.tracked;
 }
 
 /**

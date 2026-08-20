@@ -240,6 +240,24 @@ export default function Combobox({
           <span className="truncate">{value || placeholder}</span>
         </span>
       )}
+      {/*
+        THE VISIBLE FIELD IS BOTH CONTROLLED AND NAMED, which makes every Combobox
+        inside a named `<form>` a subject of the dirty-form registry — and, until
+        #3352, a permanently CLEAN one: React syncs `defaultValue` onto a controlled
+        input to match `value`, so the registry's "current vs what the server
+        rendered" compared a value with a copy of itself. This is a shared component,
+        so that defect was live everywhere one sat in such a form. Fixed in
+        components/DirtyFormRegistry.tsx, which no longer trusts a DOM default that
+        moved onto exactly what the user typed. Nothing is needed here — but if this
+        input ever gains a `defaultValue` or loses its `name`, that is the file to
+        read first.
+
+        The CONTRAST worth keeping in view: ProviderCombobox wraps this and submits
+        through a `type="hidden"` input instead, which the registry excludes outright.
+        That made it immune to #3352 and invisible to the discard guard entirely,
+        which is #3356 — two comboboxes, differing in exactly the one property that
+        decides both.
+      */}
       <input
         ref={(node) => {
           inputRef.current = node;
