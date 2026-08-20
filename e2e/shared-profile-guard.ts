@@ -52,8 +52,8 @@ const LIVE_DRAFT_SQL = `SELECT id, title, date
     ORDER BY id`;
 
 /**
- * Find every live draft stranded on the shared profile in `dbPath`, DELETE it, and
- * return what was found.
+ * Find every live draft stranded on `profileId` in `dbPath`, DELETE it, and return
+ * what was found. Defaults to the shared profile, which is the standing guard's job.
  *
  * It repairs as well as reports on purpose. A detector that only reported would leave
  * the draft in place, so the next test on that worker fails too, and the one after
@@ -61,9 +61,17 @@ const LIVE_DRAFT_SQL = `SELECT id, title, date
  * burying it. Removing the row means exactly ONE test fails: the one that caused it.
  * (The delete rides the schema's own `ON DELETE CASCADE` from `exercise_sets` and the
  * other activity-owned tables, which is why `foreign_keys` is turned on for it.)
+ *
+ * `profileId` EXISTS SO THE SIGNATURE ABOVE STAYS SINGLE-SOURCED (#3290). A spec that
+ * drives a live workout on a DEDICATED fixture profile is outside the standing guard
+ * by design, so it has to prove its own cleanup — and the only honest way to do that
+ * is to ask the same four columns `computeWorkoutPresence` asks. Re-spelling
+ * `LIVE_DRAFT_SQL` at that call site would mean two definitions of "an active
+ * workout" that drift apart the first time the presence classifier changes.
  */
-export function takeStrandedSharedDrafts(
-  dbPath: string = workerDbPath()
+export function takeStrandedDrafts(
+  dbPath: string = workerDbPath(),
+  profileId: number = SHARED_PROFILE_ID
 ): StrandedDraft[] {
   // A worker whose database was never created (a fixture that failed before the
   // template copy) has nothing to answer for.
@@ -74,12 +82,12 @@ export function takeStrandedSharedDrafts(
     db.pragma("foreign_keys = ON");
     const stranded = db
       .prepare(LIVE_DRAFT_SQL)
-      .all(SHARED_PROFILE_ID) as StrandedDraft[];
+      .all(profileId) as StrandedDraft[];
     if (stranded.length > 0) {
       const drop = db.prepare(
         "DELETE FROM activities WHERE id = ? AND profile_id = ?"
       );
-      for (const row of stranded) drop.run(row.id, SHARED_PROFILE_ID);
+      for (const row of stranded) drop.run(row.id, profileId);
     }
     return stranded;
   } finally {
@@ -88,13 +96,20 @@ export function takeStrandedSharedDrafts(
 }
 
 /** The failure message a stranded draft earns, naming the rows it left behind. */
-export function strandedDraftMessage(stranded: StrandedDraft[]): string {
+export function strandedDraftMessage(
+  stranded: StrandedDraft[],
+  profileId: number = SHARED_PROFILE_ID
+): string {
   const rows = stranded
     .map((row) => `  • activity ${row.id} "${row.title}" (${row.date})`)
     .join("\n");
+  const which =
+    profileId === SHARED_PROFILE_ID
+      ? `the SHARED profile ${SHARED_PROFILE_ID}`
+      : `its own fixture profile ${profileId}`;
   return (
-    `This test left ${stranded.length} live workout draft(s) on the SHARED profile ` +
-    `${SHARED_PROFILE_ID} (#3173):\n${rows}\n\n` +
+    `This test left ${stranded.length} live workout draft(s) on ` +
+    `${which} (#3173):\n${rows}\n\n` +
     `A started-but-unended manual activity is what getWorkoutPresence reads as an ` +
     `ACTIVE workout, so the app-wide workout dock would haunt every later spec on ` +
     `this worker and fail one of them instead of this one (#3163).\n\n` +

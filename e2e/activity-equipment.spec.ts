@@ -1,12 +1,37 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import {
+  deleteActivityFromForm,
   followLink,
   hydratedClick,
   settledClick,
   settledFill,
 } from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+
+// WHICH CLICKS IN THIS FILE ARE HYDRATION-SENSITIVE, AND WHICH ARE NOT (#3254).
+//
+// Measured on an UNTOUCHED `origin/main`: 4 failures in 10 trials under a 20× CDP CPU
+// throttle. That measurement is what exonerated PR #3249, whose diff could not reach
+// this spec — the cost of the fragility is a review cycle every time it lands on
+// somebody, not a red anybody owns.
+//
+// The class is #2742's: a tap that lands before React attaches its handler is
+// SWALLOWED WITH NO ERROR — Playwright's actionability checks all pass, because the
+// element is genuinely fine — and the failure surfaces later as "element(s) not
+// found". A retry loop is the wrong fix (every iteration before hydration spends
+// budget on a click that could not land) and so is a bigger timeout (it makes the
+// assertion pass by accident). `hydratedClick` waits for the STATE.
+//
+// It applies to a control that was SERVER HTML in the document just navigated to.
+// Every remaining bare `.click()` below targets something client React created in
+// response to an earlier interaction — a combobox listbox opened by typing, the
+// quick-add inside the already-open editor workspace, a portaled menu item — and is
+// therefore hydrated by construction, the same reasoning `deleteActivityFromForm`
+// records for a confirm dialog's own button. Converting those would state a
+// dependency that does not exist. `ActivityEditorProvider` opens the editor with
+// `setOpen(true)` rather than a route change, which is what puts the whole form on
+// the client-created side of that line.
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
 // ride to a "Road Bike" (category Bike), so the Training Log renders a session-level gear
@@ -46,7 +71,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
   // Cycling titles lead to the canonical activity detail. Its primary Edit action
   // opens the shared editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
-  await card.getByTestId("activity-page-edit").click();
+  await hydratedClick(page, card.getByTestId("activity-page-edit"));
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(/\d+/);
@@ -80,10 +105,10 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
     row.getByRole("link", { name: "5k run", exact: true }),
     /\/training\/activity\/\d+$/
   );
-  await page
-    .getByTestId("training-activity-page")
-    .getByTestId("activity-page-edit")
-    .click();
+  await hydratedClick(
+    page,
+    page.getByTestId("training-activity-page").getByTestId("activity-page-edit")
+  );
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   // Shoes present, bike absent — the run narrows to footwear.
@@ -114,10 +139,10 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
 
     // Open a fresh create form (the seeded activity makes the Training Log — and its
     // "New activity" button — render instead of the empty state).
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: "New activity" })
-      .click();
+    await hydratedClick(
+      page,
+      page.getByRole("main").getByRole("button", { name: "New activity" })
+    );
 
     // Pick a known cardio activity so the session-level equipment picker mounts;
     // picking commits the part TYPE (typing the name alone doesn't).
@@ -135,8 +160,10 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await expect(door).toHaveText(/Add equipment/);
     await expect(door).toHaveAttribute("href", "/equipment");
     await expect(door).not.toHaveAttribute("target", "_blank");
-    await door.click();
-    await expect(page).toHaveURL(/\/equipment$/);
+    // A real navigation, and the assertion below is its destination — so make the
+    // URL commit part of the same retry boundary. Re-clicking a link that already
+    // committed asks for the same URL again, so followLink's retry is free here.
+    await followLink(page, door, /\/equipment$/);
     await expect(page.getByTestId("activity-form")).toHaveCount(0);
   } finally {
     await page.context().close();
@@ -169,10 +196,12 @@ test("the strength picker creates and selects a travel machine without losing th
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
-  await page
-    .getByTestId("training-log-actions")
-    .getByRole("button", { name: "New activity" })
-    .click();
+  await hydratedClick(
+    page,
+    page
+      .getByTestId("training-log-actions")
+      .getByRole("button", { name: "New activity" })
+  );
 
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
   // A fully-qualified variant (never the bare base, which needs a per-set equipment
@@ -247,13 +276,15 @@ test("the strength picker creates and selects a travel machine without losing th
   await expect(weight).toHaveValue("100");
 
   // Cleanup: the probe session, then the probe equipment.
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await settledClick(
-    page,
-    page
-      .getByTestId("confirm-dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-  );
+  //
+  // Through the shared settled discard (#3267/#3287) rather than a local
+  // click-then-settledClick pair. `settledClick` promises "an action POST resolved",
+  // and this form has just fired TWO auto-saves and a refused quick-add save, so the
+  // POST it settles on need not be the delete's (#1952). The toast is the delete's
+  // own completion: `useUndoableDelete` announces "Activity deleted." only after
+  // `await action(fd)` resolves. It also spends the confirm's opening click through
+  // `openConfirm`, which is the one control here that a re-click may never be given.
+  await deleteActivityFromForm(page);
   await page.goto("/training?tab=log");
   await expect(
     page
@@ -295,10 +326,10 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/training?tab=log");
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: "New activity" })
-      .click();
+    await hydratedClick(
+      page,
+      page.getByRole("main").getByRole("button", { name: "New activity" })
+    );
 
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
     await page
