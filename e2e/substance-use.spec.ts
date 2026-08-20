@@ -363,6 +363,13 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       // Declare the forgery ON THE PAGE, so the rescue's own log line can say this
       // loss was deliberate. Without it this test prints three per run that are
       // indistinguishable from a real recurrence on the same control (e2e/helpers.ts).
+      //
+      // A LOCAL FLAG ON PURPOSE: one setter here, one reader in `redispatchLostSubmit`,
+      // documented at both ends. Do not promote it to a shared export yet — a shared
+      // primitive with a single caller invites a second caller that does not quite
+      // fit. THE PROMOTION CONDITION IS A SECOND FORGING SITE: when some other spec
+      // needs to forge a lost click, give this key a named export and a type, and
+      // change both ends together.
       (
         window as unknown as { __allosForgedLostSubmit?: boolean }
       ).__allosForgedLostSubmit = true;
