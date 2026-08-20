@@ -347,9 +347,9 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     )
   ).toBe(true);
   await activityTitle.click();
-  expect(
-    await cyclingShell.getByTestId("combobox-option").count()
-  ).toBeGreaterThan(1);
+  // Portaled listbox (#3271): the rows are on <body>, not inside the shell. One
+  // list is open at a time, so the page-level count is the same question.
+  expect(await page.getByTestId("combobox-option").count()).toBeGreaterThan(1);
   await activityTitle.press("Escape");
   await expect(cyclingShell.getByText("Cycling overview")).toHaveCount(0);
   await expect(

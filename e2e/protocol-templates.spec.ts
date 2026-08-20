@@ -72,12 +72,14 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   await form.getByLabel("Name").fill(uniqueName);
 
   const search = form.getByLabel("Filter outcome metrics");
+  // The option rows are in the PORTALED listbox (#3271), not inside the form.
+  const outcomeOptions = page.getByRole("listbox");
   await search.fill("LDL Cholesterol");
-  await form
+  await outcomeOptions
     .getByRole("button", { name: "LDL Cholesterol", exact: true })
     .click();
   await search.fill("Non-HDL Cholesterol");
-  await form
+  await outcomeOptions
     .getByRole("button", { name: "Non-HDL Cholesterol", exact: true })
     .click();
 
