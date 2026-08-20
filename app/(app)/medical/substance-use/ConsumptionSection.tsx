@@ -459,10 +459,7 @@ export default function ConsumptionSection({
           onClose={() => setCapOpen(false)}
           size="sm"
         >
-          <form
-            className="space-y-4"
-            onSubmit={(event) => void saveCap(event)}
-          >
+          <form className="space-y-4" onSubmit={(event) => void saveCap(event)}>
             <label className="block text-sm">
               Weekly cap ({def.countPlural}, 0–{MAX_WEEKLY_CAP})
               <input
