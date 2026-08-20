@@ -318,6 +318,26 @@ ones — the number exists in both because one times the paint and the other tim
 the unmount, and a stylesheet that outlives its JS duration leaves a frozen
 panel on screen.
 
+### Censusing this family
+
+Use `npm run census:dialogs` — not a grep — when you sweep the dialogs.
+
+    npm run census:dialogs              # hosts, hosted, confirm callers, hostless
+    npm run census:dialogs -- --hostless
+
+Three earlier sweeps enumerated this family with a file-level
+`grep -l 'ModalShell|BottomSheet'`. That asks whether a FILE mentions the string,
+which is a cheaper question than whether a component USES the host, and it is
+wrong in both directions: it counted `MergeConflictDialog` off a comment, and it
+could not see any dialog that hand-rolls its own surface.
+`scripts/dialog-census-core.ts`
+matches on the import and on the rendered JSX instead.
+
+It reports dialogs belonging to no dialog host rather than omitting them, and
+`lib/__tests__/dialog-census.test.ts` fails when a new one appears unrecorded, or
+when a record outlives its subject. It does not fail on the recorded set: whether
+those converge or become sanctioned exceptions is #3405's open design call.
+
 ## Testing gestures
 
 `e2e/helpers.ts` drives real Chromium touch input via CDP — Playwright's
