@@ -136,9 +136,15 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await expect(page.getByTestId("nutrition-today-section")).toBeHidden();
     await nutrientDetailsSummary.click();
     await expect(page.getByTestId("nutrition-today-section")).toBeVisible();
-    await expect(quick.locator('li[data-testid^="food-group-"]')).toHaveCount(
-      6
-    );
+    // The quick rows themselves. Since #3362 the "More food groups" disclosure
+    // sits INSIDE this list (it extends it), so its collapsed rows are under
+    // `food-quick-log` too — excluded here, or "the quick log offers six" would
+    // silently become "the catalog has N" and keep passing.
+    await expect(
+      quick.locator(
+        'li[data-testid^="food-group-"]:not([data-testid="food-more-groups"] li)'
+      )
+    ).toHaveCount(6);
     const more = page.getByTestId("food-more-groups");
     await expect(more).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("nutrition-mobile-snapshot")).toBeVisible();

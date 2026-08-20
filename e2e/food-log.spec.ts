@@ -153,9 +153,16 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
       els.map((el) => Number(el.getAttribute("data-rank")))
     );
 
-  const quickRanks = await ranksIn(
-    quick.locator('li[data-testid^="food-group-"]')
-  );
+  // THE LIST'S OWN ROWS, not everything under this section. Since #3362 the
+  // "More food groups" disclosure is a citizen of this same list — it extends it,
+  // so it lives in it — which means its (collapsed) rows are inside
+  // `food-quick-log` too. Those are what the control REACHES; they are not part
+  // of the head it sits at the end of, and counting them here would turn "the six
+  // are the head of the ranking" into a much weaker sentence that still went
+  // green.
+  const OWN_ROWS =
+    'li[data-testid^="food-group-"]:not([data-testid="food-more-groups"] li)';
+  const quickRanks = await ranksIn(quick.locator(OWN_ROWS));
   expect(quickRanks).toHaveLength(FOOD_QUICK_COUNT);
   expect(quickRanks.every((rank) => Number.isInteger(rank))).toBe(true);
   // The head of the ranking, in rank order and starting at the top.
@@ -582,7 +589,12 @@ test("a protocol deep link pins its group, and the protein control still sits by
       "data-testid",
       `food-group-${FOOD_PIN_GROUP}`
     );
-    const rows = quickLog.locator('li[data-testid^="food-group-"]');
+    // The quick rows themselves — the disclosure's rows are in this section too
+    // since #3362, and "the control leads the rows it outranks" is about the ones
+    // it is laid out beside.
+    const rows = quickLog.locator(
+      'li[data-testid^="food-group-"]:not([data-testid="food-more-groups"] li)'
+    );
     const firstRow = rows.first(); // first-ok: the pin LEADING the quick rows is the assertion, on this spec's own fixture profile
     await expect(firstRow).toHaveAttribute("data-prefilled", "true");
 

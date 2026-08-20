@@ -1630,37 +1630,52 @@ export default function FoodLogBar({
               </span>
             </div>
           )}
+          {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
+              section after it. It does the same job as the rows above it —
+              reach a food-group row — so it wears the same card idiom and sits
+              at the list's own `space-y-1.5` rhythm. Living INSIDE the list
+              container is what makes that gap the same with and without the
+              nutrient summary, which renders only on the Nutrition page mount
+              and used to sit between the rows and this control. `min-h-14`
+              lifts it from the 42px `py-2.5` control it was — under the app's
+              own 44px `tap-target` floor — to the food rows' height. */}
           <div className="space-y-1.5">
             {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
             {activeDate === today && proteinQuickAdd}
             {proteinSplit < quickGroups.length &&
               rows(quickGroups.slice(proteinSplit))}
+            {moreGroups.length > 0 && (
+              <details data-testid="food-more-groups" className="group">
+                <summary
+                  data-testid="food-more-groups-summary"
+                  className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
+                >
+                  <span>More food groups ({moreGroups.length})</span>
+                  <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </summary>
+                {/* The expanded tier sections keep their own layout — this
+                    change is about the collapsed control's size and rhythm. */}
+                <div className="mt-4 space-y-5">
+                  {TIER_ORDER.map((tier) => {
+                    const tierGroups = moreGroups.filter(
+                      (g) => g.tier === tier
+                    );
+                    if (tierGroups.length === 0) return null;
+                    return (
+                      <div key={tier}>
+                        <h3 className="mb-2 section-label">
+                          {TIER_LABEL[tier]}
+                        </h3>
+                        {rows(tierGroups)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
           </div>
         </section>
         {nutrientSummary}
-        {moreGroups.length > 0 && (
-          <details data-testid="food-more-groups" className="group">
-            <summary
-              data-testid="food-more-groups-summary"
-              className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
-            >
-              <span>More food groups ({moreGroups.length})</span>
-              <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="mt-4 space-y-5">
-              {TIER_ORDER.map((tier) => {
-                const tierGroups = moreGroups.filter((g) => g.tier === tier);
-                if (tierGroups.length === 0) return null;
-                return (
-                  <div key={tier}>
-                    <h3 className="mb-2 section-label">{TIER_LABEL[tier]}</h3>
-                    {rows(tierGroups)}
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
       </div>
       {preferencesOpen && (
         <ModalShell
