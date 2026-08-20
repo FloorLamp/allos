@@ -853,3 +853,20 @@ one can be read back, disagreed with, and found wrong afterwards.
 Worth noting what the check costs: one REST read of each PR's file list, compared for
 overlap. On #3396 that was ten filenames against two, with no path by which nutrition
 CSS could change a data-quality finding's existence or a query count.
+
+## The head you read and the head you merge
+
+#3418. CI verified green on `9959c178`. The full-diff review was written against that
+diff and posted. The merge call went out, and GitHub merged `b36a2bc1` — a merge of
+`origin/main` the lane pushed in the ninety seconds between.
+
+Nothing was lost: `b36a2bc1` was `9959c178` plus current main. But the review credited
+an argument the lane had already retracted in its final commit — the no-`FactEditorHost`
+decision was justified by what #3409 would cost, and #3417 had made that cost
+disappear hours earlier. The lane knew. The review, written one commit behind, did not.
+
+"Green CI on the exact head" was followed. Its unwritten second half was not: the exact
+head has to still be the head when the merge call goes out. One request answers it.
+
+The general shape: verifying a fact about a moving object and then acting on the
+verification some time later is not the same as acting on the fact.

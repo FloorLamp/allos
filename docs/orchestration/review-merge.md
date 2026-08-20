@@ -48,7 +48,9 @@
 
 ## Merge
 
-- Squash merge through MCP only after CI is green on the exact head.
+- Squash merge through MCP only after CI is green on the exact head. Re-read
+  `head.sha` in the same breath as the merge call: a lane can push between the
+  check and the merge, and GitHub merges the head it finds, not the one you read.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
 - A later conflicting PR rebases only after the last earlier conflict lands.

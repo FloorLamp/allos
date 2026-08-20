@@ -134,6 +134,18 @@
           "title": "A training goal states what it is from the thing you picked, and says the number you are starting from",
           "kind": "feature",
           "issues": [3220]
+        },
+        {
+          "pr": 3417,
+          "title": "A form that holds fact chips now closes on Escape, instead of ignoring the key entirely",
+          "kind": "fix",
+          "issues": [3409]
+        },
+        {
+          "pr": 3418,
+          "title": "Three identical sets read as one line \u2014 175 lb \u00d7 8 \u00d7 3 \u2014 with the grid one tap behind",
+          "kind": "feature",
+          "issues": [3336]
         }
       ]
     },
