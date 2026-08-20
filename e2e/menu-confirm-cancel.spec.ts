@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import {
   hydratedClick,
   settledClick,
@@ -45,7 +46,9 @@ test("cancelling a confirm opened from an overflow menu leaves the page able to 
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await settledFill(page, addDialog.getByLabel("Name"), itemName);
-  await settledFill(page, addDialog.getByLabel("Amount"), "10 mg");
+  const doseEditor1 = await openFact(page, "dose", addDialog);
+  await settledFill(page, doseEditor1.getByLabel("Amount"), "10 mg");
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
@@ -54,7 +57,10 @@ test("cancelling a confirm opened from an overflow menu leaves the page able to 
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
-  const picker = editDialog.getByTestId("shared-supply-picker");
+  // The shared-supply control is the supply fact's editor now (#3216); its own
+  // separate-submit, one-way count-migration design is untouched.
+  const supply = await openFact(page, "supply", editDialog);
+  const picker = supply.getByTestId("shared-supply-picker");
   await settledSelect(page, picker.getByLabel("Shared supply"), "__new__");
   await settledFill(
     page,

@@ -143,7 +143,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       page
         .getByTestId("illness-medication-quick-add")
-        .getByTestId("quick-add-medication")
+        .getByTestId("intake-item-form")
     ).toBeVisible();
     await page.getByTestId("illness-add-medication").click();
     await expect(addMedication).toHaveAttribute("aria-expanded", "false");

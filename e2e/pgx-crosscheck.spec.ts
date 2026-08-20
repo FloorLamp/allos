@@ -123,7 +123,6 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   }) => {
     await page.goto("/medications");
     await page.getByTestId("medication-add-toggle").click();
-    await page.getByTestId("medication-add-full").click();
     const addCard = page.getByTestId("medication-add-panel");
 
     // Typing a CYP2D6-affected opioid with an ultrarapid variant on file lights the

@@ -700,13 +700,22 @@ describe("the offerable-bottle rule matches the cabinet's own list", () => {
     expect(offered).not.toContain(theirs);
 
     // The single-id question agrees with the list, and carries the product facts a
-    // seeded item form prefills from.
+    // seeded item form prefills from — plus, since #3216, the two facts the intake
+    // form's front door offers the bottle WITH: its count, and the kind its members
+    // lend. An orphan has no members, so it lends nothing and the form still asks.
     expect(findLinkableSupply([alice.profileId], orphan)).toEqual({
       id: orphan,
       name: "Orphan 1705",
       strength: "200 mg",
       form: "tablet",
+      onHand: 10,
+      siblingKind: null,
     });
+    // A bottle someone already draws a MEDICATION from lends "medication" — the
+    // safety-leaning direction the cabinet already takes (poolSurfaceKind).
+    expect(findLinkableSupply([alice.profileId], mine)?.siblingKind).toBe(
+      "medication"
+    );
     expect(findLinkableSupply([alice.profileId], theirs)).toBe(null);
     expect(isLinkableSupply([alice.profileId], theirs)).toBe(false);
 

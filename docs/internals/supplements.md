@@ -55,7 +55,7 @@ suggestion generator — as an owner decision (#1270). Its only vestige:
 `MED_BRIDGE_PREFIX` in `lib/medication-record-match.ts`, kept so an
 already-stored `med-bridge:` dismissal row still labels/clears in the suppressed
 center (#203 — dismissal rows outlive their feature); no code mints new ones.)
-The add form's name combobox is **medication-aware**
+The form's name combobox is **medication-aware**
 (`medicationCatalogNames`/`splitMedicationName` over the framework-backed
 medication-descriptions dataset — `lib/medication-info.ts` accessors on
 `lib/datasets/medication-descriptions.ts`, 208 generics + brands; picking a
@@ -295,6 +295,107 @@ Invariants:
 - **A taper is windowed rows, and an expiring window is NOT a retire.** The row
   stops being due; its logs read untouched. That is what keeps "editing a dose
   never rewrites adherence history" true by construction for a mid-course change.
+
+## One intake form (#3216)
+
+`components/IntakeItemForm.tsx` is the single add/edit form for both kinds. It
+replaced three shells over one write path — `MedicationForm` (1,356 lines),
+`SupplementForm` (703) and `QuickAddMedication` (407) — which were the #2184
+drift class standing armed: every field, label and gate fixed in one had to be
+remembered in two others, and only medications had a frictionless door at all.
+
+**Name first; the kind is derived.** The form opens on one field. A pick from
+the medication vocabulary or the supplement catalog sets the kind and renders it
+as a correctable chip; a name in BOTH (melatonin) or in neither asks once, and
+those are different questions with different copy. A shared bottle lends the
+kind of the items already drawing on it — a bottle has none of its own — and one
+nobody links yet falls through to the ask. A kind-locked door (`/medications`,
+Nutrition → Supplements) answers it outright and offers nothing to change.
+`lib/intake-kind.ts` is the whole decision; the form renders it.
+
+**Summary-first, facts with editors.** After a pick the form renders NO editors.
+It renders the facts it will save as tappable sentences — dose, timing,
+importance, OTC/Rx, the rules — and one editor opens at a time behind whichever
+fact you disagree with. This is not a preference: front-loading every field is
+what made the OTC quick-add necessary, and a consolidation attempt during
+prototyping that put every field on screen at once hit the same wall. A missing
+ESSENTIAL renders as a prompt; an absent OPTIONAL renders nothing and stays
+reachable behind one trailing affordance that names what it holds.
+`lib/intake-facts.ts` computes the row; assertions name the fact KEYS, never the
+chip copy.
+
+**The form posts whole, structurally.** Every value is React state and every
+submit serializes all of it through `lib/intake-form-fields.ts`, a pure function
+that is never told which editor was open. That is #2014's hidden-not-unmounted
+rule made unbreakable rather than remembered: a field whose editor was never
+opened still saves its seeded value. The sub-editors (notes, escalation, refill
+counts, provider) are controlled for the same reason.
+
+**Rules are sentences over columns that already exist.** Five of them, in
+`lib/intake-rules.ts`: take only when X (`condition` + `situation`), pause while
+X (`pause_situation`), with food / empty stomach (the dose rows' `food_timing`),
+keep N h apart from an item and take together with one (the two
+`intake_item_pairs` relations). There is no rules store: delete the UI and the
+data model is unchanged. The keep-apart interval has no column and #3216 forbids
+adding one, so it rides in the pair's own free-text `note` in a canonical
+leading form and parses back out; a note written by hand keeps its whole text.
+Food timing became an item-level rule, so `DoseRowsEditor` hides its per-row
+food select for this form — one field, one editor.
+
+**Two capabilities were deliberately withdrawn from the FORM, not from the
+model.** Both are decisions, not gaps.
+
+- _Per-dose-row food timing._ The form now writes `food_timing` per ITEM, to
+  every dose row. "With food in the morning, without at night" remains
+  expressible in the schema and still arrives from import and from
+  `supplement-suggest`, and every reader (reminders, `foodTimingCheck`,
+  `intake-format`) still reads it per dose — but the form no longer mints rows
+  that differ. Restoring it means giving the food sentence a per-row scope, not
+  a migration.
+- _Free-text notes on a keep-apart / take-together pair._ `intake_item_pairs.note`
+  is no longer editable from any surface: the pairs repeater that owned that
+  input (`KeepApartPairsEditor`) was deleted with the merge, and the two pair
+  SENTENCES carry the other item and the interval instead. An existing note
+  round-trips untouched — `parseKeepApartNote` keeps whatever text it cannot read
+  as an interval — but cannot be changed or cleared by a user. This is also why
+  the interval-in-the-note encoding is safe today: nobody can edit around it.
+
+**Formulation is a derived chip row** (`lib/intake-formulations.ts`): the
+ingredient's own form plus the curated pediatric products, defaulted by the
+profile's age and outranked by a stored `product` so an edit reads back what was
+saved. A switch re-derives the product, the redose preset and the pediatric
+context line. It does NOT write the volume into the dose amount: the amount
+stays milligrams and `formatMedicationDoseProduct` scales the concentration at
+every display boundary.
+
+The reason is a safety one and is worth stating exactly, because the near-miss
+is harmless. `parseAmountMg` (#1854) is anchored at a leading number + mass
+unit, so an **mg-leading** amount with the volume appended — `240 mg / 7.5 mL` —
+reads fine. It is the LITERAL "volume-first" shape that does not: `7.5 mL
+(240 mg)` and `7.5 mL` both parse to null, and `prnDayExposure` treats an
+unreadable amount as a reason to abandon the milligram basis. `PrnExposureBasis`
+flips from `"mg"` to `"count"`, so a confirmed mg/day ceiling silently stops
+being a mg/day ceiling — on a child's liquid medicine, the one case where it
+matters most, with nothing surfacing the downgrade. Storing both would also put
+one datum in two columns and render the concentration twice.
+
+**What did not change.** Same actions, no schema change. `SharedSupplyPicker`
+remains the authority for linking and unlinking an EXISTING item, with its
+separate-submit, one-way count-migration design untouched; the front door only
+promotes the #1705 create-mode branch. #843's row parity is the merge's safety
+net, extended in `lib/__action_tests__/intake-row-parity.actions.test.ts` against
+a hand-transcribed copy of what the old full form posted.
+
+**Where #846's guarantee went.** The split existed because one shared body
+taught the user wrong — supplement brands and catalog dosages on a medication.
+Its text-scanning guard died with the file boundary; the guarantee is now a
+property of the DERIVED KIND, in `lib/intake-kind-affordances.ts`, with one call
+site each for the two suggestion lists. That is stronger than the scan, which
+passed for any file that avoided the words.
+
+The facts-with-editors pattern is deliberately LOCAL to this form. #3218
+extracts it once a second consumer ships — extract at the second use, not
+speculatively.
 
 ## Effective-dated dose schedules (#1973)
 
@@ -1133,10 +1234,10 @@ the shared `rankByFrequency`; both follow the `rank-core`/#1490 discipline of
 stable facts and BUCKETED presence (weights combine with MAX, so duplicate
 ledger rows never inflate a rank and there is no raw-recency jitter).
 `lib/queries/intake-options.ts` resolves each profile's ledger once and
-`components/IntakeOptionsContext.tsx` supplies the result to the forms, the same
-shape `ProviderOptionsContext`/`SituationOptionsContext` already use — so
-`MedicationForm` and `QuickAddMedication` read ONE source and can never disagree
-about the head (#221). The BRAND field keeps its post-name-pick narrowing to the
+`components/IntakeOptionsContext.tsx` supplies the result to the form, the same
+shape `ProviderOptionsContext`/`SituationOptionsContext` already use. Since
+#3216 there is one form and therefore one call site, so the picker's head cannot
+disagree with itself (#221). The BRAND field keeps its post-name-pick narrowing to the
 chosen drug's own brands; only its PRE-pick state changed, to lead with the
 brands this profile has recorded.
 

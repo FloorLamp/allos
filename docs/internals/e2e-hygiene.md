@@ -1309,6 +1309,47 @@ cheap no-op. The full suite now runs at zero retries too (see the retries-drop
 note below), so this lane's strict verdict is the whole suite's standard, not a
 special case.
 
+### CHANGED specs and AFFECTED specs are different sets (#3216)
+
+The lane above answers "did I break a spec I edited". That is not the same
+question as "did I break a spec", and the gap has a specific shape:
+
+> **When a change makes a previously-unconditional element conditional, every
+> spec that addresses that element is affected — whether or not you edited it.**
+
+#3216 merged three intake forms into one summary-first form where a field only
+renders once its fact chip is opened. 25 spec files were migrated and run at
+`--repeat-each=3 --retries=0`: 267 passed, no flakes, a correct answer to the
+cheaper question. CI then failed three specs the change never touched —
+`episode-med-reconcile` (`med-end-date`), `intake-cadence` (`cadence-editor`),
+`prn-mg-max` (`redose-max-mg`) — each reaching for a field that used to render
+unconditionally in the edit form. `e2e-changed` structurally cannot see these:
+their diff is empty.
+
+**The cheap sweep that does see them.** Enumerate the markers whose rendering
+condition moved — from the component, not from whichever shard happened to go
+red — and grep the whole `e2e/` tree for them:
+
+```bash
+# every testid now rendered only inside a conditional container
+grep -ho 'data-testid="[^"]*"' <the components that moved> | sed 's/.*="//;s/"//' | sort -u
+# then, per id, every spec that addresses it
+grep -rl 'getByTestId("<id>"' e2e/*.spec.ts
+```
+
+Two cautions learned doing it. Templated ids (``data-testid={`${id}-weekday-${n}`}``)
+become wildcards and **over**-match: `*-weekday-*` matched an unrelated
+calendar's `day-history-weekday-label`, a false positive that costs a minute to
+dismiss and is far cheaper than a miss. And a testid sweep alone under-matches —
+a spec addressing the field by `getByLabel("Amount")` names no testid at all, so
+sweep the accessible labels too, then intersect with the specs that actually open
+that surface.
+
+The honest verification set is then "every spec that opens the surface at all",
+not "every spec I edited": for #3216 that was 30 files and 315 tests at parity,
+against 25 files and 267 tests for the changed set — disjoint enough that the
+smaller one passed while three of the larger one were red.
+
 ## Fix (d) — the frozen app clock (#990)
 
 A fifth failure class, orthogonal to the four above: **fixtures derive dates

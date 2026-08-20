@@ -3,7 +3,7 @@
 // `Combobox` shows 8 rows and an empty query keeps source order, so the first 8 entries
 // of the options array ARE the picker. Alphabetical over 242 curated generics opens on
 // Abacavir/Acarbose — a list nobody's medication is in. This module is the ONE ordering
-// computation behind both medication name call sites (the full MedicationForm and the
+// computation behind the medication name call site (the one intake form, #3216) and the
 // quick-add), fed by `lib/queries/intake-options.ts`.
 //
 // Three tiers, in the discipline `rank-core`/#1490 established (stable facts, bucketed

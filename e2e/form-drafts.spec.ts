@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill } from "./helpers";
@@ -231,8 +232,10 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     await addCard.getByLabel("Name").fill(SUPPLEMENT_NAME);
     // The dose rows never exist as named inputs — they are React state serialized
     // into FormData at submit — so this is the `extra` half of the draft.
-    await addCard.getByLabel("Amount").first().fill("25 mg"); // first-ok: this form's own first dose row, one render, not a seeded list
-    await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
+    const doseEditor1 = await openFact(page, "dose", addCard);
+    await doseEditor1.getByLabel("Amount").first().fill("25 mg"); // first-ok: this form's own first dose row, one render, not a seeded list
+    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
+    await closeEditor(page, addCard);
 
     await expect
       .poll(
@@ -253,9 +256,12 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     await reopened.getByTestId("draft-restore-resume").click();
 
     await expect(reopened.getByLabel("Name")).toHaveValue(SUPPLEMENT_NAME);
-    await expect(reopened.getByLabel("Amount").first()).toHaveValue("25 mg"); // first-ok: this form's own first dose row
-    const timeOfDay = reopened.getByLabel("Time of day").first(); // first-ok: this form's own first dose row, one render, not a seeded list
-    await expect(timeOfDay).toHaveValue("Morning");
+    const doseEditor2 = await openFact(page, "dose", reopened);
+    await expect(doseEditor2.getByLabel("Amount").first()).toHaveValue("25 mg"); // first-ok: this form's own first dose row
+    await expect(
+      doseEditor2.getByLabel("Time of day").first() // first-ok: this form's own first dose row, one render, not a seeded list
+    ).toHaveValue("Morning");
+    await closeEditor(page, reopened);
 
     await reopened.getByRole("button", { name: "Add", exact: true }).click();
     await expect(reopened).toHaveCount(0);

@@ -23,7 +23,7 @@ import {
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
-import SupplementForm from "@/components/SupplementForm";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
@@ -422,9 +422,10 @@ export default function EditableSupplementRow({
             data-testid="supplement-edit-panel"
             className="mt-4 min-h-0 overflow-y-auto px-1"
           >
-            <SupplementForm
+            <IntakeItemForm
               action={updateIntakeItem}
-              supplement={s}
+              kind="supplement"
+              item={s}
               doses={doses}
               ingredients={ingredients}
               retiredDoses={retiredDoses}
