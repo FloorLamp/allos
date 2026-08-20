@@ -272,6 +272,67 @@ describe("nav ↔ route consistency", () => {
       ).toEqual([]);
     }
   });
+  // ── the episodic group's membership (#3079) ────────────────────────────────
+  //
+  // Six surfaces the 2026-08-17 usage review measured at zero deliberate visits
+  // moved from top-level rows to children of one collapsed "Plan & review" group.
+  // The pull back the other way is a ONE-LINE edit — cut a leaf out of
+  // PLAN_REVIEW.children, paste it into `entries` — and every other check in this
+  // file would stay green through it, because the href still resolves and the
+  // route still exists. Nothing about a route's EXISTENCE can see a demotion being
+  // undone, so the placement is pinned as text here, where it is cheap, in addition
+  // to being pinned behaviorally in e2e/nav-consolidation.spec.ts.
+  //
+  // Text, not behavior, on purpose: this tier is DB- and JSX-free, and the
+  // registry it guards is a literal array in a client component.
+  const GROUPED_HREFS = [
+    "/upcoming",
+    "/timeline",
+    "/wellness",
+    "/longevity",
+    "/household",
+    "/progress",
+  ];
+
+  // The source text of one top-level `const <name> ... <close>;` declaration in
+  // Nav.tsx, comments stripped so a route named in prose never counts as a
+  // placement. Anchored on the closing brace/bracket at column 0, which is where
+  // Prettier puts it for a module-level declaration.
+  function navDeclaration(name: string, close: string): string {
+    const src = stripComments(fs.readFileSync(NAV_SRC, "utf8"));
+    const start = src.indexOf(`const ${name}`);
+    expect(start, `Nav.tsx no longer declares ${name}`).toBeGreaterThan(-1);
+    const end = src.indexOf(`\n${close};`, start);
+    expect(end, `could not find the end of ${name}`).toBeGreaterThan(start);
+    return src.slice(start, end);
+  }
+
+  it("the six demoted surfaces are group children, not top-level rows (#3079)", () => {
+    const group = navDeclaration("PLAN_REVIEW", "}");
+    const topLevel = navDeclaration("entries", "]");
+
+    // Sanity anchors, so a renamed declaration or a broken slice fails loudly
+    // instead of passing vacuously against two empty strings.
+    expect(group).toContain('group: "Plan & review"');
+    expect(topLevel).toContain('href: "/settings"');
+    expect(topLevel).not.toContain('group: "Plan & review"');
+
+    const missing = GROUPED_HREFS.filter((h) => !group.includes(`href: "${h}"`));
+    expect(
+      missing,
+      `these left the "Plan & review" group: ${missing.join(", ")}`
+    ).toEqual([]);
+
+    // The direction that actually regresses: a child promoted back up.
+    const promoted = GROUPED_HREFS.filter((h) =>
+      topLevel.includes(`href: "${h}"`)
+    );
+    expect(
+      promoted,
+      `these are top-level rows again — #3079 demoted them to "Plan & review" children, and a promotion needs its own reasoning: ${promoted.join(", ")}`
+    ).toEqual([]);
+  });
+
   it("nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)", () => {
     const offenders: string[] = [];
     let seen = 0;

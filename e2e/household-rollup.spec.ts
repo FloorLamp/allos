@@ -182,6 +182,12 @@ test.describe("Household view for members (issue #31)", () => {
     // the #1009 dashboard promotion link ("See the household's visit & illness
     // history") also carries "household" in its accessible name — a non-exact
     // role query is a strict-mode collision when the house is sick.
+    // #3079 moved Household into the collapsed "Plan & review" group, so the row
+    // is one disclosure away; the multi-profile gate it demonstrates is unchanged.
+    await memberPage
+      .getByRole("button", { name: "Plan & review" })
+      .first() // first-ok: the shared SidebarContent mounts one nav per viewport
+      .click();
     await expect(
       memberPage.getByRole("link", { name: "Household", exact: true })
     ).toBeVisible();
@@ -277,7 +283,17 @@ test.describe("Household view for members (issue #31)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    // Nav link hidden for a single-profile login…
+    // Nav link hidden for a single-profile login… and the group it now lives in
+    // (#3079) is EXPANDED first, with an ungated sibling proving the expansion —
+    // otherwise this count reads 0 because the group is collapsed and the
+    // requiresMultiProfile gate goes untested while staying green.
+    await memberPage
+      .getByRole("button", { name: "Plan & review" })
+      .first() // first-ok: the shared SidebarContent mounts one nav per viewport
+      .click();
+    await expect(
+      memberPage.getByRole("link", { name: "Timeline" }).first()
+    ).toBeVisible();
     await expect(
       memberPage.getByRole("link", { name: "Household" })
     ).toHaveCount(0);

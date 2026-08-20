@@ -589,10 +589,13 @@ test.describe("Sleep page (#1066)", () => {
     try {
       await page.goto("/");
       // A visible surface proves the shell rendered…
-      const timeline = page
-        .getByRole("link", { name: "Timeline", exact: true })
+      // A TOP-LEVEL row stands in for "the shell rendered" — #3079 moved Timeline
+      // into the collapsed "Plan & review" group, where a shell-mounted check would
+      // have started failing for a reason that has nothing to do with sleep.
+      const shellRow = page
+        .getByRole("link", { name: "Dashboard", exact: true })
         .first(); // first-ok: shared responsive nav leaf rendered in both viewports; first instance confirms the shell mounted
-      await expect(timeline).toBeVisible();
+      await expect(shellRow).toBeVisible();
       // …and the Sleep leaf is absent for this sleep-less profile (both navs).
       await expect(page.locator('nav a[href="/sleep"]')).toHaveCount(0);
 

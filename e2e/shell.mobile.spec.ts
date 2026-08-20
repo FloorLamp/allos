@@ -140,8 +140,11 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     // The drawer still opens from the fixed dock; top-chrome motion never owns
     // navigation reachability after #2746.
     const drawer = await openMobileDrawer(page);
+    // A TOP-LEVEL row (#3079 moved Timeline into the collapsed "Plan & review"
+    // group). What this case claims is that the drawer opens and its navigation is
+    // reachable — an assertion about the drawer, not about the nav registry.
     await expect(
-      drawer.getByRole("link", { name: "Timeline", exact: true })
+      drawer.getByRole("link", { name: "Trends", exact: true })
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
