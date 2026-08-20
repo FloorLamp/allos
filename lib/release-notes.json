@@ -56,6 +56,18 @@
           "title": "A dose written as 1,000 mg reads as 1000, and an amount that could mean two things is refused rather than guessed",
           "kind": "fix",
           "issues": [3153]
+        },
+        {
+          "pr": 3338,
+          "title": "Name a substance yourself and log it in one step, and the quick-log sheet offers only the ones you track",
+          "kind": "feature",
+          "issues": [3326, 3327]
+        },
+        {
+          "pr": 3341,
+          "title": "Six pages nobody opens move into one Plan and review group, so the nav is shorter without losing anything",
+          "kind": "fix",
+          "issues": [3079]
         }
       ]
     },
