@@ -21,6 +21,7 @@ import {
 } from "@/lib/travel-timezone";
 import {
   acceptTravelTimezone,
+  acknowledgeTravelTell,
   dismissTravelTimezone,
   revertTravelTimezone,
 } from "@/app/(app)/travel-actions";
@@ -38,17 +39,25 @@ export default function TravelTimezoneBanner({
   profileZone,
   homeZone,
   dismissedZone,
+  tellAwayZone,
 }: {
   ownProfile: boolean;
   profileZone: string;
   homeZone: string | null;
   dismissedZone: string | null;
+  // The zone a completed revert still owes a word about, from the server. The tell
+  // is NOT component state: the revert fires from an effect, and a person who
+  // navigates while it is in flight would take the only copy of the message with
+  // them. See lib/settings/travel.ts.
+  tellAwayZone: string | null;
 }) {
   // Read on the CLIENT only. The server has no device zone to render, and painting
   // a guess would make the first frame disagree with the second.
   const [deviceZone, setDeviceZone] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(dismissedZone);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Locally acknowledged, so the tell goes away on the tap rather than on the
+  // round trip. The server copy is cleared alongside it.
+  const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   // One revert in flight at a time. The effect below re-runs on every resume and on
   // the refresh the revert itself triggers, and a second call would move a day the
@@ -86,10 +95,9 @@ export default function TravelTimezoneBanner({
     if (prompt.kind !== "return" || reverting.current) return;
     reverting.current = true;
     void (async () => {
-      const result = await revertTravelTimezone();
-      if (result.ok && result.homeZone && result.awayZone) {
-        setNotice(travelReturnText(result.homeZone, result.awayZone));
-      }
+      // The tell is recorded by the action itself and arrives as a prop on the
+      // revalidated render, so there is nothing to catch here.
+      await revertTravelTimezone();
       reverting.current = false;
     })();
   }, [prompt]);
@@ -116,6 +124,11 @@ export default function TravelTimezoneBanner({
     await dismissTravelTimezone(zone);
   }, [prompt]);
 
+  const notice =
+    ownProfile && tellAwayZone && !acknowledged
+      ? travelReturnText(profileZone, tellAwayZone)
+      : null;
+
   if (notice) {
     return (
       <div
@@ -128,7 +141,11 @@ export default function TravelTimezoneBanner({
         </span>
         <button
           type="button"
-          onClick={() => setNotice(null)}
+          data-testid="travel-timezone-notice-dismiss"
+          onClick={() => {
+            setAcknowledged(true);
+            void acknowledgeTravelTell();
+          }}
           className="inline-flex items-center gap-1 font-medium text-slate-600 hover:underline dark:text-slate-300"
           aria-label="Dismiss the timezone notice"
           title="Dismiss"

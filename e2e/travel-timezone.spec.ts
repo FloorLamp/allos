@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 import { loginAs } from "./nav";
+import { switchToProfile } from "./family-helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRAVEL,
@@ -53,6 +54,7 @@ interface TravellerSettings {
   timezone_home: string | null;
   timezone_travel_dismissed: string | null;
   timezone_switches: string | null;
+  timezone_travel_tell: string | null;
 }
 
 function travellerSettings(): TravellerSettings {
@@ -67,7 +69,8 @@ function travellerSettings(): TravellerSettings {
         `SELECT key, value FROM profile_settings
           WHERE profile_id = ?
             AND key IN ('timezone', 'timezone_home',
-                        'timezone_travel_dismissed', 'timezone_switches')`
+                        'timezone_travel_dismissed', 'timezone_switches',
+                        'timezone_travel_tell')`
       )
       .all(profile.id) as { key: string; value: string }[];
     const byKey = Object.fromEntries(
@@ -78,6 +81,7 @@ function travellerSettings(): TravellerSettings {
       timezone_home: byKey.timezone_home ?? null,
       timezone_travel_dismissed: byKey.timezone_travel_dismissed ?? null,
       timezone_switches: byKey.timezone_switches ?? null,
+      timezone_travel_tell: byKey.timezone_travel_tell ?? null,
     };
   } finally {
     db.close();
@@ -96,7 +100,12 @@ test.describe("travel timezone banner (#3263)", () => {
     try {
       await page.goto("/");
       const banner = page.getByTestId("travel-timezone-banner");
-      await expect(banner).toBeVisible();
+      // A NAMED CEILING, not a sleep. The banner cannot exist until React has
+      // hydrated and the effect has read the device zone, and on a loaded runner
+      // that chain outlasts the 5 s default — which surfaces as "element(s) not
+      // found", the shape that reads like a missing feature instead of a slow one.
+      // This still fails if the banner never comes.
+      await expect(banner).toBeVisible({ timeout: 20_000 });
       // Names the PLACE, not the IANA path — and asks rather than announcing.
       await expect(banner).toContainText("Tokyo");
       await expect(banner).toContainText("move your day there?");
@@ -127,7 +136,7 @@ test.describe("travel timezone banner (#3263)", () => {
     try {
       await paris.goto("/");
       const banner = paris.getByTestId("travel-timezone-banner");
-      await expect(banner).toBeVisible();
+      await expect(banner).toBeVisible({ timeout: 20_000 });
       await expect(banner).toContainText("Paris");
     } finally {
       await paris.context().close();
@@ -174,6 +183,23 @@ test.describe("travel timezone banner (#3263)", () => {
     );
     try {
       await page.goto("/");
+      // THE SERVER-SIDE FACT FIRST, and that order is load-bearing. The whole
+      // revert is a client chain — hydrate, read the device zone in an effect, call
+      // the action, re-render — and only its LAST link is the notice. Asserting the
+      // notice first meant a 5 s default absorbing all four links, which is fine on
+      // an idle box (1.8 s) and not fine on a loaded one: two concurrent workers
+      // pushed it past the ceiling and the failure read as "element(s) not found",
+      // the shape that looks like a missing feature rather than a slow one.
+      //
+      // So wait on the STATE that proves the chain completed — the zone actually
+      // moved, server-side — and only then assert the tell. Once the database says
+      // the revert landed, the notice is not a race any more.
+      await expect
+        .poll(() => travellerSettings().timezone, { timeout: 30_000 })
+        .toBe(home);
+      // The trip is over, so the marker that said "away" is gone.
+      expect(travellerSettings().timezone_home).toBeNull();
+
       // NO PROMPT. Coming home is lossless and reverses a state the person entered
       // deliberately, so it happens and then tells (#2471).
       const notice = page.getByTestId("travel-timezone-notice");
@@ -183,12 +209,21 @@ test.describe("travel timezone banner (#3263)", () => {
       // guessing which of the trip's zones the app had been running on.
       await expect(notice).toContainText("Paris");
       await expect(notice).toContainText("Back on");
+      // The tell is a server fact until it is READ, which is what lets it survive a
+      // navigation made while the revert was still in flight.
+      expect(travellerSettings().timezone_travel_tell).toBe(SECOND_AWAY);
 
+      // Acknowledging it puts it away for good — on the tap, and on the server.
+      await settledClick(
+        page,
+        page.getByTestId("travel-timezone-notice-dismiss")
+      );
+      await expect(notice).toBeHidden();
       await expect
-        .poll(() => travellerSettings().timezone, { timeout: 10_000 })
-        .toBe(home);
-      // The trip is over, so the marker that said "away" is gone.
-      expect(travellerSettings().timezone_home).toBeNull();
+        .poll(() => travellerSettings().timezone_travel_tell, {
+          timeout: 10_000,
+        })
+        .toBeNull();
     } finally {
       await page.context().close();
     }
@@ -211,6 +246,22 @@ test.describe("travel timezone banner (#3263)", () => {
       await expect(page.getByTestId("app-content-container")).toBeVisible();
       await expect(page.getByTestId("travel-timezone-banner")).toHaveCount(0);
       await expect(page.getByTestId("travel-timezone-notice")).toHaveCount(0);
+
+      // AND THE ABSENCE IS PROVEN, not merely observed. The banner is decided
+      // entirely on the client — the device zone is read in an effect after mount —
+      // so a page that has rendered but not yet HYDRATED shows no banner either,
+      // and the two absences are the same DOM. A silence assertion that a slow
+      // machine can satisfy is not testing the rule; it is testing the clock.
+      //
+      // So switch this same session to the login's OWN profile and show the banner
+      // ARRIVING. Same browser, same device zone, same login, same page — the only
+      // thing that changed is whose day is being acted for, which is exactly the
+      // rule. The appearance proves the client logic was live all along, which is
+      // what makes the silence above mean "refused" rather than "not ready yet".
+      await switchToProfile(page, TRAVELLER_PROFILE);
+      await expect(page.getByTestId("travel-timezone-banner")).toBeVisible({
+        timeout: 20_000,
+      });
     } finally {
       await page.context().close();
     }

@@ -18,9 +18,11 @@ import { isValidTimezone } from "@/lib/timezone";
 import {
   clearDismissedTravelZone,
   clearHomeTimezone,
+  clearTravelTell,
   getHomeTimezone,
   getTimezone,
   setDismissedTravelZone,
+  setTravelTell,
   switchProfileTimezone,
 } from "@/lib/settings";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
@@ -98,6 +100,19 @@ export async function revertTravelTimezone(): Promise<TravelSwitchResult> {
   switchProfileTimezone(profileId, homeZone, null);
   clearHomeTimezone(profileId);
   clearDismissedTravelZone(profileId);
+  // The tell is owed from the moment the day moves, so it is recorded in the same
+  // write — not handed back for the caller to display. Whoever renders next says
+  // it, including a page the person navigated to while this was in flight.
+  setTravelTell(profileId, awayZone);
   afterTimezoneMoved(profileId);
   return { ok: true, timezone: homeZone, homeZone, awayZone };
+}
+
+// Acknowledge the tell. Nothing about the day changes — this only stops the app
+// repeating a message the person has now read.
+export async function acknowledgeTravelTell(): Promise<TravelSwitchResult> {
+  const profileId = await ownProfileForTravel();
+  if (profileId === null) return { ok: false };
+  clearTravelTell(profileId);
+  return { ok: true };
 }

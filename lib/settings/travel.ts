@@ -7,6 +7,9 @@
 //                         Absent means "not away".
 //   timezone_switches   — the bounded switch history the switch-day rules read.
 //   timezone_travel_dismissed — the device zone an offer was last dismissed for.
+//   timezone_travel_tell — the zone a completed auto-revert still owes the person
+//                         a word about. Set by the revert, cleared when they
+//                         acknowledge it.
 //
 // PER PROFILE rather than per login, deliberately: every one of them is a fact
 // about the PROFILE's day (where it runs, where it came from, which offer about it
@@ -31,6 +34,7 @@ import {
 const HOME_KEY = "timezone_home";
 const SWITCHES_KEY = "timezone_switches";
 const DISMISSED_KEY = "timezone_travel_dismissed";
+const TELL_KEY = "timezone_travel_tell";
 
 // The zone this profile's day came from while it is away, or null when it is home.
 // A stored value equal to the profile's CURRENT zone is stale bookkeeping (a manual
@@ -63,6 +67,37 @@ export function setDismissedTravelZone(profileId: number, zone: string): void {
 
 export function clearDismissedTravelZone(profileId: number): void {
   deleteProfileSetting(profileId, DISMISSED_KEY);
+}
+
+// THE TELL-AFTER, AND WHY THE SERVER OWNS IT.
+//
+// #2471 lets the return leg act without asking, on the bargain that it REPORTS
+// afterwards. That makes the report part of the feature, not decoration — so it
+// cannot live in the state of the component that happened to trigger it.
+//
+// It did, once, and the tell was lost to an ordinary navigation: the revert fires
+// from an effect on whatever page is open, and a person who taps a link while it is
+// in flight takes that document down with them. The server still completed the
+// switch — their day moved — and the promise that would have shown the message
+// resolved into a document that no longer existed. Their timezone changed and
+// nothing ever said so, which is precisely the outcome the ask-free revert traded
+// away.
+//
+// Stored as the zone the profile was ON (the away zone). The other half of the
+// sentence is the profile's CURRENT zone, which is by definition home again once
+// the revert has landed, so there is nothing to keep in sync.
+export function getTravelTell(profileId: number): string | null {
+  const stored = getProfileSetting(profileId, TELL_KEY);
+  if (!stored || !isValidTimezone(stored)) return null;
+  return stored;
+}
+
+export function setTravelTell(profileId: number, awayZone: string): void {
+  setProfileSetting(profileId, TELL_KEY, awayZone);
+}
+
+export function clearTravelTell(profileId: number): void {
+  deleteProfileSetting(profileId, TELL_KEY);
 }
 
 // THE TRAVEL CHOKEPOINT. Move a profile's day to `tz` and record the seam that
