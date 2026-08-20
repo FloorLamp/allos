@@ -131,7 +131,7 @@ to its premise — it presumes a cap exists. The row now ships with both halves 
   vocabulary at large, and a profile that tracks none gets **no row at all** — an empty
   offer is worse than no offer. `hasLoggedSubstance()` gates the row; the list itself is
   `getLoggedSubstanceKeys()`, gathered on open. Both are distinct from
-  `getProfileSubstanceKeys()`, which answers the *vocabulary* question and therefore
+  `getProfileSubstanceKeys()`, which answers the _vocabulary_ question and therefore
   always opens with the curated three;
 - the overlay renders `capProgressLine` beside the tap for any substance whose target
   exists, and nothing for one whose target does not — so a tap is never detached from a

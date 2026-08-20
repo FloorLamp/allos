@@ -361,9 +361,7 @@ export async function loadQuickEntry(
           key,
           label: substanceDef(key).label,
           logLabel: substanceDef(key).logLabel,
-          capProgress: week.status
-            ? capProgressLine(week.status, key)
-            : null,
+          capProgress: week.status ? capProgressLine(week.status, key) : null,
         };
       }),
     };

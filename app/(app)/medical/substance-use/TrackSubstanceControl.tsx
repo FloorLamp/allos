@@ -3,10 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useToast } from "@/components/Toast";
 import AddEntryPanel from "@/components/AddEntryPanel";
-import {
-  substanceNameError,
-  validateSubstanceName,
-} from "@/lib/substance-use";
+import { substanceNameError, validateSubstanceName } from "@/lib/substance-use";
 import { trackSubstanceUseAction } from "./actions";
 
 // THE ENTRY POINT FOR A CUSTOM SUBSTANCE (#3326, part 2 of #3279).
@@ -108,8 +105,8 @@ export default function TrackSubstanceControl() {
           />
         </label>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Counted in uses — one use is one session, whatever the form. Logging it
-          is what starts tracking it.
+          Counted in uses — one use is one session, whatever the form. Logging
+          it is what starts tracking it.
         </p>
         {error ? (
           <p

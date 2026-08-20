@@ -109,7 +109,9 @@ export default function QuickSubstanceList({
                 onClick={() => void log(substance.key)}
                 data-testid={`quick-entry-substance-log-${substance.key}`}
               >
-                {ledger.pending(substance.key) ? "Logging…" : substance.logLabel}
+                {ledger.pending(substance.key)
+                  ? "Logging…"
+                  : substance.logLabel}
               </button>
             </div>
             {substance.capProgress ? (

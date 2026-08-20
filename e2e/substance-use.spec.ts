@@ -343,9 +343,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     // near-miss of it. This is an ABSENCE assertion, so it is deliberately made
     // AFTER the error above has already proven the round trip finished: a bigger
     // ceiling here could only hide a real write, never reveal one.
-    await expect(
-      page.getByTestId(`substance-card-${tooLong}`)
-    ).toHaveCount(0);
+    await expect(page.getByTestId(`substance-card-${tooLong}`)).toHaveCount(0);
     await expect(
       page.getByTestId(`substance-card-${tooLong.slice(0, 60)}`)
     ).toHaveCount(0);
