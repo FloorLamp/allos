@@ -92,6 +92,36 @@
           "title": "The effort column on a strength set is yours to turn on, and stays on if you already log it",
           "kind": "feature",
           "issues": [3335]
+        },
+        {
+          "pr": 3370,
+          "title": "A form you filled in by tapping chips now asks before it throws your work away",
+          "kind": "fix",
+          "issues": [3352, 3356]
+        },
+        {
+          "pr": 3379,
+          "title": "The quick-entry food sheet can no longer be knocked sideways so its labels run off the screen",
+          "kind": "fix",
+          "issues": [3360, 3362]
+        },
+        {
+          "pr": 3388,
+          "title": "A form inside a sheet stops drawing its own card and heading on top of the sheet's",
+          "kind": "fix",
+          "issues": [3361]
+        },
+        {
+          "pr": 3380,
+          "title": "\u201ckratom\u201d and \u201cKratom\u201d are one thing again \u2014 and MDMA still reads as MDMA",
+          "kind": "fix",
+          "issues": [3325]
+        },
+        {
+          "pr": 3396,
+          "title": "A dose amount Allos cannot read now says so, instead of quietly counting as nothing",
+          "kind": "feature",
+          "issues": [3320]
         }
       ]
     },
