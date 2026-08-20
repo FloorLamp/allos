@@ -170,6 +170,18 @@
           "title": "Added checks that a stool log records the real time of day, and that Back returns you to your place",
           "kind": "fix",
           "issues": [3179, 3214]
+        },
+        {
+          "pr": 3212,
+          "title": "Added checks that a redose fallback is the record's own timestamp, and that no file hides from a search",
+          "kind": "fix",
+          "issues": [3180, 3206]
+        },
+        {
+          "pr": 3249,
+          "title": "A blood pressure or resting heart rate quiet for a year stops showing a stale number and says when it stopped",
+          "kind": "fix",
+          "issues": [3226]
         }
       ]
     },

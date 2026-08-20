@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 import { medicationsToday, prnTodayItem } from "./med-card-helpers";
@@ -45,20 +46,21 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
 
   // --- Add the med: as-needed, 6h minimum interval, daily maximum LEFT BLANK ---
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const addCard = page.getByTestId("medication-add-panel");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Name").fill(name);
   // "As needed" IS the `may` obligation since #1505 — the standalone as_needed
   // checkbox was collapsed into the single obligation select, so PRN is now
   // expressed by choosing `may` rather than by ticking a separate box.
-  await addCard.getByTestId("med-obligation").selectOption("may");
+  await setObligation(page, "may", addCard);
 
-  const block = addCard.getByTestId("redose-block");
+  const timing = await openFact(page, "timing", addCard);
+  const block = timing.getByTestId("redose-block");
   await expect(block).toBeVisible();
-  await addCard.getByTestId("redose-interval").fill("6");
+  await block.getByTestId("redose-interval").fill("6");
   // The field a parent is least likely to know offhand stays empty — that's the bug.
-  await expect(addCard.getByTestId("redose-max")).toHaveValue("");
+  await expect(block.getByTestId("redose-max")).toHaveValue("");
+  await closeEditor(page, addCard);
 
   await settledClick(
     page,

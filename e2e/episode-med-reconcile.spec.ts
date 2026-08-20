@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page, type Locator, type Browser } from "@playwright/test";
 import Database from "better-sqlite3";
 import { followLink, loginAs } from "./nav";
@@ -138,9 +139,13 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
       .getAttribute("href");
     expect(detailHref).toMatch(/\/medications\/\d+/);
     await page.goto(`${detailHref}?action=edit`);
-    const endField = page.getByTestId("med-end-date");
+    // The course's stop date is the stop-date fact's editor since #3216 — "a course
+    // retires itself" is a fact the form states, not a field it front-loads.
+    const dates = await openFact(page, "stopDate");
+    const endField = dates.getByTestId("med-end-date");
     await expect(endField).toBeVisible();
     await endField.fill("2025-08-15");
+    await closeEditor(page);
     // settledClick awaits the save POST — but NOT the client nav its success handler
     // fires: the edit form opened via `?action=edit` runs onDone → closeInitialAction →
     // router.replace(/medications/{id}) (stripping the query) right after the POST that

@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 
-// The situation vocabulary offered by the SupplementForm / MedicationForm situation
+// The situation vocabulary offered by the intake form's situation
 // picker (#1177). It is the SAME merged set the Supplements bar renders — the profile's
 // saved vocabulary ∪ the built-in suggestions (mergedSituationOptions, #1294's seam) —
 // so the item form and the bar can never disagree about what a situation is (#221). The

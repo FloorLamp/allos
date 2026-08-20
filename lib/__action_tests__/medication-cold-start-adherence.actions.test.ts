@@ -18,7 +18,32 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
-import { quickAddMedicationFormData } from "@/lib/quick-add-medication";
+import {
+  emptyIntakeItemFormState,
+  intakeItemFormData,
+  type IntakeItemFormState,
+} from "@/lib/intake-form-fields";
+
+// A two-tap medication create through the one intake mapping (#3216).
+function twoTap(over: Partial<IntakeItemFormState>): FormData {
+  return intakeItemFormData({
+    ...emptyIntakeItemFormState("medication"),
+    ...over,
+  });
+}
+
+function oneDose(amount: string) {
+  return [
+    {
+      amount,
+      time_of_day: "",
+      food_timing: "any" as const,
+      weekdays: [],
+      start_date: "",
+      end_date: "",
+    },
+  ];
+}
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 import { adherenceSummary } from "@/lib/intake-adherence";
 import { shiftDateStr } from "@/lib/date";
@@ -64,10 +89,10 @@ describe("medication cold-start adherence (#1442)", () => {
   it("a just-quick-added medication reports NO HISTORY, never 0%", async () => {
     const { profile } = seedActor();
     const res = await addIntakeItem(
-      quickAddMedicationFormData({
+      twoTap({
         name: "Ibuprofen (test)",
-        amount: "200 mg",
-        asNeeded: false, // scheduled, so it has a daily slot at all
+        obligation: "must",
+        doses: oneDose("200 mg"),
       })
     );
     expect(res.ok).toBe(true);
@@ -83,10 +108,10 @@ describe("medication cold-start adherence (#1442)", () => {
   it("keeps the honest 0% once a slot has elapsed untaken", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      quickAddMedicationFormData({
+      twoTap({
         name: "Lisinopril (test)",
-        amount: "10 mg",
-        asNeeded: false,
+        obligation: "must",
+        doses: oneDose("10 mg"),
       })
     );
     const itemId = medIdNamed(profile.id, "Lisinopril (test)");
@@ -101,10 +126,10 @@ describe("medication cold-start adherence (#1442)", () => {
   it("scores only the days since the item existed, not the whole lookback", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      quickAddMedicationFormData({
+      twoTap({
         name: "Metformin (test)",
-        amount: "500 mg",
-        asNeeded: false,
+        obligation: "must",
+        doses: oneDose("500 mg"),
       })
     );
     const itemId = medIdNamed(profile.id, "Metformin (test)");
@@ -138,10 +163,10 @@ describe("medication cold-start adherence (#1442)", () => {
     // clamping strictly on created_at would blank a history the user really has.
     const { profile } = seedActor();
     await addIntakeItem(
-      quickAddMedicationFormData({
+      twoTap({
         name: "Levothyroxine (test)",
-        amount: "50 mcg",
-        asNeeded: false,
+        obligation: "must",
+        doses: oneDose("50 mcg"),
       })
     );
     const itemId = medIdNamed(profile.id, "Levothyroxine (test)");

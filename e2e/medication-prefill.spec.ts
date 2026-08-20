@@ -10,10 +10,11 @@ import {
   medicationDoseSummary,
   prnTodayItem,
 } from "./med-card-helpers";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 
-// #846 medication form split + selection prefill. The Medications page renders the
-// real MedicationForm (not a supplement-shaped shared body): its placeholders are
-// medication-shaped, and picking a catalogued med from the name combobox PRE-FILLS
+// #846 selection prefill, on the one intake form (#3216). The Medications page's form
+// is medication-shaped by DERIVED KIND rather than by which file it is: its
+// placeholders are medication-shaped, and picking a catalogued med PRE-FILLS
 // every knowable field as an editable, marked suggestion (obligation, dose strength,
 // interval/max, food timing) from the curated datasets — so a pick → save with ZERO
 // edits produces a valid medication row. Naproxen (curated `typical` + OTC PRN
@@ -26,7 +27,6 @@ const RANK_BRAND = "Zyrtec";
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const panel = page.getByTestId("medication-add-panel");
   await expect(panel).toBeVisible();
   return panel;
@@ -39,9 +39,8 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
 
   const addCard = await openFullAdd(page);
 
-  // Placeholders teach medication semantics, not supplement ones.
+  // The name placeholder teaches medication semantics, not supplement ones (#846).
   await expect(addCard.getByPlaceholder("e.g. Ibuprofen")).toBeVisible();
-  await expect(addCard.getByPlaceholder("e.g. Advil")).toBeVisible();
 
   // Pick "Naproxen" from the name combobox (onPick fires the prefill; a bare fill
   // would not).
@@ -53,17 +52,33 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
     .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
 
-  // Prefill: PRN on (reveals the redose block), interval 8h / max 3, dose 220 mg —
-  // each marked "from label defaults".
-  // #1505: the as-needed CHECKBOX became the obligation SELECT — "as needed" IS
-  // `may`, so the label-default prefill now lands on that value instead of a tick.
-  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
-  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
-  await expect(addCard.getByTestId("redose-interval")).toHaveValue("8");
-  await expect(addCard.getByTestId("redose-max")).toHaveValue("3");
-  await expect(addCard.getByLabel("Amount")).toHaveValue("220 mg");
+  // A kind-locked door answers the kind outright, so no chip and no question (#3216) —
+  // but the form is still medication-shaped, and says which shape it is.
+  await expect(addCard.getByTestId("intake-item-form")).toHaveAttribute(
+    "data-kind",
+    "medication"
+  );
+  await expect(addCard.getByTestId("intake-kind-chip")).toHaveCount(0);
 
-  // Save with ZERO edits — the prefilled suggestion is a complete, valid medication.
+  // Prefill, read off the SUMMARY the form will save: as-needed, interval 8h / max 3,
+  // dose 220 mg — marked "from label defaults", because a prefilled value is an
+  // editable suggestion and not a fact the person stated (#846).
+  // #1505: the as-needed checkbox became the obligation, so "as needed" IS `may`.
+  await expect(addCard.getByTestId("intake-fact-importance")).toContainText(
+    "as needed"
+  );
+  await expect(addCard.getByTestId("intake-fact-timing")).toContainText("8");
+  await expect(addCard.getByTestId("intake-fact-timing")).toContainText("3");
+  await expect(addCard.getByTestId("intake-fact-dose")).toContainText("220 mg");
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
+
+  // And the same values really are the fields behind those chips.
+  const timing = await openFact(page, "timing", addCard);
+  await expect(timing.getByTestId("redose-interval")).toHaveValue("8");
+  await expect(timing.getByTestId("redose-max")).toHaveValue("3");
+  await closeEditor(page, addCard);
+
+  // Save with ZERO further edits — the prefilled suggestion is a complete medication.
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // The new PRN medication lands as a current medication row that links to its
@@ -96,7 +111,9 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
     .click();
 
   // The curated `typical` PRN convention prefills the obligation as `may` (marked).
-  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
+  await expect(addCard.getByTestId("intake-fact-importance")).toContainText(
+    "as needed"
+  );
   await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
@@ -115,7 +132,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // Turn PRN ON by hand first (touches the field), then pick a med whose label
   // convention is also PRN — the pick must not re-drive/override the touched toggle,
   // and (proving "touched") leaving it as the user set it.
-  await addCard.getByTestId("med-obligation").selectOption("may");
+  await setObligation(page, "may", addCard);
   await addCard.getByLabel("Name").fill("Naproxen");
   await addCard
     .getByRole("listbox")
@@ -124,11 +141,15 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
     .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
 
-  // Still checked (the user's own choice), and NOT marked "from label defaults" — the
-  // resolver skipped the touched field.
-  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
-  // Dose strength (untouched) still prefilled from the label.
-  await expect(addCard.getByLabel("Amount")).toHaveValue("220 mg");
+  // Still as-needed (the user's own choice), and the importance chip is NOT marked
+  // "from label defaults" — the resolver skipped the touched field.
+  const importance = addCard.getByTestId("intake-fact-importance");
+  await expect(importance).toContainText("as needed");
+  await expect(importance.getByTestId("prefill-badge")).toHaveCount(0);
+  // Dose strength (untouched) still prefilled from the label, and marked as such.
+  const dose = addCard.getByTestId("intake-fact-dose");
+  await expect(dose).toContainText("220 mg");
+  await expect(dose.getByTestId("prefill-badge")).toHaveCount(1);
 });
 
 test("a pediatric formulation persists from quick add to the medication list", async ({
@@ -143,25 +164,26 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await page.goto("/medications");
     await page.getByTestId("medication-add-toggle").click();
     const panel = page.getByTestId("medication-add-panel");
-    const quickAdd = panel.getByTestId("quick-add-medication");
+    const quickAdd = panel.getByTestId("intake-item-form");
 
     // An unsupported medication says that its chart is unavailable rather than
     // silently looking like an adult/unknown profile.
-    await panel.getByTestId("medication-add-full").click();
-    const fullAdd = panel.getByRole("tabpanel");
-    await fullAdd.getByLabel("Name").fill("Hydrocortisone");
+    await quickAdd.getByLabel("Name").fill("Hydrocortisone");
     await expect(
-      fullAdd.getByTestId("medication-pediatric-no-chart")
+      quickAdd.getByTestId("medication-pediatric-no-chart")
     ).toContainText("No pediatric label weight-band chart");
-    await panel.getByTestId("medication-add-quick").click();
 
-    await quickAdd.getByLabel("Medication").fill("Acetaminophen");
+    await quickAdd.getByLabel("Name").fill("Acetaminophen");
     await quickAdd
       .getByRole("listbox")
       .getByRole("button")
       .filter({ hasText: "Acetaminophen" })
       .first() // first-ok: transient combobox list this spec just opened (Acetaminophen suggestion); first match is intended
       .click();
+
+    // The pediatric label block is the dose fact's editor now; the caregiver opens the
+    // dose to work the weight band, and the formulation is the chip row above it.
+    await openFact(page, "dose", panel);
 
     // The label lookup can record a fresh measurement in place. It writes through
     // the normal Body metric action in this login's preferred unit (kg for this
@@ -179,15 +201,15 @@ test("a pediatric formulation persists from quick add to the medication list", a
 
     // 10 kg ≈22 lb, below this committed label chart's first 24-lb band. This is a
     // weight-boundary refusal, not the medication's infant age-gate copy.
-    await expect(quickAdd.getByTestId("quick-add-pediatric")).toContainText(
+    await expect(quickAdd.getByTestId("pediatric-suggestion")).toContainText(
       "Recorded weight is 22 lb"
     );
-    await expect(quickAdd.getByTestId("quick-add-pediatric")).toContainText(
+    await expect(quickAdd.getByTestId("pediatric-suggestion")).toContainText(
       "chart starts at 24 lb"
     );
-    await expect(quickAdd.getByTestId("quick-add-pediatric")).not.toContainText(
-      "under 12 weeks"
-    );
+    await expect(
+      quickAdd.getByTestId("pediatric-suggestion")
+    ).not.toContainText("under 12 weeks");
     // Refusing to infer a band does not hide the package-label chart. No band is
     // selected automatically for the below-chart weight, but every option remains
     // available for an explicit caregiver selection.
@@ -199,12 +221,10 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await expect(
       belowBandPicker.getByRole("radio", { checked: true })
     ).toHaveCount(0);
-    await expect(quickAdd.getByTestId("quick-add-amount")).toHaveValue("");
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue(""); // first-ok: the single dose row of this add form
     await belowBandPicker.getByRole("radio").first().check(); // first-ok: the first option in this spec's own below-band picker
     await expect(belowBandPicker.getByRole("radio").first()).toBeChecked(); // first-ok: the same first below-band-picker option, asserted checked
-    await expect(quickAdd.getByTestId("quick-add-amount")).toHaveValue(
-      "160 mg"
-    );
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("160 mg"); // first-ok: the single dose row of this add form
 
     // Move to an in-chart weight so the remainder of the band/formulation flow can
     // exercise the resolved state as before.
@@ -214,30 +234,36 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await secondWeightUpdate.getByRole("button", { name: "Save" }).click();
     await expect(secondWeightUpdate).toHaveCount(0);
 
-    const formulation = quickAdd.getByTestId("pediatric-formulation");
+    // The formulation is a derived CHIP ROW beside the kind, not a select buried in
+    // the band picker — one datum, one control.
+    const formulation = quickAdd.getByTestId("intake-formulation-row");
     await expect(formulation).toBeVisible();
     await expect(quickAdd).not.toContainText("Saved with this medication.");
     expect(
       await quickAdd
         .locator(
-          '[data-testid="quick-add-pediatric"], [data-testid="quick-add-amount"]'
+          '[data-testid="pediatric-suggestion"], [data-testid="pediatric-band-picker"]'
         )
         .evaluateAll((nodes) =>
           nodes.map((node) => node.getAttribute("data-testid"))
         )
-    ).toEqual(["quick-add-pediatric", "quick-add-amount"]);
-    await formulation.selectOption("childrens_susp_160_5");
+    ).toEqual(["pediatric-suggestion", "pediatric-band-picker"]);
+    await formulation
+      .getByTestId("intake-formulation-choice")
+      .filter({ hasText: "Children's oral suspension" })
+      .click();
+    // The formulation row sits ABOVE the facts and never closes the open editor, so
+    // the band picker is still on screen — the switch re-derives inside it.
     const bands = quickAdd.getByTestId("pediatric-band-option");
     await expect(bands).toHaveCount(5);
     await expect(bands.filter({ hasText: "Recorded weight" })).toContainText(
       /Recorded weight · 37 lb · .+ \(.+\)/
     );
     await bands.filter({ hasText: "36–47 lb" }).click();
-    await expect(quickAdd.getByTestId("quick-add-amount")).toHaveValue(
-      "240 mg"
-    );
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("240 mg"); // first-ok: the single dose row of this add form
     await expect(bands.filter({ hasText: "36–47 lb" })).toContainText("7.5 mL");
-    await quickAdd.getByRole("button", { name: "Quick add" }).click();
+    await closeEditor(page, panel);
+    await quickAdd.getByRole("button", { name: "Add", exact: true }).click();
 
     // The child fixture profile accumulates "Acetaminophen" rows across a --repeat-each
     // run (no cleanup), so narrow to the leading match on both surfaces.
@@ -286,15 +312,9 @@ test("the medication picker opens on this profile's own medications (#1677)", as
   // opens on a biologic is the bug.
   expect(full.some((label) => label.startsWith("Adalimumab"))).toBe(false);
 
-  // ONE options source, both call sites (#221): the quick-add's head must be the full
-  // form's head, byte for byte.
-  await page.keyboard.press("Escape");
-  await page.getByTestId("medication-add-quick").click();
-  const quickAdd = page
-    .getByTestId("medication-add-panel")
-    .getByTestId("quick-add-medication");
-  await expect(quickAdd).toBeVisible();
-  expect(await openOptionLabels(quickAdd, "Medication")).toEqual(full);
+  // The old "one options source, both call sites" half of this test (#221) is gone
+  // with the second call site: #3216 leaves ONE form, so the quick head and the full
+  // head cannot disagree — there is only one.
 });
 
 test("recording a medication promotes it and its brand into the pickers (#1677)", async ({
@@ -322,9 +342,13 @@ test("recording a medication promotes it and its brand into the pickers (#1677)"
     expect(names.some((label) => label.startsWith(RANK_MED))).toBe(true);
 
     // The BRAND field before any name is picked: the profile's own brands lead, so
-    // the person who reaches for Brand first is not stranded in the A's.
+    // the person who reaches for Brand first is not stranded in the A's. It lives
+    // behind the identity fact now.
     await page.keyboard.press("Escape");
-    const brands = await openOptionLabels(addCard, "Brand");
+    const identity = await openFact(page, "identity", addCard);
+    // Still a MEDICATION brand list, whichever fact it sits behind (#846).
+    await expect(identity.getByPlaceholder("e.g. Advil")).toBeVisible();
+    const brands = await openOptionLabels(identity, "Brand");
     expect(brands[0]).toBe("Generic");
     expect(brands).toContain(RANK_BRAND);
   } finally {

@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
@@ -235,7 +236,9 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });
 
-    const editor = editForm.getByTestId("cadence-editor");
+    // The item calendar is part of WHEN, so it is the timing fact's editor (#3216).
+    const timing = await openFact(page, "timing", editForm);
+    const editor = timing.getByTestId("cadence-editor");
     await expect(editor).toBeVisible();
     // It starts on the stored value — a daily item reads as daily rather than blank.
     await expect(editor.getByLabel("How often")).toHaveValue("daily");
@@ -253,6 +256,9 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     // after hydration, and aria-pressed is the signal.
     await hydratedClick(page, chip);
     await expect(chip).toHaveAttribute("aria-pressed", "true");
+    // Closing the editor first is the point: a cadence chosen and then LEFT must
+    // still reach the action (#2014's hidden-not-unmounted rule).
+    await closeEditor(page, editForm);
 
     // Save. The submit rides a Server Action's full-page re-render, which on a loaded
     // runner is the slow path — a NAMED ceiling, never a sleep.
@@ -286,8 +292,9 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     );
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const reopened = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });
+    const reopenedTiming = await openFact(page, "timing", reopened);
     await expect(
-      reopened.getByTestId("cadence-editor").getByLabel("How often")
+      reopenedTiming.getByTestId("cadence-editor").getByLabel("How often")
     ).toHaveValue("weekly");
     await expect(
       reopened

@@ -38,6 +38,44 @@ export interface PoolProductFacts {
 // functions.
 export interface SupplyOption extends PoolProductFacts {
   id: number;
+  // The bottle's own count, so the intake form's combobox can offer it as what it is —
+  // "shared bottle · 143 left" — rather than as a bare name indistinguishable from a
+  // vocabulary entry (#3216 decision 3).
+  onHand?: number | null;
+  // The kind of the items ALREADY drawing from this bottle, when there are any. A
+  // bottle has no kind of its own (#1374); this is a sibling's, lent to the item
+  // form's kind derivation and to nothing else. Null (or absent) for a bottle nobody
+  // links yet, which is exactly the case that falls back to asking.
+  siblingKind?: IntakeItemKind | null;
+}
+
+// The bottle's row in the intake form's name combobox: what it is, and how much is in
+// it. The suffix is what tells a picker that this row is a BOTTLE and not a catalog
+// entry, so it is also what identifies the row on the way back.
+export const BOTTLE_OPTION_SUFFIX = " — shared bottle";
+
+export function bottleOptionLabel(option: SupplyOption): string {
+  const left =
+    option.onHand != null && option.onHand >= 0
+      ? ` · ${option.onHand} left`
+      : "";
+  return `${bottleLabel(option)}${BOTTLE_OPTION_SUFFIX}${left}`;
+}
+
+// The bottle a combobox row came from, or null when the row was a vocabulary entry.
+export function bottleForOptionLabel(
+  options: readonly SupplyOption[],
+  label: string
+): SupplyOption | null {
+  return options.find((o) => bottleOptionLabel(o) === label) ?? null;
+}
+
+// The kind a bottle LENDS, from the items already drawing on it. Null when nothing
+// links it yet — a bottle is not evidence about a substance, only its members are.
+export function bottleSiblingKind(
+  members: readonly { kind: IntakeItemKind }[]
+): IntakeItemKind | null {
+  return members.length === 0 ? null : poolSurfaceKind(members);
 }
 
 // An item's product identity, as `intake_items` (+ its active doses) stores it.
