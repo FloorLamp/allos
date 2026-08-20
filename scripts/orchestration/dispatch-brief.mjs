@@ -454,6 +454,14 @@ ${MIGRATION_LINES}
   AND THE ANSWER MUST MEAN WHAT YOU THINK: \`--is-ancestor\` asks "do these share
   history", which after a SQUASH merge is NOT "is my work in main" — post-merge, ask
   about CONTENT. Same command, opposite verdicts, both correct.
+  AND A CONTENT CHECK CAN LIE IN THE REASSURING DIRECTION. A single-line \`grep\` for a
+  sentence reads a WRAPPED one as absent, and it fails toward "missing" — which is the
+  direction that prompts you to go and add something already there. Measured
+  2026-08-20: a lane reported a doc line missing, went to fix it, and found its
+  \`grep -c\` had only failed on a line break. A verification that manufactures work is
+  worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
+  that cannot wrap, or use \`rg -U\`, and when a content check says something is
+  missing, OPEN THE FILE before believing it.
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
