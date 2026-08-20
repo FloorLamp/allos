@@ -80,6 +80,18 @@
           "title": "A protocol reads as the sentence it is \u2014 practice, cadence and window as chips you tap to change",
           "kind": "feature",
           "issues": [3219]
+        },
+        {
+          "pr": 3357,
+          "title": "A visit reads as chips you tap to change, and whether it already happened comes from its date",
+          "kind": "feature",
+          "issues": [3223]
+        },
+        {
+          "pr": 3367,
+          "title": "The effort column on a strength set is yours to turn on, and stays on if you already log it",
+          "kind": "feature",
+          "issues": [3335]
         }
       ]
     },
