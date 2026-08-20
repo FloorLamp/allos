@@ -202,12 +202,14 @@ export default function IntakeItemForm({
   const [error, setError] = useState<string | null>(null);
   // The one-editor-at-a-time state and its Done/Esc contract come from the shared
   // facts-with-editors primitive (#3218); this form supplies only its own fact keys.
+  // The form element is the scope the primitive searches to hand focus back to the chip
+  // that opened an editor (#3311).
   const {
     openEditor: openPanel,
     open: setOpenPanel,
     close: closePanel,
     onKeyDown: onFormKeyDown,
-  } = useFactEditor<IntakeOpenPanel>();
+  } = useFactEditor<IntakeOpenPanel>({ scopeRef: formRef });
   // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
   // than to correct an existing sentence.
   const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);

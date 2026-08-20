@@ -39,6 +39,9 @@ export default function IntakeFactRow({
         <FactChip
           key={chip.key}
           testId={`intake-fact-${chip.key}`}
+          // Names the fact for the primitive's focus return (#3311); the chip row is
+          // unmounted while an editor is open, so a key is what survives the remount.
+          factKey={chip.key}
           label={chip.label}
           state={chip.state}
           expanded={openEditor === chip.key}
@@ -63,6 +66,9 @@ export default function IntakeFactRow({
         <FactChip
           key={rule.ruleId}
           testId="intake-fact-rule"
+          // Every rule sentence is a door to the ONE rules builder, so they share the
+          // panel's key: closing it returns to the first of them.
+          factKey="rules"
           label={rule.label}
           expanded={openEditor === "rules"}
           onOpen={() => onOpen("rules")}
@@ -84,6 +90,7 @@ export default function IntakeFactRow({
 
       <FactAddChip
         testId="intake-add-rule"
+        factKey="rules"
         label="rule"
         expanded={openEditor === "rules"}
         onOpen={onAddRule}
@@ -92,6 +99,7 @@ export default function IntakeFactRow({
       {summary.more.length > 0 && (
         <FactMoreChip
           testId="intake-fact-more"
+          factKey="more"
           label={moreFactsLabel(summary.more)}
           expanded={openEditor === "more"}
           onOpen={() => onOpen("more")}

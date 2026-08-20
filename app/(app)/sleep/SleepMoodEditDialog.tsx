@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import MoodValencePicker from "@/components/MoodValencePicker";
@@ -125,7 +125,12 @@ export default function SleepMoodEditDialog(
   const [error, setError] = useState<string | null>(null);
   // The one-editor-at-a-time state and its Done/Esc contract come from the shared
   // facts-with-editors primitive (#3218); this dialog supplies only its own fact keys.
-  const { openEditor, open, close, onKeyDown } = useFactEditor<SleepFactKey>();
+  // The dialog body is the scope the primitive searches to hand focus back to the chip
+  // that opened an editor (#3311) — the same element that answers its keydown.
+  const factScopeRef = useRef<HTMLDivElement>(null);
+  const { openEditor, open, close, onKeyDown } = useFactEditor<SleepFactKey>({
+    scopeRef: factScopeRef,
+  });
 
   function changeDate(nextDate: string) {
     setDate(nextDate);
@@ -339,6 +344,7 @@ export default function SleepMoodEditDialog(
           focuses the first chip, which is the fact the person is most likely to
           correct. */}
       <div
+        ref={factScopeRef}
         className="mt-4 space-y-5"
         data-testid="sleep-mood-edit-dialog"
         onKeyDown={onKeyDown}

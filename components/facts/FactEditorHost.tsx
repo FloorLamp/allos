@@ -20,6 +20,12 @@ import {
 // still posts with the form (#2014). A consumer must therefore keep its editor state
 // outside the host.
 //
+// AND BOTH RETURN FOCUS TO THE CHIP, not merely to the chip row (#3311). Opening an
+// editor unmounts the chip that was activated, so without this focus falls to <body> and
+// stays there: someone navigating by keyboard states a fact and finds the next Tab
+// starting from the top of the document. See `restoreFact` in useFactEditor for why the
+// fix is keyed on the FACT and not on the element.
+//
 // AND THAT CONTRACT ONLY HOLDS INSIDE A MODAL BECAUSE THE OPEN PANEL DECLARES ITSELF AN
 // ESCAPE LAYER (#3222). The shared focus trap answers Escape on the WINDOW CAPTURE phase
 // and stops propagation (components/useFocusTrap.ts), so without the marker a React
@@ -32,19 +38,47 @@ import {
 
 // The open-editor state and its keyboard contract, so every consumer gets the same one.
 // `K` is the consumer's own fact key union — the primitive never learns the names.
-export function useFactEditor<K extends string>(
-  initial: K | null = null
-): {
+//
+// `scopeRef` is the region the chips and the one editor share — the consumer's form or
+// dialog body, the same element that already receives `onKeyDown`. The hook needs it to
+// put focus back where it came from, and it is REQUIRED rather than optional because a
+// consumer that forgets loses the return path with nothing on screen to show for it.
+export function useFactEditor<K extends string>({
+  scopeRef,
+  initial = null,
+}: {
+  scopeRef: React.RefObject<HTMLElement | null>;
+  initial?: K | null;
+}): {
   openEditor: K | null;
   open: (key: K) => void;
   close: () => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
 } {
   const [openEditor, setOpenEditor] = useState<K | null>(initial);
-  const close = useCallback(() => setOpenEditor(null), []);
+
+  // WHICH FACT FOCUS GOES BACK TO, and note that it is a KEY rather than the element the
+  // person activated (#3311).
+  //
+  // The obvious implementation — capture `document.activeElement` on open, call
+  // `.focus()` on it on close — is a no-op here EVERY time, not just in the awkward
+  // cases. Opening an editor unmounts the entire chip row, so when the row comes back
+  // every chip is a freshly created DOM node and the captured one is disconnected. The
+  // captured element is not stale only when a fact stated for the first time replaces
+  // its "+ thing" prompt; it is stale always. A key still names the fact across that
+  // remount, so the row is asked for the chip rather than told which element to use.
+  const restoreFact = useRef<K | null>(null);
+
+  const open = useCallback((key: K) => setOpenEditor(key), []);
+
+  const close = useCallback(() => {
+    restoreFact.current = openEditor;
+    setOpenEditor(null);
+  }, [openEditor]);
 
   // Esc closes an editor exactly as Done does — the same return to the chips, so the
-  // keyboard path is never the one that traps you inside a fact.
+  // keyboard path is never the one that traps you inside a fact. Literally the same
+  // call, so the focus return cannot come to differ between the two.
   //
   // IT YIELDS THE FIRST ESCAPE TO AN OPEN PICKER. A combobox inside an editor uses
   // Escape to close its own listbox; swallowing that would make the one key that
@@ -59,12 +93,34 @@ export function useFactEditor<K extends string>(
         target.getAttribute("aria-expanded") === "true"
       )
         return;
-      setOpenEditor(null);
+      close();
     },
-    [openEditor]
+    [close, openEditor]
   );
 
-  return { openEditor, open: setOpenEditor, close, onKeyDown };
+  // Land the focus once the chips are back on screen. Runs only after a close, so a
+  // consumer mounting with nothing open never has focus taken from it.
+  //
+  // THE SECOND ESCAPE STILL CLOSES THE DIALOG, which is deliberate and asserted
+  // (#3222): the chip is inside the modal panel and is not itself an escape layer, so
+  // the shared window-capture trap answers the next Escape exactly as it did when focus
+  // sat on <body>.
+  useEffect(() => {
+    if (openEditor !== null) return;
+    const key = restoreFact.current;
+    restoreFact.current = null;
+    const scope = scopeRef.current;
+    if (key == null || scope == null) return;
+    // The chip for that fact when the row still states it. When it does not — an
+    // optional fact left empty goes back behind the trailing affordance, so no chip
+    // carries its key — the row itself takes focus rather than <body>.
+    const chip = scope.querySelector<HTMLElement>(
+      `[data-fact-key="${CSS.escape(key)}"]`
+    );
+    (chip ?? scope.querySelector<HTMLElement>("[data-fact-row]"))?.focus();
+  }, [openEditor, scopeRef]);
+
+  return { openEditor, open, close, onKeyDown };
 }
 
 // The one open editor, with the Done that returns to the chips. `panel` is echoed as

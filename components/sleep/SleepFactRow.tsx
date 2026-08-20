@@ -28,6 +28,8 @@ export default function SleepFactRow({
         <FactChip
           key={chip.key}
           testId={`sleep-fact-${chip.key}`}
+          // Names the fact for the primitive's focus return (#3311).
+          factKey={chip.key}
           label={chip.label}
           state={chip.state}
           expanded={openEditor === chip.key}

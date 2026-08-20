@@ -25,6 +25,11 @@ import type { ReactNode } from "react";
 // THIS PRIMITIVE OWNS NO DOMAIN LOGIC AND NO STORE. Each consumer supplies its facts, its
 // editors, and its existing action; the chips are presentation over the same write.
 //
+// EVERY DISCLOSURE NAMES ITS FACT, as `data-fact-key`, and that is what lets focus come
+// back (#3311). Opening an editor unmounts this whole row, so when it returns EVERY chip
+// is a new DOM node — the element the person activated is gone, not merely moved. A key
+// survives that; an element reference cannot. See useFactEditor in FactEditorHost.
+//
 // WHAT IS DELIBERATELY *NOT* A CONSUMER: a surface whose fields are free numeric entry
 // rather than discrete facts — the measurements form is the recorded counter-case. The
 // pattern is a tool, not a mandate.
@@ -70,6 +75,13 @@ const MISSING_CHIP =
 // The row itself: the facts in reading order, wrapping on narrow viewports. Consumers
 // pass their chips as children so a surface can order its own facts and append its own
 // trailing affordances without this component knowing any of their names.
+//
+// THE ROW IS THE FALLBACK FOCUS TARGET (#3311), which is why it is focusable at all. When
+// an editor closes and the fact it edited has no chip — an optional fact left empty goes
+// back behind the trailing affordance — there is nothing to return to, and leaving focus
+// on <body> drops a keyboard user at the top of the document. `tabIndex={-1}` makes the
+// row focusable WITHOUT adding a tab stop, and because the row CONTAINS the chips, Tab
+// from it continues into the row in document order rather than skipping past it.
 export default function FactChipRow({
   testId,
   className,
@@ -82,7 +94,9 @@ export default function FactChipRow({
   return (
     <div
       data-testid={testId}
-      className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}
+      data-fact-row="true"
+      tabIndex={-1}
+      className={`flex flex-wrap items-center gap-1.5 outline-none ${className ?? ""}`}
     >
       {children}
     </div>
@@ -97,6 +111,7 @@ export default function FactChipRow({
 // it, never a click-target overlapping the first.
 export function FactChip({
   label,
+  factKey,
   state = "stated",
   expanded,
   onOpen,
@@ -106,6 +121,10 @@ export function FactChip({
   remove,
 }: {
   label: ReactNode;
+  // Which fact this chip states, in the consumer's own key vocabulary. Emitted as
+  // `data-fact-key` on the disclosure so the editor can hand focus back to it (#3311);
+  // required so a new consumer cannot forget and silently lose the return path.
+  factKey: string;
   state?: FactChipState;
   expanded: boolean;
   onOpen: () => void;
@@ -124,6 +143,7 @@ export function FactChip({
         type="button"
         data-testid={testId}
         data-fact-state={state}
+        data-fact-key={factKey}
         {...suggestedAttrs(suggested)}
         aria-expanded={expanded}
         onClick={onOpen}
@@ -143,6 +163,7 @@ export function FactChip({
     >
       <button
         type="button"
+        data-fact-key={factKey}
         aria-expanded={expanded}
         onClick={onOpen}
         className="text-left"
@@ -168,11 +189,14 @@ export function FactChip({
 // form already knows it wants.
 export function FactAddChip({
   label,
+  factKey,
   expanded,
   onOpen,
   testId,
 }: {
   label: string;
+  // The panel this prompt opens — see FactChip's `factKey` (#3311).
+  factKey: string;
   expanded: boolean;
   onOpen: () => void;
   testId?: string;
@@ -181,6 +205,7 @@ export function FactAddChip({
     <button
       type="button"
       data-testid={testId}
+      data-fact-key={factKey}
       aria-expanded={expanded}
       onClick={onOpen}
       className="tap-target inline-flex items-center gap-1 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
@@ -196,11 +221,14 @@ export function FactAddChip({
 // names them (see `moreFactsLabel` in each consumer's fact module).
 export function FactMoreChip({
   label,
+  factKey,
   expanded,
   onOpen,
   testId,
 }: {
   label: string;
+  // The panel this affordance opens — see FactChip's `factKey` (#3311).
+  factKey: string;
   expanded: boolean;
   onOpen: () => void;
   testId?: string;
@@ -209,6 +237,7 @@ export function FactMoreChip({
     <button
       type="button"
       data-testid={testId}
+      data-fact-key={factKey}
       aria-expanded={expanded}
       onClick={onOpen}
       className="tap-target rounded-full px-3 py-1.5 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
