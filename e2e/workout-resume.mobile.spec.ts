@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { deleteActivityFromForm } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Issue #1893/#2745 at the PHONE viewport — the Train segment's workout row. Its
@@ -48,10 +49,9 @@ test("the sheet's workout row resumes a running session with its clock intact (#
   // minimizes a running workout and deliberately leaves the dock available.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  // The discard settles on the SERVER (#3267): this spec's URL never leaves
+  // /training, so the dock vanishing was the only thing it could see — and the dock
+  // is client state, satisfied while deleteActivity was still queued.
+  await deleteActivityFromForm(page);
   await expect(dock).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { deleteActivityFromForm } from "./helpers";
 // Issue #1422: the two hardware affordances the phone-at-the-gym flow depends on —
 // a screen wake lock while the live editor is on screen, and haptic cues for the two
 // moments you're not looking at the phone. Both are progressive enhancement: absent
@@ -112,12 +113,13 @@ async function completeFirstSet(page: Page) {
 }
 
 // Delete the draft this spec created, so the shared seed DB is left as found.
+//
+// Through the shared settled discard (#3267): two of the four tests below end on
+// this call, so a discard that returned before the row was gone left the draft on
+// the shared admin profile and the standing guard failed the test with every one of
+// its own assertions green.
 async function discardDraft(page: Page) {
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
 }
 
 test("the live editor takes a screen wake lock, drops it on minimize, and re-takes it on restore (#1422)", async ({

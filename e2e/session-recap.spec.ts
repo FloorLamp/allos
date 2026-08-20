@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { followLink } from "./helpers";
+import { deleteActivityFromForm, followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_RECAP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -56,12 +56,10 @@ async function openRowForEdit(page: Page, row: Locator) {
     .click();
 }
 
+// Both call sites are the LAST statement of their test, so the discard has to be
+// settled on the server or the row outlives the test (#3267).
 async function deleteOpenDraft(page: Page) {
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
 }
 
 // Open the PLAIN (non-live) create form via "New activity", log one complete set,

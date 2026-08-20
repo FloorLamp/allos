@@ -46,6 +46,13 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //    armActionPost, because "did this interaction's action complete?" is one
 //    question and a helper family must not answer it two ways (#1952).
 //
+// 1d. …and the action is the ACTIVITY EDITOR'S DELETE, behind a confirm:
+//    → deleteActivityFromForm(page)
+//    Two clicks and a settle, spelled once. The row is gone when the "Activity
+//    deleted." toast lands, never when the dock or the panel stops rendering —
+//    #3267 is the whole cost of confusing those, and it is a shared-fixture leak
+//    rather than a red in the spec that leaks (see the helper).
+//
 // 2. The click is a NAVIGATION to another route (a Next `<Link>`/tab `<a href>`)
 //    and the flake is the pre-hydration swallow (#500/#830):
 //        → followLink(page, locator, /destination-url/)
@@ -396,12 +403,20 @@ export async function chartsSettled(
 // `hydratedClick` and not `settledClick` (decision-tree case 3). The count assertion
 // afterwards is the actual guarantee — the card is out of the DOM, not merely on its
 // way out — and it is what makes this safe to call before a geometry read too.
+//
+// `timeout` budgets the ARRIVAL only. A toast a write raises is not up until that
+// write has come back, so a caller whose action is slow under contention says how
+// long it is prepared to wait for it — `deleteActivity` plus its revalidate on the
+// dashboard routinely runs past the 5s default on a loaded shard (the receipt is in
+// e2e/workout-presence.spec.ts, run 30663146216). The dismissal below keeps the
+// default: once the card is on screen, taking it down is client-only work.
 export async function dismissToast(
   page: Page,
-  text: string | RegExp
+  text: string | RegExp,
+  opts: { timeout?: number } = {}
 ): Promise<void> {
   const toast = page.getByTestId("toast").filter({ hasText: text });
-  await expect(toast).toBeVisible();
+  await expect(toast).toBeVisible({ timeout: opts.timeout });
   await hydratedClick(page, toast.getByRole("button", { name: "Dismiss" }));
   await expect(toast).toHaveCount(0);
 }
@@ -950,6 +965,72 @@ export async function openConfirm(
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible({ timeout: opts.dialogTimeout ?? 15_000 });
   return dialog;
+}
+
+// Delete the activity the form is holding, and do not return until the SERVER has
+// done it (issue #3267).
+//
+// THE DOCK GOING AWAY IS NOT THE ROW GOING AWAY, and that gap is the whole defect.
+// Every call site used to spell the discard the same way — click Delete, click the
+// confirm's Delete, then assert a CLIENT fact: `workout-dock` reaches count 0, or the
+// live panel unmounts, or nothing at all. None of those observe the write. The dock
+// clears from `leaveDeletedActivityPage`, a `setState` in
+// components/ActivityEditorProvider.tsx, so `toHaveCount(0)` is satisfied by the
+// browser alone and says nothing about whether `deleteActivity` has run — or, on a
+// loaded shard, whether it has even been DISPATCHED yet.
+//
+// That is what #3267 is. The shared-profile guard (e2e/shared-profile-guard.ts) reads
+// the worker DATABASE in teardown, so it sees the row the client had already stopped
+// drawing, and it fails the spec that started the session — correctly. The failure
+// therefore arrives with a GREEN BODY: the decisive CI sighting (PR #3269, whose diff
+// is a JSON data file and an orchestration script, `e2e (2)`) reported `1 failed`
+// with the only annotation at `fixtures.ts:248` and every assertion in the spec
+// passed. There was no timed-out click to find, which is why reading the guard's own
+// advice — "dispose the draft from a `finally`" — would have silenced a guard that
+// was telling the truth and left the race running.
+//
+// MEASURED, by holding every Server Action response for 2s with `page.route` and
+// tracing the writes against the worker DB (`workout-resume.mobile.spec.ts`):
+//
+//   +2525ms  the confirm is clicked            rows on profile 1: []
+//   +3720ms  the create-at-start POST returns  rows: [216]      ← the draft exists
+//   +4272ms  `expect(dock).toHaveCount(0)` passes — THE SPEC ENDS HERE TODAY
+//   +5780ms  the deleteActivity POST is issued  (id=216)
+//   +7824ms  it returns                        rows: []
+//
+// The spec finished a second and a half before its own delete left the browser. On a
+// quiet box those five lines collapse into ~400ms and everything is green, which is
+// exactly why this failed only on loaded CI shards and only on other people's PRs.
+//
+// THE SETTLE IS THE TOAST, and it is a server fact rather than a proxy for one:
+// `useUndoableDelete` (components/useUndoableDelete.ts) announces "Activity deleted."
+// only after `await action(fd)` has resolved, so the card being on screen means the
+// row is gone. Taking it down again is the #2861 rule — a `fixed` bottom-right card
+// intercepts the next click — and it is free for a caller that ends right after.
+//
+// A `waitForURL(/\/training/)` after the discard is the same guarantee by a different
+// route (`leaveDeletedActivityPage` navigates only once `onDeleted` has fired) and
+// stays where specs already have it. It is not AVAILABLE everywhere: a discard driven
+// from the app-wide dock leaves the URL where it was, so those call sites had no
+// server-side signal at all. This one works at every call site, which is what makes it
+// the shared spelling rather than a sixth local pair of clicks.
+//
+// `trigger` scopes the Delete affordance for a page that carries its own per-row
+// Delete controls behind the editor (e2e/bottom-edge-stacking.mobile.spec.ts opens the
+// dock over Equipment); it defaults to the editor footer's, which is the only Delete
+// on screen everywhere else.
+export async function deleteActivityFromForm(
+  page: Page,
+  opts: { trigger?: Locator } = {}
+): Promise<void> {
+  const trigger =
+    opts.trigger ?? page.getByRole("button", { name: "Delete", exact: true });
+  const dialog = await openConfirm(page, trigger);
+  // The confirm's own button is React-rendered the moment the dialog mounts, so it
+  // is hydrated by construction — openConfirm already spent the hydration wait on
+  // the trigger, which is the control that could have been server HTML.
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await dismissToast(page, "Activity deleted.", { timeout: 30_000 });
 }
 
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
