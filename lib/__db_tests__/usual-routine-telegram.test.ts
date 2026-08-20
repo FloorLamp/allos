@@ -603,6 +603,47 @@ describe("the re-render reduces, then removes (#2460)", () => {
     ).run(doseB, itemB, date);
     expect(standingUsualOffer(sp.profileId, offerId, date)).toBeNull();
   });
+
+  // THE FOOD HALF IS THE GATE, NOT MERELY A CONTRIBUTOR (#2460). The floor above is a
+  // COUNT, and a count alone would let a stale offer degrade into a dose-only bundle:
+  // the groups it named have all been logged, other groups have since become habitual
+  // so the food offer still stands, and the intersection is empty while two doses
+  // remain. There has never been a dose-only shape of this offer — the rows beneath it
+  // already are the dose one-taps — so the answer is no bundle, not a smaller one.
+  it("is null once NONE of the offered groups still stands, however many doses remain", () => {
+    const sp = makeProfile("TG2460R");
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
+    seedHabitualMornings(sp.profileId, ["fermented", "berries"]);
+    const itemA = mkItem(sp.profileId, "TG2460R Creatine");
+    const doseA = mkDose(itemA);
+    const itemB = mkItem(sp.profileId, "TG2460R Collagen");
+    const doseB = mkDose(itemB);
+    const date = today(sp.profileId);
+    const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
+    const offerId = parseUsualRoutineCallback(a.token)!.offerId;
+    expect(
+      standingUsualOffer(sp.profileId, offerId, date)?.groups
+    ).toHaveLength(2);
+
+    // Both offered groups logged today, and two OTHER groups become habitual — so the
+    // food offer still stands for this window, but none of what THIS offer named does.
+    tap(sp.profileId, "fermented", date, "08:00:00");
+    tap(sp.profileId, "berries", date, "08:01:00");
+    for (let d = 1; d <= 21; d++) {
+      tap(sp.profileId, "eggs", shiftDateStr(date, -d), "08:10:00");
+      tap(sp.profileId, "red_meat", shiftDateStr(date, -d), "08:11:00");
+    }
+    // The window's own offer is alive — otherwise this test would pass for the wrong
+    // reason, on the `!fresh` return one line earlier.
+    const fresh = getUsualRoutineOffer(sp.profileId, "Morning", date);
+    expect(fresh?.groups.length).toBeGreaterThanOrEqual(2);
+    // Both doses are still owed, so the COUNT floor is comfortably satisfied…
+    expect(fresh?.doses.map((d) => d.doseId).sort()).toEqual(
+      [doseA, doseB].sort()
+    );
+    // …and the answer is still nothing, because the gate is the food half itself.
+    expect(standingUsualOffer(sp.profileId, offerId, date)).toBeNull();
+  });
 });
 
 // THE SWEEP (#2460). The bundle is host-inherited, so the families rebuild through
