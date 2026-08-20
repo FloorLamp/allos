@@ -158,8 +158,6 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
       // fact away (FactEditorHost's `onKeyDown`).
       await page.keyboard.press("Escape");
     });
-    await expect(registry).toHaveAttribute("data-dirty", "1");
-
     // WHY THE TITLE IS NOT A CONTROLLED FIELD, asserted rather than commented, because
     // the failure it prevents is silent and this is what makes the line above
     // self-describing.
@@ -190,6 +188,8 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
       titleOwnership?.def,
       "the title field must stay DOM-owned: React syncs defaultValue onto a controlled field, and the dirty registry reads defaultValue as the saved value"
     ).toBe("");
+
+    await expect(registry).toHaveAttribute("data-dirty", "1");
 
     // The background event: the document the user uploaded earlier finishes
     // extracting. The toaster notices by polling and asks for a repaint.
