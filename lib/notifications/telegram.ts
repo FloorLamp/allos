@@ -71,6 +71,11 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
+import {
+  attachUsualRoutine,
+  attachmentOnKeyboard,
+  type UsualRoutineAttachment,
+} from "./usual-routine-attach";
 import { messageBodyHash, reconcileClosingText } from "./reconcile-core";
 import { classifyTelegramFailure } from "./telegram-error";
 
@@ -628,6 +633,22 @@ function resolveSubject(
 
 // ---- Chokepoint: outbound edits (callback rebuilds/consumption) ----
 
+// The composed one-tap (#2460) a delivered message is CURRENTLY showing, re-derived
+// against fresh state — or null when the message never carried one, or when nothing it
+// named still stands. Read off the pointer's own delivered keyboard, which is the only
+// record of what a chat is showing, so a rebuild carries the SAME offer the send minted
+// rather than minting a second one for the slot.
+function liveUsualAttachment(
+  profileId: number,
+  chatId: number | string,
+  messageId: number
+): UsualRoutineAttachment | null {
+  const pointer = messagePointerAt(profileId, chatId, messageId);
+  return pointer
+    ? attachmentOnKeyboard(profileId, pointer.keyboard, today(profileId))
+    : null;
+}
+
 // Rebuild an existing message from a freshly-built (UN-prefixed) NotificationMessage,
 // re-applying the SAME send-time attribution prefix (prefixForProfile), escaping,
 // and keyboard the initial send used. This is what closes the #377 class at the
@@ -641,7 +662,20 @@ export async function rebuildMessage(
   messageId: number,
   msg: NotificationMessage
 ): Promise<void> {
-  const attributed = prefixMessage(msg, prefixForProfile(profileId));
+  // THE HOST-INHERITED BUNDLE SURVIVES THE REBUILD, REDUCED (#2460). The composed
+  // one-tap decorates a host message the builders know nothing about, so every one of
+  // them re-renders without it — and a keyboard that silently loses the button after
+  // the first per-row tap would be a worse offer than not having had one. Re-applied
+  // HERE, at the same chokepoint that owns the attribution prefix, for the same reason:
+  // a rebuild path cannot get it wrong, because it does not do it.
+  //
+  // It can only ever REDUCE. `standingUsualAttachment` intersects the STORED offer with
+  // what currently stands, so a half already logged falls out of the named line and the
+  // whole button disappears once nothing stands.
+  const attributed = prefixMessage(
+    attachUsualRoutine(msg, liveUsualAttachment(profileId, chatId, messageId)),
+    prefixForProfile(profileId)
+  );
   await editMessageTextRaw(chatId, messageId, renderMessageHtml(attributed), {
     keyboard: messageKeyboard(attributed),
     parseMode: "HTML",

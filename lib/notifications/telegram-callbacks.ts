@@ -82,7 +82,9 @@ import {
   keyboardDoseFootprint,
   parseAllCallback,
   parseStackTakeCallback,
+  parseUsualRoutineCallback,
   type StackTakeCallback,
+  type UsualRoutineCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
   parseFoodExpandCallback,
@@ -135,6 +137,19 @@ import {
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
+import {
+  logUsualRoutineCore,
+  usualRoutineDoseLogged,
+} from "../usual-routine-write";
+import { usualRoutineAnswerText } from "../usual-routine";
+import { foodGroupName } from "../food-groups";
+import { readOffer } from "./offer-store";
+import {
+  USUAL_OFFER_FAMILY,
+  type StoredUsualOffer,
+} from "./usual-routine-attach";
+import { keyboardTokens, tokenPrefix } from "./reconcile-core";
+import { owningFamily } from "./reconcile-registry";
 import { finishWorkoutSession, discardWorkoutSession } from "../workout-finish";
 import { classifyActivityType } from "../activity-type-write";
 import {
@@ -226,6 +241,14 @@ export async function handleCallbackQuery(
   const stackTake = parseStackTakeCallback(cq.data);
   if (stackTake) {
     await handleStackTaken(cq, stackTake);
+    return;
+  }
+
+  // "✅ Your usual <window> (n)" — the composed one-tap (#2460). The token names a
+  // STORED offer; the handler re-derives what stands and writes only the intersection.
+  const usual = parseUsualRoutineCallback(cq.data);
+  if (usual) {
+    await handleUsualRoutineTap(cq, usual);
     return;
   }
 
@@ -1319,6 +1342,142 @@ async function handleStackTaken(
       { ref: { chatId, messageId } }
     )
   );
+}
+
+// THE COMPOSED ONE-TAP (#2460): one button, the whole morning — the habitual food
+// groups AND the doses declared for the window and still owed today, through the
+// shared write core the dashboard control uses (`logUsualRoutineCore`, #2458).
+//
+// ── NOTHING ON THE WIRE IS TRUSTED ───────────────────────────────────────────
+//
+// The token carries a profile id (a cross-check, like every other tap token) and an
+// OFFER ID. The offer row is read scoped by the CHAT-RESOLVED profile, by family, and
+// by the profile's own `today` — so another profile's offer, another family's payload
+// and yesterday's offer are the same single refusal, and none of them can be told
+// apart by a forged token. No date crosses the wire at all: `today(profileId)` is
+// resolved here and again inside the core, so this path cannot backfill.
+//
+// ── AND THE OFFER IS AN UPPER BOUND, NOT AN INSTRUCTION ──────────────────────
+//
+// The stored sets are handed to the core exactly as the dashboard hands it the sets
+// its label named, and the core re-derives BOTH halves from fresh state inside its own
+// transaction and writes only the intersection. A replayed tap therefore writes
+// nothing the offer did not name AND nothing that no longer stands — strictly stronger
+// than the `all:` button one row down, which re-derives but was never bounded by an
+// offer at all.
+//
+// ── THE ANSWER NAMES WHAT WAS WRITTEN, NEVER WHAT WAS OFFERED ────────────────
+//
+// Every half is reported from the core's RETURN: a group the offer had already lost is
+// simply absent, and a dose that refused mid-bundle is named as not logged rather than
+// folded into a count — with the food set it did not unwind still committed. That is
+// the acceptance bar of this issue, and it is `usualRoutineAnswerText`'s contract, so
+// the toast on the dashboard and this ack cannot round the same outcome differently.
+async function handleUsualRoutineTap(
+  cq: TelegramCallbackQuery,
+  token: UsualRoutineCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
+    return;
+  }
+  const date = today(profileId);
+  const offer = readOffer<StoredUsualOffer>(
+    profileId,
+    USUAL_OFFER_FAMILY,
+    token.offerId,
+    date
+  );
+  if (!offer) {
+    // Forged, another profile's, or minted on a day that has since rolled over. The
+    // honest refusal, and nothing is written.
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
+    return;
+  }
+  const messageId = cq.message?.message_id;
+  const notifyMessageId =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  const outcome = logUsualRoutineCore(
+    profileId,
+    offer.window,
+    offer.groups,
+    offer.doseIds,
+    notifyMessageId
+  );
+  const wrote = outcome.kind === "logged";
+  const doses = wrote ? outcome.doses : [];
+  await answerCallbackQuery(
+    cq.id,
+    usualRoutineAnswerText(
+      wrote ? outcome.groups.map((g) => foodGroupName(g.groupKey)) : [],
+      doses.filter((d) => usualRoutineDoseLogged(d.outcome)).map((d) => d.name),
+      doses.filter((d) => !usualRoutineDoseLogged(d.outcome)).map((d) => d.name)
+    ),
+    // An outcome that contradicts the ✅ demands a dismissal; a partial does not —
+    // it says what landed, and what landed is on the screen behind it.
+    { alert: !wrote }
+  );
+
+  if (chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  // WHICH MESSAGE THIS IS, asked of the keyboard rather than of the token — the whole
+  // point of the host-inherited classification (#2460). `usual:` elects no family, so
+  // `owningFamily` answers with the HOST's, and the rebuild runs the host's own path.
+  // Each rebuild goes through `rebuildMessage`, which re-applies the bundle reduced to
+  // what still stands (usually: gone, since the tap just wrote it).
+  const family = owningFamily(keyboardTokens(rows), tokenPrefix);
+  if (family === "intake-dose") {
+    const footprint = keyboardDoseFootprint(rows);
+    const parts = slotSessionForKeyboard(
+      profileId,
+      footprint.doseIds,
+      footprint.slots,
+      date
+    );
+    if (parts.length === 0) {
+      await closeMessage(
+        profileId,
+        chatId,
+        messageId,
+        replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
+      );
+      return;
+    }
+    await rebuildMessage(
+      profileId,
+      chatId,
+      messageId,
+      withDoseCorrections(
+        profileId,
+        renderMergedIntakeMessage(
+          profileId,
+          parts,
+          date,
+          getProfileAge(profileId)
+        ),
+        { ref: { chatId, messageId } }
+      )
+    );
+    return;
+  }
+  if (family === "food") {
+    const rebuilt = buildFoodNudge(
+      profileId,
+      offer.window,
+      date,
+      countVisibleFoodButtons(rows) || undefined,
+      { ref: { chatId, messageId } }
+    );
+    if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  }
 }
 
 // Handle a food quick-log button (#682): resolve the acting profile from the chat,

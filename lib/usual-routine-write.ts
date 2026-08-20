@@ -93,13 +93,20 @@ export function logUsualRoutineCore(
   profileId: number,
   window: FoodSlot,
   namedGroups: readonly string[],
-  namedDoseIds: readonly number[]
+  namedDoseIds: readonly number[],
+  // WHICH MESSAGE'S TAP THIS IS (#2264/#2460). Both halves stamp it, through the same
+  // origin paths `handleFoodLog` and `handleDoseTap` use — so one composed tap is
+  // attributed exactly as the individual taps it replaces would have been. The
+  // dashboard control passes nothing and both stores record NULL.
+  notifyMessageId?: number | null
 ): UsualRoutineOutcome {
   const date = today(profileId);
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
-      ? logUsualFoodCore(profileId, window, namedGroups)
+      ? logUsualFoodCore(profileId, window, namedGroups, undefined, {
+          notifyMessageId,
+        })
       : ({ kind: "nothing-to-log" } as const);
   const groups = food.kind === "logged" ? food.groups : [];
 
@@ -121,7 +128,14 @@ export function logUsualRoutineCore(
       name: offered.name,
       // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or a
       // paused item on its own terms. Its answer is carried, never assumed.
-      outcome: markDoseTaken(profileId, doseId, offered.itemId, date),
+      outcome: markDoseTaken(
+        profileId,
+        doseId,
+        offered.itemId,
+        date,
+        undefined,
+        notifyMessageId
+      ),
     });
   }
 
