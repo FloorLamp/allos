@@ -675,6 +675,13 @@ test("the activity form keeps workout entry primary and context visible across b
   expect(mobileDrawerBox).not.toBeNull();
   expect(mobileDrawerBox!.x).toBe(0);
   expect(mobileDrawerBox!.width).toBe(390);
+  // The seeded Push day's first lift is a uniform run, so since #3336 it opens as the
+  // compact sentence. Expand it, so the first-match locator below still means THE
+  // FIRST PART's schema row rather than whichever later part happens to be varied —
+  // the assertions
+  // would pass either way, and would have quietly stopped describing the card the rest
+  // of this test measures.
+  await hydratedClick(page, page.getByTestId("set-summary").first()); // first-ok: the first part's set summary — this test measures the first card
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(

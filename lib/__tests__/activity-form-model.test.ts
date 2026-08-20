@@ -5,6 +5,7 @@ import {
   buildRepeatPrefill,
   initialPartsFromSeed,
   partIntent,
+  partSetsSummary,
   partTotal,
   groupEditSets,
   recentSessionsForForm,
@@ -199,6 +200,139 @@ describe("partTotal", () => {
       ],
     });
     expect(partTotal(p)).toBe(500); // only the 100×5 working set
+  });
+});
+
+describe("partSetsSummary — the compact set notation (#3336)", () => {
+  // The editor's set values are display-unit STRINGS; the sentence is rendered by the
+  // ONE summarizeExercise every other surface uses. These cases are about which parts
+  // get a sentence AT ALL, because null is what keeps a non-uniform part on the grid.
+  const set = (o: Partial<PartEntry["sets"][number]>) => ({
+    ...blankPart().sets[0],
+    ...o,
+  });
+  const run = (n: number, o: Partial<PartEntry["sets"][number]>) =>
+    Array.from({ length: n }, () => set(o));
+
+  it("states a uniform run as one sentence, in the display unit", () => {
+    const p = part({
+      name: "Bench Press",
+      sets: run(3, { weight: "60", reps: "8" }),
+    });
+    expect(partSetsSummary(p, "kg")).toBe("60 kg × 8 × 3");
+    // A pound profile round-trips through canonical kg and comes back EXACTLY — the
+    // whole reason the sentence can be rendered by the stored-row formatter.
+    const lb = part({
+      name: "Bench Press",
+      sets: run(3, { weight: "175", reps: "8" }),
+    });
+    expect(partSetsSummary(lb, "lb")).toBe("175 lb × 8 × 3");
+  });
+
+  it("declines a run that varies — 8, 8, 7 is a choice the sentence cannot carry", () => {
+    const p = part({
+      name: "Bench Press",
+      sets: [
+        set({ weight: "60", reps: "8" }),
+        set({ weight: "60", reps: "8" }),
+        set({ weight: "60", reps: "7" }),
+      ],
+    });
+    expect(partSetsSummary(p, "kg")).toBeNull();
+  });
+
+  it("declines a single set — its row already IS the sentence", () => {
+    expect(
+      partSetsSummary(
+        part({
+          name: "Bench Press",
+          sets: run(1, { weight: "60", reps: "8" }),
+        }),
+        "kg"
+      )
+    ).toBeNull();
+  });
+
+  it("declines an incomplete run, so a part being filled in never compresses", () => {
+    expect(
+      partSetsSummary(
+        part({ name: "Bench Press", sets: run(3, { weight: "60" }) }),
+        "kg"
+      )
+    ).toBeNull();
+  });
+
+  it("declines a warmup run — a warmup is excluded from volume and judgment (#338)", () => {
+    expect(
+      partSetsSummary(
+        part({
+          name: "Bench Press",
+          sets: run(3, { weight: "60", reps: "8", warmup: true }),
+        }),
+        "kg"
+      )
+    ).toBeNull();
+  });
+
+  it("treats '60' and '60.0' as different sets — the safe direction is the grid", () => {
+    const p = part({
+      name: "Bench Press",
+      sets: [
+        set({ weight: "60", reps: "8" }),
+        set({ weight: "60.0", reps: "8" }),
+      ],
+    });
+    expect(partSetsSummary(p, "kg")).toBeNull();
+  });
+
+  it("ignores RPE, which varies across identical sets by design (#743/#3335)", () => {
+    const p = part({
+      name: "Bench Press",
+      sets: [
+        set({ weight: "60", reps: "8", rpe: 7 }),
+        set({ weight: "60", reps: "8", rpe: 9 }),
+      ],
+    });
+    expect(partSetsSummary(p, "kg")).toBe("60 kg × 8 × 2");
+  });
+
+  it("drops the load from a bodyweight run and renders a timed hold as m:ss", () => {
+    expect(
+      partSetsSummary(
+        part({ name: "Pull Up", sets: run(3, { reps: "8" }) }),
+        "kg"
+      )
+    ).toBe("8 × 3");
+    expect(
+      partSetsSummary(
+        part({ name: "Plank", sets: run(3, { duration: "1:00" }) }),
+        "kg"
+      )
+    ).toBe("1:00 × 3");
+  });
+
+  it("states both sides of a per-side run, and needs both to be complete", () => {
+    const both = part({
+      name: "Dumbbell Curl",
+      perSide: true,
+      sets: run(3, {
+        weight: "14",
+        reps: "10",
+        weightRight: "12",
+        repsRight: "10",
+      }),
+    });
+    expect(partSetsSummary(both, "kg")).toBe(
+      "L 14 kg × 10 × 3 · R 12 kg × 10 × 3"
+    );
+    // Left filled, right blank: setComplete alone would say yes (either side counts),
+    // and the sentence would read "R – × 3".
+    const leftOnly = part({
+      name: "Dumbbell Curl",
+      perSide: true,
+      sets: run(3, { weight: "14", reps: "10" }),
+    });
+    expect(partSetsSummary(leftOnly, "kg")).toBeNull();
   });
 });
 
