@@ -300,9 +300,18 @@ export default function StrengthSets({
   //
   // `live` is excluded here as well as at the render below, so finishing a live session
   // leaves the grid the person was checking off exactly where it was.
-  const [collapsed, setCollapsed] = useState(
+  //
+  // AND THE FOLD BELONGS TO SETS THAT ARRIVED FINISHED, which is why this is TWO
+  // pieces of state and not one. A part someone is typing set-by-set becomes uniform
+  // the instant set 3 matches set 2 — and if the collapse control appeared then, a new
+  // button would materialise in a phone toolbar band mid-entry, which is the same
+  // surprise as auto-collapsing and is also a layout the #1612 geometry contract pins.
+  // So `arrivedCompact` gates the control: it is the WAY BACK from an expansion, not a
+  // fold offered to a part that was never folded.
+  const [arrivedCompact] = useState(
     () => !live && partSetsSummary(part, units.weightUnit) != null
   );
+  const [collapsed, setCollapsed] = useState(arrivedCompact);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -1622,8 +1631,10 @@ export default function StrengthSets({
             back into a uniform run gets it again.
 
             NOT LABELLED "Done": the overlay's own close button is `Done`, and three
-            specs already address it by that exact name. */}
-        {showGrid && setsSentence ? (
+            specs already address it by that exact name.
+
+            Only on a part that ARRIVED as a sentence — see `arrivedCompact` above. */}
+        {arrivedCompact && showGrid && setsSentence ? (
           <button
             type="button"
             onClick={() => setCollapsed(true)}
