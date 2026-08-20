@@ -12,11 +12,26 @@
 //     both, nowhere when neither sends;
 //   • the re-render REDUCES and then removes.
 
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone, setProfileSetting } from "@/lib/settings";
+import {
+  setTimezone,
+  setProfileSetting,
+  setTelegramBotConfig,
+} from "@/lib/settings";
+import { tickProfile } from "@/lib/notifications/tick";
+import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import { plainBody } from "@/lib/notifications/rich-text";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   answerCallbackQuery,
@@ -52,6 +67,7 @@ beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);
+const sendMock = vi.mocked(sendMessageRaw);
 
 // What the chat is showing NOW, read back off the pointer the chokepoint syncs — the
 // only record of a delivered keyboard there is.
@@ -662,5 +678,94 @@ describe("the reconcile sweep keeps the bundle honest (#2460)", () => {
     expect(tokens).not.toContain(a.token);
     // The food nudge itself is untouched — its quick-log rows never resolve.
     expect(tokens.some((t) => t?.startsWith("food:"))).toBe(true);
+  });
+});
+
+// NEVER BOTH, THROUGH THE REAL TICK (#2460). The plan's one-shot claim makes two
+// buttons structurally impossible, but only if the two call sites are wired the way the
+// priority rule says. That wiring is what this drives: the whole per-profile tick, with
+// only the Telegram transport stubbed, asserting on what actually went on the wire.
+describe("the composed one-tap rides exactly one of the window's sends (#2460)", () => {
+  const TICK_CHAT = "5552480";
+
+  function setupTick(tag: string, opts: { pendingDose: boolean }) {
+    const sp = makeProfile(tag);
+    seedLoginTelegram(sp.profileId, TICK_CHAT);
+    setTelegramBotConfig({
+      telegramBotToken: "bot token 24601",
+      telegramMode: "polling",
+    });
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
+    // Morning at 08:00, every other window off, so exactly one slot is due.
+    setProfileSetting(sp.profileId, "notify_supp_morning_hour", "08:00");
+    for (const k of [
+      "notify_supp_midday_hour",
+      "notify_supp_evening_hour",
+      "notify_supp_bedtime_hour",
+      "notify_digest_hour",
+    ])
+      setProfileSetting(sp.profileId, k, "");
+    seedHabitualMornings(sp.profileId, ["fermented", "berries", "eggs"]);
+    if (opts.pendingDose) mkDose(mkItem(sp.profileId, `${tag} Creatine`));
+    return sp;
+  }
+
+  // Every message that actually went to this chat on the last tick, with its tokens.
+  function sentMessages() {
+    return sendMock.mock.calls
+      .filter((c) => String(c[0]) === TICK_CHAT)
+      .map((c) => c[1] as NotificationMessage)
+      .map((m) => ({
+        kind: m.kind,
+        tokens: (m.actions ?? []).map((a) => a.data).filter(Boolean),
+        body: plainBody(m.body),
+      }));
+  }
+
+  const usualCount = (msgs: ReturnType<typeof sentMessages>) =>
+    msgs.filter((m) =>
+      m.tokens.some((t) => parseUsualRoutineCallback(t) != null)
+    );
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T08:00:00Z"));
+    sendMock.mockClear();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("the DOSE REMINDER takes it when both messages fire", async () => {
+    const sp = setupTick("TG2460N", { pendingDose: true });
+    await tickProfile(sp.profileId, "TG2460N", 5, Date.now());
+    const msgs = sentMessages();
+    // Both hosts really did send — otherwise "never both" would be vacuous here.
+    expect(msgs.map((m) => m.kind).sort()).toEqual(["dose", "food"]);
+    const carrying = usualCount(msgs);
+    expect(carrying).toHaveLength(1);
+    expect(carrying[0].kind).toBe("dose");
+    // The message NAMES the full composed set on a line of its own.
+    expect(carrying[0].body).toContain("Your usual Morning");
+    expect(carrying[0].body).toContain("TG2460N Creatine");
+  });
+
+  it("the FOOD NUDGE takes it when the dose reminder has nothing to send", async () => {
+    const sp = setupTick("TG2460O", { pendingDose: false });
+    await tickProfile(sp.profileId, "TG2460O", 5, Date.now());
+    const msgs = sentMessages();
+    expect(msgs.map((m) => m.kind)).toEqual(["food"]);
+    const carrying = usualCount(msgs);
+    expect(carrying).toHaveLength(1);
+    expect(carrying[0].kind).toBe("food");
+  });
+
+  it("nowhere for a profile that has not opted into food buttons in chat", async () => {
+    const sp = setupTick("TG2460P", { pendingDose: true });
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "0");
+    await tickProfile(sp.profileId, "TG2460P", 5, Date.now());
+    const msgs = sentMessages();
+    // The dose reminder still goes out — it is not gated on the food opt-in — and it
+    // carries no bundle, because the bundle always contains food writes.
+    expect(msgs.map((m) => m.kind)).toEqual(["dose"]);
+    expect(usualCount(msgs)).toHaveLength(0);
   });
 });
