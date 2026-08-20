@@ -304,8 +304,9 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     expect(await weekCount(page, NAME)).toBe(before + 1);
 
-    // Case is the person's own spelling, not a folded key (#3325 owns folding, in
-    // this vocabulary and the symptom one at once).
+    // Case is the person's own spelling, not a folded key. #3325 folded case for
+    // MATCHING in this vocabulary and the symptom one at once, and deliberately not
+    // for DISPLAY — the heading is still exactly what was typed.
     await expect(card.getByRole("heading", { name: NAME })).toBeVisible();
 
     // A FULL card, not a lesser one: the same one-tap log/undo the curated three get.
