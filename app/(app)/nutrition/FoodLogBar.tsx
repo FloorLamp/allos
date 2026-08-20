@@ -1268,7 +1268,23 @@ export default function FoodLogBar({
         // · N servings" that no other element on that page wears. It is canvas
         // now, like its neighbours. Sticky and frost were always `md:`-only, so an
         // unsticky full-bleed band below `md` was doing nothing on purpose.
-        className="mb-3 py-2 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
+        //
+        // `pr-1.5` BELOW `md` IS THE TAP EXTENSION'S ROOM, and it is here because
+        // scoping the bleed took away the padding that used to hold it (#3384).
+        // `tap-target` extends a compact control's hit area with an
+        // `inset: -6px` pseudo-element under `@media (pointer: coarse)`
+        // (app/globals.css). The preferences button is `sm:hidden`, 40px, and the
+        // LAST thing in this row — flush with the container's right edge — so
+        // that transparent 6px pokes out and counts as horizontal overflow, which
+        // is exactly what the sheet's content region must not be handed. It never
+        // showed before because `px-2` absorbed it while `-mx-2` paid for the
+        // bleed; with both gone below `md` the extension had nowhere to sit.
+        // Measured: `scrollWidth 363 / clientWidth 358` in the quick-entry sheet
+        // at 390px, gone at 0 with this. Six pixels, right side only — the left
+        // side cannot contribute to scrollable width in LTR — and it also lands
+        // the button nearer the `px-3` inset the food rows give their own
+        // controls. From `md` up `md:px-2` is back and owns the problem again.
+        className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
