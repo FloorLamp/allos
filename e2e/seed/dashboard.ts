@@ -15,7 +15,7 @@ import {
   zonedWallTimeToUtc,
 } from "../../lib/date";
 import { setWeekMode, getTimezone } from "../../lib/settings";
-import { setFixtureTimezone } from "../fixture-timezones";
+import { clearFixtureTimezone, setFixtureTimezone } from "../fixture-timezones";
 import {
   resetOnboardingProfileRows,
   writeWizardEntryState,
@@ -508,14 +508,30 @@ export function seedNowStrip(): void {
   // biphasic 23:00→03:00 (4h) + 04:00→08:00 (4h) pair — neither block reaches the 6h
   // main-sleep floor — so the merge must read them as ONE ~8h night (bed 23:00 → wake
   // 08:00, no nap), the behavior f53892f shipped with no browser test for the rendered
-  // hero/tile. Pin UTC so the wall-clock labels are explicit; the latest wake-day is
-  // "today" so the hero + dashboard sleep presentation both render it. Rebuilt every seed; no browser
-  // test writes or cleans this profile, so parallel / --repeat-each runs cannot contend.
+  // hero/tile. The latest wake-day is "today" so the hero + dashboard sleep presentation
+  // both render it. Rebuilt every seed; no browser test writes or cleans this profile, so
+  // parallel / --repeat-each runs cannot contend.
+  //
+  // THIS PROFILE FOLLOWS THE RUN'S ROTATING PIN, and used to be pinned to UTC (#3337).
+  // The wall-clock labels are what the fixture is about, so they are still built as
+  // explicit wall times — just through the profile's OWN zone rather than a hardcoded
+  // "UTC", which keeps every label identical while removing the second calendar.
+  //
+  // The opt-out had to go because this profile's dashboard atoms are asserted
+  // (dashboard-atomic-personas), and the override made its local wake 08:00 UTC. A
+  // dashboard reading whose local wake is within `sleepArrivedInWakeWindow`'s 180
+  // minutes of the run's start is PROMOTED out of its Standing family, so
+  // `sleep.duration` vanished from the last-night-sleep family for any run starting in
+  // [08:00, 11:00) UTC — red 3 hours a day, green 21. Following the pin makes local
+  // "now" 13:mm at every UTC start hour, so a 08:00 local wake is 300-359 minutes old
+  // whenever the suite looks: never inside the window, and the same distance from it at
+  // every start hour. See e2e/fixture-timezones.ts.
   const sleepSegmentedId = fixtureProfileId(SLEEP_SEGMENTED_PROFILE);
-  setFixtureTimezone(db, sleepSegmentedId, "sleep-segmented", "UTC");
+  clearFixtureTimezone(db, sleepSegmentedId);
   db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(
     sleepSegmentedId
   );
+  const sleepSegmentedTz = getTimezone(sleepSegmentedId);
   const sleepSegmentedToday = today(sleepSegmentedId);
   const insertSegmentedSleep = db.prepare(
     `INSERT INTO metric_samples
@@ -529,15 +545,15 @@ export function seedNowStrip(): void {
     insertSegmentedSleep.run(
       sleepSegmentedId,
       wakeDay,
-      iso(zonedWallTimeToUtc("UTC", bedDay, "23:00")!),
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "03:00")!)
+      iso(zonedWallTimeToUtc(sleepSegmentedTz, bedDay, "23:00")!),
+      iso(zonedWallTimeToUtc(sleepSegmentedTz, wakeDay, "03:00")!)
     );
     // Second fragment after a 1h awake gap: 04:00 → 08:00 the same wake-day (4h).
     insertSegmentedSleep.run(
       sleepSegmentedId,
       wakeDay,
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "04:00")!),
-      iso(zonedWallTimeToUtc("UTC", wakeDay, "08:00")!)
+      iso(zonedWallTimeToUtc(sleepSegmentedTz, wakeDay, "04:00")!),
+      iso(zonedWallTimeToUtc(sleepSegmentedTz, wakeDay, "08:00")!)
     );
   }
   seedMemberLogin(E2E_LOGIN_SLEEP_SEGMENTED, sleepSegmentedId, "read");
