@@ -45,6 +45,16 @@ export async function expectFactEscapeGrammar(
   // STEP 1 — the half that already worked, still asserted (an editor is open here).
   await page.keyboard.press("Escape");
   await expect(row).toBeVisible();
+  // AND FOCUS CAME BACK WITH IT (#3311). Opening an editor unmounts the chip that was
+  // activated, so without the return path focus falls to <body> and the next Tab starts
+  // from the top of the document — nothing looks wrong on screen, which is why the four
+  // hidden-not-unmounted consumers had never asserted it and the intake form and sleep
+  // dialog had. Asked TIER-AGNOSTICALLY, because the primitive lands focus on the chip,
+  // else the trailing affordance the fact went back inside, else the row itself, and all
+  // three are "the row or something in it" — which is the claim that matters here.
+  await expect(
+    row.locator(":scope:focus, [data-focus-key]:focus, [data-fact-more]:focus")
+  ).toHaveCount(1);
   // Asserted POSITIVELY: the dialog is still standing. Escape reached the editor and
   // stopped there, which is the behaviour a second Escape would otherwise mask.
   await expect(form).toBeVisible();
