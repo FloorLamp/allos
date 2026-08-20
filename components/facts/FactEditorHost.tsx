@@ -58,6 +58,17 @@ import {
 // and InfoTooltipIcon set it — a nested layer owns Escape before its parent does. The
 // open panel IS such a layer, so it says so, and the grammar composes: Escape closes an
 // open listbox, then the editor, then the dialog.
+//
+// ONLY WHILE AN EDITOR IS OPEN, and that word is the whole of #3409. The marker used to
+// be a literal on the panel, and the panel is HIDDEN rather than unmounted for every
+// DOM-collected consumer — so the marker sat in the DOM at all times and the trap's
+// `panel.querySelector('[data-escape-layer="true"]')` kept answering YES to a layer
+// nobody had opened. The last clause of the grammar above ("then the dialog") therefore
+// never ran: a dialog holding any facts-with-editors row could not be dismissed with
+// Escape at all, on any press, in four shipped forms. The trap asks "is a layer ACTIVE";
+// a marker that means "a host is mounted" answers a cheaper question, and answers it
+// wrong. So the attribute is an expression over `panel` — the host's own record of which
+// editor is open — exactly as Combobox and InfoTooltipIcon write theirs.
 
 // The open-editor state and its keyboard contract, so every consumer gets the same one.
 // `K` is the consumer's own fact key union — the primitive never learns the names.
@@ -168,6 +179,14 @@ export function useFactEditor<K extends string>({
 // The one open editor, with the Done that returns to the chips. `panel` is echoed as
 // `data-panel` so a test can name which fact is open without reading its contents.
 //
+// `panel` IS ALSO THE HOST'S ANSWER TO "IS AN EDITOR OPEN" (#3409) — `null` says none is
+// — which is why it is REQUIRED rather than optional. It stopped being a test
+// convenience the moment the escape-layer marker was computed from it: an optional prop
+// defaults to the closed reading, and a consumer that forgot to pass it would lose the
+// marker WHILE AN EDITOR WAS OPEN, so the first Escape would throw the whole form away
+// with nothing on screen to say why. A required `string | null` makes forgetting a
+// compile error and makes "nothing is open" something the consumer has to say out loud.
+//
 // THE PANEL TAKES FOCUS WHEN IT OPENS (#3222), and without that nothing else here works.
 // Opening an editor UNMOUNTS the chip row, which means it unmounts the chip that was
 // just activated — so focus falls back to <body>, outside the consumer's keydown
@@ -187,7 +206,7 @@ export default function FactEditorHost({
   children,
 }: {
   testId?: string;
-  panel?: string;
+  panel: string | null;
   className?: string;
   bodyClassName?: string;
   doneTestId?: string;
@@ -198,7 +217,15 @@ export default function FactEditorHost({
   const panelRef = useRef<HTMLElement>(null);
   // Keyed on `panel` so switching directly between two facts re-lands focus, while a
   // re-render from typing inside the open editor never steals it back.
+  //
+  // AND ONLY WHEN ONE IS OPEN. `panel` going null is a CLOSE, and the close's focus
+  // belongs to useFactEditor, which puts it back on the chip that opened the editor
+  // (#3311). Nothing changes for the consumers that exist — a hidden-not-unmounted host
+  // is `display:none` by then, and `.focus()` on a display:none element is a no-op, so
+  // this ran and did nothing — but "the host is mounted" is not "an editor is open", and
+  // that is the same conflation #3409 was about, at a second address in this same file.
   useEffect(() => {
+    if (panel == null) return;
     panelRef.current?.focus();
   }, [panel]);
 
@@ -209,8 +236,9 @@ export default function FactEditorHost({
       data-testid={testId}
       data-panel={panel}
       // See the note above: this is what makes Esc return to the chips rather than
-      // dismiss the dialog the chips are sitting in.
-      data-escape-layer="true"
+      // dismiss the dialog the chips are sitting in — and it is CONDITIONAL, because a
+      // host with nothing open is not a layer and must let the dialog answer (#3409).
+      data-escape-layer={panel != null ? "true" : undefined}
       className={className}
     >
       <div className={bodyClassName}>{children}</div>

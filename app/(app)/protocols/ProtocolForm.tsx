@@ -494,7 +494,7 @@ export default function ProtocolForm({
           <FactEditorHost
             testId="protocol-editor"
             doneTestId="protocol-editor-done"
-            panel={openEditor ?? undefined}
+            panel={openEditor}
             onDone={closePanel}
             bodyClassName="space-y-3"
             // HIDDEN RATHER THAN UNMOUNTED, and this is the write-path decision of
