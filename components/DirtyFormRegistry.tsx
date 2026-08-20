@@ -17,6 +17,8 @@ import {
   isAnyFormDirty,
   reduceDirtyForms,
   refreshIsOwed,
+  resolveServerValue,
+  unsavedAnswerForForm,
   type DirtyFormEvent,
   type DirtyFormState,
   type TrackedField,
@@ -44,6 +46,40 @@ import { markUnrecoverableWork } from "@/lib/offline/unsaved-work";
 // combobox's search input must not be able to hold the whole app's background
 // refreshes hostage. Inside a form, for the same reason: the command palette and
 // page-level search boxes are not unsaved records.
+//
+// TWO WAYS A FIELD LEAVES THE GUARD, WITH IDENTICAL SYMPTOMS AND OPPOSITE FIXES.
+// Both present as "I typed something, the dialog dismissed, nothing asked" — and
+// an adopter who has only heard of one will apply its fix, watch the symptom
+// survive, and have no reason to suspect the other exists (#3352).
+//
+//   * UNMOUNTED. A field inside a panel that is removed from the DOM cannot be
+//     read, so it is pruned. FIXED BY KEEPING THE FIELD MOUNTED — hide the panel,
+//     do not unmount it. This is the mode `FactEditorHost` was designed around.
+//   * REACT-OWNED (CONTROLLED). A field whose `value` React controls has its DOM
+//     `defaultValue` mirrored onto that value, so "current vs server" compares a
+//     value against a copy of itself. KEEPING IT MOUNTED DOES NOTHING FOR THIS.
+//     Handled by `serverValueFor` below and `resolveServerValue` in the pure half,
+//     so it needs an adopter to do nothing at all — and so converting a DOM-owned
+//     field to controlled state (the ordinary "tidy-up" refactor) is now SAFE
+//     rather than silently disarming.
+//
+// The one-line check that separates them, answerable before any design is
+// committed: DOES THIS FIELD PASS `value`/`onChange` TODAY? If it does, it was
+// React-owned already; if it passes `defaultValue`, it was DOM-owned.
+//
+// A React-owned field can still say what the server holds, via `data-server-value`
+// — the one thing the DOM cannot work it out for itself. See `serverValueFor`.
+//
+// AND A THIRD WAY, WHICH IS NOT A FIELD PROBLEM AT ALL (#3356): a form with NO named
+// controls anywhere. A form that composes its FormData by hand out of React state has
+// nothing for the rules above to track — `ActivityForm` has zero `name=` attributes in
+// the whole file, and the sleep dialog is not a `<form>` — so the registry can only
+// ever answer "clean" about it, and a gesture dismissal discarded the typing with
+// nothing asking. Such a form ANSWERS FOR ITSELF by publishing `data-unsaved` on the
+// element it owns, and `hasUnsavedInputWithin` below believes it. The resolution rule
+// is `lib/dirty-forms.ts#unsavedAnswerForForm`: anything that believes there is
+// unsaved work wins, so a declaration can only ever ADD a form to the guard — never
+// remove one, which would be this file's other bug with better manners.
 //
 // PHI DISCIPLINE. Field values are health data. They are read, compared in
 // memory, and dropped; nothing here persists, transmits or logs a value, and the
@@ -83,6 +119,13 @@ type TrackableElement =
 interface FieldRecord {
   baseline: string;
   touched: boolean;
+  /**
+   * The DOM default read at REGISTRATION, before the user had edited anything. For
+   * a React-owned field this is the last moment the server's value is legible —
+   * once the user types, React overwrites the default with a mirror of what they
+   * typed. `resolveServerValue` falls back to this exactly then (#3352).
+   */
+  serverAtRegistration: string;
 }
 
 /** Per-form bookkeeping. Dropped wholesale on submit, reset, or unmount. */
@@ -105,7 +148,7 @@ function recordIsDirty(record: FormRecord): boolean {
       touched: meta.touched,
       current: currentValue(field),
       baseline: meta.baseline,
-      serverValue: serverValue(field),
+      serverValue: serverValueFor(field, meta),
     });
   }
   return formHasUnsavedInput(fields);
@@ -147,11 +190,15 @@ function currentValue(field: TrackableElement): string {
 }
 
 /**
- * The value the SERVER most recently rendered into the control. React writes it
- * into the DOM default on every update, so an autosave that revalidates moves
- * this to the saved value and the field stops counting as unsaved input.
+ * The control's DOM default, as one comparable string. For an uncontrolled field
+ * this IS the value the server most recently rendered — React writes it on every
+ * update, so an autosave that revalidates moves it to the saved value and the
+ * field stops counting as unsaved input.
+ *
+ * For a CONTROLLED field it is a mirror of `currentValue` instead, which is why
+ * no decision reads this directly any more; `serverValueFor` does.
  */
-function serverValue(field: TrackableElement): string {
+function domDefaultValue(field: TrackableElement): string {
   if (field instanceof HTMLInputElement) {
     if (field.type === "checkbox" || field.type === "radio") {
       return field.defaultChecked ? "1" : "";
@@ -167,6 +214,22 @@ function serverValue(field: TrackableElement): string {
   return field.defaultValue;
 }
 
+function serverValueFor(field: TrackableElement, meta: FieldRecord): string {
+  // AN EXPLICIT DECLARATION WINS, ALWAYS. `data-server-value` is how a React-owned
+  // editor states the value the server actually holds — the one thing the DOM
+  // cannot work out for itself. It is also the escape hatch for a controlled field
+  // that autosaves: without it such a field stays dirty until the form submits,
+  // resets or unmounts, because nothing else can tell the registry the save landed.
+  const declared = field.dataset.serverValue;
+  if (declared !== undefined) return declared;
+  return resolveServerValue({
+    liveDefault: domDefaultValue(field),
+    atRegistration: meta.serverAtRegistration,
+    current: currentValue(field),
+    touched: meta.touched,
+  });
+}
+
 /**
  * Whether this form's unsaved input is durably captured somewhere else — the
  * `data-draft-backed` marker `components/useFormDraft.ts` stamps on the subtree it
@@ -174,6 +237,26 @@ function serverValue(field: TrackableElement): string {
  */
 function isDraftBacked(form: HTMLFormElement): boolean {
   return form.closest("[data-draft-backed]") != null;
+}
+
+/**
+ * Elements inside `root` (or `root` itself) that publish their own unsaved answer
+ * with `data-unsaved` (#3356). Value-agnostic on purpose — a declaration of "false"
+ * is as binding as one of "true", per `unsavedAnswerForForm`.
+ */
+function declarationsWithin(root: Node): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  if (root instanceof HTMLElement && root.hasAttribute("data-unsaved")) {
+    found.push(root);
+  }
+  if (
+    root instanceof Element ||
+    root instanceof Document ||
+    root instanceof DocumentFragment
+  ) {
+    found.push(...root.querySelectorAll<HTMLElement>("[data-unsaved]"));
+  }
+  return found;
 }
 
 export interface DirtyFormApi {
@@ -189,7 +272,8 @@ export interface DirtyFormApi {
    */
   requestChromeRefresh: () => void;
   /**
-   * Whether any tracked form INSIDE `root` holds unsaved input right now.
+   * Whether anything INSIDE `root` holds unsaved input right now — every tracked
+   * form, plus every form that answers for itself with `data-unsaved` (#3356).
    *
    * The registry already answers "is anything on the page dirty?" for the chrome
    * refresh; this is the same computation, scoped to a subtree, and it exists so
@@ -198,6 +282,15 @@ export interface DirtyFormApi {
    * through a confirm when — and only when — the form it hosts has something to
    * lose; asking the page-wide question would put a confirm in front of a
    * dialog opened over some unrelated half-typed field elsewhere.
+   *
+   * THE SECOND SIGNAL, AND HOW IT RESOLVES (#3356). A form that composes its
+   * FormData by hand out of React state has no named controls for the registry to
+   * see, so it was answered "clean" no matter what the person had typed. Such a form
+   * publishes `data-unsaved`, and `lib/dirty-forms.ts#unsavedAnswerForForm` resolves
+   * it against the registry the fail-safe way: anything that believes there is
+   * unsaved work wins. A declaration ADDS a form to the guard and can never take one
+   * out — a form able to declare itself clean over its own named fields would be a
+   * blessed way to reproduce #3352.
    *
    * Read on demand, never subscribed to: the answer is only wanted at the moment
    * a dismissal is attempted, and making it reactive would re-render every
@@ -344,6 +437,10 @@ export default function DirtyFormProvider({
         record.fields.set(field, {
           baseline: currentValue(field),
           touched: false,
+          // Nothing has been typed yet, so the DOM default is the server's value
+          // whoever owns the field — this is the last moment that is true for a
+          // React-owned one.
+          serverAtRegistration: domDefaultValue(field),
         });
       }
     };
@@ -352,6 +449,11 @@ export default function DirtyFormProvider({
       const field = e.target;
       if (!isTrackable(field)) return;
       const record = recordFor(field.form!);
+      // Read BEFORE anything else. This is the capture phase, so React has not
+      // committed this keystroke yet and the DOM default is still the PRE-EDIT one
+      // whoever owns the field — which is the only moment a never-focused field's
+      // server value is legible, and the registration below depends on it.
+      const defaultBeforeCommit = domDefaultValue(field);
       const meta = record.fields.get(field);
       if (meta) meta.touched = true;
       else {
@@ -359,8 +461,9 @@ export default function DirtyFormProvider({
         // server value is the best available "before", and it is the right one:
         // restoring the field to what the server rendered is not unsaved input.
         record.fields.set(field, {
-          baseline: serverValue(field),
+          baseline: defaultBeforeCommit,
           touched: true,
+          serverAtRegistration: defaultBeforeCommit,
         });
       }
       prune();
@@ -432,10 +535,40 @@ export default function DirtyFormProvider({
       requestChromeRefresh: () => dispatch({ type: "chrome-refresh" }),
       hasUnsavedInputWithin: (root) => {
         if (root == null) return false;
+        // FORMS THAT ANSWER FOR THEMSELVES FIRST (#3356). A declaring element is
+        // paired with the registry's view of whatever forms sit inside it, and
+        // `unsavedAnswerForForm` resolves the pair — ANYTHING THAT BELIEVES THERE IS
+        // UNSAVED WORK WINS. So `data-unsaved="false"` adds nothing and, crucially,
+        // SUPPRESSES NOTHING: a declaring form's own named fields are still read, and
+        // no form can disarm its own guard by publishing a convenient answer.
+        const declarations = declarationsWithin(root);
+        // Dedup only, NOT precedence — a record inside a declaration was already
+        // resolved above, and resolving it twice cannot change the verdict now that
+        // nothing suppresses anything.
+        const resolved = new Set<HTMLFormElement>();
+        for (const el of declarations) {
+          let tracked = false;
+          for (const record of records.current.values()) {
+            if (!record.form.isConnected) continue;
+            if (!el.contains(record.form)) continue;
+            resolved.add(record.form);
+            tracked ||= recordIsDirty(record);
+          }
+          const declared = el.dataset.unsaved === "true";
+          if (unsavedAnswerForForm({ declared, tracked })) return true;
+        }
         for (const record of records.current.values()) {
           if (!record.form.isConnected) continue;
           if (!root.contains(record.form)) continue;
-          if (recordIsDirty(record)) return true;
+          if (resolved.has(record.form)) continue;
+          if (
+            unsavedAnswerForForm({
+              declared: null,
+              tracked: recordIsDirty(record),
+            })
+          ) {
+            return true;
+          }
         }
         return false;
       },

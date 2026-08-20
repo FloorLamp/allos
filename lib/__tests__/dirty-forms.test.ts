@@ -3,6 +3,8 @@ import {
   EMPTY_DIRTY_FORM_STATE,
   fieldHoldsUnsavedInput,
   formHasUnsavedInput,
+  resolveServerValue,
+  unsavedAnswerForForm,
   isAnyFormDirty,
   reduceDirtyForms,
   refreshIsOwed,
@@ -41,6 +43,129 @@ function run(
   }
   return { state, refreshes };
 }
+
+describe("resolveServerValue (#3352)", () => {
+  const at = (over: Partial<Parameters<typeof resolveServerValue>[0]> = {}) =>
+    resolveServerValue({
+      liveDefault: "",
+      atRegistration: "",
+      current: "",
+      touched: false,
+      ...over,
+    });
+
+  it("reads the live DOM default while nothing is ambiguous", () => {
+    // An untouched field, however it was rendered.
+    expect(at({ liveDefault: "Dr. Smith", atRegistration: "" })).toBe(
+      "Dr. Smith"
+    );
+    // And a touched one whose default has not moved: the ordinary DOM-owned form,
+    // where the default IS what the server rendered.
+    expect(
+      at({
+        touched: true,
+        current: "Dr. Jones",
+        liveDefault: "",
+        atRegistration: "",
+      })
+    ).toBe("");
+  });
+
+  it("believes a default that moved onto something the user did NOT type", () => {
+    // Only the server can have written this — a background revalidation landing
+    // under a half-typed field. Mistaking it for a mirror would freeze the field's
+    // server value at a string the server no longer holds.
+    expect(
+      at({
+        touched: true,
+        current: "Dr. Jones",
+        atRegistration: "Dr. Smith",
+        liveDefault: "Dr. Patel",
+      })
+    ).toBe("Dr. Patel");
+  });
+
+  it("distrusts a default that moved onto exactly what the user typed", () => {
+    // THE #3352 CASE. React syncs `defaultValue` onto a controlled field to match
+    // its `value`, so this state is reached by typing one character into any
+    // controlled field. Answering "the server has it" is what made every such field
+    // report clean forever; answering with the registration snapshot lets it be
+    // dirty.
+    //
+    // An autosave that saved the typed value reaches the SAME state and is told the
+    // same thing — deliberately, and documented on the function: the DOM cannot
+    // separate them, so this picks the mistake that costs a confirm over the one
+    // that costs somebody's typing. `data-server-value` is how a form opts out.
+    expect(
+      at({
+        touched: true,
+        current: "Grounding walk",
+        atRegistration: "",
+        liveDefault: "Grounding walk",
+      })
+    ).toBe("");
+  });
+
+  it("makes a controlled field genuinely dirty end to end", () => {
+    // The two halves together, which is the acceptance criterion: a controlled
+    // field the user typed into holds unsaved input.
+    const controlled = {
+      liveDefault: "Grounding walk",
+      atRegistration: "",
+      current: "Grounding walk",
+      touched: true,
+    };
+    expect(
+      fieldHoldsUnsavedInput({
+        touched: true,
+        current: controlled.current,
+        baseline: "",
+        serverValue: resolveServerValue(controlled),
+      })
+    ).toBe(true);
+  });
+});
+
+describe("unsavedAnswerForForm (#3356)", () => {
+  it("falls through to the registry when a form says nothing", () => {
+    // Every form that existed before this rule: no declaration, so nothing changes.
+    expect(unsavedAnswerForForm({ declared: null, tracked: true })).toBe(true);
+    expect(unsavedAnswerForForm({ declared: null, tracked: false })).toBe(
+      false
+    );
+  });
+
+  it("believes a form that declares itself unsaved, with nothing tracked", () => {
+    // THE #3356 CASE. A form that composes its FormData by hand out of React state
+    // has no named controls at all, so the registry sees nothing and used to answer
+    // "clean" however much had been typed — and the host dialog discarded it on a
+    // flick with no confirm.
+    expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
+  });
+
+  it("REFUSES to let a form declare itself clean over its own tracked fields", () => {
+    // THE CASE THAT MUST NOT REGRESS. The first version of this rule was
+    // `declared ?? tracked`, which reads tidily — "a declaring form answers for
+    // itself, so no form is described two ways" — and hands every form a blessed way
+    // to remove its own named fields from the discard guard while every test keeps
+    // passing. That is #3352's exact defect with better manners. So a declaration of
+    // `false` adds nothing and takes nothing away.
+    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(true);
+    // And a declaration of `false` over nothing tracked is still just "nothing".
+    expect(unsavedAnswerForForm({ declared: false, tracked: false })).toBe(
+      false
+    );
+  });
+
+  it("resolves a disagreement the same way resolveServerValue does", () => {
+    // Not a restatement of the cases above — the point is that ONE class of question
+    // is decided one way across this module. Neither signal can prove the other wrong
+    // from here, so both resolve BY CONSEQUENCE: believing "unsaved" costs a confirm,
+    // believing "clean" costs somebody's typing.
+    expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
+    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(true);
+  });
+});
 
 describe("fieldHoldsUnsavedInput", () => {
   it("ignores a field the user never edited, however it was rendered", () => {

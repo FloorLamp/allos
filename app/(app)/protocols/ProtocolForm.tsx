@@ -210,22 +210,37 @@ export default function ProtocolForm({
   // value is a separate question from who reads it, and the answer here is: the DOM
   // still does, for every plain field.
   //
-  // A CONTROLLED FIELD IS INVISIBLE TO THE DIRTY-FORM REGISTRY, which is not obvious
-  // and cost this change a round to find. `fieldHoldsUnsavedInput` ends at
-  // `current !== serverValue`, and `serverValue` is the DOM `defaultValue`
-  // (lib/dirty-forms.ts, components/DirtyFormRegistry.tsx) — which React KEEPS IN
-  // SYNC with `value` on a controlled input. So a controlled field reports
-  // current === serverValue forever, the registry reads that as "saved, not
-  // pending", and ModalShell's "Discard your changes?" guard never fires. Measured
-  // in the browser, not reasoned about: with `value={notes}` the textarea reported
-  // `value` and `defaultValue` both equal to the typed text while `isConnected` was
-  // true — so the field was mounted, exactly as intended, and still invisible.
+  // A CONTROLLED FIELD USED TO BE INVISIBLE TO THE DIRTY-FORM REGISTRY, which cost
+  // #3219 a round to find and is fixed in the registry itself now (#3352). Kept here
+  // because the reasoning still decides how this form is written, and because a
+  // reader who meets `onChange` mirroring into state will otherwise ask why.
   //
-  // These five were plain uncontrolled inputs before #3219 and are the only ones the
-  // registry could ever see (a DateField and a Combobox are React-controlled
-  // internally whatever this file passes them). So they STAY uncontrolled —
-  // `defaultValue` seeds them, the DOM owns them, and `onChange` mirrors into state
-  // that only the chips read.
+  // WHAT IT WAS. `fieldHoldsUnsavedInput` ends at `current !== serverValue`, and
+  // `serverValue` was the DOM `defaultValue` — which React KEEPS IN SYNC with
+  // `value` on a controlled input. So a controlled field reported
+  // current === serverValue forever, the registry read that as "saved, not pending",
+  // and ModalShell's "Discard your changes?" guard never fired. Measured in the
+  // browser, not reasoned about: with `value={notes}` the textarea reported `value`
+  // and `defaultValue` both equal to the typed text while `isConnected` was true —
+  // mounted exactly as intended, and still invisible.
+  //
+  // WHAT IT IS NOW. The registry snapshots each field's DOM default at registration
+  // and stops trusting the LIVE default once it has moved onto exactly what the user
+  // typed — which only React mirroring a controlled `value` does — so
+  // CONVERTING ANY FIELD BELOW TO CONTROLLED STATE NO LONGER DISARMS ITS GUARD. That
+  // tidy-up is safe; it is simply not needed. These five stay DOM-owned because that
+  // is the cheaper shape — `defaultValue` seeds them, the DOM holds the value, and
+  // `onChange` mirrors into state that only the chips read — and because keeping one
+  // genuinely DOM-owned field in this form is what lets e2e/protocol-facts.spec.ts
+  // measure both ownerships against the same guard.
+  //
+  // THE TWO OTHER FIELD KINDS IN THIS FORM ARE NOT THE SAME AS EACH OTHER, and the
+  // difference is the one that decides all of this:
+  //   * a Combobox's named input is VISIBLE and React-controlled, so it is tracked —
+  //     and before #3352 it was tracked-but-permanently-clean;
+  //   * a DateField's named input is `type="hidden"`, which the registry excludes
+  //     outright (NON_INPUT_TYPES), so it is not tracked at all and #3352 does not
+  //     reach it.
   const [name, setName] = useState(
     protocol?.name ?? initialTemplate?.name ?? ""
   );
