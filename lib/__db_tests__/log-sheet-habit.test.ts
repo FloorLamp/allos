@@ -186,6 +186,37 @@ describe("getSegmentLogDays", () => {
     expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
   });
 
+  // #3327 added the fourth Care arm. The store has no ingest path, so the only
+  // question its filter answers is the one every other arm answers: are these rows
+  // hand-entered?
+  it("counts substance taps toward Care, and alcohol's toward Food where they land", () => {
+    const { profileId, anchor } = makeProfile("Habit Substance");
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
+       VALUES (?, ?, 'nicotine', 2)`
+    ).run(profileId, anchor);
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
+       VALUES (?, ?, 'Kratom', 1)`
+    ).run(profileId, shiftDateStr(anchor, -1));
+    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+
+    // TWO substances on ONE day is one logged day, like every other arm: the
+    // measure counts days, never rows, which is what keeps a burst from moving it.
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
+       VALUES (?, ?, 'cannabis', 1)`
+    ).run(profileId, anchor);
+    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+
+    // Alcohol's taps land on food_daily_totals (#860/#944), which the Food arm
+    // already counts. `LOG_DAY_SOURCES` deliberately does not name that store twice,
+    // so a drink is one segment's evidence rather than two.
+    logFood(profileId, shiftDateStr(anchor, -2));
+    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    expect(getSegmentLogDays(profileId, anchor).food).toBe(1);
+  });
+
   it("counts one profile's logging only", () => {
     const mine = makeProfile("Habit Mine");
     const theirs = makeProfile("Habit Theirs");

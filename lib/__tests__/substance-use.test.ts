@@ -20,6 +20,8 @@ import {
   MAX_SUBSTANCE_NAME_LENGTH,
   normalizeSubstanceName,
   resolveSubstanceKey,
+  substanceNameError,
+  validateSubstanceName,
   isCuratedSubstance,
   isCustomSubstanceKey,
   substanceLabel,
@@ -381,6 +383,70 @@ describe("substance vocabulary: curated + custom (#3279)", () => {
     // Text that names nothing is not a key at all.
     expect(resolveSubstanceKey("")).toBeNull();
     expect(resolveSubstanceKey("   ")).toBeNull();
+  });
+
+  // #3326 — the SURFACE gate in front of the normalizer. `normalizeSubstanceName`
+  // truncates, which is right for a stored key and wrong for a person typing.
+  describe("validateSubstanceName (#3326)", () => {
+    it("refuses an over-long name rather than trimming it to fit", () => {
+      const tooLong = "x".repeat(MAX_SUBSTANCE_NAME_LENGTH + 1);
+      // The normalizer's own answer, which is the behaviour being GATED: it
+      // silently returns a different, shorter substance than the one typed.
+      expect(normalizeSubstanceName(tooLong)).toHaveLength(
+        MAX_SUBSTANCE_NAME_LENGTH
+      );
+      expect(validateSubstanceName(tooLong)).toEqual({
+        ok: false,
+        reason: "too-long",
+      });
+    });
+
+    it("measures the name it would STORE, not the one that was typed", () => {
+      // Exactly at the cap after collapsing: allowed, because that is the string
+      // that lands in the ledger. Padding and doubled spaces are not length.
+      const atCap = "x".repeat(MAX_SUBSTANCE_NAME_LENGTH);
+      expect(validateSubstanceName(`   ${atCap}   `)).toEqual({
+        ok: true,
+        key: atCap,
+      });
+      // Raw length MAX+1 (a doubled space), collapsed length exactly MAX. The
+      // collapse is what decides, so this is accepted while a genuine MAX+1 is not.
+      const spaced = `${"y".repeat(MAX_SUBSTANCE_NAME_LENGTH - 2)}  z`;
+      expect(spaced.length).toBeGreaterThan(MAX_SUBSTANCE_NAME_LENGTH);
+      expect(validateSubstanceName(spaced)).toEqual({
+        ok: true,
+        key: `${"y".repeat(MAX_SUBSTANCE_NAME_LENGTH - 2)} z`,
+      });
+    });
+
+    it("hands back exactly the key resolveSubstanceKey would, so there is one normalization", () => {
+      for (const typed of ["Alcohol", "  NICOTINE ", "  Kratom ", "MDMA"]) {
+        const result = validateSubstanceName(typed);
+        expect(result.ok).toBe(true);
+        expect(result.ok && result.key).toBe(resolveSubstanceKey(typed));
+      }
+    });
+
+    it("treats a name that is only whitespace as nothing typed", () => {
+      expect(validateSubstanceName("")).toEqual({ ok: false, reason: "empty" });
+      expect(validateSubstanceName("   ")).toEqual({
+        ok: false,
+        reason: "empty",
+      });
+    });
+
+    it("gives each rejection one wording, and names the real limit in it", () => {
+      // The client's pre-flight check and the Server Action's re-check read the
+      // same function, so they cannot drift into two near-miss sentences.
+      expect(substanceNameError("too-long")).toContain(
+        String(MAX_SUBSTANCE_NAME_LENGTH)
+      );
+      expect(substanceNameError("empty")).not.toBe(
+        substanceNameError("too-long")
+      );
+      // No editorial-policy language, and no truncation promised.
+      expect(substanceNameError("too-long")).not.toMatch(/shorten|cut|trim/i);
+    });
   });
 
   it("splits the key space cleanly: every key is curated XOR custom", () => {
