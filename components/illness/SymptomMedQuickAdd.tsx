@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import QuickAddMedication from "@/components/QuickAddMedication";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 
@@ -38,8 +38,9 @@ export default function SymptomMedQuickAdd({
       <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
         Taking something for it?
       </p>
-      <QuickAddMedication
+      <IntakeItemForm
         action={addIntakeItem}
+        kind="medication"
         pediatric={pediatric}
         onDone={() => setOpen(false)}
       />

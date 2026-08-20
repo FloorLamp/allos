@@ -135,3 +135,32 @@ export const BOTTOM_EDGE_NAV_ROW_HEIGHT = "h-14";
 // cannot drift.
 export const BOTTOM_EDGE_ABOVE_NAV =
   "bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0";
+
+// ── The declared dialog size (issue #2774) ───────────────────────────────────
+//
+// The container half of #2014's arithmetic. Before this, width was a per-host
+// `className` override — `max-w-sm` through `max-w-5xl` scattered across
+// ModalShell's 34 call sites, plus the sheet's own hardcoded `sm:max-w-md` — so
+// "how wide is a dialog?" had thirty answers and no rule, and two dialogs
+// holding the same shape of form could differ by 500px for no reason anyone
+// could name. A consumer now DECLARES which of three shapes its content is and
+// the primitive owns the number.
+//
+// Three, not a continuum: a fourth bucket is a request to re-litigate a layout
+// rather than to describe content, and the sizes only ever apply from `sm` up —
+// below that every converged surface is a full-width sheet, so there is nothing
+// to choose.
+//
+//   sm — a decision or a single field: confirms, pickers, one-question edits.
+//   md — a record form: the default, and what ModalShell's `max-w-2xl` was.
+//   lg — a multi-column tool or a table: the measurements grid, food suggestions.
+//
+// Literal class strings, because Tailwind's scanner reads literals — a computed
+// `sm:max-w-${size}` would never be generated.
+export type OverlaySize = "sm" | "md" | "lg";
+
+export const OVERLAY_PANEL_MAX_WIDTH: Record<OverlaySize, string> = {
+  sm: "sm:max-w-md",
+  md: "sm:max-w-2xl",
+  lg: "sm:max-w-4xl",
+};

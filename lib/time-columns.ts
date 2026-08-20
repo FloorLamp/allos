@@ -1213,6 +1213,16 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  notify_offers: [
+    { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "created_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "bare",
+      note: "The #2460 offer-mint stamp, BARE like its sibling `notify_messages.sent_at`: the retention sweep compares it in SQL against `datetime(?, ?)`, which a canonical `…Z` string would not compare against at all.",
+    },
+  ],
   notify_post_workout_claims: [
     {
       column: "claimed_at",

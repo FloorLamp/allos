@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 // The web dose check-off is a TAKEN / SKIPPED / CLEAR tri-state (#232): a
 // deliberate skip is a first-class decision, distinct from a silent miss, with
 // its own control beside the ✅ take. This drives the whole cycle in the real app
@@ -16,8 +17,10 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(NAME);
-  await addDialog.getByLabel("Amount").first().fill("15 mg"); // first-ok: the add modal's first dose-row field
-  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add modal's first dose-row field
+  const doseEditor1 = await openFact(page, "dose", addDialog);
+  await doseEditor1.getByLabel("Amount").first().fill("15 mg"); // first-ok: the add modal's first dose-row field
+  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add modal's first dose-row field
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
 
   const row = page

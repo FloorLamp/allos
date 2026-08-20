@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { hydratedClick } from "./helpers";
@@ -171,23 +172,28 @@ test("the mg/day max round-trips through the medication edit form", async ({
 
   try {
     await page.goto(`/medications/${otcId}?action=edit`);
-    const form = page
-      .locator("form")
-      .filter({ has: page.getByTestId("redose-max-mg") });
-    const mgInput = form.getByTestId("redose-max-mg");
+    const form = page.getByTestId("intake-item-form");
+    // The mg/day ceiling is a redose bound, so it lives under the timing fact (#3216)
+    // beside the count max it is the honest alternative to.
+    const timing = await openFact(page, "timing");
+    const mgInput = timing.getByTestId("redose-max-mg");
     // The stored ceiling is loaded beside the count max…
     await expect(mgInput).toHaveValue("1200");
-    await expect(form.getByTestId("redose-max")).toHaveValue("6");
+    await expect(timing.getByTestId("redose-max")).toHaveValue("6");
     // …and an edit persists. The card fires other POSTs while the form is open
     // (RxNorm resolution), so "the save settled" is asserted by ITS OWN UI
     // signal — a successful action closes the edit form (onDone) — rather than
     // by the first same-origin POST response.
     await mgInput.fill("2400");
+    // Closed BEFORE saving: a ceiling typed into a fact nobody is looking at must
+    // still reach the action (#2014).
+    await closeEditor(page);
     await hydratedClick(page, form.getByRole("button", { name: "Save" }));
-    await expect(mgInput).toBeHidden({ timeout: 20_000 });
+    await expect(form).toBeHidden({ timeout: 20_000 });
 
     await page.goto(`/medications/${otcId}?action=edit`);
-    await expect(page.getByTestId("redose-max-mg")).toHaveValue("2400");
+    const reopened = await openFact(page, "timing");
+    await expect(reopened.getByTestId("redose-max-mg")).toHaveValue("2400");
 
     const check = openDb();
     try {

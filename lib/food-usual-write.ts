@@ -36,7 +36,7 @@
 
 import { instantNow } from "./clock";
 import { today, writeTx } from "./db";
-import { logFoodServingCore } from "./food-log-write";
+import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
 import type { FoodSlot } from "./food-slot";
 import { getUsualFoodOffer } from "./queries/nutrition";
 
@@ -94,7 +94,10 @@ export function logUsualFoodCore(
   // The group keys the button NAMED. Authoritative only as an upper bound: the offer
   // re-derived below decides what is actually written.
   named: readonly string[],
-  loggedAt: string = instantNow()
+  loggedAt: string = instantNow(),
+  // Which message's tap this is (#2264/#2460) — the Telegram composed one-tap only;
+  // the web control passes nothing and stores NULL, exactly as the bar does.
+  origin?: FoodWriteOrigin
 ): UsualFoodOutcome {
   const date = today(profileId);
   try {
@@ -118,7 +121,9 @@ export function logUsualFoodCore(
           groupKey,
           date,
           loggedAt,
-          window
+          window,
+          undefined,
+          origin
         );
         // Unreachable in practice — the offer only ever contains catalog slugs — but a
         // refusal must not be swallowed into a half-written set, so it THROWS to reach

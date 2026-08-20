@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
-import { hydratedClick } from "./helpers";
+import { deleteActivityFromForm, hydratedClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -131,14 +131,11 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     await page.getByTestId("workout-dock-open").click();
     // Scope the discard to the editor's own footer — the page BEHIND the editor
     // (Equipment) carries its own per-row Delete controls.
-    await page
-      .getByTestId("activity-form-footer")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
-    await page
-      .getByTestId("confirm-dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
+    await deleteActivityFromForm(page, {
+      trigger: page
+        .getByTestId("activity-form-footer")
+        .getByRole("button", { name: "Delete", exact: true }),
+    });
     await expect(dock).toHaveCount(0);
     const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
     await expect

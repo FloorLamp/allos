@@ -786,21 +786,22 @@ was asserting a stronger promise than the product makes.
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                                   | Use                                                                                                                                                                  |
-| --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                        | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599)   |
-| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                           | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                                |
-| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                       | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                          |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow        | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                          |
-| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one)        | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                   |
-| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)            | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                               |
-| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)            | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                                 |
-| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion                    | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                     |
-| A **pure client** toggle / value settles in place / a toast appears                                                         | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                      |
-| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration                 | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                        |
-| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                                      | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                                |
-| The click must open the browser's **native file chooser** (a camera/upload trigger ending in a synchronous `input.click()`) | `primeCameraFallback(page)` before the goto, then `capturePhotoFile(page, trigger, file)` — one tap, listener armed in the same `Promise.all`, branch STATED (#2662) |
-| A genuinely non-atomic condition none of the above expresses                                                                | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                           |
+| Situation                                                                                                                   | Use                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                        | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599)                       |
+| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                           | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                                                    |
+| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                       | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                                              |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow        | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                                              |
+| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one)        | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                                       |
+| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)            | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                                                   |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)            | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                                                     |
+| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion                    | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                                         |
+| A **pure client** toggle / value settles in place / a toast appears                                                         | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                                          |
+| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration                 | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                                            |
+| A tap on a **full-viewport scrim / backdrop** that can be lost the same way                                                 | `awaitHydrated(locator)` then a coordinate tap. `hydratedClick` clicks the element's CENTRE, which on a scrim is covered by the panel it dims, so it is refused for interception (#2774) |
+| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                                      | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                                                    |
+| The click must open the browser's **native file chooser** (a camera/upload trigger ending in a synchronous `input.click()`) | `primeCameraFallback(page)` before the goto, then `capturePhotoFile(page, trigger, file)` — one tap, listener armed in the same `Promise.all`, branch STATED (#2662)                     |
+| A genuinely non-atomic condition none of the above expresses                                                                | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                                               |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -1307,6 +1308,47 @@ retry-masking can no longer ship a flaky spec. No changed specs → the step is 
 cheap no-op. The full suite now runs at zero retries too (see the retries-drop
 note below), so this lane's strict verdict is the whole suite's standard, not a
 special case.
+
+### CHANGED specs and AFFECTED specs are different sets (#3216)
+
+The lane above answers "did I break a spec I edited". That is not the same
+question as "did I break a spec", and the gap has a specific shape:
+
+> **When a change makes a previously-unconditional element conditional, every
+> spec that addresses that element is affected — whether or not you edited it.**
+
+#3216 merged three intake forms into one summary-first form where a field only
+renders once its fact chip is opened. 25 spec files were migrated and run at
+`--repeat-each=3 --retries=0`: 267 passed, no flakes, a correct answer to the
+cheaper question. CI then failed three specs the change never touched —
+`episode-med-reconcile` (`med-end-date`), `intake-cadence` (`cadence-editor`),
+`prn-mg-max` (`redose-max-mg`) — each reaching for a field that used to render
+unconditionally in the edit form. `e2e-changed` structurally cannot see these:
+their diff is empty.
+
+**The cheap sweep that does see them.** Enumerate the markers whose rendering
+condition moved — from the component, not from whichever shard happened to go
+red — and grep the whole `e2e/` tree for them:
+
+```bash
+# every testid now rendered only inside a conditional container
+grep -ho 'data-testid="[^"]*"' <the components that moved> | sed 's/.*="//;s/"//' | sort -u
+# then, per id, every spec that addresses it
+grep -rl 'getByTestId("<id>"' e2e/*.spec.ts
+```
+
+Two cautions learned doing it. Templated ids (``data-testid={`${id}-weekday-${n}`}``)
+become wildcards and **over**-match: `*-weekday-*` matched an unrelated
+calendar's `day-history-weekday-label`, a false positive that costs a minute to
+dismiss and is far cheaper than a miss. And a testid sweep alone under-matches —
+a spec addressing the field by `getByLabel("Amount")` names no testid at all, so
+sweep the accessible labels too, then intersect with the specs that actually open
+that surface.
+
+The honest verification set is then "every spec that opens the surface at all",
+not "every spec I edited": for #3216 that was 30 files and 315 tests at parity,
+against 25 files and 267 tests for the changed set — disjoint enough that the
+smaller one passed while three of the larger one were red.
 
 ## Fix (d) — the frozen app clock (#990)
 

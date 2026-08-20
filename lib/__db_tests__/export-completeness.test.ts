@@ -87,6 +87,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "live Telegram message pointers (#1779): chat/message ids plus the delivered keyboard, kept only until Telegram's ~48h edit horizon so the tick can un-stale what a chat displays. Delivery plumbing about a THIRD-PARTY chat, not the user's health record, and worthless outside this instance's bot — the health facts every button refers to export via their own datasets (doses, food log, mood, symptoms).",
   },
   {
+    table: "notify_offers",
+    why: "what a delivered Telegram button OFFERED (#2460): the bundle a 64-byte callback token has no room to name, kept only while the message carrying it can still be tapped. The same class as notify_messages above — delivery plumbing about a third-party chat, meaningless on another instance — and every health fact a redeemed offer actually wrote exports via its own dataset (food log, intake logs).",
+  },
+  {
     table: "notify_post_workout_claims",
     why: "durable post-workout dispatch claims (#3058): which process won the right to send one finish nudge, and whether it did. Delivery-election bookkeeping in the same class as notify_messages above — no health payload of its own (the workout it points at exports via activities; the doses the nudge listed export via their intake datasets), and meaningless on another instance, whose notification processes never raced over it.",
   },

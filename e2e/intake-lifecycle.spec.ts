@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
@@ -133,7 +134,9 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
-  const retired = page.getByTestId("retired-doses");
+  // Retired doses live with the doses, behind the dose fact (#3216).
+  const doseEditor = await openFact(page, "dose");
+  const retired = doseEditor.getByTestId("retired-doses");
   await expect(retired).toBeVisible();
   await expect(retired).toContainText("500 mg · Evening");
   await settledClick(page, page.getByTestId(`restore-dose-${doseId}`));
@@ -141,9 +144,11 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
   // Rendering from state: with nothing left to restore, the section is gone —
   // and the restored dose joined the editable dose rows.
   await expect(page.getByTestId("retired-doses")).toHaveCount(0);
-  const editPanel = page.getByTestId("supplement-edit-panel");
   await expect(
-    editPanel.getByRole("combobox", { name: "Amount" }).nth(1)
+    page
+      .getByTestId("intake-editor")
+      .getByRole("combobox", { name: "Amount" })
+      .nth(1)
   ).toHaveValue("500 mg");
 
   // The SAME dose row is live again (id stability is the point of retire).

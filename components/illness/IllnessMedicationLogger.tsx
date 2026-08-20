@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
-import QuickAddMedication from "@/components/QuickAddMedication";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import type { PrnMedForQuickLog } from "@/lib/queries";
@@ -11,7 +11,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // The shared medication workspace for an active illness. Existing PRN medications use
 // the same compact quick-log rows on the dashboard cockpit and episode page; adding an
-// OTC medication expands the standard QuickAddMedication form in place. Cross-profile
+// OTC medication expands the standard intake form in place. Cross-profile
 // surfaces omit canAdd because the add action intentionally writes the active profile.
 export default function IllnessMedicationLogger({
   meds,
@@ -76,8 +76,9 @@ export default function IllnessMedicationLogger({
               <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
                 Add an over-the-counter medication and its usual dose.
               </p>
-              <QuickAddMedication
+              <IntakeItemForm
                 action={addIntakeItem}
+                kind="medication"
                 pediatric={pediatric}
                 onDone={() => setAdding(false)}
               />

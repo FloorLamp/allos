@@ -188,6 +188,22 @@ export interface DirtyFormApi {
    * its own bug. That distinction is this opt-in, never a heuristic.
    */
   requestChromeRefresh: () => void;
+  /**
+   * Whether any tracked form INSIDE `root` holds unsaved input right now.
+   *
+   * The registry already answers "is anything on the page dirty?" for the chrome
+   * refresh; this is the same computation, scoped to a subtree, and it exists so
+   * a DIALOG can ask about its OWN content rather than about the page (#2774).
+   * A converged sheet dismissed by a flick or a scrim tap routes that discard
+   * through a confirm when — and only when — the form it hosts has something to
+   * lose; asking the page-wide question would put a confirm in front of a
+   * dialog opened over some unrelated half-typed field elsewhere.
+   *
+   * Read on demand, never subscribed to: the answer is only wanted at the moment
+   * a dismissal is attempted, and making it reactive would re-render every
+   * dialog on every keystroke.
+   */
+  hasUnsavedInputWithin: (root: Node | null) => boolean;
 }
 
 const Ctx = createContext<DirtyFormApi | null>(null);
@@ -207,6 +223,23 @@ export function useChromeRefresh(): () => void {
     if (api) api.requestChromeRefresh();
     else startTransition(() => router.refresh());
   }, [api, router]);
+}
+
+/**
+ * Ask whether a subtree holds unsaved input. Returns a stable reader, not a
+ * value — see DirtyFormApi.hasUnsavedInputWithin.
+ *
+ * Answers `false` outside a provider rather than throwing, for the same reason
+ * useChromeRefresh falls back: a shared primitive must stay renderable outside
+ * the authenticated shell. The cost of being wrong that way is one skipped
+ * confirm on a surface that has no registry to be dirty in.
+ */
+export function useUnsavedInputWithin(): (root: Node | null) => boolean {
+  const api = useContext(Ctx);
+  return useCallback(
+    (root: Node | null) => (api ? api.hasUnsavedInputWithin(root) : false),
+    [api]
+  );
 }
 
 /**
@@ -397,6 +430,15 @@ export default function DirtyFormProvider({
   const value = useMemo<DirtyFormApi>(
     () => ({
       requestChromeRefresh: () => dispatch({ type: "chrome-refresh" }),
+      hasUnsavedInputWithin: (root) => {
+        if (root == null) return false;
+        for (const record of records.current.values()) {
+          if (!record.form.isConnected) continue;
+          if (!root.contains(record.form)) continue;
+          if (recordIsDirty(record)) return true;
+        }
+        return false;
+      },
     }),
     [dispatch]
   );

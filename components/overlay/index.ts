@@ -50,6 +50,8 @@ export {
   BOTTOM_EDGE_ALERT_LAYER,
   BOTTOM_EDGE_NAV_ROW_HEIGHT,
   BOTTOM_EDGE_ABOVE_NAV,
+  OVERLAY_PANEL_MAX_WIDTH,
+  type OverlaySize,
 } from "./tokens";
 export {
   overlayMotionClass,

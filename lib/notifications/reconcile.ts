@@ -153,6 +153,12 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { classifyTelegramFailure } from "./telegram-error";
+import {
+  attachUsualRoutine,
+  attachmentOnKeyboard,
+  standingUsualOffer,
+} from "./usual-routine-attach";
+import { pruneNotifyOffers } from "./offer-store";
 import { messageKeyboard } from "./telegram-render";
 import {
   closeMessage,
@@ -461,6 +467,13 @@ const intakeDose: FamilyReconciler = {
           ids.every((id) => id && resolvedFor(date).has(id))
         )
           dead.add(t);
+      } else if (f[0] === "usual") {
+        // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so
+        // whichever family owns the message it rides decides when it dies — and both
+        // decide it the same way, by asking whether the STORED offer still names
+        // anything that stands. Once it does not, the button goes and the named line
+        // with it; until then the rebuild re-renders it REDUCED to the remainder.
+        if (!standingUsualOffer(profileId, Number(f[2]), p.date)) dead.add(t);
       } else if (f[0] === "demote") {
         // The ⤓ May suggestion is moot once the item IS `may` — the same
         // already-demoted refusal its own typed outcome would answer with.
@@ -725,7 +738,7 @@ const food: FamilyReconciler = {
   // now on their own message (#2264): a chip for a burst another message produced is
   // dead here whatever its age.
   dead(profileId, tokens, p) {
-    return deadCorrectionTokens(
+    const dead = deadCorrectionTokens(
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
@@ -739,6 +752,16 @@ const food: FamilyReconciler = {
         ).map((b) => b.fromId)
       )
     );
+    // The composed one-tap (#2460) rides this family too, and dies here by the SAME
+    // question the dose reminder asks of it — the stored offer against what stands.
+    // It is the one button on this keyboard that CAN resolve: the quick-log rows never
+    // do, but the bundle is an offer, and an offer that has been taken is spent.
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "usual") continue;
+      if (!standingUsualOffer(profileId, Number(f[2]), p.date)) dead.add(t);
+    }
+    return dead;
   },
   rebuild(profileId, tokens, p) {
     for (const t of tokens) {
@@ -1310,6 +1333,11 @@ export async function reconcileProfileMessages(
     failed: 0,
   };
   result.pruned = pruneMessagePointers(profileId);
+  // The stored offers (#2460) age out on the same pass and the same horizon: an offer
+  // is only ever redeemed from a live message, so it can never usefully outlive one.
+  // Not counted in `pruned` — that number is pointers, and two units in one field is a
+  // number nobody can read.
+  pruneNotifyOffers(profileId);
   const td = today(profileId);
 
   for (const pointer of liveMessagePointers(profileId)) {
@@ -1604,6 +1632,30 @@ async function reconcileProse(
   }
 }
 
+// THE HOST-INHERITED BUNDLE, RE-APPLIED BEFORE THE PLAN IS MADE (#2460). The families
+// rebuild through their own builders, which know nothing about the composed one-tap, so
+// a plain rebuild would silently drop a bundle that still stands. It has to happen HERE
+// rather than only at the send chokepoint, because the plan's keyboard is the thing
+// compared against what the chat is already showing: attaching later would make every
+// tick see a difference and edit a message nothing had changed on — the zero-call steady
+// state this sweep exists to hold. `attachUsualRoutine` is idempotent, so the chokepoint
+// applying it again downstream is a no-op.
+//
+// Reduced, never grown: the attachment is the intersection of the STORED offer with what
+// currently stands, and it is null once nothing does — which is how the button leaves a
+// keyboard the rest of whose rows are still live.
+function withStandingUsual(
+  profileId: number,
+  pointer: MessagePointer,
+  message: NotificationMessage | null
+): NotificationMessage | null {
+  if (!message) return null;
+  return attachUsualRoutine(
+    message,
+    attachmentOnKeyboard(profileId, pointer.keyboard, pointer.date)
+  );
+}
+
 // WHAT an edit will be, resolved with no network and no writes. Null means this
 // pointer needs nothing this pass.
 //
@@ -1656,7 +1708,11 @@ function planEdit(
     // carry counts that do. Gated on the render actually DIFFERING from what was
     // delivered, so a quiet tick stays at zero calls.
     if (!reconciler?.rebuild) return null;
-    const rebuilt = reconciler.rebuild(profileId, tokens, pointer);
+    const rebuilt = withStandingUsual(
+      profileId,
+      pointer,
+      reconciler.rebuild(profileId, tokens, pointer)
+    );
     if (!rebuilt) return null;
     const keyboard = messageKeyboard(rebuilt);
     if (JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard))
@@ -1666,7 +1722,11 @@ function planEdit(
   // Partial resolution. A family with a rebuilder re-renders the whole message from
   // current state (the same computation the tap rebuild runs); everything else has
   // exactly the dead buttons removed.
-  const rebuilt = reconciler?.rebuild?.(profileId, tokens, pointer) ?? null;
+  const rebuilt = withStandingUsual(
+    profileId,
+    pointer,
+    reconciler?.rebuild?.(profileId, tokens, pointer) ?? null
+  );
   if (rebuilt) {
     return {
       kind: "rebuild",

@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { deleteActivityFromForm } from "./helpers";
 
 // #2870 step 3 — ONE URL. Starting a workout creates its row up front
 // (create-at-start) and stands the tab on the session's canonical page; the
@@ -83,9 +84,5 @@ test("live start → set → finish: the record settles at the session's own URL
   await page.getByTestId("activity-page-edit").click();
   await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
   await expect(page.getByTestId("activity-form")).toBeVisible();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
 });

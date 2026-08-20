@@ -10,7 +10,7 @@ import {
   PRESENCE_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { hydratedClick } from "./helpers";
+import { deleteActivityFromForm, hydratedClick } from "./helpers";
 import { shiftDateStr } from "@/lib/date";
 
 // Derived workout presence (issue #921), driven end-to-end:
@@ -129,14 +129,6 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   // pre-hydration leaves the editor closed — the Delete wait then burns the whole
   // test timeout (CI shard-4 red on 53c76df; the #1556 class).
   await hydratedClick(page, page.getByTestId("workout-dock-open"));
-  await hydratedClick(
-    page,
-    page.getByRole("button", { name: "Delete", exact: true })
-  );
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
   // Wait on the "Activity deleted." toast, NOT just the vanishing bar. Closing the
   // overlay hides the bar from CLIENT state alone, so the dock assertion below was
   // satisfied even while the delete's Server Action was still in flight — and the
@@ -149,9 +141,12 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   // The generous budget is the point: deleteActivity + its revalidate on the heavy
   // dashboard routinely runs past the 5s default under CI contention, and that gap is
   // precisely the window the old bare assertion sailed through.
-  await expect(page.getByText("Activity deleted.")).toBeVisible({
-    timeout: 30_000,
-  });
+  //
+  // THIS SPEC IS WHERE THAT WAS FIRST MEASURED, and it was the only one repaired.
+  // #3267 found the identical hole in six more workout specs, so the two clicks and
+  // the budgeted toast now live in `deleteActivityFromForm` (e2e/helpers.ts) and this
+  // call site reads them from there rather than being the sole copy.
+  await deleteActivityFromForm(page);
   // The dock unmount rides the SAME delete + refresh the toast above was budgeted
   // for — a 5s default here was the budget asymmetry #1556 called out as a latent
   // member, and it fired (2026-07-31, run 30663146216). One operation, one budget.

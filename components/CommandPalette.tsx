@@ -494,7 +494,14 @@ export default function CommandPalette({
       title="Search"
       onClose={close}
       initialFocusRef={inputRef}
-      className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:mt-8 sm:p-5"
+      // A RECORDED anatomy exception to the #2774 convergence, not a preference:
+      // the palette is a keyboard surface whose whole body is a virtualized
+      // result list under a search field. It has no bottom edge to flick toward
+      // at any width, and a phone sheet whose content is the software keyboard
+      // plus a scrolling list is the one shape the sheet idiom does not improve.
+      // #1469 scoped it out on the same grounds; the justification lives in
+      // lib/__tests__/overlay-motion-chokepoint.test.ts.
+      presentation="centered"
     >
       <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="relative">

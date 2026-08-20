@@ -26,7 +26,7 @@ import {
 } from "../../refill";
 import { getRefillRates } from "./refill";
 import { isPushedIntake } from "../../intake-schedule";
-import type { SupplyOption } from "../../supply-product";
+import { bottleSiblingKind, type SupplyOption } from "../../supply-product";
 import type { IntakeObligation } from "../../types";
 
 // A shared bottle as stored.
@@ -120,7 +120,7 @@ export function findLinkableSupply(
     poolMembers(supplyId).map((m) => m.profileId),
     new Set(profileIds)
   );
-  return visible ? supplyOption(supply) : null;
+  return visible ? supplyOption(supply, poolMembers(supplyId)) : null;
 }
 
 export function isLinkableSupply(
@@ -130,12 +130,20 @@ export function isLinkableSupply(
   return findLinkableSupply(profileIds, supplyId) != null;
 }
 
-export function supplyOption(supply: SharedSupply): SupplyOption {
+// One bottle as an offerable option. `members` lets the option carry the two facts the
+// intake form's front door needs (#3216): the count, so the row can say how much is in
+// it, and the kind its existing members lend — a bottle has none of its own.
+export function supplyOption(
+  supply: SharedSupply,
+  members: readonly PoolMember[] = []
+): SupplyOption {
   return {
     id: supply.id,
     name: supply.name,
     strength: supply.strength,
     form: supply.form,
+    onHand: supply.quantity_on_hand,
+    siblingKind: bottleSiblingKind(members),
   };
 }
 

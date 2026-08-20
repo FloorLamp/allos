@@ -115,6 +115,67 @@ export function parseStackTakeCallback(
   return { profileId, date, doseIds };
 }
 
+// ---- The composed "your usual <window>" one-tap (issue #2460) ---------------
+//
+// One button, the whole morning: the habitual food groups AND the declared doses
+// still owed in the window, written by `logUsualRoutineCore` in one tap.
+//
+// THE TOKEN NAMES AN OFFER, NOT THE SETS. Spelling both sets into the token
+// (`usual:<profileId>:<window>:<date>:<slug,slug>:<doseId,doseId>`) measured 63 of the
+// 64 available bytes for the motivating profile's two groups and six doses — and it is
+// LARGEST at send time, before anything is logged, so a third habitual group or a
+// seventh dose would silently delete the button exactly when it helps most. So the
+// bundle is stored (`notify_offers`, lib/notifications/offer-store.ts) and the token
+// carries its id: constant size, immune to both growth axes.
+//
+// The stored offer stays an UPPER BOUND, exactly as the named sets were: the handler
+// re-derives what currently stands and writes only the intersection, so a forged,
+// replayed or stale token can never write outside the offer that currently stands.
+
+export interface UsualRoutineCallback {
+  profileId: number;
+  offerId: number;
+}
+
+// The single source of truth for the token shape (the send plan mints it, the parser
+// and the reconcile sweep read it): "usual:<profileId>:<offerId>".
+export function usualRoutineCallback(
+  profileId: number,
+  offerId: number
+): string {
+  return `usual:${profileId}:${offerId}`;
+}
+
+// Parse a usual-routine token. Malformed (wrong prefix, non-numeric or zero ids,
+// trailing fields) → null. The profile id is a cross-check like every other tap token:
+// the handler re-resolves the acting profile from the chat, and the offer row is read
+// scoped by that profile.
+export function parseUsualRoutineCallback(
+  data: unknown
+): UsualRoutineCallback | null {
+  if (typeof data !== "string" || !data.startsWith("usual:")) return null;
+  const parts = data.split(":");
+  if (parts.length !== 3) return null;
+  const profileId = Number(parts[1]);
+  const offerId = Number(parts[2]);
+  if (!Number.isInteger(profileId) || profileId <= 0) return null;
+  if (!Number.isInteger(offerId) || offerId <= 0) return null;
+  return { profileId, offerId };
+}
+
+// Does a token fit Telegram's callback budget? The EXACT encoded byte length, not a
+// character count and not an estimate — a multi-byte character in a future token shape
+// would pass a `.length` check and be rejected on the wire.
+//
+// Compose-time callers DROP a button whose token does not fit; they never truncate it.
+// An offer may never name less than the tap would write (#2460), and #3098's per-stack
+// one-tap already ships that rule (lib/notifications/intake-format.ts).
+export function callbackDataFits(data: string): boolean {
+  return (
+    new TextEncoder().encode(data).length <= TELEGRAM_CALLBACK_DATA_MAX_BYTES
+  );
+}
+
 // Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
 // keyboard: every dose id a surviving take/skip button carries, plus every slot a
 // per-slot "✅ All" token names. The rebuild paths feed these to

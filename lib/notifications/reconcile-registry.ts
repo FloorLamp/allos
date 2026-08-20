@@ -40,11 +40,25 @@ export type ReconcileFamily =
   | "workout-draft"
   | "practice";
 
+// A token that decorates MORE THAN ONE message family and takes the family of
+// whichever message it is attached to (#2460). The third answer the registry needed:
+// `usual:` rides both the dose reminder (family `intake-dose`) and the food nudge
+// (family `food`), so registering it with either would make it the owner wherever it
+// happened to sort first and silently mis-reconcile the other message. That matters
+// more than tidiness — the dose reminder's sweep is SAFETY TIER, and a mis-attributed
+// family means the wrong sweep decides when that message dies.
+//
+// It is NOT a fourth kind of answer to "what happens when this goes stale": a
+// host-inherited token is reconciled by its host's family, which must therefore know
+// it. What it declines to do is ELECT that family.
+export const HOST_INHERITED = "host";
+
 export interface ReconcilePrefixEntry {
   // The callback token prefix, without its colon.
   prefix: string;
-  // The reconciler that owns messages led by this token.
-  family?: ReconcileFamily;
+  // The reconciler that owns messages led by this token — or HOST_INHERITED, meaning
+  // this token never elects one and inherits its host message's instead.
+  family?: ReconcileFamily | typeof HOST_INHERITED;
   // …or the written reason this button makes no state claim.
   inert?: string;
 }
@@ -74,6 +88,16 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // is not kept alive by them, because the family's `dead` set covers both prefixes.
   { prefix: "dosetime", family: "intake-dose" },
   { prefix: "dosetimeat", family: "intake-dose" },
+
+  // The composed "your usual <window>" one-tap (#2460) — the app's first HOST-INHERITED
+  // token. It rides the window's dose reminder when that fires and the window's food
+  // nudge otherwise (never both), so it has no family of its own to declare: on a dose
+  // reminder it is reconciled by `intake-dose`, on a food nudge by `food`, and it elects
+  // neither. Both of those families know it: the token names a stored offer
+  // (`notify_offers`), the sweep re-derives that bundle against fresh state, and the
+  // re-render only ever REDUCES — halves already logged fall out of the named line and
+  // the button disappears once nothing stands.
+  { prefix: "usual", family: HOST_INHERITED },
 
   // A redose notice belongs to the administration id in its token. Any newer
   // family administration — including one logged in the app — spends that window.
@@ -694,6 +718,12 @@ export function reconcileEntryFor(
 // first token that makes a state claim. Builders put the primary action rows first and
 // ride-along rows (the offer tail, ⚙️ Tune) last, so "first" is the message's subject.
 //
+// HOST-INHERITED TOKENS ARE SKIPPED REGARDLESS OF POSITION (#2460). `usual:` leads the
+// keyboard it rides — it is the upgrade of the row beneath it, so it cannot be a
+// footer — and it still must not elect the family. Order therefore does not decide the
+// answer for these: shuffling the buttons of a keyboard changes neither the resolved
+// family nor whether one resolves at all.
+//
 // Null when nothing on the keyboard claims state — a `/dose` list, a fully collapsed
 // digest — in which case there is nothing to reconcile and the sweep makes no call.
 export function owningFamily(
@@ -701,10 +731,35 @@ export function owningFamily(
   prefixOf: (token: string) => string | null
 ): ReconcileFamily | null {
   for (const t of tokens) {
-    const entry = reconcileEntryFor(prefixOf(t));
-    if (entry?.family) return entry.family;
+    const family = reconcileEntryFor(prefixOf(t))?.family;
+    if (family && family !== HOST_INHERITED) return family;
   }
   return null;
+}
+
+// Does this keyboard carry a host-inherited token (#2460)?
+export function hasHostInheritedToken(
+  tokens: readonly string[],
+  prefixOf: (token: string) => string | null
+): boolean {
+  return tokens.some(
+    (t) => reconcileEntryFor(prefixOf(t))?.family === HOST_INHERITED
+  );
+}
+
+// Is this keyboard a legal one to SEND (#2460)? A host-inherited token has no family of
+// its own, so a keyboard made only of them has no host to inherit from: nothing would
+// own it, nothing would reconcile it, and `usual:` would have become a standalone
+// keyboard by accident. Asserted by the send plan before dispatch and by the registry's
+// completeness test — the keyboard is invalid, not merely unowned.
+export function keyboardFamilyValid(
+  tokens: readonly string[],
+  prefixOf: (token: string) => string | null
+): boolean {
+  return (
+    !hasHostInheritedToken(tokens, prefixOf) ||
+    owningFamily(tokens, prefixOf) !== null
+  );
 }
 
 // Which of a keyboard's tokens are INERT — passed to the pure decision so they neither

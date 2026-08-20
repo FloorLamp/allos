@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  deleteActivityFromForm,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // Issue #340: live workout mode — the in-gym presentation of the SAME activity
 // editor (no second engine), driven end-to-end against the seeded DB.
@@ -84,11 +89,7 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(page.getByTestId("workout-dock")).toBeVisible();
   await page.getByTestId("workout-dock-open").click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
   await page.waitForURL(/\/training(\?.*)?$/);
 });
 
@@ -132,11 +133,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
 
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
   // Deleting the activity from its canonical page leaves that now-dead URL and
   // clears its live presence before the next test shares this worker database.
   await page.waitForURL(/\/training(\?.*)?$/);
@@ -236,11 +233,7 @@ test("mid-session, the workout entry point resumes and the session clock survive
   // Restore from the bar and explicitly delete this test's session.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteActivityFromForm(page);
   await page.waitForURL(/\/training(\?.*)?$/);
   await expect(dock).toHaveCount(0);
 });

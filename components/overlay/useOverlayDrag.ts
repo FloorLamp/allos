@@ -63,7 +63,20 @@ export interface OverlayDragOptions {
   // switcher (#1801), which retreats back through the bar it dropped from.
   direction: Extract<GestureDirection, "down" | "left" | "up">;
   // THE OUTCOME — dismiss, minimize, whatever this surface's contract says.
-  onOutcome: () => void;
+  //
+  // It may REFUSE, by returning `false` (#2774). A converged dialog whose form
+  // holds unsaved input routes its discard through a confirm and is not closing
+  // yet, so the panel must come back to rest instead of leaving. The question is
+  // asked BEFORE the committing travel starts, because a panel already sent away
+  // has nowhere to come back from: it sits translated past the bottom edge with
+  // the form still mounted and still dirty inside it, and the consumer that said
+  // "keep editing" has kept the data and lost the surface. That is not a
+  // hypothetical — it is what shipped in this hook's first #2774 consumer, and
+  // what e2e/dialog-convergence.mobile.spec.ts now pins by geometry.
+  //
+  // Returning nothing means COMMITTED, so the drawer, the dock and the plain
+  // sheet are unchanged.
+  onOutcome: () => void | boolean;
   // What happens to the PANEL when the outcome fires, which follows from the
   // surface's lifecycle rather than from the gesture:
   //
@@ -199,7 +212,13 @@ export function useOverlayDrag({
         onOutcome();
         return;
       }
-      settle(goneOffset(), onOutcome);
+      // Ask first, then travel. `settle` starts a 240ms transition, so committing
+      // the travel before knowing the answer would need it un-done mid-flight.
+      if (onOutcome() === false) {
+        settle(0);
+        return;
+      }
+      settle(goneOffset());
     },
     onCancel: () => settle(0),
   });
