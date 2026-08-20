@@ -492,6 +492,16 @@ ${MIGRATION_LINES}
   So: scope every content check to the files you changed, and expect a deliberate
   quotation of the thing you removed. Both directions of this failure are the same
   bug — a check whose scope is wider or narrower than the question being asked.
+  AND NEVER TRUST A BARE \`grep -c\`. A count is a claim stripped of its context, and
+  two more ways it lies were measured on #3391 within one verification pass:
+  a CASE mismatch (the phrase was there in screaming caps; the grep was lowercase, so
+  it reported "missing" — the reassuring-to-fix direction again), and a count of 1 that
+  was a DIFFERENT, pre-existing, unrelated assertion, which read as "you did not remove
+  the thing you said you removed". Both would have sent a lane to re-edit a correct
+  merged file. Use \`-i\` when case is not part of the claim, print the MATCHES with
+  context (\`-n\`, \`-B\`/\`-A\`) rather than the count, and open the file before believing a
+  zero. A wrong verification is more expensive than none, because the work it invents
+  looks justified.
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
@@ -562,6 +572,13 @@ ${MIGRATION_LINES}
   and imaging.spec.ts (the opposite verdict, so latency DISPROVEN). If you add a
   ceiling, NAME it as a constant and put the measurement in the comment — the number
   alone is indistinguishable from a guess.
+  AND THE DERIVATION IS NOT BOOKKEEPING; IT IS HOW YOU FIND OUT THE CONSTANT IS WRONG.
+  Measured on #3391: a lane was asked to state what a ceiling's headroom was FOR, went
+  to write that sentence, and discovered while writing it that the bound was checked
+  against the wrong quantity and could never fire at all — a defect no amount of
+  staring at the number would have surfaced, because the number was irrelevant. Having
+  to say out loud what a bound is bounding is the check. Demand the stated unit even
+  when the constant looks obviously right.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
