@@ -2,6 +2,13 @@
 // The public row contract is storage-agnostic; dispatch is decided only from the
 // catalog substance. Alcohol updates its existing food_daily_totals counter and reconciles
 // the matching per-tap events, while nicotine/cannabis update substance_daily_totals.
+//
+// #3279: `substance` is a SubstanceKey — curated OR a profile's own name — and this core
+// normalizes it once, at its own boundary, through resolveSubstanceKey(). A custom
+// substance needs nothing else here: dispatch already reads substanceDef().ledger rather
+// than testing the key against the curated three, and every custom key is
+// substance-log-ledgered by construction. That is why history correction (#2009) carries
+// a custom substance "like the curated three" with no branch of its own.
 
 import { instantNow } from "./clock";
 import { db, today, writeTx } from "./db";
@@ -10,9 +17,9 @@ import { captureDelete } from "./undo-delete-db";
 import {
   ALCOHOL_FOOD_GROUP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
-  isSubstance,
+  resolveSubstanceKey,
   substanceDef,
-  type Substance,
+  type SubstanceKey,
 } from "./substance-use";
 
 export type SubstanceHistoryMutationOutcome =
@@ -92,10 +99,11 @@ function reconcileAlcoholEvents(
 
 export function addSubstanceDailyTotalCore(
   profileId: number,
-  substance: string,
+  substanceInput: string,
   input: { date: string; amount: number; notes?: string | null }
 ): SubstanceHistoryMutationOutcome {
-  if (!isSubstance(substance)) return { kind: "unknown-substance" };
+  const substance = resolveSubstanceKey(substanceInput);
+  if (substance === null) return { kind: "unknown-substance" };
   if (!isRealIsoDate(input.date) || input.date > today(profileId))
     return { kind: "invalid-date" };
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
@@ -141,11 +149,12 @@ export function addSubstanceDailyTotalCore(
 
 export function updateSubstanceDailyTotalCore(
   profileId: number,
-  substance: string,
+  substanceInput: string,
   id: number,
   input: { date: string; amount: number; notes?: string | null }
 ): SubstanceHistoryMutationOutcome {
-  if (!isSubstance(substance)) return { kind: "unknown-substance" };
+  const substance = resolveSubstanceKey(substanceInput);
+  if (substance === null) return { kind: "unknown-substance" };
   if (!isRealIsoDate(input.date) || input.date > today(profileId))
     return { kind: "invalid-date" };
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
@@ -200,10 +209,11 @@ export function updateSubstanceDailyTotalCore(
 
 export function deleteSubstanceDailyTotalCore(
   profileId: number,
-  substance: string,
+  substanceInput: string,
   id: number
 ): SubstanceHistoryMutationOutcome {
-  if (!isSubstance(substance)) return { kind: "unknown-substance" };
+  const substance = resolveSubstanceKey(substanceInput);
+  if (substance === null) return { kind: "unknown-substance" };
   const valid =
     substanceDef(substance).ledger === "food-log"
       ? db

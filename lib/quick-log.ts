@@ -355,7 +355,7 @@ export const QUICK_LOG_DOMAIN_CENSUS = {
     "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the illness Now cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
   ),
   substance: arguedExclusion(
-    "Deliberate-access surface by doctrine: substance-use logging lives under Medical → Substance use with its #998 cap verdict rendered beside the tap, and the findings reach policy keeps it off general-purpose quick surfaces. A sheet row would detach the tap from the cap context that makes it honest."
+    "Deliberate-access surface by doctrine: substance-use logging lives under Medical → Substance use with its #998 cap verdict rendered beside the tap, and the findings reach policy keeps it off general-purpose quick surfaces. A sheet row would detach the tap from the cap context that makes it honest. NARROWED, NOT YET OVERTURNED (#3279): that argument presumes a cap EXISTS. Under the neutral-observation ruling a profile with no reduction cap has no verdict to detach from, so the exclusion is conditional in principle — it holds unconditionally here only until the conditional sheet row is built, and the row when it comes is admitted for a regularly-logged substance on the dashboard relevance rule, not for the vocabulary at large. Do not re-derive the absolute version of this argument from the sentence above it."
   ),
   document: "add-document",
 } as const satisfies Record<LoggableDomain, QuickLogId | ArguedExclusion>;

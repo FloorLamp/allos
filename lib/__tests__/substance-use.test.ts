@@ -17,6 +17,12 @@ import {
   substanceTargetSignalKey,
   SUBSTANCE_USE_PREFIX,
   MAX_WEEKLY_CAP,
+  MAX_SUBSTANCE_NAME_LENGTH,
+  normalizeSubstanceName,
+  resolveSubstanceKey,
+  isCuratedSubstance,
+  isCustomSubstanceKey,
+  substanceLabel,
 } from "../substance-use";
 
 // Pure-tier pins for the substance-use domain (#998; #1078 nicotine/cannabis;
@@ -323,8 +329,18 @@ describe("substance catalog + findings-bus namespace", () => {
     expect(isSubstanceLogged("nicotine")).toBe(true);
     expect(isSubstanceLogged("cannabis")).toBe(true);
     expect(isSubstanceLogged("alcohol")).toBe(false);
-    expect(isSubstanceLogged("caffeine")).toBe(false);
     expect(isSubstanceLogged(null)).toBe(false);
+    // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. This line used to
+    // read `isSubstanceLogged("caffeine") === false`, standing for "a forged key writes
+    // nothing". The vocabulary is open now, so "caffeine" is a CUSTOM substance and the
+    // counter ledger is exactly where it belongs — the old assertion would have gone on
+    // passing only until someone typed it. What the validator still refuses is a key not
+    // in canonical stored form (a caller that skipped resolveSubstanceKey and would
+    // otherwise mint a near-miss neighbour of an existing row), so the refusal moves there.
+    expect(isSubstanceLogged("caffeine")).toBe(true);
+    expect(isSubstanceLogged(" caffeine ")).toBe(false);
+    expect(isSubstanceLogged("Green  tea")).toBe(false);
+    expect(isSubstanceLogged("")).toBe(false);
   });
 
   it("per-substance defs carry calm, non-gamified copy", () => {
@@ -342,5 +358,111 @@ describe("substance catalog + findings-bus namespace", () => {
         expect(text, `${s}: banned "${banned}"`).not.toContain(banned);
       }
     }
+  });
+});
+
+describe("substance vocabulary: curated + custom (#3279)", () => {
+  it("normalizes a custom name the way symptoms do — trim, collapse, cap", () => {
+    expect(normalizeSubstanceName("  Kratom ")).toBe("Kratom");
+    expect(normalizeSubstanceName("Energy   drinks")).toBe("Energy drinks");
+    expect(normalizeSubstanceName("x".repeat(200)).length).toBe(
+      MAX_SUBSTANCE_NAME_LENGTH
+    );
+    // Case is the person's own — their capitalization IS their label.
+    expect(normalizeSubstanceName("MDMA")).toBe("MDMA");
+  });
+
+  it("resolves a typed curated LABEL onto its curated key, so nothing shadows the catalog", () => {
+    expect(resolveSubstanceKey("Alcohol")).toBe("alcohol");
+    expect(resolveSubstanceKey("  NICOTINE ")).toBe("nicotine");
+    expect(resolveSubstanceKey("cannabis")).toBe("cannabis");
+    // Free text that is not a curated key or label becomes a custom key.
+    expect(resolveSubstanceKey("  Kratom ")).toBe("Kratom");
+    // Text that names nothing is not a key at all.
+    expect(resolveSubstanceKey("")).toBeNull();
+    expect(resolveSubstanceKey("   ")).toBeNull();
+  });
+
+  it("splits the key space cleanly: every key is curated XOR custom", () => {
+    for (const s of SUBSTANCES) {
+      expect(isCuratedSubstance(s)).toBe(true);
+      expect(isCustomSubstanceKey(s)).toBe(false);
+    }
+    expect(isCuratedSubstance("Kratom")).toBe(false);
+    expect(isCustomSubstanceKey("Kratom")).toBe(true);
+    // Not in canonical stored form, so it is not a key on either side of the split.
+    expect(isCustomSubstanceKey(" Kratom ")).toBe(false);
+    expect(isCustomSubstanceKey("")).toBe(false);
+  });
+
+  it("substanceDef is TOTAL: an unknown key renders as itself instead of throwing", () => {
+    const def = substanceDef("Kratom");
+    expect(def.key).toBe("Kratom");
+    expect(def.label).toBe("Kratom");
+    expect(substanceLabel("Kratom")).toBe("Kratom");
+    expect(substanceLabel("alcohol")).toBe("Alcohol");
+    // Curated defs are untouched by the widening — byte-identical copy.
+    expect(substanceDef("alcohol").logLabel).toBe("Log a standard drink");
+  });
+
+  it("a custom substance always rides the counter ledger with count semantics", () => {
+    // The food-log ledger is a CURATED fact about alcohol (a standard drink IS one
+    // serving of the curated `alcohol` food group). Nothing a person types can be shown
+    // to be a food, so nothing typed may reach the nutrition ledger.
+    for (const key of [
+      "Kratom",
+      "Energy drinks",
+      "MDMA",
+      "alcohol-free beer",
+    ]) {
+      expect(substanceDef(key).ledger).toBe("substance-log");
+      expect(substanceDef(key).unitPlural).toBe("uses");
+      expect(substanceUnitWord(key, 1)).toBe("use");
+      expect(substanceUnitWord(key, 2)).toBe("uses");
+    }
+  });
+
+  it("derived custom copy stays calm and reads as English", () => {
+    for (const key of ["Kratom", "Energy drinks", "MDMA"]) {
+      const def = substanceDef(key);
+      const text =
+        `${def.label} ${def.logLabel} ${def.unitNote} ${def.freeWeekPhrase}`.toLowerCase();
+      for (const banned of [
+        "streak",
+        "badge",
+        "milestone",
+        "congrat",
+        "sober",
+      ]) {
+        expect(text, `${key}: banned "${banned}"`).not.toContain(banned);
+      }
+    }
+    // The article agrees with the name the person typed.
+    expect(substanceDef("Kratom").freeWeekPhrase).toBe("a Kratom-free week");
+    expect(substanceDef("Energy drinks").freeWeekPhrase).toBe(
+      "an Energy drinks-free week"
+    );
+  });
+
+  it("the cap line works for a custom substance — but ONLY reachable through a status", () => {
+    // #3279 ruling 1: a SubstanceCapStatus exists only where a target row does
+    // (lib/queries/substance.ts). This asserts the FORMATTING, not that anything
+    // renders it uninvited.
+    expect(capProgressLine(substanceCapStatus(3, 5), "Kratom")).toBe(
+      "3 of 5 this week."
+    );
+    expect(capProgressLine(substanceCapStatus(6, 5), "Kratom")).toBe(
+      "6 uses logged this week — 1 over your 5-use weekly cap."
+    );
+    // cap 0 is an OPTED-IN target (a substance-free week), never "no cap".
+    expect(capProgressLine(substanceCapStatus(0, 0), "Kratom")).toBe(
+      "No uses logged this week — your target is a Kratom-free week."
+    );
+  });
+
+  it("the findings signal key follows a custom substance too", () => {
+    expect(substanceTargetSignalKey("Kratom")).toBe(
+      "substance-use:over-target:Kratom"
+    );
   });
 });
