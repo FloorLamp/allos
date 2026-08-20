@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
+import { openVisitFact, withVisitFact } from "./visit-form-helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 // The Upcoming section of the merged Visits page (issue #288 — appointments and
 // encounters share one /encounters surface now). Originally the standalone
@@ -149,9 +150,22 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
-    await dialog.getByLabel("Reason / title").fill(TIMED_MARKER);
-    await dialog.getByLabel("Date", { exact: true }).fill(day);
-    await dialog.getByLabel("Time (optional)").fill("14:30");
+    // The fields sit behind fact chips now (#3223), and each panel is CLOSED again
+    // before the next opens — so by the time Add runs, every one of these values is
+    // behind a shut panel. That is exactly the state a form which unmounted its closed
+    // editors would submit as blanks (#2359).
+    await withVisitFact(dialog, "reason", async () => {
+      await dialog.getByLabel("Reason / title").fill(TIMED_MARKER);
+    });
+    await withVisitFact(dialog, "when", async () => {
+      await dialog.getByLabel("Date", { exact: true }).fill(day);
+      // Filling a date opens its DateField popover; it floats over the panel and would
+      // swallow the Done click behind it.
+      await page.keyboard.press("Escape");
+      await dialog.getByLabel("Time (optional)").fill("14:30");
+    });
+    // The row states the clock back before Save — what you see is what will be written.
+    await expect(dialog.getByTestId("visit-fact-when")).toContainText("14:30");
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
@@ -174,6 +188,12 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
       .getByRole("menu")
       .getByRole("menuitem", { name: "Edit" })
       .click();
+    // The chip states the stored clock, so the edit opens on the sentence the
+    // appointment already is.
+    await expect(upcoming.getByTestId("visit-fact-when")).toContainText(
+      "14:30"
+    );
+    await openVisitFact(upcoming, "when");
     await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("14:30");
     // The date field re-opens on the stored day (display shows the day + year).
     await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
@@ -193,9 +213,18 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
-    await dialog.getByLabel("Reason / title").fill(DAY_ONLY_MARKER);
-    await dialog.getByLabel("Date", { exact: true }).fill(day);
-    // Time left blank on purpose — a day-only booking is a real state.
+    await withVisitFact(dialog, "reason", async () => {
+      await dialog.getByLabel("Reason / title").fill(DAY_ONLY_MARKER);
+    });
+    await withVisitFact(dialog, "when", async () => {
+      await dialog.getByLabel("Date", { exact: true }).fill(day);
+      await page.keyboard.press("Escape");
+      // Time left blank on purpose — a day-only booking is a real state.
+    });
+    // AND THE CHIP SAYS SO. A bare day states a bare day: a when-chip that rendered
+    // "· 00:00" here would be the #2234 fabrication in the one place the person reads
+    // before committing.
+    await expect(dialog.getByTestId("visit-fact-when")).not.toContainText(":");
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
@@ -217,6 +246,7 @@ test.describe("Appointments — day + optional time round-trip (#2234)", () => {
       .getByRole("menu")
       .getByRole("menuitem", { name: "Edit" })
       .click();
+    await openVisitFact(upcoming, "when");
     await expect(upcoming.getByLabel("Time (optional)")).toHaveValue("");
     await expect(upcoming.getByLabel("Date", { exact: true })).toHaveValue(
       new RegExp(`\\b${Number(day.slice(8, 10))}, ${day.slice(0, 4)}$`)
@@ -240,21 +270,33 @@ test.describe("Visits — single Add visit entry (#566)", () => {
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
-    // Default branch is the appointment (future / scheduling) shape.
-    await expect(add.getByLabel("Reason / title")).toBeVisible();
-    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
-    await expect(add.getByLabel("Diagnoses")).toHaveCount(0);
+    // ONE ROW SERVES BOTH TENSES NOW (#3223), so the branch is not "which fields are
+    // on screen" any more — both shapes state the same six facts in the same words.
+    // What still differs is the COLUMNS behind them: only a visit that has already
+    // happened can carry diagnoses, and only a booking has the closed `kind`
+    // vocabulary. So the trailing affordance is where the two shapes part.
+    await expect(add.getByTestId("visit-fact-row")).toBeVisible();
+    await add.getByTestId("visit-fact-more").click();
+    await expect(add.getByTestId("visit-more-diagnoses")).toHaveCount(0);
+    await add.getByTestId("visit-fact-more").click();
+    // The appointment branch's "what it is for" is a booking's reason/title.
+    await withVisitFact(add, "reason", async () => {
+      await expect(add.getByLabel("Reason / title")).toBeVisible();
+    });
 
     // "Already happened" reveals the encounter (past / clinical) shape.
     await add.getByTestId("visit-tense-past").click();
-    await expect(add.getByLabel("Diagnoses")).toBeVisible();
-    await expect(add.getByLabel("Reason (chief complaint)")).toBeVisible();
-    await expect(add.getByLabel("Kind (optional)")).toHaveCount(0);
+    await add.getByTestId("visit-fact-more").click();
+    await expect(add.getByTestId("visit-more-diagnoses")).toBeVisible();
+    await add.getByTestId("visit-fact-more").click();
+    await withVisitFact(add, "reason", async () => {
+      await expect(add.getByLabel("Reason (chief complaint)")).toBeVisible();
+    });
 
     // …and back to the appointment shape.
     await add.getByTestId("visit-tense-upcoming").click();
-    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
-    await expect(add.getByLabel("Diagnoses")).toHaveCount(0);
+    await add.getByTestId("visit-fact-more").click();
+    await expect(add.getByTestId("visit-more-diagnoses")).toHaveCount(0);
   });
 
   test("a past date routes the entry to the encounter branch, a future date to the appointment branch", async ({
@@ -266,14 +308,45 @@ test.describe("Visits — single Add visit entry (#566)", () => {
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
-    // Starts on the appointment branch; entering a clearly-past date flips the
-    // entry to the encounter (clinical) shape — the "pick a date first" routing.
-    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+    // THE TENSE IS A DERIVED FACT OF THE DATE (#3223) — the upfront past-or-future
+    // question is gone, and the date the person is already entering answers it. The
+    // statement beside the form says which way the derivation went.
+    await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
+      "data-tense",
+      "upcoming"
+    );
+
+    // A clearly-past date flips the entry to the encounter (clinical) shape. The flip
+    // mounts a fresh form, whose editor starts closed — so the chips are what comes
+    // back, not the panel the date was typed into.
+    await openVisitFact(add, "when");
     await add.getByLabel("Date", { exact: true }).fill("2020-01-15");
-    await expect(add.getByLabel("Diagnoses")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
+      "data-tense",
+      "past"
+    );
+    await add.getByTestId("visit-fact-more").click();
+    await expect(add.getByTestId("visit-more-diagnoses")).toBeVisible();
+    await add.getByTestId("visit-fact-more").click();
 
     // A clearly-future date flips it back to the appointment (scheduling) shape.
+    await openVisitFact(add, "when");
     await add.getByLabel("Date", { exact: true }).fill("2099-01-15");
-    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
+      "data-tense",
+      "upcoming"
+    );
+    await add.getByTestId("visit-fact-more").click();
+    await expect(add.getByTestId("visit-more-diagnoses")).toHaveCount(0);
+
+    // AND A CORRECTION STICKS. The derivation is a reading of the date, not a rule the
+    // person is held to: overriding it must survive the re-render that follows.
+    await add.getByTestId("visit-tense-past").click();
+    await expect(add.getByTestId("visit-tense-toggle")).toHaveAttribute(
+      "data-tense",
+      "past"
+    );
   });
 });

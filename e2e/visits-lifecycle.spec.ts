@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink, hydratedClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { withVisitFact } from "./visit-form-helpers";
 
 // The appointment → encounter lifecycle on the merged Visits page (issue #288):
 // book → complete → "Log this visit" → the linked visit lands in Past → click
@@ -44,9 +45,20 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     // is scheduled and actionable).
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const visitDialog = page.getByRole("dialog", { name: "Add visit" });
-    await visitDialog.getByLabel("Reason / title").fill(MARKER);
-    await visitDialog.getByLabel("Kind (optional)").selectOption("physical");
-    await visitDialog.getByLabel("Provider").fill("E2E Lifecycle Clinic");
+    await withVisitFact(visitDialog, "reason", async () => {
+      await visitDialog.getByLabel("Reason / title").fill(MARKER);
+    });
+    await withVisitFact(visitDialog, "kind", async () => {
+      await visitDialog.getByLabel("Kind (optional)").selectOption("physical");
+    });
+    await withVisitFact(visitDialog, "provider", async () => {
+      await visitDialog.getByLabel("Provider").fill("E2E Lifecycle Clinic");
+      // Its listbox is still open and floats over the Done button behind it. Escape
+      // closes the LISTBOX and not the editor — the primitive yields the first Escape
+      // to an expanded combobox on purpose, so that one key does not throw the whole
+      // fact away (FactEditorHost's `onKeyDown`).
+      await page.keyboard.press("Escape");
+    });
     await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
@@ -100,7 +112,9 @@ test.describe("Appointment double-tap answers 'already completed' (#2134)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const visitDialog = page.getByRole("dialog", { name: "Add visit" });
-    await visitDialog.getByLabel("Reason / title").fill(STALE_MARKER);
+    await withVisitFact(visitDialog, "reason", async () => {
+      await visitDialog.getByLabel("Reason / title").fill(STALE_MARKER);
+    });
     await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
