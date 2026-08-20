@@ -113,6 +113,15 @@ Three consequences, each one a real defect that shipped:
   `sm` instead — read `panelShape` in `components/BottomSheet.tsx` rather than
   guessing, and match the presentation the body is actually mounted in.
 
+  This rule governs INSETS ONLY, and the difference is load-bearing. A body's
+  other responsive classes have no host counterpart to agree with, so they step
+  where their own content wants. `ProtocolForm`'s sticky footer is the worked
+  example and it looks like an oversight until you know why: it turns horizontal
+  at `sm` (`sm:flex-row sm:justify-end`) while its padding steps at `md`
+  (`md:px-6`). That is DELIBERATE — two buttons fit side by side from 640px, and
+  the padding has to match the panel, which changes at 768px. Do not "tidy" the
+  two onto one breakpoint; that would turn a correct mismatch into a real one.
+
 The title gap has ONE owner: the host's content region (`mt-3`). A call site
 that adds its own `mt-4` on top is not choosing a bigger gap, it is accreting
 one — 28px under a dialog title, decided by nobody.
