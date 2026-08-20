@@ -462,6 +462,46 @@ ${MIGRATION_LINES}
   worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
   that cannot wrap, or use \`rg -U\`, and when a content check says something is
   missing, OPEN THE FILE before believing it.
+- A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
+  ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
+  If you encode THAT shape, your guard is green against a tree that never used it, and
+  blind to the spelling everyone actually reaches for. Measured 2026-08-20 on #3325: a
+  census was written to catch \`LOWER(symptom)\` because the issue said \`LOWER()\`, while
+  this repo overwhelmingly writes \`= ? COLLATE NOCASE\` — the collation attached to the
+  COMPARISON, not adjacent to the column. The scanner would have shipped green and
+  unable to see the most likely way anyone would introduce the bug, which is worse than
+  no guard: it turns "nobody has done this" into "nobody can do this", and only the
+  first is true.
+  So before you encode a pattern, GREP FOR HOW THE CONSTRUCT IS ACTUALLY SPELLED here
+  and enumerate the variants. It is the same order of operations as the premise audit —
+  read what is there before encoding what you expect — and the same cost of skipping it.
+  THEN PROVE THE GUARD CAN SEE: run it over sources authored to BREAK it, in the
+  lib/__tests__/nul-byte-census.test.ts tradition. A green sweep over a COMPLYING tree
+  says nothing about what the sweep can see. And assert the guard's SILENCE on the
+  benign neighbours too — #3325's census had to stay quiet on five shipped
+  \`ORDER BY … COLLATE NOCASE\` sorts, because sorting is not matching and a guard that
+  cried wolf on them would have been deleted within a week, taking the real guard with it.
+- A CONTENT CHECK MUST STATE ITS SCOPE, OR IT REPORTS ON A SCOPE IT NEVER HAD. The
+  brief already says a grep can fail toward "missing" and manufacture work. It fails
+  the OTHER way just as easily, and that way is louder: measured 2026-08-20, a lane
+  swept the whole tree for a retracted sentence, got "STILL PRESENT (bad)" from three
+  files it had never touched, and was one step from "fixing" unrelated code. Scoped to
+  the seven files it actually changed, there was exactly one hit — inside a docstring
+  that QUOTES the retracted rule in order to argue against it, which is correct and
+  must stay.
+  So: scope every content check to the files you changed, and expect a deliberate
+  quotation of the thing you removed. Both directions of this failure are the same
+  bug — a check whose scope is wider or narrower than the question being asked.
+  AND NEVER TRUST A BARE \`grep -c\`. A count is a claim stripped of its context, and
+  two more ways it lies were measured on #3391 within one verification pass:
+  a CASE mismatch (the phrase was there in screaming caps; the grep was lowercase, so
+  it reported "missing" — the reassuring-to-fix direction again), and a count of 1 that
+  was a DIFFERENT, pre-existing, unrelated assertion, which read as "you did not remove
+  the thing you said you removed". Both would have sent a lane to re-edit a correct
+  merged file. Use \`-i\` when case is not part of the claim, print the MATCHES with
+  context (\`-n\`, \`-B\`/\`-A\`) rather than the count, and open the file before believing a
+  zero. A wrong verification is more expensive than none, because the work it invents
+  looks justified.
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
@@ -518,6 +558,23 @@ ${MIGRATION_LINES}
   origin/main control worktree and show it failing there too. Report the
   comparison, not the first red. Two agents were saved from a false regression
   report this way on 2026-08-15 only because they thought of it themselves.
+- A RACE THAT RESOLVES TOWARD THE EMPTY DOM FAILS TOWARD GREEN. Measured 2026-08-20
+  on #3384, and it is the purest form of the trap this whole brief circles. A spec
+  measured a dialog body's width WITHOUT FIRST WAITING FOR ANYTHING INSIDE IT. The
+  region renders a loading paragraph while its real content arrives — and a paragraph
+  fits any width. So the check passed by looking at a PLACEHOLDER instead of the form
+  it names, sailed through twelve shards on its own PR and twelve more on the next
+  one, and reported success without ever having examined the thing it claimed to
+  examine. It only ever failed when CI happened to be past the mount.
+  THE TELL, and it is worth learning as a signature: WHETHER you see the failure was a
+  race, but HOW BIG it was never varied. A stable wrong value with an unstable
+  occurrence means something real is being measured SOMETIMES — not that the value is
+  noise. Do not dismiss it as flake, and do not conclude the failure is deterministic
+  either (that was my own error on the same issue, corrected within the hour).
+  SO: before you measure a container, WAIT FOR THE CONTENT YOU MEAN TO MEASURE — a
+  specific child, not the container's own visibility. Any assertion about size,
+  overflow, position or count on a region that loads asynchronously is making a claim
+  about whatever happened to be there, and empty is the state that flatters you.
 - A GENEROUS CEILING IS HONEST ON A *PRESENCE* ASSERTION AND DANGEROUS ON AN
   *ABSENCE* ONE. This is the rule to reach for before arguing about timeouts at all.
   Waiting longer cannot make a row that was never created appear — so if the write is
@@ -532,6 +589,13 @@ ${MIGRATION_LINES}
   and imaging.spec.ts (the opposite verdict, so latency DISPROVEN). If you add a
   ceiling, NAME it as a constant and put the measurement in the comment — the number
   alone is indistinguishable from a guess.
+  AND THE DERIVATION IS NOT BOOKKEEPING; IT IS HOW YOU FIND OUT THE CONSTANT IS WRONG.
+  Measured on #3391: a lane was asked to state what a ceiling's headroom was FOR, went
+  to write that sentence, and discovered while writing it that the bound was checked
+  against the wrong quantity and could never fire at all — a defect no amount of
+  staring at the number would have surfaced, because the number was irrelevant. Having
+  to say out loud what a bound is bounding is the check. Demand the stated unit even
+  when the constant looks obviously right.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
@@ -550,6 +614,24 @@ ${MIGRATION_LINES}
   asserting it: diff the plan output between your branch and origin/main. Composition
   moves when a .spec.ts file is ADDED or REMOVED, or when e2e/spec-durations.json
   changes — editing an existing spec does not move it.
+  AND IF YOU DID ADD A SPEC FILE, YOU RE-PARTITIONED ALL TWELVE SHARDS. Measured
+  2026-08-20 on #3388: adding ONE spec changed shard 1 by 24 specs in and 23 out. A
+  spec you never touched stayed in shard 1 but ran beside an entirely different
+  NEIGHBOUR SET — and then failed, on a route the diff does not render on. You changed
+  its COMPANY, not its behaviour.
+  So a red in a spec you did not touch, on a PR that adds a spec file, is a THIRD
+  possibility beside "mine" and "contention": a latent co-residency bug your
+  re-partition exposed.
+  AND THE RE-PARTITION IS NOT THE FAILURE — IT ONLY CHANGES THE DICE. Same PR, same
+  commit, same partition: a plain re-run went GREEN. So adding a spec permanently
+  changes WHO a spec's neighbours are, and whether the latent bug then fires is a
+  FURTHER ROLL. The consequence is the one that catches people: a lane that adds a
+  spec, reds once, and re-runs to green HAS NOT DISPROVED ANYTHING — it has only
+  declined to roll again. Report the re-partition you caused either way; a green
+  re-run is not a clean bill for the spec whose company you changed. Diff the plan (\`tsx scripts/e2e-shard-plan.ts N 12\`) between
+  your branch and a control to see whose neighbours you changed, and say so.
+  DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
+  a suite that cannot grow without hiding failures is measuring less every time.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
@@ -566,6 +648,14 @@ ${MIGRATION_LINES}
   (e2e/pinned-timezone.ts), so naive strings parse host-UTC (#1417)
 - NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
   included) — use low-entropy words+digits values
+- AN ARTIFACT THAT SATISFIES AN ACCEPTANCE CRITERION MUST BE COMMITTED, NOT LEFT IN
+  $SCRATCH. Measured 2026-08-20 on #3320: a previous lane's census script — the thing
+  an AC named in the words "the query exists and is recorded" — survived only as a
+  file in the shared scratchpad, one container restart from gone, while its PR was
+  already merged. Scratch is for LOGS and WORKING FILES. If a deliverable is a script,
+  a query, a probe or a measurement someone is meant to re-run, it belongs in the tree
+  with a way to invoke it. Ask of every AC: does satisfying this leave something behind,
+  and is that something in git?
 - Every scratch file you write goes in $SCRATCH ITSELF, never inside your worktree,
   and gets a branch-unique name ($SCRATCH/pr-body-${opts.branch.split("/").pop()}.md,
   never pr-body.md) — $SCRATCH is shared by every concurrent agent, and an untracked
