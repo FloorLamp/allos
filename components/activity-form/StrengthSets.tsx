@@ -45,9 +45,10 @@ import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
+import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
 import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
-import { stepRpe, fmtRpe, rpeSummaryText } from "@/lib/rpe";
+import { stepRpe, fmtRpe, rpeSummaryText, type RpeTracking } from "@/lib/rpe";
 import {
   dispWeight,
   round,
@@ -129,10 +130,14 @@ function BrandedCheckbox({
 // options share one horizontal toolbar row of their own, so the ± targets take the
 // 44px phone minimum there instead of the 16px-wide desktop sliver.
 function RpeStepper({
+  tracking,
   value,
   onChange,
   testId,
 }: {
+  // The profile's opted-into scale (#3335). Required, not optional: without one
+  // there is no answer to what a tap means, so there is no control to render.
+  tracking: RpeTracking;
   value: number | null;
   onChange: (v: number | null) => void;
   testId?: string;
@@ -146,7 +151,7 @@ function RpeStepper({
       <button
         type="button"
         tabIndex={-1}
-        onClick={() => onChange(stepRpe(value, -1))}
+        onClick={() => onChange(stepRpe(tracking, value, -1))}
         aria-label="Decrease RPE"
         className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
@@ -166,7 +171,7 @@ function RpeStepper({
       <button
         type="button"
         tabIndex={-1}
-        onClick={() => onChange(stepRpe(value, 1))}
+        onClick={() => onChange(stepRpe(tracking, value, 1))}
         aria-label="Increase RPE"
         className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
@@ -190,6 +195,8 @@ export default function StrengthSets({
   deloadContext,
   recoveringContext,
   plateauHints,
+  rpeTracking,
+  onRpeTrackingChange,
   currentActivityId,
   editedDate,
   equipmentList,
@@ -223,6 +230,11 @@ export default function StrengthSets({
   // through the ONE shared contextualNextSet, so this form matches the Analyze panel.
   recoveringContext: FormRecoveringContext;
   plateauHints: PlateauFormHint[];
+  // The profile's opted-into RPE scale (#3335), or null when it never opted in.
+  // Null is the whole opt-in: there is no scale, so there is no column — not a flag
+  // this file remembers to consult (lib/rpe-tracking.ts holds the seam).
+  rpeTracking: RpeTracking | null;
+  onRpeTrackingChange: (tracking: RpeTracking | null) => void;
   // The session the form is saving (edit row id, or the auto-saved create row
   // once it exists, else null) — always excluded from its own "Recent" list.
   currentActivityId: number | null;
@@ -263,6 +275,8 @@ export default function StrengthSets({
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
+  // One RPE opt-in round-trip at a time (#3335) — see toggleRpeTracking.
+  const [rpeToggling, setRpeToggling] = useState(false);
   // Whether the in-form equipment quick-add is open (#1611).
   const [addingEquipment, setAddingEquipment] = useState(false);
   // Recent attempts as a reference — shown when logging fresh AND while editing
@@ -422,6 +436,21 @@ export default function StrengthSets({
     const fd = new FormData();
     fd.set("dedupe_key", dedupeKey);
     void dismissTrainingObservation(fd);
+  }
+  // Opting the effort column in or out from the editor itself (#3335) — no settings
+  // trip. Unlike the plateau dismissal above this does NOT hide optimistically: the
+  // scale the column renders over is minted server-side and nowhere else
+  // (lib/rpe-tracking.ts), so the tap waits for the action's answer rather than
+  // manufacturing one locally. One in-flight toggle at a time.
+  async function toggleRpeTracking() {
+    if (rpeToggling) return;
+    setRpeToggling(true);
+    try {
+      const { tracking } = await setRpeTrackingAction(!rpeTracking);
+      onRpeTrackingChange(tracking);
+    } finally {
+      setRpeToggling(false);
+    }
   }
   const timed = isTimed(p.name);
   // A "content" fault means no set counts yet: flag the effort input (reps or
@@ -958,12 +987,26 @@ export default function StrengthSets({
           </button>
         </div>
       )}
-      {/* One options row: the per-side toggle (unilateral lifts) and the
-          declared intent — planned reps, or an AMRAP ("to failure") plan.
-          Intent is optional; without it, no hit/missed-target judgment is
+      {/* One options row: the per-side toggle (unilateral lifts), the declared
+          intent — planned reps, or an AMRAP ("to failure") plan — and the RPE
+          opt-in. Intent is optional; without it, no hit/missed-target judgment is
           made. Checking per-side hides the intent controls (per-side parts
-          carry no status), but the row itself stays. */}
-      {(showPerSide || intent.applies) && (
+          carry no status), but the row itself stays.
+
+          The RPE opt-in rides here rather than in Settings (#3335): this row is
+          already "what this part records", so the column is discoverable at the
+          moment someone wants it. It is the one control here that is PROFILE-wide
+          — per-side and intent belong to the part — which its label says.
+
+          `!timed` is what guarantees the opt-in is REACHABLE on every rep-based
+          part. For almost all of them it changes nothing — a rep-based part is
+          normally either unilateral (showPerSide) or bilateral (intent.applies,
+          which is `!isTimed && !perSide`). The gap it closes is the part whose
+          NAME is not unilateral but whose loaded sets carry right-side values, so
+          groupEditSets marked it perSide: showPerSide is false (name-based) and
+          applies is false (perSide-based), and before this the row — and with it
+          the opt-in — had nowhere to appear. */}
+      {(showPerSide || intent.applies || !timed) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
           {showPerSide && (
             <label className="flex cursor-pointer items-center gap-2">
@@ -1004,6 +1047,24 @@ export default function StrengthSets({
                 To failure
               </label>
             </>
+          )}
+          {/* Rep-based sets only — a timed hold's effort IS its duration, so there
+              is nothing for a rating to add. */}
+          {!timed && (
+            <label
+              className={`flex items-center gap-2 ${
+                rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
+              }`}
+              title="Adds an effort rating to every set row, on this and future sessions."
+            >
+              <BrandedCheckbox
+                checked={!!rpeTracking}
+                onChange={() => void toggleRpeTracking()}
+                inputTestId="rpe-tracking-checkbox"
+                controlTestId="rpe-tracking-control"
+              />
+              Rate effort (RPE)
+            </label>
           )}
         </div>
       )}
@@ -1384,15 +1445,26 @@ export default function StrengthSets({
               className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:w-16 sm:flex-col sm:items-end"
             >
               {/* Optional per-set RPE selector (#743) — shown for rep-based sets
-                (a timed hold's effort is its duration). Blank by default; the
-                rating rides onto the set without replacing target reps. Stacked
-                INSIDE the same w-16 options column the row always had — widening
-                this column shrinks the weight/reps inputs below their pinned
-                #337 tap-target width (see RpeStepper's sizing note). Below `sm`
-                the column unrolls into one horizontal band on the set's toolbar
-                row (#1612), where there is room for full-size targets. */}
-              {!timed && (
+                (a timed hold's effort is its duration) belonging to a profile
+                that OPTED IN (#3335). `rpeTracking` is not a flag being consulted
+                here: it is the scale the stepper steps over, and without it
+                RpeStepper has no argument to render, so the column cannot appear
+                for a profile that never asked. Blank by default; the rating rides
+                onto the set without replacing target reps. Stacked INSIDE the same
+                w-16 options column the row always had — widening this column
+                shrinks the weight/reps inputs below their pinned #337 tap-target
+                width (see RpeStepper's sizing note). Below `sm` the column unrolls
+                into one horizontal band on the set's toolbar row (#1612), where
+                there is room for full-size targets.
+
+                NO TAB STOP EITHER WAY. Both stepper buttons are tabIndex={-1}
+                (the values are the tab stops; the steppers are pointer sugar), so
+                a row's keyboard sequence is IDENTICAL with the column on and off —
+                which is what keeps a conditional column from stranding tab order.
+                e2e/rpe-logging.spec.ts asserts that equality directly. */}
+              {!timed && rpeTracking && (
                 <RpeStepper
+                  tracking={rpeTracking}
                   value={s.rpe}
                   onChange={(v) => onUpdateSet(si, { rpe: v })}
                   testId={si === 0 ? "set1-rpe" : undefined}
