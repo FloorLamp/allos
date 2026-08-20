@@ -444,6 +444,82 @@ export function getLoggedEquipmentByExercise(
   return out;
 }
 
+/** The lifetime best this profile has logged for one movement, per goal metric. */
+export interface ExerciseBest {
+  /** Heaviest set, canonical kg. Null when the movement has no loaded set. */
+  weightKg: number | null;
+  /** Most reps in one set, either side. */
+  reps: number | null;
+  /** Longest hold, seconds, either side. */
+  durationSec: number | null;
+}
+
+/**
+ * The best the profile has already done, per logged movement (#3220) — what lets the
+ * goal form state where a new target is STARTING FROM instead of asking someone to
+ * remember their own PR.
+ *
+ * SAME SHAPE AS `getLoggedEquipmentByExercise` ABOVE, and keyed the same way
+ * (`exerciseHistoryKey`), because the goal form already indexes by that key and a
+ * second keying convention for the same question is the thing #221 forbids.
+ *
+ * THE THREE METRICS ARE THE THREE `bestValueForGoal` CAN ANSWER FROM SQL. Weight and
+ * hold fold both sides of a per-side set with MAX, exactly as that function does;
+ * reps is the best single side. The `sets` metric is deliberately absent — it counts,
+ * per session, the sets that clear the goal's OWN rep (and weight) bar, so it is not
+ * a property of the movement's history at all and there is nothing honest to state
+ * before the target exists.
+ *
+ * Warm-ups are excluded, matching every other read of this table for progress.
+ */
+export function getExerciseBests(
+  profileId: number
+): Record<string, ExerciseBest> {
+  const rows = db
+    .prepare(
+      `SELECT s.exercise AS exercise,
+              MAX(MAX(COALESCE(s.weight_kg, 0), COALESCE(s.weight_kg_right, 0))) AS weightKg,
+              MAX(MAX(COALESCE(s.reps, 0), COALESCE(s.reps_right, 0))) AS reps,
+              MAX(MAX(COALESCE(s.duration_sec, 0), COALESCE(s.duration_sec_right, 0))) AS durationSec
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND s.warmup = 0
+        GROUP BY s.exercise`
+    )
+    .all(profileId) as {
+    exercise: string;
+    weightKg: number | null;
+    reps: number | null;
+    durationSec: number | null;
+  }[];
+  const out: Record<string, ExerciseBest> = {};
+  // A zero best is NO best: every column here is COALESCEd to 0 so the row-wise MAX
+  // is total, which means 0 is what "this movement has never carried a load / a hold"
+  // reduces to. Stating "from 0 kg" would be a claim about history rather than the
+  // absence of one.
+  const positive = (n: number | null): number | null =>
+    n != null && n > 0 ? n : null;
+  for (const r of rows) {
+    const key = exerciseHistoryKey(r.exercise);
+    if (!key) continue;
+    const prior = out[key];
+    const next: ExerciseBest = {
+      weightKg: positive(r.weightKg),
+      reps: positive(r.reps),
+      durationSec: positive(r.durationSec),
+    };
+    // Two spellings can fold onto one history key, so keep the better of each.
+    out[key] = prior
+      ? {
+          weightKg: Math.max(prior.weightKg ?? 0, next.weightKg ?? 0) || null,
+          reps: Math.max(prior.reps ?? 0, next.reps ?? 0) || null,
+          durationSec:
+            Math.max(prior.durationSec ?? 0, next.durationSec ?? 0) || null,
+        }
+      : next;
+  }
+  return out;
+}
+
 // Full per-session history for one exercise, used by the Training comparison
 // tab. This keeps the set-level math in the query layer so the page component can
 // stay focused on controls and presentation.

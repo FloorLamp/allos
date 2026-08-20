@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   BodyMetricKind,
   FormResult,
@@ -12,6 +12,7 @@ import type {
 import { OUTCOME_GOAL_DIRECTIONS, OUTCOME_GOAL_KINDS } from "@/lib/types";
 import type { GoalBiomarkerOption } from "./goal-target-options";
 import type { WeightUnit } from "@/lib/settings";
+import type { ExerciseBest } from "@/lib/queries";
 import {
   variantOf,
   composeVariant,
@@ -22,11 +23,27 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
-import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
+import GoalFactRow, {
+  type GoalOpenPanel,
+} from "@/components/training/GoalFactRow";
+import {
+  GOAL_FACT_NOUNS,
+  GOAL_KIND_LABEL,
+  bodyTargetUnit,
+  goalFactSummary,
+  goalSubjectOptions,
+  kindForSubjectGroup,
+  startingFromFactLabel,
+  type GoalSubjectOption,
+} from "@/lib/goal-facts";
 import { createGoal, updateGoal } from "./goal-actions";
 
 const METRICS: { value: OutcomeGoalMetric; label: string }[] = [
@@ -53,19 +70,82 @@ const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   above: "Over",
 };
 
-const KIND_LABEL: Record<OutcomeGoalKind, string> = {
-  exercise: "Exercise goal",
-  body: "Body metric",
-  biomarker: "Lab or vital",
-  freeform: "Freeform",
-};
+const PILL =
+  "rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
+const PILL_ON = "border-brand-500 bg-brand-500 text-white";
+const PILL_OFF =
+  "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300";
 
-// Create or edit a goal. Pass `editGoal` to pre-fill and submit to updateGoal;
-// `onDone` is called after a successful submit (e.g. to close the modal).
+function pillClass(active: boolean): string {
+  return `${PILL} ${active ? PILL_ON : PILL_OFF}`;
+}
+
+// Create or edit a goal (#3220), in the shared facts-with-editors grammar (#3218).
+//
+// WHAT REPLACED WHAT. This form used to render a kind toggle and then, beneath it,
+// the whole field wall of whichever of four branches that toggle selected — 30 named
+// inputs of which a given goal uses six. It now opens on the SUBJECT PICK, states the
+// goal as a sentence of chips, and shows exactly one editor at a time behind them.
+// `createGoal`/`updateGoal` receive the FormData they received before, field for
+// field; `GoalsManager`'s mount is unchanged.
+//
+// THE KIND IS DERIVED FROM THE SUBJECT, and stated back rather than inferred
+// silently: picking "Bench Press" makes this a strength goal, picking "Body fat" a
+// body goal, picking "LDL Cholesterol" a lab goal — and the kind chip says so,
+// MARKED AS A SUGGESTION (#3216/#846), with the four-kind row one tap away inside the
+// same editor. A person opening this form knows what they want to track; which of
+// four storage shapes the app keeps it in is not their question.
+//
+// THE ONE SUBJECT PICKER KEEPS THE BIOMARKER GROUP HEADERS. Merging three
+// vocabularies into one list must not cost the analytes the ranked, group-headed
+// order every biomarker picker has shown since #1675 — so a biomarker row carries the
+// header the RANKER gave it ("Due or flagged" → "Your markers" → "All biomarkers")
+// and the two training vocabularies simply precede them. See `goalSubjectOptions`.
+//
+// WHO OWNS EACH FIELD'S VALUE, which is the decision this conversion turns on.
+//
+// The chips must read every value as it changes, because a chip stating a stale
+// default is worse than no chip. But WHO OWNS the value is a separate question from
+// who reads it, and the answer here is the one #3219 established: every field that
+// was a plain uncontrolled input STAYS DOM-OWNED — `defaultValue` seeds it, the DOM
+// holds it, and an `onChange` mirrors into state that only the chips read. Fields
+// that were ALREADY React-controlled stay controlled and lose nothing.
+//
+// THE HAZARD THAT MADE THAT A RULE (#3352). `fieldHoldsUnsavedInput` ends at
+// `current !== serverValue`, and `serverValue` was the DOM `defaultValue` — which
+// React KEEPS IN SYNC with `value` on a controlled input. So a controlled field
+// reported clean forever and ModalShell's "Discard your changes?" guard silently
+// vanished for it. That hole is closed in the registry itself now (it snapshots the
+// default at registration and stops believing a live default that has moved onto
+// exactly what the user typed), so converting a field here would no longer disarm its
+// guard — it is simply not needed, and this is the largest named-input surface in the
+// tree, so the cheaper shape wins by the widest margin.
+//
+//   DOM-OWNED (defaultValue + onChange mirror): target_weight, target_reps,
+//   target_sets, target_duration, title, description, category, current_value,
+//   target_value, unit.
+//   ALREADY CONTROLLED, left alone: body_target and biomarker_target (both `value`
+//   + `onChange` since #631/#1853), equipment_id (a `<select value=…>` since #1610).
+//   NEITHER: every `type="hidden"` carrier — kind, weight_unit, exercise, metric,
+//   body_metric, biomarker_name, target_direction — which the registry excludes
+//   outright (NON_INPUT_TYPES), and DateField, whose named input is hidden too.
+//
+// THE CLOSED PANELS STAY MOUNTED, hidden rather than unmounted, for the reason #3219
+// found the hard way: this is a DOM-COLLECTED form (`<form action={submit}>` hands
+// the action whatever FormData the browser gathers from the inputs mounted AT
+// SUBMIT), so a field that unmounts when its panel closes is a field the form CLEARS.
+//
+// THE ONE PLACE THAT IS DELIBERATELY NOT TRUE is the exercise target's metric-
+// conditional block, which mounts only the inputs its metric uses — exactly as it did
+// before. Mounting all four would post a stale `target_weight` on a hold goal, and on
+// a REPS goal `target_weight_kg` is not decoration: `bestValueForGoal` reads it as a
+// weight FLOOR, so a leftover number would silently change which sets count.
 export default function GoalForm({
   lifts,
   equipment = [],
   equipmentByExercise = {},
+  exerciseBests = {},
+  latestBodyMetrics = {},
   weightUnit,
   biomarkerOptions = [],
   editGoal,
@@ -78,6 +158,11 @@ export default function GoalForm({
   // profile that owns no gear — and for every caller that predates it.
   equipment?: { id: number; name: string }[];
   equipmentByExercise?: Record<string, number[]>;
+  // WHERE A NEW TARGET IS STARTING FROM (#3220), per logged movement and per body
+  // metric. Both default to empty, so a caller that predates them renders the chip
+  // row with the starting-point fact simply absent rather than wrong.
+  exerciseBests?: Record<string, ExerciseBest>;
+  latestBodyMetrics?: Partial<Record<BodyMetricKind, number | null>>;
   weightUnit: WeightUnit;
   // The ranked analyte rows for the lab/vital target picker (#1853), already grouped
   // and label-disambiguated by the shared series-picker options. Defaults to empty so
@@ -91,11 +176,17 @@ export default function GoalForm({
     strengthTrainingAvailable || editGoal?.kind === "exercise";
   const initialKind: OutcomeGoalKind =
     editGoal?.kind ?? (allowExerciseGoal ? "exercise" : "freeform");
+  const formRef = useRef<HTMLFormElement>(null);
+  const formatPrefs = useFormatPrefs();
   const [kind, setKind] = useState(initialKind);
+  // True while the kind came from a subject pick rather than from the kind row —
+  // what the chip's suggestion marking states (#3216/#3222). An edit reads back a
+  // kind the person already chose, so it starts false.
+  const [kindDerived, setKindDerived] = useState(false);
   const [exercise, setExercise] = useState(editGoal?.exercise ?? "");
   const [metric, setMetric] = useState<OutcomeGoalMetric>(() => {
     const initialMetric = editGoal?.metric ?? "weight";
-    return isTimed(exercise)
+    return isTimed(editGoal?.exercise ?? "")
       ? "hold"
       : initialMetric === "hold"
         ? "weight"
@@ -105,7 +196,7 @@ export default function GoalForm({
     editGoal?.body_metric ?? "weight"
   );
 
-  // Pre-filled values for the uncontrolled inputs when editing.
+  // Pre-filled values for the DOM-owned inputs when editing.
   const wVal =
     editGoal?.target_weight_kg != null
       ? round(kgTo(editGoal.target_weight_kg, weightUnit), 1)
@@ -132,17 +223,12 @@ export default function GoalForm({
   );
 
   // ── Lab / vital target (#1853) ────────────────────────────────────────────
-  // A Combobox picks by LABEL, and seriesPickerOptions guarantees labels are unique,
-  // so the label→name map is total and a pick can never be ambiguous.
-  const optionByLabel = new Map(biomarkerOptions.map((o) => [o.label, o]));
-  const optionByName = new Map(biomarkerOptions.map((o) => [o.name, o]));
-  const [bioLabel, setBioLabel] = useState(() =>
-    editGoal?.biomarker_name
-      ? (optionByName.get(editGoal.biomarker_name)?.label ??
-        editGoal.biomarker_name)
-      : ""
+  const optionByName = useMemo(
+    () => new Map(biomarkerOptions.map((o) => [o.name, o])),
+    [biomarkerOptions]
   );
-  const bioOption = optionByLabel.get(bioLabel) ?? null;
+  const [bioName, setBioName] = useState(editGoal?.biomarker_name ?? "");
+  const bioOption = optionByName.get(bioName) ?? null;
   const [direction, setDirection] = useState<OutcomeGoalDirection>(
     editGoal?.target_direction ?? "below"
   );
@@ -176,19 +262,72 @@ export default function GoalForm({
     return null;
   })();
 
+  // ── The DOM-owned fields' mirrors ─────────────────────────────────────────
+  // Read by the chips only; the DOM still owns every one of these values. See the
+  // header for why they are not controlled.
+  const [targetWeight, setTargetWeight] = useState(String(wVal));
+  const [targetReps, setTargetReps] = useState(
+    editGoal?.target_reps == null ? "" : String(editGoal.target_reps)
+  );
+  const [targetSets, setTargetSets] = useState(
+    editGoal?.target_sets == null ? "" : String(editGoal.target_sets)
+  );
+  const [targetDuration, setTargetDuration] = useState(holdVal);
+  const [titleText, setTitleText] = useState(editGoal?.title ?? "");
+  const [descriptionText, setDescriptionText] = useState(
+    editGoal?.description ?? ""
+  );
+  const [categoryText, setCategoryText] = useState(
+    editGoal?.categoryLabel ?? ""
+  );
+  const [currentValue, setCurrentValue] = useState(
+    editGoal?.current_value == null ? "" : String(editGoal.current_value)
+  );
+  const [targetValue, setTargetValue] = useState(
+    editGoal?.target_value == null || editGoal.kind !== "freeform"
+      ? ""
+      : String(editGoal.target_value)
+  );
+  const [unitText, setUnitText] = useState(editGoal?.unit ?? "");
+  // Controlled, and it always was: DateField's named input is `type="hidden"`, so
+  // this is outside what the dirty-form registry can see either way.
+  const [targetDate, setTargetDate] = useState(editGoal?.target_date ?? "");
+
+  function resetTargetMirrors() {
+    setTargetWeight(String(wVal));
+    setTargetReps(
+      editGoal?.target_reps == null ? "" : String(editGoal.target_reps)
+    );
+    setTargetSets(
+      editGoal?.target_sets == null ? "" : String(editGoal.target_sets)
+    );
+    setTargetDuration(holdVal);
+  }
+
   const timed = isTimed(exercise);
   // Timed lifts can only have a hold target. Apply that invariant in the same
   // interaction that changes the exercise, so the form never renders a mismatched
   // exercise/metric pair and needs no follow-up synchronization render.
   const chooseExercise = (nextExercise: string) => {
     setExercise(nextExercise);
-    setMetric((current) =>
-      isTimed(nextExercise)
-        ? "hold"
-        : timed && current === "hold"
-          ? "weight"
-          : current
-    );
+    const next: OutcomeGoalMetric = isTimed(nextExercise)
+      ? "hold"
+      : timed && metric === "hold"
+        ? "weight"
+        : metric;
+    if (next !== metric) {
+      setMetric(next);
+      // The metric-conditional block remounts, so its inputs go back to their
+      // defaults; the mirrors follow in the same gesture or the chips would state
+      // numbers no field holds.
+      resetTargetMirrors();
+    }
+  };
+
+  const chooseMetric = (next: OutcomeGoalMetric) => {
+    if (next === metric) return;
+    setMetric(next);
+    resetTargetMirrors();
   };
 
   const variant = variantOf(exercise);
@@ -200,7 +339,10 @@ export default function GoalForm({
   // this is the INSTANCE axis — two machines that both serialize as the same exact
   // name and whose loads are not comparable. They are different questions and both
   // can apply, which is why they render as separate rows.
-  const equipmentName = new Map(equipment.map((e) => [e.id, e.name]));
+  const equipmentName = useMemo(
+    () => new Map(equipment.map((e) => [e.id, e.name])),
+    [equipment]
+  );
   const loggedIds = equipmentByExercise[exerciseHistoryKey(exercise)] ?? [];
   // A goal being EDITED keeps its own implement offered even when the movement has
   // since lost every set on it, so opening the form can't silently widen the goal.
@@ -219,7 +361,7 @@ export default function GoalForm({
   // "Any machine" available as a deliberate, explicit answer rather than a default.
   // Rep/sets/hold targets and single-context lifts keep the movement-wide default.
   const contextRequired = contextIds.length > 1 && metric === "weight";
-  const showLoadContext = contextIds.length > 0;
+  const showLoadContext = kind === "exercise" && contextIds.length > 0;
   // Derived, not stored: switching exercise (or metric) can strand a selection that
   // the new movement never had, and the select must never render a value that is not
   // one of its options. An unstranded pick wins; otherwise "any" (movement-wide),
@@ -231,12 +373,289 @@ export default function GoalForm({
         ? ""
         : "any";
 
+  // ── The subject pick, and the kind it derives ─────────────────────────────
+  const subjectOptions = useMemo(
+    () =>
+      goalSubjectOptions({
+        lifts: allowExerciseGoal ? lifts : [],
+        bodyMetrics: BODY_METRICS,
+        biomarkers: biomarkerOptions,
+      }),
+    [allowExerciseGoal, lifts, biomarkerOptions]
+  );
+  const subjectByLabel = useMemo(() => {
+    const map = new Map<string, GoalSubjectOption>();
+    for (const option of subjectOptions)
+      map.set(option.label.trim().toLowerCase(), option);
+    return map;
+  }, [subjectOptions]);
+  const subjectGroupByLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of subjectOptions) map.set(option.label, option.groupLabel);
+    return map;
+  }, [subjectOptions]);
+  const biomarkerLabels = useMemo(
+    () => new Set(subjectOptions.filter((o) => o.group === "biomarker").map((o) => o.label)),
+    [subjectOptions]
+  );
+
+  /** What the picker shows for a kind: the subject that kind's fields already hold. */
+  const subjectTextFor = (k: OutcomeGoalKind): string => {
+    if (k === "exercise") return exercise;
+    if (k === "body") return BODY_METRIC_LABELS[bodyMetric];
+    if (k === "biomarker") return optionByName.get(bioName)?.label ?? bioName;
+    return titleText;
+  };
+  const [subjectText, setSubjectText] = useState(() =>
+    subjectTextFor(initialKind)
+  );
+
+  /**
+   * A row was picked, or a name was typed. A MATCH decides the kind; anything else
+   * belongs to whichever vocabulary is currently open — and only the exercise one is
+   * open-ended, since a body metric and an analyte are closed sets whose members the
+   * write validates against.
+   */
+  function pickSubject(text: string) {
+    setSubjectText(text);
+    const option = subjectByLabel.get(text.trim().toLowerCase());
+    if (option) {
+      const nextKind = kindForSubjectGroup(option.group);
+      if (nextKind !== kind) setKind(nextKind);
+      setKindDerived(true);
+      if (option.group === "exercise") chooseExercise(option.value);
+      else if (option.group === "body") chooseBodyMetric(option.value as BodyMetricKind);
+      else chooseBiomarker(option.value);
+      return;
+    }
+    if (kind === "exercise") chooseExercise(text);
+    // A biomarker name that no longer resolves is not a target: the write validates
+    // the analyte against this same vocabulary, so the form must not claim one.
+    else if (kind === "biomarker" && bioName) setBioName("");
+  }
+
+  function chooseBodyMetric(bm: BodyMetricKind) {
+    setBodyMetric(bm);
+    // Recompute the target for the new metric — clears a stale weight value that
+    // would otherwise post as a bpm/% target (issue #631).
+    setBodyTarget(bodyTargetFor(bm));
+    setSubjectText(BODY_METRIC_LABELS[bm]);
+  }
+
+  function chooseBiomarker(name: string) {
+    if (name !== bioName) setBioTarget("");
+    setBioName(name);
+    setSubjectText(optionByName.get(name)?.label ?? name);
+  }
+
+  function chooseKind(next: OutcomeGoalKind) {
+    if (next === kind) return;
+    setKind(next);
+    // Stated, not suggested, from here on — the person answered this themselves.
+    setKindDerived(false);
+    setError(null);
+    // The other kind's fields unmount, so their DOM values go back to defaults; the
+    // mirrors follow in the same gesture.
+    resetTargetMirrors();
+    setTitleText(editGoal?.title ?? "");
+    setDescriptionText(editGoal?.description ?? "");
+    setCategoryText(editGoal?.categoryLabel ?? "");
+    setCurrentValue(
+      editGoal?.current_value == null ? "" : String(editGoal.current_value)
+    );
+    setTargetValue(
+      editGoal?.target_value == null || editGoal.kind !== "freeform"
+        ? ""
+        : String(editGoal.target_value)
+    );
+    setUnitText(editGoal?.unit ?? "");
+    setSubjectText(subjectTextFor(next));
+  }
+
+  // ── Where this goal is starting from (#3220) ──────────────────────────────
+  const startingFrom = (() => {
+    if (kind === "exercise") {
+      const best = exerciseBests[exerciseHistoryKey(exercise)];
+      if (!best) return null;
+      if (metric === "weight")
+        return best.weightKg == null
+          ? null
+          : startingFromFactLabel({
+              value: round(kgTo(best.weightKg, weightUnit), 1),
+              unit: weightUnit,
+            });
+      if (metric === "reps")
+        return best.reps == null
+          ? null
+          : startingFromFactLabel({ value: best.reps, unit: "reps" });
+      if (metric === "hold")
+        return best.durationSec == null
+          ? null
+          : startingFromFactLabel({
+              value: best.durationSec,
+              unit: null,
+              asDuration: true,
+            });
+      // The `sets` metric counts, per session, the sets clearing this goal's OWN rep
+      // bar — a property of the target, not of the movement's history. See
+      // getExerciseBests.
+      return null;
+    }
+    if (kind === "body") {
+      const latest = latestBodyMetrics[bodyMetric] ?? null;
+      if (latest == null) return null;
+      return startingFromFactLabel({
+        value:
+          bodyMetric === "weight"
+            ? round(kgTo(latest, weightUnit), 1)
+            : latest,
+        unit: bodyTargetUnit(bodyMetric, weightUnit),
+      });
+    }
+    if (kind === "biomarker") {
+      if (!bioOption || bioOption.latest == null) return null;
+      return startingFromFactLabel({
+        value: bioOption.latest,
+        unit: bioOption.latestUnit,
+      });
+    }
+    const typed = Number(currentValue.trim());
+    if (!currentValue.trim() || !Number.isFinite(typed)) return null;
+    return startingFromFactLabel({
+      value: typed,
+      unit: unitText.trim() || null,
+    });
+  })();
+
+  const summary = goalFactSummary(
+    {
+      kind,
+      kindDerived,
+      subject:
+        kind === "exercise"
+          ? exercise
+          : kind === "body"
+            ? BODY_METRIC_LABELS[bodyMetric]
+            : kind === "biomarker"
+              ? (bioOption?.label ?? "")
+              : titleText,
+      target:
+        kind === "exercise"
+          ? {
+              kind: "exercise",
+              metric,
+              weight: targetWeight,
+              reps: targetReps,
+              sets: targetSets,
+              duration: targetDuration,
+              weightUnit,
+            }
+          : kind === "body"
+            ? {
+                kind: "body",
+                metric: bodyMetric,
+                value: bodyTarget,
+                weightUnit,
+              }
+            : kind === "biomarker"
+              ? {
+                  kind: "biomarker",
+                  direction,
+                  value: bioTarget,
+                  unit: bioUnit,
+                }
+              : { kind: "freeform", value: targetValue, unit: unitText },
+      targetDate,
+      startingFrom,
+      startingFromSuggested: kind !== "freeform",
+      equipment: showLoadContext
+        ? {
+            label:
+              selectedContext === ""
+                ? null
+                : selectedContext === "any"
+                  ? "any machine"
+                  : (equipmentName.get(Number(selectedContext)) ?? null),
+          }
+        : null,
+      title: titleText,
+      category: categoryText,
+      notes: descriptionText,
+    },
+    formatPrefs
+  );
+
+  const {
+    openEditor,
+    open: openPanel,
+    close: closePanel,
+    onKeyDown,
+  } = useFactEditor<GoalOpenPanel>({
+    scopeRef: formRef,
+    // A create lands ON the subject pick, because there is nothing else it could be
+    // about; an edit lands on the chips, which is what "edit mode reads back" means.
+    initial: editGoal ? null : "subject",
+  });
+  // The kind is a chip of its own but not a panel of its own: correcting it and
+  // picking a subject are the same question, so both doors open the subject editor
+  // and `focusKey` keeps the return path per CHIP (#3311).
+  const panelFor = (key: GoalOpenPanel): GoalOpenPanel =>
+    key === "kind" ? "subject" : key;
+
   const submitLabel = editGoal ? "Save changes" : "Create goal";
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The first fact that would make the write refuse, and the panel holding it.
+   *
+   * WHY THIS EXISTS AT ALL, rather than the `required` attributes it replaces: a
+   * `required` field inside a CLOSED panel is `hidden`, and the browser refuses to
+   * validate a hidden control — it blocks the submit with "An invalid form control is
+   * not focusable" and shows the person nothing. So the form asks the question
+   * itself and OPENS the fact that needs answering, which is the affordance the chip
+   * row makes possible.
+   */
+  function firstProblem(): { panel: GoalOpenPanel; message: string } | null {
+    if (kind === "exercise") {
+      if (!exercise.trim())
+        return { panel: "subject", message: "Pick the exercise this goal is about." };
+      if (metric === "weight" && !targetWeight.trim())
+        return { panel: "target", message: "Enter the weight you're aiming for." };
+      if (metric === "reps" && !targetReps.trim())
+        return { panel: "target", message: "Enter the reps you're aiming for." };
+      if (metric === "sets" && (!targetSets.trim() || !targetReps.trim()))
+        return { panel: "target", message: "Enter both the sets and the reps." };
+      if (metric === "hold" && !targetDuration.trim())
+        return { panel: "target", message: "Enter the hold you're aiming for." };
+      if (showLoadContext && selectedContext === "")
+        return { panel: "equipment", message: "Pick the machine this target is for." };
+      return null;
+    }
+    if (kind === "body")
+      return bodyTarget.trim()
+        ? null
+        : { panel: "target", message: "Enter the number you're aiming for." };
+    if (kind === "biomarker") {
+      if (!bioOption)
+        return { panel: "subject", message: "Pick the lab or vital this goal is about." };
+      return bioTarget.trim()
+        ? null
+        : { panel: "target", message: "Enter the number you're aiming for." };
+    }
+    return titleText.trim()
+      ? null
+      : { panel: "subject", message: "Name this goal." };
+  }
+
   async function submit(fd: FormData) {
     setError(null);
+    const problem = firstProblem();
+    if (problem) {
+      setError(problem.message);
+      openPanel(problem.panel);
+      return;
+    }
     let result: FormResult;
     try {
       if (editGoal) {
@@ -260,8 +679,19 @@ export default function GoalForm({
     onDone?.();
   }
 
+  const uid = editGoal?.id ?? "new";
+  const kinds = OUTCOME_GOAL_KINDS.filter(
+    (k) => allowExerciseGoal || k !== "exercise"
+  );
+
   return (
-    <form action={submit} className="mt-4 space-y-4">
+    <form
+      ref={formRef}
+      action={submit}
+      onKeyDown={onKeyDown}
+      className="mt-4 space-y-4"
+      data-testid="goal-form"
+    >
       {error && (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
           {error}
@@ -273,560 +703,586 @@ export default function GoalForm({
           changed in another tab mid-edit. */}
       <input type="hidden" name="weight_unit" value={weightUnit} />
 
-      {/* Kind toggle */}
-      <div className="flex flex-wrap gap-1.5">
-        {OUTCOME_GOAL_KINDS.filter(
-          (k) => allowExerciseGoal || k !== "exercise"
-        ).map((k) => (
-          <button
-            key={k}
-            type="button"
-            data-testid={`goal-kind-${k}`}
-            onClick={() => setKind(k)}
-            className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
-              kind === k
-                ? "border-brand-500 bg-brand-500 text-white"
-                : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-            }`}
-          >
-            {KIND_LABEL[k]}
-          </button>
-        ))}
-      </div>
+      {/* THE SENTENCE, and the one open editor behind it (#3218/#3220). At most one
+          editor is on screen: the row is unmounted while a panel is open, and the
+          host is display:none while none is. */}
+      {openEditor == null && (
+        <GoalFactRow
+          summary={summary}
+          openEditor={openEditor}
+          onOpen={(key, focusKey) => openPanel(panelFor(key), focusKey)}
+        />
+      )}
 
-      {kind === "exercise" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label">Exercise</label>
-            <input type="hidden" name="exercise" value={exercise} />
-            <ActivityCombobox
-              value={exercise}
-              onChange={chooseExercise}
-              options={lifts}
-              placeholder="e.g. Bench Press, Squat, Plank"
-            />
-            {showEquipment && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {variant!.group.equipment.map((eq) => {
-                  const active = variant!.equipment === eq;
-                  return (
-                    <button
-                      key={eq}
-                      type="button"
-                      onClick={() =>
-                        chooseExercise(composeVariant(variant!.group, eq))
-                      }
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                        active
-                          ? "border-brand-500 bg-brand-500 text-white"
-                          : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-                      }`}
-                    >
-                      {eq}
-                    </button>
-                  );
-                })}
-                {variant!.equipment === null && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Pick equipment
-                  </span>
-                )}
-              </div>
-            )}
-            {showLoadContext && (
-              <div className="mt-3" data-testid="goal-load-context">
-                <label className="label" htmlFor="goal-equipment">
-                  Machine {contextRequired ? "" : "(optional)"}
-                </label>
-                <select
-                  id="goal-equipment"
-                  name="equipment_id"
-                  className="input"
-                  value={selectedContext}
-                  onChange={(e) => setEquipmentId(e.target.value)}
-                  required={contextRequired}
-                >
-                  {contextRequired && selectedContext === "" && (
-                    <option value="" disabled>
-                      Choose a machine…
-                    </option>
-                  )}
-                  <option value="any">Any machine</option>
-                  {contextIds.map((id) => (
-                    <option key={id} value={String(id)}>
-                      {equipmentName.get(id)}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {contextRequired
-                    ? "You’ve logged this lift on more than one machine, and their loads aren’t comparable — pick the one this target is for."
-                    : "Scope this target to one machine, or leave it across all of them."}
-                </p>
-              </div>
-            )}
+      <FactEditorHost
+        testId="goal-editor"
+        doneTestId="goal-editor-done"
+        panel={openEditor ?? undefined}
+        onDone={closePanel}
+        bodyClassName="space-y-3"
+        className={openEditor == null ? "hidden" : undefined}
+      >
+        {/* ── The subject, and the kind it derives ──────────────────────── */}
+        <div hidden={openEditor !== "subject"}>
+          <label className="label">Kind</label>
+          <div className="flex flex-wrap gap-1.5">
+            {kinds.map((k) => (
+              <button
+                key={k}
+                type="button"
+                data-testid={`goal-kind-${k}`}
+                onClick={() => chooseKind(k)}
+                className={pillClass(kind === k)}
+              >
+                {GOAL_KIND_LABEL[k]}
+              </button>
+            ))}
           </div>
 
-          <div className="sm:col-span-2">
-            <label className="label">Target</label>
-            <input type="hidden" name="metric" value={metric} />
-            <div className="flex flex-wrap gap-1.5">
-              {METRICS.map((m) => {
-                const disabled = timed
-                  ? m.value !== "hold"
-                  : m.value === "hold";
-                const active = metric === m.value;
-                return (
-                  <button
-                    key={m.value}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setMetric(m.value)}
-                    className={`rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                      active
-                        ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Metric-conditional inputs */}
-          {metric === "weight" && (
-            <>
-              <div>
-                <label className="label" htmlFor="goal-target-weight">
-                  Target weight ({weightUnit})
-                </label>
-                <input
-                  id="goal-target-weight"
-                  type="number"
-                  step="0.5"
-                  name="target_weight"
-                  defaultValue={wVal}
-                  className="input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="goal-target-reps">
-                  At reps (optional)
-                </label>
-                <input
-                  id="goal-target-reps"
-                  type="number"
-                  name="target_reps"
-                  defaultValue={editGoal?.target_reps ?? ""}
-                  className="input"
-                />
-              </div>
-            </>
-          )}
-          {metric === "reps" && (
-            <>
-              <div>
-                <label className="label" htmlFor="goal-target-reps">
-                  Target reps
-                </label>
-                <input
-                  id="goal-target-reps"
-                  type="number"
-                  name="target_reps"
-                  defaultValue={editGoal?.target_reps ?? ""}
-                  className="input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="goal-target-weight">
-                  At weight ({weightUnit}, optional)
-                </label>
-                <input
-                  id="goal-target-weight"
-                  type="number"
-                  step="0.5"
-                  name="target_weight"
-                  defaultValue={wVal}
-                  className="input"
-                />
-              </div>
-            </>
-          )}
-          {metric === "sets" && (
-            <>
-              <div>
-                <label className="label" htmlFor="goal-target-sets">
-                  Sets
-                </label>
-                <input
-                  id="goal-target-sets"
-                  type="number"
-                  name="target_sets"
-                  defaultValue={editGoal?.target_sets ?? ""}
-                  className="input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="goal-target-reps">
-                  Reps per set
-                </label>
-                <input
-                  id="goal-target-reps"
-                  type="number"
-                  name="target_reps"
-                  defaultValue={editGoal?.target_reps ?? ""}
-                  className="input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="goal-target-weight">
-                  At weight ({weightUnit}, optional)
-                </label>
-                <input
-                  id="goal-target-weight"
-                  type="number"
-                  step="0.5"
-                  name="target_weight"
-                  defaultValue={wVal}
-                  className="input"
-                />
-              </div>
-            </>
-          )}
-          {metric === "hold" && (
-            <div>
-              <label className="label" htmlFor="goal-target-duration">
-                Target hold (m:ss)
+          {kind === "freeform" ? (
+            <div className="mt-3">
+              <label className="label" htmlFor={`goal-ff-title-${uid}`}>
+                Title
               </label>
               <input
-                id="goal-target-duration"
-                type="text"
-                inputMode="numeric"
-                name="target_duration"
-                defaultValue={holdVal}
-                placeholder="2:00"
+                id={`goal-ff-title-${uid}`}
+                name="title"
+                defaultValue={editGoal?.title ?? ""}
+                onChange={(e) => setTitleText(e.target.value)}
                 className="input"
-                required
+                placeholder="e.g. Run a half marathon"
+              />
+            </div>
+          ) : (
+            <div className="mt-3">
+              <label className="label" htmlFor={`goal-subject-${uid}`}>
+                What to track
+              </label>
+              {/* ONE PICKER, THREE VOCABULARIES, and the analytes keep their own
+                  ranked group headers (#1675) — see goalSubjectOptions. It carries no
+                  `name`: the value it resolves is posted by the hidden carriers
+                  below, exactly as before. */}
+              <Combobox
+                id={`goal-subject-${uid}`}
+                value={subjectText}
+                onChange={pickSubject}
+                options={subjectOptions.map((o) => o.label)}
+                groupFor={(label) => subjectGroupByLabel.get(label) ?? null}
+                // The SAME search keys as every other biomarker picker (#2382): the
+                // analyte's own acronym and its curated aliases, so "a1c" and "psa"
+                // reach their entries rather than walking a long name's letters.
+                // Exercise and body rows have none, and must not borrow an analyte's.
+                searchTermsFor={(label) =>
+                  biomarkerLabels.has(label) ? biomarkerSearchTerms(label) : []
+                }
+                ariaLabel="What to track"
+                closeStopsPropagation
+                placeholder="e.g. Bench Press, Body fat, LDL Cholesterol"
               />
             </div>
           )}
 
-          <div>
-            <label className="label" htmlFor="goal-exercise-date">
-              Target date (optional)
-            </label>
-            <DateField
-              id="goal-exercise-date"
-              name="target_date"
-              defaultValue={editGoal?.target_date ?? ""}
-              showCountdown
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <SubmitButton pendingLabel="Saving…" disabled={!exercise.trim()}>
-              {submitLabel}
-            </SubmitButton>
-          </div>
-        </div>
-      ) : kind === "body" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label">Metric</label>
-            <input type="hidden" name="body_metric" value={bodyMetric} />
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_METRICS.map((bm) => {
-                const active = bodyMetric === bm;
-                return (
+          {kind === "exercise" && (
+            <>
+              <input type="hidden" name="exercise" value={exercise} />
+              {showEquipment && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {variant!.group.equipment.map((eq) => {
+                    const active = variant!.equipment === eq;
+                    return (
+                      <button
+                        key={eq}
+                        type="button"
+                        onClick={() =>
+                          chooseExercise(composeVariant(variant!.group, eq))
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                          active ? PILL_ON : PILL_OFF
+                        }`}
+                      >
+                        {eq}
+                      </button>
+                    );
+                  })}
+                  {variant!.equipment === null && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      Pick equipment
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {kind === "body" && (
+            <>
+              <input type="hidden" name="body_metric" value={bodyMetric} />
+              {/* THE THREE BODY METRICS STAY BUTTONS. They are a closed set of three
+                  and the switch has to clear the target (#631) — a visible row of
+                  three says that better than a dropdown row does, and the picker
+                  above still reaches them by name. */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {BODY_METRICS.map((bm) => (
                   <button
                     key={bm}
                     type="button"
-                    onClick={() => {
-                      setBodyMetric(bm);
-                      // Recompute the target for the new metric — clears a stale
-                      // weight value that would otherwise post as a bpm/% target
-                      // (issue #631).
-                      setBodyTarget(bodyTargetFor(bm));
-                    }}
-                    className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
-                      active
-                        ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-                    }`}
+                    data-testid={`goal-body-metric-${bm}`}
+                    onClick={() => chooseBodyMetric(bm)}
+                    className={pillClass(bodyMetric === bm)}
                   >
                     {BODY_METRIC_LABELS[bm]}
                   </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-body-target">
-              {bodyMetric === "weight"
-                ? `${BODY_TARGET_LABEL.weight} (${weightUnit})`
-                : BODY_TARGET_LABEL[bodyMetric]}
-            </label>
-            <input
-              id="goal-body-target"
-              type="number"
-              step="0.1"
-              name="body_target"
-              value={bodyTarget}
-              onChange={(e) => setBodyTarget(e.target.value)}
-              className="input"
-              required
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-body-date">
-              Target date (optional)
-            </label>
-            <DateField
-              id="goal-body-date"
-              name="target_date"
-              defaultValue={editGoal?.target_date ?? ""}
-              showCountdown
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="goal-body-title">
-              Title (optional)
-            </label>
-            <input
-              id="goal-body-title"
-              name="title"
-              defaultValue={editGoal?.title ?? ""}
-              className="input"
-              placeholder={`${BODY_METRIC_LABELS[bodyMetric]} goal`}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <p className="-mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Progress tracks automatically from your latest Body metrics entry.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <SubmitButton pendingLabel="Saving…">{submitLabel}</SubmitButton>
-          </div>
-        </div>
-      ) : kind === "biomarker" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="goal-biomarker">
-              Lab or vital
-            </label>
-            {/* The SAME ranked, group-headed option list every other biomarker
-                picker has shown since #1675: due-or-flagged first, then your
-                markers, then the whole vocabulary — not a new alphabetical list.
-                The name the form posts is resolved from the picked LABEL, which
-                seriesPickerOptions guarantees is unique. */}
+                ))}
+              </div>
+            </>
+          )}
+
+          {kind === "biomarker" && (
             <input
               type="hidden"
               name="biomarker_name"
-              value={bioOption?.name ?? ""}
+              value={bioOption?.name ?? bioName}
             />
-            <Combobox
-              id="goal-biomarker"
-              value={bioLabel}
-              onChange={(v) => {
-                setBioLabel(v);
-                // Switching analyte clears the number: 100 mg/dL is not 100 mmol/L,
-                // and a stale value would post against the new analyte's unit.
-                if (v !== bioLabel) setBioTarget("");
-              }}
-              options={biomarkerOptions.map((o) => o.label)}
-              groupFor={(label) => optionByLabel.get(label)?.group ?? null}
-              // The SAME search keys as every other biomarker picker (#2382): the
-              // analyte's own acronym and its curated aliases, so "a1c" and "psa"
-              // reach their entries rather than walking a long name's letters.
-              searchTermsFor={biomarkerSearchTerms}
-              ariaLabel="Lab or vital"
-              placeholder="e.g. LDL Cholesterol, Hemoglobin A1c"
-            />
-          </div>
+          )}
+        </div>
 
-          <div className="sm:col-span-2">
-            <label className="label">Target</label>
-            <input type="hidden" name="target_direction" value={direction} />
-            <div className="flex flex-wrap gap-1.5">
-              {OUTCOME_GOAL_DIRECTIONS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  data-testid={`goal-direction-${d}`}
-                  onClick={() => setDirection(d)}
-                  className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
-                    direction === d
-                      ? "border-brand-500 bg-brand-500 text-white"
-                      : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-                  }`}
-                >
-                  {DIRECTION_LABEL[d]}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* ── The target ────────────────────────────────────────────────── */}
+        <div hidden={openEditor !== "target"}>
+          {kind === "exercise" && (
+            <>
+              <label className="label">Target</label>
+              <input type="hidden" name="metric" value={metric} />
+              <div className="flex flex-wrap gap-1.5">
+                {METRICS.map((m) => {
+                  const disabled = timed
+                    ? m.value !== "hold"
+                    : m.value === "hold";
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => chooseMetric(m.value)}
+                      className={pillClass(metric === m.value)}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Metric-conditional inputs — mounted only for the metric that uses
+                  them; see the header for why this one block is not merely hidden. */}
+              <div key={metric} className="mt-3 grid gap-3 sm:grid-cols-2">
+                {metric === "weight" && (
+                  <>
+                    <div>
+                      <label className="label" htmlFor="goal-target-weight">
+                        Target weight ({weightUnit})
+                      </label>
+                      <input
+                        id="goal-target-weight"
+                        type="number"
+                        step="0.5"
+                        name="target_weight"
+                        defaultValue={wVal}
+                        onChange={(e) => setTargetWeight(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="goal-target-reps">
+                        At reps (optional)
+                      </label>
+                      <input
+                        id="goal-target-reps"
+                        type="number"
+                        name="target_reps"
+                        defaultValue={editGoal?.target_reps ?? ""}
+                        onChange={(e) => setTargetReps(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </>
+                )}
+                {metric === "reps" && (
+                  <>
+                    <div>
+                      <label className="label" htmlFor="goal-target-reps">
+                        Target reps
+                      </label>
+                      <input
+                        id="goal-target-reps"
+                        type="number"
+                        name="target_reps"
+                        defaultValue={editGoal?.target_reps ?? ""}
+                        onChange={(e) => setTargetReps(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="goal-target-weight">
+                        At weight ({weightUnit}, optional)
+                      </label>
+                      <input
+                        id="goal-target-weight"
+                        type="number"
+                        step="0.5"
+                        name="target_weight"
+                        defaultValue={wVal}
+                        onChange={(e) => setTargetWeight(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </>
+                )}
+                {metric === "sets" && (
+                  <>
+                    <div>
+                      <label className="label" htmlFor="goal-target-sets">
+                        Sets
+                      </label>
+                      <input
+                        id="goal-target-sets"
+                        type="number"
+                        name="target_sets"
+                        defaultValue={editGoal?.target_sets ?? ""}
+                        onChange={(e) => setTargetSets(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="goal-target-reps">
+                        Reps per set
+                      </label>
+                      <input
+                        id="goal-target-reps"
+                        type="number"
+                        name="target_reps"
+                        defaultValue={editGoal?.target_reps ?? ""}
+                        onChange={(e) => setTargetReps(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="goal-target-weight">
+                        At weight ({weightUnit}, optional)
+                      </label>
+                      <input
+                        id="goal-target-weight"
+                        type="number"
+                        step="0.5"
+                        name="target_weight"
+                        defaultValue={wVal}
+                        onChange={(e) => setTargetWeight(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </>
+                )}
+                {metric === "hold" && (
+                  <div>
+                    <label className="label" htmlFor="goal-target-duration">
+                      Target hold (m:ss)
+                    </label>
+                    <input
+                      id="goal-target-duration"
+                      type="text"
+                      inputMode="numeric"
+                      name="target_duration"
+                      defaultValue={holdVal}
+                      onChange={(e) => setTargetDuration(e.target.value)}
+                      placeholder="2:00"
+                      className="input"
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
-          <div>
-            <label className="label" htmlFor="goal-biomarker-target">
-              Target value{bioUnit ? ` (${bioUnit})` : ""}
-            </label>
-            <input
-              id="goal-biomarker-target"
-              type="number"
-              step="any"
-              name="biomarker_target"
-              value={bioTarget}
-              onChange={(e) => setBioTarget(e.target.value)}
-              className="input"
-              required
-            />
-            {referenceHint && (
-              <p
-                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="goal-clinical-result-reference"
-              >
-                {referenceHint}
+          {kind === "body" && (
+            <div>
+              <label className="label" htmlFor="goal-body-target">
+                {bodyMetric === "weight"
+                  ? `${BODY_TARGET_LABEL.weight} (${weightUnit})`
+                  : BODY_TARGET_LABEL[bodyMetric]}
+              </label>
+              <input
+                id="goal-body-target"
+                type="number"
+                step="0.1"
+                name="body_target"
+                value={bodyTarget}
+                onChange={(e) => setBodyTarget(e.target.value)}
+                className="input"
+              />
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Progress tracks automatically from your latest Body metrics
+                entry.
               </p>
-            )}
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-biomarker-date">
-              Target date (optional)
+            </div>
+          )}
+
+          {kind === "biomarker" && (
+            <>
+              <label className="label">Target</label>
+              <input type="hidden" name="target_direction" value={direction} />
+              <div className="flex flex-wrap gap-1.5">
+                {OUTCOME_GOAL_DIRECTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    data-testid={`goal-direction-${d}`}
+                    onClick={() => setDirection(d)}
+                    className={pillClass(direction === d)}
+                  >
+                    {DIRECTION_LABEL[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3">
+                <label className="label" htmlFor="goal-biomarker-target">
+                  Target value{bioUnit ? ` (${bioUnit})` : ""}
+                </label>
+                <input
+                  id="goal-biomarker-target"
+                  type="number"
+                  step="any"
+                  name="biomarker_target"
+                  value={bioTarget}
+                  onChange={(e) => setBioTarget(e.target.value)}
+                  className="input"
+                />
+                {referenceHint && (
+                  <p
+                    className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="goal-clinical-result-reference"
+                  >
+                    {referenceHint}
+                  </p>
+                )}
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  Progress tracks from your results for this marker, and advances
+                  when a new one arrives — not day by day.
+                </p>
+              </div>
+            </>
+          )}
+
+          {kind === "freeform" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor={`goal-ff-target-${uid}`}>
+                  Target value
+                </label>
+                <input
+                  id={`goal-ff-target-${uid}`}
+                  type="number"
+                  step="any"
+                  name="target_value"
+                  defaultValue={editGoal?.target_value ?? ""}
+                  onChange={(e) => setTargetValue(e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor={`goal-ff-unit-${uid}`}>
+                  Unit
+                </label>
+                <input
+                  id={`goal-ff-unit-${uid}`}
+                  name="unit"
+                  defaultValue={editGoal?.unit ?? ""}
+                  onChange={(e) => setUnitText(e.target.value)}
+                  className="input"
+                  placeholder="kg / reps / km"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── The load context (#1610) ──────────────────────────────────── */}
+        {showLoadContext && (
+          <div hidden={openEditor !== "equipment"} data-testid="goal-load-context">
+            <label className="label" htmlFor="goal-equipment">
+              Machine {contextRequired ? "" : "(optional)"}
             </label>
-            <DateField
-              id="goal-biomarker-date"
-              name="target_date"
-              defaultValue={editGoal?.target_date ?? ""}
-              showCountdown
-            />
+            <select
+              id="goal-equipment"
+              name="equipment_id"
+              className="input"
+              value={selectedContext}
+              onChange={(e) => setEquipmentId(e.target.value)}
+            >
+              {contextRequired && selectedContext === "" && (
+                <option value="" disabled>
+                  Choose a machine…
+                </option>
+              )}
+              <option value="any">Any machine</option>
+              {contextIds.map((id) => (
+                <option key={id} value={String(id)}>
+                  {equipmentName.get(id)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {contextRequired
+                ? "You’ve logged this lift on more than one machine, and their loads aren’t comparable — pick the one this target is for."
+                : "Scope this target to one machine, or leave it across all of them."}
+            </p>
           </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="goal-biomarker-title">
+        )}
+
+        {/* ── The deadline ──────────────────────────────────────────────── */}
+        <div hidden={openEditor !== "deadline"}>
+          <label className="label" htmlFor={`goal-date-${uid}`}>
+            Target date (optional)
+          </label>
+          <DateField
+            id={`goal-date-${uid}`}
+            name="target_date"
+            value={targetDate}
+            onChange={setTargetDate}
+            showCountdown
+          />
+        </div>
+
+        {/* ── The starting point ────────────────────────────────────────── */}
+        <div hidden={openEditor !== "startingFrom"}>
+          {kind === "freeform" ? (
+            <div>
+              <label className="label" htmlFor={`goal-ff-current-${uid}`}>
+                Current value
+              </label>
+              <input
+                id={`goal-ff-current-${uid}`}
+                type="number"
+                step="any"
+                name="current_value"
+                defaultValue={editGoal?.current_value ?? ""}
+                onChange={(e) => setCurrentValue(e.target.value)}
+                className="input"
+              />
+            </div>
+          ) : (
+            // NOT AN EDITOR, AND HONEST ABOUT IT. A measured goal's starting point is
+            // read out of history at write time (`baseline_value` in createGoal), so
+            // there is nothing here to change — only somewhere to find out where the
+            // number came from, which is the question a suggested chip provokes.
+            <p
+              className="text-sm text-slate-600 dark:text-slate-300"
+              data-testid="goal-starting-from-source"
+            >
+              {startingFrom
+                ? `This goal starts ${startingFrom.replace(/^from /, "from ")} — your ${
+                    kind === "exercise"
+                      ? "best logged set for this movement"
+                      : kind === "body"
+                        ? "latest Body metrics entry"
+                        : "latest result for this marker"
+                  }. Progress runs from there to your target.`
+                : `Nothing logged yet, so progress starts from your first ${
+                    kind === "exercise"
+                      ? "set"
+                      : kind === "body"
+                        ? "Body metrics entry"
+                        : "result"
+                  }.`}
+            </p>
+          )}
+        </div>
+
+        {/* ── The optional title override ───────────────────────────────── */}
+        {kind !== "freeform" && (
+          <div hidden={openEditor !== "title"}>
+            <label className="label" htmlFor={`goal-title-${uid}`}>
               Title (optional)
             </label>
             <input
-              id="goal-biomarker-title"
+              id={`goal-title-${uid}`}
               name="title"
               defaultValue={editGoal?.title ?? ""}
+              onChange={(e) => setTitleText(e.target.value)}
               className="input"
               placeholder={
-                bioOption
-                  ? `${bioOption.name} ${direction === "below" ? "under" : "over"} target`
-                  : "Lab goal"
+                kind === "body"
+                  ? `${BODY_METRIC_LABELS[bodyMetric]} goal`
+                  : bioOption
+                    ? `${bioOption.name} ${direction === "below" ? "under" : "over"} target`
+                    : "Goal title"
               }
             />
           </div>
-          <div className="sm:col-span-2">
-            <p className="-mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Progress tracks from your results for this marker, and advances
-              when a new one arrives — not day by day.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <SubmitButton pendingLabel="Saving…" disabled={!bioOption}>
-              {submitLabel}
-            </SubmitButton>
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="goal-ff-title">
-              Title
-            </label>
-            <input
-              id="goal-ff-title"
-              name="title"
-              defaultValue={editGoal?.title ?? ""}
-              className="input"
-              placeholder="e.g. Run a half marathon"
-              required
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="goal-ff-description">
-              Description
-            </label>
-            <textarea
-              id="goal-ff-description"
-              name="description"
-              defaultValue={editGoal?.description ?? ""}
-              rows={2}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-ff-category">
-              Category
-            </label>
-            <input
-              id="goal-ff-category"
-              name="category"
-              defaultValue={editGoal?.categoryLabel ?? ""}
-              className="input"
-              placeholder="weight / habit"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-ff-date">
-              Target date
-            </label>
-            <DateField
-              id="goal-ff-date"
-              name="target_date"
-              defaultValue={editGoal?.target_date ?? ""}
-              showCountdown
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-ff-current">
-              Current value
-            </label>
-            <input
-              id="goal-ff-current"
-              type="number"
-              step="any"
-              name="current_value"
-              defaultValue={editGoal?.current_value ?? ""}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-ff-target">
-              Target value
-            </label>
-            <input
-              id="goal-ff-target"
-              type="number"
-              step="any"
-              name="target_value"
-              defaultValue={editGoal?.target_value ?? ""}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="goal-ff-unit">
-              Unit
-            </label>
-            <input
-              id="goal-ff-unit"
-              name="unit"
-              defaultValue={editGoal?.unit ?? ""}
-              className="input"
-              placeholder="kg / reps / km"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <SubmitButton pendingLabel="Saving…">{submitLabel}</SubmitButton>
+        )}
+
+        {/* ── Freeform's own optionals ──────────────────────────────────── */}
+        {kind === "freeform" && (
+          <>
+            <div hidden={openEditor !== "category"}>
+              <label className="label" htmlFor={`goal-ff-category-${uid}`}>
+                Category
+              </label>
+              <input
+                id={`goal-ff-category-${uid}`}
+                name="category"
+                defaultValue={editGoal?.categoryLabel ?? ""}
+                onChange={(e) => setCategoryText(e.target.value)}
+                className="input"
+                placeholder="weight / habit"
+              />
+            </div>
+            <div hidden={openEditor !== "notes"}>
+              <label className="label" htmlFor={`goal-ff-description-${uid}`}>
+                Description
+              </label>
+              <textarea
+                id={`goal-ff-description-${uid}`}
+                name="description"
+                defaultValue={editGoal?.description ?? ""}
+                onChange={(e) => setDescriptionText(e.target.value)}
+                rows={2}
+                className="input"
+              />
+            </div>
+          </>
+        )}
+
+        {/* The trailing affordance's panel is a MENU, not an editor: it names the
+            optional facts with nothing to state and hands off to one of them, so
+            opening it still leaves exactly one editor on screen. */}
+        <div hidden={openEditor !== "more"}>
+          <div className="flex flex-wrap gap-1.5">
+            {summary.more.map((key) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`goal-more-${key}`}
+                onClick={() => openPanel(key)}
+                className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+              >
+                {GOAL_FACT_NOUNS[key]}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+      </FactEditorHost>
+
+      <div>
+        <SubmitButton
+          pendingLabel="Saving…"
+          disabled={
+            kind === "exercise"
+              ? !exercise.trim()
+              : kind === "biomarker"
+                ? !bioOption
+                : false
+          }
+        >
+          {submitLabel}
+        </SubmitButton>
+      </div>
     </form>
   );
 }

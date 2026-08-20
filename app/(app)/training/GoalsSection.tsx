@@ -2,6 +2,8 @@ import {
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
   getActivitySuggestions,
+  getExerciseBests,
+  getLatestBodyMetric,
   getLoggedEquipmentByExercise,
 } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
@@ -46,6 +48,19 @@ export default async function GoalsSection() {
     )
     .map((e) => ({ id: e.id, name: e.name }));
   const equipmentByExercise = getLoggedEquipmentByExercise(profile.id);
+  // WHERE A NEW GOAL IS STARTING FROM (#3220). The form states it as a chip so the
+  // person does not have to remember their own PR or their last weigh-in, and it is
+  // the same number `createGoal` stores as `baseline_value`. The exercise map is
+  // empty (and the fact simply absent) for a profile whose strength surfaces are not
+  // shown at all.
+  const exerciseBests = strengthTrainingAvailable
+    ? getExerciseBests(profile.id)
+    : {};
+  const latestBodyMetrics = {
+    weight: getLatestBodyMetric(profile.id, "weight"),
+    body_fat: getLatestBodyMetric(profile.id, "body_fat"),
+    resting_hr: getLatestBodyMetric(profile.id, "resting_hr"),
+  };
 
   return (
     <section
@@ -64,6 +79,8 @@ export default async function GoalsSection() {
         lifts={lifts}
         equipment={equipment}
         equipmentByExercise={equipmentByExercise}
+        exerciseBests={exerciseBests}
+        latestBodyMetrics={latestBodyMetrics}
         weightUnit={wu}
         biomarkerOptions={getGoalBiomarkerOptions(
           profile.id,
