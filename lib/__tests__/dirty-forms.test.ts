@@ -143,14 +143,27 @@ describe("unsavedAnswerForForm (#3356)", () => {
     expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
   });
 
-  it("believes a form that declares itself CLEAN over the registry's view of it", () => {
-    // The half that stops this being a second source of truth. A declaration is
-    // believed in BOTH directions, so one form is never described two ways; a form
-    // that declares takes responsibility for its whole answer, including its own
-    // named fields.
-    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(
+  it("REFUSES to let a form declare itself clean over its own tracked fields", () => {
+    // THE CASE THAT MUST NOT REGRESS. The first version of this rule was
+    // `declared ?? tracked`, which reads tidily — "a declaring form answers for
+    // itself, so no form is described two ways" — and hands every form a blessed way
+    // to remove its own named fields from the discard guard while every test keeps
+    // passing. That is #3352's exact defect with better manners. So a declaration of
+    // `false` adds nothing and takes nothing away.
+    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(true);
+    // And a declaration of `false` over nothing tracked is still just "nothing".
+    expect(unsavedAnswerForForm({ declared: false, tracked: false })).toBe(
       false
     );
+  });
+
+  it("resolves a disagreement the same way resolveServerValue does", () => {
+    // Not a restatement of the cases above — the point is that ONE class of question
+    // is decided one way across this module. Neither signal can prove the other wrong
+    // from here, so both resolve BY CONSEQUENCE: believing "unsaved" costs a confirm,
+    // believing "clean" costs somebody's typing.
+    expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
+    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(true);
   });
 });
 

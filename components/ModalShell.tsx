@@ -62,9 +62,11 @@ import type { OverlaySize } from "./overlay";
 // panel". A form that composes its FormData by hand out of React state has none, so
 // the guard answered "clean" about it however much had been typed, and a flick threw
 // it away with nothing asking. Such a form now publishes `data-unsaved` and is
-// believed — the precedence is `lib/dirty-forms.ts#unsavedAnswerForForm`, and it is
-// deliberately NOT "true wins": a declaring form answers for itself in both
-// directions, so no form is ever described two ways.
+// believed. The resolution rule is `lib/dirty-forms.ts#unsavedAnswerForForm`: anything
+// that believes there is unsaved work wins, so a declaration can only ADD a form to
+// this guard, never take one out. A rule that let a form declare itself clean over its
+// own named fields would hand every form a blessed way to disarm the guard silently,
+// which is #3352 with better manners.
 //
 // THE SWEEP, RECORDED (the issue asked for the result, not just the fix). Every
 // ModalShell host on 2026-08-20, and which side of the line it fell on:

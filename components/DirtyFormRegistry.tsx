@@ -76,8 +76,10 @@ import { markUnrecoverableWork } from "@/lib/offline/unsaved-work";
 // the whole file, and the sleep dialog is not a `<form>` — so the registry can only
 // ever answer "clean" about it, and a gesture dismissal discarded the typing with
 // nothing asking. Such a form ANSWERS FOR ITSELF by publishing `data-unsaved` on the
-// element it owns; `hasUnsavedInputWithin` below believes it, in both directions.
-// `lib/dirty-forms.ts#unsavedAnswerForForm` holds that precedence rule.
+// element it owns, and `hasUnsavedInputWithin` below believes it. The resolution rule
+// is `lib/dirty-forms.ts#unsavedAnswerForForm`: anything that believes there is
+// unsaved work wins, so a declaration can only ever ADD a form to the guard — never
+// remove one, which would be this file's other bug with better manners.
 //
 // PHI DISCIPLINE. Field values are health data. They are read, compared in
 // memory, and dropped; nothing here persists, transmits or logs a value, and the
@@ -281,12 +283,14 @@ export interface DirtyFormApi {
    * lose; asking the page-wide question would put a confirm in front of a
    * dialog opened over some unrelated half-typed field elsewhere.
    *
-   * THE SECOND SIGNAL, AND ITS PRECEDENCE (#3356). A form that composes its
+   * THE SECOND SIGNAL, AND HOW IT RESOLVES (#3356). A form that composes its
    * FormData by hand out of React state has no named controls for the registry to
-   * see, so it was answered "clean" no matter what the person had typed. Such a
-   * form publishes `data-unsaved` and is BELIEVED — in both directions, and about
-   * every tracked form inside it, so the two signals can never describe one form
-   * differently. `lib/dirty-forms.ts#unsavedAnswerForForm` is that rule.
+   * see, so it was answered "clean" no matter what the person had typed. Such a form
+   * publishes `data-unsaved`, and `lib/dirty-forms.ts#unsavedAnswerForForm` resolves
+   * it against the registry the fail-safe way: anything that believes there is
+   * unsaved work wins. A declaration ADDS a form to the guard and can never take one
+   * out — a form able to declare itself clean over its own named fields would be a
+   * blessed way to reproduce #3352.
    *
    * Read on demand, never subscribed to: the answer is only wanted at the moment
    * a dismissal is attempted, and making it reactive would re-render every
@@ -531,19 +535,23 @@ export default function DirtyFormProvider({
       requestChromeRefresh: () => dispatch({ type: "chrome-refresh" }),
       hasUnsavedInputWithin: (root) => {
         if (root == null) return false;
-        // FORMS THAT ANSWER FOR THEMSELVES FIRST (#3356). A declaration binds
-        // everything inside it, so one form is never described two ways: the
-        // registry's view of a declaring form's named controls is folded in as
-        // `tracked` and then OVERRIDDEN by the declaration, exactly as
-        // `unsavedAnswerForForm` says.
+        // FORMS THAT ANSWER FOR THEMSELVES FIRST (#3356). A declaring element is
+        // paired with the registry's view of whatever forms sit inside it, and
+        // `unsavedAnswerForForm` resolves the pair — ANYTHING THAT BELIEVES THERE IS
+        // UNSAVED WORK WINS. So `data-unsaved="false"` adds nothing and, crucially,
+        // SUPPRESSES NOTHING: a declaring form's own named fields are still read, and
+        // no form can disarm its own guard by publishing a convenient answer.
         const declarations = declarationsWithin(root);
-        const answered = new Set<HTMLFormElement>();
+        // Dedup only, NOT precedence — a record inside a declaration was already
+        // resolved above, and resolving it twice cannot change the verdict now that
+        // nothing suppresses anything.
+        const resolved = new Set<HTMLFormElement>();
         for (const el of declarations) {
           let tracked = false;
           for (const record of records.current.values()) {
             if (!record.form.isConnected) continue;
             if (!el.contains(record.form)) continue;
-            answered.add(record.form);
+            resolved.add(record.form);
             tracked ||= recordIsDirty(record);
           }
           const declared = el.dataset.unsaved === "true";
@@ -552,7 +560,7 @@ export default function DirtyFormProvider({
         for (const record of records.current.values()) {
           if (!record.form.isConnected) continue;
           if (!root.contains(record.form)) continue;
-          if (answered.has(record.form)) continue;
+          if (resolved.has(record.form)) continue;
           if (
             unsavedAnswerForForm({
               declared: null,

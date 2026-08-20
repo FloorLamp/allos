@@ -116,6 +116,12 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
  * A form that would rather be believed can say so: `data-server-value` on the
  * control states what the server holds, and the DOM half prefers it over all of
  * this. That is the supported way for a controlled autosaving field to release.
+ *
+ * AND FOR AN AUTOSAVING FIELD THE COST IS NOT ONE CONFIRM — it is a form that never
+ * releases at all, holding back every chrome refresh and the automatic update reload,
+ * because an autosave neither submits nor resets. No surface in the tree is shaped
+ * that way today, and `lib/__tests__/autosave-registry-census.test.ts` is the tripwire
+ * that fires the day one is, rather than a sentence here hoping to be read.
  */
 export function resolveServerValue(field: {
   /** The DOM `defaultValue` right now. */
@@ -163,15 +169,30 @@ export function formHasUnsavedInput(fields: readonly TrackedField[]): boolean {
  *     ever say "clean" about it, and a gesture dismissal threw the typing away with
  *     nothing asking.
  *
- * THE DECLARATION WINS, IN BOTH DIRECTIONS. Not "true wins": a form that publishes
- * `data-unsaved="false"` is believed too, and its own named fields are not
- * second-guessed. That is what stops this from becoming a second source of truth for
- * forms the registry already covers — one form, one answer, chosen by whether the
- * form volunteered one. A form that says nothing keeps exactly the behaviour it had.
+ * ANYTHING THAT BELIEVES THERE IS UNSAVED WORK WINS. A declaration of `true` adds a
+ * form the registry could not see; a declaration of `false` takes NOTHING away.
  *
- * A form that declares MUST therefore publish its real answer rather than a
- * convenient one; `ActivityForm` publishes autosave's own `dirty`, the same value its
- * discard prompt reads, which is the shape to copy.
+ * THIS IS NOT DOUBLE TRUTH, and the alternative was worse. The obvious rule —
+ * "a declaration wins in both directions, so one form is never described two ways" —
+ * was written first and is wrong, because it hands every form a blessed way to
+ * disarm its own discard guard while holding real named-field input. That is #3352's
+ * exact defect: a mechanism that silently removes fields from the guard while every
+ * test keeps passing. A tidier restatement of a bug is not a fix for it.
+ *
+ * It is also the same resolution `resolveServerValue` above makes, in the same
+ * direction, for the same reason: when two signals disagree about unsaved work the
+ * ambiguity is not decidable from here, so it is resolved BY CONSEQUENCE. Believing
+ * "unsaved" costs at most one confirm, answerable with "Discard". Believing "clean"
+ * costs somebody's typing, silently. Deciding the same class of question one way in
+ * one function and the other way here would be the real inconsistency.
+ *
+ * So `data-unsaved="false"` means "I have nothing to add", never "ignore my fields" —
+ * which is exactly what every adopter means by it, and no adopter has ever needed the
+ * capability this refuses. A form that says nothing keeps the behaviour it had.
+ *
+ * A form that declares `true` MUST publish its real answer rather than a convenient
+ * one; `ActivityForm` publishes autosave's own `dirty`, the same value its discard
+ * prompt reads, which is the shape to copy.
  */
 export function unsavedAnswerForForm(form: {
   /** What the form says about itself, or null when it says nothing. */
@@ -179,7 +200,7 @@ export function unsavedAnswerForForm(form: {
   /** What the registry can see of the same form's named controls. */
   readonly tracked: boolean;
 }): boolean {
-  return form.declared ?? form.tracked;
+  return form.declared === true || form.tracked;
 }
 
 /**

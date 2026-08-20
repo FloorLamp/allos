@@ -201,6 +201,15 @@ export default function SleepMoodEditDialog(
   // So this is the other question — has anything moved since this opened? — asked the
   // way `lib/offline/drafts.ts#shouldPersistDraft` and the activity editor's autosave
   // both ask it: one signature, compared against the one the surface mounted with.
+  //
+  // THESE ARE THE RAW FIELD STRINGS ON PURPOSE, AND DO NOT NORMALISE THEM. A duration
+  // the person typed but that does not parse — "99" hours — is unsaveable, so
+  // `hasSomethingToSave` is false about it and the Save button stays disabled. It is
+  // still something they typed and still something a flick would throw away, and the
+  // ONLY reason the guard catches it is that "99" differs textually from what this
+  // mounted with. Trimming, parsing or rounding this signature would silently delete
+  // that guard while every test stayed green — which is the exact shape of the two
+  // bugs this whole change exists to close (#3352, #3356).
   const stateSignature = [date, sleepHours, sleepMinutes, valence ?? ""].join(
     "|"
   );
@@ -378,7 +387,7 @@ export default function SleepMoodEditDialog(
         // registry tracks named controls inside a `<form>`, and this surface has
         // neither, so without this the discard guard on the host ModalShell was
         // permanently absent. `components/DirtyFormRegistry.tsx` reads the attribute
-        // and believes it in both directions.
+        // and resolves it the fail-safe way (`unsavedAnswerForForm`).
         //
         // TO THE READER WHO WANTS TO DELETE IT as untested instrumentation: it is not
         // instrumentation, it is the signal the guard runs on, and
