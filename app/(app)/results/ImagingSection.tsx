@@ -62,7 +62,7 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div>
           <AddEntryPanel
             testId="add-imaging-panel"
             panelId="add-imaging-panel-body"

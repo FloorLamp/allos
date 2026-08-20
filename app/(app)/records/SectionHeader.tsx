@@ -1,3 +1,5 @@
+import PaneIntro from "@/components/PaneIntro";
+
 // Per-section header used inside a STACKED Health-record pane (#1079). Care ›
 // Overview (Background + Family history + Care plan + Health goals) is the one
 // remaining stacked pane — Problems un-stacked into two panes in #1449 — and
@@ -33,7 +35,9 @@ export function SectionHeader({
   );
 }
 
-// The descriptive line for a SOLO pane (the tab strip already provides the title).
+// The descriptive line for a SOLO pane (the tab strip already provides the
+// title). The shape is shared with Results' panes (#3236); this wrapper exists
+// to keep the `records-pane-intro` marker every /records pane is found by.
 export function SectionSubtitle({
   title,
   children,
@@ -42,11 +46,8 @@ export function SectionSubtitle({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-5" data-testid="records-pane-intro">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-        {title}
-      </h2>
-      <p className="text-sm text-slate-500 dark:text-slate-400">{children}</p>
-    </div>
+    <PaneIntro title={title} testId="records-pane-intro">
+      {children}
+    </PaneIntro>
   );
 }

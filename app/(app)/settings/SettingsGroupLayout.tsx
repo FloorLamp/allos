@@ -13,6 +13,7 @@ import type { SessionLogin, SessionProfile } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import SettingsGroupNav from "./SettingsGroupNav";
 import SettingsSubPageNav from "./SettingsSubPageNav";
+import BackLink from "@/components/BackLink";
 
 // Which groups this viewer sees, resolved once from the session (#1462). Nav
 // visibility only — `adminOnly` here never stands in for an auth check: every admin
@@ -52,15 +53,16 @@ export default function SettingsGroupLayout({
         <SettingsGroupNav groups={groups} />
       </div>
       <div className="min-w-0">
-        <nav className="mb-2 text-sm" aria-label="Breadcrumb">
-          <Link
-            href="/settings"
-            data-testid="settings-breadcrumb"
-            className="text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-          >
-            ← All settings
-          </Link>
-        </nav>
+        {/* The house back affordance (#3237), above the title like every other
+            detail page. It used to be a "← All settings" text glyph inside a
+            `<nav aria-label="Breadcrumb">` — but one link is not a trail, and the
+            glyph gave it neither the shared icon metrics nor the answered tap. */}
+        <BackLink
+          href="/settings"
+          label="All settings"
+          testId="settings-breadcrumb"
+          className="mb-2"
+        />
         {/* The group's own title through the ONE shared PageHeader — the tier is
             stated as its subtitle (topic is the architecture, tier is a label). */}
         <PageHeader

@@ -36,7 +36,7 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div>
         <AddEntryPanel
           testId="add-genomic-panel"
           panelId="add-genomic-panel-body"

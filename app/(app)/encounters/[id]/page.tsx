@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  IconArrowLeft,
   IconBuildingHospital,
   IconCalendarClock,
   IconFileText,
@@ -44,6 +43,7 @@ import OpenInMaps from "@/components/OpenInMaps";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import EncounterDetailEdit from "./EncounterDetailEdit";
 import type { Encounter } from "@/lib/types";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -196,13 +196,7 @@ export default async function EncounterDetailPage(props: {
       className="mx-auto"
       data-testid="encounter-detail"
     >
-      <Link
-        href="/records/history/visits"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-      >
-        <IconArrowLeft className="h-4 w-4" stroke={1.75} />
-        Back to visits
-      </Link>
+      <BackLink href="/records/history/visits" label="Back to visits" />
 
       <PageHeader
         title={encounterTypeDisplay(encounter.type, encounter.class_code)}

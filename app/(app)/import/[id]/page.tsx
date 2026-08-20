@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
+import { IconExternalLink } from "@tabler/icons-react";
 import {
   getMedicalDocument,
   getDocumentProduced,
@@ -60,6 +60,7 @@ import {
 } from "@/lib/produced-count";
 import { importActionExplainers } from "@/lib/import-actions-copy";
 import { isDeterministicReprocess } from "@/lib/reprocess-cost";
+import BackLink from "@/components/BackLink";
 import {
   buildImportTabs,
   resolveImportTab,
@@ -403,12 +404,7 @@ export default async function ImportDetailPage(props: {
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <CanonicalNamesProvider options={canonicalOptions}>
         <div>
-          <Link
-            href="/data?section=review"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
-          >
-            <IconArrowLeft className="h-4 w-4" /> Back to Review
-          </Link>
+          <BackLink href="/data?section=review" label="Back to Review" />
           <PageHeader
             title={doc.filename}
             subtitle={documentFormatLabel(doc)}

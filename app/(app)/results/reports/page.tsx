@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import PageContainer from "@/components/PageContainer";
+import PaneIntro from "@/components/PaneIntro";
 import ReportsSection from "../ReportsSection";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export default async function ResultsReportsPage() {
       className="mx-auto"
       data-testid="results-reports"
     >
+      <PaneIntro title="Reports" testId="results-pane-intro">
+        Narrative diagnostic reports — microbiology, gram stain, and
+        cytopathology — as they were written.
+      </PaneIntro>
       <ReportsSection profileId={profile.id} fmt={fmt} />
     </PageContainer>
   );
