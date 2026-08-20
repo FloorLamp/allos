@@ -72,6 +72,7 @@ export default function MobileNav({
   reviewCount = 0,
   readOnly = false,
   whatsNewUnseen = false,
+  substanceRelevant = false,
   logHabitDays = null,
 }: {
   activityDates: string[];
@@ -118,6 +119,7 @@ export default function MobileNav({
   // Days-logged per sheet segment over the trailing quarter (#2709), resolved once
   // by the shell. Passed straight through to the sheet, which consults it on the
   // DASHBOARD only; null means "not gathered", and the route's own default stands.
+  substanceRelevant?: boolean;
   logHabitDays?: SegmentLogDays | null;
 }) {
   // The dock's More slot and puck own the two visible triggers (#2745/#2746), and
@@ -294,6 +296,10 @@ export default function MobileNav({
         // The same server-resolved relevance bitset the drawer's nav entries gate on,
         // so the sheet's period row and the Cycle nav entry appear together (#1892).
         cycleRelevant={relevance.cycle}
+        // #3327: the substance row appears only for a profile that actually tracks
+        // one. Resolved by the shell beside the bitset above rather than living in
+        // it — it is not a nav gate, and no nav entry reads it.
+        substanceRelevant={substanceRelevant}
         logHabitDays={logHabitDays}
       />
     </>

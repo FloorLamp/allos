@@ -62,8 +62,30 @@ describe("shortcutAction", () => {
 
   it("resolves every quick-log id — the manifest is a subset, the resolver is the registry", () => {
     for (const item of QUICK_LOG_ITEMS) {
-      expect(shortcutAction(item.id)).toEqual({ kind: "quick-log", item });
+      // Both relevance gates OPEN: this asks whether the resolver knows every id,
+      // which is a different question from whether a given profile may reach it.
+      // The gates get their own tests below.
+      expect(shortcutAction(item.id, true, true)).toEqual({
+        kind: "quick-log",
+        item,
+      });
     }
+  });
+
+  // #3327. Its default is the OPPOSITE of the cycle gate's, and deliberately: an
+  // unthreaded caller must never open a substance offer for a profile that tracks
+  // none, because the empty offer is the defect the row exists to avoid.
+  it("refuses the substance shortcut unless the substance bit is threaded", () => {
+    expect(shortcutAction("log-substance")).toBeNull();
+    expect(shortcutAction("log-substance", true, false)).toBeNull();
+    expect(shortcutAction("log-substance", true, true)).not.toBeNull();
+  });
+
+  // The two gates are per-entry, not a mode — neither one moves the other's row.
+  it("gates the period and substance rows independently", () => {
+    expect(shortcutAction("log-period", false, true)).toBeNull();
+    expect(shortcutAction("log-period", true, false)).not.toBeNull();
+    expect(shortcutAction("log-substance", false, true)).not.toBeNull();
   });
 
   it("returns null for an unknown value instead of falling back to Log activity", () => {

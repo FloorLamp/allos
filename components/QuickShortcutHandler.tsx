@@ -32,10 +32,14 @@ import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 
 export default function QuickShortcutHandler({
   cycleRelevant = true,
+  substanceRelevant = false,
 }: {
   // The #1042 `cycle` relevance bit (#1892), so `?quick=log-period` is gated exactly
   // as the sheet row is. The overlay re-checks it server-side regardless.
   cycleRelevant?: boolean;
+  // The #3327 bit, so `?quick=log-substance` is gated exactly as the sheet row is.
+  // The overlay re-checks both halves server-side regardless.
+  substanceRelevant?: boolean;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -68,7 +72,7 @@ export default function QuickShortcutHandler({
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
     setConsumed(raw);
 
-    const action = shortcutAction(raw, cycleRelevant);
+    const action = shortcutAction(raw, cycleRelevant, substanceRelevant);
     if (!action) return;
     if (action.kind === "search") {
       openGlobalSearch();
@@ -88,6 +92,7 @@ export default function QuickShortcutHandler({
     raw,
     router,
     cycleRelevant,
+    substanceRelevant,
     openCreate,
     openLive,
     canStartWorkout,
