@@ -60,8 +60,14 @@ const session = vi.hoisted(() => ({
 // identity, so this walks a Map trie of the argument list rather than serializing a
 // key. Two structurally equal but distinct objects miss in React and miss here; a
 // serialized key would have hit, memoized harder than production, and understated.
-// Errors are not memoized (React caches a throw for the request) — a read that
-// throws fails the render outright, so the difference can only ever count high.
+// FAITHFUL EXCEPT IN THE SAFE DIRECTION, DELIBERATELY. Exactness against a canary
+// React this tier cannot import is not on offer, so what is guaranteed instead is
+// the DIRECTION of every deviation: this mock may count HIGH but never low. A meter
+// that cannot under-report is the only property a budget actually needs. Errors are
+// the live example — React caches a throw for the request and this does not, so a
+// re-thrown read would count twice here and once in production. Do not "fix" that
+// toward exactness: memoizing throws moves the deviation to the unsafe side, and a
+// read that throws fails the render outright anyway, so there is nothing to buy.
 //
 // A single module-level slot rather than AsyncLocalStorage, for the same reason
 // `lib/tick-cache.ts` uses one: the loop below awaits one render at a time.
@@ -600,14 +606,56 @@ describe("actual atomic dashboard manifests", () => {
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
   // on how far the baseline may be refreshed upward before the refresh needs a
-  // conversation rather than a paste. It is the historical phase-5 cap (#3184),
-  // kept at its number: phase 5 restored the real symptom, temperature, medication
-  // and episode controls, whose reads batch once per sick profile, and the
-  // integrated household fixture deliberately carries three sick profiles while the
-  // separate multi-episode pin proves episode cardinality does not increase them.
-  const QUERY_CEILING = 535;
+  // conversation rather than a paste.
+  //
+  // DERIVED FROM THE BASELINES, WHICH IS THE ONLY WAY IT CAN FIRE. This was the
+  // historical phase-5 cap of 535 (#3184) until the memoizing request cache above
+  // showed what a render really costs. Against the heaviest persona's 267 that left
+  // ~270 statements of slack — a bound at twice the real number, which is decoration
+  // rather than a bound, and decoration is exactly what the single cap had already
+  // decayed into by the time #3164 filed against it. So it is re-derived here:
+  //
+  //   household 267 (the heaviest baseline) + 23 headroom = 290
+  //
+  // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
+  // conversation. The integrated household fixture carries four profiles, so a new
+  // per-profile dashboard read costs four statements there; 23 is about five such
+  // reads, or one new gathering surface. Ordinary work pastes its refreshed baseline
+  // and moves on; a change that needs more than a whole new surface's worth of
+  // queries has to say so out loud.
+  //
+  // RE-DERIVE IT WHENEVER THE BASELINES MOVE MATERIALLY DOWN — same one-line edit.
+  // #3369's items 1 and 2 (deferring the closed tail's gathers, and cache()-wrapping
+  // the residual duplicates) are each expected to take a bite out of these numbers;
+  // when they do, this number follows them down. A ceiling left behind by a
+  // reduction stops being able to fire, and then it is decoration again.
+  const QUERY_CEILING = 290;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
+    // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
+    // place it can ever speak. A measured count above the ceiling has necessarily
+    // drifted off its baseline first, so the drift assertion below would have thrown
+    // and a ceiling checked against `queryCounts` could never be reached. What the
+    // backstop is actually for is a REFRESH: someone pastes a table that has grown
+    // past what a paste may decide alone. That is a question about the pasted
+    // numbers, so it is asked of them, and asked BEFORE the drift check so a bad
+    // paste is named as a bad paste instead of hiding behind whatever else moved.
+    const overCeiling = Object.entries(QUERY_BASELINE)
+      .filter(([, baseline]) => baseline > QUERY_CEILING)
+      .map(
+        ([persona, baseline]) =>
+          `${persona}: recorded baseline ${baseline} is over the ${QUERY_CEILING} backstop by ${baseline - QUERY_CEILING}`
+      );
+    expect(
+      overCeiling,
+      "A recorded baseline is past the backstop.\n" +
+        "The baseline table is refreshed by pasting; this is the bound on what a\n" +
+        "paste may decide on its own. Growth this large is a design conversation\n" +
+        "about what the dashboard gathers — not a number to raise so CI goes green.\n" +
+        "Raising QUERY_CEILING is a legitimate outcome of that conversation, with\n" +
+        "the reasoning written into its comment the way the current number's is."
+    ).toEqual([]);
+
     const drift = [...queryCounts].flatMap(([persona, count]) => {
       const baseline = QUERY_BASELINE[persona];
       if (baseline === undefined) {
@@ -635,11 +683,5 @@ describe("actual atomic dashboard manifests", () => {
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
     ).toEqual([]);
-
-    for (const [persona, count] of queryCounts) {
-      expect(count, `${persona} (backstop ceiling)`).toBeLessThanOrEqual(
-        QUERY_CEILING
-      );
-    }
   });
 });
