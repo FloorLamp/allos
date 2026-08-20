@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   closeProtocolFact,
@@ -24,6 +29,9 @@ import {
 // field it CLEARS (#2359), and an unmounted field is invisible to the dirty-form
 // registry, which skips anything where `!field.isConnected` — so dismissing the dialog
 // would throw the entry away with no "Discard your changes?" to stop it.
+
+/** What the controlled-field test types. Low-entropy on purpose (words, no token). */
+const SITUATION_TEXT = "Creatine loading week";
 
 /** Tap the scrim where the centred dialog panel does not cover it. */
 async function tapScrimCorner(page: import("@playwright/test").Page) {
@@ -193,6 +201,103 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     // `hydratedClick`, not `settledClick`.
     await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
     await expect(form).toHaveCount(0);
+  });
+
+  test("a CONTROLLED field in this form can be dirty too (#3352)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // THE THIRD STATE. The test above pins a DOM-owned field and asserts it STAYED
+    // DOM-owned; this one pins the other kind, in the same form, through the same
+    // gesture. Both have to work, because the two failure modes present IDENTICALLY
+    // — "I typed something, the dialog dismissed, nothing asked" — and have opposite
+    // fixes: an unmounted field is fixed by keeping it mounted, and a controlled one
+    // is not helped by mounting at all.
+    //
+    // THE SITUATION FIELD IS A `Combobox`, chosen over this form's own controlled
+    // inputs on purpose. It is a SHARED component whose named input is visible and
+    // React-controlled, so every named form containing one was carrying this bug —
+    // that is the breadth #3352 is really about, and it is worth one spec.
+    //
+    // AND IT IS THE ONLY EDIT THIS TEST MAKES, which matters more than it looks. An
+    // earlier draft drove the practice `<select>` first, and the confirm below
+    // appeared even with the fix reverted: React does NOT sync `defaultSelected`, so
+    // a controlled <select> was always dirty-able and was raising the confirm by
+    // itself. The test passed for a reason that had nothing to do with what it
+    // claimed. One edit, one controlled input, no second source of dirtiness.
+    const form = await openNewProtocol(page);
+
+    await openProtocolFact(form, "situation");
+    // `settledFill`, NEVER a bare `fill()`, and the reason is the same mechanism this
+    // test is about. A fill dispatched before React has attached to a CONTROLLED input
+    // sets the DOM value and fires no `onChange`, so `situation` never moves and the
+    // next render puts the field back to "" — measured here, not theorised: with a
+    // bare fill this test failed roughly one run in eight, on `value: ""` with
+    // `live: true` and `inForm: true`, and it failed identically with the registry
+    // reverted, so it was never the registry.
+    //
+    // THE NEIGHBOURING TEST GETS AWAY WITH A BARE FILL AND THIS ONE CANNOT, which is
+    // the distinction worth carrying away: `notes` is DOM-owned, so the DOM keeps a
+    // value React never saw. Only a controlled field can be typed into and come back
+    // empty. Do not "tidy" this back to `fill()`.
+    await settledFill(page, form.getByLabel("Situation"), SITUATION_TEXT);
+    // Tab, not Escape. The combobox's listbox is open over the Done button and would
+    // swallow the click; Escape closes the listbox but also reverts the free text,
+    // which would leave this test typing nothing and asserting on it.
+    await page.keyboard.press("Tab");
+    await closeProtocolFact(form);
+
+    // OWNERSHIP FIRST, and this order is load-bearing. This assertion is about REACT,
+    // not about the registry, so it survives every registry mutant — which is what
+    // lets the guard assertion below name its own cause. With a registry-state
+    // assertion in front of it instead, a controlled-field regression reds as "the
+    // deferral broke" and sends the next reader to the wrong subsystem entirely.
+    //
+    // `def === value` IS the mechanism, measured rather than asserted from theory:
+    // React syncs `defaultValue` onto a controlled field to match `value`. If this
+    // ever fails, the field became DOM-owned and this test has stopped exercising
+    // the controlled case — a true and useful red, not a bug in the guard.
+    const situationOwnership = await page.evaluate(() => {
+      const el = document.querySelector(
+        'input[name="situation"]'
+      ) as HTMLInputElement | null;
+      return (
+        el && {
+          value: el.value,
+          def: el.defaultValue,
+          live: el.isConnected,
+          inForm: !!el.form,
+        }
+      );
+    });
+    expect(
+      situationOwnership,
+      "the situation field must still be in the document, inside the form, with its panel closed"
+    ).toMatchObject({ live: true, inForm: true, value: SITUATION_TEXT });
+    expect(
+      situationOwnership?.def,
+      "this test exists for a CONTROLLED field: React must have synced defaultValue onto the typed value. If it did not, this field is DOM-owned now and the controlled arm of #3352 is no longer covered here"
+    ).toBe(SITUATION_TEXT);
+
+    await tapScrimCorner(page);
+
+    // A PRESENCE assertion, so the default ceiling is honest: no wait can conjure
+    // this confirm if the registry cannot see the typing, because the registry is
+    // asked synchronously on the tap.
+    const confirm = page.getByTestId("confirm-dialog");
+    await expect(
+      confirm,
+      "a controlled field the user typed into must be able to be dirty (#3352) — the registry used to read the DOM defaultValue as the server's value, and React had already mirrored the typed text onto it, so the comparison could only ever say clean"
+    ).toBeVisible();
+    await expect(confirm).toContainText("Discard your changes?");
+
+    await hydratedClick(
+      page,
+      confirm.getByRole("button", { name: "Keep editing" })
+    );
+    await openProtocolFact(form, "situation");
+    await expect(form.getByLabel("Situation")).toHaveValue(SITUATION_TEXT);
   });
 
   test("a protocol form nobody typed into dismisses in one gesture", async ({

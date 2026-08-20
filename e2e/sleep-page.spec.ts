@@ -10,6 +10,7 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import {
+  awaitHydrated,
   dismissToast,
   chartsSettled,
   expectNoClippedContent,
@@ -1148,6 +1149,77 @@ test.describe("Sleep and mood log historical editing", () => {
       } finally {
         handle.close();
       }
+    } finally {
+      if (page) await page.context().close();
+      destroySleepEditFixture(fixture);
+    }
+  });
+
+  test("a hand-composed dialog gets its discard confirm on a gesture dismiss (#3356)", async ({
+    browser,
+  }, testInfo) => {
+    // THE FORM THE GUARD COULD NOT SEE. ModalShell routes a flick or a scrim tap
+    // through "Discard your changes?" by asking the dirty-form registry, and the
+    // registry knows only about NAMED controls inside a `<form>`. This dialog is not
+    // a `<form>` and has not one named control — it composes its save by hand out of
+    // React state — so the registry answered "clean" however much had been stated,
+    // and the gesture threw a mood rating away with nothing asking.
+    //
+    // Not a hypothetical about a form somebody might write one day: this dialog is
+    // shipped, is hosted in a ModalShell, and behaved exactly this way on main.
+    const fixture = createSleepEditFixture(testInfo, "add");
+    let page: Page | null = null;
+    try {
+      page = await loginAs(browser, {
+        username: fixture.username,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      await page.goto("/sleep");
+      await page.getByTestId("sleep-add-entry-header").click();
+      const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      await expect(dialog).toBeVisible();
+
+      // THE DIALOG'S OWN ANSWER FIRST, and the order is load-bearing. This assertion
+      // is about the DIALOG — it publishes the same value its Save button is enabled
+      // by — so it survives every registry mutant, which is what lets the guard
+      // assertion below name its own cause. With the guard asserted first, a broken
+      // marker reds as "the discard guard regressed" and sends the next reader into
+      // the wrong file.
+      await expect(dialog).toHaveAttribute("data-unsaved", "false");
+      await dialog.getByTestId("sleep-fact-mood").click();
+      await dialog.getByTestId("sleep-history-mood-5").click();
+      await dialog.getByTestId("sleep-editor-done").click();
+      await expect(
+        dialog,
+        "the dialog must publish its own unsaved state — nothing else in this subtree can, and the guard has nothing else to read"
+      ).toHaveAttribute("data-unsaved", "true");
+
+      // The gesture, not the Close button: Escape and Close are deliberately
+      // unguarded (a targeted action on a named control), and a scrim tap is one of
+      // the two dismissals a hand produces by accident.
+      const backdrop = page.getByTestId("modal-shell-backdrop");
+      await awaitHydrated(backdrop);
+      await backdrop.click({ position: { x: 4, y: 4 } });
+
+      // A PRESENCE assertion, so the default ceiling is honest: no amount of waiting
+      // can conjure this confirm if the guard cannot see the dialog's state, because
+      // the guard is asked synchronously on the tap.
+      const confirm = page.getByTestId("confirm-dialog");
+      await expect(
+        confirm,
+        "a hand-composed form in a ModalShell must get its discard confirm (#3356) — the registry tracks named controls in a <form>, and this dialog has neither, so it could only ever be read as clean"
+      ).toBeVisible();
+      await expect(confirm).toContainText("Discard your changes?");
+
+      await hydratedClick(
+        page,
+        confirm.getByRole("button", { name: "Keep editing" })
+      );
+      // Keep editing keeps BOTH: the typing and the surface it was typed into.
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByTestId("sleep-fact-mood")).toContainText(
+        "great"
+      );
     } finally {
       if (page) await page.context().close();
       destroySleepEditFixture(fixture);
