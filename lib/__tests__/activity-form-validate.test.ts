@@ -264,6 +264,24 @@ describe("buildActivityPayload", () => {
       },
     ]);
   });
+  // #3335 — the effort column became opt-in, and the write boundary stayed blind to
+  // it ON PURPOSE. A profile that opted back out still edits sessions whose sets
+  // carry a rating: the form holds the stored value in part state, this builder
+  // passes it through, and the save writes it back. Hiding the column is not a
+  // delete, and the place that could quietly make it one is right here — a
+  // `tracking ? s.rpe : null` added to the payload would erase a rating on the next
+  // ordinary edit, with nothing on screen to show it happened.
+  //
+  // The seam is that this function takes no tracking at all and therefore CANNOT ask.
+  it("carries a stored rating through even though it knows nothing about opt-in", () => {
+    const rated = part({
+      name: "Dumbbell Curl",
+      sets: [set({ weight: "50", reps: "10", rpe: 8.5 })],
+    });
+    const { flat } = buildActivityPayload(classifier, [rated]);
+    expect(flat).toHaveLength(1);
+    expect(flat[0].rpe).toBe(8.5);
+  });
   it("keeps a cardio component's distance/duration and no set rows", () => {
     const p = part({
       name: "Running",
