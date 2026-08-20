@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+  anchoredPosition,
+  type AnchoredAlign,
+  type AnchoredPosition,
+} from "@/lib/anchored-position";
 
 // ANCHORED POPOVER POSITIONING — the one place a portaled panel is placed
 // against the control that opened it (issue #3271).
@@ -41,24 +46,13 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 // coordinates. Until the first measurement `pos` is null, which a consumer
 // renders as `visibility: hidden` — never as a panel briefly at 0,0.
 
-const GAP = 4; // matches mt-1
-const MARGIN = 8; // keep the panel this far from the viewport edges
-
-export type AnchoredAlign = "start" | "end";
-
-export interface AnchoredPosition {
-  top: number;
-  left: number;
-  // Present only when the consumer asked to match the anchor's width.
-  width?: number;
-}
-
 export function useAnchoredPopover({
   open,
   anchorRef,
   align = "start",
   matchAnchorWidth = false,
   fallbackWidth = 0,
+  preferredMaxHeight,
   // Re-anchor when a consumer's own state changes the panel's size while it
   // stays open (a menu expanding into a wider picker).
   remeasureKey,
@@ -75,6 +69,13 @@ export function useAnchoredPopover({
   // Used for the viewport clamp before the panel has been measured, so the first
   // paint of a known-width panel is already in the right place.
   fallbackWidth?: number;
+  // For a panel that scrolls itself: the height it WANTS. Escaping the ancestor's
+  // clip is only half the job — a list that then runs off the bottom of the
+  // screen is unreachable in a way the clipped one at least hinted at. Given
+  // this, the panel is capped to the room actually available on the side it lands
+  // and its own `overflow` scrolls the rest. Omit it and the panel is placed but
+  // never capped, which is what a menu and a calendar want.
+  preferredMaxHeight?: number;
   remeasureKey?: unknown;
 }): {
   pos: AnchoredPosition | null;
@@ -91,26 +92,20 @@ export function useAnchoredPopover({
     if (!anchor) return;
     const r = anchor.getBoundingClientRect();
     const panel = panelRef.current;
-    const height = panel?.offsetHeight ?? 0;
-    const width = matchAnchorWidth
-      ? r.width
-      : (panel?.offsetWidth ?? fallbackWidth);
-
-    // Below the anchor by default; flip above only when it will not fit below
-    // AND there is genuinely more room up top — a flip into an even smaller gap
-    // trades one clipped panel for another.
-    let top = r.bottom + GAP;
-    if (
-      top + height > window.innerHeight - MARGIN &&
-      r.top - GAP - height > MARGIN
-    )
-      top = r.top - GAP - height;
-
-    let left = align === "end" ? r.right - width : r.left;
-    left = Math.max(MARGIN, Math.min(left, window.innerWidth - width - MARGIN));
-
-    setPos(matchAnchorWidth ? { top, left, width } : { top, left });
-  }, [anchorRef, align, matchAnchorWidth, fallbackWidth]);
+    setPos(
+      anchoredPosition({
+        anchor: r,
+        panel: {
+          height: panel?.offsetHeight ?? 0,
+          width: panel?.offsetWidth ?? fallbackWidth,
+        },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        align,
+        matchAnchorWidth,
+        preferredMaxHeight,
+      })
+    );
+  }, [anchorRef, align, matchAnchorWidth, fallbackWidth, preferredMaxHeight]);
 
   // Attach measures; DETACH forgets. Clearing here rather than in an effect ties
   // the reset to the event that actually ends an episode — the panel leaving the

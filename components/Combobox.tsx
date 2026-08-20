@@ -6,6 +6,11 @@ import { IconChevronDown, IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 import { useAnchoredPopover } from "@/components/overlay";
 
+// How tall the list WANTS to be — what `max-h-56` used to say as a class. It is a
+// preference now, not a cap: the shared placement shrinks it to the room actually
+// available so the last row is never left off the bottom of the screen.
+const LISTBOX_MAX_HEIGHT = 224; // matches max-h-56
+
 // Shared autocomplete. Two modes via `allowFreeText`:
 //  - false (default): the value must be picked from `options`; an empty match
 //    shows `emptyLabel`. (Used by ActivityCombobox.)
@@ -151,6 +156,7 @@ export default function Combobox({
     open: listOpen,
     anchorRef: ref,
     matchAnchorWidth: !titleAppearance,
+    preferredMaxHeight: LISTBOX_MAX_HEIGHT,
     remeasureKey: `${filtered.length}:${showUse}`,
   });
 
@@ -371,13 +377,14 @@ export default function Combobox({
               top: pos?.top ?? 0,
               left: pos?.left ?? 0,
               width: pos?.width,
+              maxHeight: pos?.maxHeight,
               // Never paint at 0,0 for a frame: the panel entering the DOM is
               // what makes measurement possible, so the first render is hidden.
               visibility: pos ? "visible" : "hidden",
             }}
             // Above the sheet/dialog it opens over (`z-60`), the same layer the
             // portaled date calendar takes for the same reason.
-            className={`z-70 max-h-56 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${
+            className={`z-70 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${
               titleAppearance ? "w-80 max-w-[calc(100vw-2rem)]" : ""
             }`}
           >
