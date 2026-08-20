@@ -83,6 +83,22 @@ describe("attaching the bundle to a message that is already sending", () => {
     expect(out.actions?.slice(1)).toEqual(host().actions);
   });
 
+  it("attaching TWICE replaces the button and does not repeat the promise", () => {
+    // The sweep attaches before it plans (so its keyboard comparison is honest) and the
+    // send chokepoint attaches again downstream. That has to be a no-op, or the message
+    // would promise the same write twice and carry two tokens for one offer.
+    const a = usualRoutineAttachmentFor(OFFER, TOKEN);
+    const once = attachUsualRoutine(host(), a);
+    expect(attachUsualRoutine(once, a)).toEqual(once);
+    // …and a REFRESHED attachment for the same offer replaces the stale button rather
+    // than sitting beside it — which is how a reduced bundle re-renders.
+    const reduced = usualRoutineAttachmentFor({ ...OFFER, doses: [] }, TOKEN);
+    const again = attachUsualRoutine(once, reduced);
+    expect(again.actions?.filter((x) => x.data === TOKEN)).toHaveLength(1);
+    expect(again.actions?.[0]?.label).toBe(reduced.label);
+    expect(plainBody(again.body)).toBe(plainBody(once.body));
+  });
+
   it("a null attachment leaves the message EXACTLY as it was", () => {
     // The no-offer path is the common one, and it must not be a rewrite.
     expect(attachUsualRoutine(host(), null)).toEqual(host());
@@ -123,10 +139,18 @@ describe("a message carrying the bundle is checked before it is sent", () => {
   });
 
   it("refuses TWO composed one-taps on one message", () => {
-    const twice = attachUsualRoutine(
-      attachUsualRoutine(host(), usualRoutineAttachmentFor(OFFER, TOKEN)),
-      usualRoutineAttachmentFor(OFFER, usualRoutineCallback(4, 78))
-    );
+    // Hand-assembled, because `attachUsualRoutine` can no longer produce this state —
+    // the guard is against a message assembled some other way, and it is the state
+    // where a second tap redeems a bundle the first already spent.
+    const base = host();
+    const twice: NotificationMessage = {
+      ...base,
+      actions: [
+        { label: "Usual A", data: TOKEN, row: USUAL_ROW },
+        { label: "Usual B", data: usualRoutineCallback(4, 78), row: USUAL_ROW },
+        ...(base.actions ?? []),
+      ],
+    };
     expect(usualDispatchProblem(twice)).toContain("2");
     // The message still goes out — a dose reminder is safety tier — with the
     // decoration dropped and every host button intact.

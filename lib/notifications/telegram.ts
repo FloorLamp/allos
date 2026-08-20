@@ -73,8 +73,7 @@ import {
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
 import {
   attachUsualRoutine,
-  standingUsualAttachment,
-  usualTokenOn,
+  attachmentOnKeyboard,
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
 import { messageBodyHash, reconcileClosingText } from "./reconcile-core";
@@ -645,10 +644,8 @@ function liveUsualAttachment(
   messageId: number
 ): UsualRoutineAttachment | null {
   const pointer = messagePointerAt(profileId, chatId, messageId);
-  if (!pointer) return null;
-  const token = usualTokenOn(pointer.keyboard);
-  return token
-    ? standingUsualAttachment(profileId, token, today(profileId))
+  return pointer
+    ? attachmentOnKeyboard(profileId, pointer.keyboard, today(profileId))
     : null;
 }
 

@@ -18,7 +18,18 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone, setProfileSetting } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
+import {
+  answerCallbackQuery,
+  editMessageTextRaw,
+} from "@/lib/notifications/telegram-api";
+import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
+import { buildFoodNudge } from "@/lib/notifications/food";
+import { deliveredKeyboard } from "@/lib/notifications/delivered-keyboard";
+import { attachUsualRoutine } from "@/lib/notifications/usual-routine-attach";
+import {
+  messagePointerAt,
+  recordMessagePointer,
+} from "@/lib/notifications/message-pointers";
 import { seedLoginTelegram } from "./fixtures";
 import {
   mintUsualRoutineAttachment,
@@ -40,6 +51,13 @@ import type { NotificationMessage } from "@/lib/notifications/types";
 beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
+const editTextMock = vi.mocked(editMessageTextRaw);
+
+// What the chat is showing NOW, read back off the pointer the chokepoint syncs — the
+// only record of a delivered keyboard there is.
+function deliveredKeyboardNow(profileId: number, messageId: number) {
+  return messagePointerAt(profileId, "5552470", messageId)?.keyboard ?? [];
+}
 const CHAT = "5552460";
 const OTHER_CHAT = "5552461";
 
@@ -568,5 +586,81 @@ describe("the re-render reduces, then removes (#2460)", () => {
        VALUES (?, ?, ?, 'taken')`
     ).run(doseB, itemB, date);
     expect(standingUsualOffer(sp.profileId, offerId, date)).toBeNull();
+  });
+});
+
+// THE SWEEP (#2460). The bundle is host-inherited, so the families rebuild through
+// builders that know nothing about it. Two properties have to hold anyway, and they
+// pull in opposite directions: the sweep must NOT drop a bundle that still stands, and
+// it must NOT edit a message on which nothing has changed. Both are pinned here because
+// the natural implementation — attach at the send chokepoint only — satisfies the first
+// and breaks the second: the plan's keyboard would differ from the delivered one on
+// every single tick.
+describe("the reconcile sweep keeps the bundle honest (#2460)", () => {
+  const SWEEP_CHAT = "5552470";
+
+  function setup(tag: string) {
+    const sp = makeProfile(tag);
+    seedLoginTelegram(sp.profileId, SWEEP_CHAT);
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
+    seedHabitualMornings(sp.profileId, ["fermented", "berries", "eggs"]);
+    const date = today(sp.profileId);
+    const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
+    // The food nudge AS DELIVERED — built by the real builder and decorated by the real
+    // attachment, so the pointer holds what a genuine send would have left behind. A
+    // hand-written keyboard would make the zero-call pin below vacuous: the sweep would
+    // differ from it for reasons that have nothing to do with the bundle.
+    const nudge = attachUsualRoutine(
+      buildFoodNudge(sp.profileId, "Morning", date)!,
+      a
+    );
+    recordMessagePointer({
+      profileId: sp.profileId,
+      chatId: SWEEP_CHAT,
+      messageId: 2470,
+      kind: "food",
+      date,
+      title: "🍽️ Morning food log",
+      keyboard: deliveredKeyboard(nudge),
+    });
+    return { sp, date, a };
+  }
+
+  it("leaves a message alone when nothing about the bundle has changed", async () => {
+    const { sp } = setup("TG2460K");
+    const before = editTextMock.mock.calls.length;
+    const out = await reconcileProfileMessages(sp.profileId);
+    // The zero-call steady state. A sweep that re-planned the keyboard WITHOUT the
+    // bundle would see a difference here on every tick and edit forever.
+    expect(out.edited).toBe(0);
+    expect(editTextMock.mock.calls.length).toBe(before);
+  });
+
+  it("re-renders REDUCED rather than dropping a bundle that still stands", async () => {
+    const { sp, date, a } = setup("TG2460L");
+    // One half logged elsewhere: the bundle shrinks but does not go.
+    tap(sp.profileId, "fermented", date, "08:00:00");
+    await reconcileProfileMessages(sp.profileId);
+    const keyboard = deliveredKeyboardNow(sp.profileId, 2470);
+    const tokens = keyboard.flat().map((b) => b.callback_data);
+    expect(tokens).toContain(a.token);
+    // …and what it now promises is the smaller set.
+    const text = String(editTextMock.mock.calls.at(-1)?.[2] ?? "");
+    expect(text).not.toContain("Fermented foods");
+    expect(text).toContain("Berries");
+  });
+
+  it("removes the button once the bundle no longer stands, keeping the host's rows", async () => {
+    const { sp, date, a } = setup("TG2460M");
+    tap(sp.profileId, "fermented", date, "08:00:00");
+    tap(sp.profileId, "berries", date, "08:01:00");
+    tap(sp.profileId, "eggs", date, "08:02:00");
+    await reconcileProfileMessages(sp.profileId);
+    const tokens = deliveredKeyboardNow(sp.profileId, 2470)
+      .flat()
+      .map((b) => b.callback_data);
+    expect(tokens).not.toContain(a.token);
+    // The food nudge itself is untouched — its quick-log rows never resolve.
+    expect(tokens.some((t) => t?.startsWith("food:"))).toBe(true);
   });
 });

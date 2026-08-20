@@ -105,11 +105,41 @@ export function attachUsualRoutine(
     data: attachment.token,
     row: USUAL_ROW,
   };
+  // IDEMPOTENT, because two places legitimately apply the same attachment to the same
+  // message. The reconcile sweep must attach BEFORE it plans, so the keyboard it
+  // compares against the delivered one is the keyboard it is actually about to send
+  // (otherwise every tick would "differ" and edit a message nothing had changed on);
+  // the rebuild chokepoint then applies it again for every OTHER rebuild path. A
+  // second application replaces the button and leaves the line alone — it is already
+  // in the body, and a message may never promise the same write twice.
+  const actions = message.actions ?? [];
+  const already = actions.some(
+    (a) => a.data != null && parseUsualRoutineCallback(a.data) != null
+  );
   return {
     ...message,
-    body: joinBody([message.body, attachment.line], "\n"),
-    actions: [button, ...(message.actions ?? [])],
+    body: already
+      ? message.body
+      : joinBody([message.body, attachment.line], "\n"),
+    actions: [
+      button,
+      ...actions.filter(
+        (a) => a.data == null || parseUsualRoutineCallback(a.data) == null
+      ),
+    ],
   };
+}
+
+// The composed one-tap a DELIVERED keyboard is showing, re-derived against fresh state
+// — or null when it never carried one, or when nothing it named still stands. The one
+// question both the sweep and the rebuild chokepoint ask.
+export function attachmentOnKeyboard(
+  profileId: number,
+  keyboard: readonly { callback_data?: string }[][],
+  date: string
+): UsualRoutineAttachment | null {
+  const token = usualTokenOn(keyboard);
+  return token ? standingUsualAttachment(profileId, token, date) : null;
 }
 
 // MINT the offer for a window, or null when there is nothing to offer.

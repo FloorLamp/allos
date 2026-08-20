@@ -153,7 +153,11 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { classifyTelegramFailure } from "./telegram-error";
-import { standingUsualOffer } from "./usual-routine-attach";
+import {
+  attachUsualRoutine,
+  attachmentOnKeyboard,
+  standingUsualOffer,
+} from "./usual-routine-attach";
 import { pruneNotifyOffers } from "./offer-store";
 import { messageKeyboard } from "./telegram-render";
 import {
@@ -1628,6 +1632,30 @@ async function reconcileProse(
   }
 }
 
+// THE HOST-INHERITED BUNDLE, RE-APPLIED BEFORE THE PLAN IS MADE (#2460). The families
+// rebuild through their own builders, which know nothing about the composed one-tap, so
+// a plain rebuild would silently drop a bundle that still stands. It has to happen HERE
+// rather than only at the send chokepoint, because the plan's keyboard is the thing
+// compared against what the chat is already showing: attaching later would make every
+// tick see a difference and edit a message nothing had changed on — the zero-call steady
+// state this sweep exists to hold. `attachUsualRoutine` is idempotent, so the chokepoint
+// applying it again downstream is a no-op.
+//
+// Reduced, never grown: the attachment is the intersection of the STORED offer with what
+// currently stands, and it is null once nothing does — which is how the button leaves a
+// keyboard the rest of whose rows are still live.
+function withStandingUsual(
+  profileId: number,
+  pointer: MessagePointer,
+  message: NotificationMessage | null
+): NotificationMessage | null {
+  if (!message) return null;
+  return attachUsualRoutine(
+    message,
+    attachmentOnKeyboard(profileId, pointer.keyboard, pointer.date)
+  );
+}
+
 // WHAT an edit will be, resolved with no network and no writes. Null means this
 // pointer needs nothing this pass.
 //
@@ -1680,7 +1708,11 @@ function planEdit(
     // carry counts that do. Gated on the render actually DIFFERING from what was
     // delivered, so a quiet tick stays at zero calls.
     if (!reconciler?.rebuild) return null;
-    const rebuilt = reconciler.rebuild(profileId, tokens, pointer);
+    const rebuilt = withStandingUsual(
+      profileId,
+      pointer,
+      reconciler.rebuild(profileId, tokens, pointer)
+    );
     if (!rebuilt) return null;
     const keyboard = messageKeyboard(rebuilt);
     if (JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard))
@@ -1690,7 +1722,11 @@ function planEdit(
   // Partial resolution. A family with a rebuilder re-renders the whole message from
   // current state (the same computation the tap rebuild runs); everything else has
   // exactly the dead buttons removed.
-  const rebuilt = reconciler?.rebuild?.(profileId, tokens, pointer) ?? null;
+  const rebuilt = withStandingUsual(
+    profileId,
+    pointer,
+    reconciler?.rebuild?.(profileId, tokens, pointer) ?? null
+  );
   if (rebuilt) {
     return {
       kind: "rebuild",
