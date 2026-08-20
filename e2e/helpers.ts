@@ -1351,6 +1351,12 @@ function armActionPost(
   settled: Promise<unknown>;
   begin: () => void;
   release: () => void;
+  /** Wall-clock instant the wait was armed, for reading the interaction ledger. */
+  armedAt: number;
+  /** Same-origin POSTs the browser has ISSUED since `begin()`, answered or not. */
+  issuedCount: () => number;
+  /** A line the failure message must carry (the #3359 re-dispatch record). */
+  note: (line: string) => void;
   diagnose: (err: unknown, helper: string, advice: string) => Error;
 } {
   // Requests observed from the moment the interaction is dispatched. A WeakSet keyed
@@ -1419,12 +1425,21 @@ function armActionPost(
     },
     { timeout: opts.timeout }
   );
+  // Things the helper DID on the failure path that the reader must be told about —
+  // today only the #3359 re-dispatch, which would otherwise be invisible in a
+  // message that says "no POST" after two clicks.
+  const notes: string[] = [];
   return {
     settled,
     begin: () => {
       collecting = true;
     },
     release: () => page.off("request", onRequest),
+    armedAt,
+    issuedCount: () => issued.length,
+    note: (line) => {
+      notes.push(line);
+    },
     diagnose: (err, helper, advice) => {
       // The old helper's timeout said only "waiting for event response", which reads
       // as a slow server on a control that was never going to post. Name the real
@@ -1452,10 +1467,173 @@ function armActionPost(
             : `\n[${helper}] NO same-origin POST was even ISSUED during the wait — ` +
               `not even a background one. The page dispatched nothing, so the old ` +
               `"any POST" helper would have timed out here too; suspect a stalled ` +
-              `or navigated page rather than this contract.`);
+              `or navigated page rather than this contract.`) +
+        notes.map((line) => `\n[${helper}] ${line}`).join("");
       return wrapped;
     },
   };
+}
+
+// How long settledClick waits before it will believe a form submit was LOST — see
+// redispatchLostSubmit below for the measurement this number comes from.
+const LOST_SUBMIT_PROOF_MS = 3_000;
+
+// ── The DOM interaction ledger (#3359) ───────────────────────────────────────
+//
+// `armActionPost` watches the NETWORK, and a network ledger cannot tell a click
+// that never reached a handler from a handler that ran and returned without
+// posting. Both print as "NO same-origin POST was even ISSUED", both leave the
+// control idle and enabled, and they need opposite investigations — one is a lost
+// interaction, the other a client-side guard in the app's own submit handler.
+// #3359 was exactly that fork, on a `<form onSubmit>` whose handler refuses an
+// invalid name BEFORE reaching the Server Action, and nothing in the failure could
+// say which side of it the run was on.
+//
+// So the page keeps a small ledger of the DOM events that stand BETWEEN a click and
+// a POST. Three listeners, all passive:
+//
+//   • `click` (capture, on window) — did the click reach the document at all, and
+//     on which element. Capture on `window` runs before anything React registers.
+//   • `submit` (capture, on window) — did the browser run the form's ACTIVATION
+//     behaviour. A submit button that produced no submit event was swallowed.
+//   • `submit` (bubble, on window) — read AFTER React. In the App Router React
+//     hydrates the whole document, so its delegated listener sits on `document`;
+//     an init-script listener on `document` would register FIRST and read
+//     `defaultPrevented === false` even when the handler ran. `window` is strictly
+//     downstream of `document`, so this one answers the real question: a handler
+//     that ran called `preventDefault`, and one that never ran did not.
+//
+// Installed once per page (init script + the live document, so it also covers a page
+// that has already navigated), and it survives every later navigation. It pins
+// nothing and backs no assertion, and it will therefore look deletable to a reviewer
+// — read #3029 and #3359 first: BOTH of those diagnoses came from making the failure
+// say more, and the ledger is the half that was missing the second time.
+//
+// TIMESTAMPED WITH `performance.now()`, NEVER `Date.now()`. Every context in this
+// suite has its system time set to the run's frozen instant (e2e/fixtures.ts), so a
+// page's `Date.now()` and the test process's differ by however long the run has
+// been going — a wall-clock "since I armed" filter drops every entry and reports a
+// ledger that recorded nothing. `performance.now()` is document-relative and
+// unaffected by the clock patch, and because the fixture uses `setSystemTime` (not
+// `setFixedTime`) elapsed durations still agree on both sides, so the reader asks
+// for a WINDOW rather than an instant.
+type InteractionLedgerEntry = {
+  p: number;
+  kind: "click" | "submit" | "submit-after-react";
+  target: string;
+  extra: string;
+};
+
+const LEDGER_INSTALLED = new WeakSet<Page>();
+
+function installInteractionLedgerScript(): void {
+  const w = window as unknown as {
+    __allosInteractionLedger?: InteractionLedgerEntry[];
+  };
+  if (w.__allosInteractionLedger) return;
+  const entries: InteractionLedgerEntry[] = [];
+  w.__allosInteractionLedger = entries;
+  const describe = (node: EventTarget | null): string => {
+    const el = node as Element | null;
+    if (!el || typeof el.getAttribute !== "function") return "(non-element)";
+    const testId = el.getAttribute("data-testid");
+    return testId ? `[${testId}]` : `<${el.tagName.toLowerCase()}>`;
+  };
+  const record = (
+    kind: InteractionLedgerEntry["kind"],
+    target: string,
+    extra: string
+  ): void => {
+    entries.push({ p: performance.now(), kind, target, extra });
+    // A bounded ring: a long spec must not grow this without limit, and only the
+    // events around the failing interaction are ever read.
+    if (entries.length > 40) entries.shift();
+  };
+  window.addEventListener(
+    "click",
+    (event) => record("click", describe(event.target), ""),
+    true
+  );
+  window.addEventListener(
+    "submit",
+    (event) => record("submit", describe(event.target), ""),
+    true
+  );
+  window.addEventListener("submit", (event) =>
+    record(
+      "submit-after-react",
+      describe(event.target),
+      event.defaultPrevented
+        ? "HANDLED — a React onSubmit ran and called preventDefault"
+        : "NOT HANDLED — no preventDefault, so this was a native form submit"
+    )
+  );
+}
+
+async function installInteractionLedger(page: Page): Promise<void> {
+  if (LEDGER_INSTALLED.has(page)) return;
+  LEDGER_INSTALLED.add(page);
+  // Best-effort on both halves: a page that cannot take the script still runs the
+  // interaction, it just reports less when it fails.
+  await page.addInitScript(installInteractionLedgerScript).catch(() => {});
+  await page.evaluate(installInteractionLedgerScript).catch(() => {});
+}
+
+// Everything recorded in the last `windowMs` — see the note above for why this
+// takes a window rather than an instant. `null` means the ledger could not be read
+// (page closed, navigating, not running JS), which is NOT the same as "nothing
+// happened", and the callers below treat the two differently.
+async function readInteractionLedger(
+  page: Page,
+  windowMs: number
+): Promise<{ ago: number; entry: InteractionLedgerEntry }[] | null> {
+  return await page
+    .evaluate((ms: number) => {
+      const w = window as unknown as {
+        __allosInteractionLedger?: InteractionLedgerEntry[];
+      };
+      const now = performance.now();
+      return (w.__allosInteractionLedger ?? [])
+        .filter((e) => e.p >= now - ms)
+        .map((entry) => ({ ago: Math.round(now - entry.p), entry }));
+    }, windowMs)
+    .catch(() => null);
+}
+
+async function interactionLedgerReport(
+  page: Page,
+  armedAt: number
+): Promise<string> {
+  const windowMs = Date.now() - armedAt;
+  const entries = await readInteractionLedger(page, windowMs);
+  if (entries === null)
+    return (
+      `\n[settledClick] the DOM interaction ledger could not be read, so whether ` +
+      `the click reached a handler is UNANSWERED — the page is closed, navigating, ` +
+      `or not running JS.`
+    );
+  if (entries.length === 0)
+    return (
+      `\n[settledClick] the DOM interaction ledger recorded NOTHING since this ` +
+      `wait was armed — not one click event. Playwright dispatched a click, so ` +
+      `either the renderer never processed it or the document was replaced under ` +
+      `the wait.`
+    );
+  const lines = entries
+    .map(
+      ({ ago, entry }) =>
+        `+${Math.max(0, windowMs - ago)}ms ${entry.kind} on ${entry.target}` +
+        `${entry.extra ? ` — ${entry.extra}` : ""}`
+    )
+    .join("\n  - ");
+  return (
+    `\n[settledClick] DOM interaction ledger since the wait was armed:\n  - ${lines}` +
+    `\n[settledClick] read it as the fork the POST census cannot see: a ` +
+    `\`submit-after-react\` line saying HANDLED means the app's own onSubmit RAN ` +
+    `and returned WITHOUT posting — look at that handler's client-side guards, not ` +
+    `at the network. A click on the control with NO submit line beside it means the ` +
+    `browser never ran the form's activation behaviour: the submit was LOST (#3359).`
+  );
 }
 
 // What the clicked control looks like at the moment a settledClick timeout is
@@ -1518,6 +1696,115 @@ async function clickedControlState(
   } catch {
     return "";
   }
+}
+
+// ── The lost-submit rescue (#3359) ───────────────────────────────────────────
+//
+// A `<form>` submit button was clicked, Playwright reported no click error, and the
+// page then produced NOTHING: no POST, and — proven by the ledger above — no submit
+// event either. The browser never ran the form's activation behaviour, so no
+// handler ran and no Server Action was invoked. Twice in one day on the same
+// control: #3338 saw it as a refusal message that never rendered (the handler
+// refuses BEFORE posting, so the missing paragraph proved the handler never ran),
+// and #3359 saw it as this timeout.
+//
+// ── WHY A RE-DISPATCH IS SAFE HERE, WHICH IT IS NOT IN GENERAL ────────────────
+//
+// settledClick's own note says, correctly, that it is NOT a retry: a Server Action
+// click is rarely idempotent and clicking twice is the #2437 defect. The control
+// this rescue fires on WRITES — "Log a use" logs a use — so a naive retry would
+// double-log, and #3359 says so explicitly. This is not a naive retry. It re-clicks
+// only under THREE independent proofs that the first click had no effect at all,
+// and it fails CLOSED on every one of them:
+//
+//   1. NO same-origin POST has been issued since the click. The only way this page
+//      can write is a Server Action, and invoking one necessarily issues a POST.
+//      Playwright's `request` event fires when the browser issues the request,
+//      answered or not, so an empty ledger is evidence, not silence.
+//   2. NO `submit` event was recorded, and the ledger is provably ALIVE (it
+//      recorded something else in the same window). A form handler cannot run
+//      without a submit event; if the ledger is empty or unreadable we cannot tell,
+//      and we do not re-click.
+//   3. The control is a SUBMIT control owned by a form. A `<button onClick>` that
+//      dispatches through `useTransition` produces no submit event ever, so proof
+//      (2) would be vacuous for it — those keep the old single-dispatch contract.
+//
+// Under 1–3 nothing ran and nothing was written, so a second click cannot be a
+// second write. If any proof is unavailable, the old behaviour stands and the
+// failure reports the ledger instead.
+//
+// ── THE WINDOW IS A MEASUREMENT, NOT A GUESS ─────────────────────────────────
+//
+// The proof has to be taken before the deadline, and taking it too early would race
+// a submit that simply had not happened yet. Measured on #3359's own control
+// (e2e/substance-quicklog.mobile.spec.ts's "Log a use"), five trials each under a
+// CDP `Emulation.setCPUThrottlingRate`:
+//
+//   rate 20 — click → submit event: 1–48 ms;  click → POST issued: 510–952 ms
+//   rate 60 — click → submit event: 1–108 ms; click → POST issued: 816–3498 ms
+//
+// The submit event is the EARLY and TIGHT signal and the POST is the late loose one,
+// which is exactly why proof (2) is the load-bearing half: 3 s is ~28× the worst
+// submit-event latency measured at a throttle far past anything CI produces, while
+// the same 3 s would have been too short to trust the POST alone. It also spends
+// nothing on the happy path — the probe resolves the moment the wait settles — and
+// it sits INSIDE settledClick's one declared deadline (#1858), so a rescue can
+// never widen the ceiling the call site asked for.
+async function redispatchLostSubmit(
+  page: Page,
+  locator: Locator,
+  probeHandle: ElementHandle<SVGElement | HTMLElement> | null,
+  wait: ReturnType<typeof armActionPost>,
+  click: { error: Error | null },
+  rest: number
+): Promise<void> {
+  // Not enough budget left for a probe AND a real second attempt: leave the single
+  // dispatch alone rather than spend the caller's ceiling on half a rescue.
+  if (rest < LOST_SUBMIT_PROOF_MS * 2) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const raced = await Promise.race([
+    // Both outcomes mean "stop probing": settled is the happy path, and a rejection
+    // is the deadline expiring, which the catch below already reports.
+    wait.settled.then(
+      () => "done" as const,
+      () => "done" as const
+    ),
+    new Promise<"probe">((resolve) => {
+      timer = setTimeout(() => resolve("probe"), LOST_SUBMIT_PROOF_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (raced === "done") return;
+
+  // Proof 0: the click Playwright made actually happened. If it failed, there is
+  // nothing to rescue and the catch reports the click's own error instead.
+  if (click.error) return;
+  // Proof 1: nothing left the browser.
+  if (wait.issuedCount() > 0) return;
+  // Proof 3, before proof 2 because it is the cheap local read.
+  const isFormSubmit = await probeHandle
+    ?.evaluate((el) => {
+      const control = el as HTMLButtonElement | HTMLInputElement;
+      return control.form != null && control.type === "submit";
+    })
+    .catch(() => false);
+  if (isFormSubmit !== true) return;
+  // Proof 2: the ledger is alive and holds no submit event.
+  const entries = await readInteractionLedger(page, Date.now() - wait.armedAt);
+  if (entries === null || entries.length === 0) return;
+  if (entries.some(({ entry }) => entry.kind === "submit")) return;
+
+  wait.note(
+    `the first click produced NO submit event and NO request within ` +
+      `${LOST_SUBMIT_PROOF_MS}ms, so the form's activation behaviour was lost and ` +
+      `nothing could have been written; the click was re-dispatched ONCE (#3359). ` +
+      `This message means the SECOND one was lost too — that is a finding about ` +
+      `the page, not about this contract.`
+  );
+  await locator.click({ timeout: LOST_SUBMIT_PROOF_MS }).catch(() => {
+    // A second click that cannot land adds nothing to the diagnosis the caller is
+    // about to throw, and must not replace it.
+  });
 }
 
 // Click `locator` and await the Server Action POST it fires before returning.
@@ -1599,6 +1886,8 @@ export async function settledClick(
   const probeHandle = await locator
     .elementHandle({ timeout: 1_000 })
     .catch(() => null);
+  // Once per page, and a no-op on every later call (see the ledger's note above).
+  await installInteractionLedger(page);
 
   const wait = armActionPost(page, here, { timeout: rest, url: opts.url });
   // Held outside the try so the CATCH can tell "the app fired no POST" from "the
@@ -1621,7 +1910,11 @@ export async function settledClick(
     const clicked = locator.click({ timeout: rest }).catch((err: unknown) => {
       click.error = err instanceof Error ? err : new Error(String(err));
     });
-    await Promise.all([wait.settled, clicked]);
+    await Promise.all([
+      wait.settled,
+      clicked,
+      redispatchLostSubmit(page, locator, probeHandle, wait, click, rest),
+    ]);
     // The response landed, but the click behind it did not: something else on the
     // page produced that POST, so the caller's premise is already false.
     if (click.error) throw click.error;
@@ -1649,7 +1942,8 @@ export async function settledClick(
         `menu, a dialog opener) it never posts: use hydratedClick and assert what ` +
         `it reveals. If it navigates, use followLink. If it posts somewhere other ` +
         `than this route, pass { url }.` +
-        (await clickedControlState(probeHandle))
+        (await clickedControlState(probeHandle)) +
+        (await interactionLedgerReport(page, wait.armedAt))
     );
   } finally {
     wait.release();
