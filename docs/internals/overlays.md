@@ -94,9 +94,9 @@ the quick-entry measurements sheet did until #3361.
 
 Three consequences, each one a real defect that shipped:
 
-- **No outer card.** A body whose root carries `card`, or `rounded-xl border …
-  p-4`, is wearing standalone-page chrome inside a panel. A bare `space-y-*`
-  root is the shape. Sub-cards INSIDE a body — the Vitals/Body group boxes, the
+- **No outer card.** A body whose root carries the `card` utility, or a
+  hand-rolled `rounded-xl` + `border` + `p-4`, is wearing standalone-page
+  chrome inside a panel. A bare `space-y-*` root is the shape. Sub-cards INSIDE a body — the Vitals/Body group boxes, the
   per-row dose and practice cards, the routine-template picker — are deliberate
   grouping and stay; the rule is about the body's OWN outermost box.
 - **No duplicate heading.** The host prints the title. If a body prints it too,
@@ -123,13 +123,13 @@ Some forms are genuinely mounted both ways: a standalone card on a page AND a
 body inside a dialog. Those take a prop that gates the card chrome, and several
 already exist:
 
-| Form                                                 | Prop           | Dialog value |
-| ---------------------------------------------------- | -------------- | ------------ |
-| `app/(app)/trends/MeasurementsQuickAdd.tsx`          | `presentation` | `"modal"`    |
-| `app/(app)/encounters/EncounterForm.tsx`             | `embedded`     | `true`       |
-| `app/(app)/encounters/AppointmentForm.tsx`           | `embedded`     | `true`       |
-| `app/(app)/settings/profile/DietaryPreferencesForm.tsx` | `embedded`  | `true`       |
-| `app/(app)/wellness/PracticeEditor.tsx`              | `compact`      | `true`       |
+| Form                                                    | Prop           | Dialog value |
+| ------------------------------------------------------- | -------------- | ------------ |
+| `app/(app)/trends/MeasurementsQuickAdd.tsx`             | `presentation` | `"modal"`    |
+| `app/(app)/encounters/EncounterForm.tsx`                | `embedded`     | `true`       |
+| `app/(app)/encounters/AppointmentForm.tsx`              | `embedded`     | `true`       |
+| `app/(app)/settings/profile/DietaryPreferencesForm.tsx` | `embedded`     | `true`       |
+| `app/(app)/wellness/PracticeEditor.tsx`                 | `compact`      | `true`       |
 
 Three spellings of one question, and they are staying that way — renaming
 working props is churn, not convergence. **Copy one of these when a form gains

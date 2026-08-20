@@ -117,9 +117,7 @@ export default function AddEntryPanel({
                   owns the gap under the title (`mt-3` in
                   components/BottomSheet.tsx); an `mt-4` on top of it made 28px
                   by accretion under all seventeen modal mounts (#3361). */}
-              <div id={panelId}>
-                {children}
-              </div>
+              <div id={panelId}>{children}</div>
             </AddEntryModalCloseContext.Provider>
           </ModalShell>
         ) : null}
