@@ -126,6 +126,21 @@ describe("the facts-with-editors primitive carries the contract (#3218)", () => 
     expect(chipRow).toContain("aria-label={remove.label}");
   });
 
+  it("the chip row's source builds the suggestion marking once, for both chip shapes", () => {
+    // #3222: `data-suggested` shipped on the REMOVABLE chip only, so the plain chip had
+    // no marking and each consumer invented its own badge testid instead — a convention
+    // the third surface can simply forget. Marking a chip as a suggestion rather than a
+    // stated fact is the difference between prefilling and asserting (#846), so it is a
+    // structural property of a chip, not a per-consumer courtesy.
+    //
+    // Asked as "exactly one place constructs the attribute, and both shapes use it",
+    // because two branches that each spell it out is precisely the arrangement that
+    // drifts.
+    expect(chipRow.match(/"data-suggested":/g)?.length).toBe(1);
+    const chip = exportedFunctionSource(chipRow, "FactChip");
+    expect(chip?.match(/suggestedAttrs\(suggested\)/g)?.length).toBe(2);
+  });
+
   it("the chip row's source declares data-fact-state and a dashed missing variant", () => {
     // A source claim, named as one. That a missing essential actually RENDERS dashed,
     // and that an absent optional renders nothing at all, are runtime facts this body
@@ -211,6 +226,9 @@ describe.each(CONSUMERS)("$name consumes the primitive", (consumer) => {
     // A consumer that still writes its own chip button has forked the contract.
     expect(chips).not.toContain("aria-expanded=");
     expect(chips).not.toContain("data-fact-state=");
+    // Including the suggestion marking: a consumer supplies the WORDING through `badge`
+    // and the boolean through `suggested`, never the attribute itself.
+    expect(chips).not.toContain("data-suggested=");
   });
 
   it("imports the shared editor host and writes no Escape handling itself", () => {

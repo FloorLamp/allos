@@ -31,6 +31,29 @@ import type { ReactNode } from "react";
 
 export type FactChipState = "stated" | "missing";
 
+// THE SUGGESTION MARKING, and it belongs to the primitive rather than to each consumer
+// (#3222). A chip whose value was supplied FOR the person — a label default, a borrowed
+// typical duration — is an editable suggestion, not something they stated, and that
+// difference is the whole distinction between prefilling and asserting (#846).
+//
+// It shipped on the removable chip only, which made it a per-consumer convention the
+// third surface could simply forget: intake marked its fact chips with a badge testid,
+// and the second consumer reached for another one. Both shapes now emit the SAME
+// attribute from this one helper, so the marking is a structural property of a chip.
+//
+// The WORDING stays with the consumer — `badge` is a ReactNode, and "from label
+// defaults" is not "from your usual". Only the machine-readable fact is shared.
+//
+// Absent when the consumer does not track suggestion for that fact at all, which is
+// different from tracking it and finding it false.
+function suggestedAttrs(
+  suggested: boolean | undefined
+): Record<string, string> {
+  return suggested === undefined
+    ? {}
+    : { "data-suggested": suggested ? "1" : "0" };
+}
+
 const STATED_CHIP =
   "tap-target rounded-full border border-(--border) bg-surface px-3 py-1.5 text-sm text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200";
 
@@ -83,7 +106,8 @@ export function FactChip({
   // An annotation the consumer renders inside the chip — the datasets supplied this and
   // the person has not touched it (#846), and so on. The primitive does not name it.
   badge?: ReactNode;
-  // Emitted as `data-suggested` on a removable chip when the consumer tracks it.
+  // Emitted as `data-suggested` on EITHER chip shape when the consumer tracks it; see
+  // suggestedAttrs. The consumer supplies the wording through `badge`.
   suggested?: boolean;
   remove?: { label: string; testId?: string; onClick: () => void };
 }) {
@@ -93,6 +117,7 @@ export function FactChip({
         type="button"
         data-testid={testId}
         data-fact-state={state}
+        {...suggestedAttrs(suggested)}
         aria-expanded={expanded}
         onClick={onOpen}
         className={state === "missing" ? MISSING_CHIP : STATED_CHIP}
@@ -106,9 +131,7 @@ export function FactChip({
     <span
       data-testid={testId}
       data-fact-state={state}
-      {...(suggested === undefined
-        ? {}
-        : { "data-suggested": suggested ? "1" : "0" })}
+      {...suggestedAttrs(suggested)}
       className="inline-flex items-center gap-1 rounded-full border border-(--border) bg-surface py-1.5 pr-1.5 pl-3 text-sm text-slate-700 dark:text-slate-200"
     >
       <button

@@ -32,12 +32,13 @@ export default function SleepFactRow({
           state={chip.state}
           expanded={openEditor === chip.key}
           onOpen={() => onOpen(chip.key)}
+          // `data-suggested` is the primitive's, so this surface adds no marker of its
+          // own — a per-consumer testid is the convention the third surface forgets.
+          // Only the wording is ours.
+          suggested={chip.suggested}
           badge={
             chip.suggested && (
-              <span
-                data-testid="sleep-duration-suggested"
-                className="ml-1.5 text-xs font-medium text-brand-700 dark:text-brand-300"
-              >
+              <span className="ml-1.5 text-xs font-medium text-brand-700 dark:text-brand-300">
                 from your usual
               </span>
             )

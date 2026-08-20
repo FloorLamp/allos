@@ -976,9 +976,7 @@ test.describe("Sleep and mood log historical editing", () => {
       // own — never with the borrowed-value marking.
       const durationChip = dialog.getByTestId("sleep-fact-duration");
       await expect(durationChip).toContainText("7 h");
-      await expect(dialog.getByTestId("sleep-duration-suggested")).toHaveCount(
-        0
-      );
+      await expect(durationChip).toHaveAttribute("data-suggested", "0");
 
       await durationChip.click();
       const hours = dialog.getByTestId("sleep-history-edit-hours");
@@ -1178,18 +1176,18 @@ test.describe("Sleep and mood log historical editing", () => {
       // value is a suggestion, not something the person stated (#846).
       const durationChip = dialog.getByTestId("sleep-fact-duration");
       await expect(durationChip).toContainText("7 h");
-      await expect(
-        dialog.getByTestId("sleep-duration-suggested")
-      ).toBeVisible();
+      // The marking is the primitive's `data-suggested` (#3222), the same attribute the
+      // intake form's chips carry; only the wording beside it belongs to this surface.
+      await expect(durationChip).toHaveAttribute("data-suggested", "1");
+      await expect(durationChip).toContainText("from your usual");
 
       await durationChip.click();
       await dialog.getByTestId("sleep-history-edit-hours").fill("7");
       await dialog.getByTestId("sleep-history-edit-minutes").fill("35");
       await dialog.getByTestId("sleep-editor-done").click();
       // Typing is what makes the number theirs, so the marking is gone.
-      await expect(dialog.getByTestId("sleep-duration-suggested")).toHaveCount(
-        0
-      );
+      await expect(durationChip).toHaveAttribute("data-suggested", "0");
+      await expect(durationChip).not.toContainText("from your usual");
 
       await dialog.getByTestId("sleep-fact-mood").click();
       await dialog.getByTestId("sleep-history-mood-5").click();
