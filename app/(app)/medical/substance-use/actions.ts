@@ -9,6 +9,9 @@ import {
   substanceInstrumentDef,
   resolveSubstanceKey,
   substanceDef,
+  substanceLabel,
+  substanceNameError,
+  validateSubstanceName,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
@@ -177,16 +180,70 @@ export async function logSubstanceUnitAction(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
+  return logOneUnit(profile.id, substance);
+}
+
+// The split-ledger dispatch, factored out so the keyed tap above and the NAMED tap
+// below are one write path with one revalidation — #3326 adds a way to reach this,
+// never a second way to do it.
+function logOneUnit(
+  profileId: number,
+  substance: SubstanceKey
+): SubstanceLogResult {
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? logFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
-      : logSubstanceUnitCore(profile.id, substance, today(profile.id));
+      ? logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
+      : logSubstanceUnitCore(profileId, substance, today(profileId));
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();
   return {
     ok: true,
-    weekCount: getSubstanceWeekState(profile.id, substance).count,
+    weekCount: getSubstanceWeekState(profileId, substance).count,
+  };
+}
+
+// ---- Naming your own substance (#3326) -------------------------------------
+//
+// THE ENTRY POINT, AND THERE IS NO CREATE STEP. #3323 shipped the whole custom
+// vocabulary and nothing in the app could reach it. A custom substance's identity IS
+// its normalized name in the ledger — no registration row, no new table — so LOGGING
+// IT IS CREATING IT, and this action is exactly `logSubstanceUnitAction` reached by a
+// typed name instead of a known key.
+//
+// WHAT IT ADDS over the keyed tap: the surface-level name gate. `resolveSubstanceKey`
+// truncates at 60 characters, which is right for a stored key and wrong for a person
+// typing (see validateSubstanceName). A too-long name is REFUSED with a sentence here
+// as well as in the form, because a Server Action is independently POST-callable.
+//
+// A TYPED NAME NEVER REACHES THE NUTRITION LEDGER. It can, however, resolve ONTO a
+// curated key: "Alcohol" collapses to `alcohol` so a typed name can never shadow the
+// catalog with a second ledger, and that one case rides food-log exactly as the
+// Alcohol card's own tap does. Nothing a person INVENTS lands there — `substanceDef`
+// gives every custom key the substance-log ledger, always.
+//
+// The resolved key rides back so the caller can name what it actually logged: someone
+// who types "alcohol" is told the drink landed on Alcohol rather than being left to
+// wonder where their new card went.
+export type TrackSubstanceResult =
+  | { ok: true; substance: SubstanceKey; label: string; weekCount: number }
+  | { ok: false; error: string };
+
+export async function trackSubstanceUseAction(
+  formData: FormData
+): Promise<TrackSubstanceResult> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getProfileAge(profile.id)))
+    return { ok: false, error: MINOR_REFUSAL };
+  const name = validateSubstanceName(String(formData.get("name") ?? ""));
+  if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
+  const logged = logOneUnit(profile.id, name.key);
+  if (!logged.ok) return logged;
+  return {
+    ok: true,
+    substance: name.key,
+    label: substanceLabel(name.key),
+    weekCount: logged.weekCount,
   };
 }
 

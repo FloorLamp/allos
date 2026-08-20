@@ -525,6 +525,43 @@ export function resolveSubstanceKey(input: string): SubstanceKey | null {
   return normalizeSubstanceName(raw) || null;
 }
 
+// ---- Naming one at a SURFACE (#3326) ---------------------------------------
+//
+// `resolveSubstanceKey` normalizes-and-TRUNCATES, which is right for a stored key and
+// wrong for a person typing: 61 characters would become 60 with nothing said, and the
+// substance they meant is not the substance they got. So the surface asks a different
+// question first — "is this name usable exactly as typed?" — and only then resolves,
+// through the same one normalizer. There is still ONE normalization; this adds a gate
+// in front of it, not a second rule.
+//
+// Deliberately NOT a `maxLength` on the input either: the browser would silently
+// swallow the 61st keystroke and quietly clip a paste, which is the same defect wearing
+// a nicer hat. The name is refused with a sentence instead.
+export type SubstanceNameRejection = "empty" | "too-long";
+
+export type SubstanceNameResult =
+  | { ok: true; key: SubstanceKey }
+  | { ok: false; reason: SubstanceNameRejection };
+
+export function validateSubstanceName(input: string): SubstanceNameResult {
+  // Collapse FIRST, so "  Kratom  " is measured at 6 characters rather than 10 — the
+  // length that is refused has to be the length that would be stored.
+  const collapsed = input.trim().replace(/\s+/g, " ");
+  if (collapsed.length > MAX_SUBSTANCE_NAME_LENGTH)
+    return { ok: false, reason: "too-long" };
+  const key = resolveSubstanceKey(collapsed);
+  if (key === null) return { ok: false, reason: "empty" };
+  return { ok: true, key };
+}
+
+// The one wording for each rejection, so the client's pre-flight check and the Server
+// Action's own re-check say the same sentence rather than two near-misses.
+export function substanceNameError(reason: SubstanceNameRejection): string {
+  return reason === "too-long"
+    ? `That name is too long — use ${MAX_SUBSTANCE_NAME_LENGTH} characters or fewer.`
+    : "Type a name to track.";
+}
+
 // The display name for a stored key: the curated label, else the custom key verbatim.
 // Never throws on an unknown key — a row logged under a key this build doesn't curate
 // still renders (the #203 name-keyed discipline, as symptomLabel).
