@@ -268,12 +268,54 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(undone).toEqual({ ok: true, weekCount: 1 });
   });
 
-  it("rejects an unknown substance", async () => {
+  // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. It used to post
+  // "caffeine" as a stand-in for a key the app does not know, and that is no longer a
+  // refusal: the vocabulary is open, so "caffeine" is a perfectly good custom substance
+  // and posting it is how a person defines one. What survives as unloggable is text that
+  // NAMES NOTHING — empty or whitespace-only — so the refusal assertion moves there and
+  // keeps testing what it claimed. The old case becomes its positive twin below.
+  it("refuses a substance that names nothing", async () => {
     const login = createLogin();
     const profile = createProfile("su-bogus-substance", login.id);
     actAs(login, profile);
-    const r = await logSubstanceUnitAction(fd({ substance: "caffeine" }));
-    expect(r.ok).toBe(false);
+    expect((await logSubstanceUnitAction(fd({ substance: "" }))).ok).toBe(
+      false
+    );
+    expect((await logSubstanceUnitAction(fd({ substance: "   " }))).ok).toBe(
+      false
+    );
+  });
+
+  it("logs a CUSTOM substance the profile named itself, on the counter ledger", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-custom-substance", login.id);
+    actAs(login, profile);
+    // Typed with stray whitespace: the action normalizes at its own boundary, so this
+    // and a later clean "Kratom" are ONE ledger row, not two neighbours.
+    expect(
+      await logSubstanceUnitAction(fd({ substance: "  Kratom " }))
+    ).toEqual({ ok: true, weekCount: 1 });
+    expect(await logSubstanceUnitAction(fd({ substance: "Kratom" }))).toEqual({
+      ok: true,
+      weekCount: 2,
+    });
+    const row = db
+      .prepare(
+        `SELECT substance, units FROM substance_daily_totals WHERE profile_id = ?`
+      )
+      .all(profile.id) as { substance: string; units: number }[];
+    expect(row).toEqual([{ substance: "Kratom", units: 2 }]);
+    // A custom substance is EPISODIC and it is never a food: the nutrition ledger is
+    // untouched (docs/internals/substances.md — nothing typed may pollute it).
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+        )
+        .get(profile.id)
+    ).toEqual({ n: 0 });
+    // And it carries NO reduction framing, because no cap was ever set (#3279 ruling 1).
+    expect(getSubstanceWeekState(profile.id, "Kratom").status).toBeNull();
   });
 });
 
@@ -325,7 +367,7 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       expect(r.ok, `cap ${cap} should be rejected`).toBe(false);
     }
     // Nicotine/cannabis targets are first-class since #1078 (the target layer was
-    // already substance-parameterized); an unknown substance still bounces.
+    // already substance-parameterized); a substance naming nothing still bounces.
     expect(
       (await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "3" })))
         .ok
@@ -334,9 +376,13 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       (await setSubstanceTargetAction(fd({ substance: "cannabis", cap: "0" })))
         .ok
     ).toBe(true);
+    // #3279: a cap on a CUSTOM substance is set the same way — the target table was
+    // never keyed to the curated three. A target that names nothing still bounces.
     expect(
-      (await setSubstanceTargetAction(fd({ substance: "caffeine", cap: "3" })))
-        .ok
+      (await setSubstanceTargetAction(fd({ substance: "Kratom", cap: "3" }))).ok
+    ).toBe(true);
+    expect(
+      (await setSubstanceTargetAction(fd({ substance: "  ", cap: "3" }))).ok
     ).toBe(false);
   });
 });

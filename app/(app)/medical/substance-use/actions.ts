@@ -7,12 +7,12 @@ import { isRealIsoDate } from "@/lib/date";
 import {
   isSubstanceInstrument,
   substanceInstrumentDef,
-  isSubstance,
+  resolveSubstanceKey,
   substanceDef,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
-  type Substance,
+  type SubstanceKey,
   type SubstanceInstrument,
 } from "@/lib/substance-use";
 import {
@@ -173,9 +173,10 @@ export async function logSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance))
-    return { ok: false, error: "Unknown substance." };
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? logFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
@@ -196,9 +197,10 @@ export async function undoSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance))
-    return { ok: false, error: "Unknown substance." };
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? undoFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
@@ -218,14 +220,16 @@ function historyInput(
 ):
   | {
       ok: true;
-      substance: Substance;
+      substance: SubstanceKey;
       date: string;
       amount: number;
       notes: string | null;
     }
   | { ok: false; outcome: SubstanceHistoryMutationOutcome } {
-  const substanceRaw = String(formData.get("substance") ?? "");
-  if (!isSubstance(substanceRaw))
+  const substanceRaw = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substanceRaw === null)
     return { ok: false, outcome: { kind: "unknown-substance" } };
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date) || date > maxDate)
@@ -296,9 +300,11 @@ export async function deleteSubstanceDailyTotalAction(
       error: "Couldn't find that entry.",
     };
   }
-  const substance = String(formData.get("substance") ?? "");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   const id = Number(formData.get("id"));
-  if (!isSubstance(substance) || !Number.isInteger(id) || id <= 0) {
+  if (substance === null || !Number.isInteger(id) || id <= 0) {
     return {
       kind: "not-found",
       undoId: null,
@@ -327,8 +333,10 @@ export async function setSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance)) return formError("Unknown substance.");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
   if (!Number.isInteger(capRaw) || capRaw < 0 || capRaw > MAX_WEEKLY_CAP) {
     return formError(`Enter a weekly cap between 0 and ${MAX_WEEKLY_CAP}.`);
@@ -354,8 +362,10 @@ export async function clearSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance)) return formError("Unknown substance.");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return formError("Unknown substance.");
   const target = db
     .prepare(
       `SELECT id FROM frequency_targets

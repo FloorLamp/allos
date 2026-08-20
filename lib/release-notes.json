@@ -32,6 +32,30 @@
           "title": "A ride recorded on two apps no longer shows every segment and lap twice, with two different PR medals",
           "kind": "fix",
           "issues": [3193]
+        },
+        {
+          "pr": 3309,
+          "title": "Sleep entry reads as chips you tap to change, and Escape closes the one you are editing instead of the whole form",
+          "kind": "feature",
+          "issues": [3222]
+        },
+        {
+          "pr": 3307,
+          "title": "A dropdown is no longer cut off by the panel it sits in, which on a phone hid most of the list",
+          "kind": "fix",
+          "issues": [3271]
+        },
+        {
+          "pr": 3310,
+          "title": "Every detail page has the same back link, and the hub pages share one header",
+          "kind": "fix",
+          "issues": [3236, 3237]
+        },
+        {
+          "pr": 3319,
+          "title": "A dose written as 1,000 mg reads as 1000, and an amount that could mean two things is refused rather than guessed",
+          "kind": "fix",
+          "issues": [3153]
         }
       ]
     },
