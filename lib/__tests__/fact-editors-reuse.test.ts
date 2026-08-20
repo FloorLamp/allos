@@ -55,6 +55,11 @@ const CONSUMERS = [
     chips: "components/intake/IntakeFactRow.tsx",
     host: "components/IntakeItemForm.tsx",
   },
+  {
+    name: "the manual sleep-and-mood entry (#3222)",
+    chips: "components/sleep/SleepFactRow.tsx",
+    host: "app/(app)/sleep/SleepMoodEditDialog.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
@@ -162,6 +167,10 @@ describe("CONSUMERS is a census of the tree, not a list someone remembers (#3300
     // a row above fails here, and so does a row naming a file that has stopped importing
     // it. Either way the fix is one line in CONSUMERS — the point is that nothing lands
     // silently.
+    //
+    // If you are ADDING a consumer and it is missing from the left-hand side, the file is
+    // probably not staged yet: the census walks `git ls-files`, so an untracked new
+    // component is invisible to it. `git add` it and re-run.
     expect(factPrimitiveImporters()).toEqual(registered);
   });
 

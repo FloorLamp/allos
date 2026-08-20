@@ -510,7 +510,24 @@ test.describe("Sleep page (#1066)", () => {
     await page.getByTestId("sleep-add-entry-header").click();
     const dialog = page.getByTestId("sleep-mood-edit-dialog");
     await expect(dialog).toBeVisible();
+
+    // Summary-first (#3222 on #3218): the dialog opens onto the facts it is about
+    // to write, not onto a field. Each chip is the door to exactly one editor, and
+    // at most one editor is on screen — so every field below is reached by tapping
+    // the fact it belongs to.
+    const factRow = dialog.getByTestId("sleep-fact-row");
+    await expect(factRow).toBeVisible();
+    const editor = dialog.getByTestId("sleep-editor");
+
+    await dialog.getByTestId("sleep-fact-night").click();
+    await expect(editor).toHaveAttribute("data-panel", "night");
     await expect(dialog.getByTestId("sleep-entry-date")).toBeVisible();
+    // Done returns to the chips, and the chip row and the editor are never both up.
+    await dialog.getByTestId("sleep-editor-done").click();
+    await expect(editor).toHaveCount(0);
+    await expect(factRow).toBeVisible();
+
+    await dialog.getByTestId("sleep-fact-duration").click();
     await expect(
       dialog.getByText("Sleep duration", { exact: true })
     ).toBeVisible();
@@ -519,9 +536,44 @@ test.describe("Sleep page (#1066)", () => {
     await expect(
       dialog.getByTestId("sleep-history-edit-readonly")
     ).toBeVisible();
+    await dialog.getByTestId("sleep-editor-done").click();
+
+    await dialog.getByTestId("sleep-fact-mood").click();
     await expect(dialog.getByRole("group", { name: "Mood" })).toBeVisible();
+    await dialog.getByTestId("sleep-editor-done").click();
+
+    // Nothing was stated, so nothing is saveable — the read-only night cannot take a
+    // manual duration and no mood was chosen.
     await expect(dialog.getByTestId("sleep-mood-edit-save")).toBeDisabled();
     await dialog.getByRole("button", { name: "Cancel" }).click();
+  });
+
+  test("Escape inside an open fact editor returns to the chips, not out of the dialog", async ({
+    page,
+  }) => {
+    // The contract the primitive states (#3218) and the one this consumer proved needs
+    // saying out loud (#3222): the shared focus trap answers Escape on the WINDOW
+    // CAPTURE phase, so an open panel has to declare itself an escape layer or the
+    // first Escape throws the whole dialog away instead of closing the one editor.
+    await page.goto("/sleep");
+    await page.getByTestId("sleep-add-entry-header").click();
+    const dialog = page.getByTestId("sleep-mood-edit-dialog");
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByTestId("sleep-fact-mood").click();
+    await expect(dialog.getByTestId("sleep-editor")).toHaveAttribute(
+      "data-panel",
+      "mood"
+    );
+
+    await page.keyboard.press("Escape");
+    // Editor closed, dialog still standing.
+    await expect(dialog.getByTestId("sleep-editor")).toHaveCount(0);
+    await expect(dialog.getByTestId("sleep-fact-row")).toBeVisible();
+
+    // And the SECOND Escape reaches the dialog, exactly as it did before any of this.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
   });
 
   test("the nav gate HIDES the entry for a profile with no sleep data", async ({
@@ -905,6 +957,13 @@ test.describe("Sleep and mood log historical editing", () => {
       );
       await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const importedDialog = page.getByTestId("sleep-mood-edit-dialog");
+      // A synced night STATES its measured duration on the chip rather than making the
+      // person open an editor to be told they cannot use it; the read-only explanation
+      // is what sits behind that chip.
+      await expect(
+        importedDialog.getByTestId("sleep-fact-duration")
+      ).toContainText("6 h 30 m");
+      await importedDialog.getByTestId("sleep-fact-duration").click();
       await expect(
         importedDialog.getByTestId("sleep-history-edit-readonly")
       ).toBeVisible();
@@ -913,17 +972,34 @@ test.describe("Sleep and mood log historical editing", () => {
       await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
       await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      // An edit states the night's own stored duration, and states it as the person's
+      // own — never with the borrowed-value marking.
+      const durationChip = dialog.getByTestId("sleep-fact-duration");
+      await expect(durationChip).toContainText("7 h");
+      await expect(
+        dialog.getByTestId("sleep-duration-suggested")
+      ).toHaveCount(0);
+
+      await durationChip.click();
       const hours = dialog.getByTestId("sleep-history-edit-hours");
       const minutes = dialog.getByTestId("sleep-history-edit-minutes");
       await expect(hours).toHaveValue("7");
       await expect(minutes).toHaveValue("0");
+      await hours.fill("8");
+      await minutes.fill("45");
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      await dialog.getByTestId("sleep-fact-mood").click();
       await expect(dialog.getByTestId("sleep-history-mood-2")).toHaveAttribute(
         "aria-pressed",
         "true"
       );
-      await hours.fill("8");
-      await minutes.fill("45");
       await dialog.getByTestId("sleep-history-mood-4").click();
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      // Both corrections survived their editors closing: the form posts whole.
+      await expect(durationChip).toContainText("8 h 45 m");
+      await expect(dialog.getByTestId("sleep-fact-mood")).toContainText("good");
       await settledClick(page, dialog.getByTestId("sleep-mood-edit-save"));
       await expect(dialog).toHaveCount(0);
       await expect(manualRow).toContainText("8h 45m");
@@ -1085,10 +1161,39 @@ test.describe("Sleep and mood log historical editing", () => {
       await page.goto("/sleep");
       await page.getByTestId("sleep-add-entry-header").click();
       const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      await dialog.getByTestId("sleep-fact-night").click();
       await dialog.getByTestId("sleep-entry-date").fill(entryDate);
+      // Focusing the date field opens its calendar, which is an escape layer of its own
+      // and sits over the panel's Done. Escape belongs to the innermost layer, so this
+      // closes the calendar and nothing else — the editor is still open below it.
+      await page.keyboard.press("Escape");
+      await expect(dialog.getByTestId("sleep-editor")).toHaveAttribute(
+        "data-panel",
+        "night"
+      );
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      // The blank night borrows the profile's typical MANUAL duration — this fixture
+      // has one 7 h manual night — and says where the number came from. A borrowed
+      // value is a suggestion, not something the person stated (#846).
+      const durationChip = dialog.getByTestId("sleep-fact-duration");
+      await expect(durationChip).toContainText("7 h");
+      await expect(
+        dialog.getByTestId("sleep-duration-suggested")
+      ).toBeVisible();
+
+      await durationChip.click();
       await dialog.getByTestId("sleep-history-edit-hours").fill("7");
       await dialog.getByTestId("sleep-history-edit-minutes").fill("35");
+      await dialog.getByTestId("sleep-editor-done").click();
+      // Typing is what makes the number theirs, so the marking is gone.
+      await expect(
+        dialog.getByTestId("sleep-duration-suggested")
+      ).toHaveCount(0);
+
+      await dialog.getByTestId("sleep-fact-mood").click();
       await dialog.getByTestId("sleep-history-mood-5").click();
+      await dialog.getByTestId("sleep-editor-done").click();
       await settledClick(page, dialog.getByTestId("sleep-mood-edit-save"));
       await expect(dialog).toHaveCount(0);
 

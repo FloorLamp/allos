@@ -120,6 +120,7 @@ export default async function SleepPage() {
         subtitle="Duration, timing, stages, and how sleep relates to mood."
         action={
           <SleepLogAction
+            formatPrefs={formatPrefs}
             history={sleepMood.history}
             today={todayStr}
             minDate={sleepMoodMinDate}
@@ -176,6 +177,7 @@ export default async function SleepPage() {
               Sync a source
             </Link>
             <SleepLogAction
+            formatPrefs={formatPrefs}
               history={sleepMood.history}
               today={todayStr}
               minDate={sleepMoodMinDate}
@@ -285,6 +287,7 @@ export default async function SleepPage() {
           No sleep data yet. Log a duration manually or connect Health Connect,
           Oura, or Withings for bed/wake timing and stage detail.{" "}
           <SleepLogAction
+            formatPrefs={formatPrefs}
             history={sleepMood.history}
             today={todayStr}
             minDate={sleepMoodMinDate}
