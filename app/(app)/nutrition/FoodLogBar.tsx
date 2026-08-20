@@ -1245,7 +1245,30 @@ export default function FoodLogBar({
     <div>
       <div
         data-testid="food-log-context"
-        className="-mx-2 mb-3 bg-surface/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
+        // THE FULL BLEED IS PAGE-SCOPED (#3360). `-mx-2 px-2` is the trick that
+        // lets the `md:sticky` frosted header paint over the Nutrition page's
+        // gutter; it is net-zero for the content inside (the negative margin and
+        // the padding cancel) and only widens the BACKGROUND. But this component
+        // is also mounted in the #1468 quick-entry sheet, whose content region
+        // has no gutter to bleed into — there the wrapper was simply 16px wider
+        // than its container, which is the horizontal overflow that let one thumb
+        // drag park the sheet sideways. Scoping the three classes to `md:` — the
+        // width where `md:sticky` actually engages, and which `lg:` already
+        // unwinds — removes the overflow at the source. `overflow-x-hidden` on
+        // the sheet's content region (components/BottomSheet.tsx) is the defense
+        // for the whole class; this is the one instance.
+        //
+        // BELOW `md` NOTHING MOVES, BUT THE BAND DOES GO. Content stays put — the
+        // negative margin and the padding cancelled, so dropping both leaves every
+        // child at the same x. The BACKGROUND is a different answer than the issue
+        // predicted: it expected `bg-surface/95` to be sitting on the same
+        // `bg-surface`, and on the sheet's panel it is, but on the Nutrition page
+        // nothing between this wrapper and `<body>` paints, so it was sitting on
+        // the app canvas — a near-white edge-to-edge strip behind "Today · Midday
+        // · N servings" that no other element on that page wears. It is canvas
+        // now, like its neighbours. Sticky and frost were always `md:`-only, so an
+        // unsticky full-bleed band below `md` was doing nothing on purpose.
+        className="mb-3 py-2 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
