@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledFill, spendAutoReloadRation } from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { SHARED_PROFILE_ID, takeStrandedDrafts } from "./shared-profile-guard";
 import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 
 // Deployment skew, the Server Action half, and the tab that fixes it by itself
@@ -38,6 +39,22 @@ import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 //
 // Fixture discipline (#868): every row this spec creates is deleted by value in a
 // finally, keyed on titles nothing else uses.
+//
+// A TITLE-KEYED DELETE CANNOT CLEAN A ROW THAT HAS NO TITLE YET (#3291). Only the
+// live-workout test below is exposed: `start-workout` creates the row on the SERVER
+// at the moment the session starts, and the title does not reach it until
+// `settledFill` lands three lines later. A failure in between runs a
+// `DELETE … WHERE title = 'Stalenet live'` that matches nothing. The other three
+// tests drive "New activity", whose row is only ever born by a save that already
+// carries the title, so they have no such window and are left alone.
+//
+// The gap this closes is NARROWER than it looks, and worth stating so the next
+// reader does not overrate it: the standing shared-profile guard (#3173) is a
+// per-test auto fixture that both REPORTS and REPAIRS, so a row stranded here was
+// already removed before the next spec ran. What it was NOT doing was letting this
+// spec own its own fixtures — a failure in the window earned a second, contradictory
+// error telling the test to dispose of the draft "from a `finally`", which is
+// precisely what it looked like it was doing.
 
 const DB_PATH = workerDbPath();
 const LIVE_TITLE = "Stalenet live";
@@ -285,6 +302,17 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   } finally {
     deleteActivitiesTitled(LIVE_TITLE);
+    // …and the same row keyed on something true from its FIRST instant: the four
+    // columns `computeWorkoutPresence` calls an active workout. Both deletes stay,
+    // deliberately — the title-keyed one is what removes a session that got its title
+    // and was then FINISHED or given a duration, which this signature no longer
+    // matches. Neither one subsumes the other.
+    //
+    // Sweeping profile 1 unconditionally cannot swallow a NEIGHBOUR's leak: tests are
+    // serial within a worker and the standing guard takes any stranded draft in the
+    // teardown of the test that made it, so there is never a pre-existing one here to
+    // take.
+    takeStrandedDrafts(DB_PATH, SHARED_PROFILE_ID);
   }
 });
 

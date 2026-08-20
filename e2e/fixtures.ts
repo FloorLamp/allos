@@ -11,7 +11,7 @@ import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
 import {
   strandedDraftMessage,
-  takeStrandedSharedDrafts,
+  takeStrandedDrafts,
 } from "./shared-profile-guard";
 import {
   ADMIN_PASSWORD,
@@ -244,7 +244,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
-      const stranded = takeStrandedSharedDrafts(workerApp.dbPath);
+      const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
     },
     { auto: true },
