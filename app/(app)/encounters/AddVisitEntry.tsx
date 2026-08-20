@@ -8,15 +8,27 @@ import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import AppointmentForm from "./AppointmentForm";
 import EncounterForm from "./EncounterForm";
 
-// The single "Add visit" entry (issue #566). Appointments (future, scheduling) and
-// encounters (past, clinical) stay two tables and two forms — this is a
-// presentation-layer wrapper that closes the "which form do I use?" seam by
-// branching on TENSE behind one affordance:
-//   • a segmented Upcoming / Already happened toggle picks the branch, and
-//   • picking a past date in the form auto-flips it to the encounter branch (and a
-//     future date back), so the date the user is already entering routes the shape.
-// The chosen date is owned here and passed controlled into whichever form renders,
-// so it survives the flip. A prefill / ?new=1 deep link (the #85 Book CTA, the #29
+// The single "Add visit" entry (issue #566, #3223). Appointments (future, scheduling)
+// and encounters (past, clinical) stay two tables, two Server Actions and two forms —
+// this is a presentation-layer wrapper that closes the "which form do I use?" seam.
+//
+// THE TENSE IS A DERIVED FACT OF THE DATE, NOT A QUESTION ASKED FIRST (#3223). This
+// wrapper used to open with a segmented Upcoming / Already happened tablist and a
+// paragraph explaining the two branches — a question the person had to answer about the
+// app's storage model before they could type anything about their visit. But the date
+// they are already entering answers it: a future day is a booking, a past day is a
+// record of something that happened. So the branch is DERIVED and then STATED, with one
+// control to correct it — the same derived-and-correctable grammar the intake form's
+// kind chip uses, and the reason the facts-with-editors pattern suits this pair at all.
+//
+// A CORRECTION STICKS UNTIL THE DATE MOVES AGAIN. Overriding says "I know what this is
+// and the derivation is wrong", so a re-render must not quietly undo it; but typing a
+// new date is a fresh statement of when, and the derivation gets to answer again. Both
+// halves matter: without the first the correction is unusable, and without the second a
+// single stray tap would pin the wrong branch for the rest of the entry.
+//
+// The chosen date is owned here and passed controlled into whichever form renders, so it
+// survives the flip. A prefill / ?new=1 deep link (the #85 Book CTA, the #29
 // command-palette action, the calendar-feed hookup) forces the appointment branch,
 // preserving every existing entry path.
 export default function AddVisitEntry({
@@ -50,8 +62,9 @@ export default function AddVisitEntry({
     })
   );
 
-  // Follow the date the user is entering to the matching branch — the "pick a date
-  // first" routing from the issue. A blank/partial entry keeps the current branch.
+  // The date the person is entering routes the shape. A blank/partial entry keeps the
+  // current branch, and re-deriving here is what lets a correction be undone by a fresh
+  // date rather than surviving one.
   function handleDateChange(v: string) {
     setDate(v);
     if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setTense(visitTenseForDate(v, today));
@@ -61,47 +74,38 @@ export default function AddVisitEntry({
 
   return (
     <div className="space-y-3" data-testid="visits-add">
-      {/* Tense toggle — the single entry's branch selector. */}
-      <div
-        className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm dark:bg-ink-800"
-        role="tablist"
-        aria-label="Visit timing"
+      {/* The derived tense, STATED with its consequence and one control to correct it.
+          Not a tablist any more: there is no question here to answer, only a reading of
+          the date that the person can disagree with. */}
+      <p
+        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
         data-testid="visit-tense-toggle"
+        data-tense={tense}
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={upcoming}
-          data-testid="visit-tense-upcoming"
-          onClick={() => setTense("upcoming")}
-          className={`rounded-md px-3 py-1.5 font-medium transition ${
-            upcoming
-              ? "bg-surface text-slate-900 shadow-xs dark:text-slate-100"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          Upcoming
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!upcoming}
-          data-testid="visit-tense-past"
-          onClick={() => setTense("past")}
-          className={`rounded-md px-3 py-1.5 font-medium transition ${
-            !upcoming
-              ? "bg-surface text-slate-900 shadow-xs dark:text-slate-100"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          Already happened
-        </button>
-      </div>
-
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        {upcoming
-          ? "Scheduling a future visit — it books an appointment and surfaces on Upcoming."
-          : "Logging a visit that already happened — it's saved to your visit history."}
+        <span data-testid="visit-tense-derived">
+          {upcoming
+            ? "Scheduling a future visit — it books an appointment and surfaces on Upcoming."
+            : "Logging a visit that already happened — it's saved to your visit history."}
+        </span>
+        {upcoming ? (
+          <button
+            type="button"
+            data-testid="visit-tense-past"
+            onClick={() => setTense("past")}
+            className="tap-target font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
+          >
+            Already happened
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="visit-tense-upcoming"
+            onClick={() => setTense("upcoming")}
+            className="tap-target font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
+          >
+            Upcoming instead
+          </button>
+        )}
       </p>
 
       {/* One branch renders at a time; the shared date carries across the flip. */}

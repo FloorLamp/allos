@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 import { openProtocolFact } from "./protocol-form-helpers";
+import { openVisitFact } from "./visit-form-helpers";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
 // Three things the census found and this pins:
@@ -166,9 +167,13 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
 
   // The appointment Date field is the site the census captured as
   // "Friday, July 2‹" at BOTH widths.
-  const dateField = page
-    .getByRole("dialog", { name: "Add visit" })
-    .locator('input[id^="appt-date-"]');
+  //
+  // IT IS BEHIND A FACT CHIP SINCE #3223, so the panel is opened before the field is
+  // measured. Nothing else about this test changes: a control that clips its own value
+  // clips it just as badly inside a disclosure.
+  const addVisit = page.getByRole("dialog", { name: "Add visit" });
+  await openVisitFact(addVisit, "when");
+  const dateField = addVisit.locator('input[id^="appt-date-"]');
   await expect(dateField).toBeVisible();
 
   // A December date is the widest the short form gets. DateField submits the ISO
