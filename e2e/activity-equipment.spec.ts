@@ -556,6 +556,14 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // after and the marker returns to "false" of its own accord — that return is
     // asserted below, and it is the half that must be read with the panel already shut.
     // Reading "true" late would be reading it after the state it names has passed.
+    //
+    // THE BUDGET, MEASURED HERE rather than assumed, because the next lane to assert
+    // dirtiness (#3335, #3336, #3349, #3350) will want the number: the marker dwells at
+    // "true" for 777ms (the 700ms debounce plus a ~77ms save round-trip), and this
+    // assertion's first poll lands 30ms after the edit. ~26x margin, and a starved box
+    // fails RED here rather than passing for the wrong reason. If that margin ever gets
+    // thin, arm a `waitForFunction` BEFORE the edit — it polls inside the page, so it
+    // cannot be outrun by a stalled test runner — and accept the worse failure message.
     await expect(form).toHaveAttribute("data-unsaved", "true");
     // Pressed on the PANEL rather than on the <select>: a native select has its own
     // Escape behaviour, and this is a question about the editor.
