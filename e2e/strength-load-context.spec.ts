@@ -166,19 +166,21 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     // `exercise` state directly, so the picker reacts to the exact logged name
     // without depending on the dropdown's internals.
     //
-    // SINCE #3220 the one subject picker holds all three vocabularies and DERIVES the
-    // kind from the pick — a lift makes this a strength goal — and a create lands on
-    // that editor already open, because there is nothing else a new goal could be
-    // about.
+    // SINCE #3220 the picker lives in the goal form's SUBJECT editor, which a create
+    // lands on already open — there is nothing else a new goal could be about — and
+    // using it DERIVES the kind: a lift makes this a strength goal.
     await expect(form.getByTestId("goal-editor")).toHaveAttribute(
       "data-panel",
       "subject"
     );
     await settledFill(
       page,
-      dialog.getByRole("combobox", { name: "What to track" }),
+      dialog.getByRole("combobox", { name: "Activity" }),
       LOAD_CONTEXT_LIFT
     );
+    // Typing leaves the combobox's portaled listbox open, and it floats over the
+    // panel's Done button; Escape belongs to the listbox first (`closeStopsPropagation`).
+    await page.keyboard.press("Escape");
     await closeGoalFact(form);
     await expect(form.getByTestId("goal-fact-kind")).toHaveText("Exercise goal");
     // Derived, not stated: the chip says so, so the person can correct it (#3216).

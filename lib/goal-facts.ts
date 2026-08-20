@@ -41,7 +41,6 @@ import type {
   OutcomeGoalKind,
   OutcomeGoalMetric,
 } from "./types";
-import { BODY_METRIC_LABELS } from "./outcome-goals";
 import { formatSeconds } from "./duration";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -113,96 +112,6 @@ export const GOAL_KIND_LABEL: Record<OutcomeGoalKind, string> = {
   biomarker: "Lab or vital",
   freeform: "Freeform",
 };
-
-// ── The subject pick, and the kind it implies ────────────────────────────────
-//
-// THE DERIVATION IS THE POINT (#3220): "an exercise pick implies a strength goal; a
-// body metric implies a body goal". A person opening this form knows what they want
-// to track and does not know, and should not have to decide, which of four storage
-// shapes the app keeps it in. So the subject vocabulary is offered as ONE list with
-// group headers and the kind falls out of the pick — stated back as a chip that is
-// marked as a suggestion and can be corrected (#3216), never as a silent inference.
-export type GoalSubjectGroup = "exercise" | "body" | "biomarker";
-
-export interface GoalSubjectOption {
-  /** What the picker shows and matches. Unique across the whole list. */
-  label: string;
-  /** Which vocabulary this row came from, and so which kind it implies. */
-  group: GoalSubjectGroup;
-  /**
-   * The dropdown header this row sits under.
-   *
-   * THE BIOMARKER ROWS KEEP THEIR OWN HEADERS, and that is the whole reason this is a
-   * string rather than `GOAL_SUBJECT_GROUP_LABEL[group]`. Merging the vocabularies
-   * into one picker must not cost the analytes the ranked, group-headed order every
-   * biomarker picker has shown since #1675 — "Due or flagged", then "Your markers",
-   * then "All biomarkers", with the header saying why. So a biomarker row carries the
-   * header the ranker gave it and the two training vocabularies simply precede them.
-   */
-  groupLabel: string;
-  /**
-   * The value the form stores for the kind this row implies: the exercise name, the
-   * body-metric key, or the analyte's canonical name.
-   */
-  value: string;
-}
-
-export const GOAL_SUBJECT_GROUP_LABEL: Record<GoalSubjectGroup, string> = {
-  exercise: "Exercises",
-  body: "Body metrics",
-  biomarker: "Labs and vitals",
-};
-
-/** The kind a subject row implies. */
-export function kindForSubjectGroup(group: GoalSubjectGroup): OutcomeGoalKind {
-  return group === "exercise"
-    ? "exercise"
-    : group === "body"
-      ? "body"
-      : "biomarker";
-}
-
-/**
- * The one subject list, in reading order: the movements this profile logs, then the
- * three body metrics, then the analytes the biomarker picker already ranks.
- *
- * LABEL COLLISIONS ARE RESOLVED, NOT HOPED AWAY. `seriesPickerOptions` guarantees
- * the analyte labels are unique among THEMSELVES, and nothing guarantees an exercise
- * is not also called "Cortisol". A duplicate label would make the label→subject map
- * lossy and a pick ambiguous, so a later row that repeats an earlier label is
- * qualified with its group's noun rather than dropped — dropping it would silently
- * remove a real analyte from the vocabulary.
- */
-export function goalSubjectOptions(input: {
-  lifts: readonly string[];
-  bodyMetrics: readonly BodyMetricKind[];
-  biomarkers: readonly { name: string; label: string; group: string }[];
-}): GoalSubjectOption[] {
-  const out: GoalSubjectOption[] = [];
-  const seen = new Set<string>();
-  const push = (
-    label: string,
-    group: GoalSubjectGroup,
-    groupLabel: string,
-    value: string
-  ) => {
-    if (!label.trim()) return;
-    const key = label.trim().toLowerCase();
-    const unique = seen.has(key)
-      ? `${label} (${GOAL_SUBJECT_GROUP_LABEL[group].toLowerCase()})`
-      : label;
-    seen.add(key);
-    seen.add(unique.trim().toLowerCase());
-    out.push({ label: unique, group, groupLabel, value });
-  };
-  for (const lift of input.lifts)
-    push(lift, "exercise", GOAL_SUBJECT_GROUP_LABEL.exercise, lift);
-  for (const bm of input.bodyMetrics)
-    push(BODY_METRIC_LABELS[bm], "body", GOAL_SUBJECT_GROUP_LABEL.body, bm);
-  for (const bio of input.biomarkers)
-    push(bio.label, "biomarker", bio.group, bio.name);
-  return out;
-}
 
 // ── What each chip reads ─────────────────────────────────────────────────────
 

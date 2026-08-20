@@ -132,34 +132,26 @@ test.describe("goals can target a lab value (#1853)", () => {
       await expect(form).toBeVisible();
 
       const field = page.locator(
-        'input[role="combobox"][aria-label="What to track"]'
+        'input[role="combobox"][aria-label="Lab or vital"]'
       );
       const listbox = await openCombobox(page, field);
 
-      // THE ANALYTES KEEP THEIR OWN RANKED, GROUP-HEADED ORDER (#1675), which is what
-      // merging three vocabularies into one picker must not cost them. "Albumin" is
-      // alphabetically first of the profile's three analytes and is exactly what an
-      // A–Z picker led with; here it is LAST of the three, behind the overdue draw
-      // and the flagged one, under a header that says why.
-      //
-      // Asked as the LAST three headers and as the analytes' order RELATIVE to each
-      // other, rather than by absolute index: the training vocabularies precede them
-      // and how many rows those contribute is a property of the profile's own
-      // history, not of this picker.
-      const headers = await groups(listbox).allTextContents();
-      expect(headers.slice(-3)).toEqual([
+      // The relevance view, not an A–Z list. "Albumin" is alphabetically first of
+      // the profile's three analytes and is exactly what an A–Z picker led with;
+      // here it is LAST of the three, behind the overdue draw and the flagged one,
+      // under a header that says why. Same groups, same order as every other
+      // biomarker picker (#1675) — UNCHANGED by #3220, which is the point: the goal
+      // form's subject editor holds each vocabulary's OWN picker rather than one
+      // merged list, because `Combobox` keeps eight options in its relevance view
+      // and a merged list would have spent all eight on the lift catalog.
+      await expect(options(listbox).nth(0)).toHaveText(LAB_GOAL_OVERDUE);
+      await expect(options(listbox).nth(1)).toHaveText(LAB_GOAL_TRACKED);
+      await expect(options(listbox).nth(2)).toHaveText(LAB_GOAL_IN_RANGE);
+      await expect(groups(listbox)).toHaveText([
         RELEVANT_GROUP,
         YOUR_GROUP,
         ALL_GROUP,
       ]);
-      const labels = await options(listbox).allTextContents();
-      expect(labels.indexOf(LAB_GOAL_OVERDUE)).toBeGreaterThan(-1);
-      expect(labels.indexOf(LAB_GOAL_OVERDUE)).toBeLessThan(
-        labels.indexOf(LAB_GOAL_TRACKED)
-      );
-      expect(labels.indexOf(LAB_GOAL_TRACKED)).toBeLessThan(
-        labels.indexOf(LAB_GOAL_IN_RANGE)
-      );
 
       // Typing is the app-wide fuzzy search, FLAT — no group headers, and the best
       // match leads. That is this assertion's whole point.

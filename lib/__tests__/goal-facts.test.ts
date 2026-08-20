@@ -1,13 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  GOAL_SUBJECT_GROUP_LABEL,
   bodyTargetUnit,
   deadlineFactLabel,
   firstGoalProblem,
   goalFactSummary,
   goalStartingFrom,
-  goalSubjectOptions,
-  kindForSubjectGroup,
   moreGoalFactsLabel,
   startingFromFactLabel,
   targetFactLabel,
@@ -225,45 +222,6 @@ describe("what each target reads (#3220)", () => {
     );
     expect(startingFromFactLabel({ value: 18, unit: "%" })).toBe("from 18%");
     expect(startingFromFactLabel({ value: null, unit: "kg" })).toBeNull();
-  });
-});
-
-describe("the subject pick decides the kind (#3220)", () => {
-  const OPTIONS = {
-    lifts: ["Bench Press", "Cortisol"],
-    bodyMetrics: ["weight", "body_fat", "resting_hr"] as const,
-    biomarkers: [
-      { name: "Cortisol", label: "Cortisol", group: "Your markers" },
-      { name: "LDL Cholesterol", label: "LDL Cholesterol", group: "All biomarkers" },
-    ],
-  };
-
-  it("offers the three vocabularies in reading order and derives a kind from each", () => {
-    const rows = goalSubjectOptions(OPTIONS);
-    expect(rows[0]).toMatchObject({ label: "Bench Press", group: "exercise" });
-    expect(kindForSubjectGroup("exercise")).toBe("exercise");
-    expect(kindForSubjectGroup("body")).toBe("body");
-    expect(kindForSubjectGroup("biomarker")).toBe("biomarker");
-    const body = rows.filter((r) => r.group === "body");
-    expect(body.map((r) => r.value)).toEqual(["weight", "body_fat", "resting_hr"]);
-    expect(body[0].groupLabel).toBe(GOAL_SUBJECT_GROUP_LABEL.body);
-  });
-
-  it("keeps the analytes' own ranked group headers rather than collapsing them (#1675)", () => {
-    const rows = goalSubjectOptions(OPTIONS);
-    const labs = rows.filter((r) => r.group === "biomarker");
-    expect(labs.map((r) => r.groupLabel)).toEqual([
-      "Your markers",
-      "All biomarkers",
-    ]);
-  });
-
-  it("qualifies a repeated label instead of dropping the row, so no analyte leaves the vocabulary", () => {
-    const rows = goalSubjectOptions(OPTIONS);
-    const cortisols = rows.filter((r) => r.value === "Cortisol");
-    expect(cortisols).toHaveLength(2);
-    expect(new Set(rows.map((r) => r.label)).size).toBe(rows.length);
-    expect(cortisols[1].label).toBe("Cortisol (labs and vitals)");
   });
 });
 

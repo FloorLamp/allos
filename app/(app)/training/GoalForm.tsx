@@ -9,7 +9,7 @@ import type {
   OutcomeGoalKind,
   OutcomeGoalMetric,
 } from "@/lib/types";
-import { OUTCOME_GOAL_DIRECTIONS, OUTCOME_GOAL_KINDS } from "@/lib/types";
+import { OUTCOME_GOAL_DIRECTIONS } from "@/lib/types";
 import type { GoalBiomarkerOption } from "./goal-target-options";
 import type { WeightUnit } from "@/lib/settings";
 import type { ExerciseBest } from "@/lib/queries";
@@ -23,6 +23,7 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
+import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -36,13 +37,9 @@ import GoalFactRow, {
 } from "@/components/training/GoalFactRow";
 import {
   GOAL_FACT_NOUNS,
-  GOAL_KIND_LABEL,
   firstGoalProblem,
   goalFactSummary,
   goalStartingFrom,
-  goalSubjectOptions,
-  kindForSubjectGroup,
-  type GoalSubjectOption,
 } from "@/lib/goal-facts";
 import { createGoal, updateGoal } from "./goal-actions";
 
@@ -223,12 +220,23 @@ export default function GoalForm({
   );
 
   // ── Lab / vital target (#1853) ────────────────────────────────────────────
+  // A Combobox picks by LABEL, and seriesPickerOptions guarantees labels are unique,
+  // so the label→name map is total and a pick can never be ambiguous.
+  const optionByLabel = useMemo(
+    () => new Map(biomarkerOptions.map((o) => [o.label, o])),
+    [biomarkerOptions]
+  );
   const optionByName = useMemo(
     () => new Map(biomarkerOptions.map((o) => [o.name, o])),
     [biomarkerOptions]
   );
-  const [bioName, setBioName] = useState(editGoal?.biomarker_name ?? "");
-  const bioOption = optionByName.get(bioName) ?? null;
+  const [bioLabel, setBioLabel] = useState(() =>
+    editGoal?.biomarker_name
+      ? (optionByName.get(editGoal.biomarker_name)?.label ??
+        editGoal.biomarker_name)
+      : ""
+  );
+  const bioOption = optionByLabel.get(bioLabel) ?? null;
   const [direction, setDirection] = useState<OutcomeGoalDirection>(
     editGoal?.target_direction ?? "below"
   );
@@ -374,78 +382,46 @@ export default function GoalForm({
         : "any";
 
   // ── The subject pick, and the kind it derives ─────────────────────────────
-  const subjectOptions = useMemo(
-    () =>
-      goalSubjectOptions({
-        lifts: allowExerciseGoal ? lifts : [],
-        bodyMetrics: BODY_METRICS,
-        biomarkers: biomarkerOptions,
-      }),
-    [allowExerciseGoal, lifts, biomarkerOptions]
-  );
-  const subjectByLabel = useMemo(() => {
-    const map = new Map<string, GoalSubjectOption>();
-    for (const option of subjectOptions)
-      map.set(option.label.trim().toLowerCase(), option);
-    return map;
-  }, [subjectOptions]);
-  const subjectGroupByLabel = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const option of subjectOptions) map.set(option.label, option.groupLabel);
-    return map;
-  }, [subjectOptions]);
-  const biomarkerLabels = useMemo(
-    () => new Set(subjectOptions.filter((o) => o.group === "biomarker").map((o) => o.label)),
-    [subjectOptions]
-  );
-
-  /** What the picker shows for a kind: the subject that kind's fields already hold. */
-  const subjectTextFor = (k: OutcomeGoalKind): string => {
-    if (k === "exercise") return exercise;
-    if (k === "body") return BODY_METRIC_LABELS[bodyMetric];
-    if (k === "biomarker") return optionByName.get(bioName)?.label ?? bioName;
-    return titleText;
+  //
+  // THE SUBJECT EDITOR HOLDS ALL FOUR VOCABULARIES AT ONCE, and which one you use is
+  // what sets the kind. There is no "what kind of goal is this" question any more: a
+  // person opening this form knows they want to bench 100 kg or get their LDL under
+  // 100, and which of four storage shapes the app keeps that in is not their problem.
+  //
+  // FOUR PICKERS RATHER THAN ONE MERGED LIST, and that is a measured decision rather
+  // than a stylistic one. A single combobox over exercises + body metrics + analytes
+  // was written first and refuted: `Combobox`'s empty-query relevance view keeps the
+  // first EIGHT options (components/Combobox.tsx), and `getActivitySuggestions`
+  // returns the whole ranked lift CATALOG — so the merged list's relevance view was
+  // eight exercises and nothing else, and the ranked, group-headed analyte order
+  // every biomarker picker has shown since #1675 ("Due or flagged" → "Your markers"
+  // → "All biomarkers") could not survive sharing those eight rows. Each vocabulary
+  // therefore keeps its own picker and its own ranking, and the DERIVATION — the
+  // thing #3220 actually asks for — comes from WHICH picker was used.
+  const chooseExerciseSubject = (next: string) => {
+    chooseExercise(next);
+    if (!next.trim()) return;
+    if (kind !== "exercise") setKind("exercise");
+    setKindDerived(true);
   };
-  const [subjectText, setSubjectText] = useState(() =>
-    subjectTextFor(initialKind)
-  );
-
-  /**
-   * A row was picked, or a name was typed. A MATCH decides the kind; anything else
-   * belongs to whichever vocabulary is currently open — and only the exercise one is
-   * open-ended, since a body metric and an analyte are closed sets whose members the
-   * write validates against.
-   */
-  function pickSubject(text: string) {
-    setSubjectText(text);
-    const option = subjectByLabel.get(text.trim().toLowerCase());
-    if (option) {
-      const nextKind = kindForSubjectGroup(option.group);
-      if (nextKind !== kind) setKind(nextKind);
-      setKindDerived(true);
-      if (option.group === "exercise") chooseExercise(option.value);
-      else if (option.group === "body") chooseBodyMetric(option.value as BodyMetricKind);
-      else chooseBiomarker(option.value);
-      return;
-    }
-    if (kind === "exercise") chooseExercise(text);
-    // A biomarker name that no longer resolves is not a target: the write validates
-    // the analyte against this same vocabulary, so the form must not claim one.
-    else if (kind === "biomarker" && bioName) setBioName("");
-  }
 
   function chooseBodyMetric(bm: BodyMetricKind) {
     setBodyMetric(bm);
     // Recompute the target for the new metric — clears a stale weight value that
     // would otherwise post as a bpm/% target (issue #631).
     setBodyTarget(bodyTargetFor(bm));
-    setSubjectText(BODY_METRIC_LABELS[bm]);
+    if (kind !== "body") setKind("body");
+    setKindDerived(true);
   }
 
-  function chooseBiomarker(name: string) {
-    if (name !== bioName) setBioTarget("");
-    setBioName(name);
-    setSubjectText(optionByName.get(name)?.label ?? name);
+  function chooseBiomarker(label: string) {
+    // Switching analyte clears the number: 100 mg/dL is not 100 mmol/L, and a stale
+    // value would post against the new analyte's unit.
+    if (label !== bioLabel) setBioTarget("");
+    setBioLabel(label);
+    if (!optionByLabel.has(label)) return;
+    if (kind !== "biomarker") setKind("biomarker");
+    setKindDerived(true);
   }
 
   function chooseKind(next: OutcomeGoalKind) {
@@ -469,7 +445,6 @@ export default function GoalForm({
         : String(editGoal.target_value)
     );
     setUnitText(editGoal?.unit ?? "");
-    setSubjectText(subjectTextFor(next));
   }
 
   // ── Where this goal is starting from (#3220) ──────────────────────────────
@@ -612,9 +587,6 @@ export default function GoalForm({
   }
 
   const uid = editGoal?.id ?? "new";
-  const kinds = OUTCOME_GOAL_KINDS.filter(
-    (k) => allowExerciseGoal || k !== "exercise"
-  );
 
   return (
     <form
@@ -655,68 +627,26 @@ export default function GoalForm({
         className={openEditor == null ? "hidden" : undefined}
       >
         {/* ── The subject, and the kind it derives ──────────────────────── */}
-        <div hidden={openEditor !== "subject"}>
-          <label className="label">Kind</label>
-          <div className="flex flex-wrap gap-1.5">
-            {kinds.map((k) => (
-              <button
-                key={k}
-                type="button"
-                data-testid={`goal-kind-${k}`}
-                onClick={() => chooseKind(k)}
-                className={pillClass(kind === k)}
-              >
-                {GOAL_KIND_LABEL[k]}
-              </button>
-            ))}
-          </div>
-
-          {kind === "freeform" ? (
-            <div className="mt-3">
-              <label className="label" htmlFor={`goal-ff-title-${uid}`}>
-                Title
+        {/* FOUR VOCABULARIES, ONE EDITOR. Whichever picker you use decides the kind
+            — see the state block above for why they are not one merged list. The
+            hidden carriers each mount only for the kind they belong to, so the
+            FormData the action receives is field-for-field what it received before. */}
+        <div hidden={openEditor !== "subject"} className="space-y-4">
+          {allowExerciseGoal && (
+            <div>
+              <label className="label" htmlFor={`goal-exercise-${uid}`}>
+                Exercise
               </label>
-              <input
-                id={`goal-ff-title-${uid}`}
-                name="title"
-                defaultValue={editGoal?.title ?? ""}
-                onChange={(e) => setTitleText(e.target.value)}
-                className="input"
-                placeholder="e.g. Run a half marathon"
+              {kind === "exercise" && (
+                <input type="hidden" name="exercise" value={exercise} />
+              )}
+              <ActivityCombobox
+                id={`goal-exercise-${uid}`}
+                value={exercise}
+                onChange={chooseExerciseSubject}
+                options={lifts}
+                placeholder="e.g. Bench Press, Squat, Plank"
               />
-            </div>
-          ) : (
-            <div className="mt-3">
-              <label className="label" htmlFor={`goal-subject-${uid}`}>
-                What to track
-              </label>
-              {/* ONE PICKER, THREE VOCABULARIES, and the analytes keep their own
-                  ranked group headers (#1675) — see goalSubjectOptions. It carries no
-                  `name`: the value it resolves is posted by the hidden carriers
-                  below, exactly as before. */}
-              <Combobox
-                id={`goal-subject-${uid}`}
-                value={subjectText}
-                onChange={pickSubject}
-                options={subjectOptions.map((o) => o.label)}
-                groupFor={(label) => subjectGroupByLabel.get(label) ?? null}
-                // The SAME search keys as every other biomarker picker (#2382): the
-                // analyte's own acronym and its curated aliases, so "a1c" and "psa"
-                // reach their entries rather than walking a long name's letters.
-                // Exercise and body rows have none, and must not borrow an analyte's.
-                searchTermsFor={(label) =>
-                  biomarkerLabels.has(label) ? biomarkerSearchTerms(label) : []
-                }
-                ariaLabel="What to track"
-                closeStopsPropagation
-                placeholder="e.g. Bench Press, Body fat, LDL Cholesterol"
-              />
-            </div>
-          )}
-
-          {kind === "exercise" && (
-            <>
-              <input type="hidden" name="exercise" value={exercise} />
               {showEquipment && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {variant!.group.equipment.map((eq) => {
@@ -726,7 +656,9 @@ export default function GoalForm({
                         key={eq}
                         type="button"
                         onClick={() =>
-                          chooseExercise(composeVariant(variant!.group, eq))
+                          chooseExerciseSubject(
+                            composeVariant(variant!.group, eq)
+                          )
                         }
                         className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                           active ? PILL_ON : PILL_OFF
@@ -743,39 +675,97 @@ export default function GoalForm({
                   )}
                 </div>
               )}
-            </>
+            </div>
           )}
 
-          {kind === "body" && (
-            <>
+          <div>
+            <label className="label">Body metric</label>
+            {kind === "body" && (
               <input type="hidden" name="body_metric" value={bodyMetric} />
-              {/* THE THREE BODY METRICS STAY BUTTONS. They are a closed set of three
-                  and the switch has to clear the target (#631) — a visible row of
-                  three says that better than a dropdown row does, and the picker
-                  above still reaches them by name. */}
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {BODY_METRICS.map((bm) => (
-                  <button
-                    key={bm}
-                    type="button"
-                    data-testid={`goal-body-metric-${bm}`}
-                    onClick={() => chooseBodyMetric(bm)}
-                    className={pillClass(bodyMetric === bm)}
-                  >
-                    {BODY_METRIC_LABELS[bm]}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {BODY_METRICS.map((bm) => (
+                <button
+                  key={bm}
+                  type="button"
+                  data-testid={`goal-body-metric-${bm}`}
+                  onClick={() => chooseBodyMetric(bm)}
+                  className={pillClass(kind === "body" && bodyMetric === bm)}
+                >
+                  {BODY_METRIC_LABELS[bm]}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {kind === "biomarker" && (
-            <input
-              type="hidden"
-              name="biomarker_name"
-              value={bioOption?.name ?? bioName}
+          <div>
+            <label className="label" htmlFor="goal-biomarker">
+              Lab or vital
+            </label>
+            {/* The SAME ranked, group-headed option list every other biomarker
+                picker has shown since #1675: due-or-flagged first, then your
+                markers, then the whole vocabulary — not a new alphabetical list.
+                The name the form posts is resolved from the picked LABEL, which
+                seriesPickerOptions guarantees is unique. */}
+            {kind === "biomarker" && (
+              <input
+                type="hidden"
+                name="biomarker_name"
+                value={bioOption?.name ?? ""}
+              />
+            )}
+            <Combobox
+              id="goal-biomarker"
+              value={bioLabel}
+              onChange={chooseBiomarker}
+              options={biomarkerOptions.map((o) => o.label)}
+              groupFor={(label) => optionByLabel.get(label)?.group ?? null}
+              // The SAME search keys as every other biomarker picker (#2382): the
+              // analyte's own acronym and its curated aliases, so "a1c" and "psa"
+              // reach their entries rather than walking a long name's letters.
+              searchTermsFor={biomarkerSearchTerms}
+              ariaLabel="Lab or vital"
+              closeStopsPropagation
+              placeholder="e.g. LDL Cholesterol, Hemoglobin A1c"
             />
-          )}
+          </div>
+
+          <div>
+            {/* THE FOURTH VOCABULARY IS THE ABSENCE OF ONE. A freeform goal is
+                whatever the person writes, so it has no picker — it has a door, and
+                the title field appears BELOW it rather than instead of it. Replacing
+                the button would unmount the control the person just pressed and drop
+                focus to <body>, outside the form's own keydown handler — the same
+                defect #3311 fixed for the chips. */}
+            <button
+              type="button"
+              data-testid="goal-kind-freeform"
+              aria-pressed={kind === "freeform"}
+              onClick={() => chooseKind("freeform")}
+              className={`tap-target rounded-full border px-3 py-1.5 text-sm transition ${
+                kind === "freeform"
+                  ? PILL_ON
+                  : "border-dashed border-(--border) text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
+              }`}
+            >
+              Track something else
+            </button>
+            {kind === "freeform" && (
+              <div className="mt-3">
+                <label className="label" htmlFor={`goal-ff-title-${uid}`}>
+                  Title
+                </label>
+                <input
+                  id={`goal-ff-title-${uid}`}
+                  name="title"
+                  defaultValue={editGoal?.title ?? ""}
+                  onChange={(e) => setTitleText(e.target.value)}
+                  className="input"
+                  placeholder="e.g. Run a half marathon"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── The target ────────────────────────────────────────────────── */}
