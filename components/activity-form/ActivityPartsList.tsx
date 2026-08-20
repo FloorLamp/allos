@@ -45,6 +45,7 @@ export default function ActivityPartsList({
   parts,
   stickyFooter,
   isEdit,
+  live,
   units,
   history,
   deloadContext,
@@ -99,6 +100,9 @@ export default function ActivityPartsList({
   parts: PartEntry[];
   stickyFooter: boolean;
   isEdit: boolean;
+  // Live workout mode (#340), passed straight through: a live part always shows its
+  // full grid with the check-offs, never the compact sentence (#3336).
+  live: boolean;
   units: UnitPrefs;
   history: ExerciseHistoryMap;
   deloadContext: FormDeloadContext;
@@ -348,6 +352,7 @@ export default function ActivityPartsList({
                   fault={issue}
                   units={units}
                   isEdit={isEdit}
+                  live={live}
                   history={history}
                   deloadContext={deloadContext}
                   recoveringContext={recoveringContext}

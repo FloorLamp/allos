@@ -1384,6 +1384,7 @@ export default function ActivityForm({
             parts={parts}
             stickyFooter={stickyFooter}
             isEdit={isEdit}
+            live={liveMode}
             units={units}
             history={history}
             deloadContext={deloadContext}
