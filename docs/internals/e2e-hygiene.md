@@ -1949,6 +1949,33 @@ await page.reload(); // the throttle must span the hydration you suspect
 await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 ```
 
+**THE RATE HAS A CEILING, AND HITTING IT LOOKS LIKE THE BUG.** The recipe above
+throttles across `page.reload()`, so the squeeze also lands on the navigation —
+and `playwright.config.ts` bounds every navigation at 15 s. Measured for #3359 on
+this container: **rate 20 is fine, and at rate 60 `page.goto` itself times out**
+before a single click happens. The failure reads as `TimeoutError: page.original:
+Timeout 15000ms exceeded … waiting until "load"`, which names the navigation and
+not the throttle, so the obvious reading is "I reproduced something" when what you
+reproduced is the instrument.
+
+If you need a rate past ~40, throttle **only across the interaction** instead —
+navigate and hydrate at rate 1, send the rate up immediately before the tap, and
+put it back after:
+
+```ts
+await page.goto(url); // unthrottled, so navigation still fits its 15 s bound
+// … settle/hydrate/fill …
+await cdp.send("Emulation.setCPUThrottlingRate", { rate: 200 });
+await locator.click();
+```
+
+That reaches rates the whole-flow form cannot: #3359 measured a click at rate 200
+this way (its submit event landed in 224 ms, its POST 8 s later). Note the two
+forms answer DIFFERENT questions — spanning the navigation is the one that
+reproduces a PRE-HYDRATION swallow, because the window it widens is hydration
+itself, and the click-only form deliberately closes that window. Reach for
+click-only when the suspect is the interaction, not the hydration.
+
 **Run it at least five times, and always against a BASE-TREE control.** The
 verdict is the comparison, never one tree's result: a PR is convicted only when
 the base passes and the branch fails, and exonerated when the base fails too.
