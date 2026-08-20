@@ -161,6 +161,60 @@ test.describe("shared supply pools", () => {
     }
   });
 
+  // #3270 — WHICH BOTTLES A KIND-LOCKED DOOR OFFERS.
+  //
+  // The claim is the PAIRING, not either half. One bottle, one query, two doors,
+  // opposite answers: the medications door offers the household's shared ibuprofen and
+  // the Add supplement door does not. Asserting only the absence would pass on a door
+  // that never opened its listbox or on a filter that emptied it, and asserting only
+  // the presence would pass under the bug — the bug WAS a list that rendered plausibly.
+  //
+  // Read-only: it types into a name field and never submits, so it repeats cleanly and
+  // perturbs no count this file's other cases depend on.
+  test("a kind-locked door offers only bottles of its own kind (#3270)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SUPPLY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // Both members' items on this bottle are MEDICATIONS, so the bottle lends the
+      // medication kind (#1374 — a bottle has none of its own).
+      await page.goto("/medications");
+      await hydratedClick(page, page.getByTestId("medication-add-toggle"));
+      const panel = page.getByTestId("medication-add-panel");
+      await expect(panel).toBeVisible();
+      await panel
+        .getByRole("combobox", { name: "Name" })
+        .fill(SUPPLY_SHARED_BOTTLE);
+      await expect(
+        panel
+          .getByTestId("combobox-option")
+          .filter({ hasText: SUPPLY_SHARED_BOTTLE })
+      ).toHaveCount(1);
+
+      // The SAME bottle, the same query, at the door that has already answered
+      // "supplement" and cannot be corrected. Picking it here would have written a
+      // supplement named Ibuprofen, silently.
+      await page.goto("/nutrition?tab=supplements");
+      await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+      const dialog = page.getByRole("dialog", { name: "Add supplement" });
+      await expect(dialog).toBeVisible();
+      const name = dialog.getByRole("combobox", { name: "Name" });
+      await name.fill(SUPPLY_SHARED_BOTTLE);
+      // The listbox is genuinely open — otherwise the absence below is vacuous.
+      await expect(name).toHaveAttribute("aria-expanded", "true");
+      await expect(
+        dialog
+          .getByTestId("combobox-option")
+          .filter({ hasText: SUPPLY_SHARED_BOTTLE })
+      ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("a low shared bottle raises ONE alert, not one per linked member", async ({
     browser,
   }) => {
