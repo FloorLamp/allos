@@ -1,7 +1,5 @@
 "use client";
 
-import type { IntakeItem } from "@/lib/types";
-
 // The missed-dose escalation block shared by both intake forms (#846): mark an item
 // critical so an unconfirmed scheduled dose reminder escalates with a follow-up nudge
 // (optionally to a second chat, e.g. a caregiver). Applies to both kinds — a critical
@@ -10,23 +8,29 @@ import type { IntakeItem } from "@/lib/types";
 // state resets cleanly on an add-form save (#627).
 export default function CriticalEscalation({
   fid,
-  item,
   critical,
   setCritical,
+  escalateAfterMin,
+  setEscalateAfterMin,
+  escalateChatId,
+  setEscalateChatId,
 }: {
   fid: string | number;
-  item?: IntakeItem;
   critical: boolean;
   setCritical: (v: boolean) => void;
+  // Controlled, like `critical` itself: the merged form (#3216) posts every value
+  // from state, so an escalation window typed once still saves after its editor
+  // closes.
+  escalateAfterMin: string;
+  setEscalateAfterMin: (v: string) => void;
+  escalateChatId: string;
+  setEscalateChatId: (v: string) => void;
 }) {
-  const s = item;
   return (
     <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
         <input
           type="checkbox"
-          name="critical"
-          value="1"
           data-testid={`intake-critical-${fid}`}
           checked={critical}
           onChange={(e) => setCritical(e.target.checked)}
@@ -46,10 +50,10 @@ export default function CriticalEscalation({
             </label>
             <input
               id={`intake-escalate-after-${fid}`}
-              name="escalate_after_min"
               type="number"
               min={1}
-              defaultValue={s?.escalate_after_min ?? ""}
+              value={escalateAfterMin}
+              onChange={(e) => setEscalateAfterMin(e.target.value)}
               className="input"
               placeholder="120"
             />
@@ -60,8 +64,8 @@ export default function CriticalEscalation({
             </label>
             <input
               id={`intake-escalate-chat-${fid}`}
-              name="escalate_chat_id"
-              defaultValue={s?.escalate_chat_id ?? ""}
+              value={escalateChatId}
+              onChange={(e) => setEscalateChatId(e.target.value)}
               className="input"
               placeholder="defaults to this profile’s chat"
             />

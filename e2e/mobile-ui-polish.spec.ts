@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
 
@@ -251,8 +252,10 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     await page.getByTestId("supplement-add-toggle").click();
     const addDialog = page.getByRole("dialog", { name: "Add supplement" });
     await addDialog.getByLabel("Name").fill(NAME);
-    await addDialog.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the scoped add modal
-    await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+    const doseEditor1 = await openFact(page, "dose", addDialog);
+    await doseEditor1.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the scoped add modal
+    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+    await closeEditor(page, addDialog);
     // Submit by keyboard as well as exercising the modal's focusable controls. The
     // dev-only Next overlay portal can cover the bottom edge of a 390px viewport;
     // production has no overlay, and Enter is the real accessible submit path.

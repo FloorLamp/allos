@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { IntakeItem } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "./SharedSupplyPicker";
@@ -15,17 +15,26 @@ export default function RefillTracking({
   item,
   initialSupply = null,
   onPickSupply,
+  quantityOnHand,
+  setQuantityOnHand,
+  qtyPerDose,
+  setQtyPerDose,
 }: {
   fid: string | number;
   item?: IntakeItem;
+  // Controlled by the form (#3216). The merged form shows one editor at a time, so a
+  // count that lived only in this block's DOM would save only when the supply editor
+  // happened to be open; every posted value is state.
+  quantityOnHand: string;
+  setQuantityOnHand: (v: string) => void;
+  qtyPerDose: string;
+  setQtyPerDose: (v: string) => void;
   // CREATE mode (#1705): the bottle this form was opened from, and the callback that
   // lets the item form prefill its product fields when one is chosen here.
   initialSupply?: SupplyOption | null;
   onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
   const s = item;
-  const loadedQty =
-    s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
   // A bottle chosen on a NEW item (#1705) makes it pooled the moment it saves, so the
   // private-count fields must disappear now rather than after the round trip.
   const [chosenSupply, setChosenSupply] = useState<SupplyOption | null>(
@@ -35,8 +44,12 @@ export default function RefillTracking({
   // per-item quantity field is hidden entirely and the shared-supply control below is
   // the whole story. Leaving both visible is how a household ends up double-counting.
   const pooled = s?.supply_id != null || chosenSupply != null;
-  const tracked = s?.quantity_on_hand != null;
-  const [enabled, setEnabled] = useState(tracked);
+  const [enabled, setEnabled] = useState(s?.quantity_on_hand != null);
+  // Untracked and pooled both mean "this item keeps no private count", and the form
+  // posts state — so the state has to say so, not just the hidden input that used to.
+  useEffect(() => {
+    if (!enabled || pooled) setQuantityOnHand("");
+  }, [enabled, pooled, setQuantityOnHand]);
   return (
     <div
       data-testid="refill-tracking"
@@ -67,11 +80,11 @@ export default function RefillTracking({
           </label>
           <input
             id={`intake-qty-${fid}`}
-            name="quantity_on_hand"
             type="number"
             min={0}
             step="any"
-            defaultValue={loadedQty}
+            value={quantityOnHand}
+            onChange={(event) => setQuantityOnHand(event.target.value)}
             disabled={!enabled}
             className="input"
             placeholder="e.g. 90"
@@ -83,30 +96,17 @@ export default function RefillTracking({
           </label>
           <input
             id={`intake-qty-per-dose-${fid}`}
-            name="qty_per_dose"
             type="number"
             min={0}
             step="any"
-            defaultValue={s?.qty_per_dose ?? 1}
+            value={qtyPerDose}
+            onChange={(event) => setQtyPerDose(event.target.value)}
             disabled={!enabled}
             className="input"
             placeholder="1"
           />
         </div>
       </div>
-      {(!enabled || pooled) && (
-        <>
-          <input type="hidden" name="quantity_on_hand" value="" />
-          <input
-            type="hidden"
-            name="qty_per_dose"
-            value={s?.qty_per_dose ?? 1}
-          />
-        </>
-      )}
-      {/* The value the form LOADED with, so updateIntakeItem can compare-and-set
-          the concurrently-decremented on-hand counter (#467). */}
-      <input type="hidden" name="quantity_on_hand_loaded" value={loadedQty} />
       <SharedSupplyPicker
         itemId={s?.id}
         itemName={s?.name ?? ""}

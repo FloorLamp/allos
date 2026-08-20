@@ -266,6 +266,11 @@ describe("link / unlink gate on the ITEM's own profile", () => {
       name: `Unlink ${t}`,
       strength: null,
       form: null,
+      // Since #3216 the option also carries what the intake form's front door needs:
+      // the bottle's own count, and the kind its members lend (this one now has one,
+      // a medication).
+      onHand: 25,
+      siblingKind: "medication",
     });
     expect(itemQty(a)).toBe(null);
     const unlinked = await unlinkItemAction(fd({ item_id: a }));

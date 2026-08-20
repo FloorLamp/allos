@@ -40,7 +40,7 @@ function medicationUsage(profileId: number): MedicationUsage[] {
 }
 
 // The medication NAME picker order for this profile (#1677) — one source, consumed by
-// both the full MedicationForm and the quick-add.
+// the one intake form (#3216), whichever host mounts it.
 export function getRankedMedicationOptions(profileId: number): string[] {
   return rankedMedicationOptions(medicationUsage(profileId));
 }

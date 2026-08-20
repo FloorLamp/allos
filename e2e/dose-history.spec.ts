@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import {
   followLink,
@@ -33,13 +34,15 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
-  await addDialog.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the scoped add modal
-  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+  const doseEditor1 = await openFact(page, "dose", addDialog);
+  await doseEditor1.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the scoped add modal
+  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
   await addDialog
     .getByRole("button", { name: "Add dose", exact: true })
     .click();
-  await addDialog.getByLabel("Amount").nth(1).fill("500 mg");
-  await addDialog.getByLabel("Time of day").nth(1).selectOption("Evening");
+  await doseEditor1.getByLabel("Amount").nth(1).fill("500 mg");
+  await doseEditor1.getByLabel("Time of day").nth(1).selectOption("Evening");
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
@@ -68,9 +71,14 @@ test("dosage restructure keeps the taken history at its original amount", async 
   );
   // Remove the confirmed Morning dose (the first dose row), then repurpose the
   // remaining one as the new single 1000 mg dose.
-  await editForm.getByRole("button", { name: "Remove dose" }).first().click(); // first-ok: removes the first (Morning) dose row — see comment above
-  await editForm.getByLabel("Amount").first().fill("1000 mg"); // first-ok: the remaining dose's Amount field in this spec's edit form
-  await editForm.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the remaining dose's Time-of-day field in this spec's edit form
+  const doseEditor2 = await openFact(page, "dose", editForm);
+  await doseEditor2
+    .getByRole("button", { name: "Remove dose" })
+    .first() // first-ok: removes the first (Morning) dose row — see comment above
+    .click();
+  await doseEditor2.getByLabel("Amount").first().fill("1000 mg"); // first-ok: the remaining dose's Amount field in this spec's edit form
+  await doseEditor2.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the remaining dose's Time-of-day field in this spec's edit form
+  await closeEditor(page, editForm);
   await editForm.getByRole("button", { name: "Save", exact: true }).click();
 
   // The schedule shrank to the one new dose, showing the new amount.
@@ -107,8 +115,10 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
-  await addDialog.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  const doseEditor3 = await openFact(page, "dose", addDialog);
+  await doseEditor3.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor3.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
@@ -215,8 +225,10 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
-  await addDialog.getByLabel("Amount").first().fill("125 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  const doseEditor5 = await openFact(page, "dose", addDialog);
+  await doseEditor5.getByLabel("Amount").first().fill("125 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor5.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
@@ -307,8 +319,10 @@ test("the ledger pages its rows, even on All time", async ({
   await page.getByTestId("supplement-add-toggle").click();
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
-  await addDialog.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  const doseEditor7 = await openFact(page, "dose", addDialog);
+  await doseEditor7.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor7.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 

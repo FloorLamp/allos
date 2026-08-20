@@ -257,11 +257,7 @@ async function expand(cockpit: Locator) {
 }
 
 async function pickMedication(page: Page, scope: Page | Locator, name: string) {
-  await settledFill(
-    page,
-    scope.getByRole("combobox", { name: "Medication" }),
-    name
-  );
+  await settledFill(page, scope.getByRole("combobox", { name: "Name" }), name);
   const option = scope
     .getByRole("listbox")
     .getByRole("button")
@@ -490,8 +486,13 @@ test.describe("fresh-profile illness front door", () => {
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await pickMedication(page, inline, "Ibuprofen");
-    await expect(inline.getByTestId("quick-add-amount")).not.toHaveValue("");
-    await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
+    // The pick fills the dose from the OTC label, and the chip row STATES it — the
+    // whole point of the two-tap path is that nothing has to be opened to see it.
+    await expect(inline.getByTestId("intake-fact-dose")).toContainText("mg");
+    await settledClick(
+      page,
+      inline.getByRole("button", { name: "Add", exact: true })
+    );
     await expect(inline).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("prn-log-now")).toBeVisible();
     await page.reload();
