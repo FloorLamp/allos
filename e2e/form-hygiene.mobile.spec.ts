@@ -248,6 +248,12 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   await openEditor(page);
   await pickActivity(page, "Hammer Curl");
 
+  // Same reason as the sibling test above (#3335): the toolbar #1612 specified
+  // carries RPE, warm-up and remove, and the effort column is now opted into. Left
+  // on the default side this would measure the per-side stacking against a band two
+  // controls wide — still green, and no longer the widest case it exists to hold.
+  await setRpeColumn(page, true);
+
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
   // Both sides render, each with its own reps stepper.
@@ -269,5 +275,6 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   expect(values.x + values.width).toBeLessThanOrEqual(viewport.width);
 
   await expectNoClippedContent(page);
+  await setRpeColumn(page, false);
   await page.goto("/training?tab=log");
 });
