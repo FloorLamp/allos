@@ -81,8 +81,17 @@ test("your own medication detail shows a back link and no identity banner", asyn
   await expectBackLinkAboveTitle(page, "Back to medications");
   // ProfileIdentityBanner answers "whose medication is this?", which is not a
   // question on your own. Unconditional, it drew an avatar + your own name above
-  // your own back link — this page was its only call site in the app. The
-  // cross-profile case still renders it, and e2e/shared-supply-pool.spec.ts
-  // drives that half through `medication-subject-name`.
+  // your own back link — this page was its only call site in the app.
+  //
+  // Only the OWN-profile half is pinned here, deliberately and not by oversight:
+  // the cross-profile branch of this page (the banner, its "Act as" button, and
+  // `medication-cross-profile-note`) has no e2e coverage and had none before
+  // #3237 either. Reaching it needs a caregiver on a ward's medication URL
+  // WITHOUT switching, and the one in-app door to another member's medication —
+  // the supply cabinet's "Switch to X and open Y" — switches first by design
+  // (#2525), so it lands on the own-profile side of exactly this boundary. That
+  // is why e2e/shared-supply-pool.spec.ts now reads the shell identity bar: it
+  // was asserting the banner while sitting on the side of the line where the
+  // banner no longer renders.
   await expect(page.getByTestId("medication-identity-banner")).toHaveCount(0);
 });

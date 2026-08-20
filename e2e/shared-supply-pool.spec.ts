@@ -392,7 +392,14 @@ test.describe("shared supply pools", () => {
         })
       );
       await expect(page).toHaveURL(/\/medications\/\d+$/);
-      await expect(page.getByTestId("medication-subject-name")).toHaveText(
+      // The switch is the claim, and since #3237 the ACTING identity is where it
+      // shows. /medications/[id] drew a subject banner unconditionally — its only
+      // call site in the app — and now draws one only when the subject is NOT the
+      // acting profile, which after a switch-and-open it no longer is. The shell
+      // identity bar is #1801's designated answer to "whose data am I looking
+      // at", and it is the stronger assertion of the two: it pins the ACTING
+      // profile having moved, where the banner only reported whose row rendered.
+      await expect(page.getByTestId("profile-identity-bar")).toContainText(
         SUPPLY_CHILD_PROFILE,
         { timeout: 15_000 }
       );
