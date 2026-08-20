@@ -1220,6 +1220,111 @@ export async function settledBoxes(
   }
 }
 
+// WHAT IS SITTING BETWEEN TWO ELEMENTS IN FLOW, not just how far apart they are.
+// KEEP THIS even while the assertion it annotates is green — a reviewer will read
+// an unused-looking diagnostic as dead weight and it is the opposite.
+//
+// `expect(bar.y).toBeCloseTo(shell.y + shell.height)` is a number with no author.
+// On CI it has now said "Expected: 57  Received: 187" three times, on three
+// different PRs, none of whose diffs render on the route (#3364) — and 130px of
+// unexplained band cost a separate full diagnosis every time, because the failure
+// names no element. It could be a banner, a spacer, a mis-collapsed margin or a
+// wrapper that grew; those need different fixes, and the message cannot tell them
+// apart.
+//
+// This walks UP from `below` to the nearest ancestor that also contains `above`,
+// listing at each level the preceding siblings that stand between them, so the
+// next red arrives with the inserted element attached instead of a bare integer.
+// The walk follows the DOM's own flow relationship rather than hit-testing a
+// pixel band, because an inserted element is by construction a preceding sibling
+// of something on `below`'s ancestor chain — that is what "in flow above it"
+// means — and a rect-intersection sweep would also name every fixed/sticky
+// overlay merely passing through the band.
+//
+// Reports each occupant's own outer height INCLUDING margins (`mb-5` on a banner
+// is part of what it displaces) and, at the end, the residue the named elements
+// do not account for, which is the signature of a padding/margin change rather
+// than an insertion.
+export async function bandStory(
+  above: Locator,
+  below: Locator
+): Promise<string> {
+  const [aboveHandle, belowHandle] = await Promise.all([
+    above.elementHandle({ timeout: 1_000 }).catch(() => null),
+    below.elementHandle({ timeout: 1_000 }).catch(() => null),
+  ]);
+  if (!aboveHandle || !belowHandle) {
+    return "[bandStory] one of the two elements is not attached — nothing to compare";
+  }
+  return below.page().evaluate(
+    ([top, bottom]) => {
+      const topRect = top.getBoundingClientRect();
+      const bottomRect = bottom.getBoundingClientRect();
+      const gap = bottomRect.top - topRect.bottom;
+      if (gap <= 0.5) return `nothing sits between them (gap ${Math.round(gap)}px)`;
+
+      const describe = (el: Element): string => {
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        const outer =
+          rect.height +
+          parseFloat(style.marginTop || "0") +
+          parseFloat(style.marginBottom || "0");
+        // Every data-* attribute, not just the testid: the travel banner stamps
+        // the DEVICE zone it read onto itself, and that one attribute is the
+        // difference between "a banner appeared" and "this profile's day is
+        // running somewhere the device is not" (#3364's leading hypothesis).
+        const attrs = Array.from(el.attributes)
+          .filter((a) => a.name.startsWith("data-"))
+          .map((a) => `${a.name}="${a.value}"`)
+          .join(" ");
+        return (
+          `<${el.tagName.toLowerCase()}${attrs ? ` ${attrs}` : ""}> ` +
+          `${Math.round(outer)}px tall (box ${Math.round(rect.height)}px + margins)`
+        );
+      };
+
+      const occupants: string[] = [];
+      let accounted = 0;
+      let node: Element | null = bottom;
+      // Stop at the first ancestor that also contains `above`: everything above
+      // that point is shared chrome, not an insertion between the two.
+      while (node && !node.contains(top)) {
+        for (
+          let sibling = node.previousElementSibling;
+          sibling;
+          sibling = sibling.previousElementSibling
+        ) {
+          if (sibling.contains(top) || sibling === top) continue;
+          const rect = sibling.getBoundingClientRect();
+          // Only what actually occupies the band. A `sr-only` heading, a script
+          // tag or a portal root measures ~0 and would bury the real occupant.
+          if (rect.height < 1) continue;
+          const style = getComputedStyle(sibling);
+          if (style.position === "fixed" || style.position === "absolute")
+            continue;
+          accounted +=
+            rect.height +
+            parseFloat(style.marginTop || "0") +
+            parseFloat(style.marginBottom || "0");
+          occupants.push(describe(sibling));
+        }
+        node = node.parentElement;
+      }
+
+      const residue = Math.round(gap - accounted);
+      return (
+        `${Math.round(gap)}px between them; ` +
+        (occupants.length > 0
+          ? `${occupants.join(" | ")}; ${residue}px unaccounted (padding/margins)`
+          : `NO element sits between them — the gap is padding, margin or a grown ` +
+            `wrapper, not an insertion`)
+      );
+    },
+    [aboveHandle, belowHandle] as const
+  );
+}
+
 // Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
 // of settledFill.
 //
