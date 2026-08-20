@@ -9,6 +9,7 @@
 // the #203 name-keyed hygiene (rename/delete re-keys or cleans the dependent log rows).
 
 import symptomsData from "./symptoms.json";
+import { matchFoldedVocabulary } from "./vocabulary-fold";
 
 // The CONTEXT a curated symptom leads with (issue #714). Every mount of the symptom bar
 // leads with its own context's slugs: the illness surfaces with `illness`, the Cycle
@@ -120,7 +121,21 @@ export function normalizeSymptomName(name: string): string {
 // that matches a curated slug — or a curated LABEL, case-insensitively — collapses onto
 // the curated slug so a typed "Fever" never shadows the catalog's `fever`; anything else
 // is a normalized custom name. Empty input → null (nothing to log).
-export function resolveSymptomKey(input: string): string | null {
+//
+// `known` is this profile's OWN spellings, first-seen first (#3325). When it is given
+// and one of them folds equal to the typed name, that STORED spelling comes back: a
+// typed "kratom" joins the existing "Kratom" rows instead of minting a case-variant
+// neighbour. Nothing is ever folded INTO storage — the key returned is always either a
+// curated slug or a verbatim spelling — so "MDMA" keeps its capitals.
+//
+// The parameter is OPTIONAL because this is also the client-side pre-flight
+// (components/illness/SymptomLogBar.tsx), where the profile's ledger isn't reachable.
+// Every WRITE path resolves through `resolveProfileVocabularyKey()`
+// (lib/vocabulary-store.ts), which supplies it — that is the boundary.
+export function resolveSymptomKey(
+  input: string,
+  known?: readonly string[]
+): string | null {
   const raw = input.trim();
   if (!raw) return null;
   if (BY_SLUG.has(raw)) return raw;
@@ -129,7 +144,8 @@ export function resolveSymptomKey(input: string): string | null {
     if (s.slug === lower || s.label.toLowerCase() === lower) return s.slug;
   }
   const norm = normalizeSymptomName(raw);
-  return norm || null;
+  if (!norm) return null;
+  return known ? (matchFoldedVocabulary(norm, known) ?? norm) : norm;
 }
 
 // The 1–4 severity scale. Ordinal (mild → very severe); the log keeps a day's WORST

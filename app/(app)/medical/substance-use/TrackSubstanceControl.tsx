@@ -37,12 +37,18 @@ import { trackSubstanceUseAction } from "./actions";
 // and the form posts an empty name while the test reads as if it typed one (the
 // `settledFill` hazard, e2e/helpers.ts). Nothing here needs the keystrokes.
 //
-// ── What it does NOT decide ───────────────────────────────────────────────────
+// ── Case is decided on the SERVER, and this surface still types verbatim ──────
 //
-// Case. "Kratom" and "kratom" are two substances today, in this vocabulary and in the
-// symptom vocabulary it was borrowed from; #3325 owns fixing BOTH at once, because
-// folding one alone re-forks the model #3323 unified. This surface preserves what was
-// typed, exactly as the substrate does.
+// #3325 stopped case deciding identity in BOTH this vocabulary and the symptom
+// vocabulary it was borrowed from — folding one alone would have re-forked the model
+// #3323 unified. The fold needs the profile's own spellings, which a client component
+// cannot read, so `trackSubstanceUseAction` resolves the typed name against them: a
+// typed "kratom" joins the existing "Kratom" card rather than opening a second ledger.
+//
+// This surface therefore still sends exactly what was typed, and the pre-flight below
+// stays the length/empty gate it always was. The toast already names what ACTUALLY
+// landed (`result.label`), which is what keeps the fold from being silent — type
+// "kratom", and it says "Kratom: 1 logged today".
 //
 // Whether a substance survives going to zero (#3324) is likewise not answered here:
 // logging-is-creating is the contract this door opens onto, whatever the ledger later
