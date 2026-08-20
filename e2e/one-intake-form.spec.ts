@@ -1,5 +1,11 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, hydratedClick, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { medicationRow } from "./med-card-helpers";
 
@@ -95,12 +101,13 @@ test("the default path is two taps in the supplement modal, with no editor opene
   // The kind was DERIVED from the door, so it was never a question.
   await expect(form).toHaveAttribute("data-kind", "supplement");
 
-  // A seeded rule is an OFFER: marked suggested, and deletable before save (#1505).
-  const suggested = form
-    .getByTestId("intake-fact-rule")
-    .filter({ has: page.getByText("suggested") });
-  if (await suggested.count())
-    await expect(suggested.first()).toHaveAttribute("data-suggested", "1"); // first-ok: any seeded rule proves the marking
+  // NOTHING ABOUT THE SUGGESTION MARKING IS ASSERTED HERE, and its absence is the fix
+  // rather than a gap (#3318). A guarded `if (await suggested.count())` used to stand at
+  // this spot, and it never once ran: this pick is Magnesium Glycinate, whose catalog
+  // entry sets no food timing, so `suggestedRulesForFoodTiming` returns nothing and the
+  // form proposes no rule at all. The body asserted nothing and the test passed. The
+  // claim now lives in "the label's proposal is marked suggested…" below, on a pick whose
+  // label ALWAYS proposes one, with no guard and both directions pinned.
 
   // Rename so this run owns its row.
   const nameField = form.getByLabel("Name");
@@ -156,4 +163,114 @@ test("a value set in an editor still posts after the editor closes (#2014)", asy
   await expect(savedNotes.getByLabel("Notes")).toHaveValue(
     "half a scoop on training days"
   );
+});
+
+test("the label's proposal is marked suggested, and stops being once the person changes it (#1505, #3318)", async ({
+  page,
+}, testInfo) => {
+  // THE MARKING IS PINNED ON THE REMOVABLE CHIP, unconditionally and in both directions.
+  // `data-suggested` distinguishes a value supplied FOR the person from one they stated
+  // (#846), and on this chip shape nothing else asserted it at runtime — the only claim
+  // was guarded by a count that was always zero (#3318).
+  //
+  // The fixture makes the case EXIST rather than hoping for it: SAMe's catalog entry
+  // carries defaultFoodTiming "empty_stomach", so picking it always seeds exactly one
+  // suggested rule. If that entry ever loses its food timing, the count assertion below
+  // fails loudly instead of quietly asserting nothing.
+  const name = `SAMe Offer ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const modal = page.getByRole("dialog", { name: "Add supplement" });
+  const form = modal.getByTestId("intake-item-form");
+  await expect(form).toBeVisible();
+
+  await form.getByLabel("Name").fill("SAMe");
+  // Portaled listbox (#3271) — resolved from the page, not the modal.
+  await page
+    .locator('ul[role="listbox"] button', { hasText: "SAMe" })
+    .first() // first-ok: transient combobox list this test just opened
+    .click();
+
+  // THE OFFER. One rule, marked, saying so in words as well as in the attribute.
+  const rule = form.getByTestId("intake-fact-rule");
+  await expect(rule).toHaveCount(1);
+  await expect(rule).toHaveAttribute("data-suggested", "1");
+  await expect(rule).toContainText("empty stomach");
+  await expect(rule).toContainText("suggested");
+
+  // Open the rules builder from the chip itself. The disclosure is the button carrying
+  // `aria-expanded` — the × beside it is a different control, and clicking the chip's
+  // centre could land on either.
+  const disclosure = rule.locator("button[aria-expanded]");
+  await hydratedClick(page, disclosure);
+  const editor = form.getByTestId("intake-editor");
+  await expect(editor).toHaveAttribute("data-panel", "rules");
+
+  // The person changes the sentence, so it is no longer the label talking. settledSelect
+  // rather than a raw selectOption: the value is consumed from React state, and a select
+  // changed before hydration is reverted by the next render.
+  await settledSelect(page, editor.getByLabel("Food timing"), "with_food");
+  await closeEditor(page, modal);
+
+  // THE NEGATIVE, on the same chip: tracked, and now false. Absent would be a different
+  // claim — untracked — and this fact is tracked either way, so "0" is the honest value.
+  await expect(rule).toHaveAttribute("data-suggested", "0");
+  await expect(rule).toContainText("with food");
+  await expect(rule).not.toContainText("suggested");
+
+  // And Done put focus back on the disclosure that opened the editor (#3311) — the
+  // removable chip shape, which reaches focus through the same `data-fact-key` the plain
+  // one does.
+  await expect(disclosure).toBeFocused();
+
+  // The offer still saves when it is still there at Save time (#1505).
+  const nameField = form.getByLabel("Name");
+  await nameField.fill(name);
+  await nameField.press("Escape");
+  await settledClick(
+    page,
+    form.getByRole("button", { name: "Add", exact: true })
+  );
+  await expect(modal).toHaveCount(0);
+  await expect(
+    page.getByTestId("supplement-row").filter({ hasText: name })
+  ).toHaveCount(1);
+});
+
+test("Done returns focus to the fact's chip, to its replacement, or to the row (#3311)", async ({
+  page,
+}, testInfo) => {
+  // WHERE FOCUS IS after an editor closes, asserted three times because the primitive
+  // has three cases and only the first is the easy one. Opening an editor unmounts the
+  // whole chip row, so the element that was activated is ALWAYS gone by the time the
+  // editor closes — `previouslyFocused.focus()` would be a no-op in every case here, not
+  // just the awkward one. The chip is found again by its fact key instead.
+  const name = `Focus Returns ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const modal = page.getByRole("dialog", { name: "Add supplement" });
+  const form = modal.getByTestId("intake-item-form");
+  await settledFill(page, form.getByLabel("Name"), name);
+
+  // ONE: the fact still has a chip. Focus goes back to it.
+  await openFact(page, "dose", modal);
+  await closeEditor(page, modal);
+  await expect(form.getByTestId("intake-fact-dose")).toBeFocused();
+
+  // TWO: the fact has NO chip, because an optional fact with nothing to state lives
+  // behind the trailing affordance. Nothing carries its key, so the row itself takes
+  // focus — not <body>, which is where this used to land. The row is focusable without
+  // being a tab stop and contains the chips, so Tab from here continues into the row.
+  await openFact(page, "notes", modal);
+  await closeEditor(page, modal);
+  await expect(form.getByTestId("intake-fact-notes")).toHaveCount(0);
+  await expect(form.getByTestId("intake-fact-row")).toBeFocused();
+
+  // THREE: the fact was stated for the first time, so the chip that reaches focus is not
+  // the control that opened the editor — it did not exist then. This is the case the
+  // naive element-capture fix cannot serve at all.
+  const notes = await openFact(page, "notes", modal);
+  await settledFill(page, notes.getByLabel("Notes"), "half a scoop");
+  await closeEditor(page, modal);
+  await expect(form.getByTestId("intake-fact-notes")).toBeFocused();
 });
