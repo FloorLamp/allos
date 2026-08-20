@@ -60,6 +60,13 @@ const CONSUMERS = [
     chips: "components/sleep/SleepFactRow.tsx",
     host: "app/(app)/sleep/SleepMoodEditDialog.tsx",
   },
+  {
+    // The FIRST consumer that is a real <form>, and the first whose editor is not the
+    // whole surface — the chips sit in one section of a long editor (#3334).
+    name: "the activity editor's session facts (#3334)",
+    chips: "components/activity-form/ActivitySessionFactRow.tsx",
+    host: "components/ActivityForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

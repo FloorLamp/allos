@@ -60,6 +60,8 @@ import {
   type Recap,
 } from "@/lib/session-recap";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
+import ActivitySessionFactRow from "./activity-form/ActivitySessionFactRow";
+import FactEditorHost, { useFactEditor } from "./facts/FactEditorHost";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import {
@@ -77,6 +79,11 @@ import {
   pickDefaultActivityEquipment,
   usesActivityEquipment,
 } from "@/lib/activity-equipment";
+import {
+  ACTIVITY_SESSION_FACT_NOUNS,
+  activitySessionFactSummary,
+  type ActivitySessionFactKey,
+} from "@/lib/activity-session-facts";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
 import { activityEditDataHasStrength } from "@/lib/activity-form-model";
@@ -284,6 +291,29 @@ export default function ActivityForm({
       ? (editData.equipment_id ?? null)
       : (seed?.equipment_id ?? undefined)
   );
+  // The SESSION-LEVEL FACT CHIPS (#3334) and their one-editor-at-a-time contract, from
+  // the shared facts-with-editors primitive (#3218). This form supplies only its own
+  // fact keys; the chip row, the Done/Esc gesture and the focus return are the
+  // primitive's.
+  //
+  // THIS FORM IS SAFE TO UNMOUNT A CLOSED EDITOR, and that is a fact about THIS form
+  // rather than about the pattern — read it before adding a second fact here. #3228
+  // warns that the activity editor is a DOM-collected `<form action={handle}>`, where a
+  // field the browser cannot see is a field the save CLEARS (#2359). It is not: the
+  // <form> below only `preventDefault`s, and `buildFormData` composes every field by
+  // hand out of React state, exactly as the sleep dialog does. So the equipment link
+  // posts from `activityEquipmentId` whether or not its picker is mounted, and the
+  // "unsaved changes" prompt reads `dirty` off `formSig` — also state — rather than off
+  // the DOM-scanning dirty registry, which tracks NAMED controls only and finds not one
+  // in this tree. Both halves are pinned in e2e/activity-equipment.spec.ts, because a
+  // future field bound straight to the DOM would break them silently.
+  const factScopeRef = useRef<HTMLElement>(null);
+  const {
+    openEditor: openFact,
+    open: openFactEditor,
+    close: closeFactEditor,
+    onKeyDown: onFactKeyDown,
+  } = useFactEditor<ActivitySessionFactKey>({ scopeRef: factScopeRef });
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
@@ -559,6 +589,34 @@ export default function ActivityForm({
     activityEquipmentId === undefined
       ? defaultActivityEquipmentId
       : activityEquipmentId;
+
+  // What the equipment chip states (#3334).
+  //
+  // A LINK THIS EDITOR CANNOT NAME IS STILL A LINK. `equipmentList` is the whole list
+  // the form was given, so a miss means a row it never received; stating "no equipment"
+  // there would invite a tap that clears a fact nobody meant to clear. It states the
+  // noun instead, and the picker behind the chip keeps that row selectable exactly as it
+  // does today (ActivityEquipmentPicker's selectedMissing).
+  const sessionGearName =
+    effectiveActivityEquipmentId == null
+      ? null
+      : (equipmentList.find((e) => e.id === effectiveActivityEquipmentId)
+          ?.name ?? ACTIVITY_SESSION_FACT_NOUNS.equipment);
+  const sessionFacts = activitySessionFactSummary({
+    gearName: sessionGearName,
+    // `undefined` is precisely "the person has not chosen": the value on screen is the
+    // recency default computed for them, which is a suggestion and not an assertion
+    // (#846). An explicit None is `null` and is theirs.
+    gearSuggested: activityEquipmentId === undefined,
+  });
+  // The equipment fact can leave the row entirely — switch the session to pure strength
+  // and gear becomes per-set again. Close its editor with it, or the panel silently
+  // reopens the next time a cardio part comes back. Focus has nowhere to return to here
+  // (chip and row are both gone), and the primitive's three tiers all miss, which is the
+  // right answer: it stays where the person's own edit put it.
+  useEffect(() => {
+    if (sessionEquipmentType == null && openFact != null) closeFactEditor();
+  }, [sessionEquipmentType, openFact, closeFactEditor]);
 
   const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
   // Until the user edits the title, the input and saved value follow the generated
@@ -1333,9 +1391,14 @@ export default function ActivityForm({
           />
 
           <section
+            ref={factScopeRef}
             data-testid="session-details"
             aria-labelledby="session-details-title"
             className="py-1"
+            // The region the chips and the one editor share (#3218/#3311): it answers
+            // Esc for the open panel and is what the primitive searches to hand focus
+            // back to the chip that opened it.
+            onKeyDown={onFactKeyDown}
           >
             <div className="mb-3 flex items-center gap-3">
               <h3 id="session-details-title" className="label mb-0 shrink-0">
@@ -1386,9 +1449,36 @@ export default function ActivityForm({
                 onChange={setIntensity}
               />
 
-              {/* Session-level equipment (issue #342): the gear the whole non-strength
-              activity used — a ride's bike, a run's shoes. */}
+              {/* Session-level equipment (issue #342), stated as a fact rather than as
+              its own machinery (#3334): the row said "Equipment", a <select> and a
+              standing link on every non-strength session, whether or not the recency
+              default it had already computed was wrong. The chip states that default;
+              the picker — and the registry door inside it — is one tap behind.
+
+              The cell stays mounted while the editor is open so the two-column grid
+              keeps its shape and the intensity toggles do not resize under the person
+              mid-edit. */}
               {sessionEquipmentType != null && (
+                <div>
+                  <div className="label">Equipment</div>
+                  {openFact == null && (
+                    <ActivitySessionFactRow
+                      summary={sessionFacts}
+                      openEditor={openFact}
+                      onOpen={openFactEditor}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            {sessionEquipmentType != null && openFact != null && (
+              <FactEditorHost
+                testId="activity-fact-editor"
+                doneTestId="activity-fact-editor-done"
+                panel={openFact}
+                className="mt-3 rounded-lg border border-(--border) bg-surface p-3"
+                onDone={closeFactEditor}
+              >
                 <ActivityEquipmentPicker
                   activityType={sessionEquipmentType}
                   activityName={sessionEquipmentName}
@@ -1399,8 +1489,8 @@ export default function ActivityForm({
                     setActivityEquipmentId(id);
                   }}
                 />
-              )}
-            </div>
+              </FactEditorHost>
+            )}
           </section>
 
           <ActivityMoreDetails
