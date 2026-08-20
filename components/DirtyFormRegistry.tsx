@@ -18,6 +18,7 @@ import {
   reduceDirtyForms,
   refreshIsOwed,
   resolveServerValue,
+  unsavedAnswerForForm,
   type DirtyFormEvent,
   type DirtyFormState,
   type TrackedField,
@@ -68,6 +69,15 @@ import { markUnrecoverableWork } from "@/lib/offline/unsaved-work";
 //
 // A React-owned field can still say what the server holds, via `data-server-value`
 // — the one thing the DOM cannot work it out for itself. See `serverValueFor`.
+//
+// AND A THIRD WAY, WHICH IS NOT A FIELD PROBLEM AT ALL (#3356): a form with NO named
+// controls anywhere. A form that composes its FormData by hand out of React state has
+// nothing for the rules above to track — `ActivityForm` has zero `name=` attributes in
+// the whole file, and the sleep dialog is not a `<form>` — so the registry can only
+// ever answer "clean" about it, and a gesture dismissal discarded the typing with
+// nothing asking. Such a form ANSWERS FOR ITSELF by publishing `data-unsaved` on the
+// element it owns; `hasUnsavedInputWithin` below believes it, in both directions.
+// `lib/dirty-forms.ts#unsavedAnswerForForm` holds that precedence rule.
 //
 // PHI DISCIPLINE. Field values are health data. They are read, compared in
 // memory, and dropped; nothing here persists, transmits or logs a value, and the
@@ -227,6 +237,26 @@ function isDraftBacked(form: HTMLFormElement): boolean {
   return form.closest("[data-draft-backed]") != null;
 }
 
+/**
+ * Elements inside `root` (or `root` itself) that publish their own unsaved answer
+ * with `data-unsaved` (#3356). Value-agnostic on purpose — a declaration of "false"
+ * is as binding as one of "true", per `unsavedAnswerForForm`.
+ */
+function declarationsWithin(root: Node): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  if (root instanceof HTMLElement && root.hasAttribute("data-unsaved")) {
+    found.push(root);
+  }
+  if (
+    root instanceof Element ||
+    root instanceof Document ||
+    root instanceof DocumentFragment
+  ) {
+    found.push(...root.querySelectorAll<HTMLElement>("[data-unsaved]"));
+  }
+  return found;
+}
+
 export interface DirtyFormApi {
   /**
    * Repaint the current page on the CHROME's initiative — a background sync
@@ -240,7 +270,8 @@ export interface DirtyFormApi {
    */
   requestChromeRefresh: () => void;
   /**
-   * Whether any tracked form INSIDE `root` holds unsaved input right now.
+   * Whether anything INSIDE `root` holds unsaved input right now — every tracked
+   * form, plus every form that answers for itself with `data-unsaved` (#3356).
    *
    * The registry already answers "is anything on the page dirty?" for the chrome
    * refresh; this is the same computation, scoped to a subtree, and it exists so
@@ -249,6 +280,13 @@ export interface DirtyFormApi {
    * through a confirm when — and only when — the form it hosts has something to
    * lose; asking the page-wide question would put a confirm in front of a
    * dialog opened over some unrelated half-typed field elsewhere.
+   *
+   * THE SECOND SIGNAL, AND ITS PRECEDENCE (#3356). A form that composes its
+   * FormData by hand out of React state has no named controls for the registry to
+   * see, so it was answered "clean" no matter what the person had typed. Such a
+   * form publishes `data-unsaved` and is BELIEVED — in both directions, and about
+   * every tracked form inside it, so the two signals can never describe one form
+   * differently. `lib/dirty-forms.ts#unsavedAnswerForForm` is that rule.
    *
    * Read on demand, never subscribed to: the answer is only wanted at the moment
    * a dismissal is attempted, and making it reactive would re-render every
@@ -407,10 +445,10 @@ export default function DirtyFormProvider({
       const field = e.target;
       if (!isTrackable(field)) return;
       const record = recordFor(field.form!);
-      // Read BEFORE anything else: this is the capture phase, so React has not
-      // committed this keystroke yet and the DOM default is still the pre-edit
-      // one — whoever owns the field. Both the ownership probe and the
-      // never-focused registration below depend on that ordering.
+      // Read BEFORE anything else. This is the capture phase, so React has not
+      // committed this keystroke yet and the DOM default is still the PRE-EDIT one
+      // whoever owns the field — which is the only moment a never-focused field's
+      // server value is legible, and the registration below depends on it.
       const defaultBeforeCommit = domDefaultValue(field);
       const meta = record.fields.get(field);
       if (meta) meta.touched = true;
@@ -493,10 +531,36 @@ export default function DirtyFormProvider({
       requestChromeRefresh: () => dispatch({ type: "chrome-refresh" }),
       hasUnsavedInputWithin: (root) => {
         if (root == null) return false;
+        // FORMS THAT ANSWER FOR THEMSELVES FIRST (#3356). A declaration binds
+        // everything inside it, so one form is never described two ways: the
+        // registry's view of a declaring form's named controls is folded in as
+        // `tracked` and then OVERRIDDEN by the declaration, exactly as
+        // `unsavedAnswerForForm` says.
+        const declarations = declarationsWithin(root);
+        const answered = new Set<HTMLFormElement>();
+        for (const el of declarations) {
+          let tracked = false;
+          for (const record of records.current.values()) {
+            if (!record.form.isConnected) continue;
+            if (!el.contains(record.form)) continue;
+            answered.add(record.form);
+            tracked ||= recordIsDirty(record);
+          }
+          const declared = el.dataset.unsaved === "true";
+          if (unsavedAnswerForForm({ declared, tracked })) return true;
+        }
         for (const record of records.current.values()) {
           if (!record.form.isConnected) continue;
           if (!root.contains(record.form)) continue;
-          if (recordIsDirty(record)) return true;
+          if (answered.has(record.form)) continue;
+          if (
+            unsavedAnswerForForm({
+              declared: null,
+              tracked: recordIsDirty(record),
+            })
+          ) {
+            return true;
+          }
         }
         return false;
       },

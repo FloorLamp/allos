@@ -4,6 +4,7 @@ import {
   fieldHoldsUnsavedInput,
   formHasUnsavedInput,
   resolveServerValue,
+  unsavedAnswerForForm,
   isAnyFormDirty,
   reduceDirtyForms,
   refreshIsOwed,
@@ -61,7 +62,12 @@ describe("resolveServerValue (#3352)", () => {
     // And a touched one whose default has not moved: the ordinary DOM-owned form,
     // where the default IS what the server rendered.
     expect(
-      at({ touched: true, current: "Dr. Jones", liveDefault: "", atRegistration: "" })
+      at({
+        touched: true,
+        current: "Dr. Jones",
+        liveDefault: "",
+        atRegistration: "",
+      })
     ).toBe("");
   });
 
@@ -117,6 +123,34 @@ describe("resolveServerValue (#3352)", () => {
         serverValue: resolveServerValue(controlled),
       })
     ).toBe(true);
+  });
+});
+
+describe("unsavedAnswerForForm (#3356)", () => {
+  it("falls through to the registry when a form says nothing", () => {
+    // Every form that existed before this rule: no declaration, so nothing changes.
+    expect(unsavedAnswerForForm({ declared: null, tracked: true })).toBe(true);
+    expect(unsavedAnswerForForm({ declared: null, tracked: false })).toBe(
+      false
+    );
+  });
+
+  it("believes a form that declares itself unsaved, with nothing tracked", () => {
+    // THE #3356 CASE. A form that composes its FormData by hand out of React state
+    // has no named controls at all, so the registry sees nothing and used to answer
+    // "clean" however much had been typed — and the host dialog discarded it on a
+    // flick with no confirm.
+    expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
+  });
+
+  it("believes a form that declares itself CLEAN over the registry's view of it", () => {
+    // The half that stops this being a second source of truth. A declaration is
+    // believed in BOTH directions, so one form is never described two ways; a form
+    // that declares takes responsibility for its whole answer, including its own
+    // named fields.
+    expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(
+      false
+    );
   });
 });
 

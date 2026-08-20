@@ -182,6 +182,15 @@ export default function SleepMoodEditDialog(
     sleepTotalMinutes != null &&
     sleepTotalMinutes !== originalSleepMinutes;
   const moodChanged = valence != null && valence !== row.valence;
+  // ONE QUESTION, ONE COMPUTATION (#3356). This dialog is not a `<form>` and has no
+  // named controls, so the dirty-form registry could only ever answer "clean" about
+  // it — and a flick or a scrim tap on its ModalShell discarded a stated mood with
+  // nothing asking. Publishing this as `data-unsaved` is what the guard reads.
+  //
+  // NOT NEW STATE, and it must not become any: this is the SAME value the Save button
+  // is enabled by, three lines of JSX below. If a change ever needs the marker and the
+  // Save button to disagree, that is a bug in the change.
+  const hasUnsavedEdit = sleepChanged || moodChanged;
 
   const summary = sleepFactSummary({
     // An edit's date is stated by the dialog's own title and is not editable, so it is
@@ -199,7 +208,7 @@ export default function SleepMoodEditDialog(
   });
 
   async function save() {
-    if (dateInvalid || sleepInvalid || (!sleepChanged && !moodChanged)) return;
+    if (dateInvalid || sleepInvalid || !hasUnsavedEdit) return;
     setPending(true);
     setError(null);
     try {
@@ -347,6 +356,16 @@ export default function SleepMoodEditDialog(
         ref={factScopeRef}
         className="mt-4 space-y-5"
         data-testid="sleep-mood-edit-dialog"
+        // THIS DIALOG ANSWERS FOR ITSELF (#3356). See `hasUnsavedEdit` above: the
+        // registry tracks named controls inside a `<form>`, and this surface has
+        // neither, so without this the discard guard on the host ModalShell was
+        // permanently absent. `components/DirtyFormRegistry.tsx` reads the attribute
+        // and believes it in both directions.
+        //
+        // TO THE READER WHO WANTS TO DELETE IT as untested instrumentation: it is not
+        // instrumentation, it is the signal the guard runs on, and
+        // e2e/sleep-page.spec.ts dismisses this dialog by GESTURE to prove it.
+        data-unsaved={hasUnsavedEdit ? "true" : "false"}
         onKeyDown={onKeyDown}
       >
         {openEditor == null ? (
@@ -392,12 +411,7 @@ export default function SleepMoodEditDialog(
           <button
             type="button"
             className="btn"
-            disabled={
-              pending ||
-              dateInvalid ||
-              sleepInvalid ||
-              (!sleepChanged && !moodChanged)
-            }
+            disabled={pending || dateInvalid || sleepInvalid || !hasUnsavedEdit}
             onClick={save}
             data-testid="sleep-mood-edit-save"
           >

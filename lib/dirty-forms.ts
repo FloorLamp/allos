@@ -149,6 +149,40 @@ export function formHasUnsavedInput(fields: readonly TrackedField[]): boolean {
 }
 
 /**
+ * WHICH ANSWER TO BELIEVE ABOUT ONE FORM (#3356) — the precedence rule, stated
+ * once, rather than left to whichever caller reads which signal first.
+ *
+ * Two things can answer "does this form hold unsaved input?", and they see
+ * different forms:
+ *
+ *   * THE REGISTRY sees NAMED controls inside a `<form>`. That is every form the
+ *     browser itself composes into FormData, and nothing else.
+ *   * THE FORM ITSELF, via `data-unsaved`. A form that builds its FormData by hand
+ *     out of React state has no named controls at all — `ActivityForm` has zero in
+ *     the whole file, the sleep dialog is not a `<form>` — so the registry can only
+ *     ever say "clean" about it, and a gesture dismissal threw the typing away with
+ *     nothing asking.
+ *
+ * THE DECLARATION WINS, IN BOTH DIRECTIONS. Not "true wins": a form that publishes
+ * `data-unsaved="false"` is believed too, and its own named fields are not
+ * second-guessed. That is what stops this from becoming a second source of truth for
+ * forms the registry already covers — one form, one answer, chosen by whether the
+ * form volunteered one. A form that says nothing keeps exactly the behaviour it had.
+ *
+ * A form that declares MUST therefore publish its real answer rather than a
+ * convenient one; `ActivityForm` publishes autosave's own `dirty`, the same value its
+ * discard prompt reads, which is the shape to copy.
+ */
+export function unsavedAnswerForForm(form: {
+  /** What the form says about itself, or null when it says nothing. */
+  readonly declared: boolean | null;
+  /** What the registry can see of the same form's named controls. */
+  readonly tracked: boolean;
+}): boolean {
+  return form.declared ?? form.tracked;
+}
+
+/**
  * The registry's whole state: which forms hold unsaved input, and how many
  * chrome refreshes are owed to the moment the last of them releases.
  */

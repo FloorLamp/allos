@@ -55,6 +55,53 @@ import type { OverlaySize } from "./overlay";
 // Escape and the Close button are deliberately NOT guarded. They are targeted
 // actions on a named control — the user aimed at "close" — where a flick and a
 // scrim tap are the two dismissals a hand can produce by accident.
+//
+// ── The forms this guard could not see (issue #3356) ─────────────────────────
+//
+// `useUnsavedInputWithin` used to mean "any NAMED control inside a `<form>` in this
+// panel". A form that composes its FormData by hand out of React state has none, so
+// the guard answered "clean" about it however much had been typed, and a flick threw
+// it away with nothing asking. Such a form now publishes `data-unsaved` and is
+// believed — the precedence is `lib/dirty-forms.ts#unsavedAnswerForForm`, and it is
+// deliberately NOT "true wins": a declaring form answers for itself in both
+// directions, so no form is ever described two ways.
+//
+// THE SWEEP, RECORDED (the issue asked for the result, not just the fix). Every
+// ModalShell host on 2026-08-20, and which side of the line it fell on:
+//
+//   REGISTRY-COVERED — named controls the browser composes, guarded all along:
+//     EncounterDetailEdit (EncounterForm), ProtocolControls + ProtocolFormModal
+//     (ProtocolForm), GoalsManager (GoalForm), LogMeasurementsPanel +
+//     MetricMeasurementPanel (MeasurementsQuickAdd), AddPracticeButton
+//     (PracticeEditor), LogPracticeButton, EpisodeEditor, EpisodeControls,
+//     ConsumptionSection, PassportControls, ImmunizationRecordActions,
+//     MedicationListActions.
+//
+//   HAND-COMPOSED — invisible to the registry, and the reason this exists:
+//     SleepMoodEditDialog — not a `<form>` at all. It declares `data-unsaved` now,
+//       and e2e/sleep-page.spec.ts pins the gesture dismiss.
+//     ProviderAffiliations — THE ONE A grep MISSES, and the reason "count the
+//       `name=`s" is the wrong check. It looks covered: a `<form>` carrying
+//       `name="name"`. That name lands on `ProviderCombobox`, whose named input is
+//       `type="hidden"` — excluded outright — while the VISIBLE field the person
+//       types into carries no name at all. The right question is not "does this file
+//       contain `name=`?" but "is any name on a control the registry will TRACK?".
+//     AddSupplementModal + EditableSupplementRow (IntakeItemForm — ONE `name=` in
+//       1770 lines, on a provider combobox, so effectively none).
+//     RoutinesManager (RoutineBuilder — a `<form>` with zero `name=`).
+//     FoodLogBar (DietaryPreferencesForm — hand-composed, but it AUTOSAVES, so it
+//       has nothing unsaved to lose and is owed no guard).
+//     All but FoodLogBar and the sleep dialog still discard silently. Each needs the
+//     same one-line declaration the sleep dialog now carries, off its OWN honest
+//     dirty value — which is why they are left on #3356 rather than guessed at here.
+//
+//   NOTHING TO LOSE — no typed input to discard, so no guard is owed:
+//     CommandPalette (a search box, deliberately untracked), RawPayloadDialog and
+//     ActivityPartsList's guide (read-only), PhotoCapture (a camera),
+//     BodyMetricRowMenu, SupplementInsightBadges, FoodSuggestionsLayout,
+//     ProgressPhotosView, AddEntryPanel (a shell around whatever form it is given),
+//     EndEpisodeReconcile and ReopenEpisodeReconcile (checkbox selections over rows
+//     that already exist — nothing was typed).
 export default function ModalShell({
   title,
   onClose,

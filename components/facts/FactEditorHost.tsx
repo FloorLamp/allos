@@ -30,9 +30,10 @@ import {
 // to match its `value`. So the field compared equal to itself, reported clean forever,
 // and its discard guard vanished with no test noticing.
 //
-// That hole is closed in the registry itself (components/DirtyFormRegistry.tsx detects
-// who owns a field from the user's own first keystroke), so a consumer may now write
-// either kind and keep its guard. Two things are still worth knowing:
+// That hole is closed in the registry itself (components/DirtyFormRegistry.tsx keeps
+// the default it read at registration and stops believing a live default that has
+// moved onto exactly what the user typed), so a consumer may now write either kind and
+// keep its guard. Two things are still worth knowing:
 //
 //   * The CHEAPEST way to keep editor state outside the host is a field that is merely
 //     hidden rather than unmounted — the DOM already holds the value, and nothing has to

@@ -224,8 +224,9 @@ export default function ProtocolForm({
   // and `defaultValue` both equal to the typed text while `isConnected` was true —
   // mounted exactly as intended, and still invisible.
   //
-  // WHAT IT IS NOW. The registry works out who owns a field from the user's own first
-  // keystroke and stops trusting `defaultValue` when React is mirroring it, so
+  // WHAT IT IS NOW. The registry snapshots each field's DOM default at registration
+  // and stops trusting the LIVE default once it has moved onto exactly what the user
+  // typed — which only React mirroring a controlled `value` does — so
   // CONVERTING ANY FIELD BELOW TO CONTROLLED STATE NO LONGER DISARMS ITS GUARD. That
   // tidy-up is safe; it is simply not needed. These five stay DOM-owned because that
   // is the cheaper shape — `defaultValue` seeds them, the DOM holds the value, and
