@@ -648,6 +648,14 @@ ${MIGRATION_LINES}
   (e2e/pinned-timezone.ts), so naive strings parse host-UTC (#1417)
 - NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
   included) — use low-entropy words+digits values
+- AN ARTIFACT THAT SATISFIES AN ACCEPTANCE CRITERION MUST BE COMMITTED, NOT LEFT IN
+  $SCRATCH. Measured 2026-08-20 on #3320: a previous lane's census script — the thing
+  an AC named in the words "the query exists and is recorded" — survived only as a
+  file in the shared scratchpad, one container restart from gone, while its PR was
+  already merged. Scratch is for LOGS and WORKING FILES. If a deliverable is a script,
+  a query, a probe or a measurement someone is meant to re-run, it belongs in the tree
+  with a way to invoke it. Ask of every AC: does satisfying this leave something behind,
+  and is that something in git?
 - Every scratch file you write goes in $SCRATCH ITSELF, never inside your worktree,
   and gets a branch-unique name ($SCRATCH/pr-body-${opts.branch.split("/").pop()}.md,
   never pr-body.md) — $SCRATCH is shared by every concurrent agent, and an untracked
