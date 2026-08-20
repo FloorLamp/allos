@@ -140,8 +140,18 @@ describe("parseQuantity separators (#3153)", () => {
     // ── decimal point: unchanged, and these are the shipped catalog shapes ──
     { amount: "1.5 g", expected: 1.5, unit: "g", why: "one decimal place" },
     { amount: "0.5 g", expected: 0.5, unit: "g", why: "leading zero decimal" },
-    { amount: "1.25 mg", expected: 1.25, unit: "mg", why: "two decimal places" },
-    { amount: "0.19 mg", expected: 0.19, unit: "mg", why: "supplement-catalog" },
+    {
+      amount: "1.25 mg",
+      expected: 1.25,
+      unit: "mg",
+      why: "two decimal places",
+    },
+    {
+      amount: "0.19 mg",
+      expected: 0.19,
+      unit: "mg",
+      why: "supplement-catalog",
+    },
     { amount: "2.5mg", expected: 2.5, unit: "mg", why: "no space before unit" },
     {
       amount: "1000.500 mg",

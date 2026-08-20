@@ -404,7 +404,11 @@ function parseDoses(formData: FormData): DoseInput[] {
 // dose keeps no `amount_text` alongside its reading, so nothing downstream could ever
 // tell that a number had been dropped. Refusing is the only answer the person can see
 // and correct. Returns the offending text (possibly "") or null when every dose reads.
-function unreadableDoseAmount(doses: readonly DoseInput[]): string | null {
+// Takes only what it reads — both call sites pass the COLLAPSED doses, whose type
+// differs from DoseInput in fields this has no opinion about.
+function unreadableDoseAmount(
+  doses: readonly { amount: string | null }[]
+): string | null {
   const bad = doses.find(
     (d) => readDoseQuantity(d.amount).kind === "unreadable"
   );

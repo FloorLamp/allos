@@ -228,18 +228,27 @@ export type DoseQuantityReading =
 // span a comma, so on "1,000 mg" it did not fail — it matched the "000" and returned a
 // confident ZERO. A niacin dose of 1,000 mg (28x the 35 mg adult UL) contributed
 // nothing to the upper-limit total, and a zero meaning "we could not read this" is
-// indistinguishable from a zero meaning "none". The two lookbehinds are what make
-// "whole" true: they refuse to start the number mid-numeral, so "000" can never again
-// be read as a number in its own right. They deliberately do NOT block a comma that
-// belongs to prose rather than to a number ("Vitamin C, 500 mg" still reads 500).
+// indistinguishable from a zero meaning "none".
+//
+// NO LOOKBEHIND GUARDS THE START, AND IT DOES NOT NEED ONE — the obvious defence here
+// is unreachable, so it is deliberately absent. A first cut carried
+// `(?<!\d)(?<!\d[.,])` to stop the scan starting mid-number the way the old pattern
+// did on the "000". Mutating them out left every test green, and the reason is
+// structural: `\d+(?:[.,]\d+)*` is GREEDY over a maximal digit-and-separator run, so a
+// start inside that run can only ever end where a start at its head already ended. If
+// the run's end is followed by a unit the head match takes the whole number; if it is
+// not, every shorter match ends on a digit or a separator, which no unit can follow.
+// The guard could never change an answer. Re-adding it for safety would be adding a
+// branch nothing can reach — note that the lookbehind in LABEL_UNIT_COUNT_RE below IS
+// load-bearing, for a different reason its own comment gives.
 //
 // The scan itself is unchanged and still stops at the FIRST unit-bearing number, so a
 // combo amount ("2000 IU / 100 mcg", Vitamin D3 + K2) still yields the leading
 // nutrient's 2000 IU, and a count before a mass ("2 capsules (500 mg)") still yields
-// the mass. "mcg", "µg" and "ug" all normalize to mcg; the unit match is
-// case-insensitive.
-const DOSE_QUANTITY_RE =
-  /(?<!\d)(?<!\d[.,])(\d+(?:[.,]\d+)*)\s*(mcg|µg|ug|mg|g|iu)\b/i;
+// the mass. A comma belonging to prose rather than to a number is no obstacle either
+// ("Vitamin C, 500 mg" reads 500). "mcg", "µg" and "ug" all normalize to mcg; the unit
+// match is case-insensitive.
+const DOSE_QUANTITY_RE = /(\d+(?:[.,]\d+)*)\s*(mcg|µg|ug|mg|g|iu)\b/i;
 
 export function readDoseQuantity(amount: string | null): DoseQuantityReading {
   if (!amount) return { kind: "none" };
