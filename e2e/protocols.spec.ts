@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { openProtocolFact, withProtocolFact } from "./protocol-form-helpers";
 // N-of-1 protocols + healthspan pillars (issue #161).
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
 //      and a past start date, land on its detail page, and see before/during
@@ -30,10 +31,12 @@ test.describe("protocols create → compare (issue #161)", () => {
     await main.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await form.locator("#pr-start-new").fill(start);
-    // Filling the date field opens its DateField popover, which floats over the
-    // outcome picker below — dismiss it before choosing outcomes.
-    await page.keyboard.press("Escape");
+    await withProtocolFact(form, "window", async () => {
+      await form.locator("#pr-start-new").fill(start);
+      // Filling the date field opens its DateField popover, which floats over the
+      // panel's Done — dismiss it first.
+      await page.keyboard.press("Escape");
+    });
     const outcomeSearch = form.getByLabel("Filter outcome metrics");
     await outcomeSearch.click();
     // The protocol picker keeps its tracked-only scope, but its empty-query
@@ -155,17 +158,21 @@ test.describe("protocols create → compare (issue #161)", () => {
     const editDialog = page.getByRole("dialog", { name: "Edit protocol" });
     await expect(editDialog).toBeVisible();
     await expect(editDialog.getByLabel("Name")).toHaveValue(uniqueName);
-    for (const section of [
-      "Details",
-      "Outcomes",
-      "What you're testing",
-      "Weekly practice",
-      "Notes",
-    ]) {
+    // THE SECTIONS THAT USED TO BE LISTED HERE ARE THE POINT OF #3219, not a
+    // casualty of it: "What you're testing", "Weekly practice" and "Notes" were three
+    // stacked field walls a person read whether or not they disagreed with any of
+    // them, and they are the chip row now. What survives is the geometry this test is
+    // actually about — the form still has its two headed sections, and the edit still
+    // opens on a work surface with its actions reachable.
+    for (const section of ["Details", "Outcomes"]) {
       await expect(
         editDialog.getByRole("heading", { name: section, exact: true })
       ).toBeVisible();
     }
+    // The facts those sections held are stated by the row instead, each one a
+    // disclosure over its own editor. Read back in full by
+    // e2e/protocol-facts.spec.ts; pinned here as "the edit opens onto them".
+    await expect(editDialog.getByTestId("protocol-fact-row")).toBeVisible();
     await expect(editDialog.getByTestId("protocol-form-actions")).toBeVisible();
     await expect(
       editDialog.getByRole("button", { name: "Save", exact: true })
@@ -257,10 +264,12 @@ test.describe("protocols create → compare (issue #161)", () => {
     await main.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await form.locator("#pr-start-new").fill(start);
-    await page.keyboard.press("Escape");
-    await form.locator("#pr-end-new").fill(end);
-    await page.keyboard.press("Escape");
+    await withProtocolFact(form, "window", async () => {
+      await form.locator("#pr-start-new").fill(start);
+      await page.keyboard.press("Escape");
+      await form.locator("#pr-end-new").fill(end);
+      await page.keyboard.press("Escape");
+    });
     await settledClick(
       page,
       form.getByRole("button", { name: "Create protocol" })
@@ -325,6 +334,12 @@ test.describe("protocols recovery-gear filter (#592)", () => {
     test.slow();
     await page.goto("/longevity#protocols");
     await page.getByTestId("new-protocol-toggle").click();
+    // The gear select is behind the row's `link` fact since #3219, and with nothing
+    // linked yet that fact has no chip — it is reached through the one trailing
+    // affordance, which is what `openProtocolFact` routes.
+    const form = page.getByTestId("protocol-form");
+    await expect(form).toBeVisible();
+    await openProtocolFact(form, "link");
     const select = page.getByTestId("protocol-equipment");
     await expect(select).toBeVisible();
 

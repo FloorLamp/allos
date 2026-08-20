@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
+import { openProtocolFact } from "./protocol-form-helpers";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
 // Three things the census found and this pins:
@@ -140,6 +141,12 @@ test("the longevity adherence select renders its default label unclipped (#1450 
 }) => {
   await page.goto("/longevity");
   await page.getByTestId("new-protocol-toggle").click();
+
+  // The select is behind the practice chip since #3219, so the clipping question is
+  // asked of it OPEN — which is the only state in which it has a width at all.
+  const form = page.getByTestId("protocol-form");
+  await expect(form).toBeVisible();
+  await openProtocolFact(form, "practice");
 
   const select = page.getByTestId("protocol-practice-type");
   await expect(select).toBeVisible();
