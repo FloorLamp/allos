@@ -28,6 +28,27 @@
 //     unchanged — an imported/outside total and an in-app administration land in the
 //     SAME canonical_name series.
 //
+// NEUTRAL OBSERVATION (decided, #3279 ruling 1 — the doctrine this file now leads with):
+//   Substance consumption is data like food or mood. The LEDGER is the subject; the
+//   screening instruments above and the weekly reduction cap below are OPT-IN TOOLS a
+//   person reaches for, never the page's default framing. This is #2380's
+//   "an observation, never a target" applied to the one domain that never got it.
+//
+//   THE BOUNDARY, AND IT IS STRUCTURAL RATHER THAN COSMETIC. There is no cap-shaped
+//   value to render unless a target row exists: substanceCapStatus() is the only
+//   producer of a SubstanceCapStatus, capProgressLine() is the only consumer, and
+//   lib/queries/substance.ts calls the former ONLY when getSubstanceTarget() returned a
+//   row (`status: target ? … : null`). A surface therefore cannot render cap framing for
+//   a profile that never opted in — not because it remembers to check a flag, but
+//   because it holds nothing to render. Keep it that way: a helper that manufactures a
+//   status from a count and a default cap would make the opt-in cosmetic again.
+//
+//   `cap: 0` IS NOT "NO CAP". A zero cap is an OPTED-IN target — a substance-free week
+//   ("Dry January", a quit target) — and it renders its own line. The absence of a
+//   target is a DIFFERENT state and renders nothing at all. Every reader that has ever
+//   conflated the two has produced reduction framing for someone who asked for none;
+//   the two states are `status === null` vs `status.cap === 0`.
+//
 // SENSITIVITY (decided, #998 — these are LAW):
 //   • NEVER gamify. No streaks, no badges, no "X days sober" milestones, no
 //     celebratory copy. Reduction support is a user-set target + progress toward it
@@ -350,7 +371,7 @@ export function isSubstance(v: unknown): v is Substance {
 // per-use counts (no mg-nicotine normalization across product types — out of
 // scope, low fidelity).
 export interface SubstanceDef {
-  key: Substance;
+  key: SubstanceKey; // curated key or a profile's own name (see the vocabulary below)
   label: string; // section heading noun — "Alcohol"
   ledger: "food-log" | "substance-log";
   unitSingular: string; // cap phrasing — "7-drink weekly cap" / "7-use weekly cap"
@@ -407,15 +428,156 @@ const SUBSTANCE_DEFS: Record<Substance, SubstanceDef> = {
   },
 };
 
-export function substanceDef(substance: Substance): SubstanceDef {
-  return SUBSTANCE_DEFS[substance];
+// ---- Substance VOCABULARY: the curated keys, plus a profile's own (#3279) ---
+//
+// #3279 ruling 2 — "curate the common ones AND allow custom". The curated three
+// above stay and may grow modestly where good defaults exist; beyond that a profile
+// names its own substances, the way intake items are already free text.
+//
+// BORROWED, NOT INVENTED. This is lib/symptoms.ts's curated+custom vocabulary
+// re-instantiated for the substance ledger — the SAME question ("which entries exist
+// for this profile, and what is each one called?"), so the same four terms answer it
+// and the identity registry lists them side by side:
+//
+//   symptoms.ts                       substance-use.ts (here)
+//   ───────────────────────────────   ────────────────────────────────────
+//   normalizeSymptomName()            normalizeSubstanceName()
+//   resolveSymptomKey()               resolveSubstanceKey()
+//   isCuratedSymptom()                isCuratedSubstance()  (=== isSubstance)
+//   isCustomSymptomKey()              isCustomSubstanceKey()
+//   symptomLabel()                    substanceLabel()
+//
+// The borrow is exact on purpose: a reader who knows one knows the other, and a
+// second normalization rule for the same shape of user text is the "one question,
+// one computation" disease at the identity layer (docs/internals/identity-registry.md).
+//
+// NO NEW TABLE, AND NO MIGRATION. A custom substance is not registered anywhere before
+// it is used: its identity IS its normalized name in the ledger, exactly as a custom
+// symptom's is in `symptom_logs.symptom`. Migration 096 declared this on day one —
+// "`substance` holds a … key … validated in the write core against the catalog (the
+// food_log group_key discipline: no CHECK, so a future substance needs no rebuild)".
+// The catalog is what widens here; the column never had to.
+//
+// WHICH LEDGER A CUSTOM SUBSTANCE RIDES is not a choice — it is
+// `substance_daily_totals` with count semantics, always. The food-log ledger is a
+// CURATED fact about alcohol specifically (a standard drink IS one serving of the
+// curated `alcohol` food group, #860/#944); nothing a person types can be shown to be
+// a food, so nothing typed may pollute the nutrition ledger.
+//
+// THE BOUNDARY THIS VOCABULARY DOES NOT CROSS — episodic vs regimen (#3279).
+// A substance key names EPISODIC consumption: countable uses, one per-day total, no
+// dose. A DOSED REGIMEN (10 µg every 3 days) is NOT a substance key and must never
+// become one — it is an INTAKE ITEM (free-text name, µg-capable amount, interval
+// cadence, situational holds), linked to a protocol through the shipped
+// intake-linked N-of-1 tally. The two shapes have two existing stores and this issue
+// adds no third engine. The practical test, for anyone tempted to widen this file:
+// if the thing being logged carries an AMOUNT PER ADMINISTRATION, it is an intake
+// item; if it carries a COUNT PER DAY, it is a substance key. See
+// docs/internals/substances.md.
+
+// A stored substance identity: either a curated key (`Substance`) or a profile's own
+// normalized name. This is the type of `substance_daily_totals.substance` and of
+// `frequency_targets.scope_value` for the 'substance' scope. It is deliberately a bare
+// string — the curated set is a subset of the key space, not a gate on it.
+export type SubstanceKey = string;
+
+// Cap on a custom substance name, so a pasted paragraph can't bloat the column.
+// Shorter than the symptom cap (80) because a substance name is a noun, not a phrase,
+// and this string is also a card heading.
+export const MAX_SUBSTANCE_NAME_LENGTH = 60;
+
+// Canonicalize a custom substance name: trim + collapse internal whitespace, capped.
+// Paired with substance_daily_totals' UNIQUE (profile_id, date, substance), this makes
+// "  Kratom " and "Kratom" resolve to one per-day row. Case is PRESERVED — the person's
+// own capitalization is their label (the symptoms rule).
+export function normalizeSubstanceName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").slice(0, MAX_SUBSTANCE_NAME_LENGTH);
+}
+
+// Whether a value is one of the CURATED keys. The same predicate as isSubstance, named
+// for the vocabulary axis so a reader asking "curated or custom?" finds both halves.
+export function isCuratedSubstance(v: unknown): v is Substance {
+  return isSubstance(v);
+}
+
+// Whether a stored key is a profile's own name rather than a curated key. A key that is
+// empty or not in canonical stored form is neither — it is not a key at all.
+export function isCustomSubstanceKey(key: string): boolean {
+  return (
+    !isSubstance(key) && key.length > 0 && normalizeSubstanceName(key) === key
+  );
+}
+
+// Resolve user-entered text (a curated key, a curated LABEL, or a free-text name) to the
+// key it is STORED under. A typed "Alcohol" collapses onto the curated `alcohol` so it
+// can never shadow the catalog with a second ledger; anything else is a normalized custom
+// name. Empty input -> null (nothing to log). Every write boundary goes through this, so
+// normalization happens once, at the edge (AGENTS.md).
+export function resolveSubstanceKey(input: string): SubstanceKey | null {
+  const raw = input.trim();
+  if (!raw) return null;
+  if (isSubstance(raw)) return raw;
+  const lower = raw.toLowerCase();
+  for (const s of SUBSTANCES) {
+    if (s === lower || SUBSTANCE_DEFS[s].label.toLowerCase() === lower) return s;
+  }
+  return normalizeSubstanceName(raw) || null;
+}
+
+// The display name for a stored key: the curated label, else the custom key verbatim.
+// Never throws on an unknown key — a row logged under a key this build doesn't curate
+// still renders (the #203 name-keyed discipline, as symptomLabel).
+export function substanceLabel(key: SubstanceKey): string {
+  return isSubstance(key) ? SUBSTANCE_DEFS[key].label : key;
+}
+
+// "a"/"an" for a custom label, used ONLY inside freeWeekPhrase below. A vowel-initial
+// heuristic: right for the ordinary nouns people type here, wrong for the English
+// exceptions ("an hour", "a unicorn"). It is deliberately not worth more than this —
+// the phrase surfaces only after a person has opted into a weekly cap, and a curated
+// substance never reaches it (its article is authored).
+function indefiniteArticle(label: string): string {
+  return /^[aeiou]/i.test(label) ? "an" : "a";
+}
+
+// The derived def for a custom substance. Everything a curated def AUTHORS, this
+// computes: count semantics ("use"/"uses"), the substance-log ledger, and the person's
+// own name as the label. The unit note is byte-identical to cannabis's — one honest
+// sentence about what a count means, reused rather than re-worded.
+function customSubstanceDef(key: SubstanceKey): SubstanceDef {
+  return {
+    key,
+    label: key,
+    ledger: "substance-log",
+    unitSingular: "use",
+    unitPlural: "uses",
+    countSingular: "use",
+    countPlural: "uses",
+    logLabel: "Log a use",
+    freeWeekPhrase: `${indefiniteArticle(key)} ${key}-free week`,
+    unitNote: "One use = one session, whatever the form.",
+  };
+}
+
+// The def for ANY stored key: the authored def for a curated key, else the derived
+// custom def above. TOTAL by construction — an unknown key renders as itself rather
+// than throwing, so a ledger row always has a card to live in (#203, #3279).
+export function substanceDef(key: SubstanceKey): SubstanceDef {
+  return isSubstance(key) ? SUBSTANCE_DEFS[key] : customSubstanceDef(key);
 }
 
 // Whether a value names a substance whose ledger is the dedicated substance_daily_totals
-// table (nicotine/cannabis — alcohol stays on food_daily_totals). The write core validates
-// through this so a forged/stale key lands nothing.
-export function isSubstanceLogged(v: unknown): v is Substance {
-  return isSubstance(v) && SUBSTANCE_DEFS[v].ledger === "substance-log";
+// table — nicotine/cannabis and EVERY custom substance (only alcohol is on
+// food_daily_totals, and only because a standard drink is a curated food serving). The
+// write core validates through this so a forged/stale key lands nothing: the key must
+// already be in canonical stored form, so a caller that skipped resolveSubstanceKey()
+// is refused rather than silently minting a near-miss neighbour of an existing row.
+export function isSubstanceLogged(v: unknown): v is SubstanceKey {
+  return (
+    typeof v === "string" &&
+    resolveSubstanceKey(v) === v &&
+    substanceDef(v).ledger === "substance-log"
+  );
 }
 
 // The food_daily_totals group_key alcohol consumption is stored under — the ledger identity
@@ -462,8 +624,8 @@ export function substanceCapStatus(
 }
 
 // The substance's unit word for a count ("drink"/"drinks", "use"/"uses").
-export function substanceUnitWord(substance: Substance, n: number): string {
-  const def = SUBSTANCE_DEFS[substance];
+export function substanceUnitWord(substance: SubstanceKey, n: number): string {
+  const def = substanceDef(substance);
   return n === 1 ? def.unitSingular : def.unitPlural;
 }
 
@@ -474,9 +636,9 @@ export function substanceUnitWord(substance: Substance, n: number): string {
 // judgmental.
 export function capProgressLine(
   s: SubstanceCapStatus,
-  substance: Substance = "alcohol"
+  substance: SubstanceKey = "alcohol"
 ): string {
-  const def = SUBSTANCE_DEFS[substance];
+  const def = substanceDef(substance);
   if (s.cap === 0) {
     return s.count === 0
       ? `No ${def.unitPlural} logged this week — your target is ${def.freeWeekPhrase}.`
@@ -498,6 +660,6 @@ export function capProgressLine(
 // which week is current.
 export const SUBSTANCE_USE_PREFIX = "substance-use:";
 
-export function substanceTargetSignalKey(substance: Substance): string {
+export function substanceTargetSignalKey(substance: SubstanceKey): string {
   return `${SUBSTANCE_USE_PREFIX}over-target:${substance}`;
 }

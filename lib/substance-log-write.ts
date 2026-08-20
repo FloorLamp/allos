@@ -20,21 +20,23 @@
 import { writeTx } from "./db";
 import { now as clockNow } from "./clock";
 import { substanceDayCounter } from "./day-counter-ledger-db";
-import { isSubstanceLogged, type Substance } from "./substance-use";
+import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
 
 // The typed result of a unit write (the markDoseTaken contract, #232): the caller
 // answers from what ACTUALLY happened, never unconditionally confirms.
 //   logged            — a use was recorded; `units` is the substance's new daily total.
-//   unknown-substance — not a substance_daily_totals-ledger substance; nothing written.
+//   unknown-substance — not a substance_daily_totals-ledger substance, or a key that is
+//                       not in canonical stored form; nothing written. The caller
+//                       normalizes at the request boundary (resolveSubstanceKey).
 export type SubstanceLogOutcome =
-  | { kind: "logged"; units: number; substance: Substance }
+  | { kind: "logged"; units: number; substance: SubstanceKey }
   | { kind: "unknown-substance" };
 
 // The typed result of an undo: a use was removed and `units` is the REMAINING
 // daily total (0 once the row is dropped). Undo is idempotent — undoing a day
 // with nothing logged is a no-op that reports 0.
 export type SubstanceUndoOutcome =
-  | { kind: "undone"; units: number; substance: Substance }
+  | { kind: "undone"; units: number; substance: SubstanceKey }
   | { kind: "unknown-substance" };
 
 // Log one use of a substance on a day. Upserts the day's row, incrementing its

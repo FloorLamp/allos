@@ -25,7 +25,7 @@ import {
   MAX_SUBSTANCE_ENTRY_AMOUNT,
   MAX_WEEKLY_CAP,
   substanceDef,
-  type Substance,
+  type SubstanceKey,
 } from "@/lib/substance-use";
 import {
   addSubstanceDailyTotalAction,
@@ -58,7 +58,7 @@ export default function ConsumptionSection({
   defaultDate,
   formatPrefs,
 }: {
-  substance: Substance;
+  substance: SubstanceKey;
   weekCount: number;
   capSet: boolean;
   cap: number | null;

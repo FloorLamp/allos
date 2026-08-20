@@ -27,15 +27,15 @@ import {
   SUBSTANCES,
   substanceCapStatus,
   substanceDef,
-  type Substance,
   type SubstanceCapStatus,
+  type SubstanceKey,
 } from "../substance-use";
 
 // A stored substance reduction target: per_week is the weekly CAP (≥ 0; 0 = a
 // substance-free week target).
 export interface SubstanceTarget {
   id: number;
-  substance: Substance;
+  substance: SubstanceKey;
   cap: number;
   created_at: string;
 }
@@ -45,7 +45,7 @@ export interface SubstanceTarget {
 // while the query layer owns dispatch to food_daily_totals or substance_daily_totals.
 export interface SubstanceDailyTotal {
   id: number;
-  substance: Substance;
+  substance: SubstanceKey;
   date: string;
   amount: number;
   notes: string | null;
@@ -53,7 +53,7 @@ export interface SubstanceDailyTotal {
 
 export function getSubstanceDailyTotals(
   profileId: number,
-  substance: Substance
+  substance: SubstanceKey
 ): SubstanceDailyTotal[] {
   const rows =
     substanceDef(substance).ledger === "food-log"
@@ -86,17 +86,45 @@ export function getSubstanceDailyTotals(
   return rows.map((row) => ({ ...row, substance }));
 }
 
+// THIS PROFILE'S SUBSTANCE VOCABULARY: the curated catalog (always, in catalog order —
+// they are the app's offered defaults whether or not anything is logged), then every
+// custom key this profile has a ledger row for, alphabetically. #3279 ruling 2's read
+// half: a custom substance is not registered before use, so the LEDGER is the register.
+//
+// The custom half is deliberately data-presence-only. A key that has been fully undone
+// down to zero leaves no row (undoSubstanceUnitCore drops it), so the substance quietly
+// stops being part of the profile's vocabulary — the same "it exists because it is used"
+// contract custom symptoms have, and the reason no delete/forget affordance is needed.
+// A profile that never logs one sees exactly the curated three.
+//
+// Alcohol's rows live on food_daily_totals and no CUSTOM substance ever does (see
+// lib/substance-use.ts), so scanning substance_daily_totals alone finds every custom key
+// there can be.
+export function getProfileSubstanceKeys(profileId: number): SubstanceKey[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT substance FROM substance_daily_totals
+        WHERE profile_id = ?
+        ORDER BY substance`
+    )
+    .all(profileId) as { substance: string }[];
+  const custom = rows
+    .map((r) => r.substance)
+    .filter((s) => !(SUBSTANCES as readonly string[]).includes(s));
+  return [...SUBSTANCES, ...custom];
+}
+
 export function getAllSubstanceDailyTotals(
   profileId: number
 ): SubstanceDailyTotal[] {
-  return SUBSTANCES.flatMap((substance) =>
-    getSubstanceDailyTotals(profileId, substance)
-  ).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  return getProfileSubstanceKeys(profileId)
+    .flatMap((substance) => getSubstanceDailyTotals(profileId, substance))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
 
 export function getSubstanceTarget(
   profileId: number,
-  substance: Substance
+  substance: SubstanceKey
 ): SubstanceTarget | null {
   const row = db
     .prepare(
@@ -119,13 +147,13 @@ export function getSubstanceTarget(
 // dispatch to the substance's own store (alcohol on food_daily_totals — a standard drink IS
 // one serving of the curated `alcohol` food group; nicotine/cannabis on the
 // substance_daily_totals counter ledger), so this module never re-decides it.
-const substanceScope = (substance: Substance) =>
+const substanceScope = (substance: SubstanceKey) =>
   ({ kind: "substance", value: substance }) as const;
 
 // This week's state for ONE substance: units logged (the SAME weekly rollup its
 // other surfaces read, #221) plus the target's cap status when a target is set.
 export interface SubstanceWeekState {
-  substance: Substance;
+  substance: SubstanceKey;
   weekStart: string;
   count: number; // units logged this week (standard drinks / uses)
   target: SubstanceTarget | null;
@@ -134,7 +162,7 @@ export interface SubstanceWeekState {
 
 export function getSubstanceWeekState(
   profileId: number,
-  substance: Substance
+  substance: SubstanceKey
 ): SubstanceWeekState {
   const [window] = cadenceWindows(profileId, {
     weeks: 1,
@@ -158,7 +186,9 @@ export function getSubstanceWeekState(
 export function getAllSubstanceWeekStates(
   profileId: number
 ): SubstanceWeekState[] {
-  return SUBSTANCES.map((s) => getSubstanceWeekState(profileId, s));
+  return getProfileSubstanceKeys(profileId).map((s) =>
+    getSubstanceWeekState(profileId, s)
+  );
 }
 
 // One week of the trailing consumption trend (oldest first). The current
@@ -175,7 +205,7 @@ export const SUBSTANCE_TREND_WEEKS = 8;
 
 export function getSubstanceWeeklyTrend(
   profileId: number,
-  substance: Substance,
+  substance: SubstanceKey,
   weeks: number = SUBSTANCE_TREND_WEEKS
 ): SubstanceTrendWeek[] {
   const windows: CadenceWindow[] = cadenceWindows(profileId, {
