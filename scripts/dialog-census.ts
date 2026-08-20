@@ -8,7 +8,7 @@
 // cheaper question than "does this component use the host": it counted a file
 // that only NAMES ModalShell in a comment, and it cannot see a dialog that
 // hand-rolls its own surface. The rule and the receipts are in
-// lib/dialog-census.ts.
+// scripts/dialog-census-core.ts.
 //
 // READ-ONLY. It reads source files and touches nothing.
 
@@ -17,7 +17,7 @@ import {
   HOSTLESS_DIALOGS,
   HOST_MODULES,
   type DialogEntry,
-} from "../lib/dialog-census";
+} from "./dialog-census-core";
 
 const log = (line = "") => {
   // eslint-disable-next-line no-console

@@ -329,7 +329,8 @@ Three earlier sweeps enumerated this family with a file-level
 `grep -l 'ModalShell|BottomSheet'`. That asks whether a FILE mentions the string,
 which is a cheaper question than whether a component USES the host, and it is
 wrong in both directions: it counted `MergeConflictDialog` off a comment, and it
-could not see any dialog that hand-rolls its own surface. `lib/dialog-census.ts`
+could not see any dialog that hand-rolls its own surface.
+`scripts/dialog-census-core.ts`
 matches on the import and on the rendered JSX instead.
 
 It reports dialogs belonging to no dialog host rather than omitting them, and

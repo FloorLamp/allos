@@ -26,6 +26,19 @@
 // self-declared dialog is found by what it RENDERS, which is what catches the
 // under-match.
 //
+// WHY THIS LIVES IN scripts/ AND NOT lib/. It is a build-time source ANALYSER,
+// not app logic — nothing here ever runs in the app. It also cannot live under
+// lib/: this file necessarily NAMES the constructs it censuses, and
+// lib/__tests__/overlay-motion-chokepoint.test.ts classifies any scanned file
+// containing both `createPortal` and the full-viewport class string as an
+// unclassified overlay. It reported this module as one. That guard is matching on
+// a MENTION — the same cheaper question #3405 is about — but widening it to buy
+// this module a home would be the wrong trade, and the placement it forced is the
+// better one: analysers sit beside the other build-time tooling
+// (scripts/orchestration/reconcile-tracker-core.ts is the same split, a core
+// module with its CLI beside it), and lib/__tests__ imports them from there the
+// way the gen-* dataset tests already do.
+//
 // A NOTE ON READING FILES DIRECTLY. This walks the tree with node:fs rather
 // than shelling out to a grep. That is not a style preference: several source
 // files in this repo carry a deliberate NUL byte as a composite-key separator
@@ -273,7 +286,9 @@ export function importedBindings(file: SourceFile): ImportedBinding[] {
   for (const m of code.matchAll(IMPORT_RE)) {
     const wholeClauseIsType = m[1] != null;
     const clause = m[2];
-    const module = resolveSpecifier(file.rel, m[3]);
+    // Named `moduleId`, not `module`: Next's no-assign-module-variable lint rule
+    // reserves the bare name.
+    const moduleId = resolveSpecifier(file.rel, m[3]);
     // `Default, { a, b as c }` — split the default half from the named half.
     const braceAt = clause.indexOf("{");
     const defaultPart = (braceAt === -1 ? clause : clause.slice(0, braceAt))
@@ -281,7 +296,7 @@ export function importedBindings(file: SourceFile): ImportedBinding[] {
       .trim();
     if (defaultPart && !defaultPart.startsWith("*")) {
       out.push({
-        module,
+        module: moduleId,
         local: defaultPart,
         isDefault: true,
         isType: wholeClauseIsType,
@@ -297,7 +312,7 @@ export function importedBindings(file: SourceFile): ImportedBinding[] {
         const local = (asAt[1] ?? asAt[0]).trim();
         if (local)
           out.push({
-            module,
+            module: moduleId,
             local,
             isDefault: false,
             isType: wholeClauseIsType || inlineType,

@@ -6,7 +6,7 @@ import {
   HOST_MODULES,
   readSourceFiles,
   type SourceFile,
-} from "../dialog-census";
+} from "@/scripts/dialog-census-core";
 
 // The guard over the dialog census (#3405).
 //
@@ -44,7 +44,7 @@ describe("dialog census — the register over the real tree", () => {
         "the dialog hosts. Run `npm run census:dialogs -- --hostless` to see what " +
         "it answers for itself. It is not automatically wrong — nine components " +
         "already sit here — but it must be RECORDED in HOSTLESS_DIALOGS in " +
-        "lib/dialog-census.ts, stating factually what it hand-rolls, so the next " +
+        "scripts/dialog-census-core.ts, stating factually what it hand-rolls, so the next " +
         "sweep of this family sees it. Silently belonging to no host is the " +
         "condition #3405 exists to end."
     ).toEqual([]);
