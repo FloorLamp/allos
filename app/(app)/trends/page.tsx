@@ -308,7 +308,18 @@ export default async function TrendsPage(props: {
           precedent): the context bar right under it already names the tab AND the
           window, and the two-line subtitle is read-once orientation copy that cost
           ~85px of every phone visit. The h1 survives as `sr-only`, so the page is
-          still named for AT and the shared-PageHeader guard stays honest. */}
+          still named for AT and the shared-PageHeader guard stays honest.
+
+          NOT `TabFirstPage`, and the difference is load-bearing rather than drift
+          (#3236). That shell registers its phone tab strip into `ShellChrome`;
+          Trends' strip shares a ROW with the range trigger inside
+          `TrendsContextBar` — one unit by #1485 F's design, so the strip cannot
+          move into the chrome without orphaning the trigger. The `sm` breakpoint
+          here is the same reason: it is `TrendsContextBar`'s own `sm:static`
+          seam, so raising it to the shell's `md` would leave a ~700px-wide
+          tablet with neither a visible title nor a sticky context bar. What IS
+          shared is the grammar — one `PageHeader`, an `sr-only` h1 on the
+          compacted width, tabs directly beneath. */}
       <PageHeader
         title="Trends"
         subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."

@@ -9,9 +9,9 @@ import {
 import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
-import { PageHeader } from "@/components/ui";
 import Tabs from "@/components/Tabs";
-import NavTabs from "@/components/NavTabs";
+import TabFirstPage from "@/components/TabFirstPage";
+import { DATA_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import UploadForm from "@/components/UploadForm";
 import ImportClient, { ImportJobList } from "@/components/ImportClient";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
@@ -76,25 +76,10 @@ export default async function DataPage(
   // hint. The write is already blocked server-side; this is the UX on top.
   const demo = isDemoRestricted(isDemoMode(), login.role);
 
-  // The Review tab's badge count is cheap (duplicate/conflict detection over the
-  // activities/body_metrics tables) and needed on the tab strip regardless of the
-  // active section, so it's always computed. The heavier per-section data is built
-  // only for the active section below.
-  const importIssues = getImportIssues(profile.id);
-  const activityClusters = getActivityDuplicateClusters(profile.id);
-  const bodyMetricPairs = getBodyMetricConflicts(profile.id);
-  // Probable power-of-ten unit mislabels (issue #761) — each a one-click Review card.
-  const unitMislabels = getUnitMislabelReviews(profile.id);
-  const reviewCount =
-    importIssues.length +
-    activityClusters.length +
-    bodyMetricPairs.length +
-    unitMislabels.length;
-
   // Build ONLY the active section server-side (issue #113, mirroring the #109
   // /trends fix): passing every section as a prop rendered — and ran the queries
   // for — all three on every /data request, including the Manage panel that
-  // serialized every dataset in full. NavTabs switches sections via a URL
+  // serialized every dataset in full. The tab strip switches sections via a URL
   // navigation, so each request computes one section.
   let activeSection: React.ReactNode;
   if (section === "manage") {
@@ -121,14 +106,23 @@ export default async function DataPage(
     const rawFix = Array.isArray(searchParams.fix)
       ? searchParams.fix[0]
       : searchParams.fix;
+    // Duplicate/conflict detection over the activities/body_metrics tables. This
+    // used to run on EVERY /data request because the tab strip printed its total
+    // as "Review (N)"; the strip is now the shared tab-first config, which is
+    // static, so these are per-section work like everything else in this chain.
+    const importIssues = getImportIssues(profile.id);
+    const activityClusters = getActivityDuplicateClusters(profile.id);
+    const bodyMetricPairs = getBodyMetricConflicts(profile.id);
+    // Probable power-of-ten unit mislabels (issue #761) — each a one-click Review card.
+    const unitMislabels = getUnitMislabelReviews(profile.id);
     activeSection = (
       <ReviewInbox
         issues={importIssues}
         // A source syncing green while one of its continuous streams went quiet
         // (#2146). Built only for the ACTIVE Review section — it is two indexed seeks
         // per declared stream, but nothing on the Import or Manage request needs it —
-        // and deliberately absent from `reviewCount` above: a coaching-tier
-        // observation must not inflate an escalation badge.
+        // and deliberately absent from the nav's escalation badge (#1801): a
+        // coaching-tier observation must not inflate it.
         quietStreams={getQuietStreamRows(profile.id, login.id)}
         // The recurring per-source streams for the "Connected sources" section.
         sources={getConnectedSources(profile.id)}
@@ -242,24 +236,9 @@ export default async function DataPage(
     );
   }
 
-  const tabStrip = [
-    { id: "import", label: "Import" },
-    { id: "review", label: reviewCount > 0 ? `Review (${reviewCount})` : "Review" },
-    { id: "coverage", label: "Coverage" },
-    { id: "manage", label: "Manage & export" },
-    { id: "trash", label: "Trash" },
-  ];
-
   return (
-    <div>
-      <PageHeader
-        title="Data"
-        subtitle="Bring data in — upload documents, paste logs, or connect a device — then browse, manage, and export everything you've logged."
-      />
-
-      <NavTabs paramKey="section" tabs={tabStrip}>
-        {activeSection}
-      </NavTabs>
-    </div>
+    <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
+      {activeSection}
+    </TabFirstPage>
   );
 }

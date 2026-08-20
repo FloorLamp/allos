@@ -1,4 +1,5 @@
 import { requireScope } from "@/lib/scope";
+import PaneIntro from "@/components/PaneIntro";
 import ClinicalResultsSection, {
   type ClinicalResultsSearchParams,
 } from "../ClinicalResultsSection";
@@ -18,6 +19,9 @@ export default async function ResultsClinicalResultsPage(props: {
   const scope = await requireScope();
   return (
     <div data-testid="results-clinical-results">
+      <PaneIntro title="Clinical results" testId="results-pane-intro">
+        Lab and measured results over time, with reference ranges.
+      </PaneIntro>
       <ClinicalResultsSection scope={scope} searchParams={searchParams} />
     </div>
   );

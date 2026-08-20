@@ -1,5 +1,6 @@
 import { requireScope } from "@/lib/scope";
 import PageContainer from "@/components/PageContainer";
+import PaneIntro from "@/components/PaneIntro";
 import ImagingSection from "../ImagingSection";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export default async function ResultsImagingPage() {
       className="mx-auto"
       data-testid="results-imaging"
     >
+      <PaneIntro title="Imaging" testId="results-pane-intro">
+        Radiology studies, their findings, and the radiation they added up to.
+      </PaneIntro>
       <ImagingSection scope={scope} />
     </PageContainer>
   );
