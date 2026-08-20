@@ -82,6 +82,23 @@ export function getFailedExtractionDocumentCount(profileId: number): number {
 // the same boundary getMedicationsMissingRxcuiCount draws) and LIVE doses only
 // (getIntakeDoses excludes retired rows — a retired dose is history, not a number any
 // total is reaching for today).
+//
+// SAY WHAT THAT COSTS, because it is not obvious to a later reader: a retired dose
+// whose amount is ambiguous is permanently invisible AS A GAP. Nothing will ever
+// prompt anyone to retype it. That exclusion is a DEFERRAL rather than a discard, and
+// the reason is `unretireDose` (lib/queries/intake/dose-lifecycle.ts): restoring a
+// retired dose puts the row back in the live set with its `amount` untouched — the
+// row's id, and its text, are exactly the ones that were retired — so the gap fires
+// the moment the dose is schedulable again, which is the moment a total would reach
+// for its number. The dose ledger still shows the raw string throughout.
+//
+// AND WHAT THIS COUNT IS NOT. It is a CEILING on the safety-relevant population, not
+// equal to it: only items on an every-day schedule contribute to the daily UL/RDA
+// totals (`contributesToDailyLimit`, #635), so a situational or workout-conditioned
+// item's unreadable amount is counted here while feeding no upper-limit total at all.
+// That is deliberate — an unreadable amount is unusable for every consumer, not just
+// the UL, and retyping it is worth the same either way — but do not read the number as
+// "doses missing from a safety total". It is at most that many.
 export function getUnreadableDoseAmounts(
   profileId: number
 ): { itemId: number; kind: IntakeItemKind }[] {

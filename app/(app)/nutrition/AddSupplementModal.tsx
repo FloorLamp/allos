@@ -55,7 +55,7 @@ export default function AddSupplementModal({
               owner reported. The host owns scrolling now, at every width, so a
               second scroller here would only re-establish the clip: an
               `overflow` clips whether or not it is currently scrolling. */}
-          <div data-testid="supplement-add-panel" className="mt-4 px-1">
+          <div data-testid="supplement-add-panel" className="px-1">
             <IntakeItemForm
               action={addIntakeItem}
               kind="supplement"

@@ -309,6 +309,12 @@ function doseAmountUnreadableGap(i: DataQualityInputs): DataQualityGap | null {
   // total and the RDA share both skip the dose without saying so, which is exactly
   // the case where a large dose matters most (#3320). Retyping the amount clears it
   // for good — the structural, one-time shape this module is for.
+  //
+  // THE COUNT IS A CEILING on the safety-relevant rows, not a tally of them: it spans
+  // every live dose on an active item, while only an every-day schedule feeds the
+  // daily UL/RDA totals (#635). The copy below is written to match — it says these
+  // amounts count as nothing in those totals, which is true of each row, and never
+  // claims N doses are missing from a safety number. See getUnreadableDoseAmounts.
   const item = i.unreadableDoseAmountItem;
   if (i.unreadableDoseAmounts <= 0 || item === null) return null;
   const n = i.unreadableDoseAmounts;
