@@ -462,6 +462,25 @@ ${MIGRATION_LINES}
   worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
   that cannot wrap, or use \`rg -U\`, and when a content check says something is
   missing, OPEN THE FILE before believing it.
+- A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
+  ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
+  If you encode THAT shape, your guard is green against a tree that never used it, and
+  blind to the spelling everyone actually reaches for. Measured 2026-08-20 on #3325: a
+  census was written to catch \`LOWER(symptom)\` because the issue said \`LOWER()\`, while
+  this repo overwhelmingly writes \`= ? COLLATE NOCASE\` — the collation attached to the
+  COMPARISON, not adjacent to the column. The scanner would have shipped green and
+  unable to see the most likely way anyone would introduce the bug, which is worse than
+  no guard: it turns "nobody has done this" into "nobody can do this", and only the
+  first is true.
+  So before you encode a pattern, GREP FOR HOW THE CONSTRUCT IS ACTUALLY SPELLED here
+  and enumerate the variants. It is the same order of operations as the premise audit —
+  read what is there before encoding what you expect — and the same cost of skipping it.
+  THEN PROVE THE GUARD CAN SEE: run it over sources authored to BREAK it, in the
+  lib/__tests__/nul-byte-census.test.ts tradition. A green sweep over a COMPLYING tree
+  says nothing about what the sweep can see. And assert the guard's SILENCE on the
+  benign neighbours too — #3325's census had to stay quiet on five shipped
+  \`ORDER BY … COLLATE NOCASE\` sorts, because sorting is not matching and a guard that
+  cried wolf on them would have been deleted within a week, taking the real guard with it.
 - A CONTENT CHECK MUST STATE ITS SCOPE, OR IT REPORTS ON A SCOPE IT NEVER HAD. The
   brief already says a grep can fail toward "missing" and manufacture work. It fails
   the OTHER way just as easily, and that way is louder: measured 2026-08-20, a lane
