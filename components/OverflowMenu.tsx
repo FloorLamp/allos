@@ -6,7 +6,7 @@ import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
-import { useAnchoredPopover } from "@/components/overlay";
+import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
 // extracted-observations table. The caller owns the open state (so it can also lift

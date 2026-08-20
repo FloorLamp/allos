@@ -4,7 +4,7 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconChevronDown, IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
-import { useAnchoredPopover } from "@/components/overlay";
+import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
 
 // How tall the list WANTS to be — what `max-h-56` used to say as a class. It is a
 // preference now, not a cap: the shared placement shrinks it to the room actually
