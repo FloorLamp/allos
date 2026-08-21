@@ -17,11 +17,15 @@ import SingleReadingMark from "@/components/SingleReadingMark";
 // mobile and desktop expose identical facts in identical order, so the plot may never
 // be the only carrier of anything.
 //
-// THAT SEAM IS SPELLED `min-[45rem]:`, NOT `min-[720px]:`, and the spelling is
-// load-bearing (#3459): Tailwind orders an arbitrary px breakpoint BEFORE its named
-// rem ones, so a px variant loses the cascade to any `sm:` rule setting the same
+// THAT SEAM IS SPELLED IN rem, NEVER IN px, and the spelling is load-bearing
+// (#3459): Tailwind orders an arbitrary px breakpoint BEFORE its named rem ones, so
+// a px-spelled variant loses the cascade to any `sm:` rule setting the same
 // property. 45rem is the same 720px at the root default. See the note on the row
 // template in DashboardStandingCluster.
+//
+// (Spelled in prose rather than as a literal class on purpose: the px-vs-rem census
+// greps for arbitrary-breakpoint utilities, and a warning that names the forbidden
+// token would show up in its own sweep as a hit — #3477.)
 //
 // NO NEW HEALTH COMPUTATION. The series handed in are the reads the row's own domain
 // already derives for the page it links to; a row whose domain has no trend read gets

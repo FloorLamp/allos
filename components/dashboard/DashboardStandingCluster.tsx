@@ -108,8 +108,8 @@ export default function DashboardStandingCluster({
                     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
                     // 45rem is 720px at the root default — the same seam #3252
                     // ruled — but Tailwind cannot order an ARBITRARY px
-                    // breakpoint against its named rem ones, so the px spelling
-                    // (`min-[720px]:`) emits BEFORE every `sm:` rule. At >=720px
+                    // breakpoint against its named rem ones, so the same seam
+                    // spelled in px emits BEFORE every `sm:` rule. At >=720px
                     // both queries match, the selectors tie on specificity, and
                     // the later `sm:` two-column template wins: the third column
                     // never applied at ANY width, while the cell below turned

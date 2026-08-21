@@ -548,6 +548,123 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   await expect.poll(() => opacity(door)).toBe("1");
 });
 
+test("a stacked family's door lands on the member you are pointing at, not on the stack", async ({
+  page,
+}) => {
+  // THE `members` BRANCH, which nothing else exercises. A `single`/`composed`
+  // family puts every member on ONE line, so anchoring its doors to the `ul` and
+  // to the `li` are indistinguishable — and the door test above happens to pick a
+  // `composed` row. A `members` family STACKS, so the two differ by the whole
+  // height of the stack, and only here can the wrong anchor be seen.
+  //
+  // The rail assertion in the test above reads x ONLY, by construction: a door
+  // anchored to the stack keeps the identical right edge and moves in y. So this
+  // reads y.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="members"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: every stacked family anchors its doors the same way
+  await expect(family).toBeVisible();
+
+  const doored = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") });
+  const count = await doored.count();
+  // A one-member "stack" is not a stack: it would make this test green against
+  // the very anchor it exists to reject, so the fixture must really stack.
+  expect(count, "the stacked family under test has one member").toBeGreaterThan(
+    1
+  );
+
+  // The LAST member — furthest from the top of the stack, so a door anchored to
+  // the stack is furthest from where it belongs.
+  const member = doored.nth(count - 1);
+  const link = member.getByRole("link").first(); // first-ok: the member row IS its link
+  await link.scrollIntoViewIfNeeded();
+  await link.hover();
+  const door = member.getByTestId("standing-door");
+  await expect
+    .poll(() => door.evaluate((n) => getComputedStyle(n).opacity))
+    .toBe("1");
+
+  const placed = await member.evaluate((li) => {
+    const row = li.getBoundingClientRect();
+    const stack = li.closest("ul")!.getBoundingClientRect();
+    const label = li
+      .querySelector("[data-testid='standing-door']")!
+      .getBoundingClientRect();
+    const facts = li.closest("dd")!.getBoundingClientRect();
+    return {
+      rowCentre: row.top + row.height / 2,
+      rowHeight: row.height,
+      stackHeight: stack.height,
+      doorCentre: label.top + label.height / 2,
+      doorHeight: label.height,
+      railGap: facts.right - label.right,
+    };
+  });
+
+  // The fixture must actually stack, or the assertions below cannot discriminate.
+  expect(
+    placed.stackHeight,
+    `stack ${placed.stackHeight} vs row ${placed.rowHeight}`
+  ).toBeGreaterThan(placed.rowHeight + 8);
+
+  // ON THE MEMBER'S OWN LINE: same centre, and no taller than the line itself.
+  expect(
+    placed.doorCentre - placed.rowCentre,
+    `door centre is ${placed.doorCentre - placed.rowCentre}px off the row it belongs to`
+  ).toBeCloseTo(0, 0);
+  expect(placed.doorHeight).toBeLessThanOrEqual(placed.rowHeight + 1);
+  // And still on the rail — the x half, unchanged.
+  expect(placed.railGap).toBeCloseTo(0, 0);
+});
+
+test("the door rail is not a pointer target, so it cannot reveal a neighbour's door", async ({
+  page,
+}) => {
+  // Every member of a family shares ONE door rail, so their door boxes overlap
+  // exactly. If a door could take the pointer, the topmost — the last member in
+  // the DOM — would answer for the whole rail, and hovering it would reveal that
+  // member's door no matter which member the pointer was actually over.
+  //
+  // Paired with a PRESENCE check on purpose: an absence assertion that never had
+  // a door to suppress would pass against a page with no doors at all.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="composed"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: composed families all share one rail the same way
+  await expect(family).toBeVisible();
+  const doors = family.getByTestId("standing-door");
+  expect(await doors.count()).toBeGreaterThan(1);
+  const opacities = () =>
+    doors.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).opacity)
+    );
+
+  // PRESENCE: a member's own text does reveal that member's door.
+  const first = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: the leading member, hovered to prove a door can appear
+  await first.getByRole("link").first().hover(); // first-ok: the member row IS its link
+  await expect.poll(async () => (await opacities()).includes("1")).toBe(true);
+
+  // ABSENCE: the rail itself belongs to nobody. Hover the far right of the facts
+  // cell, past every member's text, and no door may answer.
+  const rail = await family.evaluate((node) => {
+    const facts = node.querySelector("dd")!.getBoundingClientRect();
+    const list = node.querySelector("ul")!.getBoundingClientRect();
+    return { x: facts.right - 5, y: list.top + list.height / 2 };
+  });
+  await page.mouse.move(rail.x, rail.y);
+  await expect
+    .poll(async () => (await opacities()).join(","))
+    .toMatch(/^0(,0)*$/);
+});
+
 test("the age text steps aside for the door rather than being deleted", async ({
   browser,
 }) => {

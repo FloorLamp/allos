@@ -330,83 +330,129 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
 /** The card's own gutter, and the only one an ordinary Now card may carry. */
 const CARD_CONTENT_TOLERANCE_PX = 1;
 
-test("an ordinary Now card carries ONE gutter and puts its title and detail on one line", async ({
+/** Phone and desktop are two halves of ONE ruling, so they are asserted together. */
+const ATOM_VIEWPORTS = [
+  { label: "phone", size: { width: 390, height: 844 }, oneLine: true },
+  { label: "desktop", size: { width: 1280, height: 900 }, oneLine: false },
+] as const;
+
+test("the attention atom flows on one line inside one gutter on a phone, and keeps its stacked block and hover inset above `sm`", async ({
   page,
 }) => {
-  await page.goto("/");
-  const card = page
-    .locator("[data-testid^='now-strip-card-']")
-    .filter({ has: page.getByTestId("attention-item-detail") })
-    .first(); // first-ok: every ordinary Now card is laid out by the same atom
-  await expect(card).toBeVisible();
-  // Wait for the DETAIL, not the card: the thing being measured is the flow
-  // between two elements, and a card that has only painted its title would let
-  // this pass by measuring nothing.
-  await expect(card.getByTestId("attention-item-detail").first()).toBeVisible(); // first-ok: the card above is one atom
+  for (const viewport of ATOM_VIEWPORTS) {
+    await page.setViewportSize(viewport.size);
+    await page.goto("/");
+    const card = page
+      .locator("[data-testid^='now-strip-card-']")
+      .filter({ has: page.getByTestId("attention-item-detail") })
+      .first(); // first-ok: every ordinary Now card is laid out by the same atom
+    await expect(card).toBeVisible();
+    // Wait for the DETAIL, not the card: the thing being measured is the flow
+    // between two elements, and a card that has only painted its title would let
+    // this pass by measuring nothing.
+    await expect(
+      card.getByTestId("attention-item-detail").first()
+    ).toBeVisible(); // first-ok: the card above is one atom
 
-  const geometry = await card.evaluate((node) => {
-    const strip = document
-      .querySelector('[data-testid="now-strip"]')!
-      .getBoundingClientRect();
-    const atomNode = node.querySelector<HTMLElement>(
-      '[data-testid="dashboard-attention-atom"]'
-    )!;
-    const atom = atomNode.getBoundingClientRect();
-    const style = getComputedStyle(atomNode);
-    const rowNode = node.querySelector<HTMLElement>(
-      '[data-testid^="attention-item-"]'
-    )!;
-    const rowStyle = getComputedStyle(rowNode);
-    // The row's own INNER edge, not its border box: `px-2 py-2` pads the row from
-    // the inside, so a box-edge comparison would read identically with the inset
-    // present and with it gone. Where the row's first mark actually lands is the
-    // question.
-    const icon = rowNode.querySelector("svg")!.getBoundingClientRect();
-    const title = node
-      .querySelector('[data-testid="dashboard-attention-atom"] a')!
-      .getBoundingClientRect();
-    const detail = node
-      .querySelector('[data-testid="attention-item-detail"]')!
-      .getBoundingClientRect();
-    return {
-      cardWidth: node.getBoundingClientRect().width,
-      stripWidth: strip.width,
-      // Where the card's PADDING ends — the single gutter the ruling leaves.
-      contentLeft:
-        atom.left +
-        parseFloat(style.borderLeftWidth) +
-        parseFloat(style.paddingLeft),
-      rowPaddingLeft: rowStyle.paddingLeft,
-      rowPaddingTop: rowStyle.paddingTop,
-      iconLeft: icon.left,
-      titleTop: title.top,
-      titleRight: title.right,
-      detailTop: detail.top,
-      detailLeft: detail.left,
-    };
-  });
+    const geometry = await card.evaluate((node) => {
+      const strip = document
+        .querySelector('[data-testid="now-strip"]')!
+        .getBoundingClientRect();
+      const atomNode = node.querySelector<HTMLElement>(
+        '[data-testid="dashboard-attention-atom"]'
+      )!;
+      const atom = atomNode.getBoundingClientRect();
+      const atomStyle = getComputedStyle(atomNode);
+      const rowNode = node.querySelector<HTMLElement>(
+        '[data-testid^="attention-item-"]'
+      )!;
+      const rowStyle = getComputedStyle(rowNode);
+      const icon = rowNode.querySelector("svg")!.getBoundingClientRect();
+      const title = node
+        .querySelector('[data-testid="dashboard-attention-atom"] a')!
+        .getBoundingClientRect();
+      const detail = node
+        .querySelector('[data-testid="attention-item-detail"]')!
+        .getBoundingClientRect();
+      const separator = node.querySelector<HTMLElement>(
+        '[data-testid="dashboard-attention-atom"] span[aria-hidden="true"]'
+      );
+      const glyph = node.querySelector<HTMLElement>("[data-kind-glyph]");
+      return {
+        stripLeft: strip.left,
+        stripWidth: strip.width,
+        atomLeft: atom.left,
+        atomWidth: atom.width,
+        // The card's OWN gutter, from the card itself — the only inset the phone
+        // ruling leaves standing.
+        cardGutter:
+          parseFloat(atomStyle.borderLeftWidth) +
+          parseFloat(atomStyle.paddingLeft),
+        // How far the row's first mark sits from the STRIP's edge. Independent of
+        // anything inside the card: a glyph gutter outside the card and a row
+        // inset inside it both show up here, and only here.
+        firstMarkInset: icon.left - strip.left,
+        rowPaddingLeft: rowStyle.paddingLeft,
+        rowPaddingTop: rowStyle.paddingTop,
+        titleTop: title.top,
+        titleLeft: title.left,
+        titleRight: title.right,
+        titleBottom: title.bottom,
+        detailTop: detail.top,
+        detailLeft: detail.left,
+        separatorDisplay: separator
+          ? getComputedStyle(separator).display
+          : null,
+        glyphDisplay: glyph ? getComputedStyle(glyph).display : null,
+      };
+    });
 
-  // ONE LINE: the detail sits BESIDE the title, sharing its line.
-  expect(
-    geometry.detailLeft,
-    `detail starts at ${geometry.detailLeft}, title ends at ${geometry.titleRight}`
-  ).toBeGreaterThan(geometry.titleRight);
-  expect(Math.abs(geometry.detailTop - geometry.titleTop)).toBeLessThan(8);
+    if (viewport.oneLine) {
+      // ONE LINE: the detail sits BESIDE the title, sharing its line.
+      expect(
+        geometry.detailLeft,
+        `detail starts at ${geometry.detailLeft}, title ends at ${geometry.titleRight}`
+      ).toBeGreaterThan(geometry.titleRight);
+      expect(Math.abs(geometry.detailTop - geometry.titleTop)).toBeLessThan(8);
+      expect(geometry.separatorDisplay).not.toBe("none");
 
-  // ONE GUTTER: the row's first mark sits exactly on the card's content edge — the
-  // inner `px-2 py-2` inset is a desktop hover affordance and does not double up
-  // on a phone, where the card's own `p-4` is already the gutter.
-  expect(
-    Math.abs(geometry.iconLeft - geometry.contentLeft),
-    `the row's icon starts at ${geometry.iconLeft}, the card's content edge is ${geometry.contentLeft}`
-  ).toBeLessThan(CARD_CONTENT_TOLERANCE_PX);
-  expect({
-    left: geometry.rowPaddingLeft,
-    top: geometry.rowPaddingTop,
-  }).toEqual({ left: "0px", top: "0px" });
+      // ONE GUTTER, measured from OUTSIDE the card so it can see both ways it
+      // could be doubled: the card's own padding is the whole distance from the
+      // strip's edge to the row's first mark. A glyph gutter beside the card adds
+      // to this; the row's `px-2` inset adds to it too.
+      expect(
+        geometry.firstMarkInset,
+        `first mark sits ${geometry.firstMarkInset}px from the strip edge, card gutter is ${geometry.cardGutter}px`
+      ).toBeCloseTo(geometry.cardGutter, 1);
+      expect({
+        left: geometry.rowPaddingLeft,
+        top: geometry.rowPaddingTop,
+      }).toEqual({ left: "0px", top: "0px" });
 
-  // And the card spans the strip: no glyph gutter taking width off a 390px line.
-  expect(Math.round(geometry.cardWidth)).toBe(Math.round(geometry.stripWidth));
+      // And the CARD takes the width back — the atom itself, not the wrapper that
+      // contains the gutter and would match the strip whatever is inside it.
+      expect(geometry.atomLeft).toBeCloseTo(geometry.stripLeft, 1);
+      expect(geometry.atomWidth).toBeCloseTo(geometry.stripWidth, 1);
+      expect(geometry.glyphDisplay).toBe("none");
+    } else {
+      // ABOVE `sm` NOTHING MOVED. The desktop block stays stacked, the separator
+      // is a phone mark only, the row keeps the inset its hover fill needs, and
+      // the gutter glyph still rides beside the card.
+      expect(
+        geometry.detailTop,
+        `detail top ${geometry.detailTop} vs title bottom ${geometry.titleBottom}`
+      ).toBeGreaterThanOrEqual(geometry.titleBottom - 1);
+      expect(Math.abs(geometry.detailLeft - geometry.titleLeft)).toBeLessThan(
+        1
+      );
+      expect(geometry.separatorDisplay).toBe("none");
+      expect({
+        left: geometry.rowPaddingLeft,
+        top: geometry.rowPaddingTop,
+      }).toEqual({ left: "8px", top: "8px" });
+      expect(geometry.glyphDisplay).not.toBe("none");
+    }
+  }
 });
 
 test("the Now gutter glyph is not shown at 390px, and Ahead keeps its inline one", async ({
@@ -484,8 +530,9 @@ test("no Now-card control gives up its 40px floor at 390px", async ({
 
   // THE SWEEP MUST HAVE SEEN THE CONTROLS IT IS ABOUT. A Now strip whose cards
   // declared no floor at all would pass an empty-set check silently, which is the
-  // shape of green this issue was opened over — so the two floored controls the
-  // strip actually carries are named, not counted.
+  // shape of green this issue was opened over — so the two KINDS of floored
+  // control the strip carries are named rather than counted. Kinds, not elements:
+  // how MANY cockpit cards a fixture seeds varies, what they declare does not.
   expect(
     audit.floored.some((entry) => entry.includes("illness-cockpit-toggle")),
     `no floored cockpit toggle among: ${audit.floored.join(", ") || "(none)"}`
@@ -558,22 +605,47 @@ test("the illness cockpit keeps every section at 390px, on the stepped-down seam
       await expect(cockpit.getByTestId("cockpit-prn")).toBeVisible();
       await expect(cockpit.getByTestId("cockpit-end-episode")).toBeVisible();
 
+      // EVERY SEAM, not one of them. The cockpit's rhythm is carried by each
+      // ruled section boundary (IllnessCockpitBody's readings band, the stale
+      // nudge, the PRN block and the footer), and a guard that read only
+      // `cockpit-prn` would have left three of the four free to drift. Seams are
+      // found by their own border rather than by testid, so a section that is
+      // conditional — the stale nudge does not render for every episode — is
+      // covered when it renders and cannot fail the guard when it does not.
       const rhythm = await cockpit.evaluate((body) => {
-        const prn = getComputedStyle(
-          body.querySelector('[data-testid="cockpit-prn"]')!
-        );
-        const h3 = getComputedStyle(body.querySelector("h3")!);
+        const seams = Array.from(body.children)
+          .map((child) => ({ child, style: getComputedStyle(child) }))
+          .filter(
+            ({ style }) =>
+              parseFloat(style.borderTopWidth) > 0 ||
+              parseFloat(style.borderBottomWidth) > 0
+          )
+          .map(({ child, style }) => ({
+            what:
+              child.getAttribute("data-testid") ?? child.tagName.toLowerCase(),
+            // A band that CLOSES a section pads below it; one that OPENS a
+            // section pads above. Both are the same ruled unit.
+            edge:
+              parseFloat(style.borderTopWidth) > 0
+                ? `${style.marginTop}/${style.paddingTop}`
+                : `${style.marginBottom}/${style.paddingBottom}`,
+          }));
         return {
-          marginTop: prn.marginTop,
-          paddingTop: prn.paddingTop,
-          headerMargin: h3.marginBottom,
+          seams,
+          headerMargin: getComputedStyle(body.querySelector("h3")!)
+            .marginBottom,
         };
       });
-      expect(rhythm).toEqual({
-        marginTop: seam,
-        paddingTop: seam,
-        headerMargin: header,
-      });
+      // The sweep must have found the seams it is about.
+      expect(
+        rhythm.seams.length,
+        `seams found: ${JSON.stringify(rhythm.seams)}`
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        rhythm.seams.map((entry) => entry.edge),
+        JSON.stringify(rhythm.seams)
+      ).toEqual(rhythm.seams.map(() => `${seam}/${seam}`));
+      expect(rhythm.headerMargin).toBe(header);
       if (options === PHONE) await expectNoClippedContent(page);
     } finally {
       await page.context().close();
