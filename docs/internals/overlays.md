@@ -122,10 +122,13 @@ is. It leaves the dialog family by ANATOMY, so the census reports it under
 `SCOPED OUT` rather than counting it as an exception to a rule it was never an
 instance of.
 
-**A recorded exception is about presentation, not about the a11y floor.** Two of
-the five above take the shared `useFocusTrap`; `PhotoGallery` adopted it as part
-of this ruling, because its Escape lived on the panel's own `onKeyDown` and
-nothing ever put focus inside — so Escape did nothing at all unless the viewer
+**A recorded exception is about presentation, not about the a11y floor.**
+`ActivityOverlay`, `ProfileIdentityBar` and the photo lightbox all take the
+shared `useFocusTrap` — named rather than counted, so the claim stays checkable
+against `npm run census:dialogs`, which prints "shared focus trap" against
+exactly those three. The lightbox adopted it as part of this ruling: its Escape
+lived on the panel's own `onKeyDown`, which fires only once focus is inside, and
+nothing ever put it there — so Escape did nothing at all unless the viewer
 happened to Tab first.
 
 ### The anchored panel forks at `md` (#3374 / #3376)
