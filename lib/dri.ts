@@ -196,7 +196,17 @@ export interface ParsedQuantity {
 // needs to be — kept anyway, because ONE rule that is occasionally over-cautious is
 // worth more than two rules that disagree, and the refusal is visible and correctable
 // rather than silent.
-const THOUSANDS_GROUPED = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+//
+// AND THE COMMA HALF MUST REFUSE THE LEADING ZERO TOO (#3444). The sentence above was
+// true of the PERIOD branch and false of the comma branch: `^\d{1,3}(?:,\d{3})+$`
+// accepted "0,125" as a thousands group and returned 125, so `readDoseQuantity` gave a
+// confident 125 mg for a digoxin dose of 0,125 mg — a thousandfold overdose stated by
+// the same function whose whole purpose is to refuse rather than guess. That was not a
+// judgment call about locales: NO convention writes a thousands group with a leading
+// zero, so a leading zero PROVES the separator is a decimal, exactly as it does on the
+// period side ("0.125" was already refused). The leading group is therefore `[1-9]`,
+// and the two halves of the rule now agree about what a leading zero means.
+const THOUSANDS_GROUPED = /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/;
 const PLAIN_NUMBER = /^\d+(?:\.\d+)?$/;
 const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 
@@ -248,7 +258,21 @@ export type DoseQuantityReading =
 // the mass. A comma belonging to prose rather than to a number is no obstacle either
 // ("Vitamin C, 500 mg" reads 500). "mcg", "µg" and "ug" all normalize to mcg; the unit
 // match is case-insensitive.
-const DOSE_QUANTITY_RE = /(\d+(?:[.,]\d+)*)\s*(mcg|µg|ug|mg|g|iu)\b/i;
+//
+// THE NUMBER HALF OF THAT PATTERN IS EXPORTED, because "taking it whole" is not a
+// local convenience — it is the only thing standing between a scan and a FABRICATED
+// number, and any reader that spells it differently gets the fabrication back (#3444).
+// `readGroupedNumber` decides what a written number MEANS; `WRITTEN_NUMBER` decides
+// where one STARTS AND ENDS, and a reader needs both or neither. lib/prescription-parse.ts
+// had the second half wrong — its `\d+(?:\.\d+)?` stopped at the comma in
+// "Bisoprolol 2,5 mg", the scan RESTARTED after it, and the medication import stored
+// "5 mg" as the dose of a 2,5 mg tablet. Nothing downstream could tell: "5 mg" is
+// perfectly readable, it just belongs to a different prescription.
+export const WRITTEN_NUMBER = String.raw`\d+(?:[.,]\d+)*`;
+const DOSE_QUANTITY_RE = new RegExp(
+  String.raw`(${WRITTEN_NUMBER})\s*(mcg|µg|ug|mg|g|iu)\b`,
+  "i"
+);
 
 export function readDoseQuantity(amount: string | null): DoseQuantityReading {
   if (!amount) return { kind: "none" };

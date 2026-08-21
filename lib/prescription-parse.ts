@@ -14,6 +14,7 @@
 // the schedule machinery never marks due — no reminders/escalation) rather than
 // a fabricated daily reminder the document never actually prescribed.
 
+import { WRITTEN_NUMBER } from "./dri";
 import { parseDosage, spreadDoseTimes } from "./intake-schedule";
 
 // "as needed", "as required", "when needed", "if needed", "prn" — a PRN med is
@@ -39,16 +40,6 @@ const ROUTE_RE =
 // precedes the actual dose in a sig.
 const LEAD_VERB_RE = /^\s*(take|takes|taking|give|apply|inject|use|instill)\b/i;
 
-// A trailing strength/form segment on a drug NAME, e.g. the "10 mg" in
-// "Lisinopril 10 mg" or "Metformin 500mg tablet". Used to derive a clean
-// grouping name (so an extracted "Lisinopril 10 mg" dedups against a manual
-// "Lisinopril") and to recover a strength when no separate value was extracted.
-// The `\b` guards only the LETTER units (so "g" can't eat a "g..." word
-// prefix); `%` sits outside it — `%` is a non-word char, so `%\b` would only
-// match when a letter follows immediately ("2.5%cream"), never in a real
-// percent strength like "Hydrocortisone 2.5%".
-const NAME_STRENGTH_RE =
-  /\s+\d+(?:\.\d+)?\s*(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%).*$/i;
 const NAME_FORM_TAIL_RE =
   /\s+(tablets?|tabs?|capsules?|caps?|pills?|softgels?|lozenges?|patches?|sprays?|drops?|solution|suspension|injection|cream|ointment|gel|elixir|syrup)\b.*$/i;
 
@@ -76,7 +67,33 @@ const NAME_FORM_TAIL_RE =
 //              ("10 mg / do not crush") can never extend the match.
 //   QUANTITY   a count with a unit, denominator included.
 //   DOSE_FORM  a countable dosage form — "1 tab" is a dose with no mass unit.
-const NUM = String.raw`\d+(?:\.\d+)?`;
+//
+// NUM IS NOT SPELLED HERE. It is imported, and that import is the whole fix for #3444.
+//
+// This file used to write its own `\d+(?:\.\d+)?` — the exact pattern #3153/#3319
+// retired from the dose and ingredient readers, for the exact reason it is retired
+// here. A number pattern that cannot span a comma does not FAIL on "Bisoprolol 2,5 mg":
+// it matches the "2", finds a comma where it needed a unit, and the scan RESTARTS one
+// character later, where "5 mg" matches perfectly. `strengthFromName` returned "5 mg",
+// `persistDocumentImport` stored it as the dose of a 2,5 mg tablet, and every reader
+// downstream agreed — because "5 mg" IS readable. It is simply a different
+// prescription. "Digoxin 0,125 mg" became "125 mg", a thousandfold overdose displayed
+// beside its own honest name, on a drug with one of the narrowest therapeutic windows
+// in the formulary.
+//
+// So the fix is not a wider pattern here; a second wider pattern is how the tree got
+// two answers to "what does 2,5 mean" in the first place. `WRITTEN_NUMBER` is the ONE
+// spelling of "where does a written number start and end", exported from lib/dri.ts
+// beside `readGroupedNumber`, the ONE rule for what it MEANS. Taking the number whole
+// is what makes refusal possible at all: only a reader that has the entire "2,5" in its
+// hand can decline to guess which locale printed it.
+//
+// A comma-decimal strength therefore survives INTO the dose amount verbatim ("2,5 mg"),
+// where `readDoseQuantity` refuses it as unreadable and every total treats it as
+// nothing to add. The person sees the strength their document stated; the safety maths
+// declines to invent a number from it. That is the conservative reading, and it is the
+// only one that cannot contradict the name it came from.
+const NUM = WRITTEN_NUMBER;
 const COUNT = String.raw`${NUM}(?:\s*/\s*${NUM})*(?:\s*(?:-|–|to|or)\s*${NUM}(?:\s*/\s*${NUM})*)?`;
 const DOSE_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)`;
 const DENOM_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|l|kg|lb|m2|iu|units?|meq)\b|%|m²)`;
@@ -84,6 +101,29 @@ const RATIO_TAIL = String.raw`(?:\s*/\s*(?:${NUM}\s*)?${DENOM_UNIT})*`;
 const QUANTITY = String.raw`${COUNT}\s*${DOSE_UNIT}${RATIO_TAIL}`;
 const DOSE_FORM = String.raw`(?:tab(?:let)?s?|caps?(?:ule)?s?|pills?|softgels?|lozenges?|puffs?|drops?|patch(?:es)?|sprays?|units?|sachets?|ampoules?|vials?|suppositor(?:y|ies)|applications?)`;
 const STRENGTH_CONTENT = QUANTITY;
+
+// A trailing strength/form segment on a drug NAME, e.g. the "10 mg" in
+// "Lisinopril 10 mg" or "Metformin 500mg tablet". Used to derive a clean
+// grouping name (so an extracted "Lisinopril 10 mg" dedups against a manual
+// "Lisinopril") and to recover a strength when no separate value was extracted.
+// The `\b` guards only the LETTER units (so "g" can't eat a "g..." word
+// prefix); `%` sits outside it — `%` is a non-word char, so `%\b` would only
+// match when a letter follows immediately ("2.5%cream"), never in a real
+// percent strength like "Hydrocortisone 2.5%".
+//
+// BUILT FROM THE GRAMMAR ABOVE, not beside it. This was the file's FOURTH spelling of
+// a number+unit — declared above the block whose header claims "ONE dose grammar,
+// shared by every reader below", and therefore outside it. The drift was not
+// hypothetical: it is why `cleanMedicationName("Bisoprolol 2,5 mg")` returned the name
+// with its strength still attached, so the grouping name never matched a later plain
+// "Bisoprolol" and the #1204 renewal path saw two different drugs (#3444). It keeps
+// NUM rather than COUNT deliberately — a name-trailing strength is one number, and
+// widening it to fractions/ranges/combinations would strip text off names this has
+// never touched.
+const NAME_STRENGTH_RE = new RegExp(
+  String.raw`\s+${NUM}\s*${DOSE_UNIT}.*$`,
+  "i"
+);
 
 // A PARENTHESIZED strength/concentration segment in a drug name — the common
 // MyChart/e-prescribing rendering: "albuterol (2.5 MG/3ML)", "amoxicillin
