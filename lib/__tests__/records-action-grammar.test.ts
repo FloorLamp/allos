@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 
 // One primary action per Records pane (issue #3408, item G).
 //
-// The rule and the vocabulary it belongs to are in docs/internals/appearance.md,
-// "Action grammar: one primary per surface". This is the half of it a scan can
+// The rule and the vocabulary it belongs to are in docs/internals/design-system.md §3
+// (Control grammar, "one primary per surface"). This is the half of it a scan can
 // hold: a PANE draws at most one `btn`-class primary, and everything rarer is a
 // secondary, a ⋯ item, or a row affordance.
 //
@@ -220,7 +220,7 @@ describe("Records action grammar (#3408)", () => {
     expect(
       offenders.map((o) => o.rel),
       "A Records pane draws at most ONE `btn`-class primary (docs/internals/" +
-        "appearance.md, 'Action grammar'). A second candidate is a secondary " +
+        "design-system.md §3, 'Control grammar'). A second candidate is a secondary " +
         "(`btn-ghost`), a `⋯` item (components/OverflowMenu.tsx), or a row " +
         "affordance — or one of the two is not actually primary. A pane that " +
         "genuinely stacks collapsed sections belongs in STACKED_PANE_ALLOW with " +

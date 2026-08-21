@@ -152,6 +152,44 @@ Term table (colloquial form / clinical form / where each leads):
 | Clinical results                         | Biomarkers / analytes                       | Quantity-specific charts, LOINC views, extraction    |
 | Shots                                    | Immunizations / vaccines                    | CVX-coded immunization records                       |
 
+## Ruled additions, 2026-08-21 (implementation pending in the cited issues)
+
+Four rules joined the standard from the phone-review consolidation; each is
+owner-ruled and ships with its guard (the guards-mandatory ruling recorded on
+#3459–#3501). They are indexed from `design-system.md` §6 and owned here.
+
+### 9. Machine text renders at the display boundary
+
+Stored machine forms never reach user-facing copy verbatim: dates render
+through the profile's display format prefs (never raw ISO — #3492; guard: the
+census rendered-text probe), units display-normalized (UCUM bracket stripping
+per #1018's equivalence — #3493), enum-ish values through label maps with the
+raw value as fallback (#3493). List joins never use a separator the joined
+names can contain (`summarizeNames` and template joins — #3496), and clinical
+names are never title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine;
+imported ALL-CAPS names are cleaned at the import boundary with the person
+confirming, never by a display casing pass — #3480).
+
+### 10. Lead + fold
+
+An intro is one sentence; formats, mechanisms, vendor lists, and source
+citations sit behind a disclosure ("What can I import?", "Why this works").
+Provenance stays findable, never leading. (#3488, #3490, #3497.)
+
+### 11. State honesty at low n
+
+A stat block never asserts more structure than its n supports: below its
+model's threshold it renders one quiet line in the insufficiency voice, not
+tiles or repeated figures ("Variability 0 d" from one cycle, one dose stated
+three ways — #3482, #3498). The threshold is the model's, stated once.
+
+### 12. Tone semantics in text
+
+Emerald/amber carry direction verdicts; slate is neutral context; sky is not a
+text tone for static copy, and the link tone (`text-link`, #2719) is never
+worn by non-interactive text (#3474, #3487, #3500). A card's tone is not
+repeated as CAPS in its copy (#3497).
+
 ## Enforcement — the copy-lint scan
 
 `lib/__tests__/copy-lint.test.ts` is a pure source-scan (no DB, no browser) over
