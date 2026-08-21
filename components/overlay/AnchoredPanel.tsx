@@ -159,6 +159,13 @@ export default function AnchoredPanel({
   }, [open, compact]);
 
   if (compact) {
+    // Nothing is mounted while the panel is closed. A phone renders a hundred ⋯
+    // triggers on a long list and each one owns an AnchoredPanel; a BottomSheet
+    // instance per row would run that many media-query subscriptions and focus
+    // hooks to render null. The presence latch above is what lets this unmount
+    // and still play an exit — it holds the host mounted for the sheet's own
+    // travel and drops it after.
+    if (!mounted) return null;
     return (
       <BottomSheet
         open={open}
