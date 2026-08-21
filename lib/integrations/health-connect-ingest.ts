@@ -139,13 +139,11 @@ export function ingestHealthConnectPayload(
         bodyMetrics = foldCounts([bodyMetrics, c]);
       }
     );
-    // ASCENDING started_at BEFORE THE CHUNK SPLIT (#3424). The supersede is lossy at
-    // the leading edge of the row it deletes, so a re-sent leading sliver has to land
-    // before the later bucket that would otherwise swallow it. `upsertMetricSamples`
-    // orders what it is GIVEN, but it only ever sees one chunk: `chunk()` slices in
-    // array order, so without a sort here a 1000-row boundary could hand it a later
-    // bucket in an earlier chunk. Sorting the whole batch first is what makes the
-    // per-chunk order a global order.
+    // ASCENDING started_at BEFORE THE CHUNK SPLIT — deterministic write order only.
+    // `upsertMetricSamples` orders what it is GIVEN and only ever sees one chunk, so
+    // sorting here is what makes the per-chunk order a global one. Correctness no longer
+    // rests on it: rows of one push share a `pushed_at` and a supersede needs a strictly
+    // older stamp, so a chunk split cannot change what survives (owner ruling on #3424).
     const orderedSamples = [...parsed.samples].sort((a, b) =>
       compareWindowStarts(a.started_at, b.started_at)
     );

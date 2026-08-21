@@ -601,14 +601,19 @@ export function upsertMetricSamples(
   const lockHeld = new Set<number>();
   // Overlapping stored day buckets this batch declined to collapse — see the report type.
   let left = 0;
-  // ASCENDING started_at (#3424's trailing-edge instruction). "Incoming deletes what
-  // it overlaps" is lossy at the LEADING edge of the row it deletes, so within one push
-  // a re-sent leading sliver must land BEFORE the later bucket that would otherwise
-  // swallow it. Phase 1 below makes the final store state independent of this order for
-  // the shapes the bug produces; the sort is what makes the sequence of writes
-  // deterministic and the sliver ordering true regardless. Sorting here covers every
-  // caller; ingestHealthConnectPayload sorts before it CHUNKS, because this function
-  // only ever sees one chunk and cannot order across the split.
+  // ASCENDING started_at — DETERMINISTIC WRITE ORDER, and no longer anything more.
+  //
+  // #3424 asks for it under the trailing-edge heading, and it used to be load-bearing:
+  // when a row of a push could supersede another row of the SAME push, which one arrived
+  // first decided what survived. It cannot any more. Every row of a push carries the
+  // same `pushed_at`, and a supersede requires a STRICTLY older stamp, so no row of this
+  // batch is ever a victim of another — the final store state is identical whatever
+  // order these are written in, chunk boundaries included (owner ruling on #3424).
+  //
+  // It is kept because a stable write order makes `metric_samples.id` follow the day,
+  // which is worth having for anyone reading the table by hand, and because it costs one
+  // sort of a batch that is already in memory. It is NOT what makes the store correct,
+  // and the test that pins it asserts insertion ORDER for that reason.
   const ordered = supersedes
     ? [...rows].sort((a, b) => compareWindowStarts(a.started_at, b.started_at))
     : rows;

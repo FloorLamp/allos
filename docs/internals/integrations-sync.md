@@ -755,20 +755,36 @@ Angeles switch — 23330 steps on a day with 11721, and the same shape on
 `lib/metric-window-overlap.ts`, is scoped to `source = health-connect`, and runs in
 two phases:
 
-1. **Inside one push**, two same-`(metric, origin)` windows that overlap are a
-   mixed-anchoring pair — the rolling ~48h window re-sending the pre-switch record
-   beside the re-anchored one that re-contains it. The window reaching FURTHEST
-   FORWARD is the anchoring the exporter is still filling, so `isStaleMetricSnapshot`
-   (#1101's own freshness test) picks the survivor. Batch ORDER cannot: travelling
-   west the new zone's midnight is EARLIER than the old one's, so the re-anchored
-   bucket sorts first and "last writer wins" keeps the stale record. This pass runs
-   over the WHOLE payload in `ingestHealthConnectPayload`, never per chunk.
-2. **Against the store**, the surviving incoming row deletes the non-edit-locked rows
-   its `[started_at, ended_at)` window overlaps, then upserts itself. Freshness
-   deliberately does NOT compare the two windows' ENDS here: a completed re-anchored
-   bucket for a past day legitimately ends earlier than the old-anchoring "today so
-   far" row it overlaps, and blocking it there was measured to leave the profile
-   half-converged with an 11-hour gap between the two anchorings.
+**A PUSH CARRIES ONE ANCHORING**, which is why the rule is one rule. The owner settled
+this from the exporter's retained bodies (the ruling on #3424): across all 50 pushes
+spanning the real `America/New_York → America/Los_Angeles` switch at
+`2026-08-21T02:11:41Z`, the 28 before carry `04:00Z` starts only, the 22 after carry
+`07:00Z` starts only, and **neither group contains a single in-push overlap**. The first
+post-switch push landed three minutes after the switch already carrying nothing but the
+new anchoring, and the old keys never reappear — including for the re-anchored 08-19
+`active_calories` bucket, which arrives re-cut rather than beside its predecessor. The
+exporter re-queries Health Connect's aggregate-by-local-day under the device's _current_
+zone and sends that. #3424's "the rolling window re-sends the pre-switch record" was an
+assumption, and it is the one thing the exporter does not do.
+
+Two earlier versions had a first phase that picked a winner between two overlapping rows
+of one push. Every defect three adversarial passes found lived in it — ranking by
+`ended_at` made a completed re-anchored bucket look staler than the still-filling row it
+corrects (3000 stored for 3500 walked, and an already-correct store regressed), and its
+withheld write dropped a reading while reporting "nothing new". It is gone. If a push
+ever does carry both anchorings, **both are written**: a visible double count, collapsed
+by the next push.
+
+**The rule, once.** An incoming Health Connect day-bucket row deletes the stored
+day-bucket rows of the same `(profile, metric, source, origin)` whose window it overlaps
+and whose `pushed_at` is older or NULL, then upserts itself. Rows of one push share a
+stamp and are never each other's victims, so a chunk split is harmless **by
+construction** rather than by a whole-payload pre-pass; a retry carries an equal-or-older
+stamp and supersedes nothing; a stampless push supersedes nothing; and the rows stored
+before this change carry NULL, which is what lets the next stamped push collapse the
+four prod pairs. Freshness deliberately does not compare the two windows' ENDS: a
+completed re-anchored bucket for a past day legitimately ends earlier than the
+old-anchoring "today so far" row it overlaps.
 
 **THE RULE STATES ITS OWN PRECONDITIONS, because #3424's did not hold.** The issue
 justified "incoming wins" with "under one anchoring, same-`(metric, origin)` day
@@ -816,9 +832,8 @@ stamp, so no chunk can out-rank another.
 first version fell back, for a push stating no `timestamp`, to the furthest-forward
 `ended_at` in that push. An END is a property of the READING. A re-anchored bucket for
 a day that has FINISHED ends EARLIER than the old-anchoring "today so far" row it
-overlaps — exactly the comparison `staleBatchOverlaps` already says must never be made
-between an incoming row and a stored one — so the correcting push read as the older
-one and the correcting reading was never written:
+overlaps, so the correcting push read as the older one and the correcting reading was
+never written:
 
 ```
 push 1  steps [15:00Z, 23:00Z) = 3000     old anchoring, still filling

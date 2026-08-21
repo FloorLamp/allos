@@ -769,12 +769,12 @@ describe("the accounting contract", () => {
 });
 
 describe("each batch is processed in ascending started_at order", () => {
-  // #3424's trailing-edge section asks for this by name, and it is the one clause of
-  // the fix whose effect on the FINAL STORE STATE is nil: after phase 1 the surviving
-  // rows of a push are pairwise disjoint per (metric, origin), so none of them can
-  // delete another and the survivor set is the same whatever order they are written
-  // in. That is exactly why it needs its own pin — a refactor that dropped either sort
-  // would leave every other test in this file green.
+  // DETERMINISTIC WRITE ORDER, not correctness. Every row of a push carries the same
+  // `pushed_at` and a supersede requires a strictly OLDER stamp, so no row of a batch can
+  // ever delete another and the survivor set is identical whatever order they are written
+  // in — chunk boundaries included (owner ruling on #3424). The sort is kept so
+  // `metric_samples.id` follows the day for anyone reading the table by hand, and that is
+  // exactly why it needs its own pin: nothing about the STORE would notice it going.
   //
   // What IS observable is the order of the WRITES, and `metric_samples.id` records it:
   // rowids ascend with insertion, so a batch handed to us shuffled must still come out

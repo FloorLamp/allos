@@ -69,29 +69,36 @@ import {
 // MEASURED before removing that fallback: of 228 captured payloads, the 175 carrying an
 // `app_version` — every real exporter push — state a readable `timestamp`, 175 of 175.
 //
-// THERE IS NO WITHIN-PUSH RULE, AND THAT IS AN ANSWER RATHER THAN A GAP. #3424 says the
-// rolling window re-sends the pre-switch record ALONGSIDE the re-anchored one, so two
-// earlier versions had a first phase that picked a winner between two overlapping rows
-// of ONE push. Ask what evidence such a phase can use:
+// A PUSH CARRIES ONE ANCHORING. That is measured, not assumed, and it is why there is
+// no within-push rule here to read.
 //
-//   * THE STAMP is per-PUSH. Both rows carry the same one, so freshness is silent here
-//     by construction.
-//   * THE ENDS are a window quantity, and the paragraph above is the whole argument for
-//     why that comparison is invalid on exactly this pair. Phase 1 made it anyway, in
-//     the function whose stated purpose was that pair: a completed re-anchored bucket
-//     ranked STALER than the old-anchoring row still filling, so the push stored 3000
-//     for 3500 walked — and against an already-converged store, the stale row it kept
-//     then superseded the correct one.
-//   * NOTHING ELSE EXISTS. Measured over 306 captured pushes and 964 additive records: a
-//     record carries `start_time`, `end_time`, its value, and `metadata.data_origin`.
-//     ONE metadata key. No record id, no last-modified time, no client record version,
-//     no recording method, no device. Array ORDER is arrival, which the first refutation
-//     already disposed of as a basis.
+// #3424 says the rolling ~48h window re-sends the pre-switch record ALONGSIDE the
+// re-anchored one, and two versions of this file had a first phase that picked a winner
+// between two overlapping rows of ONE push. The owner settled it from the exporter's own
+// retained bodies (the ruling on #3424): all 50 pushes spanning the real
+// America/New_York -> America/Los_Angeles switch of 2026-08-21T02:11:41Z, and for the
+// four day-bucket metrics —
 //
-// Nor is the case evidenced: across those 306 pushes — which hold TWO distinct
-// anchorings, 04:00Z and 00:00Z — not one carries two overlapping same-(metric, origin)
-// day buckets. So a push carrying both stores BOTH: a double count, visible in every
-// total, said out loud in Review, and collapsed by the next push with a newer stamp.
+//     28 pushes before, 17:49Z..01:58Z   04:00Z starts only (NY midnight)   0 overlaps
+//     22 pushes after,  02:14Z..12:05Z   07:00Z starts only (LA midnight)   0 overlaps
+//
+// The first post-switch push landed three minutes after the switch already carrying
+// nothing but the new anchoring, and the old 04:00Z keys never appear again in 22
+// pushes — including for the re-anchored 08-19 `active_calories` bucket, which arrives
+// re-cut rather than beside its predecessor. The exporter re-queries Health Connect's
+// aggregate-by-local-day under the device's CURRENT zone and sends that.
+//
+// So the pair phase 1 existed to settle is one the exporter does not send, and the only
+// evidence that separates two anchorings is the one this rule already uses: the PUSH
+// BOUNDARY. Rows of one push share a stamp and can never be each other's victims, which
+// is what makes a chunk split harmless BY CONSTRUCTION rather than by a pre-pass.
+//
+// Every defect three adversarial passes found lived in that phase — a completed
+// re-anchored bucket ranked staler than the still-filling row it corrects (3000 stored
+// for 3500 walked, then an already-correct store regressed), and a withheld write that
+// dropped a reading and reported "nothing new". If a push ever DOES carry both
+// anchorings, both are written: a double count, visible in every total, said out loud in
+// Review, and collapsed by the next push with a newer stamp.
 //
 // IT IS LOSSY AT THE TRAILING EDGE OF THE ROLLING WINDOW - accepted, not overlooked.
 // "Incoming deletes what it overlaps" is exact in the interior of the window. At its
