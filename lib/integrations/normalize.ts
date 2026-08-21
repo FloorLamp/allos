@@ -470,18 +470,6 @@ export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
 // a shape test that a future source could accidentally match.
 const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 
-// THE SUPERSEDE'S DELETE, as a named constant so its profile scoping can be asserted.
-//
-// `profile_id` here is REDUNDANT BY CONSTRUCTION and that is the point: every id handed
-// to it came out of the profile-scoped candidate SELECT above, so removing this clause
-// changes no observable behaviour and no behavioural test can go red on it. A barrier
-// nothing observes is a barrier a future refactor deletes as noise — so
-// lib/__tests__/metric-window-overlap.test.ts asserts on this string instead, which is
-// the only assertion that CAN fail when only this half is removed. It is a shape
-// assertion on purpose, and it says so.
-export const SUPERSEDE_DELETE_SQL =
-  "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?";
-
 // Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
 // (or two origins inside Health Connect) each keep their own row. `ended_at` is
@@ -587,7 +575,16 @@ export function upsertMetricSamples(
           ORDER BY id`
       )
     : null;
-  const dropOverlap = supersedes ? db.prepare(SUPERSEDE_DELETE_SQL) : null;
+  // THE DELETE RE-STATES `profile_id`, redundantly and on purpose: every id it is given
+  // came out of the profile-scoped candidate SELECT above. A barrier nothing observes is
+  // a barrier a refactor deletes as noise — so the check that holds it is
+  // lib/__tests__/profile-scoping.test.ts, the repo's own owned-table census, which
+  // reads this LITERAL and fails when the clause is not there. That is also why the SQL
+  // is not hoisted to a named constant: the census can only read a statement written
+  // inline, and reports a prepared statement built from a variable as unverifiable.
+  const dropOverlap = supersedes
+    ? db.prepare("DELETE FROM metric_samples WHERE id = ? AND profile_id = ?")
+    : null;
   // Distinct edit-locked rows this batch held OUT of a supersede. A Set, because one
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
   // count of ROWS held, not of times we looked at them.

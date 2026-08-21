@@ -19,7 +19,6 @@ import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import {
-  SUPERSEDE_DELETE_SQL,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
@@ -349,19 +348,22 @@ describe("R4 — a byte-identical replay of a pre-switch push", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("R5 — the supersede DELETE names profile_id", () => {
-  // WHY THIS IS A SHAPE ASSERTION AND NOT A BEHAVIOURAL ONE, stated rather than hidden.
+  // THE SECOND HALF OF THIS GUARD IS NOT HERE, and that is the answer rather than a gap.
   // Every id handed to the DELETE came out of the profile-scoped candidate SELECT, so
   // neutralising the DELETE's own `profile_id` clause leaves the entire DB tier green —
-  // measured: 763 files, 6504 tests, exit 0. The clause is a second barrier that nothing
-  // can observe, which is exactly how a future refactor comes to delete it as noise.
-  // Asserting on the statement text is the only check that CAN fail when only this half
-  // is removed.
-  it("re-states the scope the candidate SELECT already applied", () => {
-    expect(SUPERSEDE_DELETE_SQL).toContain("profile_id = ?");
-    expect(SUPERSEDE_DELETE_SQL).toContain("id = ?");
-  });
-
-  it("and the barrier it doubles is still doing its job", () => {
+  // measured: 763 files, 6504 tests, exit 0. No behavioural test can see it.
+  //
+  // What CAN see it already ships: lib/__tests__/profile-scoping.test.ts censuses every
+  // owned-table `.prepare()` literal in the tree and fails when one does not filter by
+  // profile_id. Removing the clause makes THAT go red, by name. Writing a second
+  // assertion here would have meant hoisting the SQL to a constant — which is precisely
+  // what blinds the census, since it cannot read a non-literal `.prepare()`. Measured:
+  // doing so failed the census with "non-literal .prepare(SUPERSEDE_DELETE_SQL) —
+  // cannot verify scoping".
+  //
+  // The behavioural half below pins the candidate SELECT, which is the barrier that
+  // does the work.
+  it("keeps another profile's overlapping row of the same metric and origin", () => {
     // The behavioural half, which pins the SELECT: another profile's overlapping row of
     // the same metric and origin survives.
     const mine = freshProfile("R5-MINE");
