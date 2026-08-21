@@ -56,6 +56,12 @@
           "title": "Added checks that find a hand-built dialog even when it says nothing about itself",
           "kind": "fix",
           "issues": [3445]
+        },
+        {
+          "pr": 3469,
+          "title": "Test runs stop failing just because the machine was busy, so a red means a real problem",
+          "kind": "fix",
+          "issues": [3436]
         }
       ]
     },
