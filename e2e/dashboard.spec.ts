@@ -507,6 +507,10 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   // At rest the door is invisible and the row's own age text is not.
   await expect(door).toBeAttached();
   expect(await opacity(door)).toBe("0");
+  // Settle the scroll position BEFORE measuring: `hover()` scrolls the row into view
+  // on its own, and a boundingBox is viewport-relative, so an unscrolled baseline
+  // would report the page's scroll as a 2,000px "layout shift".
+  await link.scrollIntoViewIfNeeded();
   const before = (await link.boundingBox())!;
 
   await link.hover();
@@ -611,7 +615,10 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
       .locator("[data-testid='standing-sparkline-point'] title")
       .allTextContents();
     expect(titles.length).toBeGreaterThan(1);
-    expect(titles[titles.length - 1]).toMatch(/\d.+·.+\d{4}/);
+    // "63.6 kg · Friday, August 21" — a value with its unit, then the day in the
+    // login's own date format. The exact value is the fixture's business, not this
+    // assertion's; what is pinned is that BOTH facts are named.
+    expect(titles[titles.length - 1]).toMatch(/^[\d.,]+ \S+ · .*\d+$/);
 
     // ONE COLUMN: every family that draws a plot draws it at the same right edge.
     const rights = await standing
