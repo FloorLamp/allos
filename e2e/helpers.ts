@@ -3003,3 +3003,114 @@ export async function readyForOffline(page: Page): Promise<void> {
     .poll(() => offlineChunksWarm(page), { timeout: 30_000 })
     .toBe("warm");
 }
+
+// ── A dialog body does not overflow sideways (#3395) ─────────────────────────
+//
+// `tap-target` extends a compact control's hit area with an `inset: -6px`
+// pseudo-element under `@media (pointer: coarse)`. The extension paints nothing
+// and sits OUTSIDE the control's box, so it contributes to a scroll container's
+// overflow extent while being invisible in every screenshot.
+//
+// Everywhere else `<main>`'s `overflow-x-clip` absorbs it silently. INSIDE A
+// DIALOG BODY IT IS NOT ABSORBED: since #2774 the sheet's content region is the
+// scroll owner, and since #3360 it is `overflow-x-hidden` — which refuses the
+// USER but still reports the extent, and (per #3382) still lets a script park the
+// box sideways. So a compact control flush against the region's right edge pushes
+// 6px of nothing past it, and the only symptom is a body a thumb can nudge with
+// no affordance back.
+//
+// THE TRIGGER IS NOT "SOMEBODY ADDS A BAD ELEMENT". It is any change that removes
+// horizontal padding from a container holding a flush-edge `tap-target` control —
+// which is exactly what #3361's body-chrome rule encourages, since that rule is
+// about bodies NOT carrying their own insets. #3360 did it to FoodLogBar's header
+// and took the food sheet to 5px (#3384, fixed in #3392 with `pr-1.5` below `md`).
+
+/**
+ * WHAT IS STICKING OUT of a scroll region, not just how far.
+ *
+ * KEEP THIS even when the assertion it annotates is green — a reviewer will read
+ * it as dead weight and it is the opposite. `scrollWidth - clientWidth` is a
+ * number with no author: the first time this went red on CI it said
+ * "Received: 5" and nothing else, and 5px in a dialog body can be a bleed, a
+ * hit-area pseudo-element, sub-pixel rounding, or a child that was transiently
+ * wide during mount. Those need different fixes. This walks the region and ranks
+ * its children by how far their ESCAPING overflow reaches past the region's right
+ * edge, so the next red arrives with its cause attached instead of a bare integer.
+ * It found the real one: a `tap-target` extension on the food sheet's preferences
+ * button (#3384).
+ */
+export async function overflowStory(content: Locator): Promise<string> {
+  return content.evaluate((node) => {
+    const over = node.scrollWidth - node.clientWidth;
+    if (over <= 0) return "nothing overflows";
+    const edge = node.getBoundingClientRect().right;
+    // RANKED BY REACH PAST THE REGION'S EDGE, not by "does this element overflow
+    // at all". Nearly every `tap-target` in a sheet overflows its own box by 6px
+    // — that is what the hit-area extension IS — and listing them all buries the
+    // one that matters under a wall of innocents. Only an element whose overflow
+    // actually ARRIVES at the region's right edge can make the region scrollable,
+    // so that is the question asked.
+    const culprits = Array.from(node.querySelectorAll("*"))
+      .filter(
+        (el): el is HTMLElement =>
+          el instanceof HTMLElement &&
+          // Only overflow that ESCAPES can make the region scrollable. A
+          // `truncate` span overruns its box by a mile and clips every pixel of
+          // it, so it is not a suspect — including it put three innocent labels
+          // at the top of this list the first time round.
+          getComputedStyle(el).overflowX === "visible"
+      )
+      .map((el) => ({
+        el,
+        reach:
+          el.getBoundingClientRect().right +
+          (el.scrollWidth - el.clientWidth) -
+          edge,
+      }))
+      .filter((c) => c.reach > -0.5)
+      .sort((a, b) => b.reach - a.reach)
+      .slice(0, 3)
+      .map(
+        ({ el, reach }) =>
+          `<${el.tagName.toLowerCase()} data-testid="${
+            el.getAttribute("data-testid") ?? ""
+          }" class="${el.className}"> reaches ${Math.round(reach)}px past`
+      );
+    return `region overflows by ${over}px; ${
+      culprits.join(" | ") ||
+      "no element reaches the edge — check text, a pseudo-element, or a mid-mount width"
+    }`;
+  });
+}
+
+/**
+ * A dialog body holds everything it contains — nothing escapes past its right
+ * edge, and the region is therefore not sideways-scrollable at all.
+ *
+ * `label` names the surface in the failure, because this is run over a table of
+ * dialogs and "expected 5 to be <= 0" says nothing about WHICH one.
+ *
+ * THIS ASSERTS NOTHING ABOUT AN EMPTY REGION, and the caller is what stops it
+ * being asked one. A body that is still rendering its loading paragraph fits any
+ * width, so a check taken there passes for a reason that has nothing to do with
+ * the surface — the race that resolves toward the empty DOM fails toward GREEN
+ * (#3384). Wait for a named child of the mounted content BEFORE calling this.
+ */
+export async function expectNoEscapingOverflow(
+  content: Locator,
+  label: string
+): Promise<void> {
+  const scrollable = await content.evaluate(
+    (node) => node.scrollWidth - node.clientWidth
+  );
+  expect(
+    scrollable,
+    `${label}: ${await overflowStory(content)}\n` +
+      "A dialog body must hold everything it contains. The usual cause is a " +
+      "flush-edge `tap-target` control whose 6px hit-area extension has nowhere " +
+      "to sit after a container lost its horizontal padding (#3395). THE FIX IS " +
+      "THE CONTAINER, never the control: the extension is the accessibility " +
+      "feature, so give it room (`pr-1.5` below `md` is what #3392 used) rather " +
+      "than taking it away."
+  ).toBeLessThanOrEqual(0);
+}
