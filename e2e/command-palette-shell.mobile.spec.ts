@@ -243,7 +243,7 @@ test.describe("command palette — the phone shell (#3423)", () => {
   });
 });
 
-// ── The Cancel's DISABLED treatment, below `md` (#3455 × #3423) ──────────────
+// ── The close control's DISABLED treatment, both widths (#3455 × #3423) ─────
 //
 // This is the seam the two changes met at. #3455 gave the shared close control
 // `closeDisabled` and the `disabled:pointer-events-none disabled:opacity-50`
@@ -264,9 +264,9 @@ test.describe("command palette — the phone shell (#3423)", () => {
 // Tailwind 4 compiles `hover:` inside `@media (hover: hover)`, so in the
 // `mobile` project — which sets `hasTouch: true` — NO `hover:` class applies at
 // all. A hover assertion there passes against an empty rule and proves nothing.
-// A 390px hover-capable context is the only place a below-`md` class's hover
-// behaviour can actually be observed, so that is what this block uses.
-test.describe("the disabled Cancel below md (hover-capable context)", () => {
+// A hover-capable context is the only place this control's hover behaviour can
+// be observed at either width, so that is what this block uses.
+test.describe("the disabled close control, both widths (hover-capable context)", () => {
   test.use({ hasTouch: false });
 
   test("says it is refused, and does not light up under a pointer", async ({
@@ -291,10 +291,16 @@ test.describe("the disabled Cancel below md (hover-capable context)", () => {
     await cancel.evaluate((el) => el.setAttribute("disabled", ""));
     const dead = await paint();
 
-    // Faded, and unreachable — `pointer-events-none` is load-bearing on its own,
-    // independently of the fade: without it the dead control still answers
-    // `hover:text-brand-800` under the thumb, which a resting-state screenshot
-    // would never show.
+    // Faded, and unreachable. `disabled:pointer-events-none` is load-bearing
+    // SEPARATELY from the fade — but it is worth being exact about WHERE, because
+    // the two branches of this control do not need it equally. Tailwind emits
+    // `disabled:` after `hover:` at equal specificity, so below `md`
+    // `disabled:text-slate-500` already outranks `hover:text-brand-800` and the
+    // hue is pinned twice over. At `md` and up it is not: `md:hover:` is a
+    // BREAKPOINT variant and sorts after the unprefixed `disabled:`, so there
+    // `pointer-events: none` is the only thing between a refused ✕ and
+    // `md:hover:text-slate-600`. This test reads both widths for that reason,
+    // and the desktop half at the end is the one that bites.
     expect(dead.opacity).toBe("0.5");
     expect(dead.pe).toBe("none");
 
@@ -307,8 +313,12 @@ test.describe("the disabled Cancel below md (hover-capable context)", () => {
 
     // Hover it by COORDINATE. `locator.hover()` refuses a `pointer-events: none`
     // target, so it would skip the very assertion this is here to make.
-    const box = (await cancel.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const hoverCancel = async () => {
+      await page.mouse.move(0, 0);
+      const box = (await cancel.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    };
+    await hoverCancel();
     await expect
       .poll(async () => (await paint()).color, { timeout: 2000 })
       .toBe(dead.color);
@@ -319,6 +329,17 @@ test.describe("the disabled Cancel below md (hover-capable context)", () => {
     // refused, read from the same element at desktop width rather than hardcoded
     // as a hex the palette could drift away from.
     await page.setViewportSize({ width: 1280, height: 900 });
+    await expect
+      .poll(async () => (await paint()).color, { timeout: 2000 })
+      .toBe(dead.color);
+
+    // AND HERE `pointer-events: none` IS THE ONLY THING HOLDING — the assertion
+    // the comment above the fade is about. At this width `md:hover:text-slate-600`
+    // sorts AFTER `disabled:text-slate-500` at equal specificity, so it would
+    // repaint the refused ✕ under a pointer; drop `disabled:pointer-events-none`
+    // from either branch of the ternary and this line goes red while every
+    // resting-state assertion above stays green.
+    await hoverCancel();
     await expect
       .poll(async () => (await paint()).color, { timeout: 2000 })
       .toBe(dead.color);

@@ -357,7 +357,7 @@ export default function BottomSheet({
       // The GEOMETRY the centred presentation took, declared rather than
       // measured — a spec that wants to know the palette chose its phone shape
       // should not have to infer it from a bounding box. The box is pinned
-      // separately, by measurement, in e2e/command-palette.mobile.spec.ts.
+      // separately, by measurement, in e2e/command-palette-shell.mobile.spec.ts.
       data-full-screen-below-md={asFullScreen ? "" : undefined}
     >
       <div
@@ -435,8 +435,19 @@ export default function BottomSheet({
                     // renders a control that is `disabled` in the DOM, looks
                     // completely live, and still swallows the tap — the exact
                     // lying affordance that prop was written to stop.
-                    // `pointer-events-none` is load-bearing on its own: without
-                    // it the dead control still LIGHTS UP under the thumb.
+                    // `pointer-events-none` is load-bearing SEPARATELY from the
+                    // fade, and at THIS width it is the `md:` half that needs it:
+                    // Tailwind emits `disabled:` after `hover:` at equal
+                    // specificity, so below `md` the `disabled:text-slate-500`
+                    // below already outranks `hover:text-brand-800` — but
+                    // `md:hover:text-slate-600` is a BREAKPOINT variant and sorts
+                    // after the unprefixed `disabled:`, so from `md` up nothing
+                    // except `pointer-events: none` stops a refused ✕ lighting up
+                    // under the pointer. The flat string below has no
+                    // `disabled:text-*` at all, so there it is the only thing
+                    // holding at every width. Either way a resting-state
+                    // screenshot never shows the difference; e2e/command-palette-
+                    // shell.mobile.spec.ts hovers it by coordinate at both widths.
                     //
                     // AND THE HUE GOES WITH THEM, which the slate branch never
                     // had to say because it was already slate. #1450 ruled that
