@@ -13,6 +13,10 @@ export interface LatestTrend {
   // The reading immediately before the latest one, or null when the series has a
   // single reading.
   previousValue: number | null;
+  // That reading's DAY, so a caller that draws the pair rather than describing it can
+  // place both points on a calendar (#3252's Standing sparkline). Null exactly when
+  // `previousValue` is — one reading has nothing before it.
+  previousDate: string | null;
   // Direction of the latest reading versus the previous one; null with a single reading,
   // and null when the two readings share a DATE (#2303 — see below).
   direction: TrendDirection | null;
@@ -51,6 +55,7 @@ export function latestTrend(
     date: latest.date,
     value: latest.value,
     previousValue: prev ? prev.value : null,
+    previousDate: prev ? prev.date : null,
     direction,
   };
 }

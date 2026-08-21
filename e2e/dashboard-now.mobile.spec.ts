@@ -6,6 +6,8 @@ import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_DAILY,
+  E2E_LOGIN_SICK_SELF,
   E2E_LOGIN_NOWSTRIP,
   E2E_LOGIN_NOWSAFETY,
   E2E_LOGIN_NOWQUIET,
@@ -239,6 +241,81 @@ test("unmet weekly targets leave a handled day's Now empty", async ({
     for (let i = 0; i < NOW_QUIET_TARGETS.length; i++) {
       await expect(offers.nth(i)).toHaveAttribute("data-lane", "everything");
     }
+  } finally {
+    await page.context().close();
+  }
+});
+
+// ── The visual layer on a phone (#3252 / #3238) ─────────────────────────────────────
+
+test("the Standing sparkline column is absent below 720px", async ({
+  browser,
+}) => {
+  // The column is desktop-only BY RULING: mobile and desktop expose identical facts in
+  // identical order, so the plot may never be the only carrier of anything. 390 is a
+  // phone and 1280 is a desktop; the seam is at 720 and no dashboard fixture sits
+  // between them.
+  const phone = await openDashboard(browser, { username: E2E_LOGIN_DAILY });
+  try {
+    const standing = phone.getByTestId("dashboard-standing");
+    await expect(standing).toBeVisible();
+    const drawn = await standing
+      .getByTestId("standing-sparkline")
+      .evaluateAll(
+        (nodes) =>
+          nodes.filter((node) => getComputedStyle(node).display !== "none")
+            .length
+      );
+    expect(drawn).toBe(0);
+    // The facts themselves stand alone, unchanged.
+    await expect(
+      phone.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="weight.latest:"]'
+      )
+    ).toBeVisible();
+  } finally {
+    await phone.context().close();
+  }
+});
+
+test("Now's header is visible on a phone too, above the empty sentence", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_WHATSNEW });
+  try {
+    const strip = page.getByTestId("now-strip");
+    await expect(
+      strip.getByRole("heading", { level: 2, name: "Right now", exact: true })
+    ).toBeVisible();
+    // The empty state's own sentence is unchanged under it (#3238).
+    await expect(strip.getByTestId("now-strip-empty")).toHaveText(
+      "Nothing needs you."
+    );
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("the illness cockpit names its situation exactly once at 390px (#3238)", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_SICK_SELF });
+  try {
+    const cockpit = page.locator("[data-testid^='illness-cockpit-']").first(); // first-ok: the acting profile's own cockpit leads the group
+    await expect(cockpit).toBeVisible();
+    const situation = (await cockpit.getAttribute("data-situation"))!;
+    expect(situation.length).toBeGreaterThan(0);
+    const header = cockpit.getByTestId("illness-cockpit-header-row");
+    const text = (await header.innerText()).replace(/\s+/g, " ");
+    const occurrences = text.split(situation).length - 1;
+    expect(
+      occurrences,
+      `the header row says "${situation}" ${occurrences} times: ${text}`
+    ).toBe(1);
+    // The day survives — it is the situation's NAME that was doubled, not the day.
+    await expect(cockpit.getByTestId("illness-cockpit-day")).toHaveText(
+      /^Day \d+$/
+    );
   } finally {
     await page.context().close();
   }

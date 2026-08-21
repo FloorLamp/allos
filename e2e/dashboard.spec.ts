@@ -445,3 +445,237 @@ test("illness identities stay exact-once when the cockpit folds", async ({
     await page.context().close();
   }
 });
+
+// ── The visual layer (#3253 / #3252 / #3238) ────────────────────────────────────────
+//
+// Four decisions and a column, asserted where they are visible: the dashboard's
+// declared width, the hover doors on Standing rows (mouse AND keyboard), one kind glyph
+// per Now/Ahead card and none on any reading line, the desktop sparkline column, and
+// the witnessed-only motion rule's QUIET half.
+
+test("the dashboard declares its own width instead of filling the shell", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const canvas = page.getByTestId("dashboard-canvas");
+  await expect(canvas).toBeVisible();
+  // `wide` — the existing 72rem token, not a hand-written cap.
+  expect(await canvas.evaluate((node) => getComputedStyle(node).maxWidth)).toBe(
+    "1152px"
+  );
+  // And it is genuinely narrower than the space it sits in at 1280, which is the
+  // defect: "Mark taken" used to sit a monitor's width from its own card's title.
+  const box = (await canvas.boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(1152);
+});
+
+test("Now carries a visible header at its siblings' scale (#3238)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+  for (const name of ["Right now", "Standing"]) {
+    await expect(
+      main.getByRole("heading", { level: 2, name, exact: true })
+    ).toBeVisible();
+  }
+  // The section's accessible name survives the move from aria-label to the heading.
+  await expect(main.getByRole("region", { name: "Right now" })).toBeVisible();
+  const sizes = await main
+    .getByRole("heading", { level: 2 })
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => ["Right now", "Standing"].includes(node.textContent!))
+        .map((node) => getComputedStyle(node).fontSize)
+    );
+  expect(new Set(sizes).size).toBe(1);
+});
+
+test("a Standing row reveals its door on hover and on keyboard focus alike", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const row = page
+    .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: every doored row behaves identically; this asserts the mechanism
+  const link = row.getByRole("link").first(); // first-ok: the row above is one candidate; its link IS the row
+  const door = row.getByTestId("standing-door");
+  const opacity = (target: typeof door) =>
+    target.evaluate((node) => getComputedStyle(node).opacity);
+
+  // At rest the door is invisible and the row's own age text is not.
+  await expect(door).toBeAttached();
+  expect(await opacity(door)).toBe("0");
+  // Settle the scroll position BEFORE measuring: `hover()` scrolls the row into view
+  // on its own, and a boundingBox is viewport-relative, so an unscrolled baseline
+  // would report the page's scroll as a 2,000px "layout shift".
+  await link.scrollIntoViewIfNeeded();
+  const before = (await link.boundingBox())!;
+
+  await link.hover();
+  await expect.poll(() => opacity(door)).toBe("1");
+
+  // NO LAYOUT SHIFT: the exchange is opacity and transform only, so the row it
+  // happens inside never moves or resizes.
+  const during = (await link.boundingBox())!;
+  expect(Math.abs(during.width - before.width)).toBeLessThan(1);
+  expect(Math.abs(during.y - before.y)).toBeLessThan(1);
+
+  // The IDENTICAL treatment from the keyboard. Move the mouse away first, so what is
+  // being measured is focus and not a lingering hover.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(door)).toBe("0");
+  await link.focus();
+  await expect.poll(() => opacity(door)).toBe("1");
+});
+
+test("the age text steps aside for the door rather than being deleted", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DAILY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const row = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="weight.latest:"]'
+    );
+    const age = row.locator(".standing-age");
+    await expect(age).toBeVisible();
+    const box = (await age.boundingBox())!;
+    const weightLink = row.getByRole("link").first(); // first-ok: the E2E_LOGIN_DAILY fixture's weight.latest row, one link
+    await weightLink.hover();
+    await expect
+      .poll(() => age.evaluate((node) => getComputedStyle(node).opacity))
+      .toBe("0");
+    // Still in the layout, exactly where it was: it stepped aside, it did not leave.
+    const after = (await age.boundingBox())!;
+    expect(Math.abs(after.width - box.width)).toBeLessThan(1);
+    expect(Math.abs(after.x - box.x)).toBeLessThan(1);
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("cards carry exactly one kind glyph and reading lines carry none", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+  const cards = main.locator("[data-testid^='now-strip-card-']");
+  const cardCount = await cards.count();
+  expect(cardCount).toBeGreaterThan(0);
+  for (let index = 0; index < cardCount; index += 1) {
+    const glyph = cards.nth(index).locator("[data-kind-glyph]").first(); // first-ok: the nth card's own glyph; its count is asserted on the next line
+    await expect(glyph).toBeAttached();
+    // ONE glyph for the card itself. A nested candidate's own markup carries none,
+    // so this count is the card's own.
+    expect(await cards.nth(index).locator("[data-kind-glyph]").count()).toBe(1);
+  }
+  const ahead = main.getByTestId("dashboard-ahead");
+  if ((await ahead.count()) > 0) {
+    const members = ahead.getByTestId("dashboard-candidate");
+    const memberCount = await members.count();
+    for (let index = 0; index < memberCount; index += 1) {
+      expect(
+        await members.nth(index).locator("[data-kind-glyph]").count()
+      ).toBe(1);
+    }
+  }
+  // And the boundary the glyphs exist to draw: a reading LINE never earns one.
+  expect(
+    await main
+      .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
+      .locator("[data-kind-glyph]")
+      .count()
+  ).toBe(0);
+});
+
+test("Standing draws its aligned sparkline column on the desktop", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DAILY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const standing = page.getByTestId("dashboard-standing");
+    const weight = standing.locator('[data-standing-family="weight"]');
+    const spark = weight.getByTestId("standing-sparkline");
+    await expect(spark).toBeVisible();
+    await expect(spark).toHaveAttribute("data-sparkline-state", "series");
+    // The endpoint is always drawn, and the hover names an exact value and date.
+    await expect(
+      spark.getByTestId("standing-sparkline-endpoint")
+    ).toBeAttached();
+    const titles = await spark
+      .locator("[data-testid='standing-sparkline-point'] title")
+      .allTextContents();
+    expect(titles.length).toBeGreaterThan(1);
+    // "63.6 kg · Friday, August 21" — a value with its unit, then the day in the
+    // login's own date format. The exact value is the fixture's business, not this
+    // assertion's; what is pinned is that BOTH facts are named.
+    expect(titles[titles.length - 1]).toMatch(/^[\d.,]+ \S+ · .*\d+$/);
+
+    // ONE COLUMN: every family that draws a plot draws it at the same right edge.
+    const rights = await standing
+      .getByTestId("standing-sparkline")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => Math.round(node.getBoundingClientRect().right))
+      );
+    expect(rights.length).toBeGreaterThan(1);
+    expect(new Set(rights).size).toBe(1);
+
+    // A family whose domain has no trend read draws nothing — that is the rule, and
+    // the column still holds its place for the families that do.
+    expect(
+      await standing
+        .locator('[data-standing-family="protein-today"]')
+        .getByTestId("standing-sparkline")
+        .count()
+    ).toBe(0);
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("the sleep rows carry the profile's usual band as their hover sentence", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DAILY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const bed = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.bed-time:"]'
+    );
+    if ((await bed.count()) === 0) return; // the classifier declines below its gate
+    const bedLink = bed.getByRole("link").first(); // first-ok: the E2E_LOGIN_DAILY fixture's sleep.bed-time row, one link
+    const title = await bedLink.getAttribute("title");
+    // Either the band, or silence. Never a half-sentence, and never a derived number
+    // the classifier did not produce.
+    if (title != null) expect(title).toMatch(/^Usual .+ – .+$/);
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("a page that just loaded animates nothing (#3253's resume half)", async ({
+  page,
+}) => {
+  // The witnessed-only rule's quiet side, and the only side reachable without
+  // #3075's silent refresh: a first paint and a reload have no "before" the viewer
+  // saw, so no element may claim it just moved.
+  await page.goto("/");
+  await expect(page.getByTestId("now-strip")).toBeVisible();
+  expect(await page.locator("[data-motion]").count()).toBe(0);
+  await page.reload();
+  await expect(page.getByTestId("now-strip")).toBeVisible();
+  expect(await page.locator("[data-motion]").count()).toBe(0);
+  expect(await page.locator(".motion-promote").count()).toBe(0);
+});
