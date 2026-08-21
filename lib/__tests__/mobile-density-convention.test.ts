@@ -146,6 +146,10 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   ["app/(app)/records/VisitsSection.tsx", "section-stack", "space-y-10"],
   ["app/(app)/records/VisitsSection.tsx", "section-stack-sm", "space-y-6"],
   ["app/(app)/whats-new/page.tsx", "section-stack-sm", "space-y-6"],
+  // The stack the /longevity seam collapses against. Censused because an
+  // un-stepped stack beside a stepped seam renders the LARGER of the two, so this
+  // line is load-bearing for a margin declared two files away.
+  ["app/(app)/longevity/page.tsx", "section-stack-sm", "space-y-6"],
   ["app/(app)/results/BioAgeInputsCard.tsx", "section-seam", "mb-6"],
   ["components/dashboard/DashboardAhead.tsx", "section-seam-lg", "mb-8"],
   [
