@@ -164,3 +164,18 @@ export const OVERLAY_PANEL_MAX_WIDTH: Record<OverlaySize, string> = {
   md: "sm:max-w-2xl",
   lg: "sm:max-w-4xl",
 };
+
+// The same three buckets, but held off until `md` — for a surface that is
+// FULL-BLEED below that breakpoint rather than from `sm` up (#3423, the command
+// palette's phone presentation). Without it a 700px-wide phone-shaped viewport
+// would get a full-HEIGHT panel inside a 672px-wide column with the scrim
+// showing down both sides, which is neither of the two shapes on offer.
+//
+// A separate literal map rather than a transform of the one above, for the
+// reason stated there: Tailwind's scanner reads literals, and a
+// `sm:` -> `md:` string replacement at runtime would generate no class at all.
+export const OVERLAY_PANEL_MAX_WIDTH_FROM_MD: Record<OverlaySize, string> = {
+  sm: "md:max-w-md",
+  md: "md:max-w-2xl",
+  lg: "md:max-w-4xl",
+};

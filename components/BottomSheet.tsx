@@ -14,6 +14,7 @@ import {
   OVERLAY_PANEL_BORDER,
   OVERLAY_PANEL_ELEVATION,
   OVERLAY_PANEL_MAX_WIDTH,
+  OVERLAY_PANEL_MAX_WIDTH_FROM_MD,
   OVERLAY_PANEL_RADIUS_BOTTOM,
   OVERLAY_SAFE_BOTTOM,
   OVERLAY_SCRIM,
@@ -72,6 +73,27 @@ import { IconX } from "@tabler/icons-react";
 //                justification, so the exception list is reviewable rather than
 //                whatever happened to get typed.
 //
+// ── `fullScreenBelowMd`, and why it is not a fourth presentation (#3423) ─────
+//
+// "Not a sheet" was only ever half an argument. It ruled the bottom edge OUT for
+// the palette; it never defended a floating CARD on a phone — which is what the
+// centred presentation shipped: a `max-h-[85dvh]` panel inset by `p-4`, with the
+// software keyboard eating most of what was left. A desktop dialog wearing a
+// phone's worst-case viewport.
+//
+// The phone idiom for "a field over a list of results" is the FULL-SCREEN SEARCH
+// SURFACE — field at the top, results filling everything under it, one control
+// that says Cancel. That is what this flag renders below `md`, and from `md` up
+// nothing changes at all.
+//
+// IT IS A GEOMETRY FLAG, NOT A PRESENTATION. A presentation is a HOST decision —
+// which component mounts, which lifecycle contract applies, whether a flick
+// discards. None of that moves here: the surface is still the centred anatomy,
+// still un-flickable at both widths, still the same portal, scrim, focus trap,
+// scroll lock and Escape seam, and still the SAME `presentation="centered"` entry
+// in the chokepoint register. Only the box's edges move, and they move in `md:`
+// classes so there is no JS width check and no second rendered copy (#2305).
+//
 // Both share this file's focus trap, Escape handling, backdrop dismissal, scroll
 // lock, portal, and presence/exit timing — so there is one implementation of the
 // modal contract to fix, and no hand-mirrored `hidden md:*` pair to drift.
@@ -102,6 +124,7 @@ export default function BottomSheet({
   titleHidden = false,
   size = "sm",
   showClose = false,
+  fullScreenBelowMd = false,
   onGestureDismiss,
 }: {
   open: boolean;
@@ -141,6 +164,13 @@ export default function BottomSheet({
   // CENTERED card has neither, so every dialog-presentation consumer that used
   // to be a ModalShell keeps the "✕" it has always had.
   showClose?: boolean;
+  // Fill the viewport below `md` instead of floating (see above). Only meaningful
+  // with `presentation="centered"` — the other two are already full-bleed at that
+  // width, where a sheet IS the phone shape. When it is on, `showClose` draws a
+  // labelled "Cancel" below `md` and the usual "✕" from `md` up: ONE control with
+  // two spellings, because a bare 20px glyph is under the #644 tap floor and a
+  // full-screen surface with no named way out is the thing phone users report.
+  fullScreenBelowMd?: boolean;
   // Called INSTEAD of onClose when the surface is dismissed by a GESTURE — a
   // flick on the drag handle, a tap on the scrim — or by ESCAPE. A consumer
   // hosting a form that may hold five typed minutes of family history routes them
@@ -259,18 +289,37 @@ export default function BottomSheet({
   // picker's listbox off mid-list, which is what e2e/wellness-practices.spec.ts
   // caught. Exactly one scroller at each width, and both contain their
   // overscroll.
-  const containerAnchor = asCentered
-    ? "items-start overflow-y-auto overscroll-contain p-4 sm:p-8"
-    : asDialog
-      ? "items-end md:items-start md:overflow-y-auto md:overscroll-contain md:p-8"
-      : "items-end";
-  const panelShape = asCentered
-    ? "max-h-[85dvh] rounded-2xl border px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5"
-    : `max-h-[85dvh] border-t px-4 pt-1 sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_SAFE_BOTTOM} ${
-        asDialog
-          ? "md:max-h-none md:overflow-visible md:rounded-2xl md:border md:px-6 md:pt-5 md:pb-5"
-          : ""
-      }`;
+  // A centred card that fills the phone (#3423) stretches instead of floating,
+  // and the CONTAINER stops scrolling below `md` — the panel is exactly the
+  // viewport there, so a scrolling container over it would be a second scroller
+  // with nothing to scroll, and on iOS a place for the address bar to fight the
+  // keyboard. From `md` up every one of these classes is the centred card's own.
+  const asFullScreen = asCentered && fullScreenBelowMd;
+  const containerAnchor = asFullScreen
+    ? "items-stretch p-0 md:items-start md:overflow-y-auto md:overscroll-contain md:p-8"
+    : asCentered
+      ? "items-start overflow-y-auto overscroll-contain p-4 sm:p-8"
+      : asDialog
+        ? "items-end md:items-start md:overflow-y-auto md:overscroll-contain md:p-8"
+        : "items-end";
+  const panelShape = asFullScreen
+    ? // Square to the screen edges, no border, and the home indicator cleared —
+      // the same safe-area posture every bottom-anchored surface here already
+      // takes, for the same reason: the content region ends where the hardware
+      // does. `max-h-none` because the panel IS the viewport height.
+      `max-h-none rounded-none border-0 px-4 pt-2 ${OVERLAY_SAFE_BOTTOM} md:max-h-[85dvh] md:rounded-2xl md:border md:px-6 md:pt-5 md:pb-5`
+    : asCentered
+      ? "max-h-[85dvh] rounded-2xl border px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5"
+      : `max-h-[85dvh] border-t px-4 pt-1 sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_SAFE_BOTTOM} ${
+          asDialog
+            ? "md:max-h-none md:overflow-visible md:rounded-2xl md:border md:px-6 md:pt-5 md:pb-5"
+            : ""
+        }`;
+  // Below `md` a full-screen surface is the screen's width, so its declared size
+  // must not bite until `md` either — see OVERLAY_PANEL_MAX_WIDTH_FROM_MD.
+  const panelMaxWidth = asFullScreen
+    ? OVERLAY_PANEL_MAX_WIDTH_FROM_MD[size]
+    : OVERLAY_PANEL_MAX_WIDTH[size];
   const titleClass = titleHidden
     ? "sr-only"
     : `font-semibold text-slate-900 dark:text-slate-100 ${
@@ -288,6 +337,11 @@ export default function BottomSheet({
       data-testid={testId}
       data-phase={phase}
       data-presentation={presentation}
+      // The GEOMETRY the centred presentation took, declared rather than
+      // measured — a spec that wants to know the palette chose its phone shape
+      // should not have to infer it from a bounding box. The box is pinned
+      // separately, by measurement, in e2e/command-palette.mobile.spec.ts.
+      data-full-screen-below-md={asFullScreen ? "" : undefined}
     >
       <div
         className={`${OVERLAY_SCRIM} ${backdropMotion}`}
@@ -323,7 +377,7 @@ export default function BottomSheet({
         // scroller declined chained straight out to the document and the page
         // underneath drifted. One scroll owner, `overscroll-contain` on it, and a
         // locked body behind it is the whole of that fix.
-        className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${OVERLAY_PANEL_MAX_WIDTH[size]} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
+        className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${panelMaxWidth} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
       >
         {/* The drag affordance, now functional (#1425): a downward drag from
         here dismisses the sheet. A centered dialog is not flickable, so the
@@ -347,11 +401,36 @@ export default function BottomSheet({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
-              aria-label="Close"
-              title="Close"
+              className={
+                asFullScreen
+                  ? // ONE control, two spellings. Below `md` it is a named,
+                    // tap-floor "Cancel" — the way out of a full-screen surface
+                    // has to be readable, and a 20px glyph is under #644's floor
+                    // where a thumb is doing the tapping. From `md` up it is the
+                    // "✕" every centred card in the app has always drawn.
+                    // NOT `shrink-0` below `md`: #3450 established that class as
+                    // protection FROM prose, and this control sits beside a
+                    // heading rather than inside one.
+                    "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 md:dark:text-slate-400 md:dark:hover:text-slate-300"
+                  : "shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
+              }
+              // "Cancel" at BOTH widths when full-screen, so the accessible
+              // name matches the visible one below `md` (WCAG 2.5.3) instead of
+              // announcing "Close" over a control that reads Cancel. From `md`
+              // up the glyph is the same "✕" as every other card and only its
+              // name differs, which is the accurate word for abandoning a search.
+              aria-label={asFullScreen ? "Cancel" : "Close"}
+              title={asFullScreen ? "Cancel" : "Close"}
+              data-testid={`${testId}-close`}
             >
-              <IconX className="h-5 w-5" />
+              {asFullScreen && (
+                <span className="md:hidden" aria-hidden>
+                  Cancel
+                </span>
+              )}
+              <IconX
+                className={`h-5 w-5 ${asFullScreen ? "hidden md:block" : ""}`}
+              />
             </button>
           </div>
         ) : (

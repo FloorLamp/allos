@@ -482,12 +482,38 @@ export default function CommandPalette({
   const quickLogIdx = quickLog ? (idx += 1) : -1;
   const actionStart = idx + 1;
 
+  // THE ROW MEETS THE TAP FLOOR WHERE A FINGER IS DOING THE TAPPING (#644,
+  // #3423). `px-2 py-2` around `text-sm` is a ~36px row: fine under a mouse,
+  // eight pixels under the floor on a phone. `min-h-11` is 44px below `md` and
+  // releases from `md` up, so the desktop list keeps its compact density and the
+  // palette does not become a phone list on a keyboard surface.
+  //
+  // NOT `py-3` INSTEAD: a two-line row (a hit with a subtitle) is already past
+  // 44px, and raising its padding would push it to ~60px. `min-h` raises the
+  // short rows and leaves the tall ones exactly where they are.
   const rowClass = (active: boolean) =>
-    `flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left ${
+    `flex min-h-11 w-full items-center gap-3 rounded-lg px-2 py-2 text-left md:min-h-0 ${
       active
         ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
         : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
     }`;
+
+  // THE HIGHLIGHT HAS TO BE REACHABLE BY THE POINTER THAT IS ACTUALLY THERE.
+  // `onMouseEnter` alone is a pointer-only signal: a touch device never fires a
+  // hover, so on a phone the highlight was a state nothing could enter — and the
+  // "↵" glyph and "Enter to save" copy hang off exactly that state. Every row
+  // therefore also claims the highlight on FOCUS (keyboard tab, and the focus a
+  // tap gives a button) and on POINTER-DOWN (the first event a touch delivers,
+  // before the click that runs the row).
+  //
+  // Synthesized-hover devices are why this is not simply "replace mouseenter":
+  // a stylus and a hybrid laptop fire both, and setting the same index twice is
+  // a no-op React bails out of.
+  const highlightOn = (index: number) => ({
+    onMouseEnter: () => setHighlight(index),
+    onFocus: () => setHighlight(index),
+    onPointerDown: () => setHighlight(index),
+  });
 
   return (
     <ModalShell
@@ -502,6 +528,20 @@ export default function CommandPalette({
       // #1469 scoped it out on the same grounds; the justification lives in
       // lib/__tests__/overlay-motion-chokepoint.test.ts.
       presentation="centered"
+      // ...BUT "NOT A SHEET" NEVER DEFENDED A CENTRED CARD (#3423). The
+      // exception above rules out the bottom edge, and that reasoning still
+      // holds at every width. What it does not license is a floating
+      // `max-h-[85dvh]` card inset by `p-4` on a 430px screen with the software
+      // keyboard taking most of what is left — a desktop dialog wearing a
+      // phone's worst-case viewport.
+      //
+      // Below `md` the palette becomes the phone idiom for its own content: a
+      // FULL-SCREEN SEARCH SURFACE, field at the top under a named Cancel,
+      // results filling everything beneath. From `md` up nothing moves. The
+      // shape is components/BottomSheet.tsx's — the same portal, scrim, focus
+      // trap, scroll lock and Escape seam this surface already had — so the
+      // phone presentation is not a new overlay to classify.
+      fullScreenBelowMd
     >
       <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="relative">
@@ -518,6 +558,21 @@ export default function CommandPalette({
             aria-autocomplete="list"
             aria-label="Search or run a command"
             autoComplete="off"
+            // WHAT THE SOFTWARE KEYBOARD OFFERS, AND WHAT IT DOES TO THE QUERY
+            // (#3423). Without these the phone shows a generic "return" key over
+            // a search field and capitalises the first letter, so a typed
+            // `weight 82.5` reads back as `Weight 82.5`.
+            //
+            // Recorded because it invites a wrong fix: the capitalisation is an
+            // APPEARANCE bug and never a parse one. `parseQuickLog` in
+            // lib/palette-quick-log.ts lowercases the keyword and matches the
+            // unit case-insensitively, so the entry committed either way. Nobody
+            // should go "fix" the parser on the strength of this line.
+            enterKeyHint="search"
+            inputMode="search"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={query}
             placeholder="Search, or try “weight 82.5”, “log workout”…"
             onChange={(e) => setQuery(e.target.value)}
@@ -530,7 +585,18 @@ export default function CommandPalette({
           <span className="font-medium text-slate-700 dark:text-slate-300">
             {profileName}
           </span>
-          ’s data · arrows to move, Enter to run
+          ’s data
+          {/* THE INSTRUCTION NAMES KEYS THE READER CAN PRESS, AND ONLY THOSE
+              (#3423). The scope half — whose data this searches — is a claim
+              about the DATA and stays at every width; it is the only sentence on
+              the surface that says the search is profile-scoped. The navigation
+              half describes a keyboard, so it renders where one exists. Two
+              spellings of a HINT, not two copies of an action list: nothing here
+              is a control, so #2305's one-authoring rule is not in play. The
+              same shape components/SidebarContent.tsx already uses for its ⌘K. */}
+          <span className="hidden md:inline">
+            {" · arrows to move, Enter to run"}
+          </span>
         </p>
 
         <div
@@ -626,7 +692,7 @@ export default function CommandPalette({
                 data-idx={quickLogIdx}
                 data-testid="palette-quicklog"
                 disabled={!!quickLog.error || committing}
-                onMouseEnter={() => setHighlight(quickLogIdx)}
+                {...highlightOn(quickLogIdx)}
                 onClick={() => void commitQuickLog(quickLog)}
                 className={`${rowClass(highlight === quickLogIdx)} disabled:cursor-not-allowed`}
               >
@@ -636,15 +702,29 @@ export default function CommandPalette({
                     {quickLog.error ?? quickLog.label}
                   </span>
                   <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {quickLog.error
-                      ? "Fix the value to log it"
-                      : committing
-                        ? "Saving…"
-                        : "Enter to save"}
+                    {quickLog.error ? (
+                      "Fix the value to log it"
+                    ) : committing ? (
+                      "Saving…"
+                    ) : (
+                      // THE COMMIT AFFORDANCE IS SHAPED LIKE THE GESTURE THAT
+                      // REACHES IT (#3423). "Enter to save" is a correct
+                      // instruction on a keyboard and a dead end on a phone,
+                      // where the row is a thing you tap. Same row, same commit
+                      // path, same `commitQuickLog` — only the verb changes.
+                      <>
+                        <span className="md:hidden">Tap to save</span>
+                        <span className="hidden md:inline">Enter to save</span>
+                      </>
+                    )}
                   </span>
                 </span>
                 {highlight === quickLogIdx && !quickLog.error && (
-                  <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                  // The "↵" glyph draws where a Return key exists. It is a
+                  // PICTURE OF A KEY, so on a phone it points at hardware the
+                  // reader does not have — the row's own "Tap to save" is the
+                  // affordance there.
+                  <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
                 )}
               </button>
             </div>
@@ -675,7 +755,7 @@ export default function CommandPalette({
                         aria-selected={active}
                         data-idx={itemIdx}
                         data-testid={`palette-action-${action.id}`}
-                        onMouseEnter={() => setHighlight(itemIdx)}
+                        {...highlightOn(itemIdx)}
                         onClick={() => runAction(action)}
                         className={rowClass(active)}
                       >
@@ -684,7 +764,7 @@ export default function CommandPalette({
                           {label}
                         </span>
                         {active && (
-                          <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                          <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
                         )}
                       </button>
                     </li>
@@ -709,7 +789,7 @@ export default function CommandPalette({
                 groups={groups}
                 base={actionStart + actions.length}
                 highlight={highlight}
-                setHighlight={setHighlight}
+                highlightOn={highlightOn}
                 onPick={go}
                 onAction={runHitAction}
                 committing={committing}
@@ -726,7 +806,7 @@ function SearchResults({
   groups,
   base,
   highlight,
-  setHighlight,
+  highlightOn,
   onPick,
   onAction,
   committing,
@@ -735,7 +815,14 @@ function SearchResults({
   groups: SearchGroup[];
   base: number;
   highlight: number;
-  setHighlight: (i: number) => void;
+  // The three handlers that claim the highlight for a row — hover, focus and
+  // pointer-down. Handed over as ONE spread rather than as `setHighlight`, so a
+  // row here cannot quietly go back to being hover-only (#3423).
+  highlightOn: (index: number) => {
+    onMouseEnter: () => void;
+    onFocus: () => void;
+    onPointerDown: () => void;
+  };
   onPick: (href: AppRoute) => void;
   onAction: (action: HitAction) => void;
   committing: boolean;
@@ -768,7 +855,7 @@ function SearchResults({
                     role="option"
                     aria-selected={active}
                     data-idx={itemIdx}
-                    onMouseEnter={() => setHighlight(itemIdx)}
+                    {...highlightOn(itemIdx)}
                     onClick={() => onPick(hit.href)}
                     className={`${rowClass(active)} min-w-0 flex-1`}
                   >
@@ -784,7 +871,7 @@ function SearchResults({
                       )}
                     </span>
                     {active && actions.length === 0 && (
-                      <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                      <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
                     )}
                   </button>
                   {actions.map((action) => (
