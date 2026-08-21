@@ -186,6 +186,99 @@ const CASES: {
     unit: "mg",
     was: "000 mg, read as 0 — contributing nothing to any total",
   },
+  // ── #3451: A THOUSANDS SEPARATOR THAT IS NOT A COMMA ────────────────────────────
+  //
+  // Same mechanism, different character, and it defeated every net this file was built
+  // to be: the stored string was "000 mg", the census called it `always-correct`, and
+  // no data-quality gap mentioned it. The name was torn in half too — the item was
+  // filed under "Niacin 1", so it would never have folded with the profile's other
+  // niacin rows.
+  //
+  // THE PLAIN SPACE IS REFUSED rather than read, because "1 500 mg" on a label is as
+  // plausibly one 500 mg tablet as it is fifteen hundred milligrams. Niacin is the
+  // right drug to write it on: 1 000 mg is 28x the 35 mg adult UL, which is the
+  // scenario lib/dri.ts cites as its own reason for taking a number whole.
+  {
+    name: "Niacin 1 000 mg",
+    grouping: "Niacin",
+    amount: "1 000 mg",
+    reads: "unreadable",
+    was: '000 mg, read as 0 \u2014 28x the 35 mg UL, and the item filed as "Niacin 1"',
+  },
+  // THE SWISS SPELLING, which is the half that must READ. An apostrophe between digit
+  // groups is a thousands separator and nothing else, so refusing it would make the app
+  // worse for every European label without making any dose safer.
+  {
+    name: "Paracetamol 1\u2019000 mg",
+    grouping: "Paracetamol",
+    amount: "1\u2019000 mg",
+    reads: 1000,
+    unit: "mg",
+    was: "000 mg, read as 0 \u2014 an ordinary paracetamol dose contributing nothing",
+  },
+  // THE MISTYPED GROUP, at the tier that stores rows. A group too LONG is not a
+  // thousands-group shape at all, and an earlier cut of #3451 refused only the
+  // well-formed shape — so this row went on storing "0000 mg" and reading a confident
+  // zero while its correctly-typed neighbour above was refused. The refusal keys on the
+  // plain space, not on the group's size, precisely so both land here together.
+  {
+    name: "Allopurinol 1 0000 mg",
+    grouping: "Allopurinol",
+    amount: "1 0000 mg",
+    reads: "unreadable",
+    was: "0000 mg, read as 0 \u2014 a mistyped label reading as a confident zero",
+  },
+  // A READ-SET CHARACTER STANDING WHERE A WORD SPACE STANDS, at the tier where getting
+  // it wrong was worse than doing nothing (#3451, adversarial round).
+  //
+  // NBSP is a thousands separator BETWEEN TWO DIGIT RUNS and an ordinary word space
+  // everywhere else — and a word space is overwhelmingly what Word, HTML and PDF
+  // extraction put between a drug name and its strength. An interim cut of this fix put
+  // the read set into the scan's start lookbehind, so "Pyridoxine<NBSP>100 mg" yielded
+  // NO strength at all: the item was filed under the whole string, the sig's "1 tablet"
+  // landed in the amount column, and that reads `none` rather than `unreadable` — which
+  // `getUnreadableDoseAmounts` filters out. A real dose, silently absent from every
+  // total, with nothing anywhere prompting anyone to look. This row is here so that
+  // cannot come back.
+  {
+    name: "Pyridoxine\u00a0100 mg",
+    grouping: "Pyridoxine",
+    amount: "100 mg",
+    reads: 100,
+    unit: "mg",
+    was: "no strength at all \u2014 filed under the whole string, dose silently absent",
+  },
+  // THE CROSS-PRODUCT CELL, at the tier that stores rows. This spec had a digit-ending
+  // name against a PLAIN SPACE ("B12 500 mcg") and a letter-ending name against an NBSP
+  // ("Pyridoxine<NBSP>100 mg"), and missed the cell where both vary — which is exactly
+  // where "B12<NBSP>500 mcg" read a confident 12500 mcg, twenty-five times the label.
+  //
+  // AND THE ANSWER IS THE REASSURING ONE, WHICH IS WHY IT IS WORTH STORING: the import
+  // splits the name BEFORE anything reads a number, and that splitter's guard blocks a
+  // start after a letter — so the dose column gets "500 mcg" and reads 500, not 12500.
+  // The weld can only bite a dose amount that holds the whole name, which is the manual
+  // entry path, pinned in lib/__tests__/dri.test.ts. This row is the proof the import
+  // path is not that path, and it goes red if the two guards are ever unified wrongly.
+  {
+    name: "Cyanocobalamin B12\u00a0500 mcg",
+    grouping: "Cyanocobalamin B12",
+    amount: "500 mcg",
+    reads: 500,
+    unit: "mcg",
+    was: "500 mcg via the name split \u2014 12500 only if the whole string reaches the reader",
+  },
+  // THE CONTROL FOR THE SPACE BRANCH'S LOOKBEHIND, at the tier that stores rows. A
+  // supplement name may END IN A DIGIT, and there the space before the strength is not
+  // inside a number at all. If the branch ever stops refusing to start after a letter,
+  // this row's strength becomes "12 500 mcg" and the item is filed under "B".
+  {
+    name: "B12 500 mcg",
+    grouping: "B12",
+    amount: "500 mcg",
+    reads: 500,
+    unit: "mcg",
+    was: "500 mcg \u2014 always correct, and must not become 12 500",
+  },
   // The US spelling of the first row's tablet. Unchanged by the fix, and here so a
   // regression in the ordinary case cannot hide behind the interesting ones.
   {
@@ -224,7 +317,7 @@ beforeAll(() => {
   persistDocumentImport(profile, doc, inputWith(CASES.map((c) => rx(c.name))));
 });
 
-describe("comma-decimal prescription strengths through persistDocumentImport (#3444)", () => {
+describe("separator-bearing prescription strengths through persistDocumentImport (#3444, #3451)", () => {
   for (const c of CASES) {
     it(`${c.name} stores ${c.amount} (was ${c.was})`, () => {
       const med = storedMed(profile, c.grouping);
@@ -309,6 +402,8 @@ describe("comma-decimal prescription strengths through persistDocumentImport (#3
     // …and nothing that reads is dragged in with them.
     expect(flaggedNames.has("Metformin")).toBe(false);
     expect(flaggedNames.has("Amlodipine")).toBe(false);
+    expect(flaggedNames.has("Paracetamol")).toBe(false);
+    expect(flaggedNames.has("B12")).toBe(false);
   });
 
   it("the census buckets the stored rows honestly", () => {
@@ -322,6 +417,15 @@ describe("comma-decimal prescription strengths through persistDocumentImport (#3
     }
     expect(classifyDoseAmount(storedMed(profile, "Metformin").amounts[0])).toBe(
       "recovered-from-zero"
+    );
+    // The Swiss spelling read as zero before #3451 for the identical reason, so it
+    // lands in the identical bucket now (#3451).
+    expect(
+      classifyDoseAmount(storedMed(profile, "Paracetamol").amounts[0])
+    ).toBe("recovered-from-zero");
+    // And the digit-ending name is untouched, which is what makes the row a control.
+    expect(classifyDoseAmount(storedMed(profile, "B12").amounts[0])).toBe(
+      "always-correct"
     );
   });
 });
