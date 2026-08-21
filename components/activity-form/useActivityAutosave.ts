@@ -7,6 +7,7 @@ import {
 } from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
+import { shouldDeferRowlessSave } from "@/lib/live-workout";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
@@ -35,6 +36,25 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
 // save waiting on a keystroke, the very defect this fixes. The stale-action
 // path is exempt by construction — it is never retriable, only reloadable.
 export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+
+// THE RACE ANNOUNCES ITSELF (#3441). A rowless save came due while the live
+// session's create-at-start POST was still in flight — the exact window in which
+// one session used to become two activities.
+//
+// TO THE REVIEWER WHO WANTS TO DELETE THIS as instrumentation that pins nothing:
+// it is the only observable that a spec driving this race can use to prove the race
+// RAN. Everything else about the window is invisible from outside — with the fix in
+// place there is no extra request, no extra row and no changed markup, so a guard
+// with no fuse goes green either because the fix works or because the box was slow
+// enough that the create landed first, and those are different facts. This defect's
+// whole history is being silently un-guarded; a guard that quietly stops racing
+// would repeat that by another route. `e2e/workout-discard-settles.spec.ts` waits
+// for this line before it releases the held POST, so the race is DRIVEN rather than
+// sampled and there is no timing constant anywhere in the spec.
+//
+// It is also the diagnostic a real sighting would want: it fires exactly when a
+// user on a slow connection outran their own session create.
+export const LIVE_CREATE_RACE_EVENT = "live-session-create-outran-save";
 
 export interface ActivityAutosave {
   status: SaveStatus;
@@ -168,6 +188,9 @@ export function useActivityAutosave({
   // Read synchronously by `persist` (#3441) so the gate answers about the moment the
   // save is DISPATCHED, not about the render that armed the debounce.
   const adoptPendingRef = useLatestRef(adoptPending);
+  // The announcement above is once per mount: the debounce can come due several
+  // times inside one slow round trip, and one line per session is the signal.
+  const raceAnnouncedRef = useRef(false);
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
   const onQueueOfflineRef = useLatestRef(onQueueOffline);
@@ -249,16 +272,28 @@ export function useActivityAutosave({
       // did before). Nothing is dropped in either leg — the edit stays in the form,
       // which is where it already was.
       //
-      // CLOSE-PATH FLUSHES ARE EXEMPT (`queueOnOffline`, the discriminator the
-      // #1596 comment above already defines). A close abandons the session, and the
-      // provider invalidates its still-in-flight create so it discards itself on
-      // arrival — so the flush's own create is the session's ONLY row, and
-      // deferring it would strand the last edit behind a request nobody is waiting
-      // for any more.
+      // THE DECISION ITSELF IS `shouldDeferRowlessSave` (lib/live-workout.ts), not
+      // an inline conjunction, because two of its three terms are EXEMPTIONS — and
+      // an exemption is wrong in the direction nothing observes. `queueOnOffline`
+      // is the CLOSE-path discriminator the #1596 comment above already defines;
+      // why a close is exempt is argued at the predicate, and all four corners are
+      // pinned there in both directions.
+      const createPending = adoptPendingRef.current;
+      const hasOwnRow = savableId() != null;
+      // ANNOUNCED OUTSIDE THE DECISION, deliberately: this says the RACE HAPPENED,
+      // which is true whatever the decision below then does about it. A spec can
+      // therefore prove it drove the race without its fuse depending on the fix
+      // being present — see LIVE_CREATE_RACE_EVENT above.
+      if (createPending && !hasOwnRow && !raceAnnouncedRef.current) {
+        raceAnnouncedRef.current = true;
+        console.warn(LIVE_CREATE_RACE_EVENT);
+      }
       if (
-        adoptPendingRef.current &&
-        savableId() == null &&
-        !opts?.queueOnOffline
+        shouldDeferRowlessSave({
+          createPending,
+          hasRow: hasOwnRow,
+          closePath: opts?.queueOnOffline === true,
+        })
       ) {
         return;
       }

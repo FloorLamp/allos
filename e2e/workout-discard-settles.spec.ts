@@ -5,6 +5,7 @@ import {
   hydratedClick,
   settledFill,
 } from "./helpers";
+import { LIVE_CREATE_RACE_EVENT } from "@/components/activity-form/useActivityAutosave";
 import { listLiveDrafts, SHARED_PROFILE_ID } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
@@ -111,8 +112,20 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
   // nothing else posts between the arm and the click below — and let everything
   // after it through at full speed. Holding EVERY action (the test above) would
   // slow the auto-save too and close the window, exactly as CPU throttling does.
+  //
+  // HELD UNTIL THIS TEST SAYS SO, not for a fixed span, and that is the difference
+  // between driving the race and sampling it. A wall-clock hold puts the whole
+  // guard at the mercy of how fast the box drives the three clicks below: measured
+  // on this tree with the defect present, inserting 700ms of client latency kept it
+  // red 2/2, and 1200ms turned it GREEN 4/4 with the bug still in the tree. That
+  // failure direction is the dangerous one — a slower shard makes this PASS — and it
+  // is how #3440 came to leave nothing watching this path in the first place.
   let armed = false;
   let held = 0;
+  let releaseStart: (() => void) | null = null;
+  const startHeld = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
   await page.route("**/*", async (route) => {
     const request = route.request();
     if (
@@ -122,7 +135,7 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
       request.headers()["next-action"]
     ) {
       held++;
-      await new Promise((resolve) => setTimeout(resolve, ACTION_DELAY_MS));
+      await startHeld;
     }
     await route.continue();
   });
@@ -143,6 +156,17 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
     return (request.postData() ?? "").includes(EXERCISE);
   });
 
+  // THE FUSE. The editor announces it when a rowless save comes due while the
+  // create-at-start is still in flight — the race, said out loud by the app rather
+  // than assumed by the test. It is announced OUTSIDE the fix's decision, so this
+  // still fires on a tree with the fix removed and the count below stays the thing
+  // that catches the defect. If the box is slow enough that the create lands first,
+  // no line arrives and this times out: a wrong-SETUP failure, loudly, instead of a
+  // vacuous green.
+  const raced = page.waitForEvent("console", (message) =>
+    message.text().includes(LIVE_CREATE_RACE_EVENT)
+  );
+
   armed = true;
   await page.getByRole("main").getByTestId("start-workout").click(); // unsettled-ok: the race is the subject — see the note above
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
@@ -159,6 +183,13 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+
+  // The save has come due against a session with no id. NOW let the start land —
+  // so the window is bounded by the app's own progress and not by a constant, and
+  // there is no number in this file that a loaded shard can invalidate.
+  await raced;
+  releaseStart!();
+
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
@@ -194,4 +225,74 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
   // that got deleted. The standing #3173 guard then confirms nothing was left.
   await deleteActivityFromForm(page);
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+});
+
+// THE REFUSAL LEG (#451 / #3441), which is the promise the fix above could most
+// easily break in silence.
+//
+// The gate that stops a rowless save from minting a second row has to be RELEASED
+// when the create-at-start cannot answer — a refusal, a dead connection, a gym with
+// no signal. Release it only on success and the form waits forever: the session
+// never gets a row at all, which is strictly worse than the two-row defect this
+// branch fixes, and no spec in the tree would notice. `entry-ergonomics` aborts
+// every action POST but opens through "New activity" (not live, so the gate is
+// never armed), and `stale-build-save` starts live but arms its failure AFTER the
+// create has landed. Neither can reach this.
+//
+// So: refuse the start, then log a set and require the session to exist anyway —
+// on the form's OWN row, the pre-#2870-step-3 shape that a dead spot degrades to.
+test("a live workout whose start is refused still logs, on one row (#451)", async ({
+  page,
+}) => {
+  test.slow();
+  // Answer the start — and only the start — the way a proxy answers mid-swap, the
+  // shape autosave-retry.spec.ts already uses. Every later action is untouched, so
+  // the form's own save is a real one.
+  let armed = false;
+  let refused = 0;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (
+      armed &&
+      refused === 0 &&
+      request.method() === "POST" &&
+      request.headers()["next-action"]
+    ) {
+      refused++;
+      return route.fulfill({
+        status: 502,
+        contentType: "text/plain",
+        body: "Bad Gateway",
+      });
+    }
+    await route.continue();
+  });
+
+  await page.goto("/training?tab=log");
+  armed = true;
+  await page.getByRole("main").getByTestId("start-workout").click(); // unsettled-ok: there is nothing to settle on — this start is refused
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+
+  await settledFill(page, page.getByPlaceholder(/What did you do/), EXERCISE);
+  await hydratedClick(
+    page,
+    comboboxRows(page).filter({ hasText: EXERCISE }).first() // first-ok: transient combobox list this test just opened by typing EXERCISE
+  );
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
+
+  // Delete appearing is the form reporting it owns a row — here it can only be one
+  // it minted itself, because the create it would otherwise have adopted was
+  // refused. This is the assertion that hangs if the gate is never released.
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  const drafts = listLiveDrafts(workerDbPath(), SHARED_PROFILE_ID);
+  expect(drafts).toHaveLength(1);
+  expect(drafts[0].title).not.toBe("");
+
+  await deleteActivityFromForm(page);
 });
