@@ -170,6 +170,14 @@ test("a phone toast is one full-width bar above the dock, and a second waits its
     await expect(page.getByTestId("mobile-drawer")).toHaveCount(0);
   } finally {
     await drainAndRestore(page, "couch_stretch");
+    // CLOSE THE CONTEXT. `loginAs` builds its own, and Playwright does not tear
+    // that one down for you — a leaked context keeps its pages alive in the
+    // SHARED browser for the rest of the worker's run, still OFFLINE and still
+    // running the app's pollers, which is load a neighbouring spec pays for and
+    // cannot see. Measured: leaving them open cost `bottom-edge-stacking.mobile`
+    // 3 of 3 repeats in a loaded batch that was green at the same commit without
+    // this file in it. Same `finally` discipline offline-mobility.spec.ts uses.
+    await context.close();
   }
 });
 
@@ -196,5 +204,6 @@ test("under reduced motion the bar arrives instantly — no keyframe is schedule
     expectFullWidthBar(await settledBox(toast));
   } finally {
     await drainAndRestore(page, "glute_bridge");
+    await page.context().close();
   }
 });

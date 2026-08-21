@@ -150,7 +150,15 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // still there and still claims it, so the published offset falls back rather
     // than clearing. (Above `md`, where no nav dock renders, it does clear; that
     // is the desktop path and not this project's.)
+    const t0 = Date.now();
+    const marks: string[] = [];
+    const mark = (what: string) => marks.push(`${what}@${Date.now() - t0}ms`);
+    page.on("request", (r) => {
+      if (r.method() === "POST") mark(`POST ${new URL(r.url()).pathname}`);
+    });
+    mark("before dock-open");
     await page.getByTestId("workout-dock-open").click();
+    mark("after dock-open");
     // Scope the discard to the editor's own footer — the page BEHIND the editor
     // (Equipment) carries its own per-row Delete controls.
     await deleteActivityFromForm(page, {
@@ -158,7 +166,18 @@ test("a toast raised during a live workout stacks above the dock, never over it 
         .getByTestId("activity-form-footer")
         .getByRole("button", { name: "Delete", exact: true }),
     });
-    await expect(dock).toHaveCount(0);
+    mark("after delete helper");
+    try {
+      await expect(dock).toHaveCount(0);
+    } catch (e) {
+      mark("dock still up");
+      console.log("[DIAG] " + marks.join(" | "));
+      console.log(
+        "[DIAG] toasts on screen: " +
+          JSON.stringify(await page.getByTestId("toast").allInnerTexts())
+      );
+      throw e;
+    }
     const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
     await expect
       .poll(() =>
