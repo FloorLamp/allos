@@ -166,7 +166,7 @@ export interface ParsedQuantity {
   unit: DoseUnit;
 }
 
-// ONE RULE FOR WHAT A `.` OR A `,` INSIDE A NUMBER MEANS (#3153, #3319, #3444).
+// ONE RULE FOR WHAT A SEPARATOR INSIDE A NUMBER MEANS (#3153, #3319, #3444, #3451).
 //
 // THE HEADING IS NARROW ON PURPOSE, and it has now been wrong in both directions.
 //
@@ -177,17 +177,59 @@ export interface ParsedQuantity {
 // dose. That reader now goes through `WRITTEN_NUMBER_SCAN` and `readGroupedNumber`
 // below, so the fork is closed.
 //
-// Widening it to "every reader of a label" then over-claimed in the other direction, and
-// the counter-example is live: for a group separated by a SPACE — "1 000 mg", and the
-// same with NBSP, thin space, a Swiss apostrophe or U+066C — `readDoseQuantity` returns
-// a confident ZERO while `readIngredientAmount` returns `unreadable`. Two readers, two
-// answers, on the shape this very file cites as its motivating example. Tracked
-// separately; not fixed here.
+// Widening it to "every reader of a label" then over-claimed in the other direction: for
+// a group separated by a SPACE — "1 000 mg", and the same with NBSP, thin space, a Swiss
+// apostrophe or U+066C — `readDoseQuantity` returned a confident ZERO while
+// `readIngredientAmount` returned `unreadable`. Two readers, two answers, on the shape
+// this very file cites as its motivating example. The heading was then narrowed to
+// "`.` or `,`" and the divergence tracked separately (#3451).
 //
-// So the claim is exactly what the code below delivers: `.` and `,` inside a number get
-// ONE answer everywhere. Any other separator is not covered by this rule yet, and a
-// heading that implied otherwise would be the same kind of overstatement the third
-// reader was.
+// #3451 CLOSED IT, so the heading is wide again — and it says SEPARATOR rather than
+// naming characters, because the rule is now about a class rather than a pair. What the
+// code below delivers, and all it claims: every separator listed in
+// `THOUSANDS_SEP_CHARS`, plus `.` and `,` and the plain space, gets ONE answer from
+// every reader in the tree. A character outside that set is still not covered.
+//
+// AND THE ONE ANSWER IS NOT THE SAME ANSWER FOR ALL OF THEM. #3451 offered two
+// outcomes — read the space family as a thousands group, or refuse it — and the
+// measured shapes say the seven spellings are not one kind of thing:
+//
+//   * NBSP, narrow NBSP, thin space, figure space, the Swiss apostrophe (U+2019 and the
+//     ASCII U+0027 people type for it) and U+066C exist BECAUSE they are thousands
+//     separators. Between two digit groups they mean one thing. They are READ, by being
+//     normalized to a comma and put through the comma rule unchanged — so "1’000" is
+//     1000 for the same reason "1,000" is, and "0’125" is refused for the same reason
+//     "0,125" is.
+//
+//   * The plain ASCII space U+0020 is NOT that. On a label "1 500 mg" is as plausibly
+//     ONE 500 mg TABLET — count then strength — as it is fifteen hundred milligrams,
+//     and this codebase already treats count-then-strength as a first-class dose shape
+//     (`doseUnitCount`, and `COUNT` in lib/prescription-parse.ts, which parses "1-2
+//     tablets" and "5/325 mg"). Measured before the fix: `readDoseQuantity`
+//     ("2 500 mg tablets") answered 500 mg. Reading the space as a thousands group
+//     would have made that 2500 — swapping a confident zero for a confident FIVEFOLD
+//     overdose, in the reader whose whole job is to feed limit checks. So U+0020 is
+//     REFUSED: the number is taken whole so the scan cannot restart inside it, and
+//     `readGroupedNumber` declines to resolve it. The row becomes a visible
+//     `dose-amount-unreadable` gap, which is the same answer this file already gives
+//     "2,5 mg", for the same reason.
+//
+// WHY THE SPACE BRANCH CARRIES ITS OWN LOOKBEHIND, and it is the case that decides the
+// shape of the pattern. A drug or supplement name may END IN A DIGIT — "B12 500 mcg",
+// "CoQ10 200 mg", "Vitamin D3 5000 IU", "Omega 3 1000 mg" — and there the space between
+// the name's digit and the strength is not a separator inside a number at all.
+// lib/__tests__/prescription-parse.test.ts already pins "B12 500 mcg" with the words
+// "must not become 12". So the space branch refuses to start after a letter, digit or
+// underscore, which is the same assertion `strengthFromName` uses for the same hazard,
+// and those four names read exactly as they did before.
+//
+// WHAT THE SPACE BRANCH DOES NOT REACH, stated so nobody has to rediscover it: it
+// matches the THOUSANDS-GROUP SHAPE ("1 000", "12 345 678", "1 000.5") — one to three
+// digits, then groups of exactly three. A malformed run like "1 0000 mg" is not that
+// shape, so the scan still restarts and still reads a confident 0. Widening the group to
+// `\d{3,}` would catch it and would also swallow "Omega 3 1000 mg", turning a supplement
+// whose name ends in a digit into an unreadable dose. Between a typo nobody writes and a
+// name thousands of people take, the shape stays at exactly three.
 //
 // A separator in a number is either a thousands group or a decimal point, and which
 // one it is depends on where the label was printed. The ingredient write boundary
@@ -231,11 +273,40 @@ const THOUSANDS_GROUPED = /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/;
 const PLAIN_NUMBER = /^\d+(?:\.\d+)?$/;
 const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 
+// The separators that EXIST to group thousands, spelled out because this is a LIST and
+// not a rule — a character earns a place here by being a thousands separator in some
+// real printing convention, never by looking like one (#3451):
+//
+//   U+00A0 no-break space          the ordinary word-processor grouping space
+//   U+202F narrow no-break space   the SI / ISO-80000 grouping space
+//   U+2009 thin space              the same, in typesetting
+//   U+2007 figure space            digit-width space, used to align columns of figures
+//   U+2019 right single quote      the Swiss spelling, "1’000"
+//   U+0027 apostrophe              the Swiss spelling as typed on an ASCII keyboard
+//   U+066C Arabic thousands separator
+//
+// U+0020 IS DELIBERATELY ABSENT — see the heading above. It is the one spelling a label
+// also uses for count-then-strength, so it is refused rather than read.
+//
+// Each one is normalized to a comma and then answered by the comma rule, so nothing
+// below has a second opinion about grouping, leading zeros or decimals.
+// SPELLED AS ESCAPES, not as the characters themselves. Six of the seven are invisible
+// or near-invisible in an editor, and a rule nobody can read is a rule nobody can check.
+const THOUSANDS_SEP_CHARS = String.raw`\u00a0\u202f\u2009\u2007\u2019\u0027\u066c`;
+const THOUSANDS_SEP_RE = new RegExp(`[${THOUSANDS_SEP_CHARS}]`, "g");
+
 export function readGroupedNumber(token: string): number | null {
-  const grouped = THOUSANDS_GROUPED.test(token);
-  if (!grouped && !PLAIN_NUMBER.test(token)) return null;
-  if (!grouped && AMBIGUOUS_PERIOD_GROUPING.test(token)) return null;
-  const value = Number(grouped ? token.replace(/,/g, "") : token);
+  // A plain space inside the token means the token spans a U+0020 group — "1 000",
+  // "2 500". It reached here WHOLE on purpose (WRITTEN_NUMBER_SCAN's space branch), so
+  // that the scan could not restart after the space and hand back "000" as a confident
+  // zero. There is nothing to resolve: refusing is the answer, and it is the same
+  // answer "2,5" gets.
+  if (token.includes(" ")) return null;
+  const normalized = token.replace(THOUSANDS_SEP_RE, ",");
+  const grouped = THOUSANDS_GROUPED.test(normalized);
+  if (!grouped && !PLAIN_NUMBER.test(normalized)) return null;
+  if (!grouped && AMBIGUOUS_PERIOD_GROUPING.test(normalized)) return null;
+  const value = Number(grouped ? normalized.replace(/,/g, "") : normalized);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -300,11 +371,14 @@ export type DoseQuantityReading =
 // By construction this branch cannot fabricate: a separator-led token has no reading at
 // all, so the only answers it can produce are a refusal or no match.
 //
-// WHAT THE GUARD DOES NOT REACH: a group separated by a SPACE ("1 000 mg", NBSP, thin
-// space, Swiss apostrophe, U+066C). The scan restarts after the space, "000" is
-// preceded by whitespace rather than by `[\d.,]`, and the reading is a confident ZERO.
-// That is live, it is a different defect from this one, and it is tracked separately —
-// do not read this guard as covering it.
+// THE GUARD DID NOT USED TO REACH A GROUP SEPARATED BY A SPACE ("1 000 mg", NBSP, thin
+// space, Swiss apostrophe, U+066C): the scan restarted after the separator, "000" was
+// preceded by whitespace rather than by `[\d.,]`, and the reading was a confident ZERO
+// on the exact niacin shape three paragraphs up (#3451). It reaches them now, by two
+// different routes and on purpose — the separator class widened for the six that can
+// only be thousands separators, and a SECOND ALTERNATIVE in the scan for the plain
+// space, which exists solely so the number arrives whole enough to be refused. The
+// heading at the top of this section says which is which and why.
 //
 // The lookbehind in LABEL_UNIT_COUNT_RE below is load-bearing too, for a third reason
 // its own comment gives.
@@ -332,8 +406,34 @@ export type DoseQuantityReading =
 //                        the scan cannot begin in the middle of one, and admitting a
 //                        leading separator so a naked decimal is refused rather than
 //                        silently skipped. Any reader that SCANS wants this one.
-export const WRITTEN_NUMBER = String.raw`\d+(?:[.,]\d+)*`;
-export const WRITTEN_NUMBER_SCAN = String.raw`(?<![\d.,])[.,]?${WRITTEN_NUMBER}`;
+//
+// WRITTEN_NUMBER does NOT contain the plain space, and that is not an oversight (#3451).
+// It is interpolated into lib/prescription-parse.ts's `COUNT`, `RATIO_TAIL` and
+// `NAME_STRENGTH_RE`, where a space is the ordinary gap between a count and its unit
+// ("1 mg/kg", "1 to 2 tablets"). A number that could swallow a space would rewrite that
+// grammar. The plain space belongs to the SCAN, where the question being asked is "where
+// does this number end" and the answer has to be "past the space, so nobody can restart
+// inside it".
+//
+// THE SCAN IS AN ALTERNATION, AND ORDER MATTERS. The space branch is FIRST, because at
+// the position of the "1" in "1 000 mg" both branches match and the shorter one ("1")
+// would leave the scan free to find "000 mg" one character later — the very restart this
+// exists to prevent. It is wrapped in `(?:…)` because callers interpolate it BARE into
+// larger patterns, where a loose `|` would rewrite their precedence.
+//
+// The space branch's own guards, each earning its place:
+//   (?<![A-Za-z0-9_.,seps])  a name may end in a digit — "B12 500 mcg", "CoQ10 200 mg" —
+//                            and there the space is not inside a number at all.
+//   \d{1,3}(?: \d{3})+       the thousands-group SHAPE, so "Omega 3 1000 mg" (a 4-digit
+//                            second group) is not one and reads 1000 mg as it always did.
+//   (?:[.,]\d+)?             a decimal tail, so "1 000.5 mg" is taken whole too. Without
+//                            it the branch failed on that string and the ordinary branch
+//                            picked up "000.5" — a confident 0.5 mg.
+//   (?!\d)                   so the branch cannot match a PREFIX of a longer digit run
+//                            and leave the remainder to be read on its own.
+const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_.,${THOUSANDS_SEP_CHARS}])\d{1,3}(?: \d{3})+(?:[.,]\d+)?(?!\d)`;
+export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
+export const WRITTEN_NUMBER_SCAN = String.raw`(?:${AMBIGUOUS_SPACE_NUMBER}|(?<![\d.,${THOUSANDS_SEP_CHARS}])[.,${THOUSANDS_SEP_CHARS}]?${WRITTEN_NUMBER})`;
 const DOSE_QUANTITY_RE = new RegExp(
   String.raw`(${WRITTEN_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
   "i"
