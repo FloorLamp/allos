@@ -9,11 +9,24 @@
 // list looks complete, correct and short. #3220 lost the #1675 analyte groups out of
 // a subject picker exactly this way, and only found out by building it and looking.
 //
-// So the budget is shared out a row at a time in the caller's group order instead of
-// front-loaded: every group gets its first row before any group gets its second. A
-// single-vocabulary picker is BYTE-IDENTICAL to the old behaviour (one group, so the
-// round-robin degenerates to "the first `limit` in order") — the 8-row list is the
-// deliberate part and is not the bug.
+// THE RULE: one row per group first, in the caller's group order; then the REST of
+// the budget in the caller's own ranked order. Representation is the defect being
+// fixed, so it is guaranteed — every group present gets a row, and therefore a
+// header — and nothing beyond that one row overrides the ranking the caller
+// declared. A single-vocabulary picker is BYTE-IDENTICAL to the old behaviour (one
+// group, so the two passes degenerate to "the first `limit` in order") — the 8-row
+// list is the deliberate part and is not the bug.
+//
+// WHY NOT SHARE THE ROWS OUT EVENLY, which is the obvious reading of "make the cap
+// per-group": because for every grouped picker that ships today the caller's group
+// order is a PRIORITY order, not a set of peers. `lib/biomarker-rank.ts` leads with
+// "Due or flagged" — the app saying ACT ON THIS — and an even split hands half of
+// those rows to the ~200-name alphabetical tail behind them. Measured on the record
+// form's own shape, a profile with 8 flagged analytes and none of its own would have
+// lost 4 of the 8 to that tail; under the rule above it loses exactly one, which is
+// the price of the header that fixes the bug. A caller whose groups genuinely ARE
+// peers can interleave its own option array — only the caller knows that, and this
+// component cannot.
 //
 // THE RULE FOR MANY GROUPS, which is what makes this honest: the total is still
 // capped at `limit`. A caller with more groups than rows CANNOT have all of them
@@ -36,8 +49,13 @@ export interface RelevanceView {
   droppedGroups: (string | null)[];
 }
 
-// Build the grouped relevance view. `options` is the caller's ranked order and is
-// assumed unique (the Combobox keys its rows by the option string).
+// Build the grouped relevance view. `options` is the caller's ranked order. Rows are
+// chosen and emitted BY INDEX, so a list carrying the same string twice behaves
+// exactly as `options.slice(0, limit)` did — this function needs no uniqueness
+// assumption of its own. (`Combobox` keys its rendered rows by the option string, so
+// duplicates remain a caller-side problem there, unchanged and pre-existing:
+// `[...curatedMedicationOptions(), ...curatedSupplementOptions()]` carries
+// "Melatonin" twice.)
 export function groupedRelevanceView(
   options: readonly string[],
   groupFor: (option: string) => string | null,
@@ -60,23 +78,22 @@ export function groupedRelevanceView(
   }
 
   const taken = new Set<number>();
-  const cursors = new Map<string | null, number>();
-  let progressed = true;
-  while (taken.size < limit && progressed) {
-    progressed = false;
-    for (const [group, indices] of buckets) {
-      if (taken.size >= limit) break;
-      const cursor = cursors.get(group) ?? 0;
-      if (cursor >= indices.length) continue;
-      taken.add(indices[cursor]);
-      cursors.set(group, cursor + 1);
-      progressed = true;
-    }
+  // Pass 1 — THE FLOOR. One row per group, in the caller's group order. This is the
+  // whole of the fix: a group with a row has a header, and a group with a header is
+  // not a vocabulary that vanished.
+  for (const [, indices] of buckets) {
+    if (taken.size >= limit) break;
+    taken.add(indices[0]);
   }
+  // Pass 2 — THE REMAINDER, in the CALLER'S order. Indices already taken are a no-op,
+  // so this reads as "keep filling from the top of the ranked list". When there are
+  // more groups than rows the floor has already spent the budget and this does
+  // nothing.
+  for (let i = 0; i < options.length && taken.size < limit; i++) taken.add(i);
 
   const droppedGroups: (string | null)[] = [];
-  for (const group of buckets.keys()) {
-    if ((cursors.get(group) ?? 0) === 0) droppedGroups.push(group);
+  for (const [group, indices] of buckets) {
+    if (!indices.some((index) => taken.has(index))) droppedGroups.push(group);
   }
 
   return {

@@ -96,12 +96,14 @@ export default function Combobox({
   // because a header over one match is noise. Return null to leave a row unheaded.
   //
   // IF YOU ARE MERGING TWO RANKED VOCABULARIES INTO ONE PICKER, PASS THIS (#3410).
-  // The pre-typing list is capped at RELEVANCE_ROWS, and with `groupFor` those rows
-  // are shared out per group, so every vocabulary is represented instead of the
-  // higher-ranked one spending all of them and the other vanishing without a header
-  // or a "more". WITHOUT `groupFor` the concatenated list has no seam in it, nothing
-  // can detect the loss, and the picker looks complete because it looks short —
-  // which is exactly how #3220 lost its analyte groups.
+  // The pre-typing list is capped at RELEVANCE_ROWS, and with `groupFor` every group
+  // is guaranteed one of those rows, so no vocabulary can vanish without a header or
+  // a "more" the way #3220's analyte groups did. It is a FLOOR, not an even split:
+  // the rest of the budget follows the order you handed in, because for every picker
+  // here that order is a priority. If your groups are peers rather than ranked, say
+  // so by interleaving the option array — this component cannot tell.
+  // WITHOUT `groupFor` the concatenated list has no seam in it, nothing can detect
+  // the loss, and the picker looks complete because it looks short.
   groupFor?: (option: string) => string | null;
   allowFreeText?: boolean;
   emptyLabel?: string;
@@ -139,8 +141,8 @@ export default function Combobox({
   const q = filterValue.trim().toLowerCase();
   // Headers only in the relevance view (see `groupFor`).
   const showGroups = groupFor != null && q === "";
-  // The GROUPED pre-typing list shares its rows out per group instead of taking
-  // them all off the front, so a picker fed two ranked vocabularies shows both
+  // The GROUPED pre-typing list gives every group one row before it fills the rest
+  // in the caller's order, so a picker fed two ranked vocabularies shows both
   // (#3410). Ungrouped, and every typed query, are untouched.
   const relevance = showGroups
     ? groupedRelevanceView(options, groupFor, RELEVANCE_ROWS)
@@ -279,7 +281,16 @@ export default function Combobox({
       // Let a parent focus trap leave the first Escape to this open picker.
       // The input handler below then closes only the listbox; a second Escape
       // reaches the modal normally.
-      data-escape-layer={open ? "true" : undefined}
+      //
+      // KEYED ON THE LISTBOX, NOT ON `open` — the same distinction #3409 settled one
+      // level up (components/facts/FactEditorHost.tsx): the trap asks "is a layer
+      // ACTIVE", and a marker meaning "a field thinks it is open" answers a cheaper
+      // question and answers it wrong. `open && !listOpen` is a picker with nothing
+      // to close — an allowFreeText field whose vocabulary is empty and whose value
+      // is still blank — and there the marker used to swallow every Escape, silently,
+      // which is what a dismissed keypress always looks like. #3100's stack field
+      // makes that state the DEFAULT for a profile that has never named a stack.
+      data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (
         <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
@@ -327,8 +338,19 @@ export default function Combobox({
         disabled={disabled}
         autoFocus={autoFocus}
         role="combobox"
-        aria-expanded={open}
-        aria-controls={listboxId}
+        // EXPANDED MEANS THERE IS A LISTBOX, not "the field thinks it is open".
+        // `open` and `listOpen` come apart whenever the list would render EMPTY: an
+        // allowFreeText picker whose options are `[]` and whose value is still blank
+        // has `open` true and nothing to show. That state used to announce
+        // aria-expanded="true" with no listbox in the document and an aria-controls
+        // pointing at an id that does not exist. It was reachable before (a narrowed
+        // brand list, a situation vocabulary a profile has not filled in) and #3100
+        // makes it the DEFAULT for the stack field, whose vocabulary is empty for
+        // every profile that has never named a stack. aria-controls is dropped
+        // outright while closed rather than left dangling — a reference to a missing
+        // id is worse than no reference.
+        aria-expanded={listOpen}
+        aria-controls={listOpen ? listboxId : undefined}
         aria-activedescendant={activeDescendantId}
         aria-autocomplete="list"
         aria-label={ariaLabel}

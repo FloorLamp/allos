@@ -28,6 +28,15 @@ const FINDING = "E2EComboFinding";
 const NEW_PROVIDER = "E2E Combobox Clinic";
 const SPECIALTY_DOC = "E2E Specialty Doc";
 const SUPP = "E2EComboSupp";
+// A NAME NO OTHER TEST IN THIS FILE MAY WRITE. The a11y test below asserts that a
+// FREE-TEXT row renders, which is true only while the typed name is NOT in the
+// profile's supplement vocabulary — and the situation-picker test above SAVES a
+// supplement called SUPP. Sharing the name made the a11y test pass alone and fail
+// deterministically whenever that sibling ran first on the same worker (each
+// Playwright WORKER gets a DB copy, not each test; this file's cleanup is
+// beforeAll/afterAll). "No submit — nothing is written" is true of the a11y test
+// itself, which is exactly what hid the coupling: the write is the neighbour's.
+const A11Y_SUPP = "E2EComboA11ySupp";
 const CUSTOM_SITUATION = "E2EMigraine";
 
 function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
@@ -317,9 +326,9 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // an `option` would tell a screen-reader user the vocabulary contains their typo.
     // It stays a button — and aria-activedescendant still names it, which announces
     // it as the button it is.
-    await settledFill(page, field, SUPP);
+    await settledFill(page, field, A11Y_SUPP);
     const useRow = listbox.getByRole("button", {
-      name: new RegExp(`Use .*${SUPP}`),
+      name: new RegExp(`Use .*${A11Y_SUPP}`),
     });
     await expect(useRow).toBeVisible();
     await expect(listbox.getByRole("option")).toHaveCount(0);
@@ -327,6 +336,54 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       "aria-activedescendant",
       (await useRow.getAttribute("id"))!
     );
+    // No submit — nothing is written to the DB.
+  });
+
+  // A FIELD WITH NOTHING TO SHOW MUST NOT SAY IT IS EXPANDED (#3316/#3100).
+  //
+  // `aria-expanded` used to track `open` — the field's own idea of whether it has
+  // focus — while the <ul> renders only when there is a row to put in it. The two
+  // come apart for a free-text picker whose vocabulary is EMPTY and whose value is
+  // still blank, and the widget then announced aria-expanded="true" with no listbox
+  // in the document and an aria-controls pointing at an id that does not exist.
+  //
+  // #3100 makes that the DEFAULT state of the stack field: no seeded profile has ever
+  // named a stack, so `catalogOptions.stacks` is []. Which is why the assertion lives
+  // here rather than in a note.
+  test("an empty vocabulary is not announced as an expanded listbox (#3316)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/nutrition?tab=supplements");
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(addCard).toBeVisible();
+
+    const editor = await openFact(page, "identity", addCard);
+    const stack = editor.getByLabel("Stack (optional)");
+    await stack.click();
+
+    // THE ABSENCE, and then the PRESENCE that makes the absence mean something. A
+    // "no listbox" assertion passes just as well against a field that never woke up,
+    // so the same field is made to expand for real two lines down — same element,
+    // same session — before the absence is asserted again.
+    await expect(stack).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(stack).not.toHaveAttribute("aria-controls", /.*/);
+
+    await settledFill(page, stack, "E2EComboStack");
+    await expect(stack).toHaveAttribute("aria-expanded", "true");
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    // aria-controls now RESOLVES — the id names the list that is actually there.
+    await expect(stack).toHaveAttribute(
+      "aria-controls",
+      (await listbox.getAttribute("id"))!
+    );
+
+    await stack.fill("");
+    await expect(stack).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("listbox")).toHaveCount(0);
     // No submit — nothing is written to the DB.
   });
 });

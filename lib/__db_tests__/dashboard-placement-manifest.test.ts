@@ -623,14 +623,23 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 267 (the heaviest baseline) + 23 headroom = 290
+  //   household 270 (the heaviest baseline) + 20 headroom = 290
+  //
+  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). The line above read
+  // "267 + 23 = 290" after the household baseline moved to 270, which is the one
+  // arithmetic this comment cannot afford to get wrong: the whole subject here is
+  // that these numbers are honest. The CEILING did not move — only the split of it
+  // into "what a render costs" and "what is left".
   //
   // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
-  // conversation. The integrated household fixture carries four profiles, so a new
-  // per-profile dashboard read costs four statements there; 23 is about five such
-  // reads, or one new gathering surface. Ordinary work pastes its refreshed baseline
-  // and moves on; a change that needs more than a whole new surface's worth of
-  // queries has to say so out loud.
+  // conversation. The integrated household fixture carries four profiles, so an
+  // UNCONDITIONAL new per-profile dashboard read costs four statements there and 20
+  // is five such reads, or one new gathering surface. A read behind a per-profile
+  // CONDITION costs less: the stack vocabulary added to getIntakeCatalogOptions
+  // (#3100) is one statement per profile that renders an illness cockpit, and this
+  // fixture has three, which is exactly the +3 that moved household 267 → 270.
+  // Ordinary work pastes its refreshed baseline and moves on; a change that needs
+  // more than a whole new surface's worth of queries has to say so out loud.
   //
   // RE-DERIVE IT WHENEVER THE BASELINES MOVE MATERIALLY DOWN — same one-line edit.
   // #3369's items 1 and 2 (deferring the closed tail's gathers, and cache()-wrapping

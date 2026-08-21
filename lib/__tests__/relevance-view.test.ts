@@ -48,8 +48,14 @@ describe("groupedRelevanceView", () => {
     const view = groupedRelevanceView(options, groupFor, ROWS);
 
     expect(view.rows).toHaveLength(ROWS);
-    expect(view.rows.filter((o) => o.startsWith("Lift"))).toHaveLength(4);
-    expect(view.rows.filter((o) => o.startsWith("Analyte"))).toHaveLength(4);
+    // THE CLAIM IS REPRESENTATION, not an even split: the second vocabulary is
+    // present, so it gets a header, so it is not a list that vanished. It gets ONE
+    // row, because the caller ranked it second and this component will not overrule
+    // that beyond the one row the fix requires.
+    expect(view.rows.filter((o) => o.startsWith("Analyte"))).toEqual([
+      "Analyte 1",
+    ]);
+    expect(view.rows.filter((o) => o.startsWith("Lift"))).toHaveLength(7);
     expect(view.droppedGroups).toEqual([]);
     // The pre-fix list, for contrast: eight lifts and no analyte at all.
     expect(options.slice(0, ROWS).some((o) => o.startsWith("Analyte"))).toBe(
@@ -57,7 +63,7 @@ describe("groupedRelevanceView", () => {
     );
   });
 
-  it("keeps the caller's order — the round-robin picks rows, it does not resort them", () => {
+  it("keeps the caller's order — it picks rows, it does not resort them", () => {
     const options = [...named("Lift", 200), ...named("Analyte", 50)];
     const groupFor = byPrefix({ Lift: "Exercises", Analyte: "Biomarkers" });
     const { rows } = groupedRelevanceView(options, groupFor, ROWS);
@@ -66,14 +72,45 @@ describe("groupedRelevanceView", () => {
       "Lift 2",
       "Lift 3",
       "Lift 4",
+      "Lift 5",
+      "Lift 6",
+      "Lift 7",
       "Analyte 1",
-      "Analyte 2",
-      "Analyte 3",
-      "Analyte 4",
     ]);
   });
 
-  it("does not waste budget on a group that runs out — the biomarker picker's own shape", () => {
+  // THE PRIORITY QUESTION, and the reason the rows are not shared out evenly. For
+  // every grouped picker that ships, the caller's group order is a PRIORITY order:
+  // "Due or flagged" is the app saying act on this. These are the record form's own
+  // three-bucket shape (components/ResultForm.tsx over lib/biomarker-rank.ts) at
+  // sizes a full panel with several out-of-range results reaches easily.
+  it("does not hand the urgent bucket's rows to the alphabetical tail", () => {
+    const groupFor = byPrefix({
+      due: "Due or flagged",
+      yours: "Your markers",
+      all: "All biomarkers",
+    });
+    const shape = (dueN: number, yoursN: number, allN: number) => {
+      const options = [
+        ...named("due", dueN),
+        ...named("yours", yoursN),
+        ...named("all", allN),
+      ];
+      const { rows } = groupedRelevanceView(options, groupFor, ROWS);
+      return [
+        rows.filter((o) => o.startsWith("due")).length,
+        rows.filter((o) => o.startsWith("yours")).length,
+        rows.filter((o) => o.startsWith("all")).length,
+      ];
+    };
+    // 8 flagged analytes and none of the profile's own: 7 of the 8 keep their row,
+    // and the tail's single row is the header that fixes #3410. An even split would
+    // have given the tail four of them.
+    expect(shape(8, 0, 200)).toEqual([7, 0, 1]);
+    expect(shape(12, 20, 200)).toEqual([6, 1, 1]);
+  });
+
+  it("does not waste budget on a group that runs out — the biomarker picker's shape today", () => {
     // The shipped record-form picker: two due-or-flagged analytes, one measured,
     // and the whole ~200-row canonical vocabulary behind them. This is what it
     // showed before #3410 and what it must still show.

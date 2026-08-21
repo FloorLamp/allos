@@ -1241,16 +1241,22 @@ disagree with itself (#221). The BRAND field keeps its post-name-pick narrowing 
 chosen drug's own brands; only its PRE-pick state changed, to lead with the
 brands this profile has recorded.
 
-**Eight rows, shared out per group (#3410).** "The first eight" is right for ONE
+**Eight rows, with a floor per group (#3410).** "The first eight" is right for ONE
 vocabulary and silently wrong for two: a picker fed two ranked lists concatenated
 spent all eight on the higher-ranked one, and the other never appeared — no header,
 no "more", and a list that looked complete because it was short. When the caller
-passes `groupFor`, `lib/relevance-view.ts` shares the eight out a row at a time in
-the caller's group order, so every group is represented; the total is still eight,
-and a picker with more groups than rows says which ones it could not fit (a
-development-only `console.warn`). A single-group picker is unchanged by
-construction. WITHOUT `groupFor` a concatenated list has no seam in it and nothing
-can detect the loss — so a picker that merges vocabularies must pass one.
+passes `groupFor`, `lib/relevance-view.ts` gives every group ONE row first, in the
+caller's group order, then fills the rest of the eight in the caller's own ranked
+order. Representation is the defect, so it is guaranteed; the ranking is the
+product, so nothing beyond that one row overrides it. Sharing the eight out EVENLY
+was tried and rejected: every grouped picker that ships orders its groups by
+priority, and an even split handed half of "Due or flagged" to the ~200-name
+alphabetical tail (8/0/0 → 4/0/4 for a profile with eight flagged analytes; the
+floor rule gives 7/0/1). The total is still eight, a single-group picker is
+unchanged by construction, and a picker with more groups than rows says which ones
+it could not fit (a development-only `console.warn`). WITHOUT `groupFor` a
+concatenated list has no seam in it and nothing can detect the loss — so a picker
+that merges vocabularies must pass one.
 
 **The stack field is one of these vocabularies (#3100).** `IntakeCatalogOptions`
 carries `stacks` — this profile's distinct, trimmed, non-empty `stack` values,
