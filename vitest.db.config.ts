@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { specsNeedingIsolation } from "./vitest.isolation";
+// Both ceilings, with their derivation and their unit, live in ONE place.
+import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
 // DB integration tests (a SEPARATE tier from the pure unit suite in
 // lib/__tests__). These open real better-sqlite3 handles to exercise code that
@@ -44,6 +46,8 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "db-shared",
+          testTimeout,
+          hookTimeout,
           include: [
             "lib/__db_tests__/**/*.test.ts",
             "lib/__action_tests__/**/*.test.ts",
@@ -59,6 +63,8 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "db-isolated",
+          testTimeout,
+          hookTimeout,
           include: ISOLATED,
           setupFiles: ["lib/__db_tests__/setup.ts", ACTION_SETUP],
         },

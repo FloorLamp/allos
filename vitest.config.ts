@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { specsNeedingIsolation } from "./vitest.isolation";
+// Both ceilings, with their derivation and their unit, live in ONE place.
+import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const alias = { "@": root };
@@ -38,6 +40,8 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "pure",
+          testTimeout,
+          hookTimeout,
           include: ["lib/**/*.test.ts"],
           exclude: [...NOT_PURE, ...ISOLATED],
           pool: "threads",
@@ -48,6 +52,8 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "pure-isolated",
+          testTimeout,
+          hookTimeout,
           include: ISOLATED,
           exclude: NOT_PURE,
           pool: "forks",
