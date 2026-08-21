@@ -173,7 +173,7 @@ export default function VisitsSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div
-        className="space-y-10"
+        className="section-stack space-y-10"
         data-testid="visits-body"
         // The order the pane resolved to, declared rather than inferred from two
         // bounding boxes — an e2e that wants to know WHY it saw Past first should
@@ -209,7 +209,7 @@ export default function VisitsSection({
               </span>
             )}
           </h3>
-          <div className="min-w-0 space-y-6">
+          <div className="section-stack-sm min-w-0 space-y-6">
             {/* No inner "Scheduled" label (#1449): the outer heading names the
                 list; the count that carries information lives with it. */}
             <section>

@@ -31,7 +31,7 @@ export default function PracticeBackfillLauncher({
 
   return (
     <section
-      className="card mb-6"
+      className="card section-seam mb-6"
       data-testid="practice-backfill-launcher"
       aria-labelledby="practice-backfill-title"
     >

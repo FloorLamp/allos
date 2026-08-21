@@ -231,7 +231,7 @@ export default async function OnboardingPage({
     <PageContainer width="flow" className="mx-auto">
       <OnboardingProgress step={activeStep} unlockedStep={unlockedStep} />
       {activeStep === 1 ? (
-        <div className="mb-6">
+        <div className="section-seam mb-6">
           <h1 className="flex items-center gap-3 text-2xl font-bold text-slate-900 dark:text-slate-100">
             <LogoMark className="h-9 w-16" />
             <span>{ONBOARDING_STEP_TITLES[0]}</span>
@@ -252,7 +252,7 @@ export default async function OnboardingPage({
       )}
 
       {activeStep === 1 && (
-        <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 p-4 text-sm text-brand-950 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-100">
+        <div className="section-seam mb-6 rounded-xl border border-brand-200 bg-brand-50 p-4 text-sm text-brand-950 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-100">
           <div className="flex items-start gap-3">
             <IconLock className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
             <div>

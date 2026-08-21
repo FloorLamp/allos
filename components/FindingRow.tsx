@@ -34,7 +34,7 @@ export default function FindingRow({
   return (
     <li
       data-testid={itemTestid}
-      className={`flex items-start gap-3 rounded-xl border p-3 ${
+      className={`subpanel-inset-sm flex items-start gap-3 rounded-xl border p-3 ${
         f.tone === "info"
           ? "border-slate-200 bg-slate-50/60 dark:border-ink-750 dark:bg-ink-850/40"
           : "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30"

@@ -18,7 +18,7 @@ export default function NapCard({
   const singleNap = naps.today.length === 1 ? naps.today[0] : null;
 
   return (
-    <section id="naps" className="mb-6" data-testid="nap-section">
+    <section id="naps" className="section-seam mb-6" data-testid="nap-section">
       <div className="card" data-testid="nap-card">
         <div className="flex items-center gap-2">
           <IconZzz

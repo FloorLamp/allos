@@ -105,7 +105,7 @@ export default async function ProfilePage() {
         data-print-region="emergency"
         className="mt-10 scroll-mt-20"
       >
-        <div className="mb-6 flex items-end justify-between gap-4 print:hidden">
+        <div className="section-seam mb-6 flex items-end justify-between gap-4 print:hidden">
           <div>
             {/* Sentence case + section scale (#1449, cluster D): this was
                 "Emergency Card" at `text-2xl font-bold` — Title Case AND the same

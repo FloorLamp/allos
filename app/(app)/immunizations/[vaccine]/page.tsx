@@ -111,7 +111,7 @@ export default async function VaccineDetailPage(props: {
         />
 
         {/* Status summary. */}
-        <div className="card mb-6 flex flex-wrap items-center gap-x-8 gap-y-3">
+        <div className="card section-seam mb-6 flex flex-wrap items-center gap-x-8 gap-y-3">
           <div>
             <div className="label">Status</div>
             <div className="text-sm font-medium text-slate-700 dark:text-slate-200">

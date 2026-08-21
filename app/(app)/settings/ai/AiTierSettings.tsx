@@ -122,7 +122,7 @@ function TierBlock({
   return (
     <div
       data-testid={`ai-tier-${tier}`}
-      className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10"
+      className="subpanel-inset space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10"
     >
       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
         {label}

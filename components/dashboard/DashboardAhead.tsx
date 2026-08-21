@@ -126,7 +126,7 @@ export default function DashboardAhead({
   if (buckets.length === 0) return null;
   return (
     <section
-      className="mb-8"
+      className="section-seam-lg mb-8"
       aria-labelledby="dashboard-ahead-title"
       data-testid="dashboard-ahead"
     >

@@ -89,7 +89,7 @@ export default function PeakFlowZoneCard({
     <div
       data-testid="peak-flow-zone"
       data-zone={verdict?.zone ?? "none"}
-      className={`card mb-6 border-l-4 ${
+      className={`card section-seam mb-6 border-l-4 ${
         verdict
           ? ZONE_CLASS[verdict.zone]
           : "border-l-slate-300 dark:border-l-slate-600"

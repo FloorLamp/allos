@@ -67,15 +67,81 @@ restate Botanical literals on purpose, with focused tests against drift.
 
 ## 2. Container grammar
 
-| container                     | rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | status                                             | guard                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------- |
-| Card / card-quiet             | the two surface tiers; nothing nests a card in a card                                                                                                                                                                                                                                                                                                                                                                                                                               | shipped; two nests to unwrap                       | #3466                                        |
-| Sub-panel (box inside a card) | one stepped inset convention, one notch down below `sm`                                                                                                                                                                                                                                                                                                                                                                                                                             | **ruled** — #3466                                  | #3466                                        |
-| Chip / pill                   | one primitive with the two **declared roles**: navigation (rounded-full outline pill, `data-chip-role="nav"`) and filter (`FilterPills` — soft tinted well, `rounded-md`, active FILLED, `data-chip-role="filter"`); `FilterPills` is the app's ONE filter affordance. The #3475 primitive extends this pair to selectable/status pills (range chips, section-status chips, toggle pairs) rather than inventing a third system; a hand-rolled chip row is the defect the rule names | partial (roles shipped, #3408) · **ruled** (#3475) | lint-style scan over hand-rolled pill groups |
-| Stat tile                     | `StatBox` is the blessed tier, tokened fill, deliberate radius; page-local variants fold in                                                                                                                                                                                                                                                                                                                                                                                         | **ruled** — #3475                                  | same suite                                   |
-| Card footnote                 | `card-footnote` pads to the card edge by design                                                                                                                                                                                                                                                                                                                                                                                                                                     | shipped                                            | —                                            |
-| Section rhythm                | vertical section margins step down one notch below `sm` (40→24, 32→24, 24→16)                                                                                                                                                                                                                                                                                                                                                                                                       | **ruled** — #3466                                  | #3466 + census height metrics                |
-| Absence                       | an empty sub-section renders `EmptyState` `compact` — one line, one action; never the `p-10` billboard; an absence stops reserving room (#2399)                                                                                                                                                                                                                                                                                                                                     | shipped                                            | review + census                              |
+| container                     | rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | status                                             | guard                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Card / card-quiet             | the two surface tiers; nothing nests a card in a card                                                                                                                                                                                                                                                                                                                                                                                                                               | shipped; both nests unwrapped (#3466)              | `mobile-density-convention.test.ts`, `mobile-density-sweep.mobile.spec.ts`                         |
+| Sub-panel (box inside a card) | one stepped inset convention, one notch down below `sm`: `subpanel-inset` (16→12), `subpanel-inset-sm` (12→10), `subpanel-inset-xs` (10→8). A card that pads `p-0!` and lets its cells carry the gutter has ONE layer and takes no tier                                                                                                                                                                                                                                             | shipped — #3466                                    | `mobile-density-convention.test.ts`, `mobile-density-sweep.mobile.spec.ts`                         |
+| Chip / pill                   | one primitive with the two **declared roles**: navigation (rounded-full outline pill, `data-chip-role="nav"`) and filter (`FilterPills` — soft tinted well, `rounded-md`, active FILLED, `data-chip-role="filter"`); `FilterPills` is the app's ONE filter affordance. The #3475 primitive extends this pair to selectable/status pills (range chips, section-status chips, toggle pairs) rather than inventing a third system; a hand-rolled chip row is the defect the rule names | partial (roles shipped, #3408) · **ruled** (#3475) | lint-style scan over hand-rolled pill groups                                                       |
+| Stat tile                     | `StatBox` is the blessed tier, tokened fill, deliberate radius; page-local variants fold in                                                                                                                                                                                                                                                                                                                                                                                         | **ruled** — #3475                                  | same suite                                                                                         |
+| Card footnote                 | `card-footnote` pads to the card edge by design                                                                                                                                                                                                                                                                                                                                                                                                                                     | shipped                                            | —                                                                                                  |
+| Section rhythm                | vertical section margins step down one notch below `sm` (40→24, 32→24, 24→16): `section-seam`, `section-seam-lg`, `section-stack`, `section-stack-sm`. Adjacent margins collapse to the LARGER, so a seam and the stack it lands beside must be stepped together                                                                                                                                                                                                                    | shipped — #3466                                    | `mobile-density-convention.test.ts`, `mobile-density-sweep.mobile.spec.ts` + census height metrics |
+| Absence                       | an empty sub-section renders `EmptyState` `compact` — one line, one action; never the `p-10` billboard; an absence stops reserving room (#2399)                                                                                                                                                                                                                                                                                                                                     | shipped                                            | review + census                                                                                    |
+
+### The two phone-density conventions, in one place (#3466)
+
+Three spacing layers stack on a 390px line. The page gutter (16px) and the card
+gutter (`p-4` below `sm`) are at the platform floor and are **not** tightened —
+a text line inside a card is already ~83% of a 390px viewport. What steps down is
+the **second** gutter each spends inside itself, and the seams between sections.
+Pick a tier by what the element carries **today**; add the class, change nothing
+else.
+
+| carries today                         | add                 | phone |
+| ------------------------------------- | ------------------- | ----- |
+| sub-panel `p-4` (16), or `p-4 sm:p-5` | `subpanel-inset`    | 12px  |
+| sub-panel `p-3` (12)                  | `subpanel-inset-sm` | 10px  |
+| sub-panel `p-2.5` (10)                | `subpanel-inset-xs` | 8px   |
+| seam `mb-6` (24)                      | `section-seam`      | 16px  |
+| seam `mb-8` (32)                      | `section-seam-lg`   | 24px  |
+| stack `space-y-10` (40)               | `section-stack`     | 24px  |
+| stack `space-y-6` (24)                | `section-stack-sm`  | 16px  |
+
+Every tier is a `max-sm:` override carrying `!`, and both halves are
+load-bearing. `max-sm:` compiles to a rule that emits **only** inside
+`@media (width < 40rem)`, so no tier can reach a desktop viewport and there is no
+per-site desktop value to get wrong. That is an **inference about what `max-sm:`
+compiles to**, not a guarantee the tiers enforce on themselves: it was verified
+by walking the compiled sheet (all seven rules inside that one media query, none
+outside), and it would stop holding if `--breakpoint-sm` moved — nothing in the
+test suite would notice. The `!` means the tier beats a call site's own `p-4`:
+Tailwind 4 sorts custom utilities independently of source order, so without it
+the convention would apply or not depending on generated order.
+
+Two traps the guards exist for, both found by measurement rather than reading:
+
+- **Adjacent margins collapse to the larger.** A stepped 16px seam beside an
+  un-stepped 24px stack renders 24 — computed value correct, screen unchanged. A
+  guard that reads the computed margin passes either way; the one here reads the
+  **rendered gap** between the two elements the seam separates.
+- **A card that pads `p-0!`** and delegates the gutter to its own cells has one
+  layer, not two. Those cells _are_ the card token reproduced, so they take no
+  tier — stepping them tightens the floor. The guard pins that exemption together
+  with the `p-0!` premise that licenses it, so the exemption cannot outlive its
+  reason.
+
+Scope, as **applied**: section rhythm was swept across every section-level seam
+in the app shell. Out deliberately: `app/(auth)/*` and `/offline` (not app
+routes), negative margins, and seams already breakpoint-scoped (`md:mb-6`,
+`sm:mb-6`).
+
+Scope, as **enforced** — and the two are not the same, which is the point of
+saying so here. `lib/__tests__/mobile-density-convention.test.ts` guards the
+conventions' DEFINITION: that each tier exists, is declared once, is spelled as a
+`max-sm:` override carrying `!`, that no second convention is hand-written
+anywhere in `app/`, `components/` or `lib/`, and that a NAMED census of sites and
+exemptions still holds. It does **not** verify that every seam in the app has
+adopted a tier. Measured on the sweep that shipped this: 77 tier applications
+across 53 files, 27 of them in the 18 files the census names and 50 in files no
+test names — and only 16 individually load-bearing, so most single applications
+can be deleted with the suite green.
+
+That gap is deliberate and it is the same trade this registry's doctrine names:
+these are **a vocabulary, not an automatic rule**. A structural selector would
+also catch badges, chips and fields, none of which are gutters; a tree-wide guard
+would have to allow-list roughly a hundred boxes that #3466 cleared as list
+rhythm or field chrome, and a guard carrying a hundred exceptions is deleted
+within a week — taking the real convention with it. A new site or a new exemption
+is recorded in that test; adoption elsewhere is a review question, not a gate.
 
 ## 3. Control grammar
 
@@ -147,7 +213,7 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 
 | tier                                  | covers                                                                                                                                                                     | status                       |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint                                                                                                  | shipped — the proven pattern |
+| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466)                                        | shipped — the proven pattern |
 | Design-guard suite                    | chips, add-affordance labels, sheet titles, link tones — lands with each primitive per the guards ruling                                                                   | pending, per-issue           |
 | Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan, hover captures, cross-page consistency lane, dirty-profile shape, middle-state dials, post-merge mini-census | **ruled**                    |
 | `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                         | #3446 (open)                 |
@@ -155,7 +221,7 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 ## Work map
 
 Build order (the umbrella issue tracks it): this registry → #3446 → primitives
-(#3475, #3486, #3499, #3466, #3501, #3492) → idiom adopters (#3495, #3460,
+(#3475, #3486, #3499, #3466 ✓ shipped, #3501, #3492) → idiom adopters (#3495, #3460,
 #3491, #3473, plus standing #3374/#3378/#3408) → copy cluster (#3488, #3490,
 #3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
 #3481, #3493, #3496, #3497, #3498, #3500) ship independently and adopt the

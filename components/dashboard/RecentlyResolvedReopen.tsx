@@ -86,7 +86,7 @@ export default function RecentlyResolvedReopen({
       data-testid="recently-resolved-reopen"
       aria-label="Recently resolved illnesses"
       data-saved-count={savedCount}
-      className="mb-6 flex flex-col gap-2"
+      className="section-seam mb-6 flex flex-col gap-2"
     >
       {visible.map((item) => (
         <div

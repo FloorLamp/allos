@@ -276,7 +276,7 @@ function ProfileRow({
 
   const dirty = name.trim() !== profile.name && name.trim() !== "";
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
+    <div className="subpanel-inset-sm flex items-start gap-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
       <Avatar profile={profile} size="md" className="mt-0.5" />
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center gap-2">
@@ -334,7 +334,7 @@ function ProfileRow({
 
         {confirmOpen && (
           <div
-            className={`space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
+            className={`subpanel-inset-sm space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
           >
             <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
               Permanently delete “{profile.name}” and all of their data?
@@ -817,7 +817,7 @@ function LoginRow({
   return (
     <div
       data-testid="login-row"
-      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+      className="subpanel-inset-sm rounded-lg border border-black/10 p-3 dark:border-white/10"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
@@ -1041,7 +1041,7 @@ function GrantsSummaryRow({
   return (
     <div
       data-testid={`grant-summary-${login.username}`}
-      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+      className="subpanel-inset-sm rounded-lg border border-black/10 p-3 dark:border-white/10"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-slate-800 dark:text-slate-100">

@@ -202,7 +202,12 @@ export default async function DataPage(
         {/* Connect a device or service — the full integrations surface (the
             standalone /integrations page was folded in here; each card links to
             its per-source setup page under /integrations/<id>). */}
-        <div id="integrations" className="card scroll-mt-4">
+        {/* NO CARD SHELL HERE (#3466 class B). `IntegrationsGrid` renders one
+            `.card` per source, so a `.card` wrapper drew a border around a grid of
+            borders — and on a phone it also charged the grid a second 16px gutter
+            for the privilege. The heading below is a SECTION header on the canvas,
+            which is what the other tab sections already do. */}
+        <div id="integrations" className="scroll-mt-4">
           <div className="mb-3">
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">
               Connect a device or service

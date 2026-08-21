@@ -82,7 +82,7 @@ export default async function LongevityPage({
         </nav>
       )}
 
-      <div className="space-y-6">
+      <div className="section-stack-sm space-y-6">
         <BioAgeSection />
         {fitness && <FitnessSection section={fitness} />}
         {sleep && <SleepSection section={sleep} />}

@@ -285,6 +285,102 @@
   border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   THE SUB-PANEL INSET CONVENTION (issue #3466 class A).
+
+   A recurring shape: a `rounded-lg border p-*` (or tinted) box INSIDE a `.card`.
+   The card already spends its gutter (`p-4` below `sm`, #1416 section A) and the
+   page shell already spent 16px before that, so a 16px box inset puts phone text
+   42–48px from the screen edge — a second, untokenized gutter layer. The card
+   token itself is at the platform floor and is NOT touched here (a text line in a
+   card is already ~83% of a 390px viewport); what steps down is the SECOND layer.
+
+   This comment is the MECHANISM (why the rules are spelled the way they are);
+   docs/internals/design-system.md is the INDEX a reader looking for "which class
+   do I add" will reach for, and it carries both tier tables side by side.
+
+   ONE convention, THREE tiers, chosen by the inset the box carries TODAY:
+
+       today's inset        add this class        phone     desktop
+       p-4 (16) / p-5       subpanel-inset        12px      unchanged
+       p-3 (12)             subpanel-inset-sm     10px      unchanged
+       p-2.5 (10)           subpanel-inset-xs      8px      unchanged
+
+   HOW TO USE IT, AND WHY IT IS SPELLED THIS WAY. Each rule is a `max-sm:`
+   override, so a call site KEEPS the padding vocabulary it already had and only
+   ADDS the class — `p-3` stays `p-3 subpanel-inset-sm`, `px-4 py-3.5 sm:px-5
+   sm:py-4` stays and gains `subpanel-inset`. Two things follow, and both are the
+   reason for the shape:
+
+     1. DESKTOP IS IDENTICAL BY CONSTRUCTION, not by inspection. Every declaration
+        below lives inside `max-sm:`, so at ≥`sm` these classes emit nothing at
+        all. There is no per-site desktop value to get wrong and no reviewer
+        obligation to check 30 of them.
+     2. `!` IS LOAD-BEARING. Tailwind 4 sorts custom utilities independently of
+        source order (see the note on `metric-readings-list` below), so without it
+        a call site's own `p-4` could win the tie and the convention would apply
+        or not depending on generated order. Same reason, same spelling, as the
+        `max-sm:*!` overrides in the table utilities.
+
+   A NEW sub-panel gets the convention by adding one class from the table — it is
+   a vocabulary, not an automatic rule. A structural selector (`.card [class*=
+   "rounded-"]`) was considered and rejected: it would also catch badges, chips,
+   pills and `.input`s, none of which are gutters. A tree-wide guard was
+   considered and rejected too — a census of `rounded-* border p-{2.5,3,4}` boxes
+   finds 107 of them, and #3466 cleared the great majority (card footnotes,
+   /upcoming's hover-fill rows, /medical/cycles' chips, the dose-ledger pager,
+   the integrations `code` blocks) as list rhythm or field chrome rather than
+   gutters, so the guard would have to carry a ~100-entry allow-list and would be
+   deleted within a week — taking the real convention with it. */
+@utility subpanel-inset {
+  @apply max-sm:p-3!;
+}
+
+@utility subpanel-inset-sm {
+  @apply max-sm:p-2.5!;
+}
+
+@utility subpanel-inset-xs {
+  @apply max-sm:p-2!;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   THE SECTION RHYTHM CONVENTION (issue #3466 class C).
+
+   Vertical seams BETWEEN page sections kept desktop scale on a phone: 24px seams
+   on ~20 routes, 32px on the dashboard's Standing/Ahead, 40px between the Visits
+   pane's sections. One notch down below `sm` — 40→24, 32→24, 24→16 — desktop
+   unchanged, same `max-sm:` + `!` construction and for the same two reasons as
+   the sub-panel tiers above.
+
+       today's seam           add this class        phone     desktop
+       mb-6 (24)              section-seam          16px      unchanged
+       mb-8 (32)              section-seam-lg       24px      unchanged
+       space-y-10 (40)        section-stack         24px      unchanged
+       space-y-6 (24)         section-stack-sm      16px      unchanged
+
+   The two `space-y` tiers exist because a stack of sections spends its rhythm on
+   the CHILDREN's margins rather than its own — same seam, different property, so
+   it needs the same convention rather than a second one.
+
+   `components/dashboard/NowStrip.tsx` is deliberately NOT a tenant: #3460 owns
+   the Now strip's own margin and trims it there. */
+@utility section-seam {
+  @apply max-sm:mb-4!;
+}
+
+@utility section-seam-lg {
+  @apply max-sm:mb-6!;
+}
+
+@utility section-stack {
+  @apply max-sm:space-y-6!;
+}
+
+@utility section-stack-sm {
+  @apply max-sm:space-y-4!;
+}
+
 @utility input {
   /* Field boundaries are their own token (#2701, WCAG 1.4.11): a control's
      boundary holds ≥3:1 against the field and the canvas in both modes — the

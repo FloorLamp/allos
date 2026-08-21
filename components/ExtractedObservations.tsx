@@ -173,7 +173,7 @@ export default function ExtractedObservations({
 
   return (
     <div
-      className="card mb-6 overflow-hidden p-0"
+      className="card section-seam mb-6 overflow-hidden p-0"
       data-testid="extracted-observations"
     >
       <div className="flex flex-wrap items-center gap-4 px-5 pt-5">

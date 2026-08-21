@@ -16,7 +16,7 @@ export default function SessionRecapCard({
   unit: WeightUnit;
 }) {
   return (
-    <div className="card mb-6" data-testid="session-recap-card">
+    <div className="card section-seam mb-6" data-testid="session-recap-card">
       <div className="mb-3 flex items-center gap-2">
         <IconFlagCheck className="h-5 w-5 text-brand-600 dark:text-brand-400" />
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">

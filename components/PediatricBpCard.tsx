@@ -19,7 +19,7 @@ export function PediatricBpCard({ ctx }: { ctx: PediatricBpContext | null }) {
   return (
     <div
       data-testid="pediatric-bp-context"
-      className="card mb-6 border-l-4 border-l-brand-400 dark:border-l-brand-600"
+      className="card section-seam mb-6 border-l-4 border-l-brand-400 dark:border-l-brand-600"
     >
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div>

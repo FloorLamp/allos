@@ -69,7 +69,7 @@ export default async function GoalsSection() {
     >
       {/* Goal-pacing findings (issue #45, domain 6): off-pace goals + safe-rate
           weight-loss caution, above the goal cards. */}
-      <div className="mb-6">
+      <div className="section-seam mb-6">
         <GoalPacingFindings />
       </div>
 

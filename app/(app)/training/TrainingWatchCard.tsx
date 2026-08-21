@@ -44,7 +44,7 @@ export default function TrainingWatchCard({
       <li
         key={row.key}
         data-testid="training-findings-rollup"
-        className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-ink-750 dark:bg-ink-850/40"
+        className="subpanel-inset-sm rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-ink-750 dark:bg-ink-850/40"
       >
         <details className="group">
           <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">

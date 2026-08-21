@@ -64,7 +64,7 @@ export default async function StrengthSection() {
     <section>
       {/* Recent PRs beside the volume trend (2 columns when both are present). */}
       <div
-        className={`mb-6 grid gap-6 ${prs.length > 0 ? "lg:grid-cols-2" : ""}`}
+        className={`section-seam mb-6 grid gap-6 ${prs.length > 0 ? "lg:grid-cols-2" : ""}`}
       >
         {prs.length > 0 && (
           <PrCard
@@ -104,7 +104,7 @@ export default async function StrengthSection() {
       </div>
 
       {!bodyweightKg && exercises.length > 0 && (
-        <Notice tone="amber" className="mb-6">
+        <Notice tone="amber" className="section-seam mb-6">
           Add a body weight entry on the Body metrics page to see strength
           standards relative to your bodyweight.
         </Notice>

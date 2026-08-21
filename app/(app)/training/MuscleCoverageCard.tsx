@@ -103,7 +103,7 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                 <li key={row.muscle} id={`coverage-${row.muscle}`}>
                   <details
                     data-coverage-row-target={`coverage-${row.muscle}`}
-                    className="group rounded-lg border border-black/5 bg-slate-50/50 p-2.5 transition-colors data-[highlighted=true]:border-brand-400 data-[highlighted=true]:bg-brand-50/70 dark:border-white/10 dark:bg-white/3 dark:data-[highlighted=true]:border-brand-500 dark:data-[highlighted=true]:bg-brand-950/20"
+                    className="subpanel-inset-xs group rounded-lg border border-black/5 bg-slate-50/50 p-2.5 transition-colors data-[highlighted=true]:border-brand-400 data-[highlighted=true]:bg-brand-50/70 dark:border-white/10 dark:bg-white/3 dark:data-[highlighted=true]:border-brand-500 dark:data-[highlighted=true]:bg-brand-950/20"
                     data-testid="muscle-coverage-row"
                   >
                     <summary

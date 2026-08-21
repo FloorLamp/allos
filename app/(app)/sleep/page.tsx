@@ -130,7 +130,7 @@ export default async function SleepPage() {
       />
 
       {waiting && (
-        <div className="card mb-6" data-testid="sleep-waiting">
+        <div className="card section-seam mb-6" data-testid="sleep-waiting">
           <h2
             className="font-semibold text-slate-800 dark:text-slate-100"
             data-testid="sleep-waiting-headline"
@@ -164,7 +164,7 @@ export default async function SleepPage() {
         )}
 
       {!waiting && summaryPresentation?.freshness === "stale" && (
-        <div className="card mb-6" data-testid="sleep-stale">
+        <div className="card section-seam mb-6" data-testid="sleep-stale">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             No sleep recorded last night
           </h2>
@@ -275,7 +275,7 @@ export default async function SleepPage() {
         profileId={profile.id}
         weightUnit={getUnitPrefs(login.id).weightUnit}
         metricKey="sleep_min"
-        className="mb-6"
+        className="section-seam mb-6"
         range={{ from: shiftDateStr(todayStr, -89), to: todayStr }}
       />
 

@@ -53,7 +53,7 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
   if (activeGroup.panes.length <= 1) return null;
 
   return (
-    <div className="-mx-4 mb-6 px-4 pb-3 md:mx-0 md:px-0">
+    <div className="-mx-4 section-seam mb-6 px-4 pb-3 md:mx-0 md:px-0">
       <ScrollFade
         data-testid="records-sub-tabs"
         data-chip-role="nav"
