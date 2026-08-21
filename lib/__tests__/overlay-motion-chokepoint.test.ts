@@ -72,6 +72,15 @@ const OVERLAY_SURFACES = new Map<string, string>([
 // responsive primitive — a sheet below `md`, a centred card above — and the app
 // has one dialog implementation instead of two.
 //
+// LEVELBADGE LEFT IN #3445, the same way, and its ENTRY HERE WAS WRONG while it
+// lasted. It read "centred explainer popover over a full-viewport catcher", and
+// the CompactDateMenu row below cited it as the same shape as a transparent
+// catcher. It was not: the layer carried `bg-slate-900/40 dark:bg-black/70` —
+// OVERLAY_SCRIM_TINT verbatim — and held a centred card with a heading and a ✕,
+// which is a modal dialog with the ARIA left off. That is why the dialog census
+// could not see it either, and both registers described it from the same wrong
+// premise. It renders ModalShell now, so it is not a full-viewport overlay at all.
+//
 // TWO MORE LEFT THIS LIST IN #3405, and by converging rather than by renaming:
 // MergeConflictDialog and PlateBuilderModal are ordinary ModalShell consumers now,
 // so they are not full-viewport surfaces at all. FOUR ARRIVED at the same time,
@@ -82,12 +91,8 @@ const OVERLAY_SURFACES = new Map<string, string>([
 // answered in scripts/dialog-census-core.ts and docs/internals/overlays.md.
 const OTHER_FULL_VIEWPORT_OVERLAYS = new Map<string, string>([
   [
-    "components/LevelBadge.tsx",
-    "centred explainer popover over a full-viewport catcher",
-  ],
-  [
     "components/CompactDateMenu.tsx",
-    "NOT A PANEL AT ALL — its `fixed inset-0 z-20` is a transparent CLICK-CATCHER underneath an anchored day menu, the same shape LevelBadge's catcher takes. Nothing is drawn on it, it holds no content and it traps no focus, so there is no overlay anatomy here to converge. The MENU above it is answered by rule 7, where this file is a recorded ANCHORED_MENU_EXCEPTIONS entry with its own reason",
+    "NOT A PANEL AT ALL — its `fixed inset-0 z-20` is a transparent CLICK-CATCHER underneath an anchored day menu. Nothing is drawn on it, it holds no content and it traps no focus, so there is no overlay anatomy here to converge. The MENU above it is answered by rule 7, where this file is a recorded ANCHORED_MENU_EXCEPTIONS entry with its own reason",
   ],
   [
     "components/MobileDetailPage.tsx",
