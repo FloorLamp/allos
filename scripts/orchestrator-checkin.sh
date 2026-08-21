@@ -396,8 +396,23 @@ while read -r d; do
   wt_reflog=$(git -C "$d" reflog show HEAD 2>/dev/null || true)
   if [ "$b" = "HEAD" ] &&
      ! grep -qE '\bcommit( \([a-z-]+\))?: ' <<<"$wt_reflog"; then
-    printf "  %-16s %-32s %-6s local=%s  (read-only lane, nothing authored here — nothing to rescue)\n" \
-      "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+    # SAY WHAT IS ACTUALLY THERE. The decision above — a detached worktree with
+    # no commits is a lane's scratch and its dirt is probes — is sound and stands.
+    # The old wording for it, "nothing authored here", was not: four such trees
+    # held 34 uncommitted probe files between them while this line claimed none.
+    # A status line that overstates its own silence is the same defect this
+    # session keeps finding in guards: the decision was right, the claim
+    # licensing it was false, and only the claim is visible at 3am after a
+    # restart. Print the count so the reader makes the call the recorder is
+    # merely recommending.
+    wt_probes=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${wt_probes:-0}" -gt 0 ]; then
+      wt_note="read-only lane, ${wt_probes} uncommitted probe file(s) — not rescued: no commits, so this is scratch"
+    else
+      wt_note="read-only lane, clean — nothing to rescue"
+    fi
+    printf "  %-16s %-32s %-6s local=%s  (%s)\n" \
+      "$(basename "$d")" "(detached)" "lane" "${h:0:7}" "$wt_note"
     continue
   fi
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
