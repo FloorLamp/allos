@@ -132,6 +132,35 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
     expect(result.split.superseded).toBe(0);
   });
 
+  it("will not let one device's minute bucket delete another's", () => {
+    // The 1200 buckets below are back-to-back and therefore DISJOINT, so they never
+    // exercise the granularity gate. This does: two devices that set no
+    // `metadata.data_origin` both parse to origin = null and share ONE supersede group,
+    // and their minute buckets genuinely overlap.
+    // MUTATION: drop `isDayBucketWindow` and the second push deletes the first row.
+    const p = freshProfile("R1-NULL-ORIGIN-MINUTES");
+    push(p, {
+      steps: [
+        {
+          start_time: "2026-05-01T10:00:00Z",
+          end_time: "2026-05-01T10:01:00Z",
+          count: 40,
+        },
+      ],
+    });
+    const second = push(p, {
+      steps: [
+        {
+          start_time: "2026-05-01T10:00:30Z",
+          end_time: "2026-05-01T10:01:30Z",
+          count: 55,
+        },
+      ],
+    });
+    expect(second.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([40, 55]);
+  });
+
   it("leaves all 1200 sub-daily buckets standing", () => {
     // The granularity gate, at the scale a `1m` exporter actually produces.
     const p = freshProfile("R1-SUBDAILY");
@@ -149,6 +178,112 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
     ]) {
       expect(rowCount(p, metric)).toBe(300);
     }
+  });
+});
+
+/** 300 one-minute buckets from a given UTC hour, for a metric OTHER than the pair's. */
+function fillerBuckets(
+  key: string,
+  valueKey: string,
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number
+): Record<string, unknown> {
+  const out: Record<string, unknown>[] = [];
+  const base = Date.UTC(year, monthIndex, day, hour, 1, 0);
+  for (let i = 0; i < 300; i++) {
+    out.push({
+      start_time: new Date(base + i * 60000).toISOString(),
+      end_time: new Date(base + (i + 1) * 60000).toISOString(),
+      [valueKey]: 3,
+      metadata: { data_origin: ORIGIN },
+    });
+  }
+  return { [key]: out };
+}
+
+describe("phase 1 is what settles a mixed-anchoring pair INSIDE one push", () => {
+  // WHY THIS TEST EXISTS. The push stamp makes every row of one push equal in freshness,
+  // so the per-row rule can neither delete nor be written against a sibling — it falls
+  // back on ARRIVAL, and the batch is written in ascending started_at order. Westward the
+  // re-anchored bucket starts EARLIER, so arrival happens to keep the right one and
+  // disabling `staleBatchOverlaps` stays green on every westward case in the tree.
+  //
+  // EASTWARD IS THE OPPOSITE. Tokyo midnight is 15:00Z the day before, so the
+  // still-filling re-anchored bucket starts LATER than the completed New York day it
+  // overlaps. Written in start order, the STALE New York row lands first and the fresh
+  // Tokyo bucket is blocked behind it. Only freshness gets this right, and only phase 1
+  // applies freshness within a push.
+  it("keeps the STILL-FILLING bucket even though it starts LATER", () => {
+    const p = freshProfile("PHASE1-EASTWARD");
+    push(p, {
+      steps: [
+        {
+          // The pre-switch New York day, COMPLETE: 04:00Z to 04:00Z.
+          start_time: "2026-08-20T04:00:00Z",
+          end_time: "2026-08-21T04:00:00Z",
+          count: 9000,
+          metadata: { data_origin: ORIGIN },
+        },
+        {
+          // The re-anchored Tokyo day, still filling to the push moment.
+          start_time: "2026-08-20T15:00:00Z",
+          end_time: "2026-08-21T06:00:00Z",
+          count: 11000,
+          metadata: { data_origin: ORIGIN },
+        },
+      ],
+    });
+    // MUTATION: hand `upsertMetricSamples` an empty batchStale (or move the pass back
+    // inside it), and this stores the 9000 New York row instead — the old anchoring,
+    // kept because it happened to be written first.
+    expect(stored(p, "steps")).toEqual([
+      {
+        started_at: "2026-08-20T15:00:00Z",
+        ended_at: "2026-08-21T06:00:00Z",
+        value: 11000,
+      },
+    ]);
+  });
+
+  it("still keeps it when the pair is SPLIT across chunks", () => {
+    // The same eastward pair, with 1200 filler rows of OTHER metrics sorting between the
+    // two anchorings so the `steps` pair straddles the 1000-row chunk boundary. This is
+    // the case that makes the WHOLE-PAYLOAD scope of phase 1 load-bearing rather than
+    // defence in depth: a per-chunk pass never sees the pair, the stale New York row
+    // lands in chunk 1, and the fresh Tokyo bucket in chunk 2 is then blocked behind it
+    // by its own push stamp — silently, with `superseded` reading 0.
+    const p = freshProfile("PHASE1-EASTWARD-CHUNKED");
+    push(p, {
+      steps: [
+        {
+          start_time: "2026-08-20T04:00:00Z",
+          end_time: "2026-08-21T04:00:00Z",
+          count: 9000,
+          metadata: { data_origin: ORIGIN },
+        },
+        {
+          start_time: "2026-08-20T15:00:00Z",
+          end_time: "2026-08-21T06:00:00Z",
+          count: 11000,
+          metadata: { data_origin: ORIGIN },
+        },
+      ],
+      ...fillerBuckets("distance", "meters", 2026, 7, 20, 10),
+      ...fillerBuckets("active_calories", "calories", 2026, 7, 20, 10),
+      ...fillerBuckets("hydration", "liters", 2026, 7, 20, 10),
+      ...fillerBuckets("nutrition", "calories", 2026, 7, 20, 10),
+    });
+    // MUTATION: stop passing `batchStale` down from ingestHealthConnectPayload, so the
+    // pass is scoped to a chunk again, and this stores the 9000 New York row.
+    expect(stored(p, "steps")).toEqual([
+      {
+        started_at: "2026-08-20T15:00:00Z",
+        ended_at: "2026-08-21T06:00:00Z",
+        value: 11000,
+      },
+    ]);
   });
 });
 
