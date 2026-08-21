@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { comboboxRows } from "./helpers";
 import { type Page } from "@playwright/test";
 // #734 — the static how-to guide (content layer + accessor from #733) surfaced in
 // the ONE per-exercise surface, `ExerciseDetailPanel`, as a "How to" section, plus
@@ -16,9 +17,7 @@ import { type Page } from "@playwright/test";
 // 'Use "…"' button, so match by SUBSTRING).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("button")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
