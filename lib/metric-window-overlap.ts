@@ -1,6 +1,9 @@
 import { shiftDateStr, utcInstant } from "./date";
 import { isStaleMetricSnapshot } from "./metric-snapshot";
-import { SUB_DAILY_WINDOW_MAX_MIN } from "./integrations/health-connect";
+import {
+  DAY_BUCKET_METRICS,
+  SUB_DAILY_WINDOW_MAX_MIN,
+} from "./integrations/health-connect";
 
 // THE OVERLAP-SUPERSEDE RULE for `metric_samples` interval rows (issue #3424).
 //
@@ -37,27 +40,40 @@ import { SUB_DAILY_WINDOW_MAX_MIN } from "./integrations/health-connect";
 //      declines to act on one.
 //   3. ONLY WHEN THE PAYLOAD SAYS THE INCOMING ROW IS NEWER (`pushIsNewer`), below.
 //
-// FRESHNESS IS STATED BY THE PAYLOAD, NEVER BY ARRIVAL ORDER. The first cut decided
-// "incoming wins" from position - which chunk a row landed in, which push arrived last
-// - and that was refuted twice, in both directions:
+// FRESHNESS IS STATED BY THE PAYLOAD, NEVER FROM ARRIVAL ORDER AND NEVER FROM A WINDOW.
+// Deciding "incoming wins" from position was refuted twice - a push over
+// INGEST_CHUNK_SIZE split a mixed-anchoring pair across two chunks and the stale bucket
+// deleted the current one, and a byte-identical REPLAY of a pre-switch payload deleted
+// the converged row and re-inserted the stale one. So every Health Connect row carries
+// `metric_samples.pushed_at`, the instant the EXPORTER stamped on the push that wrote it
+// (`payload.timestamp`), and a row may only supersede a stored row whose stamp is
+// STRICTLY OLDER. A replay carries the same stamp as the push it replays, so it takes
+// nothing; two rows of ONE push carry the SAME stamp, so no chunk can out-rank another.
 //
-//   * A push over INGEST_CHUNK_SIZE rows splits a mixed-anchoring pair across two
-//     chunks. The batch-scoped pass never saw the pair, and the per-row rule resolved it
-//     by arrival: the STALE bucket deleted the CURRENT one. Worse than the bug it fixes,
-//     because a double count is at least repairable.
-//   * A byte-identical REPLAY of a pre-switch payload - an exporter retry after a 5xx,
-//     and the route has no idempotency key - deleted the converged row and re-inserted
-//     the stale one. The old freshness guard could not see it, because it compared
-//     against the incoming row's natural-key TWIN and the supersede had already deleted
-//     that twin.
+// AND THE STAMP MUST BE A PUSH TIME, NOT A WINDOW QUANTITY. The first version of this
+// fell back, when a push stated no `timestamp`, to the furthest-forward `ended_at` in
+// the push. That was refuted, and the refutation is the reason this comment is long:
+// an END is a property of the READING, not of the push, and comparing ends across
+// pushes is precisely what `staleBatchOverlaps` says below must never be done between
+// an incoming row and a stored one. A re-anchored bucket for a COMPLETED day ends
+// EARLIER than the old-anchoring "today so far" row it overlaps, so the fallback read
+// the correcting push as older and the reading was never written at all:
 //
-// So every Health Connect row carries `metric_samples.pushed_at`, the instant the
-// EXPORTER stamped on the push that wrote it (`payload.timestamp`), and a row may only
-// supersede a stored row whose stamp is STRICTLY OLDER. A replay carries the same stamp
-// as the push it replays, so it is not newer and takes nothing. Two rows of ONE push
-// carry the SAME stamp, so no chunk can ever delete another chunk's row - within a push
-// `staleBatchOverlaps` over the WHOLE payload is the only thing allowed to decide, and
-// it decides by freshness rather than by order.
+//     push 1  steps [15:00Z, 23:00Z) = 3000   old anchoring, still filling
+//     push 2  steps [10:00Z, 22:00Z) = 3500   re-anchored, COMPLETED
+//     -> stored 3000, for 3500 walked, and no next push fixes it
+//
+// THAT IS THE FAILURE THIS FILE EXISTS TO NOT HAVE. The bug it was sent to fix reads a
+// day too HIGH, which a person can see and which the next push can repair. A missing
+// reading reads too LOW, looks exactly like a day you did not walk, and converges on
+// nothing. Every trade in this module goes the other way: a stated stamp or no
+// supersede at all.
+//
+// MEASURED before removing the fallback, over the captured exporter payloads: of 228
+// bodies, the 175 carrying an `app_version` - i.e. every real exporter push - state a
+// readable `timestamp`, 175 of 175. The 53 without one carry no `app_version` either;
+// they are this repo's own synthetic test bodies. The case the fallback was invented
+// for does not occur.
 //
 // IT IS LOSSY AT THE TRAILING EDGE OF THE ROLLING WINDOW - accepted, not overlooked.
 // "Incoming deletes what it overlaps" is exact in the interior of the window. At its
@@ -104,24 +120,14 @@ export interface MetricWindow {
   pushed_at: string | null;
 }
 
-// THE METRICS WHOSE WINDOWS TILE BY CONSTRUCTION, and the only ones this rule may act
-// on. Precisely `FINE_GRAINED_CHECK`'s list in lib/integrations/health-connect.ts -
-// "summable interval metrics that Health Connect stores as DAILY totals" - and
-// precisely the four metrics #3424's prod table caught double counting.
-//
-// WHY AN ALLOW-LIST. `nutrition_*` and `hydration_l` are `daily` in SOURCE_FIDELITY
-// too, but at a `full` setting the parser emits one row per RECORD on the record's own
-// window, and nothing enforces the recommended setting - `FINE_GRAINED_CHECK` says in
-// its own comment that detection is informational. `sleep_min` is one row per session.
-// `sleep_*_min` stages are sequential and each bucket is already its own metric, so
-// they are safe; they stay out anyway, because a rule that deletes health data should
-// reach exactly as far as its evidence and no further.
-export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
-  "steps",
-  "distance_km",
-  "active_kcal",
-  "total_kcal",
-]);
+// The tiling metrics live beside the exporter's own granularity guidance, because that
+// is what they are a fact about; re-exported here so a reader of the rule finds them.
+// Nutrition emits one interval row per nutrient per NutritionRecord on the record's REAL
+// window, so a snack logged inside a meal is two legitimately nested `nutrition_kcal`
+// rows and the rule would delete the meal. `sleep_min` is one row per session. Both are
+// `daily` in SOURCE_FIDELITY, but nothing ENFORCES that — `FINE_GRAINED_CHECK` says in
+// its own comment that detection is informational — so the rule cannot lean on a setting.
+export { DAY_BUCKET_METRICS };
 
 /** Is this a metric whose Health Connect windows tile, so an overlap is an anomaly? */
 export function isDayBucketMetric(metric: string): boolean {
@@ -263,48 +269,42 @@ export function pushIsNewer(
   return incoming > stored;
 }
 
+// HOW FAR AHEAD OF THIS MACHINE'S CLOCK A PUSH MAY CLAIM TO HAVE HAPPENED.
+//
+// The stamp comes from a phone, and a phone's clock can be wrong. A stamp far in the
+// future is written onto the rows that push stores, and every later HONEST push then
+// reads as older than them - so nothing can ever supersede those rows again. Bounding
+// it keeps that to a bad hour rather than forever.
+//
+// The unit is milliseconds of real time, and the bound is deliberately generous: this
+// is not a clock-sync check, it is a "that cannot be a push" check. A device several
+// hours ahead is still believed; a device claiming next week is not.
+//
+// It reads the SERVER clock, which nothing else in this module does - and that is safe
+// in the one direction that matters, because failing this check yields NO STAMP, and no
+// stamp means no supersede. It can only ever make this path delete less.
+export const MAX_PUSH_CLOCK_SKEW_MS = 12 * 60 * 60 * 1000;
+
 /**
  * The stamp to record on every row of one push, and to compare a future push against.
  *
- * PRIMARY: what the exporter said (`ParsedPayload.pushedAt`, from `payload.timestamp`).
+ * ONLY what the exporter stated (`ParsedPayload.pushedAt`, from `payload.timestamp`).
+ * There is no window-derived fallback and there must not be one: see the header. A push
+ * that states no readable instant gets `null`, and a null stamp supersedes nothing.
  *
- * FALLBACK: the LATEST end instant anywhere in the push. `timestamp` is documented in
- * the payload shape but nothing validates it, so requiring it would silently switch the
- * whole fix off for an exporter build that omits it — and nobody would find out. The
- * fallback is derived from the same payload and has the two properties that matter:
- * it is IDENTICAL for a byte-identical replay (so a retry is never newer than the push
- * it replays), and it advances with every real push, because these buckets end at the
- * moment they were last pushed. It is the same quantity `staleBatchOverlaps` already
- * trusts to say which anchoring the exporter is still filling, read at push scope
- * instead of at row scope.
- *
- * IT MUST BE COMPUTED OVER THE WHOLE PUSH, never per chunk: a per-chunk maximum grows
- * chunk by chunk, which would let a later chunk out-rank an earlier one and reopen
- * exactly the split-pair defect the stamp exists to close.
- *
- * Null when the push states nothing readable either way — and then nothing is
- * superseded at all.
- *
- * RETURNED CANONICAL (`utcInstant`), never in the spelling it arrived in. `pushed_at`
- * is a brand-new column and there is no reason for it to be born `mixed`: an exporter
- * `timestamp` may carry milliseconds and an `ended_at` may not, and a column that holds
- * both needs a note explaining itself forever. The cost is second resolution — two
- * pushes inside ONE second compare equal, so the later one supersedes nothing and the
- * double count waits for the push after it. That is the safe direction, and the
- * exporter pushes minutes apart.
+ * RETURNED CANONICAL (`utcInstant`), never in the spelling it arrived in: `pushed_at` is
+ * a new column and there is no reason for it to be born `mixed`. The cost is second
+ * resolution - two pushes inside ONE second compare equal, so the later supersedes
+ * nothing and the double count waits for the push after it, which is the safe direction.
  */
 export function pushStampFor(
   stated: string | null | undefined,
-  rows: readonly { ended_at: string }[]
+  now: Date = new Date()
 ): string | null {
-  const statedMs = instantMs(stated);
-  if (statedMs !== null) return utcInstant(new Date(statedMs));
-  let bestMs = -Infinity;
-  for (const row of rows) {
-    const ms = instantMs(row.ended_at);
-    if (ms !== null && ms > bestMs) bestMs = ms;
-  }
-  return bestMs === -Infinity ? null : utcInstant(new Date(bestMs));
+  const ms = instantMs(stated);
+  if (ms === null) return null;
+  if (ms > now.getTime() + MAX_PUSH_CLOCK_SKEW_MS) return null;
+  return utcInstant(new Date(ms));
 }
 
 /**
@@ -322,14 +322,14 @@ export function pushStampFor(
  * `locked` is every overlapped row the edit lock held out, reported rather than dropped
  * so the caller can count them into the `edited` split.
  *
- * `blocked` is the other direction, and it is what makes a REPLAY inert rather than
- * merely harmless. A stored row that this incoming row overlaps but is NOT newer than
- * says the incoming row carries an anchoring the store has already moved past. Refusing
- * to delete it is only half the answer: writing the incoming row anyway re-creates the
- * double count (measured — a replayed pre-switch push put the day back to 6500 by
- * INSERTING under a key its own supersede had cleared). So a blocked row is not written
- * at all, and the caller counts it `unchanged`, exactly as it counts a row a fresher
- * sibling in the same push covers.
+ * NOTHING HERE WITHHOLDS A WRITE, and that is a rule rather than an omission. An
+ * earlier version also reported the stored rows the incoming row was NOT newer than,
+ * and the caller DROPPED the incoming row instead of storing it, so that a replay
+ * would be inert rather than merely harmless. It made this path able to LOSE a
+ * reading, silently: a dropped row was counted `unchanged`, which Review renders as
+ * "nothing new", muted. The most a stale row may now do is sit beside the fresh one
+ * as a double count, which is visible in every total and which the next stamped push
+ * collapses.
  */
 export function planSupersede(
   incoming: {
@@ -339,14 +339,9 @@ export function planSupersede(
     pushedAt?: string | null;
   },
   stored: readonly MetricWindow[]
-): {
-  supersede: MetricWindow[];
-  locked: MetricWindow[];
-  blocked: MetricWindow[];
-} {
+): { supersede: MetricWindow[]; locked: MetricWindow[] } {
   const supersede: MetricWindow[] = [];
   const locked: MetricWindow[] = [];
-  const blocked: MetricWindow[] = [];
   if (
     !isSupersedingWindow(
       incoming.metric,
@@ -354,7 +349,7 @@ export function planSupersede(
       incoming.ended_at
     )
   ) {
-    return { supersede, locked, blocked };
+    return { supersede, locked };
   }
   for (const row of stored) {
     if (
@@ -370,17 +365,15 @@ export function planSupersede(
     // A stored row cut at sub-daily granularity is not a bucket this rule may collapse,
     // whatever the incoming row looks like.
     if (!isDayBucketWindow(row.started_at, row.ended_at)) continue;
-    // The payload's own account of which push is newer. A replay, or a second chunk of
-    // the SAME push, is not newer — it takes nothing AND is not stored.
-    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) {
-      blocked.push(row);
-      continue;
-    }
+    // The payload's own account of which push is newer. A replay, or a second chunk
+    // of the SAME push, is not newer, so it takes nothing. It is still WRITTEN — see
+    // the note above about never withholding a write.
+    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) continue;
     // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
     if (row.edited) locked.push(row);
     else supersede.push(row);
   }
-  return { supersede, locked, blocked };
+  return { supersede, locked };
 }
 
 /** The shape `staleBatchOverlaps` needs of an incoming row. */

@@ -46,6 +46,28 @@ beforeAll(() => {
   );
 });
 
+// EVERY CALL IN THIS FILE IS A LATER PUSH THAN THE ONE BEFORE IT, which is what the
+// ingest route always supplies and what the supersede now requires: a stamp the PAYLOAD
+// stated. `upsertMetricSamples` deletes nothing without one — deliberately, because the
+// version that derived freshness from the rows' own `ended_at` was measured dropping a
+// correcting reading and reporting "nothing new" (see lib/metric-window-overlap.ts).
+const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
+let pushSeq = 0;
+function upsert(
+  profile: number,
+  rows: NormMetricSample[],
+  source: string,
+  sink?: Parameters<typeof upsertMetricSamples>[3],
+  options: Parameters<typeof upsertMetricSamples>[4] = {}
+) {
+  pushSeq += 1;
+  return upsertMetricSamples(profile, rows, source, sink, {
+    pushedAt:
+      new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
+    ...options,
+  });
+}
+
 /** A fresh profile, so one test's rows can never explain another's survival. */
 function freshProfile(name: string): number {
   return Number(
@@ -87,7 +109,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
   it("keeps the current anchoring and drops the re-anchored duplicate", () => {
     const p = freshProfile("WEST");
     // Push 1, device on Tokyo time: the Tokyo day bucket, 3000 steps so far.
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -102,7 +124,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
     );
     // Push 2, device now on Honolulu time. The rolling window re-sends the Tokyo
     // record AND the re-anchored Honolulu day bucket that re-contains it.
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -141,7 +163,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
     // the stale 3000-step Tokyo record instead. That is the bug the ascending sort
     // was originally supposed to fix and could not.
     const p = freshProfile("WEST-REVERSED");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -154,7 +176,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
       ],
       HC
     );
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -182,7 +204,7 @@ describe("the eastward switch, including a re-anchored HISTORICAL day bucket", (
   it("leaves every window in the group pairwise disjoint", () => {
     const p = freshProfile("EAST");
     // Two New-York-anchored day buckets already stored (04:00Z is NY midnight).
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -204,7 +226,7 @@ describe("the eastward switch, including a re-anchored HISTORICAL day bucket", (
     );
     // Device flies NY → Tokyo. Tokyo midnight is 15:00Z the day before, so BOTH the
     // current bucket and the previous day's re-anchored one arrive re-cut.
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -262,10 +284,10 @@ describe("what the rule must NEVER delete", () => {
       null
     );
     for (const src of ["withings", "oura", "strava", "manual"]) {
-      upsertMetricSamples(p, [morning], src);
+      upsert(p, [morning], src);
       // A second, OVERLAPPING window from the same source: under the supersede rule
       // this would delete the first. It must not, because the rule is not theirs.
-      upsertMetricSamples(
+      upsert(
         p,
         [
           sample(
@@ -289,7 +311,7 @@ describe("what the rule must NEVER delete", () => {
 
   it("leaves a Health Connect row of ANOTHER origin alone", () => {
     const p = freshProfile("OTHER-ORIGIN");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -303,7 +325,7 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -333,11 +355,11 @@ describe("what the rule must NEVER delete", () => {
         100 + h
       )
     );
-    const counts = upsertMetricSamples(p, hourly, HC);
+    const counts = upsert(p, hourly, HC);
     expect(counts.superseded).toBe(0);
     expect(storedRows(p, "steps")).toHaveLength(24);
     // And a re-send of the same window is still an idempotent no-op.
-    const again = upsertMetricSamples(p, hourly, HC);
+    const again = upsert(p, hourly, HC);
     expect(again.superseded).toBe(0);
     expect(again.unchanged).toBe(24);
     expect(storedRows(p, "steps")).toHaveLength(24);
@@ -356,10 +378,10 @@ describe("what the rule must NEVER delete", () => {
         40
       )
     );
-    upsertMetricSamples(p, points, HC);
+    upsert(p, points, HC);
     // A same-metric INTERVAL spanning all three. Contrived — the parser never emits
     // one for hrv_ms — precisely so the guard is tested rather than assumed.
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -378,7 +400,7 @@ describe("what the rule must NEVER delete", () => {
 
   it("holds an EDIT-LOCKED overlapped row and counts it `edited`", () => {
     const p = freshProfile("LOCKED");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -395,7 +417,7 @@ describe("what the rule must NEVER delete", () => {
       "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
     ).run(p, "2026-05-01T15:00:00Z");
 
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -420,7 +442,7 @@ describe("what the rule must NEVER delete", () => {
 
   it("counts one held lock ONCE however many incoming rows overlap it", () => {
     const p = freshProfile("LOCKED-ONCE");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -436,10 +458,7 @@ describe("what the rule must NEVER delete", () => {
     db.prepare("UPDATE metric_samples SET edited = 1 WHERE profile_id = ?").run(
       p
     );
-    // An explicit push stamp, as the ingest route supplies one: these two buckets end
-    // EARLIER than the row they overlap, so the payload-derived fallback would (rightly)
-    // read this batch as the older push and decline to act at all.
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -457,9 +476,7 @@ describe("what the rule must NEVER delete", () => {
           200
         ),
       ],
-      HC,
-      undefined,
-      { pushedAt: "2026-05-02T00:00:00Z" }
+      HC
     );
     expect(counts.edited).toBe(1);
   });
@@ -473,7 +490,7 @@ describe("what the rule must NEVER delete", () => {
       "2026-05-01T15:00:00Z"
     );
     writeImportTombstone(p, "metric_samples", key);
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -521,7 +538,7 @@ describe("what the rule must NEVER delete", () => {
 
     // A push that got queued BEFORE the switch and only arrives now: the New York
     // snapshot, ending EARLIER than the row already stored under its own key.
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -545,7 +562,7 @@ describe("what the rule must NEVER delete", () => {
     // The #608 precedent. A tombstone here would block the exporter from ever
     // re-sending that span under its current anchoring.
     const p = freshProfile("NO-TOMBSTONE");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -558,7 +575,7 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -596,7 +613,7 @@ describe("the SQL narrowing agrees with the pure rule", () => {
         sample("steps", day, `${day}T04:00:00Z`, `${next}T04:00:00Z`, 1000 + d)
       );
     }
-    upsertMetricSamples(p, stored, HC);
+    upsert(p, stored, HC);
 
     const incoming = sample(
       "steps",
@@ -605,10 +622,9 @@ describe("the SQL narrowing agrees with the pure rule", () => {
       "2026-05-18T07:00:00Z",
       5555
     );
-    // The stamp the incoming push carries. Explicit, because these stored buckets were
-    // written as ONE batch whose furthest-forward end is later than the incoming
-    // window's — the payload-derived fallback would read this batch as the older push.
-    const PUSHED_AT = "2026-06-01T00:00:00Z";
+    // Stated explicitly here only so the hand-run predicate below and the real ingest
+    // call at the end of the test compare against the SAME push.
+    const PUSHED_AT = "2027-01-01T00:00:00Z";
     const withStamp = { ...incoming, pushedAt: PUSHED_AT };
     // What the pure rule says about the WHOLE stored group, unnarrowed.
     const all = db
@@ -634,7 +650,7 @@ describe("the SQL narrowing agrees with the pure rule", () => {
     expect(narrowed.length).toBeLessThan(all.length);
 
     // And the real ingest deletes exactly that set.
-    const counts = upsertMetricSamples(p, [incoming], HC, undefined, {
+    const counts = upsert(p, [incoming], HC, undefined, {
       pushedAt: PUSHED_AT,
     });
     expect(counts.superseded).toBe(unnarrowed.supersede.length);
@@ -644,7 +660,7 @@ describe("the SQL narrowing agrees with the pure rule", () => {
 describe("the accounting contract", () => {
   it("keeps `superseded` out of `received` — it is not a row the source sent", () => {
     const p = freshProfile("ACCOUNTING");
-    upsertMetricSamples(
+    upsert(
       p,
       [
         sample(
@@ -657,7 +673,7 @@ describe("the accounting contract", () => {
       ],
       HC
     );
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [
         sample(
@@ -680,7 +696,7 @@ describe("the accounting contract", () => {
     expect(emptyCounts().superseded).toBe(0);
     const p = freshProfile("ZERO");
     expect(
-      upsertMetricSamples(
+      upsert(
         p,
         [
           sample(
@@ -700,7 +716,7 @@ describe("the accounting contract", () => {
     // Profile scoping, the plainest form: a same-metric, same-origin, OVERLAPPING
     // window on another profile must survive.
     const other = freshProfile("SCOPING-NEIGHBOUR");
-    upsertMetricSamples(
+    upsert(
       other,
       [
         sample(
@@ -713,7 +729,7 @@ describe("the accounting contract", () => {
       ],
       HC
     );
-    upsertMetricSamples(
+    upsert(
       profileId,
       [
         sample(
@@ -771,7 +787,7 @@ describe("each batch is processed in ascending started_at order", () => {
       .map(([start, end], i) =>
         sample("steps", "2026-06-01", start, end, i + 1)
       );
-    upsertMetricSamples(p, shuffled, HC);
+    upsert(p, shuffled, HC);
     expect(insertOrder(p)).toEqual(ASCENDING);
   });
 

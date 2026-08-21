@@ -197,6 +197,32 @@ export const FINE_GRAINED_ROWS_PER_DAY = 8;
 // wide. A daily-stored additive metric arriving in windows an hour or narrower is
 // therefore a fine-grained setting regardless of how few rows the push carried.
 export const SUB_DAILY_WINDOW_MAX_MIN = 60;
+
+// THE METRICS WHOSE WINDOWS TILE BY CONSTRUCTION — the only ones #3424's overlap
+// supersede may delete a row of. Exactly the FINE_GRAINED_CHECK data types above,
+// expressed as the METRIC names the parser emits, and exactly the four #3424's prod
+// table caught double counting.
+//
+// It lives here rather than beside the rule because it is a fact about the EXPORTER's
+// data types, which is this file's subject; lib/metric-window-overlap.ts re-exports it
+// for the rule's readers. Nutrition, hydration and sleep are absent on purpose — the
+// parser emits those on each record's own real window, so they nest legitimately.
+export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
+  "steps",
+  "distance_km",
+  "active_kcal",
+  "total_kcal",
+]);
+
+// A push that states no usable `timestamp` cannot be compared with any other push, so
+// #3424's supersede declines to act on it and an overlapping re-anchored day bucket is
+// left standing beside the row it re-contains. That reads HIGH rather than losing a
+// reading — the deliberate direction — but it is worth SAYING, because "my steps
+// doubled after I flew" otherwise has no visible cause anywhere in the app.
+export const NO_PUSH_STAMP_WARNING =
+  "This push carried no `timestamp`, so overlapping daily totals from a timezone " +
+  "change were left in place rather than replaced. Totals for those days may read high " +
+  "until a push that states one arrives.";
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
 // the hint. Two independent short windows in one batch is the fine-grained shape. (The
@@ -653,6 +679,15 @@ function secondsBetween(start?: string, end?: string): number | null {
   const b = new Date(end).getTime();
   if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
   return (b - a) / 1000;
+}
+
+/** Is this a row #3424's supersede could have acted on, had the push been stamped? */
+function isSupersedableShape(sample: NormMetricSample): boolean {
+  if (!DAY_BUCKET_METRICS.has(sample.metric)) return false;
+  const start = Date.parse(sample.started_at);
+  const end = Date.parse(sample.ended_at);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+  return end - start > SUB_DAILY_WINDOW_MAX_MIN * 60_000;
 }
 
 // The exporter stamps every push with a top-level `timestamp`. Read it as an ABSOLUTE
@@ -1276,6 +1311,11 @@ export function parseHealthConnectPayload(
   }
 
   out.details.origins = originChoices(out.samples);
+  // Only when it could actually have mattered: a stampless push carrying day-bucket
+  // rows of a tiling metric is the one shape the supersede would otherwise have acted on.
+  if (out.pushedAt === null && out.samples.some(isSupersedableShape)) {
+    out.details.warnings.push(NO_PUSH_STAMP_WARNING);
+  }
 
   // Wrong-granularity diagnostics (#1065): read the raw payload shape and append any
   // actionable hints to the warnings surfaced in Data → Review. Informational only —

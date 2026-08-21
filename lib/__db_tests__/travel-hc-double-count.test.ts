@@ -71,6 +71,9 @@ describe("HC daily steps across a westward travel switch", () => {
     // 3000 steps walked that Tokyo morning.
     const push1 = parseHealthConnectPayload(
       {
+        // Every real exporter push states this, and the supersede requires it: freshness
+        // is what the PAYLOAD says, never what the rows' own windows imply.
+        timestamp: "2026-05-01T23:00:05Z",
         steps: [
           {
             start_time: "2026-05-01T15:00:00Z", // Tokyo 2026-05-02 00:00
@@ -96,6 +99,7 @@ describe("HC daily steps across a westward travel switch", () => {
     freeze("2026-05-02T01:00:00Z"); // Honolulu 2026-05-01 15:00
     const push2 = parseHealthConnectPayload(
       {
+        timestamp: "2026-05-02T01:00:05Z",
         steps: [
           // The rolling ~48h window re-sends the pre-switch record too. Same
           // started_at → same natural key → its `date` is recomputed under the

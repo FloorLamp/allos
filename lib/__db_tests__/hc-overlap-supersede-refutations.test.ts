@@ -57,10 +57,40 @@ function rowCount(profile: number, metric: string): number {
   ).n;
 }
 
-function push(profile: number, body: Record<string, unknown>) {
+// EVERY REAL EXPORTER PUSH STATES `timestamp`, and the supersede now requires it —
+// measured over the captured payloads: of 228 bodies, all 175 carrying an `app_version`
+// (i.e. every real push) state a readable one. So these fixtures state one too, and a
+// caller that wants to REPLAY a push passes that push's own stamp back.
+const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
+let pushSeq = 0;
+
+/** A direct upsert whose batch is a LATER push than the one before it. */
+function upsert(
+  profile: number,
+  rows: NormMetricSample[],
+  source: string,
+  sink?: Parameters<typeof upsertMetricSamples>[3],
+  options: Parameters<typeof upsertMetricSamples>[4] = {}
+) {
+  pushSeq += 1;
+  return upsertMetricSamples(profile, rows, source, sink, {
+    pushedAt:
+      new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
+    ...options,
+  });
+}
+function push(
+  profile: number,
+  body: Record<string, unknown>,
+  timestamp?: string
+) {
+  pushSeq += 1;
+  const stamp =
+    timestamp ??
+    new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z";
   return ingestHealthConnectPayload(
     profile,
-    parseHealthConnectPayload(body, "UTC")
+    parseHealthConnectPayload({ ...body, timestamp: stamp }, "UTC")
   );
 }
 
@@ -415,6 +445,98 @@ describe("R2 — sleep", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// R3 (second pass) — a completed re-anchored day, which ends EARLIER than the
+//                    still-filling row it corrects.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a re-anchored COMPLETED day still corrects the row it overlaps", () => {
+  // THE DEFECT THIS PINS, and it is the worst thing either version of this rule did.
+  // Freshness once fell back, for a push stating no `timestamp`, to the furthest-forward
+  // `ended_at` in that push. An END is a property of the READING. A re-anchored bucket
+  // for a day that has FINISHED ends earlier than the old-anchoring "today so far" row
+  // it overlaps — so the fallback read the correcting push as the older one and the
+  // correcting reading was never written at all:
+  //
+  //     stored 3000, for 3500 walked, {"inserted":0,"unchanged":1,"superseded":0}
+  //
+  // The bug this whole file exists to fix reads a day too HIGH, which is visible in
+  // every total and repaired by the next push. That read it too LOW, looked exactly like
+  // a day you did not walk, and converged on nothing.
+  it("writes the 3500 and supersedes the 3000", () => {
+    // MUTATION: reintroduce any window-derived push stamp and this stores 3000.
+    const p = freshProfile("COMPLETED-DAY-CORRECTS");
+    push(
+      p,
+      {
+        steps: [
+          {
+            start_time: "2026-05-01T15:00:00Z",
+            end_time: "2026-05-01T23:00:00Z",
+            count: 3000,
+            metadata: { data_origin: ORIGIN },
+          },
+        ],
+      },
+      "2026-05-01T23:00:05Z"
+    );
+    const second = push(
+      p,
+      {
+        steps: [
+          {
+            start_time: "2026-05-01T10:00:00Z",
+            end_time: "2026-05-01T22:00:00Z",
+            count: 3500,
+            metadata: { data_origin: ORIGIN },
+          },
+        ],
+      },
+      "2026-05-02T00:00:05Z"
+    );
+    expect(second.split.superseded).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
+  });
+
+  it("and a push that states NO stamp deletes nothing, rather than dropping a row", () => {
+    // The stampless path, which is what the fallback was invented to serve. It now
+    // supersedes nothing — so the day reads HIGH, visibly, instead of a reading going
+    // missing. MUTATION: let a stampless push supersede (or block) and one of the two
+    // rows below disappears.
+    const p = freshProfile("NO-STAMP-KEEPS-BOTH");
+    const body = (start: string, end: string, count: number) => ({
+      steps: [
+        {
+          start_time: start,
+          end_time: end,
+          count,
+          metadata: { data_origin: ORIGIN },
+        },
+      ],
+    });
+    ingestHealthConnectPayload(
+      p,
+      parseHealthConnectPayload(
+        body("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000),
+        "UTC"
+      )
+    );
+    const second = ingestHealthConnectPayload(
+      p,
+      parseHealthConnectPayload(
+        body("2026-05-01T10:00:00Z", "2026-05-01T22:00:00Z", 3500),
+        "UTC"
+      )
+    );
+    expect(second.split.superseded).toBe(0);
+    expect(
+      stored(p, "steps")
+        .map((r) => r.value)
+        .sort()
+    ).toEqual([3000, 3500]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // R4 — an ordinary exporter retry.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -446,34 +568,40 @@ describe("R4 — a byte-identical replay of a pre-switch push", () => {
     ],
   };
 
-  it("deletes nothing and leaves the converged row standing", () => {
+  const T1 = "2026-05-01T23:00:05Z";
+  const T2 = "2026-05-02T01:00:05Z";
+
+  it("DELETES NOTHING — the converged row survives the replay", () => {
     // MUTATION: drop `pushIsNewer` from planSupersede and the replay deletes the 3500
-    // row and re-inserts 3000.
+    // row. That is the loss this guard exists for.
     const p = freshProfile("R4-REPLAY");
-    push(p, TOKYO);
-    push(p, HONOLULU);
+    push(p, TOKYO, T1);
+    push(p, HONOLULU, T2);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
 
-    const replay = push(p, TOKYO);
+    const replay = push(p, TOKYO, T1);
     expect(replay.split.superseded).toBe(0);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
+    // The stale row IS re-inserted, and that is the deliberate trade: the day reads
+    // high until the next push, which is VISIBLE in every total. The version that
+    // suppressed the write instead could drop a correcting reading and report
+    // "nothing new" — a wrong number a person can see beats a missing one they cannot.
+    expect(
+      stored(p, "steps")
+        .map((r) => r.value)
+        .sort()
+    ).toEqual([3000, 3500]);
   });
 
-  it("holds even when the exporter stamps the payload itself", () => {
-    // The same, with `payload.timestamp` present — the primary stamp rather than the
-    // furthest-forward-end fallback. A replay carries the ORIGINAL stamp, so it is
-    // never newer than the push it replays.
-    const p = freshProfile("R4-REPLAY-STAMPED");
-    const stamped = (body: Record<string, unknown>, at: string) => ({
-      ...body,
-      timestamp: at,
-    });
-    push(p, stamped(TOKYO, "2026-05-01T23:00:05Z"));
-    push(p, stamped(HONOLULU, "2026-05-02T01:00:05Z"));
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
-
-    const replay = push(p, stamped(TOKYO, "2026-05-01T23:00:05Z"));
-    expect(replay.split.superseded).toBe(0);
+  it("and the NEXT genuine push collapses what the replay left", () => {
+    // The other half of that trade, and the reason it is acceptable: the double count
+    // is transient. MUTATION: any change that lets the replay's row keep a stamp as new
+    // as the push that corrects it, and this stops converging.
+    const p = freshProfile("R4-CONVERGES");
+    push(p, TOKYO, T1);
+    push(p, HONOLULU, T2);
+    push(p, TOKYO, T1);
+    const next = push(p, HONOLULU, "2026-05-02T02:00:05Z");
+    expect(next.split.superseded).toBe(1);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
   });
 });
@@ -515,17 +643,17 @@ describe("R5 — the supersede DELETE names profile_id", () => {
       value,
       origin: ORIGIN,
     });
-    upsertMetricSamples(
+    upsert(
       theirs,
       [row("2026-05-01T00:00:00Z", "2026-05-01T20:00:00Z", 777)],
       HC
     );
-    upsertMetricSamples(
+    upsert(
       mine,
       [row("2026-05-01T00:00:00Z", "2026-05-01T20:00:00Z", 111)],
       HC
     );
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       mine,
       [row("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 222)],
       HC
@@ -551,7 +679,7 @@ describe("the superseded count equals the rows actually removed", () => {
       value,
       origin: ORIGIN,
     });
-    upsertMetricSamples(
+    upsert(
       p,
       [
         row("2026-05-01T00:00:00Z", "2026-05-01T06:00:00Z", 1),
@@ -561,7 +689,7 @@ describe("the superseded count equals the rows actually removed", () => {
       HC
     );
     const before = rowCount(p, "steps");
-    const counts = upsertMetricSamples(
+    const counts = upsert(
       p,
       [row("2026-05-01T01:00:00Z", "2026-05-01T20:00:00Z", 9)],
       HC

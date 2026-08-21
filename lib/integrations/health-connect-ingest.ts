@@ -160,10 +160,10 @@ export function ingestHealthConnectPayload(
     // names are still delivered to the upsert (so they are still counted) — it decides
     // which of them must not be stored, not which are skipped.
     const batchStale = staleBatchOverlaps(orderedSamples);
-    // ONE stamp for the whole push, for the same reason phase 1 is computed here: a
-    // per-chunk value would grow chunk by chunk and let a later chunk out-rank an
-    // earlier one.
-    const pushedAt = pushStampFor(parsed.pushedAt, orderedSamples);
+    // ONE stamp for the whole push — what the exporter stated, bounded against a
+    // device clock that claims the future. Null when the push states nothing readable,
+    // and then this push supersedes nothing at all.
+    const pushedAt = pushStampFor(parsed.pushedAt);
     commitChunks(
       orderedSamples,
       (slice, sink) =>

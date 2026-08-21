@@ -31,7 +31,6 @@ import {
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
-  pushStampFor,
   staleBatchOverlaps,
   supersedeDateRange,
   type MetricWindow,
@@ -547,17 +546,13 @@ export function upsertMetricSamples(
 
   // ── overlap-supersede (#3424), Health Connect only ────────────────────────────
   const supersedes = source === OVERLAP_SUPERSEDE_SOURCE;
-  // The stamp of the push this batch belongs to. Written on every row, and required
-  // before any row may supersede another — the rule's freshness comes from what the
-  // PAYLOAD says, never from which chunk or which push arrived last (see
-  // metric-window-overlap.ts). A caller that chunks MUST pass it, because it has to be
-  // one value for the whole push; a caller that hands us the whole batch at once (every
-  // direct caller, and every test) gets it derived from that batch.
-  const pushedAt = supersedes
-    ? "pushedAt" in options
-      ? (options.pushedAt ?? null)
-      : pushStampFor(null, rows)
-    : null;
+  // The stamp of the push this batch belongs to, and the ONLY thing that licenses a
+  // supersede. It is what the exporter stated and nothing else: freshness derived from
+  // the rows themselves was measured LOSING a reading, because an `ended_at` is a
+  // property of the reading and not of the push (see metric-window-overlap.ts). A caller
+  // with no stamp deletes nothing, which leaves the double count this fix exists to
+  // remove — visible, and collapsed by the next stamped push.
+  const pushedAt = supersedes ? (options.pushedAt ?? null) : null;
   // The stored rows an incoming interval may supersede: same profile / metric / source /
   // origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
   // row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
@@ -688,16 +683,6 @@ export function upsertMetricSamples(
           r.started_at
         ) as MetricWindow[];
         const plan = planSupersede({ ...r, pushedAt }, candidates);
-        if (plan.blocked.length > 0) {
-          // A stored row this one overlaps came from a push at least as new as this
-          // one — so this row carries an anchoring the store has already moved past.
-          // Refusing to DELETE it is only half the answer: writing it anyway rebuilds
-          // the double count under a key its own supersede had cleared, which is what a
-          // replayed pre-switch payload did. Accounted `unchanged`, like the
-          // fresher-sibling case above: received, deliberately not stored.
-          tallyUpsert(counts, classifyUpsert(true, true));
-          continue;
-        }
         for (const victim of plan.supersede) {
           dropOverlap.run(victim.id, profileId);
           counts.superseded++;

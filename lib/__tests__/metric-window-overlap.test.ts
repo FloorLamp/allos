@@ -18,6 +18,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DAY_BUCKET_METRICS,
+  MAX_PUSH_CLOCK_SKEW_MS,
   SUPERSEDE_DAY_RADIUS,
   compareWindowStarts,
   isDayBucketMetric,
@@ -32,6 +33,10 @@ import {
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
 import { SUB_DAILY_WINDOW_MAX_MIN } from "@/lib/integrations/health-connect";
+import { utcInstant } from "@/lib/date";
+
+/** A fixed "now" so the clock-skew bound is asserted against a stated instant. */
+const NOW = new Date("2026-05-03T12:00:00Z");
 
 function win(
   id: number,
@@ -292,54 +297,46 @@ describe("pushIsNewer — freshness as the PAYLOAD states it", () => {
   });
 });
 
-describe("pushStampFor — one stamp per push, stable across a replay", () => {
-  const rows = [
-    { ended_at: "2026-05-01T23:00:00Z" },
-    { ended_at: "2026-05-02T01:00:00Z" },
-    { ended_at: "2026-05-01T12:00:00Z" },
-  ];
-
-  it("prefers what the exporter stated", () => {
-    expect(pushStampFor("2026-05-03T00:00:00Z", rows)).toBe(
+describe("pushStampFor — the push's OWN time, and nothing that looks like it", () => {
+  it("takes what the exporter stated, canonicalised", () => {
+    expect(pushStampFor("2026-05-03T00:00:00.123Z", NOW)).toBe(
       "2026-05-03T00:00:00Z"
     );
-  });
-
-  it("falls back to the LATEST end in the push when the payload states none", () => {
-    // `payload.timestamp` is documented but nothing validates it, so requiring it would
-    // switch the whole fix off for an exporter build that omits it, silently.
-    expect(pushStampFor(null, rows)).toBe("2026-05-02T01:00:00Z");
-    expect(pushStampFor("2026-05-03T00:00:00", rows)).toBe(
-      "2026-05-02T01:00:00Z"
+    expect(pushStampFor("2026-05-03T09:00:00+09:00", NOW)).toBe(
+      "2026-05-03T00:00:00Z"
     );
   });
 
   it("gives a byte-identical replay the SAME stamp", () => {
-    // This is the property the whole R4 defence rests on: a retry is never newer than
-    // the push it replays. MUTATION: use the wall clock here and the replay wins again.
-    expect(pushStampFor(null, rows)).toBe(pushStampFor(null, [...rows]));
-  });
-
-  it("returns a CANONICAL instant whatever spelling it was handed", () => {
-    // MUTATION: return the raw string and `metric_samples.pushed_at` is born `mixed`,
-    // which lib/__tests__/time-columns.test.ts freezes against — a new column has no
-    // excuse for holding two shapes. Second resolution is the accepted cost.
-    expect(pushStampFor("2026-05-03T00:00:00.123Z", [])).toBe(
-      "2026-05-03T00:00:00Z"
-    );
-    expect(pushStampFor("2026-05-03T09:00:00+09:00", [])).toBe(
-      "2026-05-03T00:00:00Z"
-    );
-    expect(pushStampFor(null, [{ ended_at: "2026-05-02T01:00:00.500Z" }])).toBe(
-      "2026-05-02T01:00:00Z"
+    // The property the whole replay defence rests on: a retry is never newer than the
+    // push it replays.
+    expect(pushStampFor("2026-05-03T00:00:00Z", NOW)).toBe(
+      pushStampFor("2026-05-03T00:00:00Z", NOW)
     );
   });
 
-  it("is null when nothing in the push is readable", () => {
-    expect(pushStampFor(null, [])).toBe(null);
-    expect(pushStampFor(null, [{ ended_at: "2026-05-01T10:00:00" }])).toBe(
-      null
-    );
+  it("returns NULL when the push states nothing readable — no window fallback", () => {
+    // MUTATION: reintroduce "else use the furthest-forward ended_at in the push" and a
+    // re-anchored COMPLETED day, which ends earlier than the still-filling row it
+    // corrects, reads as the OLDER push. Measured: the correcting 3500 was never
+    // written and the day stood at 3000 for 3500 walked, with nothing to converge it.
+    // An end is a property of the READING; only the push may say when the push was.
+    expect(pushStampFor(null, NOW)).toBe(null);
+    expect(pushStampFor(undefined, NOW)).toBe(null);
+    // Zone-less: unreadable as an instant, so it is not a stamp either.
+    expect(pushStampFor("2026-05-03T00:00:00", NOW)).toBe(null);
+  });
+
+  it("refuses a stamp further ahead of this clock than MAX_PUSH_CLOCK_SKEW_MS", () => {
+    // A phone with a fast clock writes its stamp onto the rows it stores, and every
+    // later honest push then reads as older than them — so nothing could supersede
+    // those rows again, ever. MUTATION: drop the bound and that becomes permanent.
+    const ahead = new Date(NOW.getTime() + MAX_PUSH_CLOCK_SKEW_MS + 60_000);
+    expect(pushStampFor(ahead.toISOString(), NOW)).toBe(null);
+    // Inside the bound is still believed — this is a "that cannot be a push" check,
+    // not a clock-sync check.
+    const nearly = new Date(NOW.getTime() + MAX_PUSH_CLOCK_SKEW_MS - 60_000);
+    expect(pushStampFor(nearly.toISOString(), NOW)).toBe(utcInstant(nearly));
   });
 });
 
@@ -432,11 +429,10 @@ describe("planSupersede — what an incoming window does to the store", () => {
     expect(planSupersede(replay, converged).supersede).toEqual([]);
   });
 
-  it("BLOCKS a not-newer incoming row from being written at all", () => {
-    // Refusing to delete is only half the answer. MUTATION: drop the `blocked` return
-    // (or stop acting on it in normalize.ts) and a replayed pre-switch push re-INSERTS
-    // its stale row under a key its own supersede had cleared — the day goes back to
-    // 6500 without a single delete happening.
+  it("reports NO third list — nothing here may withhold a write", () => {
+    // MUTATION: bring back a `blocked` list and have the caller drop the incoming row.
+    // That version could LOSE a reading and say "nothing new" about it; the most a
+    // stale row may do now is sit beside the fresh one as a visible double count.
     const converged = [
       win(
         1,
@@ -452,16 +448,16 @@ describe("planSupersede — what an incoming window does to the store", () => {
       "2026-05-01T23:00:00Z",
       "2026-05-01T23:00:00Z"
     );
-    expect(planSupersede(replay, converged).blocked.map((r) => r.id)).toEqual([
-      1,
+    expect(Object.keys(planSupersede(replay, converged)).sort()).toEqual([
+      "locked",
+      "supersede",
     ]);
-    // And a genuinely newer push is NOT blocked — otherwise nothing would ever converge.
+    // And a genuinely newer push still supersedes — otherwise nothing converges.
     const newer = incoming(
       "2026-05-01T15:00:00Z",
       "2026-05-01T23:00:00Z",
       "2026-05-03T00:00:00Z"
     );
-    expect(planSupersede(newer, converged).blocked).toEqual([]);
     expect(planSupersede(newer, converged).supersede.map((r) => r.id)).toEqual([
       1,
     ]);
@@ -554,6 +550,23 @@ describe("staleBatchOverlaps — the mixed-anchoring pair inside ONE push", () =
     ]);
     expect([...staleBatchOverlaps([tokyoFilling, newYorkCompleted])]).toEqual([
       newYorkCompleted,
+    ]);
+  });
+
+  it("breaks an EQUAL-ends tie by start, keeping the re-anchored bucket", () => {
+    // Two buckets of one push that both end at the push moment — the shape a westward
+    // switch produces when the exporter cuts both anchorings at the same instant. The
+    // ends tie, so freshness cannot decide and the START does: the re-anchored Honolulu
+    // bucket begins at the new zone's midnight, EARLIER than the old zone's.
+    // MUTATION: flip the tie-break to `compareWindowStarts(b, a)` and this keeps the
+    // stale Tokyo record instead. Nothing else in the tree could see that flip.
+    const tokyoTied = { ...tokyo, ended_at: "2026-05-01T22:00:00Z" };
+    const honoluluTied = { ...honolulu, ended_at: "2026-05-01T22:00:00Z" };
+    expect([...staleBatchOverlaps([tokyoTied, honoluluTied])]).toEqual([
+      tokyoTied,
+    ]);
+    expect([...staleBatchOverlaps([honoluluTied, tokyoTied])]).toEqual([
+      tokyoTied,
     ]);
   });
 
