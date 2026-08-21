@@ -152,6 +152,110 @@ describe("groupedRelevanceView", () => {
       expect(view.rows.length, `${groups} groups`).toBe(ROWS);
     }
   });
+
+  // THE DEGENERATE INPUTS, pinned because the selection rule CHANGED inside this PR
+  // (a round-robin, then the floor-plus-remainder above) and these are the edges a
+  // rewrite silently moves. `limit` reaches this function from RELEVANCE_ROWS, so a
+  // zero or a negative is not reachable today — which is exactly why nothing else
+  // would notice if a future edit made them throw or over-emit.
+  it("emits nothing for a limit of zero or below, and reports every group", () => {
+    const options = [...named("Lift", 5), ...named("Analyte", 5)];
+    const groupFor = byPrefix({ Lift: "Exercises", Analyte: "Biomarkers" });
+    for (const limit of [0, -1]) {
+      const view = groupedRelevanceView(options, groupFor, limit);
+      expect(view.rows, `limit ${limit}`).toEqual([]);
+      // No row means no group is represented, and the guard must say so rather
+      // than reporting a clean sweep it never took.
+      expect(view.droppedGroups, `limit ${limit}`).toEqual([
+        "Exercises",
+        "Biomarkers",
+      ]);
+    }
+  });
+
+  it("spends a single row on the first group and names the rest", () => {
+    const options = [...named("Lift", 5), ...named("Analyte", 5)];
+    const view = groupedRelevanceView(
+      options,
+      byPrefix({ Lift: "Exercises", Analyte: "Biomarkers" }),
+      1
+    );
+    expect(view.rows).toEqual(["Lift 1"]);
+    expect(view.droppedGroups).toEqual(["Biomarkers"]);
+  });
+
+  it("takes the empty list as one bucket, not as a phantom group", () => {
+    const view = groupedRelevanceView([], () => "Exercises", ROWS);
+    expect(view.rows).toEqual([]);
+    expect(view.droppedGroups).toEqual([]);
+  });
+
+  // THE UNIQUENESS QUESTION, and the reason this module does not need an answer.
+  // Rows are chosen and emitted BY INDEX, so a list carrying the same string twice
+  // behaves exactly as `options.slice(0, limit)` always did. It matters because the
+  // real concatenations are not unique — `curatedMedicationOptions()` and
+  // `curatedSupplementOptions()` both carry "Melatonin" and "Magnesium Oxide" — and
+  // `Combobox` keys its rendered rows by the option string, so a duplicate reaching
+  // the visible eight is a caller-side problem there. This pins that grouping cannot
+  // CREATE one that the flat cap would not have shown: both copies appear here only
+  // because the flat cap would have shown both too.
+  it("chooses rows by index, so a repeated label is not a special case", () => {
+    const options = ["Melatonin", "Zinc", "Melatonin", "Iron"];
+    const flat = groupedRelevanceView(options, () => "Supplements", ROWS);
+    expect(flat.rows).toEqual(options);
+
+    // The same duplicate split across two groups: still index-chosen, still every
+    // row, still in the caller's order.
+    const split = groupedRelevanceView(
+      options,
+      (o) => (o === "Iron" ? "Minerals" : "Supplements"),
+      ROWS
+    );
+    expect(split.rows).toEqual(options);
+    expect(split.droppedGroups).toEqual([]);
+  });
+
+  it("cannot make a duplicate visible that the flat cap would not have shown", () => {
+    // THE SHAPE THE REVIEW ASKED ABOUT: two catalogs concatenated where one label —
+    // "Melatonin" is the real one — appears in both halves. The worry was that
+    // grouping could pull BOTH copies into the visible eight by spending a row on
+    // each group, and it cannot, for a reason worth writing down. `groupFor` is a
+    // function of the STRING, so two identical strings ALWAYS land in the same
+    // bucket; the later copy is therefore never a bucket's FIRST index, and the only
+    // other way in is the remainder pass, which never reaches past `limit - 1`.
+    // So a repeated row can only be shown when the old flat cap showed it too.
+    const options = [
+      "Melatonin",
+      ...named("Med", 8),
+      "Melatonin",
+      ...named("Supp", 4),
+    ];
+    const groupFor = (o: string) =>
+      o.startsWith("Supp") ? "Supplements" : "Medications";
+    const { rows } = groupedRelevanceView(options, groupFor, ROWS);
+    const flat = options.slice(0, ROWS);
+    const count = (list: readonly string[], name: string) =>
+      list.filter((o) => o === name).length;
+
+    // Not vacuous: the grouped list genuinely differs from the flat cap — that is
+    // the #3410 fix, one row spent so "Supplements" gets a header.
+    expect(rows).not.toEqual(flat);
+    expect(rows).toContain("Supp 1");
+    expect(flat).not.toContain("Supp 1");
+
+    // Only ONE Melatonin, exactly as before.
+    expect(count(rows, "Melatonin")).toBe(1);
+    // The general claim: grouping never MANUFACTURES a repeat. A row may be new
+    // (that is the header the fix buys); a row shown twice must have been shown
+    // twice by the flat cap.
+    for (const label of new Set(rows)) {
+      if (count(rows, label) > 1) {
+        expect(count(flat, label), label).toBeGreaterThanOrEqual(
+          count(rows, label)
+        );
+      }
+    }
+  });
 });
 
 // #3410 item (3). A guard is worth nothing until it has been run over input authored
