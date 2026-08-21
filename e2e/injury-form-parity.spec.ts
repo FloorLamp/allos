@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { comboboxRows } from "./helpers";
+import { comboboxRows, deleteActivityFromForm } from "./helpers";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_FORM_INJURY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -34,16 +34,12 @@ async function openNewActivity(page: Page) {
 
 // Delete the auto-saved draft so the shared fixture is left untouched across repeats
 // (mirrors the FORM_DELOAD spec's cleanUpDraft): wait for the persisted row's Delete
-// button, delete it, then assert the form closed so the unmount flush can't re-create it.
+// button, then discard through `deleteActivityFromForm`, which returns once the DELETE
+// has landed rather than once the form stopped rendering (#3454).
 async function cleanUpDraft(page: Page) {
   const del = page.getByRole("button", { name: "Delete", exact: true });
   await expect(del).toBeVisible();
-  await del.click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(page.getByTestId("activity-form")).toBeHidden();
+  await deleteActivityFromForm(page, { trigger: del });
 }
 
 test("live logger tempers a recovering-injury lift's next-set outside a deload week (#1144)", async ({

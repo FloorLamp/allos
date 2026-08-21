@@ -1,6 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, hydratedClick, spendAutoReloadRation } from "./helpers";
+import {
+  comboboxRows,
+  deleteActivityFromForm,
+  followLink,
+  hydratedClick,
+  spendAutoReloadRation,
+} from "./helpers";
 import {
   UPDATE_PENDING_KEY,
   UPDATE_PENDING_MARKER,
@@ -26,9 +32,15 @@ import {
 // registration — where the sha poll IS the detector and must feed the SAME one
 // notice rather than a second one. `serviceWorkers: "block"` is that context exactly.
 //
-// Fixture discipline (#868): this spec WRITES NOTHING. It intercepts the version
-// endpoint in its own page context (page.route is per-page, so no other spec sees
-// it) and asserts on chrome the shared seed doesn't own.
+// Fixture discipline (#868): every test here but ONE writes nothing — they intercept
+// the version endpoint in their own page context (page.route is per-page, so no other
+// spec sees it) and assert on chrome the shared seed doesn't own. The exception is the
+// #3443 case at the end, which has to CREATE an activity because the defect it pins
+// only exists while a create form re-keys onto the row its auto-save produced. It
+// discards that row through `deleteActivityFromForm`, so the write is gone before the
+// test ends — and the row it makes in the meantime is a LIVE draft, the one shape the
+// standing `noStrandedSharedDraft` guard both detects and repairs, so a mid-test
+// failure names this spec and cleans up after it rather than haunting a neighbour.
 
 test.use({ serviceWorkers: "block" });
 
@@ -601,4 +613,89 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
     reopened.getByTestId("draft-restore-banner"),
     "the continuation is the tap that already happened (#2471): a banner here means the reload crossed the typing and is asking the user to recover it"
   ).toHaveCount(0);
+});
+
+// ── (#3443) One live editor, one key in the unsaved-work registry ────────────
+//
+// WHAT THIS READS. `UpdateReadyBar` picks between two sentences on
+// `unsavedWork={unsaved || hasUnsavedWork()}` (components/ServiceWorkerRegister.tsx),
+// so the bar's own copy is the one place a spec can see `lib/offline/unsaved-work.ts`
+// answer. That is not a proxy for the defect — it IS one of its two consequences: a
+// tab that permanently offers "your entry is kept on this device" with nothing open.
+//
+// WHY IT LIVES HERE rather than in e2e/form-drafts.spec.ts, which owns the draft hook:
+// this is the file that can raise a bar. It blocks the service worker, so the sha poll
+// is the detector, and `spendAutoReloadRation` puts the tab in the one state where the
+// deploy degrades to the manual bar instead of reloading itself.
+//
+// THE MECHANISM IT GUARDS. `components/useFormDraft.ts` re-keys a create form onto the
+// row its auto-save produced, and `markUnsavedWork` is KEYED. Every release path in
+// that hook — `clear`, `discard`, the unmount cleanup — releases `keyRef.current`,
+// which after the re-key is the NEW key, so the create key was left with no owner that
+// could ever clear it. `hasUnsavedWork()` then stayed true for the life of the page,
+// and `captureUnsavedWork` collected two pointers from this one editor, suppressing
+// #2471's reopen-after-reload. The re-key effect now releases the old key as part of
+// moving to the new one; delete that one line and this test reds on the bar's copy.
+//
+// The registry-level contract — one editor owes exactly one key, and two keys suppress
+// the resume pointer — is stated in lib/__tests__/form-drafts.test.ts. It cannot see
+// the hook (`vitest.config.ts` includes `lib/**/*.test.ts` only, so `components/**`
+// has no unit tier), which is why this test exists at this tier.
+
+// The editor's exercise combobox. `.first()` is on a list this test just opened by
+// typing the name — see the same helper's note in e2e/entry-ergonomics.spec.ts.
+async function pickActivity(page: Page, name: string) {
+  await page.getByPlaceholder(/What did you do/).fill(name);
+  await comboboxRows(page)
+    .filter({ hasText: name })
+    .first() // first-ok: transient combobox list this test just opened by typing `name`; the first filtered match is the intended option
+    .click();
+}
+
+test("a create form that re-keys onto its saved row leaves the registry empty (#3443)", async ({
+  page,
+}) => {
+  test.slow();
+  // The fallback state: the automatic attempt is spent, so the deploy raises the bar
+  // rather than reloading the tab out from under the editor.
+  await spendAutoReloadRation(page);
+  await interceptVersion(page);
+
+  await page.goto("/training?tab=log");
+  // `hydratedClick`: /training rewrites its own URL at hydration, which widens the
+  // swallow window on the first control after the goto (the form-drafts note).
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByRole("button", { name: "New activity" })
+  );
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+
+  // A lift the seed trains repeatedly, so the coached "Next set" card exists and one
+  // tap completes set 1 — which is what makes the part savable.
+  await pickActivity(page, "Barbell Bench Press");
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
+
+  // THE RE-KEY, OBSERVED. The Delete button renders only once the debounced auto-save
+  // has created the row, and the row's id is exactly what moves the draft key off the
+  // create key (`ActivityForm` passes `recordId: editData?.id ?? createdId`). So this
+  // assertion is the precondition the whole test rests on, not chrome: without it the
+  // form never re-keys and the bar below would read "clean" for the wrong reason.
+  const del = page.getByRole("button", { name: "Delete", exact: true });
+  await expect(del).toBeVisible({ timeout: UPDATE_SETTLE_MS });
+
+  // Close the editor by discarding the row, so nothing is on screen and nothing is
+  // left on the shared profile. `deleteActivityFromForm` returns once the DELETE has
+  // landed (#3267/#3454), not once the form stopped rendering.
+  await deleteActivityFromForm(page, { trigger: del });
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+
+  // With no editor open, the registry must be empty — so the bar offers the plain
+  // sentence. Stranded, the create key is still in `dirtyKeys` and the bar promises to
+  // keep an entry that no longer exists.
+  const bar = await provokeVersionCheck(page);
+  await expect(bar).toContainText("Reload whenever suits you.");
+  await expect(bar).not.toContainText("kept on this device");
 });

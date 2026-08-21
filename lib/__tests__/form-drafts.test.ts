@@ -13,10 +13,12 @@ import {
   type FormDraft,
 } from "@/lib/offline/drafts";
 import {
+  captureUnsavedWork,
   hasUnsavedWork,
   markUnsavedWork,
   resetUnsavedWork,
   subscribeUnsavedWork,
+  type ResumePointer,
 } from "@/lib/offline/unsaved-work";
 
 // Local form drafts (issue #1699) — the pure half: key derivation, expiry, and the
@@ -263,6 +265,95 @@ describe("unsaved-work registry (#1700 reads what #1699 writes)", () => {
       true
     );
     expect(hasUnsavedWork()).toBe(true);
+    resetUnsavedWork();
+  });
+});
+
+// ── ONE LIVE EDITOR OWES THIS REGISTRY EXACTLY ONE KEY (#3443) ───────────────
+//
+// The registry is keyed, and `components/useFormDraft.ts` re-keys a create form onto
+// the row its auto-save produced — `ActivityForm` passes
+// `recordId: editData?.id ?? createdId`, so this is reached on every activity create.
+// What made it a defect is that the hook's three release paths (`clear`, `discard`,
+// the unmount cleanup) all release `keyRef.current`, which by then is the NEW key: the
+// old one had no owner left.
+//
+// These two tests state what that costs, at the registry, in the terms the hook has to
+// honour. They are the CONTRACT, not the guard on the hook — `vitest.config.ts`
+// includes `lib/**/*.test.ts` only, so `components/**` has no unit tier at all. The
+// test that fails when the hook stops releasing the old key is
+// `e2e/update-notice.spec.ts`'s "a create form that re-keys onto its saved row leaves
+// the registry empty (#3443)", which reads the consequence off `UpdateReadyBar`.
+describe("a re-keyed editor and the unsaved-work registry (#3443)", () => {
+  const CREATE_KEY = draftKey({
+    profileId: 1,
+    formKey: "activity",
+    recordId: null,
+  });
+  const ROW_KEY = draftKey({ profileId: 1, formKey: "activity", recordId: 5 });
+
+  // ONE editor mount registers ONE capture callback under whatever key it currently
+  // holds: `entryRef` is created once per mount and never reassigned (see the note on
+  // `syncUnsavedWork`), so a stranded key hands back a SECOND pointer from the same
+  // form rather than from a second form.
+  function oneEditor() {
+    let calls = 0;
+    const entry = {
+      capture: async (): Promise<ResumePointer> => {
+        calls += 1;
+        return { formKey: "activity", recordId: 5, live: false };
+      },
+    };
+    return { entry, captures: () => calls };
+  }
+
+  it("leaving the old key behind keeps hasUnsavedWork() true after the editor closes", () => {
+    resetUnsavedWork();
+    const { entry } = oneEditor();
+
+    // Typing marks the create key (since #3371 this happens per keystroke, not after
+    // the 600ms debounce).
+    markUnsavedWork(CREATE_KEY, true, entry);
+
+    // The auto-save returns an id and the form re-keys. RELEASING THE OLD KEY IS THE
+    // FIX: drop this line and every assertion below still describes a closed editor
+    // the registry insists is mid-composition.
+    markUnsavedWork(CREATE_KEY, false);
+    markUnsavedWork(ROW_KEY, true, entry);
+
+    // The editor closes — `clear()` and the unmount cleanup both release the key the
+    // hook is holding NOW, which is the row key.
+    markUnsavedWork(ROW_KEY, false);
+
+    expect(hasUnsavedWork()).toBe(false);
+    resetUnsavedWork();
+  });
+
+  it("hands back a resume pointer only while the re-key left one key standing", async () => {
+    resetUnsavedWork();
+    const { entry, captures } = oneEditor();
+
+    // The stranded state: one editor, two keys, one capture callback under both.
+    markUnsavedWork(CREATE_KEY, true, entry);
+    markUnsavedWork(ROW_KEY, true, entry);
+    const stranded = await captureUnsavedWork();
+    expect(captures()).toBe(2);
+    // `captureUnsavedWork` returns a pointer only when EXACTLY ONE form asked for one,
+    // so one editor counted twice suppresses #2471's reopen-after-reload outright.
+    expect(stranded).toEqual({ ok: true, resume: null });
+
+    // The re-key done properly: the same editor, one key.
+    resetUnsavedWork();
+    const { entry: entry2, captures: captures2 } = oneEditor();
+    markUnsavedWork(CREATE_KEY, true, entry2);
+    markUnsavedWork(CREATE_KEY, false);
+    markUnsavedWork(ROW_KEY, true, entry2);
+    const moved = await captureUnsavedWork();
+    expect(captures2()).toBe(1);
+    expect(moved).toEqual({
+      ok: true,
+      resume: { formKey: "activity", recordId: 5, live: false },
+    });
     resetUnsavedWork();
   });
 });

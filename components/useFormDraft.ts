@@ -553,10 +553,29 @@ export function useFormDraft<E = undefined>({
   // A create form that has produced a server row (the activity editor's auto-save
   // does this) re-keys onto that row: the "new" draft is handed over rather than
   // left behind, where it would restore into a SECOND, duplicate record.
+  //
+  // THE HANDOVER MOVES THE REGISTRY ENTRY TOO (#3443), and forgetting that half was
+  // the defect this line closes. `markUnsavedWork` is keyed, and every other release
+  // in this hook — `clear`, `discard`, the unmount cleanup — releases
+  // `keyRef.current`, which by the time any of them runs is the NEW key. So the old
+  // key had no owner left that could ever clear it: `hasUnsavedWork()` stayed true
+  // for the life of the page (`UpdateReadyBar` then permanently offering "your entry
+  // is kept on this device" with nothing open), and `captureUnsavedWork` collected
+  // TWO pointers from one editor — both from this mount's single `entryRef` — so its
+  // `pointers.length === 1` rule declined to hand one back and #2471's
+  // reopen-after-reload was suppressed. Released here rather than in the clean-up
+  // paths because this is the only place that still knows the old key's name.
+  //
+  // Released unconditionally rather than only when the form is clean: the key names a
+  // form that no longer exists under that name, and `write()` below re-registers
+  // under the new key with the same `entryRef` whenever there is still something to
+  // flush. Reached on every activity create (`ActivityForm` passes
+  // `recordId: editData?.id ?? createdId`), so this is the ordinary path, not an edge.
   useEffect(() => {
     const prev = keyRef.current;
     keyRef.current = key;
     if (prev && key && prev !== key) {
+      markUnsavedWork(prev, false);
       void deleteDraft(prev);
       write();
     }

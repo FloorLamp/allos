@@ -512,6 +512,61 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "vision.spec.ts": 2,
 };
 
+// ── (v-d) A bare .click() on a confirm dialog's DELETE (issue #3454) ─────────
+//
+// Two clicks land the activity discard: the editor's Delete, then the confirm
+// dialog's. The second one starts a Server Action, and the dialog closing is a
+// `setState` — so a spec that clicks it and then asserts a CLIENT fact, or asserts
+// nothing at all, has finished while `deleteActivity` is still in flight. That is
+// #3292's confirm-then-assert-a-client-fact pattern, and the discard is the copy of
+// it that costs other people merges: the `noStrandedSharedDraft` teardown guard
+// (e2e/fixtures.ts) reads the WORKER DATABASE once the page is gone, so it sees the
+// row on its way out and fails — with a green body, in whatever spec happened to
+// run, on whatever PR happened to be in CI.
+//
+// MEASURED THREE TIMES ON 2026-08-21, which is what took #3454 from P3 to P2:
+// `entry-ergonomics.spec.ts:697` 2 failures in 4 runs on an UNMODIFIED origin/main
+// control worktree; the same file's `:783` red once in a local batch on PR #3456 and
+// green on an identical re-run; and `:697` again in `e2e (4)` on PR #3464, whose diff
+// is entirely `lib/` number readers. Two distinct sites in one file, one root cause.
+//
+// THE BLESSED SPELLING IS `deleteActivityFromForm(page, { trigger? })`
+// (e2e/helpers.ts, #3267). It settles on the "Activity deleted." toast, which
+// `useUndoableDelete` raises only after `await action(fd)` has RESOLVED, so the row
+// is gone when it returns — and it takes the toast down again, because a `fixed`
+// bottom-right card intercepts the next click (#2861). Ten hand-rolled copies across
+// six files were converted in #3454; the freeze is ZERO so an eleventh cannot appear.
+//
+// WHY THE COUNT-FREEZE AND NOT A REVIEW RULE. The un-settled spelling passes every
+// gate on a quiet box — that is the entire defect — so the only thing that can see it
+// before CI does is a scan. Run over origin/main at b0bcf2d2 this regex reports all
+// ten converted sites plus the one marked below; over the converted tree it reports
+// only the marked one.
+//
+// THE ESCAPE, and there is exactly one use: a discard whose OWN next assertion is a
+// server fact the delete alone can satisfy. `unclassified-activity.spec.ts` waits for
+// `/timeline`, and `leaveDeletedActivityPage` navigates only once `onDeleted` has
+// fired; it also presses Undo afterwards, so the helper — which dismisses that very
+// toast — is the wrong tool there rather than a missing one. Mark such a site with a
+// same-line `confirm-delete-ok: <why>` comment on the `.click(` line (the `first-ok`
+// escape shape). "The dialog closed" and "the form unmounted" are NOT such facts.
+//
+// KNOWN LIMIT, deliberate and not a supported escape: a dialog captured in a variable
+// (`const d = await openConfirm(…)`) and clicked in a LATER statement evades the
+// `(?!;)` statement gap, which is the same limit MENU_TRIGGER_CLICK_RE documents. The
+// direct chain is how all eleven sites in the suite are actually written, and it is
+// how anyone reintroducing the pattern would write it; encoding a shape the tree does
+// not use would have made this guard green and blind at the same time.
+//
+// `name: "Delete"` is anchored on its closing quote on purpose: the longer destructive
+// labels in the suite ("Delete login", "Delete document & its records") drive tables
+// this teardown guard does not read, and each already ends on a `waitForURL` or a
+// re-queried row count that only a landed write satisfies.
+const CONFIRM_DELETE_CLICK_RE =
+  /getByTestId\(\s*["']confirm-dialog["']\s*\)(?:(?!;)[\s\S])*?name:\s*["']Delete["'](?:(?!;)[\s\S])*?\.click\(/g;
+const CONFIRM_DELETE_OK_MARKER = "confirm-delete-ok";
+const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
+
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
 // Every seeded fixture login is a PERMANENT row on Settings → Family and a
 // permanent member of the grant matrix. That population is monotonic — it only
@@ -878,6 +933,95 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     expect(matches('await page.getByTestId("quick-actions").click();')).toBe(
       false
     );
+  });
+
+  it("no NEW bare .click() on a confirm dialog's Delete in an e2e/*.ts (use deleteActivityFromForm)", () => {
+    checkPattern(
+      "bare .click() on a confirm dialog's Delete",
+      CONFIRM_DELETE_CLICK_RE,
+      CONFIRM_DELETE_CLICK_ALLOW,
+      {
+        excludeLineMarker: CONFIRM_DELETE_OK_MARKER,
+        hint:
+          `The confirm's Delete starts a Server Action, and the dialog closing is a ` +
+          `\`setState\` — so "the dialog went away", "the form unmounted" and ending ` +
+          `the test outright all finish while the DELETE is still in flight, and the ` +
+          `noStrandedSharedDraft teardown guard reads the row on its way out (#3454, ` +
+          `#3292). Use deleteActivityFromForm(page, { trigger? }) from e2e/helpers.ts: ` +
+          `it settles on the "Activity deleted." toast, which is raised only after the ` +
+          `action RESOLVED, and dismisses it (#3267). For a discard whose own next ` +
+          `assertion is a server fact — a waitForURL the delete alone can satisfy — ` +
+          `add a same-line \`confirm-delete-ok: <why>\` comment; see ` +
+          `docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  // Same reason as the menu-trigger samples above: a per-file freeze at ZERO passes
+  // forever if the regex quietly stops matching. Every TRUE case below is a verbatim
+  // shape that was in the tree at origin/main b0bcf2d2 — the ten sites #3454
+  // converted — and the FALSE cases are the neighbours the guard must stay silent on,
+  // because a rule that cries wolf on the settled spellings would be deleted within a
+  // week and take the real guard with it.
+  it("the confirm-delete pattern discriminates an unsettled discard from a settled one", () => {
+    const matches = (src: string) =>
+      countMatches(src, CONFIRM_DELETE_CLICK_RE) > 0;
+
+    // The formatter-broken chain — how all ten converted sites were spelled.
+    expect(
+      matches(
+        'await page\n  .getByTestId("confirm-dialog")\n' +
+          '  .getByRole("button", { name: "Delete", exact: true })\n  .click();'
+      )
+    ).toBe(true);
+    // Same chain on one line, and without `exact`.
+    expect(
+      matches(
+        'await page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" }).click();'
+      )
+    ).toBe(true);
+    // Driven from another Page object (a second member's context).
+    expect(
+      matches(
+        'await member\n  .getByTestId("confirm-dialog")\n' +
+          '  .getByRole("button", { name: "Delete", exact: true })\n  .click();'
+      )
+    ).toBe(true);
+
+    // The blessed spelling names no dialog at all.
+    expect(matches("await deleteActivityFromForm(page);")).toBe(false);
+    expect(
+      matches('await deleteActivityFromForm(page, { trigger: del });')
+    ).toBe(false);
+    // Wrapped in settledClick, which arms the action-POST wait before the tap — the
+    // trash / undo-delete spelling, and a settle this rule must not call an offence.
+    expect(
+      matches(
+        'await settledClick(\n  page,\n  page\n    .getByTestId("confirm-dialog")\n' +
+          '    .getByRole("button", { name: "Delete", exact: true })\n);'
+      )
+    ).toBe(false);
+    // A non-destructive button in the same dialog.
+    expect(
+      matches(
+        'await page.getByTestId("confirm-dialog").getByRole("button", { name: "Cancel" }).click();'
+      )
+    ).toBe(false);
+    // A LONGER destructive label — a different table, and each of those sites already
+    // ends on a waitForURL only a landed write satisfies.
+    expect(
+      matches(
+        'await dialog.getByTestId("confirm-dialog").getByRole("button", { name: "Delete document & its records" }).click();'
+      )
+    ).toBe(false);
+    // The dialog merely ASSERTED on, with an unrelated Delete click in the NEXT
+    // statement: without the `(?!;)` gap guard this pairs a stranger's click with it.
+    expect(
+      matches(
+        'await expect(page.getByTestId("confirm-dialog")).toBeVisible();\n' +
+          'await row.getByRole("button", { name: "Delete" }).click();'
+      )
+    ).toBe(false);
   });
 
   it("no NEW inline create-login sequence in an e2e/*.ts (use createLoginViaFamily)", () => {
