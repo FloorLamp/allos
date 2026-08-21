@@ -63,8 +63,7 @@ async function documentOrder(
       const first = document.querySelector(`[data-testid="${a}"]`)!;
       const second = document.querySelector(`[data-testid="${b}"]`)!;
       return !!(
-        first.compareDocumentPosition(second) &
-        Node.DOCUMENT_POSITION_FOLLOWING
+        first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING
       );
     },
     [firstTestId, secondTestId]
@@ -151,7 +150,11 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // The filter sits immediately above the list it filters, under that list's
     // own label — not as a third navigation layer under a separate heading line.
     expect(
-      await documentOrder(page, "records-sub-tabs", "immunization-status-filter")
+      await documentOrder(
+        page,
+        "records-sub-tabs",
+        "immunization-status-filter"
+      )
     ).toBe(true);
   });
 
@@ -168,9 +171,9 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // shrink scrolls out of the row instead, which is what the overflow is for.
     // Measured as "no chip is taller than a one-line chip", which is what
     // "single-line" means and what a class assertion could not tell you.
-    const heights = await strip.locator("a").evaluateAll((els) =>
-      els.map((el) => el.getBoundingClientRect().height)
-    );
+    const heights = await strip
+      .locator("a")
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThan(1);
     expect(Math.max(...heights)).toBeLessThan(Math.min(...heights) * 1.6);
   });
@@ -182,7 +185,9 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
 
     // ONE PRIMARY, ONE ⋯ (item C / item G). The add stays; import, print and
     // share fold. Nothing else standing above the list.
-    await expect(page.getByTestId("add-immunization-panel-toggle")).toBeVisible();
+    await expect(
+      page.getByTestId("add-immunization-panel-toggle")
+    ).toBeVisible();
     await expect(page.getByTestId("immunization-print-link")).toBeHidden();
     await expect(page.getByTestId("immunization-import-link")).toBeHidden();
 

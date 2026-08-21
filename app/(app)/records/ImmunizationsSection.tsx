@@ -426,7 +426,9 @@ export default function ImmunizationsSection({
                         <Td
                           slot="meta"
                           label="Doses"
-                          empty={a.dosesReceived === 0 && a.dosesRequired == null}
+                          empty={
+                            a.dosesReceived === 0 && a.dosesRequired == null
+                          }
                           className="hidden text-slate-600 md:table-cell dark:text-slate-300"
                         >
                           {a.dosesReceived}
@@ -467,8 +469,8 @@ export default function ImmunizationsSection({
                   compact
                   message={
                     <>
-                      No antibody/titer results yet — they appear here when a lab
-                      report with immunity markers is added under{" "}
+                      No antibody/titer results yet — they appear here when a
+                      lab report with immunity markers is added under{" "}
                       <Link
                         href="/results/clinical-results"
                         className="underline"

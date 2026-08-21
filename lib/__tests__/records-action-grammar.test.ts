@@ -120,16 +120,18 @@ describe("Records action grammar (#3408)", () => {
       "utf8"
     );
     expect(primaryCount(form)).toBeGreaterThan(0);
-    expect(isPaneFile("app/(app)/records/problems/allergies/AllergyForm.tsx")).toBe(
-      false
-    );
+    expect(
+      isPaneFile("app/(app)/records/problems/allergies/AllergyForm.tsx")
+    ).toBe(false);
   });
 
   it("can see both spellings, and neither sibling utility", () => {
     // THE GUARD RUN OVER SOURCES AUTHORED TO BREAK IT. A green sweep over a
     // complying tree says nothing about what the sweep can see.
     expect(
-      primaryCount(`<AddEntryPanel label="Add" /><AddEntryPanel label="Also" />`)
+      primaryCount(
+        `<AddEntryPanel label="Add" /><AddEntryPanel label="Also" />`
+      )
     ).toBe(2);
     expect(primaryCount(`<button className="btn">A</button>`)).toBe(1);
     expect(primaryCount("const c = `btn ${wide ? 'w-full' : ''}`;")).toBe(1);

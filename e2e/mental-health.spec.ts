@@ -260,7 +260,10 @@ test.describe("correcting a recorded score (#1396)", () => {
     // THE TWO ROW AFFORDANCES NOW FOLD BEHIND THE ⋯ (#3408, item F), so reaching
     // either one is two taps: open the row's menu, then pick the verb. The verbs
     // and their testids are unchanged — only where they live moved.
-    await hydratedClick(page, row.getByRole("button", { name: "Reading actions" }));
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reading actions" })
+    );
     // "Correct" only flips editingId; the edit form it reveals is the signal.
     await hydratedClick(
       page,
@@ -297,7 +300,10 @@ test.describe("correcting a recorded score (#1396)", () => {
     await expect(row).toBeVisible();
 
     // Two taps since #3408 item F: the ⋯, then Remove.
-    await hydratedClick(page, row.getByRole("button", { name: "Reading actions" }));
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reading actions" })
+    );
     // "Remove" does not write: handleDelete awaits the app-wide confirm() first
     // and only posts if the user says yes. The dialog is this click's whole effect.
     await hydratedClick(

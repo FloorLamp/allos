@@ -163,7 +163,9 @@ export default function VisitsSection({
         defaultDate={now}
         linkedRecordCounts={linkedRecordCounts}
         episodes={encounterEpisodes}
-        multiView={multi ? { actingProfileId: scope.actingProfileId } : undefined}
+        multiView={
+          multi ? { actingProfileId: scope.actingProfileId } : undefined
+        }
       />
     </section>
   );
