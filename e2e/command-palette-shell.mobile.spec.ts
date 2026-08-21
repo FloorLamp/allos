@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
-import { settledAfterAnimation, settledClick } from "./helpers";
+import { hydratedClick, settledAfterAnimation } from "./helpers";
 
 // The command palette's PHONE SHELL (issue #3423).
 //
@@ -105,7 +105,10 @@ test.describe("command palette — the phone shell (#3423)", () => {
     const cancelBox = await cancel.boundingBox();
     expect(cancelBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
 
-    await settledClick(page, cancel);
+    // `hydratedClick`, not `settledClick`: Cancel posts nothing — it closes a
+    // read-only surface — and settledClick arms a POST wait that would time out
+    // on a control that is behaving correctly.
+    await hydratedClick(page, cancel);
     await expect(input).toBeHidden();
   });
 
@@ -129,7 +132,11 @@ test.describe("command palette — the phone shell (#3423)", () => {
     expect(text).not.toContain("enter to save");
 
     // The commit affordance is shaped like the gesture that reaches it.
-    await expect(quickLog).toContainText("Tap to save");
+    // `useInnerText` for the reason the desktop half of this pair records: the
+    // fork is a `hidden md:inline` twin, and `textContent` reads both spellings
+    // at both widths, so a default `toContainText` here would pass on a desktop
+    // render too and assert nothing about the width gate.
+    await expect(quickLog).toContainText("Tap to save", { useInnerText: true });
 
     // THE PROFILE-SCOPE HALF SURVIVES. It is a claim about the DATA — the one
     // sentence saying whose records this searches — not an instruction about a
@@ -140,7 +147,17 @@ test.describe("command palette — the phone shell (#3423)", () => {
     // The "↵" glyph is a PICTURE OF A KEY, so it draws only where the key is.
     // Addressed by the tabler class the icon renders, since it carries no marker
     // of its own.
-    await expect(panel.locator(".tabler-icon-corner-down-left")).toHaveCount(0);
+    //
+    // `:visible`, NOT a bare count. The glyph is width-gated by a `hidden
+    // md:block` class, which is exactly the app's own idiom for this (the ⌘K
+    // hint, #3423's own reference point) — the element is in the DOM and
+    // display:none. A `toHaveCount(0)` therefore fails against a CORRECT
+    // implementation, and demanding it be unmounted instead would force a JS
+    // width check for a purely visual gate. Measured: this assertion read 1
+    // against a working fork before it was narrowed to visibility.
+    await expect(
+      panel.locator(".tabler-icon-corner-down-left:visible")
+    ).toHaveCount(0);
   });
 
   test("a result row meets the tap floor and runs on one tap, with no hover first", async ({

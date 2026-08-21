@@ -274,12 +274,23 @@ test.describe("command palette — the keyboard copy survives from md up (#3423)
 
     // Verbatim, both halves of the sentence, in one string — a fork that split
     // the line into two spans must still read as one sentence to a person.
-    await expect(panel).toContainText("arrows to move, Enter to run");
+    await expect(panel).toContainText("arrows to move, Enter to run", {
+      useInnerText: true,
+    });
 
     const quickLog = page.getByTestId("palette-quicklog");
     await expect(quickLog).toBeVisible();
-    await expect(quickLog).toContainText("Enter to save");
-    await expect(quickLog).not.toContainText("Tap to save");
+    // `useInnerText`, and it is load-bearing on BOTH halves of this pair. The
+    // fork is a `hidden md:inline` twin, so `textContent` — Playwright's default
+    // — reads BOTH spellings at both widths and the row's raw text really is
+    // "Tap to saveEnter to save". Measured: the negative assertion below failed
+    // against a correct render until it was told to read what is PAINTED.
+    await expect(quickLog).toContainText("Enter to save", {
+      useInnerText: true,
+    });
+    await expect(quickLog).not.toContainText("Tap to save", {
+      useInnerText: true,
+    });
 
     // The "↵" glyph draws where the Return key is. It hangs off the highlight,
     // which the quick-log row holds as the first item in the list.
