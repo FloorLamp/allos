@@ -76,8 +76,20 @@ export function PageHeader({
           )}
         </div>
       </div>
+      {/* AN ACTION IS A CONTROL, NOT REFLOWABLE COPY (#3403). Without `shrink-0` the
+          action and the title block were both shrinkable, so page identity PROSE won
+          the width contest and squeezed the action to min-content: the Timeline's
+          "Year in review" collapsed to 62px over two lines on a phone, purely because
+          that page passes a long subtitle. The title block already carries `min-w-0`,
+          so it is the side that absorbs.
+          A page whose action genuinely needs the full phone width passes
+          `stackActionBelowSm` instead — that is the escape hatch, and the two headers
+          whose action is a WRAPPING GROUP of several controls (Household, Medications)
+          use it, because a group pinned to max-content cannot wrap. */}
       {action ? (
-        <div className={stackActionBelowSm ? "ml-auto sm:ml-0" : undefined}>
+        <div
+          className={`shrink-0 ${stackActionBelowSm ? "ml-auto sm:ml-0" : ""}`}
+        >
           {action}
         </div>
       ) : null}

@@ -53,14 +53,18 @@ export default function MedicationAddWorkspace({
       <PageHeader
         title="Medications"
         subtitle={subtitle}
+        // The action group takes its OWN LINE on a phone (#1522 follow-up, restated
+        // by #3403). Three affordances do not fit 390px beside "Medications" and its
+        // subtitle, and the app shell clips horizontal overflow — an un-wrapping row
+        // would push the Add button off-screen entirely rather than scroll to it. The
+        // group used to buy that by SHRINKING and wrapping inside itself, which needed
+        // `PageHeader` to let prose squeeze an action; since #3403 it does not, and a
+        // group pinned to max-content cannot wrap. `stackActionBelowSm` is the header's
+        // own answer to the same need and a better one — the title gets the full width
+        // too. Beside the title from `sm` up, exactly as before. One content tree, both
+        // viewports; the group keeps `flex-wrap` for the narrowest phones.
+        stackActionBelowSm
         action={
-          // WRAPS on a phone (#1522 follow-up). A second affordance in this header
-          // does not fit 390px beside "Medications" and its subtitle, and the app
-          // shell clips horizontal overflow — an un-wrapping row would push the Add
-          // button off-screen entirely rather than scroll to it. So the group shrinks
-          // (no `shrink-0`) and wraps between its children: the cabinet door rides
-          // above the button on a phone and beside it from `sm` up. One content tree,
-          // both viewports.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <DoseLedgerLink kind="medication" />
             <SharedSuppliesLink count={cabinetCount} />

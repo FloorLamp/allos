@@ -18,6 +18,24 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 // The sidebar is narrow, so the month dropdown uses short labels ("Jan" … "Dec").
 const MONTHS = monthNames("short");
 
+// THE HIT AREA AND THE GLYPH ARE TWO BOXES BELOW `md` (#3377) — the padding/hit-slop
+// idiom the app already uses for its icon-only triggers. The month arrow's chevron
+// stays 16px and the day's circle stays 28px at every width; what grows on a phone is
+// the box a finger lands in. From `md` up the outer box collapses back onto the glyph,
+// so the desktop sidebar's density is unchanged.
+const ARROW_HIT =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 md:h-6 md:w-6 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200";
+
+// The day cell's hit box: the FULL grid column and 40px tall on a phone (40.9 × 40 in
+// the drawer, measured), the bare 28px circle from `md` up. `w-full` rather than a
+// fixed width so the columns tile the grid with no dead pixels between them — a tap
+// that lands nowhere reads as a broken day just as a tap that lands next door does.
+const DAY_HIT =
+  "flex h-10 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
+// The circle a reader sees. Unchanged at every width.
+const DAY_GLYPH =
+  "flex h-7 w-7 items-center justify-center rounded-full text-xs";
+
 export default function TrainingLogCalendar({
   activeDates,
 }: {
@@ -76,13 +94,28 @@ export default function TrainingLogCalendar({
   }
 
   return (
-    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+    // FULL-BLEED IN THE PHONE DRAWER, THE BORDERED CARD ON DESKTOP (#3377).
+    //
+    // This grid is a PHONE surface: components/MobileNav.tsx renders the same
+    // <SidebarContent> inside the nav drawer, where its 28px day links sat ~35%
+    // under the 40px tap floor (#644). Seven columns need 280px of grid to give
+    // each day a 40px-wide hit area, and the drawer is only 288px wide — measured,
+    // with its own 16px side padding and this card's `p-3`, the columns were 32.7px.
+    // There is no arrangement of padding INSIDE the card that reaches the floor, so
+    // below `md` the card gives up the drawer's gutter (`-mx-4` cancels exactly the
+    // `pl-[max(1rem,…)] pr-4` the drawer sets) and its own horizontal padding,
+    // making the columns 40.9px. The side borders and the corner radius go with it,
+    // so it reads as a band rather than a card jammed against the drawer's edges.
+    //
+    // From `md` up every one of those is put back and the desktop sidebar renders
+    // byte-identically to before: same card, same 28px days, same density.
+    <div className="-mx-4 border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
       <div className="mb-2 flex items-center justify-between gap-1">
         <button
           type="button"
           onClick={() => shift(-1)}
           disabled={atMin}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+          className={ARROW_HIT}
           aria-label="Previous month"
           title="Previous month"
         >
@@ -129,7 +162,7 @@ export default function TrainingLogCalendar({
           type="button"
           onClick={() => shift(1)}
           disabled={atMax}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+          className={ARROW_HIT}
           aria-label="Next month"
           title="Next month"
         >
@@ -148,8 +181,6 @@ export default function TrainingLogCalendar({
           const ds = isoDate(cell.y, cell.m, cell.d);
           const isToday = ds === todayStr;
           const hasActivity = active.has(ds);
-          const base =
-            "mx-auto flex h-7 w-7 items-center justify-center rounded-full text-xs";
 
           if (hasActivity) {
             return (
@@ -157,24 +188,29 @@ export default function TrainingLogCalendar({
                 key={i}
                 href={`/timeline?from=${ds}&to=${ds}#timeline-day-${ds}`}
                 title={`View ${ds}`}
-                className={`${base} bg-brand-500/15 font-semibold text-brand-700 hover:bg-brand-500/25 dark:text-brand-300 ${
-                  cell.outside ? "opacity-50" : ""
-                } ${isToday ? "ring-1 ring-brand-400" : ""}`}
+                className={DAY_HIT}
               >
-                {cell.d}
+                <span
+                  className={`${DAY_GLYPH} bg-brand-500/15 font-semibold text-brand-700 hover:bg-brand-500/25 dark:text-brand-300 ${
+                    cell.outside ? "opacity-50" : ""
+                  } ${isToday ? "ring-1 ring-brand-400" : ""}`}
+                >
+                  {cell.d}
+                </span>
               </Link>
             );
           }
           return (
-            <div
-              key={i}
-              className={`${base} ${
-                cell.outside
-                  ? "text-slate-300 dark:text-slate-600"
-                  : "text-slate-500 dark:text-slate-400"
-              } ${isToday ? "ring-1 ring-slate-300" : ""}`}
-            >
-              {cell.d}
+            <div key={i} className={DAY_HIT}>
+              <span
+                className={`${DAY_GLYPH} ${
+                  cell.outside
+                    ? "text-slate-300 dark:text-slate-600"
+                    : "text-slate-500 dark:text-slate-400"
+                } ${isToday ? "ring-1 ring-slate-300" : ""}`}
+              >
+                {cell.d}
+              </span>
             </div>
           );
         })}
