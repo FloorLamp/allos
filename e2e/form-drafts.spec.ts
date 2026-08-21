@@ -323,7 +323,9 @@ const SIGNATURE_ITERATIONS = 300;
 // MEASURED 2026-08-21, Chromium on this box, and both readings are why the shared
 // route was taken rather than three bespoke adopters:
 //   * real payload (905-byte signature, 10 form controls): 0.0133 ms — 0.08% of a
-//     frame, ~45x cheaper than the 600ms debounce it now runs alongside is spaced.
+//     frame, and roughly 45,000x shorter than the 600ms debounce it runs alongside
+//     (600 / 0.0133), i.e. the eager recomputation is free next to the write it
+//     front-runs.
 //   * the same payload 20x bigger (18 KB): 0.0600 ms. Sub-linear, because the cost is
 //     mostly the FormData construction and the walk of `form.elements` rather than
 //     the JSON — so this is a property of the form's SHAPE, and a form with a fatter

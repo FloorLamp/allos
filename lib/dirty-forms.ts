@@ -231,6 +231,13 @@ export function unsavedAnswerForForm(form: {
  *     editor on the other side, so a declaration inside one blocks nothing — the
  *     recoverable axis already handles it, and blocking here would refuse a reload
  *     that costs nothing.
+ *
+ *     THAT SENTENCE IS A CLAIM ABOUT ANOTHER FILE, and it was false for 600ms at a
+ *     time until the #3371 fix round: `markUnsavedWork` was reached only from the
+ *     post-debounce `write()`, so a just-typed form was in neither registry and its
+ *     declaration was excluded here on the strength of a flush with nothing to write.
+ *     `useFormDraft#syncUnsavedWork` now registers from the first keystroke. This
+ *     exclusion is exactly as sound as that registration, and no sounder.
  *   * EVERYTHING ELSE that declares itself unsaved has no durable copy anywhere. A
  *     reload destroys it, and the reload is not a gesture the user chose — which is
  *     what makes the argument for refusing stronger here than for the flick the

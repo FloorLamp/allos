@@ -274,8 +274,24 @@ function declarationsWithin(root: Node): HTMLElement[] {
  * moments a reload is actually being decided has no state to get wrong, and the caller
  * (`components/useAutoUpdateReload.ts`) already re-asks immediately before reloading.
  *
- * Draft-backed declarations are excluded: their content is durable and the recoverable
- * axis flushes it first. See `declarationBlocksAutomaticReload`.
+ * WHAT IT REACHES, PLAINLY, because "the reload now reads the marker" oversells it.
+ * Draft-backed declarations are excluded, and every `useFormDraft` publisher is
+ * draft-backed by construction — so this axis reaches exactly the declarers that keep
+ * their content nowhere but the DOM: `SleepMoodEditDialog` and `ProviderAffiliations`
+ * today. `ActivityForm` declares and is excluded (the hook still stamps
+ * `data-draft-backed` under `ownsUnsavedMarker`). Two surfaces is the honest number.
+ *
+ * THE EXCLUSION IS ONLY SOUND BECAUSE THE FLUSH IS REAL, and it was not until the
+ * #3371 fix round. `markUnsavedWork` used to be reached only from `useFormDraft`'s
+ * post-debounce `write()`, so for 600ms after a keystroke a draft-backed form was in
+ * NO registry — and excluding it here on the grounds that "the reload will flush it"
+ * was excluding it on the strength of a flush that had nothing to write.
+ * `captureUnsavedWork()` answered `{ ok: true }` over an empty drafts store and the
+ * reload took the typing with it; `autoReloadPlan`'s hidden-tab short-circuit made
+ * that reachable with no waiting at all. `useFormDraft` now registers the flush from
+ * the first keystroke, which is what this exclusion has always assumed. If that ever
+ * moves back behind the debounce, this exclusion becomes a hole again — the two facts
+ * are one fact. See `declarationBlocksAutomaticReload`.
  */
 export function pageDeclaresUnrecoverableWork(): boolean {
   if (typeof document === "undefined") return false;

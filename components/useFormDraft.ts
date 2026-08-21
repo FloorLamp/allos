@@ -65,7 +65,7 @@ import { shouldAutoApplyDraft } from "@/lib/sw-update";
 // This hook already computes exactly that answer for every draft-backed form
 // (`shouldPersistDraft` over the mount signature), so it publishes it rather than
 // leaving three more surfaces to re-derive three different definitions of "dirty".
-// See `publishUnsaved` below for what it costs and what was measured.
+// See `syncUnsavedWork` below for what it costs and what was measured.
 //
 // THIS HOOK ALSO REPORTS THE FLUSH (#2471). A form registered as unsaved work hands
 // `lib/offline/unsaved-work.ts` a `capture` callback: cancel the debounce, write the
@@ -287,6 +287,21 @@ export function useFormDraft<E = undefined>({
    * `lib/dirty-forms.ts#unsavedAnswerForForm`, so this can only ever ADD a form to
    * the discard guard, never take one out.
    *
+   * IT ALSO REGISTERS THE FLUSH, and that pairing is the whole point of doing this
+   * eagerly (#3371 fix round). `markUnsavedWork` used to be reached only from
+   * `write()`, i.e. only after the 600ms debounce — so for the first 600ms after a
+   * keystroke a draft-backed form was in NO registry at all: not `dirtyKeys`, not
+   * `unrecoverableKeys`, and its declaration excluded from
+   * `pageDeclaresUnrecoverableWork` as "draft-backed, the reload will flush it". There
+   * was nothing to flush. `captureUnsavedWork()` answered `{ ok: true }` over an empty
+   * drafts store and the reload ate the typing. Reachable with no waiting at all:
+   * `autoReloadPlan` short-circuits on a hidden tab (`lib/sw-update.ts`), so switching
+   * tabs within 600ms of a keystroke skips `INPUT_QUIET_MS` entirely.
+   *
+   * Registering here closes it by making the flush REAL rather than by refusing the
+   * reload: `capture` cancels the debounce, writes the draft, and resolves when it is
+   * durable — which is what this hook's header has always claimed happens.
+   *
    * WRITTEN IMPERATIVELY, not rendered. The value has to be correct in the DOM at the
    * moment of a dismissal, and routing it through React state would re-render the
    * whole form on every keystroke to move one attribute — on `IntakeItemForm` that is
@@ -311,11 +326,9 @@ export function useFormDraft<E = undefined>({
    * against — the cost is a property of the FORM, so it can move without this file
    * changing at all.
    */
-  const publishUnsaved = useCallback(
-    (knownSig?: string) => {
-      if (ownsUnsavedMarker) return;
-      const el = scopeRef?.current ?? formRef?.current ?? null;
-      if (!active || !el) return;
+  const syncUnsavedWork = useCallback(
+    (knownSig?: string): boolean => {
+      if (!active) return false;
       let sig = knownSig;
       if (sig == null) {
         const snap = snapshot();
@@ -326,13 +339,20 @@ export function useFormDraft<E = undefined>({
       // cannot have moved off one — "false" is the honest answer, and it keeps the
       // pre-seed guard in the `extra` effect meaning what it says.
       const baseline = initialSigRef.current;
-      el.setAttribute(
-        "data-unsaved",
+      const dirty =
         baseline != null &&
-          shouldPersistDraft({ currentSig: sig, initialSig: baseline })
-          ? "true"
-          : "false"
-      );
+        shouldPersistDraft({ currentSig: sig, initialSig: baseline });
+
+      const el = scopeRef?.current ?? formRef?.current ?? null;
+      if (!ownsUnsavedMarker && el) {
+        el.setAttribute("data-unsaved", dirty ? "true" : "false");
+      }
+
+      // THE REGISTRATION, and it is NOT gated on `ownsUnsavedMarker`: the marker is
+      // an attribute for the discard guard, this is the flush contract for the reload
+      // gate, and every draft-backed form owes the second one whether or not it
+      // publishes the first.
+      return dirty;
     },
     [active, ownsUnsavedMarker, scopeRef, formRef, snapshot]
   );
@@ -347,7 +367,10 @@ export function useFormDraft<E = undefined>({
     const sig = draftSig(snap.fields, snap.extra);
     if (initialSigRef.current == null) initialSigRef.current = sig;
     // Free: the signature this decision needs is the signature the marker needs.
-    publishUnsaved(sig);
+    // This also registers (or releases) the flush — `write` no longer calls
+    // `markUnsavedWork` itself, because doing so here is what closed the debounce
+    // hole, and a second call would just be a second place to keep in step.
+    syncUnsavedWork(sig);
     if (
       !shouldPersistDraft({
         currentSig: sig,
@@ -366,7 +389,7 @@ export function useFormDraft<E = undefined>({
       fields: snap.fields,
       extra: snap.extra,
     });
-  }, [active, profileId, formKey, recordId, snapshot, publishUnsaved]);
+  }, [active, profileId, formKey, recordId, snapshot, syncUnsavedWork]);
 
   // Cancel the debounce, write, and say what should be reopened on the other side.
   // A rejection here is what stops the reload: `captureUnsavedWork` answers
@@ -388,17 +411,18 @@ export function useFormDraft<E = undefined>({
 
   const schedule = useCallback(() => {
     if (!active) return;
-    // BEFORE the debounce, not after it. A person who types and reaches straight for
-    // Escape is inside the 600ms window, and that is precisely the discard the guard
-    // exists for — a marker that only landed with the draft write would be absent
-    // exactly when it is needed.
-    publishUnsaved();
+    // BEFORE the debounce, not after it, and this is load-bearing TWICE. A person who
+    // types and reaches straight for Escape is inside the 600ms window, and that is
+    // precisely the discard the guard exists for. So is the automatic update reload:
+    // registering the flush only when the debounce fired left the form in no registry
+    // at all for 600ms, and a hidden-tab reload crossed it with nothing to flush.
+    syncUnsavedWork();
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       write();
     }, AUTOSAVE_DEBOUNCE_MS);
-  }, [active, write, publishUnsaved]);
+  }, [active, write, syncUnsavedWork]);
 
   // Apply a stored draft to the live form. The one place that writes a draft back,
   // shared by the user's Resume tap and the #2471 continuation.
@@ -431,12 +455,12 @@ export function useFormDraft<E = undefined>({
     // first keystroke reads an answer rather than nothing. `false` adds nothing to
     // the guard either way — it is here so the attribute's absence never has to be
     // interpreted.
-    publishUnsaved();
+    syncUnsavedWork();
     return () => {
       el.removeAttribute("data-draft-backed");
       if (!ownsUnsavedMarker) el.removeAttribute("data-unsaved");
     };
-  }, [active, scopeRef, formRef, publishUnsaved, ownsUnsavedMarker]);
+  }, [active, scopeRef, formRef, syncUnsavedWork, ownsUnsavedMarker]);
 
   // Seed the mount signature and look for a draft to offer. Runs once per key.
   useEffect(() => {
@@ -564,9 +588,9 @@ export function useFormDraft<E = undefined>({
     // so nothing is dirty until the user edits again.
     const snap = snapshot();
     initialSigRef.current = draftSig(snap.fields, snap.extra);
-    publishUnsaved(initialSigRef.current);
+    syncUnsavedWork(initialSigRef.current);
     if (k) void deleteDraft(k);
-  }, [snapshot, publishUnsaved]);
+  }, [snapshot, syncUnsavedWork]);
 
   const discard = useCallback(() => {
     const k = keyRef.current;
