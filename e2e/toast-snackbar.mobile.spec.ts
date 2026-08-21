@@ -144,14 +144,24 @@ test("a phone toast is one full-width bar above the dock, and a second waits its
     // pinned unit-side, over the list arithmetic (lib/__tests__/toast-upsert).
     await chip.click();
     await expect(toast).toHaveText(SAVED_OFFLINE);
-    await hydratedClick(page, dismiss);
-    await expect(toast).toHaveText(REFUSED_OFFLINE);
 
     // ── Over an open overlay, nothing is deferred (#3038) ──────────────────
-    // The drawer's overlay is `fixed inset-0 z-40`; the notice layer is `z-100`,
-    // so the bar the reader was just handed is still the topmost thing at its own
-    // centre instead of being buried by an overlay opening over it.
+    // The drawer opens with the queue MID-FLIGHT: the refusal is waiting behind the
+    // bar that is on screen. Queueing is between toasts and never between a toast
+    // and an overlay, so the hand-over below has to happen with the drawer up
+    // rather than be held until it closes — that ordering is the whole point of
+    // doing it here instead of before.
+    //
+    // The drawer's overlay is `fixed inset-0 z-40`; the notice layer is `z-100`.
     await hydratedClick(page, page.getByTestId("dock-slot-more"));
+    await expect(page.getByTestId("mobile-drawer")).toBeVisible();
+    // Out-ranking the scrim is not decoration: the bar's own Dismiss is still the
+    // reader's control, tapped here THROUGH an open overlay.
+    await hydratedClick(page, dismiss);
+    // …and the queued refusal arrives while the drawer is still open. It is a fresh
+    // card with `role="status"`/`aria-live="polite"`, so being queued cost it no
+    // announcement — it announces when it is shown.
+    await expect(toast).toHaveText(REFUSED_OFFLINE);
     await expect(page.getByTestId("mobile-drawer")).toBeVisible();
     const overBox = await settledBox(toast);
     expectFullWidthBar(overBox);
