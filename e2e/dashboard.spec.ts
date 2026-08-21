@@ -522,6 +522,24 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   expect(Math.abs(during.width - before.width)).toBeLessThan(1);
   expect(Math.abs(during.y - before.y)).toBeLessThan(1);
 
+  // AND IT LANDS ON THE RAIL (#3459 item 2): the right edge of the family row's
+  // facts cell, whichever member is hovered — not trailing whatever text this
+  // member happens to end with. Polled rather than read once, because the door
+  // slides 0.25rem on its way in and a single read can catch it mid-transition.
+  await expect
+    .poll(async () =>
+      Math.round(
+        await row.evaluate((li) => {
+          const facts = li.closest("dd")!.getBoundingClientRect();
+          const label = li
+            .querySelector("[data-testid='standing-door']")!
+            .getBoundingClientRect();
+          return facts.right - label.right;
+        })
+      )
+    )
+    .toBe(0);
+
   // The IDENTICAL treatment from the keyboard. Move the mouse away first, so what is
   // being measured is focus and not a lingering hover.
   await page.mouse.move(0, 0);
@@ -628,6 +646,34 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
       );
     expect(rights.length).toBeGreaterThan(1);
     expect(new Set(rights).size).toBe(1);
+
+    // AND THAT COLUMN IS THE TRAILING ONE (#3459). The shared-edge check above
+    // cannot tell "aligned in the column" from "aligned in the wrong place": when
+    // the three-column template lost the cascade to `sm:`, EVERY plot auto-flowed
+    // onto a second grid row and they all shared one right edge down there — so
+    // that assertion passed against precisely the bug it existed to catch. The
+    // ruling is about POSITION, so position is what this pins: the plot sits to
+    // the right of the facts it belongs to, on the same row as them.
+    const column = await weight.evaluate((row) => {
+      const facts = row.querySelector("dd")!.getBoundingClientRect();
+      const plot = row
+        .querySelector("[data-testid='standing-sparkline']")!
+        .getBoundingClientRect();
+      return {
+        plotLeft: plot.left,
+        plotTop: plot.top,
+        plotBottom: plot.bottom,
+        factsRight: facts.right,
+        factsTop: facts.top,
+        factsBottom: facts.bottom,
+      };
+    });
+    expect(
+      column.plotLeft,
+      `the plot starts at ${column.plotLeft}, the facts cell ends at ${column.factsRight}`
+    ).toBeGreaterThanOrEqual(column.factsRight);
+    expect(column.plotTop).toBeLessThan(column.factsBottom);
+    expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

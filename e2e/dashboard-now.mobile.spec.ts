@@ -320,3 +320,249 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
     await page.context().close();
   }
 });
+
+// ── Phone density (#3460) and the gutter glyph's phone ruling (#3459 item 3) ─────
+//
+// Every claim below is GEOMETRY at 390px, measured against the same page the
+// desktop suite measures at 1280 — because "denser on a phone, untouched on the
+// desktop" is two assertions, and only the pair of them says what was ruled.
+
+/** The card's own gutter, and the only one an ordinary Now card may carry. */
+const CARD_CONTENT_TOLERANCE_PX = 1;
+
+test("an ordinary Now card carries ONE gutter and puts its title and detail on one line", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const card = page
+    .locator("[data-testid^='now-strip-card-']")
+    .filter({ has: page.getByTestId("attention-item-detail") })
+    .first(); // first-ok: every ordinary Now card is laid out by the same atom
+  await expect(card).toBeVisible();
+  // Wait for the DETAIL, not the card: the thing being measured is the flow
+  // between two elements, and a card that has only painted its title would let
+  // this pass by measuring nothing.
+  await expect(card.getByTestId("attention-item-detail").first()).toBeVisible(); // first-ok: the card above is one atom
+
+  const geometry = await card.evaluate((node) => {
+    const strip = document
+      .querySelector('[data-testid="now-strip"]')!
+      .getBoundingClientRect();
+    const atomNode = node.querySelector<HTMLElement>(
+      '[data-testid="dashboard-attention-atom"]'
+    )!;
+    const atom = atomNode.getBoundingClientRect();
+    const style = getComputedStyle(atomNode);
+    const row = node
+      .querySelector('[data-testid^="attention-item-"]')!
+      .getBoundingClientRect();
+    const title = node
+      .querySelector('[data-testid="dashboard-attention-atom"] a')!
+      .getBoundingClientRect();
+    const detail = node
+      .querySelector('[data-testid="attention-item-detail"]')!
+      .getBoundingClientRect();
+    return {
+      cardWidth: node.getBoundingClientRect().width,
+      stripWidth: strip.width,
+      // Where the card's PADDING ends — the single gutter the ruling leaves.
+      contentLeft:
+        atom.left +
+        parseFloat(style.borderLeftWidth) +
+        parseFloat(style.paddingLeft),
+      rowLeft: row.left,
+      titleTop: title.top,
+      titleRight: title.right,
+      detailTop: detail.top,
+      detailLeft: detail.left,
+    };
+  });
+
+  // ONE LINE: the detail sits BESIDE the title, sharing its line.
+  expect(
+    geometry.detailLeft,
+    `detail starts at ${geometry.detailLeft}, title ends at ${geometry.titleRight}`
+  ).toBeGreaterThan(geometry.titleRight);
+  expect(Math.abs(geometry.detailTop - geometry.titleTop)).toBeLessThan(8);
+
+  // ONE GUTTER: the row begins exactly at the card's content edge — the inner
+  // `px-2 py-2` inset is a desktop hover affordance and does not double up here.
+  expect(Math.abs(geometry.rowLeft - geometry.contentLeft)).toBeLessThan(
+    CARD_CONTENT_TOLERANCE_PX
+  );
+
+  // And the card spans the strip: no glyph gutter taking width off a 390px line.
+  expect(Math.round(geometry.cardWidth)).toBe(Math.round(geometry.stripWidth));
+});
+
+test("the Now gutter glyph is not shown at 390px, and Ahead keeps its inline one", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const cards = page.locator("[data-testid^='now-strip-card-']");
+  await expect(cards.first()).toBeVisible(); // first-ok: presence of the strip's cards, asserted by count next
+  expect(await cards.count()).toBeGreaterThan(0);
+  const glyphs = await cards
+    .locator("[data-kind-glyph]")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).display)
+    );
+  // The glyphs are still IN the markup — the ruling is about where they show, not
+  // about deleting them — so an empty list here would be this test measuring
+  // nothing rather than measuring the ruling.
+  expect(glyphs.length).toBeGreaterThan(0);
+  expect(new Set(glyphs)).toEqual(new Set(["none"]));
+
+  // Ahead is untouched at every width: its glyph rides inline in the member row,
+  // which is already the folded-in form.
+  const ahead = page.getByTestId("dashboard-ahead");
+  if ((await ahead.count()) > 0) {
+    const inline = await ahead
+      .locator("[data-kind-glyph]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => getComputedStyle(node).display)
+      );
+    expect(inline.length).toBeGreaterThan(0);
+    expect(inline.every((display) => display !== "none")).toBe(true);
+  }
+});
+
+test("no Now-card control gives up its 40px floor at 390px", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("now-strip")).toBeVisible();
+  const audit = await page.evaluate(() => {
+    const floored: string[] = [];
+    const menus: string[] = [];
+    const short: string[] = [];
+    const name = (el: Element) =>
+      `${el.tagName.toLowerCase()}[${el.getAttribute("data-testid") ?? (el.textContent ?? "").trim().slice(0, 20)}]`;
+    for (const card of Array.from(
+      document.querySelectorAll("[data-testid^='now-strip-card-']")
+    )) {
+      for (const el of Array.from(
+        card.querySelectorAll("a, button, [role='button']")
+      )) {
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        // A DECLARED floor must SURVIVE. "min-h-10 stays 40px everywhere" is the
+        // ruling; an ancestor that squeezes one, or a lost declaration, is the
+        // regression a density pass could plausibly introduce.
+        const floor = parseFloat(getComputedStyle(el).minHeight);
+        if (floor >= 40) {
+          floored.push(name(el));
+          if (box.height < floor - 0.5)
+            short.push(
+              `${name(el)} declares ${floor}px and renders ${box.height}px`
+            );
+        }
+        // The row's overflow menu is a 40x40 target in its own right (#644).
+        if (el.getAttribute("data-testid") === "overflow-menu-trigger") {
+          menus.push(name(el));
+          if (box.width < 39.5 || box.height < 39.5)
+            short.push(`${name(el)} is ${box.width}x${box.height}`);
+        }
+      }
+    }
+    return { floored, menus, short };
+  });
+
+  // THE SWEEP MUST HAVE SEEN THE CONTROLS IT IS ABOUT. A Now strip whose cards
+  // declared no floor at all would pass an empty-set check silently, which is the
+  // shape of green this issue was opened over — so the two floored controls the
+  // strip actually carries are named, not counted.
+  expect(
+    audit.floored.some((entry) => entry.includes("illness-cockpit-toggle")),
+    `no floored cockpit toggle among: ${audit.floored.join(", ") || "(none)"}`
+  ).toBe(true);
+  expect(
+    audit.floored.some((entry) =>
+      entry.includes("illness-cockpit-full-episode")
+    ),
+    `no floored episode link among: ${audit.floored.join(", ") || "(none)"}`
+  ).toBe(true);
+  expect(
+    audit.menus.length,
+    "no Now card carried an overflow menu to measure"
+  ).toBeGreaterThan(0);
+  expect(audit.short, audit.short.join("\n")).toEqual([]);
+});
+
+test("the strip's own chrome is tighter on a phone and unchanged on the desktop", async ({
+  browser,
+}) => {
+  for (const [options, gap, margin] of [
+    [PHONE, "8px", "16px"],
+    [DESKTOP, "12px", "24px"],
+  ] as const) {
+    const page = await openDashboard(
+      browser,
+      { username: E2E_LOGIN_NOWSTRIP },
+      options
+    );
+    try {
+      const strip = page.getByTestId("now-strip");
+      await expect(
+        strip.locator("[data-testid^='now-strip-card-']").first() // first-ok: the grid's own gap, read off the cards' parent
+      ).toBeVisible();
+      const chrome = await strip.evaluate((section) => {
+        const grid = section.querySelector(
+          "[data-testid^='now-strip-card-']"
+        )!.parentElement!;
+        return {
+          gap: getComputedStyle(grid).rowGap,
+          margin: getComputedStyle(section).marginBottom,
+        };
+      });
+      expect(chrome).toEqual({ gap, margin });
+    } finally {
+      await page.context().close();
+    }
+  }
+});
+
+test("the illness cockpit keeps every section at 390px, on the stepped-down seams", async ({
+  browser,
+}) => {
+  for (const [options, seam, header] of [
+    [PHONE, "12px", "8px"],
+    [DESKTOP, "16px", "12px"],
+  ] as const) {
+    const page = await openDashboard(
+      browser,
+      { username: E2E_LOGIN_SICK_SELF },
+      options
+    );
+    try {
+      const cockpit = page.getByTestId("illness-cockpit-body").first(); // first-ok: the acting profile's own cockpit leads the group
+      await expect(cockpit).toBeVisible();
+      // NOTHING WAS REMOVED — this is a spacing pass over a safety surface, and
+      // the content set is a ruling it may not touch.
+      await expect(cockpit.getByTestId("symptom-day-primary")).toBeVisible();
+      await expect(cockpit.getByTestId("temp-quick-toggle")).toBeVisible();
+      await expect(cockpit.getByTestId("cockpit-prn")).toBeVisible();
+      await expect(cockpit.getByTestId("cockpit-end-episode")).toBeVisible();
+
+      const rhythm = await cockpit.evaluate((body) => {
+        const prn = getComputedStyle(
+          body.querySelector('[data-testid="cockpit-prn"]')!
+        );
+        const h3 = getComputedStyle(body.querySelector("h3")!);
+        return {
+          marginTop: prn.marginTop,
+          paddingTop: prn.paddingTop,
+          headerMargin: h3.marginBottom,
+        };
+      });
+      expect(rhythm).toEqual({
+        marginTop: seam,
+        paddingTop: seam,
+        headerMargin: header,
+      });
+      if (options === PHONE) await expectNoClippedContent(page);
+    } finally {
+      await page.context().close();
+    }
+  }
+});
