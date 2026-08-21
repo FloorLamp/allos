@@ -1150,6 +1150,28 @@ export async function expectInView(
   ).toHaveAttribute("data-view-count", String(count));
 }
 
+// Wait out an element's OWN CSS animations before measuring it (#3373).
+//
+// This is `settledBoxes`' rule for a different source of motion. Since the toast
+// bar joined the overlay motion convergence it ARRIVES — `overlay-slide-up-in`
+// over `--overlay-ms` — so a box read the instant it becomes visible is a box read
+// mid-flight. Measured, not theorised: `bottom-edge-stacking.mobile` read the bar
+// ~46px low and reported a bottom edge of 833 against a dock top of 787, which is
+// indistinguishable from the bottom-edge claim being broken. It failed sometimes
+// and by the SAME amount every time — the signature of a real quantity measured at
+// an unstable moment, not of noise.
+//
+// It waits on the ANIMATION rather than widening a tolerance, so an element that
+// genuinely does sit over the bar still fails. An element with nothing running
+// (reduced motion, or a keyframe that has already finished) resolves immediately,
+// and a cancelled animation rejects `finished` — caught, because a cancelled
+// animation is also "not running any more".
+export async function settledAfterAnimation(target: Locator): Promise<void> {
+  await target.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {})))
+  );
+}
+
 // Measure SEVERAL elements as ONE consistent layout snapshot — the group analog of
 // centerOf, and the only honest way to assert a RELATIVE geometry (this card sits
 // one gap below that one, these two columns share an x).

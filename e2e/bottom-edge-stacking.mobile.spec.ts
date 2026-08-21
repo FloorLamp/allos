@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
-import { deleteActivityFromForm, hydratedClick } from "./helpers";
+import {
+  deleteActivityFromForm,
+  dismissToast,
+  hydratedClick,
+  settledAfterAnimation,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -23,7 +28,8 @@ import { workerDbPath } from "./worker-env";
 // does not become unclaimed when the session ends, it falls back to the nav dock.
 //
 // Asserted as GEOMETRY (bounding boxes), not pixels or classes: the toast's bottom
-// edge must sit at or above the bar's top edge.
+// edge must sit at or above the bar's top edge — read once the notice has finished
+// arriving, since #3373 gave it an enter animation to arrive WITH.
 //
 // Fixture discipline (#868): create-and-clean on the admin profile — this spec
 // starts its OWN live session (the same pattern workout-presence.spec.ts uses for
@@ -64,6 +70,11 @@ async function toastFromQuickLog(page: Page, weight: string): Promise<Locator> {
 // The stacking rule, as geometry: the notice ends where the bar begins (or above
 // it), instead of covering it.
 async function expectStackedAbove(toast: Locator, bar: Locator) {
+  // The notice ARRIVES now (#3373): it slides up from the bottom edge over
+  // `--overlay-ms`, so a box read the instant it becomes visible is a box read
+  // mid-flight — ~46px low, which reads exactly like a broken bottom-edge claim.
+  // A wait on the element's own animation, not a widened tolerance.
+  await settledAfterAnimation(toast);
   const toastBox = await toast.boundingBox();
   const barBox = await bar.boundingBox();
   expect(toastBox).not.toBeNull();
@@ -122,6 +133,17 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // cannot share the same 56px, and the one that arrived second is the one that
     // moves.
     await expectStackedAbove(dock, page.getByTestId("mobile-dock"));
+
+    // TAKE THE NOTICE DOWN BEFORE THE NEXT ROUND TRIP — the #2861 rule this file
+    // had been getting away with. The stacking claim is made; from here the test
+    // opens the editor and deletes through it, and a `fixed` notice still up over
+    // that flow is a click interceptor. It got away with it while the notice was a
+    // 288px card pinned to the RIGHT gutter, which happened to miss the editor's
+    // footer controls; since #3373 the phone notice is a full-width bar and covers
+    // the same band edge to edge. Measured: 2 of 3 repeats failed here with the
+    // draft still live and no toast on screen at all. Dismissing is the fix the
+    // helper exists for, and it removes the race instead of tolerating it.
+    await dismissToast(page, TOAST_WEIGHT);
 
     // Discard the session: the workout dock goes, and with it ITS claim on the
     // bottom edge. The edge does not become unclaimed, though — the nav dock is

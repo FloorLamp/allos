@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledAfterAnimation, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_MOBILITY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -73,9 +73,7 @@ function expectFullWidthBar(box: { x: number; width: number }) {
 // the thing being measured rather than a widened tolerance, so a bar that really
 // did sit over the dock still fails (#3373).
 async function settledBox(toast: Locator) {
-  await toast.evaluate((el) =>
-    Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {})))
-  );
+  await settledAfterAnimation(toast);
   const box = await toast.boundingBox();
   expect(box).not.toBeNull();
   return box!;
