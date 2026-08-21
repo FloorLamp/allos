@@ -87,6 +87,47 @@ registry already knew the difference. **The Close button is untouched** and
 still closes without a prompt: it is the control the person aimed at, and a
 confirm on it would be the ask-before-acting pattern the house grammar declines.
 
+### Dialogs that do NOT live on the host (#3405)
+
+**Convergence is the default.** A dialog belongs on
+`components/ModalShell.tsx` unless it is named below with its reason. That is an
+owner ruling, and the alternative was considered and declined: naming every
+hostless dialog as sanctioned would have been nine exceptions to a rule with
+about a dozen followers, which is not a convention — the next hand-rolled dialog
+would have precedent to be the tenth.
+
+Three converged when the ruling landed. `MergeConflictDialog` and
+`PlateBuilderModal` were centred cards hand-copying the host's anatomy;
+`FitnessCheckView`'s entry panel hand-rolled the whole of it, including a scroller
+that had shipped without `overscroll-contain` — the #2774 defect, live, for as
+long as the convergence has existed (#3421).
+
+These are the exceptions. Each is registered in `HOSTLESS_DIALOGS`
+(`scripts/dialog-census-core.ts`) and says in its own file which it is;
+`lib/__tests__/dialog-census.test.ts` fails if this table and that register stop
+naming the same files.
+
+| Dialog                                       | Why the shared host cannot serve it                                                                                                                                                                                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/ImageCropper.tsx`                | Opens **over** an already-open dialog (both profile-photo pickers are ModalShells), so it needs `z-120` — above the sheet's `z-60` and the toasts' `z-100` — and the host takes no stacking prop. Its pointer drag also manipulates CONTENT across the whole panel.        |
+| `components/photo/PhotoGallery.tsx`          | A full-bleed media viewer: black ground, image `object-contain` to the viewport edges, its own left/right paging. A titled `bg-surface` card with padding and a scroll owner is the wrong shape, and swipe-to-dismiss would fight the paging gesture.                      |
+| `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.            |
+| `components/ActivityOverlay.tsx`             | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                        |
+| `components/ProfileIdentityBar.tsx`          | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                        |
+
+`components/MobileDetailPage.tsx` is **not on this table and not an exception**.
+It is a full-page mobile takeover — it replaces the page rather than floating
+over it, carries no scrim, and is dismissed by the back gesture the way a page
+is. It leaves the dialog family by ANATOMY, so the census reports it under
+`SCOPED OUT` rather than counting it as an exception to a rule it was never an
+instance of.
+
+**A recorded exception is about presentation, not about the a11y floor.** Two of
+the five above take the shared `useFocusTrap`; `PhotoGallery` adopted it as part
+of this ruling, because its Escape lived on the panel's own `onKeyDown` and
+nothing ever put focus inside — so Escape did nothing at all unless the viewer
+happened to Tab first.
+
 ### The anchored panel forks at `md` (#3374 / #3376)
 
 An anchored popover is a DESKTOP shape. It is right where a pointer is precise
@@ -340,9 +381,16 @@ is never the only way to do anything.
 `lib/__tests__/overlay-motion-chokepoint.test.ts` fails CI when:
 
 1. a converged overlay surface stops consuming `components/overlay`;
-2. a NEW full-viewport portal overlay is neither converged nor classified as a
+2. a NEW full-viewport overlay is neither converged nor classified as a
    different anatomy (centred dialogs/popovers are scoped out of #1469, each
-   recorded with a justification);
+   recorded with a justification). **Not just a portalled one** — the
+   `createPortal` half of that test was dropped in #3405, because it is exactly
+   why the guard could not see four of the nine hostless dialogs the census
+   found. They render `fixed inset-0` inline, so they sat outside every rule here
+   by construction. The stated cost of the widening: every `fixed inset-0`
+   surface now answers to these rules and some legitimately should not — a
+   full-bleed chart, a camera viewfinder — so expect recorded exceptions rather
+   than reading the first wave as a regression;
 3. an overlay surface hand-rolls a slide (raw transform/transition/keyframe);
 4. an `.overlay-*` class name is written anywhere but `lib/motion.ts`;
 5. a second raw drag recognizer appears (allowlisted: pull-to-refresh, which
@@ -351,8 +399,8 @@ is never the only way to do anything.
 6. a full-viewport overlay's own scroller does not contain its overscroll — the
    #2774 defect, where a drag the scroller declined chained out to the document
    and moved the page BEHIND the overlay;
-7. a portal dialog hosts a `<form>` without going through the converged host, or
-   opts out of the phone sheet idiom without recording why;
+7. a full-viewport dialog hosts a `<form>` without going through the converged
+   host, or opts out of the phone sheet idiom without recording why;
 8. a file positions a `role="menu"` panel itself instead of opening it through
    `components/overlay/AnchoredPanel.tsx` — the anchored-menu rule (#3374).
    `CompactDateMenu` is the one recorded exception. The scan reads the panel's
@@ -385,10 +433,14 @@ could not see any dialog that hand-rolls its own surface.
 `scripts/dialog-census-core.ts`
 matches on the import and on the rendered JSX instead.
 
-It reports dialogs belonging to no dialog host rather than omitting them, and
-`lib/__tests__/dialog-census.test.ts` fails when a new one appears unrecorded, or
-when a record outlives its subject. It does not fail on the recorded set: whether
-those converge or become sanctioned exceptions is #3405's open design call.
+It reports dialogs belonging to no dialog host rather than omitting them, in two
+sections that are two different answers: RECORDED EXCEPTIONS (the table above),
+and SCOPED OUT BY ANATOMY (surfaces the convergence rule was never about).
+`lib/__tests__/dialog-census.test.ts` fails when a new hostless dialog appears
+unrecorded, when a record outlives its subject, and when the register and the
+table above stop naming the same files. It does not fail on the recorded set —
+those are sanctioned, and a build error on a sanctioned exception is how a
+register teaches the next reader to ignore it.
 
 ## Testing gestures
 
