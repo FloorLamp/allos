@@ -7,6 +7,12 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
+import { loginAs } from "./nav";
+import {
+  E2E_LOGIN_NUTRITION,
+  E2E_MEMBER_PASSWORD,
+  NUTRITION_PROFILE,
+} from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
@@ -347,43 +353,81 @@ test.describe("Combobox migration (#1176/#1177)", () => {
   // still blank, and the widget then announced aria-expanded="true" with no listbox
   // in the document and an aria-controls pointing at an id that does not exist.
   //
-  // #3100 makes that the DEFAULT state of the stack field: no seeded profile has ever
-  // named a stack, so `catalogOptions.stacks` is []. Which is why the assertion lives
-  // here rather than in a note.
+  // #3100 makes that state ORDINARY: the stack vocabulary is whatever THIS profile
+  // has called a stack, so it is empty for every profile that has never named one.
+  //
+  // WHY A SECOND LOGIN RATHER THAN THE ADMIN SESSION. Profile 1 is not in that
+  // state — `scripts/seed.ts` gives its Vitamin D3 and K2 a stack called "D3 + K2",
+  // which is also the field's placeholder text and reads like a placeholder in a
+  // grep. The Nutrition Trio profile keeps supplements and no stack, so it is the
+  // one that renders the empty vocabulary. The emptiness is ASSERTED below rather
+  // than assumed: a seed that later names a stack there must fail this loudly
+  // instead of quietly testing the populated case.
   test("an empty vocabulary is not announced as an expanded listbox (#3316)", async ({
-    page,
+    browser,
   }) => {
     test.slow();
-    await page.goto("/nutrition?tab=supplements");
-    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
-    const addCard = page.getByRole("dialog", { name: "Add supplement" });
-    await expect(addCard).toBeVisible();
-
-    const editor = await openFact(page, "identity", addCard);
-    const stack = editor.getByLabel("Stack (optional)");
-    await stack.click();
-
-    // THE ABSENCE, and then the PRESENCE that makes the absence mean something. A
-    // "no listbox" assertion passes just as well against a field that never woke up,
-    // so the same field is made to expand for real two lines down — same element,
-    // same session — before the absence is asserted again.
-    await expect(stack).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByRole("listbox")).toHaveCount(0);
-    await expect(stack).not.toHaveAttribute("aria-controls", /.*/);
-
-    await settledFill(page, stack, "E2EComboStack");
-    await expect(stack).toHaveAttribute("aria-expanded", "true");
-    const listbox = page.getByRole("listbox");
-    await expect(listbox).toBeVisible();
-    // aria-controls now RESOLVES — the id names the list that is actually there.
-    await expect(stack).toHaveAttribute(
-      "aria-controls",
-      (await listbox.getAttribute("id"))!
+    const profileId = withDb(
+      (db) =>
+        (
+          db
+            .prepare("SELECT id FROM profiles WHERE name = ?")
+            .get(NUTRITION_PROFILE) as { id: number }
+        ).id
     );
+    const stacksNamed = withDb(
+      (db) =>
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS n FROM intake_items
+                 WHERE profile_id = ? AND stack IS NOT NULL AND TRIM(stack) <> ''`
+            )
+            .get(profileId) as { n: number }
+        ).n
+    );
+    // The precondition, stated: this profile's stack vocabulary is empty, which is
+    // the whole reason the field below has nothing to show.
+    expect(stacksNamed).toBe(0);
 
-    await stack.fill("");
-    await expect(stack).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByRole("listbox")).toHaveCount(0);
-    // No submit — nothing is written to the DB.
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_NUTRITION,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/nutrition?tab=supplements");
+      await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+      const addCard = page.getByRole("dialog", { name: "Add supplement" });
+      await expect(addCard).toBeVisible();
+
+      const editor = await openFact(page, "identity", addCard);
+      const stack = editor.getByLabel("Stack (optional)");
+      await stack.click();
+
+      // THE ABSENCE, and then the PRESENCE that makes the absence mean something. A
+      // "no listbox" assertion passes just as well against a field that never woke
+      // up, so the same field is made to expand for real a few lines down — same
+      // element, same session — before the absence is asserted again.
+      await expect(stack).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(stack).not.toHaveAttribute("aria-controls", /.*/);
+
+      await settledFill(page, stack, "E2EComboStack");
+      await expect(stack).toHaveAttribute("aria-expanded", "true");
+      const listbox = page.getByRole("listbox");
+      await expect(listbox).toBeVisible();
+      // aria-controls now RESOLVES — the id names the list that is actually there.
+      await expect(stack).toHaveAttribute(
+        "aria-controls",
+        (await listbox.getAttribute("id"))!
+      );
+
+      await stack.fill("");
+      await expect(stack).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      // No submit — nothing is written to the DB.
+    } finally {
+      await page.context().close();
+    }
   });
 });
