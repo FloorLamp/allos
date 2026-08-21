@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { IconGitMerge } from "@tabler/icons-react";
+import ModalShell from "@/components/ModalShell";
 import type { UnitPrefs } from "@/lib/settings";
 import { fmtDistance, fmtKmh } from "@/lib/units";
 import {
@@ -103,6 +103,8 @@ function OptionButton({
   );
 }
 
+function noop() {}
+
 export default function MergeConflictDialog({
   conflicts,
   members,
@@ -148,27 +150,35 @@ export default function MergeConflictDialog({
     return `conflict-${field}-from-${memberId}`;
   }
 
-  // Portal to <body> (matching ModalShell/ConfirmDialog): rendered inline inside
-  // a training log card, an ancestor stacking context traps the overlay's z-index and
-  // later cards paint over the dialog — the confirm button was literally
-  // unclickable behind a sibling card (caught by the #100 e2e).
-  return createPortal(
-    <div
-      className="fixed inset-0 z-60 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Resolve merge conflicts"
-      data-testid="merge-conflict-dialog"
+  // CONVERGED ONTO THE DIALOG HOST (#3405, owner ruling 2026-08-20). This file
+  // used to portal itself to <body> with its own scrim, its own `z-60`, its own
+  // `max-h-[85vh]` scroller and no focus trap at all — a hand-copy of ModalShell
+  // rather than a use of it, which is what kept it outside three sweeps of its own
+  // family. It is now an ordinary host consumer: the sheet-below-`md` presentation,
+  // the reference-counted body lock, the one scroll owner, the declared size, the
+  // shared focus trap and the #3420 Escape path all arrive from the host.
+  //
+  // The portal it used to hand-roll is still doing its job — the host portals to
+  // <body> too. That matters here specifically: this dialog is rendered INLINE
+  // inside a training-log card, and an ancestor stacking context traps a
+  // non-portalled overlay's z-index so later cards paint over it. The confirm
+  // button was literally unclickable behind a sibling card (caught by the #100
+  // e2e). The host owning the portal is what keeps that fixed for free.
+  // A merge in flight REFUSES dismissal, exactly as the hand-rolled scrim did
+  // (`onClick={busy ? undefined : onCancel}`): the write is already on its way and
+  // cancelling the dialog would not cancel it. Every visible dismissal affordance
+  // agrees — Cancel is `disabled`, and Close/Escape/scrim land here.
+  const close = busy ? noop : onCancel;
+
+  return (
+    <ModalShell
+      title="These records disagree"
+      onClose={close}
+      size="sm"
+      testId="merge-conflict-dialog"
     >
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={busy ? undefined : onCancel}
-      />
-      <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl bg-surface p-4 shadow-xl">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          These records disagree
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <div>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           More than one record has a value for{" "}
           {conflicts.length === 1 ? "a field" : "some fields"}. Pick which to
           keep — everything else folds together automatically.
@@ -240,7 +250,6 @@ export default function MergeConflictDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 }

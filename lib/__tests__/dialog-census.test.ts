@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   censusDialogs,
@@ -5,20 +7,27 @@ import {
   HOSTLESS_DIALOGS,
   HOST_MODULES,
   readSourceFiles,
+  REPO_ROOT,
   type SourceFile,
 } from "@/scripts/dialog-census-core";
 
 // The guard over the dialog census (#3405).
 //
 // WHAT IT FAILS ON, and deliberately what it does not. It fails when a dialog
-// belonging to NO dialog host appears on disk without being recorded, and when a
-// recorded one is no longer hostless. It does NOT fail on the recorded set
-// itself. That restraint is the point: #3405 asks whether these components
-// converge onto the host or are named in docs/internals/overlays.md as sanctioned
-// exceptions, and says in as many words that this "is a design call about the
-// convergence's boundary, not something a lane should decide". A build error on
-// every recorded entry would force that unmade call to be made once per entry by
-// whoever next touched the tree.
+// belonging to NO dialog host appears on disk without being recorded, when a
+// recorded one is no longer hostless, and when the register and
+// docs/internals/overlays.md disagree about who the exceptions are. It does NOT
+// fail on the recorded set itself, and that restraint has a different reason now
+// than it did when this file was written: the owner has RULED (#3405,
+// 2026-08-20). Convergence is the default, the entries that remain are sanctioned
+// exceptions with stated anatomy reasons, and a build error on a sanctioned
+// exception is how a register teaches the next reader to ignore it.
+//
+// THE DOC IS PART OF THE CONTRACT, which is the half the ruling added. "Named in
+// overlays.md with its reason" is an acceptance criterion, and an acceptance
+// criterion nothing checks is a sentence that goes stale the first time somebody
+// converges one of these. So the register and the doc's table are asserted to name
+// the same files, in both directions.
 //
 // THE OTHER HALF OF THIS FILE IS THE PART THAT MATTERS. A census that runs green
 // over a tree which complies has told you nothing about what it can SEE. So below
@@ -64,9 +73,52 @@ describe("dialog census — the register over the real tree", () => {
   });
 
   it("records a substantive reason for each, not a shrug", () => {
-    for (const [rel, note] of Object.entries(HOSTLESS_DIALOGS)) {
-      expect(note.length, `${rel} needs a real note`).toBeGreaterThan(20);
+    for (const [rel, record] of Object.entries(HOSTLESS_DIALOGS)) {
+      expect(record.why.length, `${rel} needs a real note`).toBeGreaterThan(20);
     }
+  });
+
+  // THE DOC AND THE REGISTER NAME THE SAME FILES (#3405 AC 3). Asserted in both
+  // directions on purpose: a register entry the doc never heard of is an
+  // unsanctioned exception, and a doc row whose subject has converged is the
+  // "record that outlived its reason" failure one layer up.
+  //
+  // MATCHED ON THE PATH INSIDE A TABLE ROW, not on a bare mention of the
+  // filename. The doc's prose names several of these components while ARGUING
+  // about them — the convergence history, the #1469 split — and a plain
+  // `includes()` would read those as sanctions. The row is the sanction.
+  it("names every recorded exception in docs/internals/overlays.md", () => {
+    const doc = fs.readFileSync(
+      path.join(REPO_ROOT, "docs/internals/overlays.md"),
+      "utf8"
+    );
+    const rows = new Set(
+      doc
+        .split("\n")
+        .filter((line) => line.trimStart().startsWith("|"))
+        .flatMap((line) => [...line.matchAll(/`([^`]+\.tsx?)`/g)])
+        .map((m) => m[1])
+    );
+    const excepted = Object.entries(HOSTLESS_DIALOGS)
+      .filter(([, record]) => record.scopedOut !== true)
+      .map(([rel]) => rel);
+
+    expect(
+      excepted.filter((rel) => !rows.has(rel)),
+      "This dialog is recorded as belonging to no host, and nothing in " +
+        "docs/internals/overlays.md says why it is allowed to. Convergence is the " +
+        "default (owner ruling, #3405): a dialog belongs on the shared host unless " +
+        "the doc names it an exception WITH ITS REASON. Add a row to the " +
+        "hostless-dialog table there, or converge it."
+    ).toEqual([]);
+
+    const documented = [...rows].filter((rel) => rel in HOSTLESS_DIALOGS);
+    expect(
+      documented.filter((rel) => HOSTLESS_DIALOGS[rel].scopedOut === true),
+      "docs/internals/overlays.md lists this file in the EXCEPTION table, and the " +
+        "register says it is scoped out of the dialog family by anatomy. Those are " +
+        "different claims (#3405): move it to the scoped-out row."
+    ).toEqual([]);
   });
 
   it("keeps the host modules where the failure messages say they are", () => {
@@ -80,12 +132,42 @@ describe("dialog census — the register over the real tree", () => {
   });
 
   // The census's own subject, pinned by symbol rather than by line number.
-  it("puts MergeConflictDialog in the hostless list and NOT in the hosted one", () => {
+  //
+  // IT CONVERGED (#3405 AC 3), so the assertion that used to hold here is now the
+  // OPPOSITE one — and that inversion is the whole receipt. This file was in the
+  // hostless list because it hand-rolled a portal while a comment in it merely
+  // NAMED `ModalShell`; the filename grep read the comment and called it hosted,
+  // which is the over-match that started this issue. It is hosted now for the real
+  // reason: it imports the host and renders it.
+  it("puts MergeConflictDialog in the HOSTED list, and no longer in the hostless one", () => {
     const rel = "components/MergeConflictDialog.tsx";
+    expect(CENSUS.hosted.map((e) => e.rel)).toContain(rel);
+    expect(CENSUS.hostless.map((e) => e.rel)).not.toContain(rel);
+    const entry = CENSUS.hosted.find((e) => e.rel === rel);
+    expect(entry?.hosts).toContain("components/ModalShell.tsx");
+  });
+
+  // The other two the ruling converged, pinned the same way. A convergence that
+  // silently regressed would otherwise only show up as a NEW unrecorded hostless
+  // dialog, which reads as somebody else's mistake.
+  it("keeps the other two converged dialogs on the host", () => {
+    for (const rel of [
+      "components/PlateBuilderModal.tsx",
+      "app/(app)/training/FitnessCheckView.tsx",
+    ]) {
+      expect(CENSUS.hosted.map((e) => e.rel), rel).toContain(rel);
+      expect(CENSUS.hostless.map((e) => e.rel), rel).not.toContain(rel);
+    }
+  });
+
+  // The scoped-out entry is reported as its own thing, not counted as an
+  // exception. "The census and the guard should say so" is the ruling's wording.
+  it("reports MobileDetailPage as scoped out by anatomy, not as an exception", () => {
+    const rel = "components/MobileDetailPage.tsx";
+    expect(CENSUS.scopedOut.map((e) => e.rel)).toEqual([rel]);
+    expect(CENSUS.exceptions.map((e) => e.rel)).not.toContain(rel);
+    // …and it is still SEEN. Scoping out is not filtering out.
     expect(CENSUS.hostless.map((e) => e.rel)).toContain(rel);
-    // The over-match that started #3405: the file mentions `ModalShell` in a
-    // comment, and the filename grep counted that as using it.
-    expect(CENSUS.hosted.map((e) => e.rel)).not.toContain(rel);
   });
 
   it("still sees the hosted majority, so the census is not merely quiet", () => {
