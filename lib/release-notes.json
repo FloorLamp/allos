@@ -20,6 +20,24 @@
           "title": "On a phone, a toast is a full-width bar above the dock and Prev/Next are big enough to tap",
           "kind": "feature",
           "issues": [3373, 3378]
+        },
+        {
+          "pr": 3425,
+          "title": "Escape asks before throwing away a form you have typed into, and three more forms stopped discarding silently",
+          "kind": "fix",
+          "issues": [3371, 3420]
+        },
+        {
+          "pr": 3447,
+          "title": "A prescription written 0,125 mg is no longer stored as 125 mg, and an unreadable dose says so instead of guessing",
+          "kind": "fix",
+          "issues": [3444]
+        },
+        {
+          "pr": 3450,
+          "title": "On a phone: passport tables fit the card, drawer calendar days are tappable, and the Timeline action fits one line",
+          "kind": "fix",
+          "issues": [3242, 3377, 3403]
         }
       ]
     },
