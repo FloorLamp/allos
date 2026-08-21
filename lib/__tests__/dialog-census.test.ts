@@ -308,7 +308,9 @@ describe("dialog census — the register over the real tree", () => {
   // every reach fixture had been written from the detector's own premise. These
   // two cannot be: nobody wrote them to be found.
   it("classifies MobileNav, which declares no role and no aria-modal", () => {
-    const entry = CENSUS.hostless.find((e) => e.rel === "components/MobileNav.tsx");
+    const entry = CENSUS.hostless.find(
+      (e) => e.rel === "components/MobileNav.tsx"
+    );
     expect(
       entry,
       "The mobile nav drawer portals to <body>, covers the viewport with its own " +

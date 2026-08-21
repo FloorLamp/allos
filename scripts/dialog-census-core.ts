@@ -396,8 +396,7 @@ function bindingIsUsed(code: string, local: string): boolean {
 // required a quote IMMEDIATELY after the optional `{`, so it did not match
 // (#3445). The braces group cannot cross a `}`, which keeps `role={role}`
 // followed by an unrelated `"dialog"` string later in the file from matching.
-const DIALOG_ROLE_RE =
-  /(^|[\s{])role=(\{[^}]*?)?["'](dialog|alertdialog)["']/m;
+const DIALOG_ROLE_RE = /(^|[\s{])role=(\{[^}]*?)?["'](dialog|alertdialog)["']/m;
 const ARIA_MODAL_RE = /(^|[\s{])aria-modal[=\s]/m;
 // The native element whose entire purpose is to be a dialog. `</dialog>` cannot
 // match — the character after `<` is `/` — and neither can `<dialogue>`.
