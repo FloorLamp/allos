@@ -50,6 +50,12 @@
           "title": "The last dialogs behave like the rest when you scroll or dismiss them, and Close greys out mid-save",
           "kind": "fix",
           "issues": [3405, 3421, 3395]
+        },
+        {
+          "pr": 3461,
+          "title": "Added checks that find a hand-built dialog even when it says nothing about itself",
+          "kind": "fix",
+          "issues": [3445]
         }
       ]
     },
