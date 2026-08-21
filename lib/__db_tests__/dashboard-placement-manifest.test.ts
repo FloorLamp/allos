@@ -24,6 +24,7 @@ import {
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
+import PageContainer from "../../components/PageContainer";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
@@ -304,11 +305,18 @@ describe("actual atomic dashboard manifests", () => {
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
     // does outside a request.
-    const renderDashboard = () =>
-      requestCache.during(
-        async () =>
-          (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>
-      );
+    // The page's root element is its declared-width wrapper (#3253), and the canvas
+    // is the child inside it. Unwrapped HERE rather than asserted around, so this
+    // tier keeps reading the manifest off the canvas' own props — the width is
+    // presentation, and a presentation change must not be able to make the placement
+    // meter stop measuring.
+    const renderDashboard = async () => {
+      const page = (await requestCache.during(
+        async () => await Dashboard()
+      )) as ReactElement<{ children: ReactElement }>;
+      expect(page.type).toBe(PageContainer);
+      return page.props.children as ReactElement<DashboardPlacementCanvasProps>;
+    };
 
     for (const persona of PERSONAS) {
       const before = new Set(allProfileIds());
