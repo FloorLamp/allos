@@ -2,7 +2,13 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
-import { comboboxRows, deleteActivityFromForm, hydratedClick } from "./helpers";
+import {
+  comboboxRows,
+  deleteActivityFromForm,
+  dismissToast,
+  settledAfterAnimation,
+  settledClick,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -23,7 +29,8 @@ import { workerDbPath } from "./worker-env";
 // does not become unclaimed when the session ends, it falls back to the nav dock.
 //
 // Asserted as GEOMETRY (bounding boxes), not pixels or classes: the toast's bottom
-// edge must sit at or above the bar's top edge.
+// edge must sit at or above the bar's top edge — read once the notice has finished
+// arriving, since #3373 gave it an enter animation to arrive WITH.
 //
 // Fixture discipline (#868): create-and-clean on the admin profile — this spec
 // starts its OWN live session (the same pattern workout-presence.spec.ts uses for
@@ -64,6 +71,11 @@ async function toastFromQuickLog(page: Page, weight: string): Promise<Locator> {
 // The stacking rule, as geometry: the notice ends where the bar begins (or above
 // it), instead of covering it.
 async function expectStackedAbove(toast: Locator, bar: Locator) {
+  // The notice ARRIVES now (#3373): it slides up from the bottom edge over
+  // `--overlay-ms`, so a box read the instant it becomes visible is a box read
+  // mid-flight — ~46px low, which reads exactly like a broken bottom-edge claim.
+  // A wait on the element's own animation, not a widened tolerance.
+  await settledAfterAnimation(toast);
   const toastBox = await toast.boundingBox();
   const barBox = await bar.boundingBox();
   expect(toastBox).not.toBeNull();
@@ -91,7 +103,21 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // a set that the draft auto-saves — that INSERT is the presence the dock reads.
     await page.goto("/training?tab=log");
     const sheet = await openLogSheet(page);
-    await hydratedClick(page, await showLogRow(sheet, "live-workout"));
+    // SETTLED, NOT HYDRATED — the start POSTS, and its INSERT is the id every later
+    // save in this flow has to carry. Left un-settled, the exercise pick below fires
+    // while that create is still in the air, carries no id, and CREATES A SECOND
+    // DRAFT. The editor then discards one of the two; the other stays live, so the
+    // dock never goes and the failure reads as a broken discard — with a green
+    // delete and an "Activity deleted." toast above it, which is why it costs a
+    // whole diagnosis every time. The panel being visible (next line) was never
+    // evidence of the write; it is client state.
+    //
+    // MEASURED, one reading rather than a sample: hold the start POST for 2s with
+    // `page.route` and count live drafts on profile 1 the moment the first set is
+    // in. Un-settled: 2, on 4 of 4 runs, all 4 red. Settled: 1, on 4 of 4 runs, all
+    // 4 green. CPU throttling does NOT reproduce it — that slows the CLICKS too,
+    // which closes the very window the race needs.
+    await settledClick(page, await showLogRow(sheet, "live-workout"));
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await pickActivity(page, "Barbell Bench Press");
     await page
@@ -121,6 +147,17 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // moves.
     await expectStackedAbove(dock, page.getByTestId("mobile-dock"));
 
+    // TAKE THE NOTICE DOWN BEFORE THE NEXT ROUND TRIP — the #2861 rule this file
+    // had been getting away with. The stacking claim is made; from here the test
+    // opens the editor and deletes through it, and a `fixed` notice still up over
+    // that flow is a click interceptor. It got away with it while the notice was a
+    // 288px card pinned to the RIGHT gutter, which happened to miss the editor's
+    // footer controls; since #3373 the phone notice is a full-width bar and covers
+    // the same band edge to edge. Measured: 2 of 3 repeats failed here with the
+    // draft still live and no toast on screen at all. Dismissing is the fix the
+    // helper exists for, and it removes the race instead of tolerating it.
+    await dismissToast(page, TOAST_WEIGHT);
+
     // Discard the session: the workout dock goes, and with it ITS claim on the
     // bottom edge. The edge does not become unclaimed, though — the nav dock is
     // still there and still claims it, so the published offset falls back rather
@@ -134,7 +171,23 @@ test("a toast raised during a live workout stacks above the dock, never over it 
         .getByTestId("activity-form-footer")
         .getByRole("button", { name: "Delete", exact: true }),
     });
-    await expect(dock).toHaveCount(0);
+    try {
+      await expect(dock).toHaveCount(0);
+    } catch (e) {
+      // KEEP THIS — it is not scaffolding any more. A bare "expected 0, got 1"
+      // here says the discard did not land and nothing about WHY; the answer,
+      // both times this failed, was a `fixed` notice still up over the editor's
+      // footer intercepting the Delete. Naming what is on screen at the moment of
+      // the red turns the next occurrence into a diagnosis instead of a hunt.
+      // (The timing marks that sat beside this during the investigation are gone:
+      // they read the wall clock, which the e2e hygiene guard forbids for good
+      // reason, and the question they answered is answered.)
+      console.log(
+        "[DIAG] toasts on screen: " +
+          JSON.stringify(await page.getByTestId("toast").allInnerTexts())
+      );
+      throw e;
+    }
     const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
     await expect
       .poll(() =>

@@ -1269,6 +1269,22 @@
     forwards;
 }
 
+/* A bottom-edge NOTICE (issue #3373): the toast bar. It slides up from the edge
+   AND fades, which none of the panels above do — they cover something, so a slide
+   alone reads as arrival. A notice arrives OVER live content the reader is still
+   looking at, and without the fade a 60px bar appearing under their thumb reads as
+   a jump rather than as something arriving. Same tokens, one extra keyframe. */
+.overlay-enter-notice {
+  animation:
+    overlay-slide-up-in var(--overlay-ms) var(--overlay-ease-enter),
+    overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-notice {
+  animation:
+    overlay-slide-up-out var(--overlay-ms) var(--overlay-ease-exit) forwards,
+    overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit) forwards;
+}
+
 /* The drag settle (issues #1425 / #1469). While a finger is on a panel the
    recognizer writes `transform` inline frame by frame with no transition at all
    (the panel IS the finger); on release the consumer adds this class for one
@@ -1344,6 +1360,8 @@
   .overlay-exit-top,
   .overlay-enter-dialog,
   .overlay-exit-dialog,
+  .overlay-enter-notice,
+  .overlay-exit-notice,
   .overlay-enter-centered,
   .overlay-exit-centered {
     animation: none;
