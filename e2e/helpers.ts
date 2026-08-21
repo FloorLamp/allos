@@ -383,7 +383,8 @@ export async function chartsSettled(
 // `w-72` cards at the bottom-RIGHT from `md` up, one full-width bar below it since
 // #3373; auto-dismiss at 6s for a success and 10s for an error). That is where a
 // table's right-aligned actions cell lives and where an OverflowMenu panel opens, so
-// the very next click after a write that toasted lands UNDER a card that is still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// the very next click after a write that toasted lands UNDER a card that is still
+// up. Playwright's actionability then blocks on it — before #2859 the unbounded
 // click simply absorbed the whole auto-dismiss window in silence (the sleep-page
 // delete test was losing ~10s of every run, green CI included), and with the run-wide
 // 15s actionTimeout the same collision fails NAMED:

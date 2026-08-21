@@ -150,15 +150,7 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // still there and still claims it, so the published offset falls back rather
     // than clearing. (Above `md`, where no nav dock renders, it does clear; that
     // is the desktop path and not this project's.)
-    const t0 = Date.now();
-    const marks: string[] = [];
-    const mark = (what: string) => marks.push(`${what}@${Date.now() - t0}ms`);
-    page.on("request", (r) => {
-      if (r.method() === "POST") mark(`POST ${new URL(r.url()).pathname}`);
-    });
-    mark("before dock-open");
     await page.getByTestId("workout-dock-open").click();
-    mark("after dock-open");
     // Scope the discard to the editor's own footer — the page BEHIND the editor
     // (Equipment) carries its own per-row Delete controls.
     await deleteActivityFromForm(page, {
@@ -166,12 +158,17 @@ test("a toast raised during a live workout stacks above the dock, never over it 
         .getByTestId("activity-form-footer")
         .getByRole("button", { name: "Delete", exact: true }),
     });
-    mark("after delete helper");
     try {
       await expect(dock).toHaveCount(0);
     } catch (e) {
-      mark("dock still up");
-      console.log("[DIAG] " + marks.join(" | "));
+      // KEEP THIS — it is not scaffolding any more. A bare "expected 0, got 1"
+      // here says the discard did not land and nothing about WHY; the answer,
+      // both times this failed, was a `fixed` notice still up over the editor's
+      // footer intercepting the Delete. Naming what is on screen at the moment of
+      // the red turns the next occurrence into a diagnosis instead of a hunt.
+      // (The timing marks that sat beside this during the investigation are gone:
+      // they read the wall clock, which the e2e hygiene guard forbids for good
+      // reason, and the question they answered is answered.)
       console.log(
         "[DIAG] toasts on screen: " +
           JSON.stringify(await page.getByTestId("toast").allInnerTexts())
