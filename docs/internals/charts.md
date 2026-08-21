@@ -129,6 +129,7 @@ Tailwind class.
 | growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                       |
 | ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)               |
 | an illness episode's temperature + doses         | hand-drawn SVG episode chart              | `illness/FeverChart`                                |
+| a Standing reading's own history, beside the row | hand-drawn SVG inline sparkline (desktop) | `dashboard/StandingSparkline`                       |
 | _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_                        | —                                                   |
 | _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                   |
 | _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                   |
@@ -243,6 +244,39 @@ situation two ways.
 The CAPTION's words stay per surface: "Single reading · Jul 13" inside the
 window, "Latest recorded · Jul 13" for a reading behind it. Those are different
 claims about the same drawing.
+
+### The Standing column (#3252)
+
+**A row that states a value can show what the value has been doing, without
+becoming a chart card.** The dashboard's Standing cluster is reading LINES —
+one column of facts at every width — and desktop's spare room is spent on a
+single aligned ~11rem sparkline column rather than a second column of facts
+(owner ruling, #3077). Below 720px the column is ABSENT and the same facts
+stand alone, so the plot is never the only carrier of anything.
+
+It is hand-drawn inline SVG, not a scaffold card: at 176×32 with no axes, no
+grid and no legend, what a recharts card would contribute is its axis and
+tooltip vocabulary, and the column has neither. What it does NOT hand-roll is
+any decision — `lib/trend-sparkline.ts` still says whether a missing day is a
+hole the stroke may cross (weight bridges, steps breaks), `loneReading` still
+picks the one-reading case, and `lib/glance-age.ts` still owns the tone. The
+marks are the issue's spec: a 2px stroke, a ~12% area fill, an always-drawn
+endpoint dot, and a `<title>` inside a per-reading hit band as the
+nearest-point hover.
+
+**Tone follows the reading's age, not the series' direction.** A current
+series draws in the brand green and a reading past its glance floor draws
+amber, matching the age label inches away — the pair must not disagree about
+whether a reading is current. Both are one ramp step darker than the label's
+text token: a 2px stroke is a graphical object and owes 3:1, and amber-600 on
+this app's light surface is 2.96:1.
+
+**No new health computation.** The series are the reads the row's domain
+already derived for the page it links to — weight's trailing-90-day glance,
+steps' today-plus-prior-seven, the resting-HR tail the arrow was already
+reduced from. A row whose domain has no trend read gets no sparkline, which
+is why blood pressure (two quantities, and one plot may not encode two
+identities by hue) has none.
 
 ### A headline is a claim about NOW (#2615)
 
