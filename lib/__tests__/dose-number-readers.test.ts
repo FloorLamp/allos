@@ -101,7 +101,10 @@ const READERS: { name: string; read: (amount: string) => unknown }[] = [
         value: `Take ${a} by mouth daily`,
       }).strength,
   },
-  { name: "medication-renewal.comparableNewStrength", read: comparableNewStrength },
+  {
+    name: "medication-renewal.comparableNewStrength",
+    read: comparableNewStrength,
+  },
   { name: "prn-redose.parseAmountMg", read: parseAmountMg },
   {
     name: "medication-dose-format.formatMedicationDoseProduct",
@@ -384,7 +387,9 @@ describe("the unanchored-dose-scan census (#3444)", () => {
   it("actually opened the tree it claims to have swept", () => {
     expect(scanned.length).toBeGreaterThan(1000);
     expect(scanned).toContain("lib/prescription-parse.ts");
-    expect(scanned).toContain("components/medications/PediatricDoseBandPicker.tsx");
+    expect(scanned).toContain(
+      "components/medications/PediatricDoseBandPicker.tsx"
+    );
   });
 
   it("finds no unanchored dose scan outside the registry", () => {
@@ -429,7 +434,10 @@ describe("the census's reach", () => {
     ).toHaveLength(1);
     // The same thought as a plain literal, which is how four other files write it.
     expect(
-      scan("literal.ts", "const RE = /(\\d+(?:\\.\\d+)?)\\s*(mg|mcg|ug)\\b/i;\n")
+      scan(
+        "literal.ts",
+        "const RE = /(\\d+(?:\\.\\d+)?)\\s*(mg|mcg|ug)\\b/i;\n"
+      )
     ).toHaveLength(1);
   });
 
@@ -452,13 +460,19 @@ describe("the census's reach", () => {
       scan("anchored.ts", "const RE = /^(\\d+(?:\\.\\d+)?)\\s*mg$/i;\n")
     ).toEqual([]);
     expect(
-      scan("anchored-group.ts", "const RE = /^(?:(\\d+(?:\\.\\d+)?)\\s*(mg|iu))/i;\n")
+      scan(
+        "anchored-group.ts",
+        "const RE = /^(?:(\\d+(?:\\.\\d+)?)\\s*(mg|iu))/i;\n"
+      )
     ).toEqual([]);
   });
 
   it("STAYS SILENT on a pattern that spans the separator — the fix it asks for", () => {
     expect(
-      scan("spanning.ts", "const RE = /(\\d+(?:[.,]\\d+)*)\\s*(mg|mcg|iu)\\b/i;\n")
+      scan(
+        "spanning.ts",
+        "const RE = /(\\d+(?:[.,]\\d+)*)\\s*(mg|mcg|iu)\\b/i;\n"
+      )
     ).toEqual([]);
   });
 
@@ -512,7 +526,10 @@ describe("the census's reach", () => {
       scan("age.ts", "const RE = /^(\\d+(?:\\.\\d+)?)\\s*([a-z\\s./-]*)$/;\n")
     ).toEqual([]);
     expect(
-      scan("range.ts", "const RE = /(-?\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(-?\\d+(?:\\.\\d+)?)/i;\n")
+      scan(
+        "range.ts",
+        "const RE = /(-?\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(-?\\d+(?:\\.\\d+)?)/i;\n"
+      )
     ).toEqual([]);
   });
 });

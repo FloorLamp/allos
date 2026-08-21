@@ -275,7 +275,9 @@ describe("comma-decimal prescription strengths through persistDocumentImport (#3
       flagged.map(
         (f) =>
           (
-            db.prepare("SELECT name FROM intake_items WHERE id = ?").get(f.itemId) as {
+            db
+              .prepare("SELECT name FROM intake_items WHERE id = ?")
+              .get(f.itemId) as {
               name: string;
             }
           ).name
@@ -296,9 +298,9 @@ describe("comma-decimal prescription strengths through persistDocumentImport (#3
     // The stored string is what the census sees, so this is the bucket these rows now
     // land in — where before the fix "5 mg" landed in `always-correct`.
     for (const c of CASES.filter((x) => x.reads === "unreadable")) {
-      expect(classifyDoseAmount(storedMed(profile, c.grouping).amounts[0])).toBe(
-        "unreadable-unrecoverable"
-      );
+      expect(
+        classifyDoseAmount(storedMed(profile, c.grouping).amounts[0])
+      ).toBe("unreadable-unrecoverable");
     }
     expect(classifyDoseAmount(storedMed(profile, "Metformin").amounts[0])).toBe(
       "recovered-from-zero"
