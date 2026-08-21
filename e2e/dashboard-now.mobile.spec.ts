@@ -353,9 +353,15 @@ test("an ordinary Now card carries ONE gutter and puts its title and detail on o
     )!;
     const atom = atomNode.getBoundingClientRect();
     const style = getComputedStyle(atomNode);
-    const row = node
-      .querySelector('[data-testid^="attention-item-"]')!
-      .getBoundingClientRect();
+    const rowNode = node.querySelector<HTMLElement>(
+      '[data-testid^="attention-item-"]'
+    )!;
+    const rowStyle = getComputedStyle(rowNode);
+    // The row's own INNER edge, not its border box: `px-2 py-2` pads the row from
+    // the inside, so a box-edge comparison would read identically with the inset
+    // present and with it gone. Where the row's first mark actually lands is the
+    // question.
+    const icon = rowNode.querySelector("svg")!.getBoundingClientRect();
     const title = node
       .querySelector('[data-testid="dashboard-attention-atom"] a')!
       .getBoundingClientRect();
@@ -370,7 +376,9 @@ test("an ordinary Now card carries ONE gutter and puts its title and detail on o
         atom.left +
         parseFloat(style.borderLeftWidth) +
         parseFloat(style.paddingLeft),
-      rowLeft: row.left,
+      rowPaddingLeft: rowStyle.paddingLeft,
+      rowPaddingTop: rowStyle.paddingTop,
+      iconLeft: icon.left,
       titleTop: title.top,
       titleRight: title.right,
       detailTop: detail.top,
@@ -385,11 +393,17 @@ test("an ordinary Now card carries ONE gutter and puts its title and detail on o
   ).toBeGreaterThan(geometry.titleRight);
   expect(Math.abs(geometry.detailTop - geometry.titleTop)).toBeLessThan(8);
 
-  // ONE GUTTER: the row begins exactly at the card's content edge — the inner
-  // `px-2 py-2` inset is a desktop hover affordance and does not double up here.
-  expect(Math.abs(geometry.rowLeft - geometry.contentLeft)).toBeLessThan(
-    CARD_CONTENT_TOLERANCE_PX
-  );
+  // ONE GUTTER: the row's first mark sits exactly on the card's content edge — the
+  // inner `px-2 py-2` inset is a desktop hover affordance and does not double up
+  // on a phone, where the card's own `p-4` is already the gutter.
+  expect(
+    Math.abs(geometry.iconLeft - geometry.contentLeft),
+    `the row's icon starts at ${geometry.iconLeft}, the card's content edge is ${geometry.contentLeft}`
+  ).toBeLessThan(CARD_CONTENT_TOLERANCE_PX);
+  expect({
+    left: geometry.rowPaddingLeft,
+    top: geometry.rowPaddingTop,
+  }).toEqual({ left: "0px", top: "0px" });
 
   // And the card spans the strip: no glyph gutter taking width off a 390px line.
   expect(Math.round(geometry.cardWidth)).toBe(Math.round(geometry.stripWidth));
