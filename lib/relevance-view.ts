@@ -72,9 +72,20 @@ export function groupedRelevanceView(
   });
 
   // One vocabulary: nothing to share out, and this is the path every existing
-  // single-group picker takes. Kept explicit so "unchanged" is visible, not derived.
+  // single-group picker takes. Kept explicit so "unchanged" is visible, not derived
+  // — for `limit >= 1` the general path below reproduces it exactly, so this is a
+  // documented equivalence rather than a second barrier, and nothing observes it.
+  //
+  // THE `limit <= 0` GUARD IS NOT DECORATION, and it is the one way the two paths
+  // could disagree. `Array#slice` reads a NEGATIVE second argument from the END, so
+  // `options.slice(0, -1)` is every row but the last — a single-vocabulary picker
+  // would render n-1 rows for a cap that asked for none, while the general path
+  // below correctly emits nothing and reports every group. Unreachable today
+  // (`limit` is only ever RELEVANCE_ROWS), which is exactly why a computed cap that
+  // one day goes negative would find no test in its way.
   if (buckets.size <= 1) {
-    return { rows: options.slice(0, limit), droppedGroups: [] };
+    if (limit > 0) return { rows: options.slice(0, limit), droppedGroups: [] };
+    return { rows: [], droppedGroups: [...buckets.keys()] };
   }
 
   const taken = new Set<number>();

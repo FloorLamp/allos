@@ -282,15 +282,17 @@ export default function Combobox({
       // The input handler below then closes only the listbox; a second Escape
       // reaches the modal normally.
       //
-      // KEYED ON THE LISTBOX, NOT ON `open` — the same distinction #3409 settled one
-      // level up (components/facts/FactEditorHost.tsx): the trap asks "is a layer
-      // ACTIVE", and a marker meaning "a field thinks it is open" answers a cheaper
-      // question and answers it wrong. `open && !listOpen` is a picker with nothing
-      // to close — an allowFreeText field whose vocabulary is empty and whose value
-      // is still blank — and there the marker used to swallow every Escape, silently,
-      // which is what a dismissed keypress always looks like. #3100's stack field
-      // makes that state the DEFAULT for a profile that has never named a stack.
-      data-escape-layer={listOpen ? "true" : undefined}
+      // STILL KEYED ON `open`, DELIBERATELY, AND #3432 OWNS THE QUESTION. `open` and
+      // `listOpen` come apart when the list would render EMPTY, and this marker then
+      // claims a layer that has nothing to close — the same shape as the
+      // `aria-expanded` lie fixed below, which is why narrowing it to `listOpen` was
+      // tried on this branch. It was reverted, because the benefit is not reachable
+      // at the site that motivated it: #3100's stack field sits inside an open
+      // `FactEditorHost`, which carries its own marker (that file, #3409), so the
+      // first Escape is yielded either way and it is two presses on both builds.
+      // Changing Escape ROUTING with no assertion, beside two other in-flight Escape
+      // changes, is not a trade this PR should make. The measurement is on #3432.
+      data-escape-layer={open ? "true" : undefined}
     >
       {!titleAppearance && (
         <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">

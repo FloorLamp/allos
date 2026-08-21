@@ -4,7 +4,11 @@ import {
   groupedRelevanceView,
 } from "@/lib/relevance-view";
 import { fuzzyFilter } from "@/lib/fuzzy";
-import { SERIES_PICKER_GROUP_ORDER } from "@/lib/series-picker-options";
+import {
+  SERIES_PICKER_GROUP_ORDER,
+  SERIES_PICKER_METRICS_GROUP,
+} from "@/lib/series-picker-options";
+import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
 
 // The Combobox's pre-typing list, capped per group (#3410). The bug this pins: with
 // one shared eight-row budget taken off the front, a picker fed TWO ranked
@@ -173,6 +177,24 @@ describe("groupedRelevanceView", () => {
     }
   });
 
+  // BOTH PATHS, because the sentence above says "a limit of zero or below" and the
+  // single-vocabulary SHORT-CIRCUIT is a second path to the same claim. It used to
+  // disagree in both directions — `options.slice(0, -1)` is every row but the last,
+  // so a negative cap emitted n-1 rows and reported no dropped group at all.
+  it("says the same thing on the single-vocabulary path", () => {
+    const options = named("Lift", 4);
+    for (const limit of [0, -1]) {
+      const view = groupedRelevanceView(options, () => "Exercises", limit);
+      expect(view.rows, `limit ${limit}`).toEqual([]);
+      expect(view.droppedGroups, `limit ${limit}`).toEqual(["Exercises"]);
+    }
+    // …and the empty list still has no group to report, on either path.
+    expect(groupedRelevanceView([], () => "Exercises", 0)).toEqual({
+      rows: [],
+      droppedGroups: [],
+    });
+  });
+
   it("spends a single row on the first group and names the rest", () => {
     const options = [...named("Lift", 5), ...named("Analyte", 5)];
     const view = groupedRelevanceView(
@@ -329,5 +351,141 @@ describe("droppedGroups: the dev-time guard", () => {
       ROWS
     );
     expect(view.droppedGroups).toEqual([]);
+  });
+});
+// WHAT THE FOUR SHIPPED GROUPED PICKERS ACTUALLY SHOW (#3410).
+//
+// The PR body discloses which lists move and by how much, and a disclosure written
+// only in prose is a number nobody can re-derive. These are the same measurements,
+// in the tree, over the REAL group orders the four callers pass:
+//
+//   components/ResultForm.tsx        → BIOMARKER_GROUP_LABELS, in declaration order
+//   app/(app)/training/GoalForm.tsx  → the same three, via goal-target-options
+//   components/SaveTrendKeyPicker.tsx → SERIES_PICKER_GROUP_ORDER
+//   components/CompareControls.tsx    → the same, with an ungrouped "— none —" first
+describe("the shipped grouped pickers, before and after", () => {
+  const DUE = BIOMARKER_GROUP_LABELS["due-relevant"];
+  const YOURS = BIOMARKER_GROUP_LABELS["your-markers"];
+  const ALL = BIOMARKER_GROUP_LABELS["all-biomarkers"];
+  const METRICS = SERIES_PICKER_METRICS_GROUP;
+  const NONE = "— none —";
+
+  // Build a picker's option array from a per-group count, in the caller's group
+  // order, and tally what each rule shows. `main` is the flat cap this PR replaces.
+  function tally(
+    order: readonly string[],
+    counts: Record<string, number>
+  ): { main: Record<string, number>; view: Record<string, number> } {
+    const options: string[] = [];
+    const group = new Map<string, string | null>();
+    for (const g of order) {
+      if (g === NONE) {
+        options.push(NONE);
+        group.set(NONE, null);
+        continue;
+      }
+      for (const option of named(g, counts[g] ?? 0)) {
+        options.push(option);
+        group.set(option, g);
+      }
+    }
+    const count = (rows: readonly string[]) => {
+      const out: Record<string, number> = {};
+      for (const g of order) out[g] = 0;
+      for (const row of rows) out[row === NONE ? NONE : group.get(row)!]++;
+      return out;
+    };
+    return {
+      main: count(options.slice(0, ROWS)),
+      view: count(
+        groupedRelevanceView(options, (o) => group.get(o) ?? null, ROWS).rows
+      ),
+    };
+  }
+
+  const RECORD_FORM = [DUE, YOURS, ALL];
+  const STAR_PICKER = [DUE, METRICS, YOURS, ALL];
+  const COMPARE = [NONE, DUE, METRICS, YOURS, ALL];
+  // Enough to overflow the eight rows on their own, which is the real shape: the
+  // canonical vocabulary is ~200 names and the standard metrics are a dozen.
+  const BODY = { [ALL]: 200, [METRICS]: 12 };
+
+  it("leaves the record form's shipped shape byte-identical", () => {
+    // Two due-or-flagged analytes, one of the profile's own. This is the shape the
+    // e2e fixture drives and the one the picker has today.
+    const { main, view } = tally(RECORD_FORM, {
+      [DUE]: 2,
+      [YOURS]: 1,
+      ...BODY,
+    });
+    expect(view).toEqual(main);
+    expect(view).toEqual({ [DUE]: 2, [YOURS]: 1, [ALL]: 5 });
+  });
+
+  it("costs the record form TWO of its eight once a full panel fills every group", () => {
+    // The realistic full-panel case: eight due-or-flagged AND at least one marker of
+    // the profile's own, which `measured ∪ starred` gives any profile with results.
+    // The one-row-per-group floor is spent twice here, once for each group behind
+    // the leader — which is the bound, not an exception to it.
+    expect(tally(RECORD_FORM, { [DUE]: 8, [YOURS]: 1, ...BODY }).main).toEqual({
+      [DUE]: 8,
+      [YOURS]: 0,
+      [ALL]: 0,
+    });
+    expect(tally(RECORD_FORM, { [DUE]: 8, [YOURS]: 1, ...BODY }).view).toEqual({
+      [DUE]: 6,
+      [YOURS]: 1,
+      [ALL]: 1,
+    });
+    // With no marker of its own there is one fewer group, so it costs one.
+    expect(tally(RECORD_FORM, { [DUE]: 8, [YOURS]: 0, ...BODY }).view).toEqual({
+      [DUE]: 7,
+      [YOURS]: 0,
+      [ALL]: 1,
+    });
+  });
+
+  it("changes BOTH Trends pickers at every shape, which is the bug being fixed", () => {
+    // The metrics and the ~200-name canonical body are always there, so these
+    // pickers always have at least two groups — and before this change the body
+    // never appeared at all until the user typed. There is no shape where they are
+    // unchanged, and that is the #3410 defect, not a side effect of it.
+    for (const due of [0, 3, 8]) {
+      for (const yours of [0, 2]) {
+        const star = tally(STAR_PICKER, {
+          [DUE]: due,
+          [YOURS]: yours,
+          ...BODY,
+        });
+        expect(star.main[ALL], `star due=${due} yours=${yours}`).toBe(0);
+        expect(star.view[ALL], `star due=${due} yours=${yours}`).toBe(1);
+
+        const compare = tally(COMPARE, { [DUE]: due, [YOURS]: yours, ...BODY });
+        expect(compare.main[ALL], `compare due=${due} yours=${yours}`).toBe(0);
+        expect(compare.view[ALL], `compare due=${due} yours=${yours}`).toBe(1);
+        // The clear row is first in the array and keeps its place either way.
+        expect(compare.view[NONE]).toBe(1);
+      }
+    }
+  });
+
+  // THE OBJECTION, AND WHY IT REVERSES. `lib/series-picker-options.ts` puts Metrics
+  // ahead of the biomarker body BECAUSE they are "the only way back after unstarring
+  // a metric tile" — so the floor rule looks like it taxes a recovery affordance to
+  // buy a header. At small due counts it does cost Metrics rows. At the counts where
+  // the affordance actually matters it does the OPPOSITE: the flat cap let a busy
+  // panel push Metrics off the pre-typing list ENTIRELY, and the floor is what makes
+  // that impossible. This is why the group order was not changed to protect them —
+  // it is already protected, and moving Metrics ahead of "Due or flagged" would bury
+  // the bucket #1675 exists to surface.
+  it("guarantees the metric rows a busy panel used to push off the list", () => {
+    for (const order of [STAR_PICKER, COMPARE]) {
+      const { main, view } = tally(order, { [DUE]: 8, [YOURS]: 2, ...BODY });
+      // Before: a profile with eight due-or-flagged analytes saw NO metric row and
+      // no Metrics header until it typed.
+      expect(main[METRICS]).toBe(0);
+      // After: a row and therefore a header, guaranteed, for every group present.
+      expect(view[METRICS]).toBe(1);
+    }
   });
 });
