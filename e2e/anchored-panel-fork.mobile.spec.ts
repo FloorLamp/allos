@@ -142,7 +142,8 @@ test.describe("below md the date picker is a bottom sheet", () => {
     const posted = form.locator('input[name="target_date"]');
     await expect(posted).toHaveValue("2026-03-09");
 
-    await settledClick(page, form.getByLabel("Open calendar"));
+    // A pure client toggle — it opens a panel and posts nothing.
+    await hydratedClick(page, form.getByLabel("Open calendar"));
     const sheet = page.getByTestId("date-field-sheet");
     await expect(sheet).toBeVisible();
     const calendar = page.getByTestId("date-field-calendar");
@@ -159,7 +160,7 @@ test.describe("below md the date picker is a bottom sheet", () => {
 
     // Picking round-trips into the field's POSTED value, which is the contract
     // the fork must not touch.
-    await settledClick(page, day);
+    await day.click();
     await expect(sheet).toHaveCount(0);
     await expect(posted).toHaveValue("2026-03-17");
   });
