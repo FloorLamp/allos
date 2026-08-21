@@ -444,10 +444,14 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   // lesson, applied to a measurement that has no Locator per value).
   async function pagerMetrics(pager: Locator) {
     return pager.evaluate((row) => {
-      const steps = Array.from(row.querySelectorAll("a, button")).filter((el) =>
-        /^(Prev|Next)$/.test((el.textContent ?? "").trim())
+      // The slot's single element child IS the control, whichever of the three
+      // shapes it currently has (button / link / disabled span) — see
+      // components/PaginationControls.tsx.
+      const steps = Array.from(
+        row.querySelectorAll("[data-pager-step] > *")
       ) as HTMLElement[];
       const rowBox = row.getBoundingClientRect();
+      const rowStyle = getComputedStyle(row);
       return {
         labels: steps.map((el) => (el.textContent ?? "").trim()),
         boxes: steps.map((el) => {
@@ -459,8 +463,11 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
             right: r.right,
           };
         }),
-        rowLeft: rowBox.left,
-        rowRight: rowBox.right,
+        // The row's CONTENT edges — its own `px-3` is chrome, not distance
+        // between the controls, and reading it here means the expectation moves
+        // with the padding instead of pinning today's 12px.
+        rowLeft: rowBox.left + parseFloat(rowStyle.paddingLeft),
+        rowRight: rowBox.right - parseFloat(rowStyle.paddingRight),
         // The page sentence collapses into the extent below `md` — one piece of
         // text between two thumb targets, not two. Read as innerText, not
         // textContent: the sentence is still IN the DOM (one set of controls,
@@ -498,7 +505,7 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   });
 
   test("button steps: the Data → Manage dataset card", async ({ page }) => {
-    await page.goto("/data?tab=manage");
+    await page.goto("/data?section=manage");
     const pager = page.getByTestId("dataset-medical_records-pagination");
     await expect(pager).toBeVisible();
     await expect(pager.getByRole("button", { name: "Next" })).toBeVisible();
@@ -524,6 +531,8 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
         .getByTestId("whats-new-pagination")
         .getByRole("link", { name: "Prev" })
     );
-    await page.waitForURL(/\/whats-new\?page=1$/);
+    // Page 1's href is the bare route, not `?page=1` — the pager hands the URL
+    // back exactly as it found it.
+    await page.waitForURL(/\/whats-new$/);
   });
 });

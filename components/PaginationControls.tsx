@@ -124,7 +124,12 @@ export default function PaginationControls({
       data-testid={testId}
     >
       {paged && (
-        <span className="order-1 md:order-2">
+        // The slot, not the control: a step is a button in state mode, a link in
+        // URL mode and a plain span at either end of the range, so no role- or
+        // text-based locator reaches all three — and the disabled one is exactly
+        // the one a tap-floor measurement must still see. Its single element child
+        // is the control (`[data-pager-step] > *`).
+        <span data-pager-step="prev" className="order-1 md:order-2">
           {step("Prev", -1, prevHref ?? null)}
         </span>
       )}
@@ -139,7 +144,9 @@ export default function PaginationControls({
         </span>
       )}
       {paged && (
-        <span className="order-4">{step("Next", 1, nextHref ?? null)}</span>
+        <span data-pager-step="next" className="order-4">
+          {step("Next", 1, nextHref ?? null)}
+        </span>
       )}
     </div>
   );
