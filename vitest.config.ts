@@ -23,10 +23,11 @@ const NOT_PURE = [
 const ISOLATED = specsNeedingIsolation(root, ["lib/__tests__"]);
 
 // Tests target pure logic only (no DB/network), so the default `node`
-// environment is enough. The `@/*` alias mirrors tsconfig.json `paths` so test
-// files can import app modules the same way the app does.
+// environment is enough for the two `lib/**` projects. The `@/*` alias mirrors
+// tsconfig.json `paths` so test files can import app modules the same way the app
+// does.
 //
-// TWO PROJECTS, ONE `npm test`. The bulk run with a SHARED module registry
+// THREE PROJECTS, ONE `npm test`. The bulk run with a SHARED module registry
 // (`isolate: false`): almost nothing here needs a private registry, and
 // re-importing the same module graph for every file was over half the run —
 // importing it once per worker took the suite from 31s to 13s. The handful that
@@ -59,16 +60,74 @@ export default defineConfig({
           pool: "forks",
         },
       },
+      // ── THE COMPONENT TIER (#3446) ────────────────────────────────────────
+      //
+      // A DOM environment over `components/**`, so a guard that lives in a hook or
+      // in a component's own DOM read can be pinned by something cheaper than a
+      // browser. Before this there were exactly two altitudes — a pure function
+      // extracted into `lib/`, or a full Playwright run — and the measured default
+      // for everything in between was NO coverage: #3371's reload gate shipped with
+      // both its OR sites deletable and `npm test`, `npm run lint` and
+      // `npm run typecheck` all green. See docs/internals/component-tests.md, which
+      // records this tier's scope and the earlier decision it supersedes.
+      //
+      // WHY THIS CONFIG AND NOT A FOURTH ONE. The split this repo already makes is
+      // PURITY, not environment: `vitest.db.config.ts` is separate because its tests
+      // open real SQLite handles, need a global setup, and mock the auth/next-cache
+      // boundary. A jsdom test is still pure in exactly that sense — no database, no
+      // network, no filesystem, nothing to tear down between runs — so it belongs on
+      // the pure side of the boundary the repo already drew, and folding it in is
+      // what makes it IMPOSSIBLE to forget to run. `npm test`, CI's `test-unit` job
+      // (`npm run test:coverage`), `CI (main)`'s and
+      // scripts/orchestration/agent-gates.sh's `npm test` all pick it up with no
+      // further wiring — and "configured but never invoked" is the exact failure
+      // #3446 exists to end. It earns its own config the day it needs a global
+      // setup, a non-hermetic resource, or a coverage denominator of its own.
+      //
+      // WHY jsdom AND NOT happy-dom. happy-dom is faster to construct, and if this
+      // tier ever grows to hundreds of files that per-file cost is the thing that
+      // would change the answer. Today it is not the cost that matters. jsdom's
+      // divergences from a browser are LOUD — it throws "not implemented" — where
+      // happy-dom's are more often a quiet difference in result, and a tier whose
+      // whole purpose is to stop silent false greens cannot be built on an
+      // environment that fails quietly. It is also what @testing-library and Next
+      // document against, so a future author is reading the mainstream recipe.
+      //
+      // ISOLATED, unlike the `pure` project: a document is per-file state, and the
+      // registries these tests drive (lib/offline/unsaved-work.ts,
+      // components/update-reload-channel.ts) are module-level singletons. A shared
+      // registry would let one file's leftovers decide another file's verdict, which
+      // is the failure this tier exists to catch rather than to commit.
+      {
+        resolve: { alias },
+        test: {
+          name: "components",
+          testTimeout,
+          hookTimeout,
+          include: ["components/**/*.test.ts", "components/**/*.test.tsx"],
+          exclude: ["node_modules/**"],
+          environment: "jsdom",
+          setupFiles: ["components/__tests__/setup.ts"],
+          pool: "threads",
+        },
+      },
     ],
     // Coverage here is only measured for `npm run test:coverage` (the pure
     // suite), never for the default `npm test`. This is the FIRST of two coverage
     // gates: the DB+action tier has its own floor in vitest.db.config.ts
     // (`npm run test:db:coverage`), which exercises the query/action write paths
     // this pure suite never imports (they'd report ~0% here). Scope the
-    // denominator to the logic layer (`lib/**`): the pure suite never imports
+    // denominator to the logic layer (`lib/**`): almost nothing here imports
     // app/** or components/**, so including them would drown the signal at ~0%.
     // That app/component surface is a separate effort and is intentionally NOT
-    // gated here.
+    // gated here — including by the component tier above, which renders
+    // components/** but is measured only for the lib/** it happens to reach.
+    //
+    // THE FLOORS BELOW ARE MINIMA, so the component tier can only move them the
+    // safe way. It imports lib/sw-update.ts, lib/offline/unsaved-work.ts and
+    // lib/dirty-forms.ts, which the pure tier already covers, so its effect on the
+    // measured numbers is a small rise at most. A tier that DROPPED the measured
+    // baseline would be one adding uncovered lib/** files, which no test tier can.
     coverage: {
       provider: "v8",
       include: ["lib/**"],
