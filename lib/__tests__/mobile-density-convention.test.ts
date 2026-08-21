@@ -79,18 +79,19 @@ function openingTagWith(source: string, needle: string): string {
   throw new Error(`unterminated JSX tag around ${needle}`);
 }
 
-// That tag's className VALUE — the quoted string or the whole braced expression,
-// interpolations included, so a class smuggled into a `${cond ? "card" : ""}` is
-// still in scope. Comments inside the tag are NOT: this file's own subject
-// components carry prose mentioning `.card` in order to explain why they are not
-// one, and a guard that fired on that explanation would be deleted.
-function classNameValue(tag: string): string {
+// That tag's className expression — the quoted string, or the whole braced
+// expression with its interpolations. Comments inside the tag are NOT included:
+// this file's own subject components carry prose mentioning `.card` in order to
+// explain why they are not one, and a guard that fired on that explanation would
+// be deleted.
+function classNameExpression(tag: string): { literal: boolean; text: string } {
   const at = tag.indexOf("className=");
   if (at < 0) throw new Error("tag carries no className");
   let i = at + "className=".length;
   if (tag[i] === '"') {
     const end = tag.indexOf('"', i + 1);
-    return tag.slice(i + 1, end);
+    if (end < 0) throw new Error("unterminated className string");
+    return { literal: true, text: tag.slice(i + 1, end) };
   }
   if (tag[i] !== "{") throw new Error("unrecognised className form");
   let depth = 0;
@@ -99,14 +100,123 @@ function classNameValue(tag: string): string {
     if (tag[i] === "{") depth += 1;
     else if (tag[i] === "}") {
       depth -= 1;
-      if (depth === 0) return tag.slice(start + 1, i);
+      if (depth === 0) return { literal: false, text: tag.slice(start + 1, i) };
     }
   }
   throw new Error("unterminated className expression");
 }
 
-function classesOn(source: string, needle: string): string {
-  return classNameValue(openingTagWith(source, needle));
+// Module-scope `const NAME = …;` in the SAME file, substituted into an
+// expression. Bounded passes, so a cycle dies on the limit instead of hanging.
+function substituteModuleConsts(source: string, expression: string): string {
+  let out = expression;
+  for (let pass = 0; pass < 4; pass += 1) {
+    let changed = false;
+    for (const m of source.matchAll(
+      /^const ([A-Za-z_$][\w$]*)\s*=\s*([\s\S]*?);$/gm
+    )) {
+      const token = new RegExp(`(?<![\\w$])${m[1]}(?![\\w$])`, "g");
+      if (token.test(out)) {
+        out = out.replace(token, `(${m[2]})`);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return out;
+}
+
+// An identifier is allowed to REMAIN in an expression only where it cannot
+// contribute class text — a ternary test, a logical operand, a comparison, a
+// member base. Anything else (a bare `{LINK_CLASS}`, a `cn(...)` call, a
+// `props.className`) is text this scan cannot read.
+const IDENTIFIER_IN_CONDITION =
+  /^\s*(\?|&&|\|\||===|!==|==|!=|>=|<=|>|<|\)|,|\.)/;
+const NOT_A_VALUE = new Set(["true", "false", "null", "undefined"]);
+
+// THE CLASS TEXT A BROWSER WOULD ACTUALLY SEE — or a THROWN error.
+//
+// This is the shape the whole class-B check turns on, and the reason it is not
+// simply "return whatever sits in the className slot". An ABSENCE assertion over
+// UNRESOLVED text FAILS OPEN: `hasClass(x, "card") === false` is satisfied by any
+// text that does not literally contain `card`, and a bare identifier qualifies.
+// So extracting a long className to a module-scope const — the most routine edit
+// in this codebase — silently blinded this guard and BOTH card-in-card nests
+// could be restored with the whole suite green. Anchoring on the tag did not help:
+// the hole was never the anchor, it was reading text nobody had resolved.
+//
+// Note the asymmetry, because it is why this went unnoticed: a PRESENCE assertion
+// over the same unresolved text fails LOUDLY (the `p-0!` premise below died on
+// exactly this refactor, naming the identifier it could not read). Only absence
+// fails open, and absence is what class B is made of.
+//
+// So: resolve same-file consts, then read only literal text — and if anything is
+// left that could contribute class text and cannot be read, THROW. A red saying
+// "make this className readable" is the correct outcome; a green is not.
+function classTextOf(source: string, needle: string): string {
+  const expression = classNameExpression(openingTagWith(source, needle));
+  if (expression.literal) return expression.text;
+  return readClassText(substituteModuleConsts(source, expression.text), needle);
+}
+
+function readClassText(expression: string, needle: string): string {
+  const parts: string[] = [];
+  let residue = "";
+  let i = 0;
+  while (i < expression.length) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      const end = expression.indexOf(c, i + 1);
+      if (end < 0)
+        throw new Error(`unterminated string in ${needle}'s className`);
+      parts.push(expression.slice(i + 1, end));
+      i = end + 1;
+      continue;
+    }
+    if (c === "`") {
+      let j = i + 1;
+      let chunk = "";
+      while (j < expression.length && expression[j] !== "`") {
+        if (expression[j] === "$" && expression[j + 1] === "{") {
+          parts.push(chunk);
+          chunk = "";
+          let depth = 1;
+          let k = j + 2;
+          for (; k < expression.length && depth > 0; k += 1) {
+            if (expression[k] === "{") depth += 1;
+            else if (expression[k] === "}") depth -= 1;
+          }
+          // Recurse: a hole's own residue is checked by the same rules.
+          parts.push(readClassText(expression.slice(j + 2, k - 1), needle));
+          j = k;
+          continue;
+        }
+        chunk += expression[j];
+        j += 1;
+      }
+      if (j >= expression.length)
+        throw new Error(
+          `unterminated template literal in ${needle}'s className`
+        );
+      parts.push(chunk);
+      i = j + 1;
+      continue;
+    }
+    residue += c;
+    i += 1;
+  }
+
+  for (const m of residue.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    if (NOT_A_VALUE.has(m[0])) continue;
+    const after = residue.slice(m.index + m[0].length);
+    if (IDENTIFIER_IN_CONDITION.test(after)) continue;
+    throw new Error(
+      `${needle}'s className cannot be read: \`${m[0]}\` may contribute class text and this scan cannot resolve it. ` +
+        "An absence assertion over unresolved text FAILS OPEN — it would pass while the class it forbids was present. " +
+        "Inline the classes, or declare the const at module scope in this same file."
+    );
+  }
+  return parts.join(" ");
 }
 
 // tier -> the phone value it sets. Desktop is whatever the call site already had.
@@ -259,7 +369,7 @@ describe("phone density conventions (#3466)", () => {
     // while an inner cell kept the substring alive and the exemption outlived its
     // reason in silence. That is the `why`-went-false failure, in the guard that
     // exists to prevent it.
-    const strip = classesOn(src, 'data-testid="vitals-today-strip"').split(
+    const strip = classTextOf(src, 'data-testid="vitals-today-strip"').split(
       /\s+/
     );
     expect(
@@ -353,13 +463,61 @@ describe("phone density conventions (#3466)", () => {
     ).toBe(true);
   });
 
+  // The resolver itself, because every absence assertion in this file rests on it
+  // and an absence assertion over text nobody resolved passes while the thing it
+  // forbids is present. Forged sources, both directions.
+  it("class text is RESOLVED or the read THROWS — an absence check may never pass on text it cannot read", () => {
+    const tag = (className: string, extra = "") =>
+      `${extra}\n<div data-testid="probe" className=${className} />`;
+
+    // READABLE: the value is literal text, wherever it comes from.
+    expect(classTextOf(tag('"card p-4"'), 'data-testid="probe"')).toContain(
+      "card"
+    );
+    expect(
+      classTextOf(tag('{`card ${x ? "a" : "b"}`}'), 'data-testid="probe"')
+    ).toContain("card");
+    // …including a same-file module const, which is the refactor that blinded
+    // this guard: BOTH card-in-card nests were restorable with the suite green.
+    expect(
+      classTextOf(
+        tag("{LINK_CLASS}", 'const LINK_CLASS =\n  "card subpanel-inset p-4";'),
+        'data-testid="probe"'
+      )
+    ).toContain("card");
+    // A ternary's branches are BOTH in scope — for an absence check the union is
+    // the conservative direction.
+    expect(
+      classTextOf(tag('{cond ? "card" : "p-4"}'), 'data-testid="probe"')
+    ).toContain("card");
+
+    // UNREADABLE: each of these must THROW rather than return text that happens
+    // not to contain the forbidden class.
+    const unreadable = [
+      [
+        "{LINK_CLASS}",
+        "a const this file cannot see (imported, or declared in a scope)",
+      ],
+      ['{cn("flex", styles.card)}', "a helper call"],
+      ["{props.className}", "a prop"],
+      ["{`flex ${styles.wrapper}`}", "a member expression inside a hole"],
+      ["{makeClass()}", "a factory"],
+    ];
+    for (const [expression, why] of unreadable) {
+      expect(
+        () => classTextOf(tag(expression), 'data-testid="probe"'),
+        `${expression} (${why}) must THROW — an absence assertion over it would pass while the class was present`
+      ).toThrow(/cannot be read/);
+    }
+  });
+
   it("the two card-in-card nests draw one border each (#3466 class B)", () => {
     // /data mounts IntegrationsGrid — itself a grid of `.card`s — so its wrapper
     // may not be one. Read off the WRAPPER'S OWN tag, located by its id: the page
     // has many legitimate cards.
     const dataPage = read("app/(app)/data/page.tsx");
     expect(
-      hasClass(classesOn(dataPage, 'id="integrations"'), "card"),
+      hasClass(classTextOf(dataPage, 'id="integrations"'), "card"),
       "the integrations wrapper may not be a `.card` — the grid inside it already draws one border per source"
     ).toBe(false);
 
@@ -372,7 +530,7 @@ describe("phone density conventions (#3466)", () => {
     // asked about.
     const link = read("components/IntegrationSyncHistoryLink.tsx");
     expect(
-      hasClass(classesOn(link, 'data-testid="sync-history-link"'), "card"),
+      hasClass(classTextOf(link, 'data-testid="sync-history-link"'), "card"),
       "IntegrationSyncHistoryLink may not hardcode `card` on itself — every host it has mounts it inside one"
     ).toBe(false);
   });
