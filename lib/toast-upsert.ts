@@ -16,6 +16,11 @@ export interface KeyedToast {
   // Bumped on every in-place replace so the card's auto-dismiss effect re-runs and
   // the countdown restarts (an unchanged duration alone wouldn't reset it).
   revision: number;
+  // Set while the toast is playing its EXIT animation (#3373). It is still in the
+  // list — which is what makes the phone's one-at-a-time queue hand over after the
+  // outgoing bar has left rather than underneath it — but its countdown is over and
+  // it leaves the list when the animation ends.
+  exiting?: boolean;
 }
 
 // Insert `incoming`, or REPLACE the live toast with the same key in place. On a
@@ -31,6 +36,12 @@ export function upsertToast<T extends KeyedToast>(list: T[], incoming: T): T[] {
         ...incoming,
         id: list[idx].id,
         revision: list[idx].revision + 1,
+        // An upgrade CANCELS a dismissal already in flight. Without this a keyed
+        // replace that lands inside the 240ms exit window would swap the message
+        // into a bar that is still sliding away, and the pending removal would
+        // then take the NEW message off screen — the upgrade would look like a
+        // toast that never arrived.
+        exiting: false,
       };
       return next;
     }
@@ -45,4 +56,45 @@ export function dismissKeyed<T extends KeyedToast>(
   key: string
 ): T[] {
   return list.filter((t) => t.key !== key);
+}
+
+// Start the exit animation for one toast. The item stays in the list, marked, so
+// (a) the card can switch from its enter class to its exit class and (b) the slot
+// stays occupied for the length of the animation — on a phone, where one toast is
+// visible at a time, that is what makes the next toast arrive AFTER this one has
+// left instead of appearing underneath it mid-slide.
+//
+// Marking an already-exiting toast is a no-op that returns the SAME array, so a
+// double dismissal (the auto-dismiss timer firing on a card the user just closed)
+// does not re-render the stack or restart the animation.
+export function beginExit<T extends KeyedToast>(list: T[], id: number): T[] {
+  const idx = list.findIndex((t) => t.id === id && !t.exiting);
+  if (idx < 0) return list;
+  const next = list.slice();
+  next[idx] = { ...list[idx], exiting: true };
+  return next;
+}
+
+// Remove a toast once its exit animation has run. Deliberately conditional on
+// `exiting`: a keyed replace that arrived during the animation cleared the flag
+// (see upsertToast), and this pending removal must not take the upgrade with it.
+export function dropExited<T extends KeyedToast>(list: T[], id: number): T[] {
+  return list.filter((t) => !(t.id === id && t.exiting));
+}
+
+// The toasts actually on screen (#3373). Below `md` a toast is a full-width bar on
+// the bottom edge, so exactly ONE is shown and the rest wait their turn in list
+// order; from `md` up the corner stack shows them all.
+//
+// The queue is the LIST ITSELF plus this head selection — there is no second
+// structure. That is what keeps the keyed-upsert semantics (#1315) intact for free:
+// a replace still finds its slot wherever it is, upgrades the visible bar in place
+// when it is the head, and edits a waiting toast without promoting it when it is
+// not. And because a toast's countdown lives in the CARD, a queued toast has no
+// mounted card and therefore no running timer — it cannot expire unseen.
+export function visibleToasts<T extends KeyedToast>(
+  list: T[],
+  oneAtATime: boolean
+): T[] {
+  return oneAtATime ? list.slice(0, 1) : list;
 }

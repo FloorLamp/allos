@@ -170,7 +170,7 @@ test.describe("goals can target a lab value (#1853)", () => {
       await expect(groups(listbox)).toHaveCount(0);
 
       await listbox
-        .getByRole("button", { name: LAB_GOAL_OVERDUE, exact: true })
+        .getByRole("option", { name: LAB_GOAL_OVERDUE, exact: true })
         .click();
       await expect(field).toHaveValue(LAB_GOAL_OVERDUE);
 

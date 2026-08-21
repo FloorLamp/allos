@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { comboboxRows, followLink, settledClick } from "./helpers";
 import {
   E2E_LOGIN_VIDEO,
   E2E_MEMBER_PASSWORD,
@@ -122,9 +122,7 @@ async function openMoreDetails(page: Page) {
 // training specs document: an exact typed match collapses the list to one 'Use "…"').
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("button")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

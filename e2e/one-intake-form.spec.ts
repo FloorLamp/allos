@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  comboboxRows,
   expectNoClippedContent,
   hydratedClick,
   settledClick,
@@ -31,8 +32,8 @@ test("changing only the formulation chip adds the children's suspension, in a 39
   await nameField.fill("Ibuprofen");
   // The listbox is PORTALED to <body> (#3271) — resolved from the page, not the
   // panel that owns the field. One list is open at a time, so this is unambiguous.
-  await page
-    .locator('ul[role="listbox"] button', { hasText: "Advil" })
+  await comboboxRows(page)
+    .filter({ hasText: "Advil" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
 
@@ -85,8 +86,8 @@ test("the default path is two taps in the supplement modal, with no editor opene
   // TAP ONE: the pick. It seeds the catalog's dose and food relationship.
   await form.getByLabel("Name").fill("Magnesium Glycinate");
   // Portaled listbox (#3271) — resolved from the page, not the modal.
-  await page
-    .locator('ul[role="listbox"] button', { hasText: "Magnesium Glycinate" })
+  await comboboxRows(page)
+    .filter({ hasText: "Magnesium Glycinate" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
 
@@ -186,8 +187,8 @@ test("the label's proposal is marked suggested, and stops being once the person 
 
   await form.getByLabel("Name").fill("SAMe");
   // Portaled listbox (#3271) — resolved from the page, not the modal.
-  await page
-    .locator('ul[role="listbox"] button', { hasText: "SAMe" })
+  await comboboxRows(page)
+    .filter({ hasText: "SAMe" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
 
@@ -295,8 +296,8 @@ test("focus returns to the rule sentence that was opened, not to the panel's fir
 
   // SAMe's label proposes one rule, so the row starts with a sentence already in it.
   await form.getByLabel("Name").fill("SAMe");
-  await page
-    .locator('ul[role="listbox"] button', { hasText: "SAMe" })
+  await comboboxRows(page)
+    .filter({ hasText: "SAMe" })
     .first() // first-ok: transient combobox list this test just opened
     .click();
   const rules = form.getByTestId("intake-fact-rule");

@@ -139,10 +139,8 @@ The button-shaped navigation controls in the app, and what each one does now:
 | `components/SegmentedControl.tsx` tabs                                                | icon slot (#1956)                                               |
 | `components/TimelineDayNav.tsx` day arrows                                            | icon slot (the chevron)                                         |
 | `components/TimelineDayNav.tsx` day swipe                                             | the same chevron, driven by the component's own `useTransition` |
-| `components/PaginationControls.tsx` link-mode Prev/Next                               | overlay                                                         |
+| `components/PaginationControls.tsx` link-mode Prev/Next (every pager in the app)      | overlay                                                         |
 | `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers      | overlay                                                         |
-| `app/(app)/settings/audit/page.tsx` pager                                             | overlay                                                         |
-| `app/(app)/settings/notify-log/page.tsx` pager                                        | overlay                                                         |
 | `components/ui.tsx` `EmptyState` next-action buttons (#2983)                          | overlay                                                         |
 | `components/StatBox.tsx` linked value (#2983)                                         | overlay                                                         |
 | `app/(app)/training/OverviewSection.tsx` next-workout CTA (#2983)                     | overlay                                                         |
@@ -173,9 +171,13 @@ Every hub in the app renders through it, so adopting the doctrine there is an
 app-wide change to tab behaviour rather than a training one, and it is the
 owner's call rather than a sweep's.
 
-The two settings pagers are a SECOND pager shape beside `PaginationControls`.
-They adopted the primitive rather than being consolidated, because consolidating
-them changes their copy and layout, which is a separate question from this one.
+The two settings pagers are GONE as a separate shape (#3378). They used to be a
+second spelling of "there is more" beside `PaginationControls` — adopting the
+pending primitive but not the pager — and the copy-and-layout change that kept
+them apart was answered when the pager grew its phone shape: `/settings/audit`
+and `/settings/notify-log` now render `PaginationControls`, so its row above
+covers every pager in the app and this list has one pager entry instead of
+three.
 
 ### The raw anchors (#2983)
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PendingTextLink } from "@/components/PendingLink";
+import PaginationControls from "@/components/PaginationControls";
 import { requireAdmin } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { formatTimestamp } from "@/lib/format-date";
@@ -63,6 +63,8 @@ export default async function AuditLogPage(props: {
   const { rows, total } = queryAuditEvents(filters, page, AUDIT_PAGE_SIZE);
   const { logins, profiles, actionDomains } = auditFilterOptions();
   const pages = pageCount(total, AUDIT_PAGE_SIZE);
+  // A ?page= past the end shows the last page's extent rather than a phantom one.
+  const shownPage = Math.min(page, pages);
 
   return (
     <SettingsGroupLayout group="logs" login={login} profile={profile}>
@@ -175,36 +177,27 @@ export default async function AuditLogPage(props: {
         ))}
       </LogTable>
 
-      {/* Pager: server-side LIMIT/OFFSET, so we never ship the whole table. */}
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span data-testid="audit-total">{total} events</span>
-        <div className="flex items-center gap-3">
-          {page > 1 ? (
-            <PendingTextLink
-              href={pageHref(searchParams, page - 1)}
-              label="previous page"
-              className="btn-ghost"
-            >
-              Previous
-            </PendingTextLink>
-          ) : (
-            <span className="opacity-40">Previous</span>
-          )}
-          <span>
-            Page {Math.min(page, pages)} of {pages}
-          </span>
-          {page < pages ? (
-            <PendingTextLink
-              href={pageHref(searchParams, page + 1)}
-              label="next page"
-              className="btn-ghost"
-            >
-              Next
-            </PendingTextLink>
-          ) : (
-            <span className="opacity-40">Next</span>
-          )}
-        </div>
+      {/* Pager: server-side LIMIT/OFFSET, so we never ship the whole table. It is
+          the app's ONE pager (#3378) — this page used to hand-roll a second shape
+          beside it, which cost it the thumb-sized steps below `md` and left three
+          spellings of "there is more" in one app. */}
+      <div className="mt-3">
+        <PaginationControls
+          page={shownPage}
+          pageCount={pages}
+          pageSize={AUDIT_PAGE_SIZE}
+          total={total}
+          visibleCount={rows.length}
+          prevHref={
+            shownPage > 1 ? pageHref(searchParams, shownPage - 1) : null
+          }
+          nextHref={
+            shownPage < pages ? pageHref(searchParams, shownPage + 1) : null
+          }
+          testId="audit-pagination"
+          totalTestId="audit-total"
+          unit="events"
+        />
       </div>
     </SettingsGroupLayout>
   );

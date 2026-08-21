@@ -106,7 +106,7 @@ async function createProbe(page: Page): Promise<string> {
   await page.getByPlaceholder(/What did you do/).fill("Running");
   await page
     .getByRole("listbox")
-    .getByRole("button", { name: "Running", exact: true })
+    .getByRole("option", { name: "Running", exact: true })
     .click();
   await page.getByTestId("cardio-duration").fill("30");
   // The Delete button appears only once the auto-save created the row — a stable

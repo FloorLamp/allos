@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import {
+  comboboxRows,
   dismissToast,
   followLink,
   hydratedClick,
@@ -43,8 +44,8 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await nameInput.fill("Ibuprofen");
   // The listbox is PORTALED to <body> (#3271) — resolved from the page, not the
   // panel that owns the field. One list is open at a time, so this is unambiguous.
-  await page
-    .locator('ul[role="listbox"] button', { hasText: "Advil" })
+  await comboboxRows(page)
+    .filter({ hasText: "Advil" })
     .first() // first-ok: transient combobox list this spec just opened (Advil suggestion); first match is intended
     .click();
   await expect(nameInput).toHaveValue("Ibuprofen");
@@ -59,7 +60,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   // control elsewhere on the page.
   const brandOption = page
     .getByRole("listbox")
-    .getByRole("button", { name: "Generic", exact: true });
+    .getByRole("option", { name: "Generic", exact: true });
   await expect(brandOption).toBeVisible();
   await brandOption.click();
   await expect(brandInput).toHaveValue("Generic");
