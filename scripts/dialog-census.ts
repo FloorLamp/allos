@@ -30,6 +30,7 @@ function facts(entry: DialogEntry): string {
   const bits: string[] = [];
   bits.push(h.portal ? "own portal" : "no portal (inline)");
   if (h.ownFullViewportLayer) bits.push("own fixed inset-0");
+  if (h.scrim) bits.push("own scrim");
   bits.push(h.sharedFocusTrap ? "shared focus trap" : "own focus behaviour");
   if (h.sharedBodyLock) bits.push("shared body lock");
   if (h.sharedOverlayPrimitives) bits.push("shared overlay primitives");
@@ -81,7 +82,15 @@ function main() {
   // a precedent it has not earned. Printing them together is what made "nine
   // hostless dialogs" a number nobody could act on.
   const show = (entry: DialogEntry) => {
-    log(`  ${entry.rel}`);
+    // WHICH SIGNAL FOUND IT, printed because the two are different findings
+    // (#3445). "by ANATOMY" also means the surface tells assistive technology
+    // nothing — it carries no role and no aria-modal — which is a defect beside
+    // the question of where it renders, and it is only visible here.
+    const found =
+      entry.declaredBy === "anatomy"
+        ? "  [found by ANATOMY — declares no role/aria-modal]"
+        : "";
+    log(`  ${entry.rel}${found}`);
     log(`      ${facts(entry)}`);
     const record = HOSTLESS_DIALOGS[entry.rel];
     log(`      ${record?.why ?? "*** NOT RECORDED in HOSTLESS_DIALOGS ***"}`);

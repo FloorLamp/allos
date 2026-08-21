@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
-import { IconX, IconMedal2 } from "@tabler/icons-react";
+import { IconMedal2 } from "@tabler/icons-react";
+import ModalShell from "@/components/ModalShell";
 import {
   strengthLevelLabel,
   strengthLevelColor,
@@ -17,6 +17,33 @@ import StrengthStandards from "./StrengthStandards";
 // the SAME computation that placed the lifter — so the badge can never disagree
 // with the coaching line or benchmark card. A medal icon signals the level (and
 // that it's tappable) in place of an underline.
+//
+// IT RENDERS THROUGH THE SHARED HOST (#3445). It used to hand-roll the whole
+// dialog: its own `createPortal`, its own `fixed inset-0` scrim, its own centred
+// card, its own heading and ✕. That copy carried no `role`, no `aria-modal`, no
+// focus trap, no Escape and no body lock — so it was a dialog a screen reader was
+// never told about, and the page scrolled behind it. It was also INVISIBLE to the
+// dialog census for exactly the same reason it was inaccessible: the census asked
+// whether a file spelled `role="dialog"`, and this one did not. Both halves are
+// answered by rendering the host, which is the default (docs/internals/overlays.md).
+//
+// NOTHING RENDERS THIS BADGE TODAY, and that is worth knowing before you change
+// it. There are two call sites. `components/StrengthExplorer.tsx` is reached only
+// from `app/(app)/training/StrengthSection.tsx`, which nothing imports — the
+// Training hub's tab vocabulary (lib/training-tabs.ts) has no `strength` tab, so
+// that section is unmounted. `components/ExerciseDetailPanel.tsx` is mounted from
+// Analyze, which passes `showLevel={false}` on purpose, because Analyze owns the
+// tier presentation in its Benchmarks card. So the standards reference — this
+// dialog and `components/StrengthStandards.tsx`, whose only consumer is this file
+// — cannot currently be opened in the app. THAT is why no e2e spec drives it, and
+// why the size below has arithmetic behind it rather than a measurement.
+//
+// SIZE, stated so the next reader can finish the decision. The hand-rolled card
+// was `max-w-lg` (32rem). `OverlaySize` declares `sm` (28rem) and `md` (42rem)
+// and nothing at 32rem, so this rounds UP: the reference is a six-column table
+// and cutting columns is the worse failure. Nobody has seen it rendered at either
+// size, because nobody can. If this badge gets a live surface again, look at the
+// table at both widths before trusting `md`.
 export default function LevelBadge({
   level,
   exercise,
@@ -52,43 +79,27 @@ export default function LevelBadge({
         {label}
       </button>
 
-      {open &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-900/40 p-4 sm:p-8 dark:bg-black/70"
-            onClick={() => setOpen(false)}
-          >
-            <div
-              className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl sm:p-5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Strength standards
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close"
-                  title="Close"
-                  className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
-                >
-                  <IconX className="h-5 w-5" />
-                </button>
-              </div>
-              <p className="mb-3 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                What the per-exercise “Level” labels mean.
-              </p>
-              <StrengthStandards
-                highlightLift={exercise}
-                highlightLevel={level}
-                sex={sex}
-                bodyweightKg={bodyweightKg}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
+      {open && (
+        <ModalShell
+          title="Strength standards"
+          onClose={() => setOpen(false)}
+          // The reference is a TABLE, and the hand-rolled card was `max-w-lg`.
+          // `md` (`sm:max-w-2xl`) is the nearest declared size upward; `lg` is
+          // for the multi-column tools and would leave this one mostly gutter.
+          size="md"
+          testId="strength-standards-modal"
+        >
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+            What the per-exercise “Level” labels mean.
+          </p>
+          <StrengthStandards
+            highlightLift={exercise}
+            highlightLevel={level}
+            sex={sex}
+            bodyweightKg={bodyweightKg}
+          />
+        </ModalShell>
+      )}
     </>
   );
 }
