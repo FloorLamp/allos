@@ -779,9 +779,9 @@ describe("overlay motion chokepoint", () => {
     // The benign neighbours. `fixed` alone is a toast, a sticky bar, a FAB;
     // `inset-0` alone is an absolutely-positioned fill inside a card. Neither is
     // an overlay, and there are hundreds of them.
-    expect(isFullViewportOverlay(`<div className="fixed bottom-4 right-4" />`)).toBe(
-      false
-    );
+    expect(
+      isFullViewportOverlay(`<div className="fixed bottom-4 right-4" />`)
+    ).toBe(false);
     expect(
       isFullViewportOverlay(`<div className="absolute inset-0 bg-black/40" />`)
     ).toBe(false);
@@ -823,7 +823,10 @@ describe("overlay motion chokepoint", () => {
       else if (!hostsRawForm(text))
         stale.push(`${rel} (no longer hosts a form)`);
     }
-    for (const [, why] of [...OVERLAY_SURFACES, ...OTHER_FULL_VIEWPORT_OVERLAYS]) {
+    for (const [, why] of [
+      ...OVERLAY_SURFACES,
+      ...OTHER_FULL_VIEWPORT_OVERLAYS,
+    ]) {
       // A justification that says nothing is an allowlist entry nobody can review.
       expect(why.length).toBeGreaterThan(20);
     }

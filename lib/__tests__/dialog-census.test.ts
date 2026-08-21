@@ -155,8 +155,14 @@ describe("dialog census — the register over the real tree", () => {
       "components/PlateBuilderModal.tsx",
       "app/(app)/training/FitnessCheckView.tsx",
     ]) {
-      expect(CENSUS.hosted.map((e) => e.rel), rel).toContain(rel);
-      expect(CENSUS.hostless.map((e) => e.rel), rel).not.toContain(rel);
+      expect(
+        CENSUS.hosted.map((e) => e.rel),
+        rel
+      ).toContain(rel);
+      expect(
+        CENSUS.hostless.map((e) => e.rel),
+        rel
+      ).not.toContain(rel);
     }
   });
 

@@ -538,8 +538,10 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
       row.appendChild(button);
     });
     const story = await overflowStory(content);
-    expect(story, "the probe must NAME the control, not just count pixels")
-      .toContain("e2e-flush-tap-target");
+    expect(
+      story,
+      "the probe must NAME the control, not just count pixels"
+    ).toContain("e2e-flush-tap-target");
     expect(story).toMatch(/region overflows by \d+px/);
     expect(story).toMatch(/reaches \d+px past/);
 
