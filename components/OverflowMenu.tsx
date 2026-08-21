@@ -1,32 +1,42 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
-import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
+import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
 // extracted-observations table. The caller owns the open state (so it can also lift
 // its card's z-index while the menu is open) and passes it in controlled — this
-// component renders the trigger, click-away backdrop, and panel.
+// component renders the trigger and hands its items to the shared host.
 //
-// The panel is portaled to <body> and positioned `fixed` from the trigger's
-// bounding rect, so it's never clipped by an `overflow` ancestor (e.g. a table
-// inside a max-h scroll container). It right-aligns under the trigger, flips
-// above when there isn't room below, and follows scroll/resize while open.
+// WHERE THE ITEMS OPEN IS NOT THIS FILE'S DECISION ANY MORE (#3374).
+// components/overlay/AnchoredPanel.tsx makes it: below `md` these items are a
+// bottom action sheet; from `md` up they are the portaled, trigger-anchored,
+// `position: fixed` popover this file has always rendered — never clipped by an
+// `overflow` ancestor, right-aligned under the kebab, flipping above when there
+// is no room below, following scroll/resize while open.
 //
-// That placement is components/overlay/useAnchoredPopover.ts now (#3271) — this
-// file is where it was first written, and the third caller (the combobox
-// listbox) is what turned two near-copies into one shared hook. The behaviour
-// here is unchanged, including the #2839 layout-shift tracking, which the hook
-// carries because this file taught it.
+// That placement is components/overlay/useAnchoredPopover.ts (#3271) — this file
+// is where it was first written, and the third caller (the combobox listbox) is
+// what turned two near-copies into one shared hook. The behaviour at `md`+ is
+// unchanged, including the #2839 layout-shift tracking, which the hook carries
+// because this file taught it.
+//
+// THE ROWS ANSWER THE TAP FLOOR THE TRIGGER ALREADY HONOURED. `py-1.5` is a 32px
+// row: fine under a mouse, under the 40px minimum (#644) the trigger below spells
+// out in the same file. The floor is met where a finger is actually doing the
+// tapping — 44px below `md`, where the sheet is, and 40px on a coarse pointer at
+// any width above it (a tablet gets the popover and a thumb). A fine pointer from
+// `md` up keeps the compact desktop row. The two `md:` rules are keyed on
+// MUTUALLY EXCLUSIVE pointer media, deliberately: a `md:py-1.5` sitting beside a
+// `md:pointer-coarse:py-2.5` would leave which one wins to stylesheet order.
 export const MENU_ITEM =
-  "block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800";
+  "block w-full px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-2.5 dark:text-slate-200 dark:hover:bg-ink-800";
 export const MENU_ITEM_DANGER =
-  "block w-full px-3 py-1.5 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950";
+  "block w-full px-3 py-3 text-left text-sm text-rose-600 hover:bg-rose-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-2.5 dark:text-rose-400 dark:hover:bg-rose-950";
 
 const MENU_WIDTH = 160; // matches w-40
 
@@ -48,12 +58,12 @@ export interface MenuHelpers {
     message: string
   ) => Promise<void>;
   // The trigger button — the one part of this menu still standing inside the row it
-  // belongs to. The PANEL is portaled to <body>, so a menu item cannot reach its own
-  // row with `closest()`, and cannot reach it through React either (the row is a
-  // Server Component and the callback would have to cross that boundary). A caller
-  // that genuinely needs the row walks up from here; #2654's dismissal slide is the
-  // only one today. Handed over as the REF, not as a getter: `.current` is read when
-  // a menu item acts, which is always an event and never a render. Read-only, and
+  // belongs to. The PANEL is portaled (or hosted in a sheet), so a menu item cannot
+  // reach its own row with `closest()`, and cannot reach it through React either (the
+  // row is a Server Component and the callback would have to cross that boundary). A
+  // caller that genuinely needs the row walks up from here; #2654's dismissal slide is
+  // the only one today. Handed over as the REF, not as a getter: `.current` is read
+  // when a menu item acts, which is always an event and never a render. Read-only, and
   // never a substitute for props — it exists because the portal severed a DOM
   // ancestry that really is there.
   anchorRef: RefObject<HTMLElement | null>;
@@ -75,18 +85,6 @@ export default function OverflowMenu({
   const toast = useToast();
   const confirmOpen = useConfirmOpen();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // `pos` is null until measured; the panel stays hidden until then so it never
-  // paints at a stale position.
-  const { pos, attachPanel } = useAnchoredPopover({
-    open,
-    anchorRef: triggerRef,
-    // Right-aligned under the kebab, which sits at the row's trailing edge.
-    align: "end",
-    fallbackWidth: MENU_WIDTH,
-    // Some menu flows expand into a wider picker while staying open; re-anchor
-    // after that width changes.
-    remeasureKey: panelClassName,
-  });
 
   const close = () => {
     onOpenChange(false);
@@ -126,24 +124,14 @@ export default function OverflowMenu({
   // what made a Server Action form look like it fired no POST at all).
   //
   // The rule belongs here, not at fifteen call sites: this menu is a transient
-  // popover, and it is stale the moment something the user must answer opens over
-  // it. `close()` is called through a ref so the effect keys on the STATE, not on
-  // a callback whose identity changes every render.
+  // surface, and it is stale the moment something the user must answer opens over
+  // it. That holds for the sheet presentation too, which puts its own scrim over
+  // the page. `close()` is called through a ref so the effect keys on the STATE,
+  // not on a callback whose identity changes every render.
   const closeRef = useLatestRef(close);
   useEffect(() => {
     if (open && confirmOpen) closeRef.current();
   }, [open, confirmOpen, closeRef]);
-
-  // Escape closes, matching the click-away backdrop.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   return (
     <div className="shrink-0">
@@ -168,28 +156,27 @@ export default function OverflowMenu({
       >
         <IconDots className="h-4 w-4" />
       </button>
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <>
-            {/* click-away backdrop */}
-            <div className="fixed inset-0 z-40" onClick={close} />
-            <div
-              ref={attachPanel}
-              role="menu"
-              style={{
-                position: "fixed",
-                top: pos?.top ?? 0,
-                left: pos?.left ?? 0,
-                visibility: pos ? "visible" : "hidden",
-              }}
-              className={`z-50 overflow-hidden rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${panelClassName}`}
-            >
-              {children({ close, runAction, anchorRef: triggerRef })}
-            </div>
-          </>,
-          document.body
-        )}
+      <AnchoredPanel
+        open={open}
+        onClose={close}
+        anchorRef={triggerRef}
+        // The trigger's accessible name names the row these actions belong to
+        // ("Medication actions", "Actions for …"), which is exactly the heading
+        // the sheet owes a viewer who can no longer see the row it came from.
+        title={label}
+        role="menu"
+        sheetTestId="overflow-menu-sheet"
+        // Right-aligned under the kebab, which sits at the row's trailing edge.
+        align="end"
+        fallbackWidth={MENU_WIDTH}
+        panelClassName={`py-1 ${panelClassName}`}
+        // Some menu flows expand into a wider picker while staying open; re-anchor
+        // after that width changes. Below `md` the same flow is simply more sheet
+        // content and the width means nothing.
+        remeasureKey={panelClassName}
+      >
+        {() => children({ close, runAction, anchorRef: triggerRef })}
+      </AnchoredPanel>
     </div>
   );
 }

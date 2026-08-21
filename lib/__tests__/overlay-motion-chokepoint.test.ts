@@ -22,6 +22,10 @@ import { describe, expect, it } from "vitest";
 //      a portal dialog that hosts a FORM uses the converged host (#2774).
 //   6. Every `presentation="centered"` call site — the recorded opt-out from the
 //      phone sheet idiom — is registered with its justification (#2774).
+//   7. Every ANCHORED MENU — a `role="menu"` panel positioned out of flow —
+//      opens through components/overlay/AnchoredPanel.tsx, so it forks to a
+//      bottom sheet below `md` instead of being a desktop context menu on a
+//      phone (#3374).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
@@ -77,8 +81,8 @@ const OTHER_PORTAL_OVERLAYS = new Map<string, string>([
     "centred explainer popover over a full-viewport catcher",
   ],
   [
-    "components/OverflowMenu.tsx",
-    "a menu's full-viewport click-catcher — the menu itself is anchored to its trigger, not to a screen edge",
+    "components/overlay/AnchoredPanel.tsx",
+    "the anchored panel's DESKTOP half — a full-viewport click-catcher under a panel anchored to its trigger, not to a screen edge. Below `md` this same file mounts BottomSheet instead (#3374/#3376), so the phone presentation is already a converged surface",
   ],
   [
     "components/ImageCropper.tsx",
@@ -123,6 +127,71 @@ const CENTERED_PRESENTATION = new Map<string, string>([
     "the camera fallback — a live viewfinder the user is aiming, where flick-to-dismiss is a gesture collision rather than an affordance",
   ],
 ]);
+
+// ── Rule 7: the anchored menus, and the one that is deliberately not one ─────
+//
+// #3374 put the popover-or-sheet decision in ONE place. A hand-rolled anchored
+// menu is that decision taken again, silently, for one surface — which is how
+// thirty phone screens came to open a desktop context menu in the first place.
+// The two spellings this repo actually uses are an `absolute`/`fixed` class on
+// the panel and an inline `position: "fixed"` style; both are matched.
+const ANCHORED_MENU_HOME = "components/overlay/AnchoredPanel.tsx";
+const ANCHORED_MENU_EXCEPTIONS = new Map<string, string>([
+  [
+    "components/CompactDateMenu.tsx",
+    "SMALL-MENU ANATOMY (#3374, implementer's call): a phone-only (`sm:hidden`) day switcher of two or three options, inline in a context heading, whose rows are already `min-h-11`. It is the control a viewer taps to GLANCE at another day and tap back; a modal sheet with a scrim, a focus trap and a scroll lock is a heavier answer than the question, and the clip risk the host exists to remove does not arise for a panel that opens at the top of the page beside its own heading. If it ever grows a long day list, it adopts the host.",
+  ],
+]);
+
+// The panel element carrying `role="menu"`, and whether it is positioned out of
+// normal flow — which is what makes a menu ANCHORED rather than inline. Returns
+// the 1-based line of each anchored menu panel found.
+//
+// THE OPENING TAG IS FOUND BY BRACE DEPTH, not by the next `>`. The first
+// attempt stopped at the first `>` after the role attribute and could not see
+// components/CompactDateMenu.tsx at all: its very next attribute is an
+// `onKeyDown={(event) => {` handler, and the arrow's `>` ended the tag twelve
+// lines before the `className` that says `absolute`. A guard that reads half an
+// element reports a clean sweep it never took.
+export function anchoredMenuLines(text: string): number[] {
+  const source = withoutComments(text);
+  const lines: number[] = [];
+  const re = /role=\{?["']menu["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) != null) {
+    const tagStart = source.lastIndexOf("<", m.index);
+    if (tagStart < 0) continue;
+    const opening = openingTag(source, tagStart);
+    const positioned =
+      /className=[^\n]*\b(?:absolute|fixed)\b/.test(opening) ||
+      /position:\s*["']fixed["']/.test(opening) ||
+      /position:\s*["']absolute["']/.test(opening);
+    if (positioned) lines.push(source.slice(0, m.index).split("\n").length);
+  }
+  return lines;
+}
+
+// The text of one JSX opening tag, from its `<` to the `>` that closes it at
+// brace depth zero. Quoted strings are stepped over so an attribute value can
+// contain any of these characters.
+function openingTag(source: string, start: number): string {
+  let depth = 0;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      i += 1;
+      while (i < source.length && source[i] !== ch) {
+        if (source[i] === "\\") i += 1;
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+    else if (ch === ">" && depth === 0) return source.slice(start, i + 1);
+  }
+  return source.slice(start);
+}
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -483,6 +552,92 @@ describe("overlay motion chokepoint", () => {
     }
   });
 
+  it("every anchored menu opens through the shared host", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of FILES) {
+      if (rel === ANCHORED_MENU_HOME) continue;
+      if (ANCHORED_MENU_EXCEPTIONS.has(rel)) continue;
+      for (const line of anchoredMenuLines(text))
+        offenders.push(`${rel}:${line}`);
+    }
+    expect(
+      offenders,
+      'This file positions a `role="menu"` panel itself. Menu presentation is ' +
+        "ONE decision (#3374): components/overlay/AnchoredPanel.tsx opens a menu " +
+        "as a bottom action sheet below `md` and as a trigger-anchored popover " +
+        "above it, so a phone never gets a desktop context menu. Render the items " +
+        "through it — the panel's role, id, testid and key handling are all props " +
+        "— or add the file to ANCHORED_MENU_EXCEPTIONS with the ANATOMY reason it " +
+        "is not one of these menus."
+    ).toEqual([]);
+    // And the register does not outlive its call sites.
+    const stale = [...ANCHORED_MENU_EXCEPTIONS.keys()].filter(
+      (rel) => anchoredMenuLines(byPath.get(rel) ?? "").length === 0
+    );
+    expect(
+      stale,
+      "This surface no longer hand-rolls an anchored menu — drop it from the " +
+        "register rather than leaving the next reader to check."
+    ).toEqual([]);
+    for (const [, why] of ANCHORED_MENU_EXCEPTIONS) {
+      expect(why.length).toBeGreaterThan(20);
+    }
+  });
+
+  // A GREEN SWEEP OVER A COMPLYING TREE SAYS NOTHING ABOUT WHAT THE SWEEP CAN
+  // SEE. These fixtures are written to break the rule above in each spelling the
+  // repo actually uses — and, just as important, to be IGNORED where a menu is
+  // not anchored at all. components/encounters/VisitFactRow.tsx is the live
+  // instance of that second case: a `role="menu"` chip row laid out in normal
+  // flow, which is not a popover and must never be dragged into a sheet.
+  it("the anchored-menu scan can see a hand-rolled menu, in either spelling", () => {
+    const classNameSpelling = `
+      <div role="menu" className="absolute top-full left-0 min-w-44 bg-surface">
+        <button role="menuitem">Edit</button>
+      </div>`;
+    const inlineStyleSpelling = `
+      <div
+        role="menu"
+        style={{ position: "fixed", top: pos.top, left: pos.left }}
+      >
+        <button role="menuitem">Edit</button>
+      </div>`;
+    // The shape that defeated the first version of this scan: an arrow-function
+    // handler between the role and the className, whose `=>` looks like the end
+    // of the opening tag.
+    const handlerBeforeClassName = `
+      <span
+        role="menu"
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") moveFocus(1);
+        }}
+        className="absolute top-full left-0 mt-1 min-w-44 bg-surface"
+      >
+        <button role="menuitem">Yesterday</button>
+      </span>`;
+    expect(anchoredMenuLines(classNameSpelling)).toHaveLength(1);
+    expect(anchoredMenuLines(inlineStyleSpelling)).toHaveLength(1);
+    expect(anchoredMenuLines(handlerBeforeClassName)).toHaveLength(1);
+
+    // Silent on the benign neighbours: an inline chip menu, and PROSE that
+    // merely describes the construct.
+    const inlineFlowMenu = `
+      <span role="menu" aria-label="Add another detail" className="inline-flex flex-wrap gap-1.5">
+        <button role="menuitem">Blood pressure</button>
+      </span>`;
+    const prose = `
+      // A row's role="menu" panel used to sit in an absolute container here.
+      /* role="menu" with className="fixed inset-0" was the old shape. */`;
+    expect(anchoredMenuLines(inlineFlowMenu)).toEqual([]);
+    expect(anchoredMenuLines(prose)).toEqual([]);
+    // And the live inline-flow menu in the tree stays unreported.
+    expect(
+      anchoredMenuLines(
+        byPath.get("components/encounters/VisitFactRow.tsx") ?? ""
+      )
+    ).toEqual([]);
+  });
+
   it("keeps the allowlists honest", () => {
     const stale: string[] = [];
     for (const rel of OTHER_PORTAL_OVERLAYS.keys()) {
@@ -494,6 +649,9 @@ describe("overlay motion chokepoint", () => {
     for (const rel of RAW_DRAG_LISTENER_ALLOW.keys()) {
       const text = byPath.get(rel);
       if (text == null) stale.push(`${rel} (gone from disk)`);
+    }
+    for (const rel of ANCHORED_MENU_EXCEPTIONS.keys()) {
+      if (!byPath.has(rel)) stale.push(`${rel} (gone from disk)`);
     }
     for (const rel of RAW_FORM_PORTAL_ALLOW.keys()) {
       const text = byPath.get(rel);
@@ -519,6 +677,7 @@ describe("overlay motion chokepoint", () => {
     expect(byPath.has(RECOGNIZER_HOME)).toBe(true);
     expect(byPath.has("lib/gesture.ts")).toBe(true);
     expect(byPath.has(`${OVERLAY_MODULE_DIR}index.ts`)).toBe(true);
+    expect(byPath.has(ANCHORED_MENU_HOME)).toBe(true);
     expect(byPath.get(MOTION_HOME)).toMatch(
       /export function overlayMotionClass\b/
     );
