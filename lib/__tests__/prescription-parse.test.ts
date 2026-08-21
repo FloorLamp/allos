@@ -7,6 +7,7 @@ import {
   looksLikeDose,
   looksLikeSig,
 } from "../prescription-parse";
+import { readDoseQuantity, parseQuantity, type DoseUnit } from "../dri";
 
 // The two REAL Epic strings observed on a live medications page (#2939): a
 // pediatric nebulizer sig and a product/formulation string. Both used to be stored
@@ -535,5 +536,199 @@ describe("parsePrescription — full record → structured med", () => {
     });
     expect(p.rxNumber).toBe("A1234567");
     expect(p.prescriber).toContain("Smith");
+  });
+});
+
+// COMMA DECIMALS ON THE MEDICATION IMPORT PATH (#3444).
+//
+// A comma decimal is how most of Europe writes a strength, and it used to arrive here
+// as a DIFFERENT DOSE. The parser's own number pattern could not span a comma, so on
+// "Bisoprolol 2,5 mg" it matched the "2", found a comma where it needed a unit, and the
+// scan restarted one character later — where "5 mg" matched cleanly. The failure was
+// never visible as a failure: `strengthFromName` returned a perfectly ordinary strength
+// that simply belonged to a different prescription, and `persistDocumentImport` stored
+// it beside the honest name it contradicted.
+//
+// EACH ROW STATES THE TRUE STRENGTH, and the assertions are written against THAT rather
+// than against the output, so a row cannot pass by agreeing with a wrong reading. The
+// contract has two halves and both are asserted for every row:
+//
+//   1. the strength text is the label's own, character for character — never a
+//      substring of it that reads as a different number;
+//   2. whatever the dose engines then make of that text is the TRUE value or a
+//      REFUSAL — never a third number.
+//
+// The second half is the one that matters, because it is the only one a wrong answer
+// cannot satisfy. A parser could return "2,5 mg" and the engine could still read 25
+// from it, which is why the reading is pinned here and not only in dri.test.ts.
+describe("comma-decimal strengths (#3444)", () => {
+  const cases: Array<{
+    // The observation name as the document wrote it.
+    name: string;
+    // The strength text the label states, verbatim.
+    strength: string;
+    // What the name reduces to for grouping/dedup once the strength is off it.
+    grouping: string;
+    // The quantity the dose engines may read from that strength: the true value, or
+    // "unreadable" when the separator rule refuses to pick a locale.
+    reads: number | "unreadable";
+    unit?: DoseUnit;
+    // What the pre-#3444 scan stored instead, and the factor it was out by. Not
+    // asserted — it is here so a reader can see what each row is defending against.
+    was: string;
+  }> = [
+    {
+      name: "Bisoprolol 2,5 mg",
+      strength: "2,5 mg",
+      grouping: "Bisoprolol",
+      reads: "unreadable",
+      was: "5 mg — 2x",
+    },
+    {
+      name: "Warfarin 1,25 mg",
+      strength: "1,25 mg",
+      grouping: "Warfarin",
+      reads: "unreadable",
+      was: "25 mg — 20x, on the drug whose whole point is the exact dose",
+    },
+    {
+      name: "Digoxin 0,125 mg",
+      strength: "0,125 mg",
+      grouping: "Digoxin",
+      reads: "unreadable",
+      was: "125 mg — 1000x, on one of the narrowest windows in the formulary",
+    },
+    {
+      name: "Levothyroxine 0,05 mg",
+      strength: "0,05 mg",
+      grouping: "Levothyroxine",
+      reads: "unreadable",
+      was: "05 mg, which reads as 5 — 100x",
+    },
+    {
+      name: "Amlodipin 2,5 mg",
+      strength: "2,5 mg",
+      grouping: "Amlodipin",
+      reads: "unreadable",
+      was: "5 mg — 2x",
+    },
+    // A comma that IS a thousands group reads, and reads CORRECTLY. The old scan gave
+    // this one a confident ZERO (it matched the "000"), which is the #3153 disease
+    // still alive on this path: a metformin dose contributing nothing at all.
+    {
+      name: "Metformin 1,000 mg",
+      strength: "1,000 mg",
+      grouping: "Metformin",
+      reads: 1000,
+      unit: "mg",
+      was: "000 mg, which reads as 0",
+    },
+    // The period twin of the same tablet, unchanged and here so a regression in the
+    // ordinary US spelling is loud.
+    {
+      name: "Bisoprolol 2.5 mg",
+      strength: "2.5 mg",
+      grouping: "Bisoprolol",
+      reads: 2.5,
+      unit: "mg",
+      was: "2.5 mg — this shape was always correct",
+    },
+    // A parenthesized concentration takes the same route through the same grammar, so
+    // it carried the same defect: this stored "5 MG/3ML" for a 2,5 mg/3 mL nebule.
+    {
+      name: "albuterol (2,5 MG/3ML)",
+      strength: "2,5 MG/3ML",
+      grouping: "albuterol",
+      reads: "unreadable",
+      was: "5 MG/3ML — 2x, and the name kept its parenthetical",
+    },
+    // THE NAKED DECIMAL, the same defect reached by dropping a character rather than by
+    // changing one. A scan that may begin after a separator reads "Digoxin .125 mg" as
+    // 125 mg just as surely as it read "0,125" as 125 — and this spelling is the one
+    // ISMP warns about by name, because prescribers write it.
+    {
+      name: "Digoxin .125 mg",
+      strength: ".125 mg",
+      grouping: "Digoxin",
+      reads: "unreadable",
+      was: "125 mg — 1000x, from a missing zero",
+    },
+    {
+      name: "Levothyroxine .05 mg",
+      strength: ".05 mg",
+      grouping: "Levothyroxine",
+      reads: "unreadable",
+      was: "05 mg, which reads as 5 — 100x",
+    },
+    // THE CONTROL FOR THE PREFIX SWAP. `strengthFromName` used to guard its scan with
+    // `\b`; it now uses the lookbehind that `\b` means for a digit-led match. If that
+    // equivalence were wrong, a strength would start being read out of the middle of a
+    // token — so the shape that proves it is a name whose OWN digits precede the
+    // strength.
+    {
+      name: "B12 500 mcg",
+      strength: "500 mcg",
+      grouping: "B12",
+      reads: 500,
+      unit: "mcg",
+      was: "500 mcg — must not become 12",
+    },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name} → strength ${c.strength}, grouping name ${c.grouping} (was ${c.was})`, () => {
+      expect(strengthFromName(c.name)).toBe(c.strength);
+      expect(cleanMedicationName(c.name)).toBe(c.grouping);
+
+      // The whole record, since the import stores what parsePrescription returns.
+      const p = parsePrescription({ name: c.name });
+      expect(p.strength).toBe(c.strength);
+      expect(p.name).toBe(c.grouping);
+
+      // What the totals, the UL warnings and the RDA shares will make of it.
+      const reading = readDoseQuantity(p.strength);
+      if (typeof c.reads === "number") {
+        expect(reading).toEqual({
+          kind: "quantity",
+          value: c.reads,
+          unit: c.unit,
+        });
+      } else {
+        expect(reading.kind).toBe("unreadable");
+        expect(parseQuantity(p.strength)).toBeNull();
+      }
+    });
+  }
+
+  // THE INVARIANT, stated once over the whole corpus and independent of every expected
+  // string above: a stored dose may not state a number the name does not. Written as a
+  // comparison against the row's TRUE value so it cannot be satisfied by agreeing with
+  // the parser — if some future rewrite makes strengthFromName return "25 mg" for
+  // "Warfarin 1,25 mg", this fails whether or not the row above was updated to match.
+  it("no case stores a number the label did not state", () => {
+    const offenders: string[] = [];
+    for (const c of cases) {
+      const reading = readDoseQuantity(strengthFromName(c.name));
+      if (reading.kind !== "quantity") continue;
+      if (typeof c.reads !== "number" || reading.value !== c.reads) {
+        offenders.push(`${c.name} → ${reading.value} ${reading.unit}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  // A comma decimal inside a SIG travels the same grammar, and it reached the dose row
+  // by a second route: parseSig's amount is the fallback when the name carries no
+  // strength. It used to yield nothing at all here (the whole-shape test rejected
+  // "2,5 mg"), which was silent rather than wrong; now it carries the label's text.
+  it("a comma decimal in the sig reaches the dose row verbatim", () => {
+    expect(looksLikeDose("2,5 mg")).toBe(true);
+    const p = parsePrescription({
+      name: "Bisoprolol",
+      value: "Take 2,5 mg by mouth daily",
+    });
+    expect(p.strength).toBe("2,5 mg");
+    expect(p.timesPerDay).toBe(1);
+    expect(readDoseQuantity(p.strength).kind).toBe("unreadable");
   });
 });
