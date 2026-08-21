@@ -38,6 +38,12 @@
           "title": "On a phone: passport tables fit the card, drawer calendar days are tappable, and the Timeline action fits one line",
           "kind": "fix",
           "issues": [3242, 3377, 3403]
+        },
+        {
+          "pr": 3453,
+          "title": "On a phone the ⋯ menu and every date picker open as a sheet you can actually tap, instead of a desktop popover",
+          "kind": "fix",
+          "issues": [3374, 3376]
         }
       ]
     },
