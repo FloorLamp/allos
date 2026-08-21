@@ -1133,8 +1133,8 @@ export const TIME_COLUMNS = {
       column: "pushed_at",
       semantic: "bookkeeping",
       grain: "instant",
-      convention: "mixed",
-      note: "WHEN THE PUSH THAT WROTE THIS ROW HAPPENED, as the payload itself states it (#3424) — never when the reading was taken, which is started_at. Health Connect only; NULL on every other source and on every row written before 20260821-hc-overlap-supersede. It holds the exporter's own `payload.timestamp` where the push carried one, else the furthest-forward `ended_at` in that push, so a byte-identical replay carries the same value as the push it replays and cannot out-rank it. Both shapes are ZONE-QUALIFIED by construction — the writer refuses an offset-less spelling outright, because a delete decision must not move with the server's zone — so unlike started_at/ended_at this column never holds a bare profile-local midnight. The supersede compares it as an instant; nothing else reads it.",
+      convention: "canonical",
+      note: "WHEN THE PUSH THAT WROTE THIS ROW HAPPENED, as the payload itself states it (#3424) — never when the reading was taken, which is started_at. Health Connect only; NULL on every other source and on every row written before 20260821-hc-overlap-supersede. It holds the exporter's own `payload.timestamp` where the push carried one, else the furthest-forward `ended_at` in that push, so a byte-identical replay carries the same value as the push it replays and cannot out-rank it. CANONICAL rather than mixed, unlike its started_at/ended_at neighbours: the writer parses whichever of those two it picked and re-serializes through utcInstant, so a new column is not born holding two shapes. It also refuses an offset-less spelling outright, because a delete decision must not move with the server's zone. The supersede compares it as an instant; nothing else reads it.",
     },
   ],
   milestones: [

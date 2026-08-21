@@ -1,4 +1,4 @@
-import { shiftDateStr } from "./date";
+import { shiftDateStr, utcInstant } from "./date";
 import { isStaleMetricSnapshot } from "./metric-snapshot";
 import { SUB_DAILY_WINDOW_MAX_MIN } from "./integrations/health-connect";
 
@@ -284,21 +284,27 @@ export function pushIsNewer(
  *
  * Null when the push states nothing readable either way — and then nothing is
  * superseded at all.
+ *
+ * RETURNED CANONICAL (`utcInstant`), never in the spelling it arrived in. `pushed_at`
+ * is a brand-new column and there is no reason for it to be born `mixed`: an exporter
+ * `timestamp` may carry milliseconds and an `ended_at` may not, and a column that holds
+ * both needs a note explaining itself forever. The cost is second resolution — two
+ * pushes inside ONE second compare equal, so the later one supersedes nothing and the
+ * double count waits for the push after it. That is the safe direction, and the
+ * exporter pushes minutes apart.
  */
 export function pushStampFor(
   stated: string | null | undefined,
   rows: readonly { ended_at: string }[]
 ): string | null {
-  if (instantMs(stated) !== null) return stated as string;
-  let best: string | null = null;
+  const statedMs = instantMs(stated);
+  if (statedMs !== null) return utcInstant(new Date(statedMs));
   let bestMs = -Infinity;
   for (const row of rows) {
     const ms = instantMs(row.ended_at);
-    if (ms === null || ms <= bestMs) continue;
-    bestMs = ms;
-    best = row.ended_at;
+    if (ms !== null && ms > bestMs) bestMs = ms;
   }
-  return best;
+  return bestMs === -Infinity ? null : utcInstant(new Date(bestMs));
 }
 
 /**

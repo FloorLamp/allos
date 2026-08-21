@@ -320,6 +320,21 @@ describe("pushStampFor — one stamp per push, stable across a replay", () => {
     expect(pushStampFor(null, rows)).toBe(pushStampFor(null, [...rows]));
   });
 
+  it("returns a CANONICAL instant whatever spelling it was handed", () => {
+    // MUTATION: return the raw string and `metric_samples.pushed_at` is born `mixed`,
+    // which lib/__tests__/time-columns.test.ts freezes against — a new column has no
+    // excuse for holding two shapes. Second resolution is the accepted cost.
+    expect(pushStampFor("2026-05-03T00:00:00.123Z", [])).toBe(
+      "2026-05-03T00:00:00Z"
+    );
+    expect(pushStampFor("2026-05-03T09:00:00+09:00", [])).toBe(
+      "2026-05-03T00:00:00Z"
+    );
+    expect(pushStampFor(null, [{ ended_at: "2026-05-02T01:00:00.500Z" }])).toBe(
+      "2026-05-02T01:00:00Z"
+    );
+  });
+
   it("is null when nothing in the push is readable", () => {
     expect(pushStampFor(null, [])).toBe(null);
     expect(pushStampFor(null, [{ ended_at: "2026-05-01T10:00:00" }])).toBe(
