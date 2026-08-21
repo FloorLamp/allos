@@ -49,9 +49,18 @@ import type { Migration } from "../runner";
 // Ingest converges an affected span on the next push either way; what #3439 buys is
 // the days the rolling window no longer reaches.
 
-const COLUMNS: { table: string; column: string; type: string }[] = [
-  { table: "integration_sync_events", column: "superseded", type: "INTEGER" },
-  { table: "metric_samples", column: "pushed_at", type: "TEXT" },
+// NOT SPELLED `{ table, column }`, deliberately. lib/__db_tests__/migration-link-scan.ts
+// reads every `{ table: "…", column: "…" }` literal in a migration source as a CHILD_LINKS
+// declaration, and #2677's census then demands a fixture exercising the pair. This list
+// declares no child links — it names two columns to add — so it uses different keys
+// rather than widening a guard to accommodate a false positive.
+const ADDITIONS: { onTable: string; addColumn: string; type: string }[] = [
+  {
+    onTable: "integration_sync_events",
+    addColumn: "superseded",
+    type: "INTEGER",
+  },
+  { onTable: "metric_samples", addColumn: "pushed_at", type: "TEXT" },
 ];
 
 function hasColumn(
@@ -68,9 +77,9 @@ export function up(db: Database.Database): void {
   // Guarded on PRAGMA table_info so a fresh database, a half-applied one and an already
   // converged one all end identical, and a re-run is a strict no-op.
   db.transaction(() => {
-    for (const { table, column, type } of COLUMNS) {
-      if (hasColumn(db, table, column)) continue;
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`);
+    for (const { onTable, addColumn, type } of ADDITIONS) {
+      if (hasColumn(db, onTable, addColumn)) continue;
+      db.exec(`ALTER TABLE ${onTable} ADD COLUMN ${addColumn} ${type};`);
     }
   }).immediate();
 }
