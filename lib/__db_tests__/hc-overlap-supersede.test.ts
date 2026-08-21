@@ -494,6 +494,48 @@ describe("what the rule must NEVER delete", () => {
     ]);
   });
 
+  it("lets a DELAYED STALE RETRY delete nothing — it carries the old anchoring", () => {
+    // The one shape where this guard is reachable: a store that has NOT converged yet.
+    // Once ingest has run the group is pairwise disjoint, a stale retry's window is a
+    // strict PREFIX of its own stored twin's, and the only stored row it could overlap
+    // is that twin — which the candidate SELECT already excludes. But an
+    // ALREADY-CORRUPTED profile (the prod shape, before the repair migration or the
+    // first re-anchored push) holds both anchorings at once, and there a retry of the
+    // OLD snapshot overlaps the NEW anchoring's row.
+    const p = freshProfile("STALE-RETRY");
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
+       VALUES (?, ?, ?, 'steps', '2026-08-20', ?, ?, ?)`
+    ).run(p, HC, ORIGIN, "2026-08-20T04:00:00Z", "2026-08-20T20:00:00Z", 11609);
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
+       VALUES (?, ?, ?, 'steps', '2026-08-20', ?, ?, ?)`
+    ).run(p, HC, ORIGIN, "2026-08-20T07:00:00Z", "2026-08-20T21:00:00Z", 11721);
+
+    // A push that got queued BEFORE the switch and only arrives now: the New York
+    // snapshot, ending EARLIER than the row already stored under its own key.
+    const counts = upsertMetricSamples(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-08-20",
+          "2026-08-20T04:00:00Z",
+          "2026-08-20T18:00:00Z",
+          9000
+        ),
+      ],
+      HC
+    );
+    // MUTATION: drop `!staleRetry` from the supersede condition and the Los Angeles
+    // row — the CURRENT anchoring — is deleted by a snapshot the source has already
+    // moved past, while the stale value is not even written in its place.
+    expect(counts.superseded).toBe(0);
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([11609, 11721]);
+  });
+
   it("writes NO tombstone for a superseded row — the delete is sync-internal", () => {
     // The #608 precedent. A tombstone here would block the exporter from ever
     // re-sending that span under its current anchoring.

@@ -126,9 +126,30 @@ describe("foldCounts", () => {
   it("sums each field across parts", () => {
     expect(
       foldCounts([
-        { inserted: 3, updated: 1, unchanged: 5, suppressed: 1, edited: 2, superseded: 0 },
-        { inserted: 0, updated: 2, unchanged: 4, suppressed: 0, edited: 0, superseded: 0 },
-        { inserted: 1, updated: 0, unchanged: 0, suppressed: 2, edited: 1, superseded: 0 },
+        {
+          inserted: 3,
+          updated: 1,
+          unchanged: 5,
+          suppressed: 1,
+          edited: 2,
+          superseded: 0,
+        },
+        {
+          inserted: 0,
+          updated: 2,
+          unchanged: 4,
+          suppressed: 0,
+          edited: 0,
+          superseded: 0,
+        },
+        {
+          inserted: 1,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 2,
+          edited: 1,
+          superseded: 0,
+        },
       ])
     ).toEqual({
       inserted: 4,
@@ -145,7 +166,14 @@ describe("summarizeSplit", () => {
   it("derives received as inserted + updated + unchanged + suppressed + edited + skipped", () => {
     expect(
       summarizeSplit(
-        { inserted: 3, updated: 2, unchanged: 5, suppressed: 1, edited: 2, superseded: 0 },
+        {
+          inserted: 3,
+          updated: 2,
+          unchanged: 5,
+          suppressed: 1,
+          edited: 2,
+          superseded: 0,
+        },
         4
       )
     ).toEqual({
@@ -160,10 +188,37 @@ describe("summarizeSplit", () => {
     });
   });
 
+  it("leaves `superseded` OUT of received — it is a stored row we deleted (#3424)", () => {
+    // Every other segment classifies a row THE SOURCE HANDED US; a superseded row is
+    // one we removed from our own store, so folding it in would report a payload
+    // bigger than the sender can count. This is the one case with superseded > 0 —
+    // with it at 0 the sum is the same either way and nothing here can tell.
+    const split = summarizeSplit(
+      {
+        inserted: 1,
+        updated: 0,
+        unchanged: 0,
+        suppressed: 0,
+        edited: 0,
+        superseded: 4,
+      },
+      0
+    );
+    expect(split.superseded).toBe(4);
+    expect(split.received).toBe(1);
+  });
+
   it("handles an all-unchanged batch (received still counts the unchanged rows)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 6, suppressed: 0, edited: 0, superseded: 0 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 6,
+          suppressed: 0,
+          edited: 0,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({
@@ -181,7 +236,14 @@ describe("summarizeSplit", () => {
   it("counts tombstone-suppressed rows in received (no silent cap)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 0, suppressed: 2, edited: 0, superseded: 0 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 2,
+          edited: 0,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({
@@ -199,7 +261,14 @@ describe("summarizeSplit", () => {
   it("counts edit-locked skips in received (no silent cap, #659)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 3, superseded: 0 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 0,
+          edited: 3,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({

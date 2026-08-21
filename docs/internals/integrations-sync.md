@@ -800,6 +800,21 @@ order (ingest order is anchoring order: the old zone's rows were inserted before
 switch), which is what returns an already-corrupted profile's past trips to sane day
 totals with no reader change.
 
+**No origin legitimately emits an overlapping same-metric window**, which is the
+premise the whole rule rests on and is checked two ways (#3424, mirroring #1101's
+step 4). From the parser: the additive `daily` families arrive as the exporter's
+AGGREGATION buckets, and Health Connect's aggregate-by-period/duration partitions a
+span — its buckets tile rather than nest, at `daily` and at every sub-daily setting;
+sleep stages inside a session are sequential and each stage bucket is its OWN metric
+(`sleep_deep_min`, `sleep_rem_min`, …), so two rows of one metric never nest;
+everything else `parseHealthConnectPayload` routes to `metric_samples` is a POINT
+reading the rule excludes outright. Empirically: `npm run census:hc-overlaps`
+re-parses every captured exporter payload with the shipped parser and reports every
+same-`(metric, origin)` overlap it finds, within one push and across the whole
+capture. Measured 2026-08-21 over 45 captures — 208 samples, 173 of them intervals
+the rule could act on — it found **none**. Re-run it when the parser gains a record
+type.
+
 **A stored sleep session is an ABSOLUTE INSTANT (#2096).** `started_at` is both
 the natural upsert key and the value every read path hands to `new Date()`, and
 ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary

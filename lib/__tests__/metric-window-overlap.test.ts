@@ -161,7 +161,9 @@ describe("planSupersede — what an incoming window does to the store", () => {
       ended_at: "2026-08-20T15:00:00Z",
     };
     expect(
-      planSupersede(completedReanchored, [stillFilling]).supersede.map((r) => r.id)
+      planSupersede(completedReanchored, [stillFilling]).supersede.map(
+        (r) => r.id
+      )
     ).toEqual([4]);
   });
 
@@ -227,6 +229,38 @@ describe("staleBatchOverlaps — the mixed-anchoring pair inside ONE push", () =
     expect([...staleBatchOverlaps([honolulu, tokyo])]).toEqual([tokyo]);
   });
 
+  // EASTWARD, where freshness and batch order DISAGREE — and the only shape that can
+  // tell the two rules apart. Westward the re-anchored bucket starts EARLIER, so
+  // "keep the earliest start" happens to keep the right one and a mutation from
+  // freshness to start order stays green on the pair above. Flying NY -> Tokyo the
+  // re-anchored bucket starts LATER: Tokyo midnight is 15:00Z the day before, and the
+  // stale New York bucket it overlaps is a COMPLETED day that ends at NY midnight
+  // while the Tokyo one is still filling to the push moment.
+  const newYorkCompleted = {
+    metric: "steps",
+    origin: "com.fitbit.FitbitMobile",
+    started_at: "2026-08-20T04:00:00Z",
+    ended_at: "2026-08-21T04:00:00Z",
+  };
+  const tokyoFilling = {
+    metric: "steps",
+    origin: "com.fitbit.FitbitMobile",
+    started_at: "2026-08-20T15:00:00Z",
+    ended_at: "2026-08-21T06:00:00Z",
+  };
+
+  it("keeps the STILL-FILLING re-anchored bucket when it starts LATER (eastward)", () => {
+    // MUTATION: rank by started_at instead of freshness and this keeps the New York
+    // row — the old anchoring — while dropping the bucket the exporter is still
+    // filling. Both batch orders, because a wrong rule is wrong from either end.
+    expect([...staleBatchOverlaps([newYorkCompleted, tokyoFilling])]).toEqual([
+      newYorkCompleted,
+    ]);
+    expect([...staleBatchOverlaps([tokyoFilling, newYorkCompleted])]).toEqual([
+      newYorkCompleted,
+    ]);
+  });
+
   it("keeps every row of an ordinary single-anchoring push", () => {
     const disjoint = Array.from({ length: 24 }, (_, h) => ({
       metric: "steps",
@@ -250,7 +284,16 @@ describe("staleBatchOverlaps — the mixed-anchoring pair inside ONE push", () =
       started_at: "2026-05-01T18:00:00Z",
       ended_at: "2026-05-01T18:00:00Z",
     };
-    expect(staleBatchOverlaps([point, { ...point, started_at: "2026-05-01T19:00:00Z", ended_at: "2026-05-01T19:00:00Z" }]).size).toBe(0);
+    expect(
+      staleBatchOverlaps([
+        point,
+        {
+          ...point,
+          started_at: "2026-05-01T19:00:00Z",
+          ended_at: "2026-05-01T19:00:00Z",
+        },
+      ]).size
+    ).toBe(0);
   });
 });
 
@@ -286,17 +329,27 @@ describe("compareWindowStarts", () => {
   });
 
   it("returns 0 for equal starts so the sort stays stable", () => {
-    expect(compareWindowStarts("2026-05-01T10:00:00Z", "2026-05-01T10:00:00Z")).toBe(
-      0
-    );
+    expect(
+      compareWindowStarts("2026-05-01T10:00:00Z", "2026-05-01T10:00:00Z")
+    ).toBe(0);
   });
 });
 
 describe("planOverlapSupersede — the migration's replay", () => {
   // The prod shape (#3424's table): a New-York-anchored bucket and the
   // Los-Angeles-anchored one that re-cut the same day, both summing into 08-20.
-  const NY = win(1, "2026-08-20", "2026-08-20T04:00:00Z", "2026-08-21T02:11:00Z");
-  const LA = win(2, "2026-08-20", "2026-08-20T07:00:00Z", "2026-08-21T03:05:00Z");
+  const NY = win(
+    1,
+    "2026-08-20",
+    "2026-08-20T04:00:00Z",
+    "2026-08-21T02:11:00Z"
+  );
+  const LA = win(
+    2,
+    "2026-08-20",
+    "2026-08-20T07:00:00Z",
+    "2026-08-21T03:05:00Z"
+  );
 
   it("collapses a mixed-anchoring pileup to the current anchoring", () => {
     expect(planOverlapSupersede([NY, LA])).toEqual([1]);
@@ -352,8 +405,18 @@ describe("planOverlapSupersede — the migration's replay", () => {
   });
 
   it("leaves POINT readings entirely alone, whatever they sit inside", () => {
-    const hrv = win(2, "2026-08-20", "2026-08-20T09:00:00Z", "2026-08-20T09:00:00Z");
-    const bucket = win(3, "2026-08-20", "2026-08-20T07:00:00Z", "2026-08-21T03:05:00Z");
+    const hrv = win(
+      2,
+      "2026-08-20",
+      "2026-08-20T09:00:00Z",
+      "2026-08-20T09:00:00Z"
+    );
+    const bucket = win(
+      3,
+      "2026-08-20",
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T03:05:00Z"
+    );
     expect(planOverlapSupersede([NY, hrv, bucket])).toEqual([1]);
   });
 
@@ -361,8 +424,18 @@ describe("planOverlapSupersede — the migration's replay", () => {
     // A week-long window overlapping a bucket seven days away is outside the scan
     // bound, so nothing is deleted. Stated as a test because it is the rule's
     // deliberate blind spot, not an accident — it fails toward KEEPING rows.
-    const long = win(1, "2026-08-13", "2026-08-13T00:00:00Z", "2026-08-21T00:00:00Z");
-    const far = win(2, "2026-08-20", "2026-08-20T00:00:00Z", "2026-08-21T00:00:00Z");
+    const long = win(
+      1,
+      "2026-08-13",
+      "2026-08-13T00:00:00Z",
+      "2026-08-21T00:00:00Z"
+    );
+    const far = win(
+      2,
+      "2026-08-20",
+      "2026-08-20T00:00:00Z",
+      "2026-08-21T00:00:00Z"
+    );
     expect(planOverlapSupersede([long, far])).toEqual([]);
   });
 });
@@ -370,7 +443,9 @@ describe("planOverlapSupersede — the migration's replay", () => {
 describe("overlapGroupKey", () => {
   it("separates metrics and origins, and treats a null origin as one identity", () => {
     const base = { profile_id: 1, metric: "steps", origin: null };
-    expect(overlapGroupKey(base)).toBe(overlapGroupKey({ ...base, origin: null }));
+    expect(overlapGroupKey(base)).toBe(
+      overlapGroupKey({ ...base, origin: null })
+    );
     expect(overlapGroupKey(base)).not.toBe(
       overlapGroupKey({ ...base, metric: "distance_km" })
     );
