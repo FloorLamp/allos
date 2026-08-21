@@ -43,10 +43,20 @@ import {
 //
 // 2. THE HIT AREA IS 44px WIDE AND THE VISUAL IS ~6px. Decoupled deliberately — the
 //    platform touch-target floor against a hairline that must not become chrome. The
-//    consequence is that the strip sits over 44px of the feed's own right edge, which
-//    would swallow taps on the event cards underneath, so the FEED gives up a gutter
-//    of exactly that width whenever the rail renders (see page.tsx). The rail owns the
-//    gutter; it does not squat on the content.
+//    consequence is that the strip sits over the right edge of everything in that
+//    column and would swallow taps on the links underneath, so EVERY SURFACE IT
+//    OVERLAPS gives up a gutter whenever the rail renders (see page.tsx). There are
+//    THREE of them — the PAGE HEADER, the filter block and the feed. The header was
+//    missed for a long time and cost "Year in review" its right half (#3403).
+//
+//    WHAT THEY GIVE UP IS THE RAIL'S INTRUSION, NOT ITS WIDTH. The strip is fixed to
+//    the VIEWPORT, so the content column's own 16px right margin already sits between
+//    the column and the rail: the reservation is 44 − 16 = 28px, and it is ONE token
+//    (`SCRUBBER_GUTTER_CLASS` in lib/timeline-scrubber.ts) rather than a literal per
+//    surface, so a fourth surface in this column cannot quietly reserve nothing.
+//    Reserving the raw 44 counted the page margin twice and left a 16px band of
+//    nothing down the right of the whole feed. The rail owns the gutter; it does not
+//    squat on the content.
 //
 //    THE YEAR DIGITS LIVE INSIDE THAT SAME 44px. The hit area did not grow an inch to
 //    fit them, which is what forces the two other decisions here: 10px type (the
@@ -275,10 +285,12 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         // scrub into a native page scroll before a pointermove ever arrives. The strip
         // starts below the sticky filter block and runs to just above the mobile dock,
         // and it deliberately sits ABOVE everything in that column — which is only
-        // safe because the two surfaces it overlaps (the filter block and the feed)
-        // both give up a gutter of exactly this width. Losing the stacking contest
-        // instead would leave the rail with a dead zone at the top of the page, which
-        // is the half-measure this replaced.
+        // safe because ALL THREE surfaces it overlaps (the page header, the filter
+        // block and the feed) give up a gutter of exactly its intrusion into the
+        // content column. It said TWO until #3403, and the header — the surface the
+        // sentence forgot — was the one whose link lost its right half. Losing the
+        // stacking contest instead would leave the rail with a dead zone at the top of
+        // the page, which is the half-measure this replaced.
         className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-0 top-20 z-20 w-11 touch-none select-none outline-none focus-visible:bg-brand-500/5 md:bottom-8 md:top-44 print:hidden"
         onPointerDown={(event) => {
           if (fractionsRef.current.length === 0) return;

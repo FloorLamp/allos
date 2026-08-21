@@ -53,6 +53,12 @@ test.describe("Public passport share links (#391)", () => {
     ).toHaveCount(0);
     // The share-only watermark marks it a read-only copy.
     await expect(anon.getByText(/Shared read-only copy/i)).toBeVisible();
+    // The shared render has EXACTLY ONE h1, and it is the person's name (#3242).
+    // <ProfilePassport> is the whole page here — there is no app chrome and no
+    // PageHeader above it — which is why the name keeps page scale on this surface
+    // and drops to a section-scale h2 inside the app, where a real page h1 exists.
+    // The document outline of the anonymous surface must survive that split.
+    await expect(anon.getByRole("heading", { level: 1 })).toHaveCount(1);
     // No app chrome on this logged-out surface: no primary nav, no profile menu.
     await expect(anon.getByRole("link", { name: "Data" })).toHaveCount(0);
     await expect(anon.getByTestId("profile-identity-bar")).toHaveCount(0);
