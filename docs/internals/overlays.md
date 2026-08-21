@@ -410,6 +410,17 @@ is never the only way to do anything.
    WHOLE opening tag by brace depth rather than stopping at the next `>`: its
    first version stopped at an `onKeyDown={(event) => {` arrow and could not see
    `CompactDateMenu` at all, which is a green sweep that was never taken.
+9. a consumer hands the host an `onClose` that does nothing (#3405 review). The
+   host draws a real ✕, so a no-op handler makes it a control that lies — it
+   takes the tap and ignores it, often two pixels from a Cancel button that is
+   honestly `disabled`. A surface that must refuse dismissal for a moment (a
+   write already in flight, which closing would not cancel) passes
+   **`closeDisabled`**, which greys the control out and leaves Escape and the
+   gestures on the consumer's own guard. The scan resolves the handler through
+   its LOCAL BINDINGS rather than reading the attribute: the instance that
+   produced this rule was spelled `const close = busy ? noop : onCancel` with
+   `onClose={close}`, and a version of the scan that read the attribute text was
+   green against it.
 
 `lib/__tests__/scroll-lock.test.ts` pins the other half of #2774: the body-scroll
 lock is reference-counted, so a dialog opened over an open sheet leaves the page

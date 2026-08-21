@@ -375,6 +375,20 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
 // rule that creates the overflow does not apply, and the same assertions pass
 // while looking at a different box.
 //
+// TEN BODIES, AND TEN IS A CHOICE RATHER THAN WHERE THE WRITER STOPPED. The nine
+// quick-entry forms plus the add-visit record dialog: one host with the app's
+// widest spread of unrelated CONTENT mounted into one `data-sheet-content`, plus a
+// second host reached from a real route. That is the population this defect draws
+// from — bodies made largely of compact controls — and all ten share proven
+// openers, so the guard costs one page load each and cannot rot into a maintenance
+// tax nobody pays.
+//
+// Roughly thirty other ModalShell consumers are reachable in e2e and are NOT here.
+// Each needs a bespoke opener, which is the cost that turns a guard into a chore,
+// and a full sweep would want its own spec file — which re-partitions all twelve
+// shards (below). If a body outside these ten is found overflowing, the answer is
+// to add THAT body here, not to conclude the guard was wrong to stop.
+//
 // NO NEW SPEC FILE, deliberately. Adding one re-partitions all twelve
 // duration-balanced shards and changes which neighbours every other spec runs
 // beside (#3388). These belong beside the probe they use.

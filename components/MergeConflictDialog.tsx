@@ -103,8 +103,6 @@ function OptionButton({
   );
 }
 
-function noop() {}
-
 export default function MergeConflictDialog({
   conflicts,
   members,
@@ -166,14 +164,23 @@ export default function MergeConflictDialog({
   // e2e). The host owning the portal is what keeps that fixed for free.
   // A merge in flight REFUSES dismissal, exactly as the hand-rolled scrim did
   // (`onClick={busy ? undefined : onCancel}`): the write is already on its way and
-  // cancelling the dialog would not cancel it. Every visible dismissal affordance
-  // agrees — Cancel is `disabled`, and Close/Escape/scrim land here.
-  const close = busy ? noop : onCancel;
+  // cancelling the dialog would not cancel it.
+  //
+  // EVERY VISIBLE AFFORDANCE SAYS SO, which is why `closeDisabled` exists rather
+  // than a no-op `onClose`. The first version of this convergence routed Close at
+  // a no-op while `busy`, so the host drew a ✕ that looked live, took the tap and
+  // did nothing — two pixels from a Cancel button that was honestly `disabled`.
+  // The behaviour was right and the surface lied about it. Now the ✕ greys out
+  // beside Cancel, and Escape and the scrim land on the same guard below.
+  const close = () => {
+    if (!busy) onCancel();
+  };
 
   return (
     <ModalShell
       title="These records disagree"
       onClose={close}
+      closeDisabled={busy}
       size="sm"
       testId="merge-conflict-dialog"
     >

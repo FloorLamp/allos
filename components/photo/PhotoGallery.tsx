@@ -90,12 +90,17 @@ export default function PhotoGallery({
   // for looking at a photograph, and the sheet's swipe-down dismissal would
   // arbitrate against the horizontal paging the viewer reaches for first.
   //
-  // The exception is about PRESENTATION only. Everything a modal owes a keyboard
-  // user comes from the shared hook: initial focus, the Tab trap, capture-phase
-  // Escape and focus restored to the thumbnail that opened it. It used to answer
-  // Escape on the panel's own `onKeyDown`, which fires only once focus is already
-  // inside — and nothing put it there, so Escape did nothing at all unless the
-  // viewer happened to Tab first.
+  // AN EXCEPTION FROM THE HOST IS NOT AN EXCEPTION FROM BEING USABLE. A recorded
+  // exception is about PRESENTATION; it never buys a surface out of the
+  // accessibility floor. So everything a modal owes a keyboard user still comes
+  // from the shared hook: initial focus, the Tab trap, capture-phase Escape and
+  // focus restored to the thumbnail that opened it.
+  //
+  // That is not a tidy-up. This used to answer Escape on the panel's own
+  // `onKeyDown`, which fires only once focus is already inside — and nothing put
+  // it there, so Escape did nothing at all unless the viewer happened to Tab
+  // first. The hand-rolled presentation had quietly taken the keyboard exit with
+  // it, which is exactly what an exception must not be allowed to do.
   const lightboxRef = useRef<HTMLDivElement>(null);
   const closeLightbox = useCallback(() => setLightbox(null), [setLightbox]);
   useFocusTrap({

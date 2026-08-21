@@ -27,6 +27,9 @@ import { describe, expect, it } from "vitest";
 //      opens through components/overlay/AnchoredPanel.tsx, so it forks to a
 //      bottom sheet below `md` instead of being a desktop context menu on a
 //      phone (#3374).
+//   8. No consumer hands the host a NO-OP `onClose`. The host draws a real ✕; a
+//      handler that does nothing makes it a control that lies. Pass
+//      `closeDisabled` instead (#3405 review).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
@@ -292,6 +295,78 @@ function uncontainedScrollerLines(text: string): number[] {
       if (/\boverscroll-contain\b/.test(code)) return;
       lines.push(i + 1);
     });
+  return lines;
+}
+
+// The 1-based lines where a dialog host is handed an `onClose` that does nothing.
+//
+// THE OPENING TAG IS READ BY BRACE DEPTH, the same way anchoredMenuLines reads
+// one, and for the same reason: an `onKeyDown={(e) => {` between the element name
+// and `onClose` ends the tag at its arrow if you stop at the next `>`, and the
+// scan then reports a clean sweep it never took.
+//
+// AND THE HANDLER IS RESOLVED THROUGH ITS LOCAL BINDINGS, which is the part the
+// first version of this scan got wrong and only a mutation test caught. It matched
+// the attribute VALUE — an inline `() => {}`, or the literal name `noop` — and the
+// real regression was spelled neither way. What #3405's review actually found was
+//
+//     const close = busy ? noop : onCancel;
+//     …
+//     <ModalShell onClose={close} …>
+//
+// where the attribute reads `close` and says nothing at all. Restoring that exact
+// shape left the guard GREEN, which is the "encode the issue's spelling rather than
+// the repo's" failure in its purest form: a rule that cannot see the one instance
+// it was written for. So a no-op-ness set is seeded from the empty functions the
+// file declares and then propagated through the bindings that reference them, to a
+// fixpoint; the attribute is checked against that set.
+export function noOpCloseLines(text: string): number[] {
+  const source = withoutComments(text);
+
+  const EMPTY_BODY = String.raw`\(\s*\)\s*=>\s*(?:\{\s*\}|undefined\b)`;
+  const noOpNames = new Set<string>();
+  // Seed: a function or arrow whose body does nothing.
+  for (const m of source.matchAll(
+    /\bfunction\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{\s*\}/g
+  ))
+    noOpNames.add(m[1]);
+  for (const m of source.matchAll(
+    new RegExp(
+      String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${EMPTY_BODY}`,
+      "g"
+    )
+  ))
+    noOpNames.add(m[1]);
+
+  // Propagate: `const close = busy ? noop : onCancel` is a handler that MAY do
+  // nothing, and "may" is the whole defect — the branch that does nothing is the
+  // one the ✕ is live during. Two passes reach every chain this repo writes; a
+  // third would only chase a rename of a rename.
+  const bindings = [
+    ...source.matchAll(
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]*(?:\n[^;\n]*)*?);/g
+    ),
+  ];
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const [, name, expr] of bindings) {
+      if (noOpNames.has(name)) continue;
+      if ([...noOpNames].some((n) => new RegExp(`\\b${n}\\b`).test(expr)))
+        noOpNames.add(name);
+    }
+  }
+
+  const lines: number[] = [];
+  const re = /<(?:ModalShell|BottomSheet)\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) != null) {
+    const opening = openingTag(source, m.index);
+    const attr = /onClose=\{([\s\S]*?)\}\s*(?:[a-zA-Z-]+=|\/?>)/.exec(opening);
+    const value = attr?.[1] ?? "";
+    const empty =
+      new RegExp(EMPTY_BODY).test(value) ||
+      [...noOpNames].some((n) => new RegExp(`\\b${n}\\b`).test(value));
+    if (empty) lines.push(source.slice(0, m.index).split("\n").length);
+  }
   return lines;
 }
 
@@ -693,6 +768,110 @@ describe("overlay motion chokepoint", () => {
       anchoredMenuLines(
         byPath.get("components/encounters/VisitFactRow.tsx") ?? ""
       )
+    ).toEqual([]);
+  });
+
+  // RULE 8: A DISMISSAL CONTROL DOES NOT LIE (#3405 review).
+  //
+  // The host draws a real ✕ whenever `showClose` is on, and every ModalShell
+  // consumer gets one. A consumer that wants to REFUSE dismissal for a moment —
+  // a write already in flight, which closing would not cancel — reaches for the
+  // cheapest thing that expresses it, which is a `onClose` that does nothing. The
+  // behaviour is then right and the SURFACE LIES: the ✕ still looks live, still
+  // takes the tap, and nothing happens, two pixels from a Cancel button that is
+  // honestly `disabled`.
+  //
+  // This is not hypothetical and it is not somebody else's mistake. #3405's own
+  // convergence of components/MergeConflictDialog.tsx introduced exactly this, and
+  // it survived until review: `onClose={busy ? noop : onCancel}`. The answer is
+  // `closeDisabled`, which greys the control out and leaves Escape and the
+  // gestures on the consumer's own guard — an ORNAMENT moving is not a reason to
+  // widen the host's API, an AFFORDANCE LYING is.
+  //
+  // MATCHED ON THE SPELLINGS A PERSON REACHES FOR, not on an imagined one: an
+  // inline empty arrow, an arrow returning undefined, and a binding NAMED `noop`
+  // (the one this lane itself wrote). A guard cannot decide in general whether a
+  // named handler is empty; these three are what the shortcut looks like when
+  // somebody takes it.
+  it("no dialog hands the host a no-op onClose", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of FILES) {
+      if (rel === "components/ModalShell.tsx") continue;
+      for (const line of noOpCloseLines(text)) offenders.push(`${rel}:${line}`);
+    }
+    expect(
+      offenders,
+      "This surface passes the dialog host an `onClose` that does nothing, so the " +
+        "✕ the host draws takes the tap and ignores it — an affordance lying about " +
+        "what it will do. If the surface must refuse dismissal for a moment (a " +
+        "write already in flight), pass `closeDisabled` and let the control say so, " +
+        "the way a `disabled` Cancel beside it already does. `closeDisabled` " +
+        "affects the CONTROL only: Escape and the gestures still reach your own " +
+        "handler, where the refusal belongs."
+    ).toEqual([]);
+  });
+
+  it("the no-op scan can see each spelling, and stays silent on a real handler", () => {
+    // The three shortcuts.
+    expect(
+      noOpCloseLines(
+        `<ModalShell title="x" onClose={() => {}}>body</ModalShell>`
+      )
+    ).toHaveLength(1);
+    expect(
+      noOpCloseLines(
+        `<BottomSheet open onClose={() => undefined}>body</BottomSheet>`
+      )
+    ).toHaveLength(1);
+    // The exact shape this lane shipped into review, `noop` and all.
+    expect(
+      noOpCloseLines(`function noop() {}
+         export default function D({ busy, onCancel }) {
+           return <ModalShell title="x" onClose={busy ? noop : onCancel}>body</ModalShell>;
+         }`)
+    ).toHaveLength(1);
+    // A handler split across lines, so the tag reader is doing the work rather
+    // than a single-line regex.
+    expect(
+      noOpCloseLines(`<ModalShell
+           title="x"
+           onKeyDown={(e) => {
+             if (e.key === "Escape") stop();
+           }}
+           onClose={() => {}}
+         >body</ModalShell>`)
+    ).toHaveLength(1);
+
+    // SILENCE ON THE BENIGN NEIGHBOURS. A real handler, a guarded one, prose
+    // describing the shortcut, and an empty arrow on a prop that is NOT onClose —
+    // an `onDone` no-op is somebody else's question and this guard must not
+    // colonise it.
+    expect(
+      noOpCloseLines(`<ModalShell onClose={onCancel}>b</ModalShell>`)
+    ).toEqual([]);
+    // The FIX, in full: a guarded handler that really does something on one
+    // branch, plus the prop that greys the control out on the other. This is the
+    // shape the rule steers people toward, so it has to stay silent.
+    expect(
+      noOpCloseLines(`export default function D({ busy, onCancel }) {
+           const close = () => {
+             if (!busy) onCancel();
+           };
+           return <ModalShell onClose={close} closeDisabled={busy}>b</ModalShell>;
+         }`)
+    ).toEqual([]);
+    expect(
+      noOpCloseLines(
+        `<ModalShell onClose={() => setOpen(false)}>b</ModalShell>`
+      )
+    ).toEqual([]);
+    expect(
+      noOpCloseLines(`// It used to read \`onClose={() => {}}\` while busy.`)
+    ).toEqual([]);
+    expect(noOpCloseLines(`<Thing onDone={() => {}} />`)).toEqual([]);
+    // And the live consumer that provoked the rule now passes it.
+    expect(
+      noOpCloseLines(byPath.get("components/MergeConflictDialog.tsx") ?? "")
     ).toEqual([]);
   });
 
