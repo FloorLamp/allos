@@ -168,9 +168,10 @@ test.describe("protocol facts-with-editors (#3219)", () => {
       "the notes field must stay DOM-owned: React syncs defaultValue onto a controlled field, and the dirty registry reads defaultValue as the saved value"
     ).toBe("");
 
-    // A scrim tap is a GESTURE dismissal, which is the one ModalShell guards
-    // (#2774): it asks before throwing a dirty form away. Escape and the Close
-    // button are deliberately unguarded, so neither would test this.
+    // A scrim tap is a GESTURE dismissal, which ModalShell guards (#2774): it asks
+    // before throwing a dirty form away. Escape joined that path in #3420 and would
+    // now test the same guard by a second route; the Close button is still
+    // deliberately unguarded, so it would not.
     //
     // AIMED AT A CORNER, not at the backdrop's centre. The scrim is `fixed inset-0`,
     // so its centre is underneath the centred dialog panel and a default click

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, spendAutoReloadRation } from "./helpers";
+import { followLink, hydratedClick, spendAutoReloadRation } from "./helpers";
 import {
   UPDATE_PENDING_KEY,
   UPDATE_PENDING_MARKER,
@@ -286,4 +286,319 @@ test("the pending update is recorded where the crash boundary can read it (#1906
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_PENDING_KEY)
   ).toBe(UPDATE_PENDING_MARKER);
+});
+
+// ── The two things that must not be crossed (#3371 fix round) ────────────────
+//
+// Both tests below are here rather than in e2e/form-drafts.spec.ts because the
+// subject is the AUTOMATIC RELOAD, and this is the file that can make one happen: no
+// worker, the sha poll as the detector, and the ration left unspent so the tab is
+// genuinely free to converge. Neither writes a row.
+//
+// WHY THEY EXIST AT ALL. The gate they pin had no test at any tier when it shipped:
+// `vitest.config.ts` includes `lib/**/*.test.ts` only, so `components/**` has no unit
+// tier, and every other spec that touches this machinery calls `spendAutoReloadRation`
+// to disable the automatic path so it can drive the manual one. Deleting the gate left
+// lint, typecheck and the whole pure suite green.
+//
+// WHAT EACH ONE ACTUALLY CATCHES, mutation-measured 2026-08-21 rather than asserted:
+//
+//   * `pageDeclaresUnrecoverableWork()` removed from `useAutoUpdateReload` (both OR
+//     sites and the import — exactly the deletion that used to pass every gate):
+//     the FIRST test reds, `update-ready-bar` never appears because the tab
+//     converges over the dialog instead of holding for it.
+//   * `markUnsavedWork` moved back behind the 600ms debounce (reachable only from
+//     `useFormDraft`'s `write`, i.e. the tree as #3371 first shipped it): the SECOND
+//     test reds, and reds on the drafts store being empty 20s after the reload.
+//
+// AND WHAT THEY DO NOT CATCH, said here so nobody reads a green suite as more than it
+// is: the post-await re-check inside `takeUpdate` is a strictly narrower race guard
+// and no spec here distinguishes it. Its own comment says so at the site.
+
+/** Every draft row in the browser's allos-offline store whose key names `formKey`. */
+async function draftsFor(page: Page, formKey: string): Promise<string[]> {
+  return page.evaluate(
+    (fragment) =>
+      new Promise<string[]>((resolve) => {
+        const req = indexedDB.open("allos-offline");
+        req.onerror = () => resolve([]);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("drafts")) {
+            db.close();
+            resolve([]);
+            return;
+          }
+          const all = db
+            .transaction("drafts", "readonly")
+            .objectStore("drafts")
+            .getAll();
+          all.onerror = () => {
+            db.close();
+            resolve([]);
+            return;
+          };
+          all.onsuccess = () => {
+            const rows = (all.result ?? [])
+              .filter((r: { key: string }) => String(r.key).includes(fragment))
+              .map((r: unknown) => JSON.stringify(r));
+            db.close();
+            resolve(rows);
+          };
+        };
+      }),
+    `:${formKey}:`
+  );
+}
+
+test("a hand-composed dialog holds the tab against an automatic reload (#3371)", async ({
+  page,
+}) => {
+  test.slow();
+  // THE DECLARATION AXIS OF THE RELOAD GATE, end to end. `markUnrecoverableWork` only
+  // ever hears about forms the #1878 registry can SEE — named controls inside a
+  // <form> — and a form that answers for itself with `data-unsaved` is by definition
+  // one it cannot. The sleep dialog is not a <form> at all and keeps its content
+  // nowhere but the DOM, so before #3371 an automatic update reload crossed it and
+  // took the rating with it.
+  //
+  // THE RATION IS DELIBERATELY NOT SPENT. That matters for what this test can prove:
+  // `autoReloadPlan` holds for exactly two reasons, ration-spent and
+  // unrecoverable-work, and the bar renders only on a hold. With the ration unspent
+  // the ONLY hold available is the one this issue added, so the bar's presence names
+  // its own cause and cannot be produced by anything else on this page.
+  await countLoads(page);
+  await interceptVersionOnce(page);
+  await page.goto("/sleep");
+
+  await page.getByTestId("sleep-add-entry-header").click();
+  const dialog = page.getByTestId("sleep-mood-edit-dialog");
+  await expect(dialog).toBeVisible();
+  // THE DIALOG'S OWN ANSWER FIRST, so a broken marker reds here and not as "the
+  // reload gate regressed" twenty lines down.
+  await expect(dialog).toHaveAttribute("data-unsaved", "false");
+  await dialog.getByTestId("sleep-fact-mood").click();
+  await dialog.getByTestId("sleep-history-mood-5").click();
+  await dialog.getByTestId("sleep-editor-done").click();
+  await expect(dialog).toHaveAttribute("data-unsaved", "true");
+
+  const bar = await provokeVersionCheck(page);
+  await expect(bar).toBeVisible();
+  // And the tab did NOT converge underneath the dialog. Asserted after the bar is up,
+  // so this is a statement about a decision that has already been made rather than a
+  // race against one that has not.
+  expect(await loads(page)).toBe("1");
+  await expect(dialog).toBeVisible();
+
+  // THE CONTROL, AND IT IS WHAT MAKES THE ASSERTION ABOVE NAME ITS OWN CAUSE. A bar
+  // is evidence of a HOLD, not of WHICH hold — so take the declaration away and
+  // nothing else, on the same page, under the same pending deploy, and the tab must
+  // converge. Closing is the honest way to remove it: the Close button is the one
+  // dismissal #3420 deliberately left unguarded, so this needs no confirm and the
+  // dialog's state goes with it.
+  // The Close control belongs to the HOST, not to the dialog body this testid names.
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() => loads(page), {
+      timeout: UPDATE_SETTLE_MS,
+      message:
+        "the tab to converge once the declaration is gone — if it never does, the bar above was not caused by the declaration",
+    })
+    .toBe("2");
+});
+
+test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)", async ({
+  page,
+}) => {
+  test.slow();
+  // THE HOLE THIS ROUND CLOSED, driven at the only moment it exists.
+  //
+  // A draft-backed form is EXCLUDED from the declaration gate above, on the stated
+  // grounds that the reload flushes it. That was false for the first 600ms after every
+  // keystroke: `markUnsavedWork` was reached only from the post-debounce `write()`, so
+  // a just-typed form sat in NO registry — `captureUnsavedWork()` answered
+  // `{ ok: true }` over an empty drafts store and the reload took the typing.
+  //
+  // AND IT NEEDS NO WAITING TO REACH. `autoReloadPlan` short-circuits on a hidden tab
+  // (`lib/sw-update.ts`, pinned in lib/__tests__/auto-reload.test.ts), skipping
+  // INPUT_QUIET_MS entirely — so switching tabs within 600ms of a keystroke is the
+  // whole reproduction. That is what the evaluate below performs, in one page task so
+  // no round trip can drift out of the window.
+  await countLoads(page);
+  await interceptVersionOnce(page);
+  // TWO INIT SCRIPTS THAT TOGETHER MAKE THE MOMENT REACHABLE ON PURPOSE.
+  //
+  // (1) A visibility flag the test can flip. `visibilityState` is a getter, so it is
+  //     redefined rather than assigned, and it starts VISIBLE — a tab hidden from the
+  //     first paint would take the deploy before this spec could open a form at all.
+  // (2) An input heartbeat. While the tab is visible, `autoReloadPlan` needs
+  //     INPUT_QUIET_MS of silence, so a page that is never quiet can never converge —
+  //     that contract has its own test above. Holding the tab there is what makes the
+  //     hidden flip below the ONLY reason it reloads, rather than a coincidence of
+  //     timing with the quiet window.
+  await page.addInitScript(() => {
+    let hidden = false;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => (hidden ? "hidden" : "visible"),
+    });
+    (window as unknown as Record<string, unknown>).__goHidden = () => {
+      hidden = true;
+    };
+    setInterval(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Shift", bubbles: true })
+      );
+    }, 800);
+  });
+
+  await page.goto("/training?tab=routines");
+  await expect(page.getByTestId("routines-section")).toBeVisible();
+  // `hydratedClick`: this follows a fresh goto onto a route that rewrites its own URL
+  // at hydration, and a click swallowed inside that window leaves the builder closed.
+  await hydratedClick(page, page.getByTestId("routine-new"));
+  const builder = page.getByTestId("routine-builder");
+  await expect(builder).toBeVisible();
+  await expect(builder).toHaveAttribute("data-unsaved", "false");
+  // The tab has been sitting on a pending deploy this whole time and has not taken it,
+  // because it is never quiet. That is the precondition for what follows.
+  expect(await loads(page)).toBe("1");
+
+  const ROUTINE = "Debounce Window Split";
+  const probe = await page.evaluate(async (value) => {
+    const form = document.querySelector<HTMLElement>(
+      '[data-testid="routine-builder"]'
+    );
+    const field = document.querySelector<HTMLInputElement>(
+      '[data-testid="routine-name"]'
+    );
+    if (!form || !field) return null;
+
+    // A keystroke the way the browser delivers one, so React's onChange runs and the
+    // draft hook's own `input` listener on the <form> fires synchronously.
+    const started = performance.now(); // clock-ok: a duration inside one page task, not a wall-clock read
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    )!.set!;
+    setter.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Wait for the form to SAY it is dirty rather than for a fixed number of frames.
+    // This routine is authored entirely in React state, so the honest signal is the
+    // marker landing after React commits — and the marker is written by the very
+    // call that registers the flush, which is what makes it the right thing to wait
+    // for here.
+    const deadline = 400;
+    while (
+      form.getAttribute("data-unsaved") !== "true" &&
+      performance.now() - started < deadline // clock-ok: same duration
+    ) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    const markedAt = performance.now() - started; // clock-ok: same duration
+
+    // THE PRECONDITION, PROVEN RATHER THAN ASSUMED: nothing is durable yet. If the
+    // debounce had already fired this test would be exercising the safe path and
+    // passing for the wrong reason, so it reports the fact instead of hoping.
+    const draftsBefore = await new Promise<number>((resolve) => {
+      const req = indexedDB.open("allos-offline");
+      req.onerror = () => resolve(-1);
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("drafts")) {
+          db.close();
+          resolve(0);
+          return;
+        }
+        const all = db
+          .transaction("drafts", "readonly")
+          .objectStore("drafts")
+          .getAll();
+        all.onerror = () => {
+          db.close();
+          resolve(-1);
+        };
+        all.onsuccess = () => {
+          const n = (all.result ?? []).filter((r: { key: string }) =>
+            String(r.key).includes(":routine:")
+          ).length;
+          db.close();
+          resolve(n);
+        };
+      };
+    });
+
+    // THE FLIP. Hidden short-circuits `autoReloadPlan` past the quiet window, so this
+    // is the tab-switch or screen-lock that reproduces the hazard, taken inside the
+    // debounce and in the same page task as the keystroke.
+    const flippedAt = performance.now() - started; // clock-ok: same duration
+    (window as unknown as { __goHidden: () => void }).__goHidden();
+    document.dispatchEvent(new Event("visibilitychange"));
+    return { markedAt, flippedAt, draftsBefore };
+  }, ROUTINE);
+
+  expect(probe, "the routine builder to be on screen").not.toBeNull();
+  // NON-VACUITY, both halves, and the messages say which failed: this test is only
+  // about the debounce window, and it must never pass by having missed it.
+  expect(
+    probe!.flippedAt,
+    "the tab must go hidden INSIDE the 600ms autosave debounce — outside it, the draft is already durable and this test proves nothing"
+  ).toBeLessThan(600);
+  expect(
+    probe!.draftsBefore,
+    "no routine draft may be durable yet at the moment the tab goes hidden — that is the whole hazard"
+  ).toBe(0);
+
+  // The tab is free to converge, and it should: draft-backed work is meant to be
+  // FLUSHED rather than to block a deploy. What must not happen is converging over
+  // typing that was never written down.
+  await expect
+    .poll(() => loads(page), {
+      timeout: UPDATE_SETTLE_MS,
+      message: "the hidden tab to take the deploy",
+    })
+    .toBe("2");
+
+  // A PRESENCE assertion on the far side, which is the honest shape here: no ceiling
+  // can conjure a draft that was never written.
+  await expect
+    .poll(async () => (await draftsFor(page, "routine")).join(""), {
+      timeout: UPDATE_SETTLE_MS,
+      message: "the typing to be durable on the other side of the reload",
+    })
+    .toContain(ROUTINE);
+
+  // ── AND THE USER-FACING HALF OF THE SAME FACT ─────────────────────────────
+  //
+  // MUTATION-MEASURED, 2026-08-21, both halves of this test against the registration
+  // moved back behind the debounce (`markUnsavedWork` reachable only from `write`,
+  // which is the tree as #3371 first shipped it):
+  //
+  //   * the drafts poll above went RED, `""` after the full 20s ceiling — the reload
+  //     crossed the keystroke and NOTHING was ever written. It is the verdict, not
+  //     scenery: the reload's own fallback does not outlast a debounce that the
+  //     navigation cancels.
+  //   * so the pair below never got to run under the mutant. It is asserted anyway,
+  //     because it is the shape a user meets, and because it fails on a DIFFERENT
+  //     mechanism — whether `captureUnsavedWork()` had a registered entry to take a
+  //     resume pointer FROM. `takeUpdate` writes RESUME_EDITOR_KEY only when one came
+  //     back and REMOVES it otherwise, so the two worlds diverge into the next
+  //     document and stay diverged:
+  //
+  //       registered   → marker written → the draft auto-applies, no banner
+  //       unregistered → marker removed → today's offer banner, an empty field
+  await expect(page.getByTestId("routines-section")).toBeVisible();
+  await hydratedClick(page, page.getByTestId("routine-new"));
+  const reopened = page.getByTestId("routine-builder");
+  await expect(reopened).toBeVisible();
+  await expect(
+    reopened.getByTestId("routine-name"),
+    "the editor must come back carrying the typing — a reload that flushed nothing leaves this empty behind a restore banner"
+  ).toHaveValue(ROUTINE);
+  await expect(
+    reopened.getByTestId("draft-restore-banner"),
+    "the continuation is the tap that already happened (#2471): a banner here means the reload crossed the typing and is asking the user to recover it"
+  ).toHaveCount(0);
 });

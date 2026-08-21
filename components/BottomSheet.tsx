@@ -142,12 +142,21 @@ export default function BottomSheet({
   // to be a ModalShell keeps the "✕" it has always had.
   showClose?: boolean;
   // Called INSTEAD of onClose when the surface is dismissed by a GESTURE — a
-  // flick on the drag handle, or a tap on the scrim. Escape and the Close button
-  // deliberately still call onClose: those are targeted actions on a named
-  // control, and this seam exists for the two dismissals that are not (#2774,
-  // consequence B). A consumer hosting a form that may hold five typed minutes of
-  // family history routes them through a confirm; a transactional quick-entry
-  // sheet leaves this unset and keeps its one-flick discard (#1428).
+  // flick on the drag handle, a tap on the scrim — or by ESCAPE. A consumer
+  // hosting a form that may hold five typed minutes of family history routes them
+  // through a confirm; a transactional quick-entry sheet leaves this unset and
+  // keeps its one-flick discard (#1428).
+  //
+  // ESCAPE JOINED THIS SEAM IN #3420, and the Close button did not. #2774 put both
+  // on `onClose` because a keypress on a named key and a click on a named control
+  // are targeted actions rather than accidents — true, and it stayed true for a
+  // surface with nothing to lose, which is what the consumer's own guard still
+  // answers by closing outright. It was not true for a dialog holding unsaved work:
+  // there, one keystroke destroyed exactly the typing a scrim tap two pixels away
+  // would have asked about. So Escape asks the same question the gestures ask. The
+  // CLOSE BUTTON still calls onClose unguarded: it is the control the person aimed
+  // at, and a confirm on it would be the ask-before-acting pattern the house
+  // grammar declines.
   //
   // Returning `false` REFUSES the dismissal: the panel settles back to rest
   // rather than leaving, which is what a consumer that has just raised a confirm
@@ -171,7 +180,17 @@ export default function BottomSheet({
   useLockBodyScroll(mounted);
   // Stop trapping focus / answering Escape the moment the exit starts, so a
   // closing sheet can't swallow the next Escape or steal focus back.
-  useFocusTrap({ panelRef, onClose, initialFocusRef, active: open });
+  // Scrim tap, flick and ESCAPE share ONE exit (#3420), so a consumer that guards
+  // discards cannot accidentally guard some of them. The Close button below does
+  // not: see `onGestureDismiss`.
+  const dismissByGesture = onGestureDismiss ?? onClose;
+  useFocusTrap({
+    panelRef,
+    onClose,
+    onEscape: dismissByGesture,
+    initialFocusRef,
+    active: open,
+  });
 
   // Drag-to-dismiss (#1425), on the shared recognizer (#1469). THE SHEET'S
   // OUTCOME IS DISCARD — that is what the lifecycle contract above licenses, and
@@ -224,10 +243,6 @@ export default function BottomSheet({
         motionPhase,
         reduceMotion
       );
-  // Scrim tap and flick share ONE exit, so a consumer that guards discards
-  // cannot accidentally guard half of them.
-  const dismissByGesture = onGestureDismiss ?? onClose;
-
   // Where the panel sits in the viewport, and the chrome that follows from it.
   // Bottom-anchored surfaces square off against the screen edge and clear the
   // home indicator; a centred card floats, so it rounds all the way round and

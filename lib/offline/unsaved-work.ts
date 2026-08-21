@@ -85,6 +85,35 @@ export function hasUnsavedWork(): boolean {
  * Record (or clear) that the form behind `key` holds unsaved input that NOTHING
  * would restore after a reload. Written by the #1878 dirty-form registry for every
  * dirty form that is not inside a draft-backed subtree.
+ *
+ * ── THIS KEY SET IS NOT THE WHOLE ANSWER, DELIBERATELY (#3371) ───────────────
+ *
+ * The recorded decision the issue asked for, because "does the `data-unsaved` marker
+ * gate the automatic update reload?" has a yes and a where, and only the yes is
+ * obvious.
+ *
+ * IT DOES GATE IT. A form that composes its FormData by hand out of React state has
+ * no named controls, so the registry never opens a record for it and nothing here is
+ * ever written about it — which left the reload blind to exactly the surfaces #3356
+ * existed for. It no longer is.
+ *
+ * BUT NOT FROM HERE, AND THAT IS THE POINT. A declaration is a rendered DOM
+ * attribute: it appears, flips and vanishes with its element, on React's schedule and
+ * not on any event a registry listens to. Mirroring it into this set would need a
+ * MutationObserver plus removal bookkeeping, and every gap in that bookkeeping fails
+ * toward a key nothing can ever clear — a tab permanently refusing updates, with no
+ * form on screen to explain why. This module also holds no DOM knowledge at all
+ * (see the header), and buying that mirror would cost it.
+ *
+ * So the declaration axis is READ AT THE DECISION POINT instead:
+ * `components/DirtyFormRegistry.tsx#pageDeclaresUnrecoverableWork` scans for
+ * `[data-unsaved="true"]` outside any `data-draft-backed` subtree, and
+ * `components/useAutoUpdateReload.ts` ORs it with `hasUnrecoverableWork()` both when
+ * it evaluates the plan and again immediately before it reloads. One read, no state
+ * to get wrong, and nothing left holding the gate once the element is gone.
+ *
+ * `hasUnrecoverableWork()` below therefore answers about THIS SET ONLY. Anyone adding
+ * a second consumer of "would a reload cost the user something?" must ask both.
  */
 export function markUnrecoverableWork(key: string, dirty: boolean): void {
   const had = unrecoverableKeys.has(key);
@@ -94,7 +123,11 @@ export function markUnrecoverableWork(key: string, dirty: boolean): void {
   notify();
 }
 
-/** True while any form holds unsaved input with no durable copy behind it. */
+/**
+ * True while any REGISTRY-TRACKED form holds unsaved input with no durable copy behind
+ * it. Not the whole question — see the note on `markUnrecoverableWork` for the
+ * declaration axis and where it is asked (#3371).
+ */
 export function hasUnrecoverableWork(): boolean {
   return unrecoverableKeys.size > 0;
 }

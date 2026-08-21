@@ -45,6 +45,21 @@ export default function ProviderAffiliations({
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // What the person has typed or picked in the affiliation dialog (#3371).
+  //
+  // THE ENTRY A `name=` GREP MISSES, and the reason this state exists at all. The
+  // <form> below looks tracked — it carries `name="name"` — but that name lands on
+  // `ProviderCombobox`'s `type="hidden"` input, which the #1878 registry excludes
+  // outright, while the VISIBLE field the person types into carries no name. So the
+  // registry answers "clean" however much has been typed, and the ModalShell discard
+  // guard had nothing to read: a flick, a scrim tap or (since #3420) Escape threw the
+  // pick away with nothing asking. The right question was never "does this file
+  // contain `name=`?" but "is any name on a control the registry will TRACK?" —
+  // `lib/__tests__/autosave-registry-census.test.ts` resolves it that way too.
+  //
+  // The combobox's `onChange` reports the bare provider NAME, which is exactly what
+  // this dialog would post, so the answer is honest rather than a proxy for it.
+  const [affiliateName, setAffiliateName] = useState("");
   const counterpartType: ProviderType =
     providerType === "individual" ? "organization" : "individual";
   const heading = providerType === "individual" ? "Practices at" : "People";
@@ -190,6 +205,7 @@ export default function ProviderAffiliations({
             data-testid="affiliation-add-toggle"
             onClick={() => {
               setError(null);
+              setAffiliateName("");
               setAdding(true);
             }}
           >
@@ -204,6 +220,9 @@ export default function ProviderAffiliations({
               <form
                 className="space-y-4"
                 data-testid="affiliation-add-form"
+                // This form's own answer to the discard guard (#3356/#3371): the
+                // dialog opens empty, so anything picked or typed is unsaved work.
+                data-unsaved={affiliateName.trim() ? "true" : "false"}
                 action={async (fd) => {
                   fd.set("id", String(providerId));
                   fd.set("counterpart_type", counterpartType);
@@ -223,6 +242,7 @@ export default function ProviderAffiliations({
                     id="affiliation-name"
                     name="name"
                     ariaLabel="Affiliated with"
+                    onChange={setAffiliateName}
                     providers={counterpartProviders}
                     placeholder={
                       counterpartType === "organization"

@@ -17,6 +17,7 @@ import {
   hasUnrecoverableWork,
   subscribeUnsavedWork,
 } from "@/lib/offline/unsaved-work";
+import { pageDeclaresUnrecoverableWork } from "./DirtyFormRegistry";
 import {
   isStaleBuild,
   registerUpdateReload,
@@ -25,6 +26,22 @@ import {
 } from "./update-reload-channel";
 import { useLatestRef } from "./useLatestRef";
 
+// WHAT COUNTS AS UNRECOVERABLE (#3371). Two sources, OR'd, because they see
+// different forms. `hasUnrecoverableWork()` is the #1878 registry's view of every
+// dirty <form> with named controls the browser composes. A form that has none —
+// hand-composed out of React state — is invisible to it and answers for ITSELF with
+// `data-unsaved`, which `pageDeclaresUnrecoverableWork()` reads straight off the DOM
+// at the moment the question is asked. Either one is enough to hold the tab: the
+// resolution is the fail-safe one stated in lib/dirty-forms.ts, and the cost of being
+// wrong is a deploy taken on the next tick rather than this one.
+//
+// PINNED, and by what: `e2e/update-notice.spec.ts` drives an automatic reload with
+// the ration UNSPENT — the one context in the suite where the automatic path is free
+// to fire — so a declaring dialog holding the tab is observable end to end, and the
+// draft-backed flush that licenses the exclusion is observable in the same file. Both
+// were mutation-measured red on 2026-08-21 against the gate removed and against the
+// registration moved back behind the 600ms debounce.
+//
 // The tab that takes the deploy by itself (#2471) — the wiring half. Every decision
 // it makes is `autoReloadPlan` in lib/sw-update.ts; this file owns listeners, the
 // two markers, and the ordering that makes the reload provably lossless.
@@ -155,7 +172,17 @@ export function useAutoUpdateReload({
     }
     // Re-check after the await: a flush is fast but not instant, and a form that
     // started holding unrecoverable input in the gap must still stop this.
-    if (hasUnrecoverableWork()) {
+    //
+    // TO THE READER WHO NOTICES NO TEST REDS WHEN THIS LINE GOES: correct, and it is
+    // not because the gate is unobservable. The OR in `evaluate` below IS pinned —
+    // delete it and e2e/update-notice.spec.ts's "a hand-composed dialog holds the tab
+    // against an automatic reload" goes red, mutation-measured 2026-08-21. THIS copy
+    // guards a strictly narrower window: work that appears between the await above
+    // resolving and the navigation being dispatched, which no surface in the tree can
+    // open on purpose and a spec could only fake. It is defence in depth on the same
+    // question, kept for the same reason `captured.ok` is re-read rather than assumed,
+    // and it is NOT evidence that the gate has no coverage.
+    if (hasUnrecoverableWork() || pageDeclaresUnrecoverableWork()) {
       takingRef.current = false;
       return false;
     }
@@ -216,7 +243,10 @@ export function useAutoUpdateReload({
         staleBuild: isStaleBuild(),
         pending: pendingRef.current,
         targetSha: targetShaRef.current,
-        unrecoverableWork: hasUnrecoverableWork() || captureRefused,
+        unrecoverableWork:
+          hasUnrecoverableWork() ||
+          pageDeclaresUnrecoverableWork() ||
+          captureRefused,
         hidden:
           typeof document !== "undefined"
             ? document.visibilityState === "hidden"
