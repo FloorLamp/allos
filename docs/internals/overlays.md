@@ -50,13 +50,13 @@ One rule, so a new form does not pick its host by looking at whichever neighbour
 it happened to open next to. Read down the left column; the first row that
 describes the surface is the answer.
 
-| The surface is…                                                          | Host                                                | Why                                                                                                                       |
-| ------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| a TRANSACTIONAL capture or decision — a record form, a picker, a confirm | `components/ModalShell.tsx` (the responsive dialog) | Sheet below `md`, centred card above, body locked, one scroll owner, declared size. Dismissal means discard.              |
-| a SESSION that survives navigation — a live workout                      | `components/ActivityOverlay.tsx` (the dock)         | "Away" means still running. Its drag resolves to **minimize**; it must never become discardable.                          |
-| a RARE-CADENCE page entry — lab results, imaging                         | `components/AddEntryPanel.tsx`                      | Inline in a reading column, modal in a hub rail (#1497). What "modal" renders as is the row above; the rule is unchanged. |
-| MENU or NAVIGATION                                                       | the sheet / `components/MobileNav.tsx` drawer       | Dismissal is close, nothing is lost, and the drawer owns the edge swipe.                                                  |
-| an ANCHORED desktop context — a control's own detail                     | the #3154 popover                                   | Anchored to its trigger rather than to the viewport; its own anatomy, deliberately outside this convergence.              |
+| The surface is…                                                          | Host                                                | Why                                                                                                                        |
+| ------------------------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| a TRANSACTIONAL capture or decision — a record form, a picker, a confirm | `components/ModalShell.tsx` (the responsive dialog) | Sheet below `md`, centred card above, body locked, one scroll owner, declared size. Dismissal means discard.               |
+| a SESSION that survives navigation — a live workout                      | `components/ActivityOverlay.tsx` (the dock)         | "Away" means still running. Its drag resolves to **minimize**; it must never become discardable.                           |
+| a RARE-CADENCE page entry — lab results, imaging                         | `components/AddEntryPanel.tsx`                      | Inline in a reading column, modal in a hub rail (#1497). What "modal" renders as is the row above; the rule is unchanged.  |
+| MENU or NAVIGATION                                                       | the sheet / `components/MobileNav.tsx` drawer       | Dismissal is close, nothing is lost, and the drawer owns the edge swipe.                                                   |
+| ANCHORED to a control — a ⋯ menu, a date picker, a control's own detail  | `components/overlay/AnchoredPanel.tsx`              | A bottom action sheet below `md`, the trigger-anchored popover above it (#3374/#3376). One host decision, thirty surfaces. |
 
 Two consequences worth stating outright, because both were decided rather than
 discovered (#2774):
@@ -86,6 +86,43 @@ typing a scrim tap two pixels away would have asked about, and the dirty-form
 registry already knew the difference. **The Close button is untouched** and
 still closes without a prompt: it is the control the person aimed at, and a
 confirm on it would be the ask-before-acting pattern the house grammar declines.
+
+### The anchored panel forks at `md` (#3374 / #3376)
+
+An anchored popover is a DESKTOP shape. It is right where a pointer is precise
+and a page has room beside the control; it is wrong on a phone, where a 160px
+panel of 32px rows hanging off a kebab is a context menu a finger cannot use.
+Before this, thirty phone surfaces opened one — the ⋯ menu is the primary
+per-row action affordance on the most phone-used screens — and every form's date
+picker was a 288px desktop calendar.
+
+`components/overlay/AnchoredPanel.tsx` is where that is decided, once:
+
+- **below `md`** the content mounts in `components/BottomSheet.tsx`. A menu's
+  dismissal IS discard, so it passes no `onGestureDismiss` guard and inherits
+  the drag, the scrim, the scroll lock, the focus trap and the #3425 Escape
+  seam unchanged.
+- **from `md` up** it is the portaled `position: fixed` popover placed by
+  `components/overlay/useAnchoredPopover.ts`, exactly as before.
+
+The rules that make it one fork rather than thirty:
+
+- **Content is authored once.** `children` is a function and the node it returns
+  is mounted in exactly ONE host — never a `hidden md:` twin (#2305). A consumer
+  passes items and an anchor; it says nothing about viewports.
+- **The floor is met where a finger does the tapping.** `MENU_ITEM` rows are
+  44px below `md`, 40px on a coarse pointer above it, and the compact 32px
+  desktop row under a mouse. The two `md:` rules are keyed on mutually exclusive
+  pointer media so neither depends on stylesheet order.
+- **Focus returns to the trigger in both**, by different routes: the popover
+  never takes focus, and the sheet's trap restores it.
+- **Every anchored menu goes through it**, enforced by the chokepoint test's
+  anchored-menu rule. `components/CompactDateMenu.tsx` is the one recorded
+  exception — a phone-only two-or-three-option day switcher inline in a heading,
+  already at the tap floor, where a modal sheet is a heavier answer than the
+  question. `components/Combobox.tsx`'s listbox is NOT forked either, and for a
+  different reason recorded in #3374: a listbox reads as part of its field on
+  touch, so it is not a menu at all.
 
 ## What a dialog BODY renders
 
@@ -315,7 +352,13 @@ is never the only way to do anything.
    #2774 defect, where a drag the scroller declined chained out to the document
    and moved the page BEHIND the overlay;
 7. a portal dialog hosts a `<form>` without going through the converged host, or
-   opts out of the phone sheet idiom without recording why.
+   opts out of the phone sheet idiom without recording why;
+8. a file positions a `role="menu"` panel itself instead of opening it through
+   `components/overlay/AnchoredPanel.tsx` — the anchored-menu rule (#3374).
+   `CompactDateMenu` is the one recorded exception. The scan reads the panel's
+   WHOLE opening tag by brace depth rather than stopping at the next `>`: its
+   first version stopped at an `onKeyDown={(event) => {` arrow and could not see
+   `CompactDateMenu` at all, which is a green sweep that was never taken.
 
 `lib/__tests__/scroll-lock.test.ts` pins the other half of #2774: the body-scroll
 lock is reference-counted, so a dialog opened over an open sheet leaves the page
