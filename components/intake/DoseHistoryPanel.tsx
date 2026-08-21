@@ -184,7 +184,8 @@ export default function DoseHistoryPanel({
             items={history}
             columns={columns}
             readOnly={!canWrite}
-            menuLabel="Dose actions"
+            menuKind="Dose"
+            menuItemName={(entry) => formatLongDate(entry.date, formatPrefs)}
             rowTestId={() => "dose-history-row"}
             renderEditForm={(entry, done) => (
               <HistoricalDoseForm

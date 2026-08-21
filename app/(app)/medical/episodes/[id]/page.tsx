@@ -339,6 +339,7 @@ export default async function EpisodePage(props: {
         timelineActions={
           <EpisodeControls
             episodeId={episodeId}
+            situation={assembled.situation}
             ongoing={assembled.ongoing}
             promoted={promoted}
             canWrite={canWrite}

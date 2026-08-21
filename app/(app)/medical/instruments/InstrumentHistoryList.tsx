@@ -172,7 +172,8 @@ export default function InstrumentHistoryList({
                 </button>
               ) : (
                 <OverflowMenu
-                  label="Reading actions"
+                  kind="Reading"
+                  itemName={r.date}
                   open={menuOpenId === r.id}
                   onOpenChange={(open) => setMenuOpenId(open ? r.id : null)}
                 >

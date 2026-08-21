@@ -172,6 +172,7 @@ function AttentionRow({
         )}
         {canWrite && isItemSuppressibleFlag(item) && (
           <SnoozeDismissMenu
+            itemName={item.title}
             signalKey={item.key}
             snoozeOnly={item.carePersistent === true}
             snoozeAction={snoozeAttention}

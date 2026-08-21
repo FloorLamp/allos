@@ -273,11 +273,16 @@ function PreventiveOverrideItems({
 // It composes everything a row can offer behind a kebab: the folded secondary
 // actions (below `sm`), the preventive overrides, and snooze/dismiss.
 export default function UpcomingRowMenu({
+  itemName,
   folded,
   preventiveRuleKey,
   overrideAction,
   suppression,
 }: {
+  // The row's own title (#3501) — "Fermented foods", "Shingles vaccine". Below
+  // `md` this menu is a bottom sheet that has left the row behind, and a sheet
+  // offering "Snooze 1 week" over a five-row list names nothing.
+  itemName: string;
   folded: RowAction[];
   preventiveRuleKey?: string;
   overrideAction?: (formData: FormData) => Promise<void>;
@@ -293,10 +298,11 @@ export default function UpcomingRowMenu({
   if (!hasPreventive && suppression == null) return null;
   return (
     <OverflowMenu
-      // One honest label for the row kebab. It can hold overrides, snooze/dismiss
-      // and (on phones) the folded chips, so it is named for the affordance rather
-      // than for any one of its sections.
-      label="More actions"
+      // The kebab can hold overrides, snooze/dismiss and (on phones) the folded
+      // chips, so the KIND stays the affordance rather than any one of its
+      // sections — but the row it acts on is now named beside it (#3501).
+      kind="More"
+      itemName={itemName}
       open={open}
       onOpenChange={setOpen}
     >

@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
+import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
 // extracted-observations table. The caller owns the open state (so it can also lift
@@ -70,18 +71,29 @@ export interface MenuHelpers {
 }
 
 export default function OverflowMenu({
-  label,
+  itemName,
+  kind,
   open,
   onOpenChange,
   children,
   panelClassName = "w-40",
 }: {
-  label: string;
+  // The DISPLAY NAME of the row these actions belong to — the medication, the
+  // activity, the attention item — exactly as the row renders it. Required, and
+  // required for a reason (#3501): the trigger's accessible name and the sheet's
+  // heading are both built from it, and a sheet has detached from its row by the
+  // time a viewer reads that heading. Not a finished sentence: the phrasing is
+  // lib/overflow-menu-label.ts's, so it cannot drift across call sites.
+  itemName: string;
+  // The row's noun ("Medication", "Result", "More"), when the name alone would be
+  // ambiguous on the surface. Optional; see the composer for why it exists.
+  kind?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: (helpers: MenuHelpers) => ReactNode;
   panelClassName?: string;
 }) {
+  const label = overflowMenuLabel(itemName, kind);
   const toast = useToast();
   const confirmOpen = useConfirmOpen();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -161,8 +173,12 @@ export default function OverflowMenu({
         onClose={close}
         anchorRef={triggerRef}
         // The trigger's accessible name names the row these actions belong to
-        // ("Medication actions", "Actions for …"), which is exactly the heading
-        // the sheet owes a viewer who can no longer see the row it came from.
+        // ("Medication actions for Amoxicillin", "Actions for Fermented foods"),
+        // which is exactly the heading the sheet owes a viewer who can no longer
+        // see the row it came from. Since #3501 that is not a convention this
+        // comment asks call sites to keep — the name is composed here, from a
+        // required `itemName`, and lib/__tests__/overflow-menu-identity.test.ts
+        // fails when a caller hard-codes one.
         title={label}
         role="menu"
         sheetTestId="overflow-menu-sheet"

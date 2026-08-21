@@ -1410,6 +1410,7 @@ function Row({
           <div className="flex min-w-0 shrink-0 items-center gap-1">
             {cta}
             <UpcomingRowMenu
+              itemName={item.title}
               folded={hasMenu ? actions : []}
               preventiveRuleKey={preventiveRuleKey}
               overrideAction={async (fd) => {

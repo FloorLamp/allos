@@ -109,6 +109,7 @@ export default function GenomicVariantList({
       <RecordTable
         items={items}
         columns={buildColumns(useFormatPrefs(), affectedMeds)}
+        itemName={(v) => variantDisplayLabel(v)}
         emptyMessage="No genomic variants yet. Add one manually or import a clinical genetics or PGx report."
         emptyActions={[
           { href: dataSectionHref("import"), label: "Import records" },

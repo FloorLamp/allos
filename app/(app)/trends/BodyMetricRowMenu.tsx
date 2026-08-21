@@ -77,7 +77,7 @@ export default function BodyMetricRowMenu({
   return (
     <div className="flex items-center justify-end">
       <OverflowMenu
-        label={name}
+        itemName={name}
         open={menuOpen}
         onOpenChange={(open) => setMenuOpen(busy ? false : open)}
       >
