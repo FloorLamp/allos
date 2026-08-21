@@ -60,7 +60,7 @@ test("the supplement picker opens on this profile's own shelf (#1677)", async ({
   await addDialog.getByLabel("Name").click();
   const listbox = page.getByRole("listbox");
   await expect(listbox).toBeVisible();
-  const options = (await listbox.getByRole("button").allInnerTexts()).map((t) =>
+  const options = (await listbox.getByRole("option").allInnerTexts()).map((t) =>
     t.trim()
   );
 

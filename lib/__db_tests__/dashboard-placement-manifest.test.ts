@@ -24,6 +24,7 @@ import {
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
+import PageContainer from "../../components/PageContainer";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
@@ -304,11 +305,18 @@ describe("actual atomic dashboard manifests", () => {
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
     // does outside a request.
-    const renderDashboard = () =>
-      requestCache.during(
-        async () =>
-          (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>
-      );
+    // The page's root element is its declared-width wrapper (#3253), and the canvas
+    // is the child inside it. Unwrapped HERE rather than asserted around, so this
+    // tier keeps reading the manifest off the canvas' own props — the width is
+    // presentation, and a presentation change must not be able to make the placement
+    // meter stop measuring.
+    const renderDashboard = async () => {
+      const page = (await requestCache.during(
+        async () => await Dashboard()
+      )) as ReactElement<{ children: ReactElement }>;
+      expect(page.type).toBe(PageContainer);
+      return page.props.children as ReactElement<DashboardPlacementCanvasProps>;
+    };
 
     for (const persona of PERSONAS) {
       const before = new Set(allProfileIds());
@@ -598,7 +606,7 @@ describe("actual atomic dashboard manifests", () => {
   const QUERY_BASELINE: Record<string, number> = {
     bodybuilder: 243,
     "marathon-runner": 240,
-    household: 267,
+    household: 270,
     pregnant: 237,
     "diabetic-cgm": 248,
     biohacker: 258,
@@ -615,14 +623,23 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 267 (the heaviest baseline) + 23 headroom = 290
+  //   household 270 (the heaviest baseline) + 20 headroom = 290
+  //
+  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). The line above read
+  // "267 + 23 = 290" after the household baseline moved to 270, which is the one
+  // arithmetic this comment cannot afford to get wrong: the whole subject here is
+  // that these numbers are honest. The CEILING did not move — only the split of it
+  // into "what a render costs" and "what is left".
   //
   // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
-  // conversation. The integrated household fixture carries four profiles, so a new
-  // per-profile dashboard read costs four statements there; 23 is about five such
-  // reads, or one new gathering surface. Ordinary work pastes its refreshed baseline
-  // and moves on; a change that needs more than a whole new surface's worth of
-  // queries has to say so out loud.
+  // conversation. The integrated household fixture carries four profiles, so an
+  // UNCONDITIONAL new per-profile dashboard read costs four statements there and 20
+  // is five such reads, or one new gathering surface. A read behind a per-profile
+  // CONDITION costs less: the stack vocabulary added to getIntakeCatalogOptions
+  // (#3100) is one statement per profile that renders an illness cockpit, and this
+  // fixture has three, which is exactly the +3 that moved household 267 → 270.
+  // Ordinary work pastes its refreshed baseline and moves on; a change that needs
+  // more than a whole new surface's worth of queries has to say so out loud.
   //
   // RE-DERIVE IT WHENEVER THE BASELINES MOVE MATERIALLY DOWN — same one-line edit.
   // #3369's items 1 and 2 (deferring the closed tail's gathers, and cache()-wrapping

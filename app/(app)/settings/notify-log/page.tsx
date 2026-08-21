@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PendingTextLink } from "@/components/PendingLink";
+import PaginationControls from "@/components/PaginationControls";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readNotifyEvents } from "@/lib/notify-log";
@@ -90,6 +90,8 @@ export default async function NotifyLogPage(props: {
   const pages = pageCount(allRuns.length, NOTIFY_RUN_PAGE_SIZE);
   const offset = pageOffset(page, NOTIFY_RUN_PAGE_SIZE);
   const runs = allRuns.slice(offset, offset + NOTIFY_RUN_PAGE_SIZE);
+  // A ?page= past the end shows the last page's extent rather than a phantom one.
+  const shownPage = Math.min(page, pages);
 
   // Map profile ids → display names so a run row names its subject. Same read both
   // sibling viewers do.
@@ -180,36 +182,26 @@ export default async function NotifyLogPage(props: {
         clearAction={clearNotifyEvents}
       />
 
-      {/* Pager over RUNS: the row is a run, so the pager counts rows. */}
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span data-testid="notify-log-total">{allRuns.length} runs</span>
-        <div className="flex items-center gap-3">
-          {page > 1 ? (
-            <PendingTextLink
-              href={pageHref(searchParams, page - 1)}
-              label="previous page"
-              className="btn-ghost"
-            >
-              Previous
-            </PendingTextLink>
-          ) : (
-            <span className="opacity-40">Previous</span>
-          )}
-          <span>
-            Page {Math.min(page, pages)} of {pages}
-          </span>
-          {page < pages ? (
-            <PendingTextLink
-              href={pageHref(searchParams, page + 1)}
-              label="next page"
-              className="btn-ghost"
-            >
-              Next
-            </PendingTextLink>
-          ) : (
-            <span className="opacity-40">Next</span>
-          )}
-        </div>
+      {/* Pager over RUNS: the row is a run, so the pager counts rows. Rendered
+          through the app's ONE pager (#3378) — the hand-rolled shape here was the
+          audit page's twin, and neither had a thumb-sized step below `md`. */}
+      <div className="mt-3">
+        <PaginationControls
+          page={shownPage}
+          pageCount={pages}
+          pageSize={NOTIFY_RUN_PAGE_SIZE}
+          total={allRuns.length}
+          visibleCount={runs.length}
+          prevHref={
+            shownPage > 1 ? pageHref(searchParams, shownPage - 1) : null
+          }
+          nextHref={
+            shownPage < pages ? pageHref(searchParams, shownPage + 1) : null
+          }
+          testId="notify-log-pagination"
+          totalTestId="notify-log-total"
+          unit="runs"
+        />
       </div>
     </SettingsGroupLayout>
   );

@@ -25,6 +25,7 @@ export default function SingleReadingMark({
   markTestid,
   readingScope,
   captionClassName = "text-xs tabular-nums text-slate-500 dark:text-slate-400",
+  dotClassName = "bg-brand-500",
 }: {
   // The series' own color, so the dot matches the line the card would have drawn.
   color?: string;
@@ -43,6 +44,11 @@ export default function SingleReadingMark({
   // attribute so a browser test can assert which state it is looking at.
   readingScope?: "inside" | "outside";
   captionClassName?: string;
+  // The dot's fill as a CLASS, for a caller whose colour is a Tailwind token rather
+  // than a palette literal — the Standing column's tone comes from `glance-age`
+  // (#3252) and rides down as `currentColor`, which `color` (an inline style) cannot
+  // express. `color` still wins when both are given, since it is the more specific.
+  dotClassName?: string;
 }) {
   return (
     <div
@@ -58,7 +64,7 @@ export default function SingleReadingMark({
         <span className="h-px flex-1 bg-linear-to-r from-transparent to-slate-300 dark:to-slate-600" />
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white shadow-xs ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15">
           <span
-            className="h-2.5 w-2.5 rounded-full bg-brand-500"
+            className={`h-2.5 w-2.5 rounded-full ${dotClassName}`}
             style={color ? { backgroundColor: color } : undefined}
           />
         </span>

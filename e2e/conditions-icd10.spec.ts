@@ -69,7 +69,7 @@ test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", 
   await settledFill(page, nameField, "high blood pressure");
   await page
     .getByRole("listbox")
-    .getByRole("button", { name: "Essential (primary) hypertension" })
+    .getByRole("option", { name: "Essential (primary) hypertension" })
     .click();
 
   // The pick filled the name AND the coded identity, with no confirm step.
@@ -113,7 +113,7 @@ test("picking a family-history condition applies its ICD-10-CM code too (#1676)"
   await settledFill(page, conditionField, "type 2 diabetes");
   await page
     .getByRole("listbox")
-    .getByRole("button", {
+    .getByRole("option", {
       name: "Type 2 diabetes mellitus without complications",
     })
     .click();

@@ -110,6 +110,30 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the bubble simply reads the new period on the next frame, with no beat — and the haptic is suppressed by the same preference (lib/haptics), so the text is the whole feedback.",
   },
+  // The sixth tenant, and the first on the dashboard (#3253 decision 4). A reading
+  // whose value changed enough to be promoted LIFTS out of Standing and arrives in Now
+  // as a card. It is feedback on a change rather than on a write, like `tick` — and it
+  // is held to all four rules, including the band.
+  //
+  // 300 ms, not the issue's "~320 ms": 320 is 20 ms outside the band, and the honest
+  // price of 20 ms is a band exemption — a ruling, with reasoning, that would then be
+  // the SECOND entry in a list whose whole value is having one. The tilde is doing the
+  // work it was written for. If a future ruling wants 320 it costs an exemption, and
+  // that is the right price to make someone pay.
+  //
+  // WITNESSED ONLY. Whether this class is applied at all is `witnessedNowMotion`
+  // (lib/dashboard-motion.ts): a promotion that lands while you are looking gets the
+  // lift; the same diff arriving after a resume lands quietly, because "this just
+  // moved" is false once you were away.
+  promote: {
+    ms: 300,
+    conveys:
+      "a reading you were LOOKING AT just changed enough to matter now — it lifted out of the Standing cluster and arrived in Now as a card, which is why a card is suddenly there.",
+    carriedBy:
+      "the card itself, fully rendered with its own words on the frame it lands, plus the row's absence from Standing and the candidate id that is identical on both sides of the move.",
+    reducedEndState:
+      "the card is simply in Now on the frame the page re-renders, and Standing no longer lists the row; no keyframe is ever scheduled.",
+  },
   fold: {
     ms: 500,
     conveys:

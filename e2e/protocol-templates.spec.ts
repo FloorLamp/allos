@@ -84,11 +84,11 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   const outcomeOptions = page.getByRole("listbox");
   await search.fill("LDL Cholesterol");
   await outcomeOptions
-    .getByRole("button", { name: "LDL Cholesterol", exact: true })
+    .getByRole("option", { name: "LDL Cholesterol", exact: true })
     .click();
   await search.fill("Non-HDL Cholesterol");
   await outcomeOptions
-    .getByRole("button", { name: "Non-HDL Cholesterol", exact: true })
+    .getByRole("option", { name: "Non-HDL Cholesterol", exact: true })
     .click();
 
   const selected = form.getByTestId("protocol-outcome-selected");

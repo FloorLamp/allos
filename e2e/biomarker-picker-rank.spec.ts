@@ -84,7 +84,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // The option row IS the button, so it is addressed on the listbox, not inside
       // an option. `exact` makes a duplicate label fail loudly (#531).
       await listbox
-        .getByRole("button", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
+        .getByRole("option", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
         .click();
       await expect(field).toHaveValue(BIOMARKER_PICKER_FLAGGED);
       await settledClick(page, picker.getByRole("button", { name: "Star" }));
@@ -133,10 +133,26 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
         BIOMARKER_PICKER_OVERDUE
       );
 
+      // EVERY BUCKET IS REPRESENTED BEFORE TYPING (#3410), and the list is still
+      // eight rows at most. This is the widest grouped picker that ships — the
+      // ungrouped clear row plus three headers — so it is where the invariant is
+      // cheapest to watch. It is NOT a discriminating regression test: no shipped
+      // picker today has enough rows ahead of its last bucket to lose one, which is
+      // exactly why #3410 was latent and was found by BUILDING a new picker (#3220)
+      // rather than by reading the component. The exhaustive rule — two ranked
+      // vocabularies concatenated, and what happens when there are more groups than
+      // rows — is pinned in lib/__tests__/relevance-view.test.ts.
+      await expect(groups(listbox)).toHaveText([
+        RELEVANT_GROUP,
+        "Metrics",
+        YOUR_GROUP,
+      ]);
+      expect(await options(listbox).count()).toBeLessThanOrEqual(8);
+
       // A pick writes the series key into cmpA — the param the overlay reads, which
       // #1675 did not touch.
       await listbox
-        .getByRole("button", { name: BIOMARKER_PICKER_OVERDUE, exact: true })
+        .getByRole("option", { name: BIOMARKER_PICKER_OVERDUE, exact: true })
         .click();
       await expect(page).toHaveURL(/cmpA=result%3AHemoglobin\+A1c/);
       await expect(field).toHaveValue(BIOMARKER_PICKER_OVERDUE);
@@ -178,7 +194,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // match, which is what a `<select>` could never offer.
       await settledFill(page, field, "tsh");
       await expect(
-        listbox.getByRole("button", {
+        listbox.getByRole("option", {
           name: "Thyroid-Stimulating Hormone (TSH)",
           exact: true,
         })

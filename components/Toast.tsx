@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   IconCircleCheck,
@@ -14,8 +15,17 @@ import {
   IconX,
   IconArrowRight,
 } from "@tabler/icons-react";
-import { upsertToast, dismissKeyed } from "@/lib/toast-upsert";
 import {
+  upsertToast,
+  dismissKeyed,
+  beginExit,
+  dropExited,
+  visibleToasts,
+} from "@/lib/toast-upsert";
+import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import {
+  BOTTOM_EDGE_GUTTER_LEFT,
   BOTTOM_EDGE_GUTTER_RIGHT,
   BOTTOM_EDGE_NOTICE_BOTTOM,
   BOTTOM_EDGE_NOTICE_LAYER,
@@ -29,6 +39,23 @@ import {
 // posted with a `key` REPLACES the live toast with the same key in place — the
 // upload confirmation and its extraction-complete toast share one slot that
 // upgrades, instead of stacking — and `useDismissToast()` clears a keyed slot.
+//
+// ── TWO SHAPES, ONE SYSTEM (issue #3373) ─────────────────────────────────────
+//
+// Below `md` a toast is a SNACKBAR: one full-width bar gutter to gutter on the
+// bottom edge, one at a time, with the rest queued behind it. From `md` up it is
+// the corner stack it has always been — `w-72` cards at the right gutter, all of
+// them at once. A 288px card hugging the right edge of a 390px screen reads as a
+// misplaced fragment rather than a confirmation, which is what the phone shape
+// fixes; the desktop shape was never the problem, so it is untouched.
+//
+// What does NOT fork: the `useToast`/`useDismissToast` API, the keyed upsert
+// semantics, the tones, the durations, and the LAYER. The bar keeps riding the
+// bottom-edge claim (#1520/#2651) so it clears whichever dock is up, and it keeps
+// out-ranking the drawer's scrim and the sheets — a "saved offline" confirmation
+// posted from inside an open sheet must be seen, not buried (#3038). Queueing is
+// between toasts and NEVER between a toast and an overlay: nothing is ever held
+// back because something else is open.
 type Tone = "success" | "error";
 
 // An optional call-to-action rendered as a link inside the toast (e.g. "View
@@ -55,6 +82,8 @@ interface ToastItem {
   key?: string;
   // Bumped on each in-place replace so the card's dismiss timer restarts (#1315).
   revision: number;
+  // Set while the bar plays its exit animation; see lib/toast-upsert.ts.
+  exiting?: boolean;
   tone: Tone;
   message: string;
   duration: number | null;
@@ -73,16 +102,59 @@ interface ToastApi {
 // something to read.
 const DEFAULT_DURATION: Record<Tone, number> = { success: 6000, error: 10000 };
 
+// The breakpoint the two shapes split on — Tailwind's `md`, the same one every
+// `md:` class below is written against.
+const SNACKBAR_QUERY = "(max-width: 767.98px)";
+
+function subscribeSnackbar(onChange: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const query = window.matchMedia(SNACKBAR_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function snackbarSnapshot(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.(SNACKBAR_QUERY).matches
+  );
+}
+
+const serverSnackbarSnapshot = () => false;
+
+// Whether toasts render as the phone snackbar. This is a genuine BEHAVIOUR fork —
+// how many toasts are on screen, and whether the rest are waiting — not a layout
+// one, so it cannot live in a media query the way the `md:` classes do. There is
+// no wrong first paint to worry about: a toast only ever exists because something
+// on the client raised one, so this is never read during SSR or hydration.
+function useSnackbarViewport(): boolean {
+  return useSyncExternalStore(
+    subscribeSnackbar,
+    snackbarSnapshot,
+    serverSnackbarSnapshot
+  );
+}
+
 const ToastContext = createContext<ToastApi | null>(null);
 
 let seq = 0;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const reduceMotion = usePrefersReducedMotion();
+  const snackbar = useSnackbarViewport();
+  const exitMs = motionMs("notice", reduceMotion);
 
-  const dismiss = useCallback((id: number) => {
-    setToasts((list) => list.filter((t) => t.id !== id));
-  }, []);
+  // Dismissal is two steps: mark the toast so it plays its exit animation, then
+  // drop it when the animation is over. Under reduced motion `exitMs` is 0 and the
+  // timeout runs on the next tick, so the sequence is the same and simply snaps.
+  const dismiss = useCallback(
+    (id: number) => {
+      setToasts((list) => beginExit(list, id));
+      setTimeout(() => setToasts((list) => dropExited(list, id)), exitMs);
+    },
+    [exitMs]
+  );
 
   const dismissKey = useCallback<DismissKeyFn>((key) => {
     setToasts((list) => dismissKeyed(list, key));
@@ -112,18 +184,27 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [toast, dismissKey]
   );
 
+  const shown = visibleToasts(toasts, snackbar);
+
   return (
     <ToastContext.Provider value={api}>
       {children}
-      {toasts.length > 0 && (
-        // Bottom-edge LAYER 1 (#1520): the stack sits above the workout dock
-        // when one is present (the shared inset resolves to the plain
-        // safe-area gutter when it isn't) instead of covering it.
+      {shown.length > 0 && (
+        // Bottom-edge LAYER 2 (#1520): the notices sit above the nav dock and the
+        // workout dock when one is present (the shared inset resolves to the plain
+        // safe-area gutter when neither is) instead of covering them. Below `md`
+        // the bar claims BOTH gutters; from `md` up `left-auto` hands the left side
+        // back and the corner stack is exactly what it was.
         <div
-          className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_RIGHT} ${BOTTOM_EDGE_NOTICE_LAYER} flex flex-col gap-2`}
+          className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_GUTTER_RIGHT} ${BOTTOM_EDGE_NOTICE_LAYER} flex flex-col gap-2 md:left-auto`}
         >
-          {toasts.map((t) => (
-            <ToastCard key={t.id} toast={t} dismiss={dismiss} />
+          {shown.map((t) => (
+            <ToastCard
+              key={t.id}
+              toast={t}
+              dismiss={dismiss}
+              reduceMotion={reduceMotion}
+            />
           ))}
         </div>
       )}
@@ -134,12 +215,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 function ToastCard({
   toast,
   dismiss,
+  reduceMotion,
 }: {
   toast: ToastItem;
   dismiss: (id: number) => void;
+  reduceMotion: boolean;
 }) {
   const success = toast.tone === "success";
-  const { duration } = toast;
+  const { duration, exiting } = toast;
   // Stable per-toast dismiss (keyed by id). Building `() => dismiss(id)` inline in
   // the parent map produced a fresh closure on every render, so the auto-dismiss
   // effect below re-ran and restarted every toast's countdown whenever any toast
@@ -149,53 +232,69 @@ function ToastCard({
   // the user closes it by hand. `toast.revision` is a dep so an in-place keyed
   // replace (which keeps the id, so onDismiss is stable) restarts the countdown
   // (#1315) instead of letting the pre-replace timer fire on the new message.
+  // A card already on its way out has nothing left to count.
   const { revision } = toast;
   useEffect(() => {
-    if (duration == null) return;
+    if (duration == null || exiting) return;
     const id = setTimeout(onDismiss, duration);
     return () => clearTimeout(id);
-  }, [onDismiss, duration, revision]);
+  }, [onDismiss, duration, revision, exiting]);
   return (
     <div
       role="status"
       aria-live="polite"
       data-testid="toast"
       data-toast-key={toast.key}
-      className={`flex w-72 items-start gap-3 rounded-xl border bg-surface p-3.5 shadow-lg ${
-        success
-          ? "border-emerald-200 dark:border-emerald-800"
-          : "border-rose-200 dark:border-rose-800"
-      }`}
+      // ONE grid, two placements. The phone bar is a single row — icon, message,
+      // action, dismiss — and the desktop card puts the action on a second row
+      // under the message, which is where it has always been. Doing that with grid
+      // placement rather than two subtrees keeps exactly ONE action button and ONE
+      // dismiss button in the accessibility tree at every width.
+      className={motionClass(
+        `mx-auto grid w-full max-w-sm grid-cols-[auto_1fr_auto_auto] items-center gap-x-3 rounded-xl border bg-surface px-4 py-2 shadow-lg md:mx-0 md:w-72 md:max-w-none md:grid-cols-[auto_1fr_auto] md:items-start md:p-3.5 ${
+          success
+            ? "border-emerald-200 dark:border-emerald-800"
+            : "border-rose-200 dark:border-rose-800"
+        }`,
+        overlayMotionClass("notice", exiting ? "exit" : "enter", reduceMotion),
+        reduceMotion
+      )}
     >
-      <span className="leading-none">
+      <span className="col-start-1 row-start-1 leading-none">
         {success ? (
           <IconCircleCheck className="h-5 w-5 text-emerald-500" />
         ) : (
           <IconAlertTriangle className="h-5 w-5 text-amber-500" />
         )}
       </span>
-      <div className="flex-1">
-        <p className="text-sm text-slate-700 dark:text-slate-200">
-          {toast.message}
-        </p>
-        {toast.action && (
-          <button
-            onClick={() => {
-              toast.action?.onClick();
-              onDismiss();
-            }}
-            className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            {toast.action.label}
-            <IconArrowRight className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      <p className="col-start-2 row-start-1 min-w-0 text-sm text-slate-700 dark:text-slate-200">
+        {toast.message}
+      </p>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action?.onClick();
+            onDismiss();
+          }}
+          // The snackbar-action idiom below `md`: a full-height trailing button on
+          // the bar, so a 10s undo window is actually hittable while walking
+          // (#2642). From `md` up it is the inline link under the message it has
+          // always been.
+          className="tap-target col-start-3 row-start-1 inline-flex h-11 shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-medium text-brand-700 hover:bg-brand-50 md:col-start-2 md:row-start-2 md:mt-1.5 md:h-auto md:rounded-none md:px-0 md:hover:bg-transparent md:hover:underline dark:text-brand-400 dark:hover:bg-brand-950/40"
+        >
+          {toast.action.label}
+          <IconArrowRight className="h-4 w-4" />
+        </button>
+      )}
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
         title="Dismiss"
-        className="text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400"
+        // A real 44px box below `md` (#644), not the `tap-target` pseudo-element
+        // on its own — that extension is coarse-pointer-only and invisible to a
+        // layout measurement, and this is the control a thumb reaches for while
+        // the bar is on a 6s clock. The desktop card keeps its 16px glyph.
+        className="tap-target col-start-4 row-start-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-slate-500 md:col-start-3 md:h-auto md:w-auto md:rounded-none dark:text-slate-600 dark:hover:text-slate-400"
       >
         <IconX className="h-4 w-4" />
       </button>

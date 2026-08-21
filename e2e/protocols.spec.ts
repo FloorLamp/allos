@@ -48,16 +48,16 @@ test.describe("protocols create → compare (issue #161)", () => {
     // on the page behind.
     const outcomeOptions = page.getByRole("listbox");
     await expect(
-      outcomeOptions.getByRole("button", {
+      outcomeOptions.getByRole("option", {
         name: "LDL Cholesterol",
         exact: true,
       })
     ).toBeVisible();
     await outcomeSearch.fill("Body weight");
-    await outcomeOptions.getByRole("button", { name: "Body weight" }).click();
+    await outcomeOptions.getByRole("option", { name: "Body weight" }).click();
     await outcomeSearch.fill("Resting heart rate");
     await outcomeOptions
-      .getByRole("button", { name: "Resting heart rate", exact: true })
+      .getByRole("option", { name: "Resting heart rate", exact: true })
       .click();
     await form.getByRole("button", { name: "Create protocol" }).click();
 
@@ -132,7 +132,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     // unclipped any more, because z-index cannot escape an ancestor's clip box.
     await expect(outcomeListbox).toHaveCSS("z-index", "70");
     await chooseSearch.fill("Body weight");
-    const weightOption = outcomeListbox.getByRole("button", {
+    const weightOption = outcomeListbox.getByRole("option", {
       name: /^Body weight [−+±]\d/,
     });
     await expect(weightOption).toBeVisible();

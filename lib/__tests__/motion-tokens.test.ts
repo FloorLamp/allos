@@ -44,6 +44,8 @@ describe("overlay motion tokens", () => {
     expect(MOTION_MS.drawer).toBe(OVERLAY_MOTION_MS);
     expect(MOTION_MS.sheet).toBe(OVERLAY_MOTION_MS);
     expect(MOTION_MS.dock).toBe(OVERLAY_MOTION_MS);
+    // …and the toast bar (#3373), which had no animation at all before it joined.
+    expect(MOTION_MS.notice).toBe(OVERLAY_MOTION_MS);
   });
 
   it("every overlay animation class is defined in the stylesheet", () => {
@@ -53,6 +55,7 @@ describe("overlay motion tokens", () => {
       "left",
       "top",
       "dialog",
+      "notice",
     ] as const) {
       for (const phase of ["enter", "exit"] as const) {
         const cls = overlayMotionClass(anchor, phase, false);
@@ -89,6 +92,7 @@ describe("overlay motion tokens", () => {
       "left",
       "top",
       "dialog",
+      "notice",
     ] as const) {
       expect(overlayMotionClass(anchor, "enter", true)).toBe("");
       expect(overlayMotionClass(anchor, "exit", true)).toBe("");
@@ -105,6 +109,7 @@ describe("overlay motion tokens", () => {
       "left",
       "top",
       "dialog",
+      "notice",
     ] as const) {
       expect(reduced).toContain(`.overlay-enter-${anchor}`);
       expect(reduced).toContain(`.overlay-exit-${anchor}`);
@@ -118,5 +123,6 @@ describe("overlay motion tokens", () => {
     expect(motionMs("sheet", true)).toBe(0);
     expect(motionMs("drawer", true)).toBe(0);
     expect(motionMs("dock", true)).toBe(0);
+    expect(motionMs("notice", true)).toBe(0);
   });
 });

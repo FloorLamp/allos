@@ -15,6 +15,7 @@ import { currentPathHref } from "@/lib/hrefs";
 // ~24h, but the toast is the only affordance, so it lingers past a normal toast. This
 // was a fourth local copy of 15000 until the vocabulary got one home.
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
+import PaginationControls from "@/components/PaginationControls";
 
 interface Dataset {
   key: string;
@@ -65,7 +66,6 @@ export default function DataTableManager({
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(Math.max(page, 1), pageCount);
-  const start = (currentPage - 1) * pageSize;
   const pageRows = rows;
 
   // Navigate to another page by updating this table's URL param; the server reads
@@ -312,33 +312,21 @@ export default function DataTableManager({
               </tbody>
             </table>
           </ScrollFade>
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span>
-              Showing {start + 1}–{start + pageRows.length} of {total}
-            </span>
-            {pageCount > 1 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage <= 1}
-                  className="btn-ghost text-sm"
-                >
-                  Prev
-                </button>
-                <span className="text-slate-500 dark:text-slate-400">
-                  Page {currentPage} of {pageCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage >= pageCount}
-                  className="btn-ghost text-sm"
-                >
-                  Next
-                </button>
-              </div>
-            )}
+          {/* The app's ONE pager (#3378). This card carried a FOURTH hand-rolled
+              copy of it — same sentence, same `btn-ghost text-sm` steps, same
+              arithmetic — which meant it also carried the ~36px steps the shared
+              component grew out of below `md`. `goToPage` is unchanged, so the
+              page still rides this dataset's URL param. */}
+          <div className="mt-3">
+            <PaginationControls
+              page={currentPage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={total}
+              visibleCount={pageRows.length}
+              onPageChange={goToPage}
+              testId={`dataset-${dataset.key}-pagination`}
+            />
           </div>
         </>
       )}

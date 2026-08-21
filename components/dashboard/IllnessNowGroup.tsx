@@ -219,12 +219,21 @@ export default function IllnessNowGroup({
                       data-testid={`illness-cockpit-line-${c.episodeKey}`}
                       className="contents"
                     >
-                      <span data-testid="illness-cockpit-day">
-                        {c.status.dayLabel}
-                      </span>
+                      {/* The DAY only — never `dayLabel`. The header row two lines
+                          up already renders `c.situation`, and the full form put
+                          "admin Illness" and "Illness · Day 4" on adjacent lines at
+                          390px (#3238). The formatter keeps the full string for the
+                          surfaces that show this status with nothing else naming it. */}
+                      {c.status.dayOnlyLabel && (
+                        <span data-testid="illness-cockpit-day">
+                          {c.status.dayOnlyLabel}
+                        </span>
+                      )}
                       {c.status.temperature && !expanded ? (
                         <span className="contents">
-                          <span aria-hidden="true">·</span>
+                          {c.status.dayOnlyLabel && (
+                            <span aria-hidden="true">·</span>
+                          )}
                           <span
                             data-testid="illness-cockpit-temperature"
                             data-candidate-id={
@@ -250,7 +259,10 @@ export default function IllnessNowGroup({
                       ) : null}
                       {c.status.lastMeds && !expanded ? (
                         <span className="contents">
-                          <span aria-hidden="true">·</span>
+                          {(c.status.dayOnlyLabel ||
+                            (c.status.temperature && !expanded)) && (
+                            <span aria-hidden="true">·</span>
+                          )}
                           <span
                             data-testid="illness-cockpit-last-meds"
                             data-candidate-id={
@@ -271,7 +283,11 @@ export default function IllnessNowGroup({
                       ) : null}
                       {c.status.worsening ? (
                         <>
-                          <span aria-hidden="true">·</span>
+                          {(c.status.dayOnlyLabel ||
+                            (!expanded &&
+                              (c.status.temperature || c.status.lastMeds))) && (
+                            <span aria-hidden="true">·</span>
+                          )}
                           <span className="font-medium text-rose-600 dark:text-rose-400">
                             Worsening ↑
                           </span>
