@@ -87,30 +87,31 @@ const CONFIRM_HOOKS = ["useConfirm", "useOptionalConfirm", "useConfirmOpen"];
 
 // ── The register of dialogs belonging to NO DIALOG HOST ──────────────────────
 //
-// "No host" here means no DIALOG host — none of HOST_MODULES above. Two entries
-// below are converged, just onto a different system: components/overlay owns the
-// motion, gesture and scrim tokens for the bottom/edge-anchored surfaces (#1469),
-// and both are registered as OVERLAY_SURFACES in
-// lib/__tests__/overlay-motion-chokepoint.test.ts. They are listed anyway rather
-// than filtered out, because a census that quietly drops the cases it has decided
-// are fine is the same census that lost MergeConflictDialog for three passes. The
-// script prints "shared overlay primitives" against exactly those two, so the
-// distinction is visible without being load-bearing.
+// "No host" here means no DIALOG host — none of HOST_MODULES above.
 //
-// READ THIS BEFORE ADDING AN ENTRY. This register is a CENSUS, not a set of
-// sanctions. Every entry below states, factually, what the component hand-rolls.
-// None of them says the arrangement is correct, because that call has not been
-// made: #3405 asks whether these converge onto the host or are named in
-// docs/internals/overlays.md as sanctioned exceptions, and answers "this is a
-// design call about the convergence's boundary, not something a lane should
-// decide". Until that is answered, an entry here means ONLY "this was on disk
-// and unhosted on the day the census was written".
+// THE OWNER RULED ON THIS REGISTER (#3405, 2026-08-20), and the ruling is what
+// each entry now records instead of "status undecided":
 //
-// The guard over this register (lib/__tests__/dialog-census.test.ts) therefore
-// fails on a hostless dialog that is NOT recorded, and on a recorded one that is
-// no longer hostless. It deliberately does NOT fail on the recorded set itself —
-// a build error on every recorded entry would force the owner's open design call
-// to be made once per entry by whoever next touched the tree.
+//   CONVERGENCE IS THE DEFAULT. A dialog belongs on the shared host unless
+//   docs/internals/overlays.md names it an exception with a stated reason.
+//   Naming every hostless dialog as sanctioned was declined in as many words —
+//   "nine exceptions to a rule with about a dozen followers is not a convention".
+//
+// Three of the nine this register was written with have since converged and are
+// gone from it (MergeConflictDialog, PlateBuilderModal, FitnessCheckView). What
+// is left is the recorded exceptions, plus ONE entry that is not an exception at
+// all — see `scopedOut`.
+//
+// READ THIS BEFORE ADDING AN ENTRY. An entry is not a place to park a surface
+// you did not want to converge. It states the ANATOMY reason the shared host
+// cannot serve it, the same reason appears in docs/internals/overlays.md, and
+// lib/__tests__/dialog-census.test.ts checks that the two agree — a register the
+// doc does not know about, or a doc row whose subject has converged, both fail.
+//
+// The guard over this register fails on a hostless dialog that is NOT recorded,
+// and on a record that has outlived its subject. It deliberately does NOT fail on
+// the recorded set: these are sanctioned, and a build error on a sanctioned
+// exception teaches the next reader to delete the register.
 //
 // No count is written in this file's prose ON PURPOSE, and it is not squeamishness:
 // this comment said SEVEN while the register below held NINE, having gone stale the
@@ -121,25 +122,44 @@ const CONFIRM_HOOKS = ["useConfirm", "useOptionalConfirm", "useConfirmOpen"];
 // to know which side is right. Where a count is genuinely useful, DERIVE it — the
 // guard's failure message reads Object.keys(HOSTLESS_DIALOGS).length — and where it
 // is only rhetorical, say "every entry".
-export const HOSTLESS_DIALOGS: Record<string, string> = {
-  "components/MergeConflictDialog.tsx":
-    "the #3405 straggler: own portal, own scrim, own z-index, own focus behaviour — and not even the shared useFocusTrap. Its comment says it COPIED ModalShell's behaviour rather than using it. Status undecided (#3405).",
-  "components/PlateBuilderModal.tsx":
-    "centred tool modal (barbell plate math): own portal and scrim, but does share useFocusTrap. Status undecided (#3405).",
-  "components/ImageCropper.tsx":
-    "the crop surface: own portal and scrim, no shared focus trap. Its pointer drag manipulates CONTENT, so #1469 already scopes its GESTURE out; that says nothing about its host. Status undecided (#3405).",
-  "components/MobileDetailPage.tsx":
-    "mobile full-page takeover for master/detail: NO portal at all — inline `fixed inset-0` — with its own Escape handler, its own useLockBodyScroll and its own contained scroller. Status undecided (#3405).",
-  "components/photo/PhotoGallery.tsx":
-    "the photo lightbox: NO portal, own `fixed inset-0` scrim, and its Escape lives on the panel's own onKeyDown rather than the shared trap. Status undecided (#3405).",
-  "components/activity-form/FitnessTestTimer.tsx":
-    "the fitness-test timer takeover: NO portal, own `fixed inset-0 z-60`, own Escape handler, no scrim and no focus trap. Status undecided (#3405).",
-  "app/(app)/training/FitnessCheckView.tsx":
-    "the fitness-check entry panel: NO portal, and it hand-rolls the host's own anatomy — scrim, centred `max-w-lg` card, `max-h-[85vh]` and its own `overflow-y-auto`, which is the one scroller in this list that does NOT contain its overscroll. Status undecided (#3405).",
-  "components/ActivityOverlay.tsx":
-    "the activity workspace. Converged, but onto components/overlay rather than the dialog host: shared primitives, shared focus trap, shared body lock, contained scroller. Registered as an OVERLAY_SURFACE in the chokepoint guard, whose drag resolves to MINIMIZE rather than discard (#1469).",
-  "components/ProfileIdentityBar.tsx":
-    "the mobile profile switcher. Converged onto components/overlay in the same way as ActivityOverlay — shared primitives, focus trap, body lock, contained scroller — and registered as a TOP-anchored OVERLAY_SURFACE in the chokepoint guard (#1801).",
+export interface HostlessRecord {
+  /** The ANATOMY reason the shared dialog host cannot serve this surface. */
+  why: string;
+  /**
+   * True when the file is not a member of the dialog family AT ALL.
+   *
+   * `MobileDetailPage` is the case the owner ruled on: a full-page mobile
+   * takeover is not a centred dialog, so it leaves the family by ANATOMY rather
+   * than by exemption — "the census and the guard should say so, rather than
+   * recording it as an exception to a rule it was never an instance of". It stays
+   * in this register because a sweep that quietly drops what it has decided is
+   * fine is the sweep that lost MergeConflictDialog for three passes; it is
+   * PRINTED and TESTED separately because calling it an exception would hand the
+   * next hand-rolled dialog a precedent it has not earned.
+   */
+  scopedOut?: boolean;
+}
+
+export const HOSTLESS_DIALOGS: Record<string, HostlessRecord> = {
+  "components/ImageCropper.tsx": {
+    why: "RECORDED EXCEPTION. It opens OVER an already-open ModalShell (both profile-photo pickers are dialogs), so it needs `z-120` — above the sheet's `z-60` and above the toasts' `z-100` — and the host exposes no stacking prop. Its pointer drag also manipulates CONTENT across the whole panel (panning the image inside the crop circle), which a sheet's swipe-down dismissal would arbitrate against; #1469 already scopes that gesture out for the same reason.",
+  },
+  "components/photo/PhotoGallery.tsx": {
+    why: "RECORDED EXCEPTION. The lightbox is a full-bleed media viewer — a black ground with the original `object-contain` to the viewport edges and its own prev/next paging — where the host's titled `bg-surface` card with padding and a scroll owner is the wrong shape, and the sheet's swipe-down would arbitrate against the horizontal paging. The exception is presentation only: since #3405 it takes the shared useFocusTrap, so initial focus, the Tab trap, capture-phase Escape and focus restore are the host's after all.",
+  },
+  "components/activity-form/FitnessTestTimer.tsx": {
+    why: "RECORDED EXCEPTION. The host mounts on open and unmounts on close; this takeover MUST survive being closed — collapsing it returns the viewer to the entry sheet with the run still going, and the elapsed state lives in the component. It is also nested inside an already-scrimmed sheet (so it carries no scrim of its own) and its capture-phase Escape stops propagation so collapsing the timer does not also close the sheet underneath.",
+  },
+  "components/ActivityOverlay.tsx": {
+    why: "RECORDED EXCEPTION, and converged — onto components/overlay rather than onto the dialog host. Registered as an OVERLAY_SURFACE in lib/__tests__/overlay-motion-chokepoint.test.ts. The dialog host is transactional (mount to open, unmount to close, swipe-down DISCARDS); a live workout runs for an hour, survives navigation as the minimized bar, and its drag resolves to MINIMIZE (#1469).",
+  },
+  "components/ProfileIdentityBar.tsx": {
+    why: "RECORDED EXCEPTION, and converged onto components/overlay in the same way as ActivityOverlay — shared primitives, focus trap, body lock, contained scroller. Its anatomy is TOP-anchored: the panel drops out of the identity bar and a swipe UP retreats through it, which a centred host has no anchor to express (#1801).",
+  },
+  "components/MobileDetailPage.tsx": {
+    scopedOut: true,
+    why: "NOT A DIALOG. A full-page mobile takeover for master/detail: it replaces the page rather than floating over it, carries no scrim, and is dismissed by the back gesture (useHistoryBackClose) the way a page is. Scoped OUT of the dialog family by anatomy (owner ruling on #3405), not excepted from it.",
+  },
 };
 
 // ── Source reading ───────────────────────────────────────────────────────────
@@ -446,7 +466,24 @@ export interface DialogCensus {
   entries: DialogEntry[];
   hosts: DialogEntry[];
   hosted: DialogEntry[];
+  /**
+   * Every dialog surface belonging to no dialog host, structurally — recorded
+   * exceptions AND the scoped-out entry alike. Kept whole so nothing is dropped
+   * by a caller that only looks at one of the two lists below.
+   */
   hostless: DialogEntry[];
+  /**
+   * The RECORDED EXCEPTIONS: hostless, and members of the dialog family, so each
+   * one is an exception to the convergence rule and answers to it.
+   */
+  exceptions: DialogEntry[];
+  /**
+   * SCOPED OUT BY ANATOMY: hostless on disk, but not a member of the dialog
+   * family at all, so the convergence rule was never about them (owner ruling on
+   * #3405). Reported separately rather than filtered away or miscounted as an
+   * exception.
+   */
+  scopedOut: DialogEntry[];
   confirmCallers: DialogEntry[];
   /** Hostless on disk but absent from HOSTLESS_DIALOGS — the guard's failure. */
   unrecordedHostless: string[];
@@ -510,6 +547,12 @@ export function censusDialogs(files: SourceFile[]): DialogCensus {
     hosts: of("host"),
     hosted: of("hosted"),
     hostless,
+    exceptions: hostless.filter(
+      (e) => HOSTLESS_DIALOGS[e.rel]?.scopedOut !== true
+    ),
+    scopedOut: hostless.filter(
+      (e) => HOSTLESS_DIALOGS[e.rel]?.scopedOut === true
+    ),
     confirmCallers: of("confirm-caller"),
     unrecordedHostless: hostless
       .map((e) => e.rel)

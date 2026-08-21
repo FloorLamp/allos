@@ -124,6 +124,7 @@ export default function BottomSheet({
   titleHidden = false,
   size = "sm",
   showClose = false,
+  closeDisabled = false,
   fullScreenBelowMd = false,
   onGestureDismiss,
 }: {
@@ -164,6 +165,22 @@ export default function BottomSheet({
   // CENTERED card has neither, so every dialog-presentation consumer that used
   // to be a ModalShell keeps the "✕" it has always had.
   showClose?: boolean;
+  // Refuse the Close control while the surface has a reason to refuse dismissal
+  // — a write already in flight, which closing would not cancel (#3405 review).
+  //
+  // WHY THIS IS A PROP AND NOT THE CONSUMER'S PROBLEM. A consumer that wants
+  // "no dismissal right now" can already pass a no-op `onClose`, and that is
+  // exactly the shape this exists to stop: the ✕ still looks live, still takes
+  // the tap, and does nothing — an affordance lying about what it will do, two
+  // pixels from a Cancel button that is honestly `disabled`. An ORNAMENT moving
+  // is not a reason to widen this API; an AFFORDANCE LYING is.
+  //
+  // It disables ONLY the visible control. Escape and the gestures keep going to
+  // `onGestureDismiss`/`onClose`, where the consumer's own guard already decides
+  // — a surface that refuses dismissal refuses it there, and one that merely
+  // wants the button greyed out (a submit in flight) still answers Escape. The
+  // two questions are separate and this prop is deliberately the narrower one.
+  closeDisabled?: boolean;
   // Fill the viewport below `md` instead of floating (see above). Only meaningful
   // with `presentation="centered"` — the other two are already full-bleed at that
   // width, where a sheet IS the phone shape. When it is on, `showClose` draws a
@@ -401,6 +418,7 @@ export default function BottomSheet({
             <button
               type="button"
               onClick={onClose}
+              disabled={closeDisabled}
               className={
                 asFullScreen
                   ? // ONE control, two spellings. Below `md` it is a named,
@@ -411,8 +429,17 @@ export default function BottomSheet({
                     // NOT `shrink-0` below `md`: #3450 established that class as
                     // protection FROM prose, and this control sits beside a
                     // heading rather than inside one.
-                    "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 md:dark:text-slate-400 md:dark:hover:text-slate-300"
-                  : "shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
+                    //
+                    // THE `disabled:` PAIR IS ON BOTH BRANCHES, and #3455 is why
+                    // (`closeDisabled`, above). A branch that drops them renders a
+                    // control that is `disabled` in the DOM, looks completely
+                    // live, and still swallows the tap — the exact lying
+                    // affordance that prop was written to stop. Below `md` the
+                    // grey-out is doing MORE work, not less: this is a named
+                    // "Cancel" at the thumb, beside a surface that is busy, so
+                    // "not right now" has to be visible on the word itself.
+                    "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-50 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 md:dark:text-slate-400 md:dark:hover:text-slate-300"
+                  : "shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
               }
               // "Cancel" at BOTH widths when full-screen, so the accessible
               // name matches the visible one below `md` (WCAG 2.5.3) instead of

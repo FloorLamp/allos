@@ -127,6 +127,7 @@ export default function ModalShell({
   presentation = "dialog",
   fullScreenBelowMd = false,
   initialFocusRef,
+  closeDisabled = false,
   testId = "modal-shell",
 }: {
   title: string;
@@ -146,6 +147,16 @@ export default function ModalShell({
   // no use for it.
   fullScreenBelowMd?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  // Grey out the ✕ while this surface has a reason to refuse dismissal — a write
+  // already in flight, which closing would not cancel (#3405 review).
+  //
+  // The alternative a consumer reaches for is a no-op `onClose`, and that is the
+  // thing this exists to stop: the ✕ still looks live, still takes the tap, and
+  // does nothing. `MergeConflictDialog` had exactly that for the length of one
+  // review — an affordance lying about what it will do, beside a Cancel button
+  // that was honestly `disabled`. See BottomSheet's note for why this disables
+  // the CONTROL only and leaves Escape and the gestures on their own path.
+  closeDisabled?: boolean;
   testId?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -189,6 +200,7 @@ export default function ModalShell({
       fullScreenBelowMd={fullScreenBelowMd}
       size={size}
       showClose
+      closeDisabled={closeDisabled}
       testId={testId}
       panelRef={panelRef}
       initialFocusRef={initialFocusRef}

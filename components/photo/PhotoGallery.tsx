@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useFocusTrap } from "@/components/useFocusTrap";
 import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
@@ -80,6 +81,33 @@ export default function PhotoGallery({
     null,
     lightboxKey
   );
+
+  // A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
+  // docs/internals/overlays.md. The lightbox below is a full-bleed media viewer:
+  // a black ground with the original `object-contain` to the viewport edges and
+  // its own prev/next paging. The converged host renders a titled card on an
+  // opaque `bg-surface` with padding and a scroll owner, which is the wrong shape
+  // for looking at a photograph, and the sheet's swipe-down dismissal would
+  // arbitrate against the horizontal paging the viewer reaches for first.
+  //
+  // AN EXCEPTION FROM THE HOST IS NOT AN EXCEPTION FROM BEING USABLE. A recorded
+  // exception is about PRESENTATION; it never buys a surface out of the
+  // accessibility floor. So everything a modal owes a keyboard user still comes
+  // from the shared hook: initial focus, the Tab trap, capture-phase Escape and
+  // focus restored to the thumbnail that opened it.
+  //
+  // That is not a tidy-up. This used to answer Escape on the panel's own
+  // `onKeyDown`, which fires only once focus is already inside — and nothing put
+  // it there, so Escape did nothing at all unless the viewer happened to Tab
+  // first. The hand-rolled presentation had quietly taken the keyboard exit with
+  // it, which is exactly what an exception must not be allowed to do.
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  const closeLightbox = useCallback(() => setLightbox(null), [setLightbox]);
+  useFocusTrap({
+    panelRef: lightboxRef,
+    onClose: closeLightbox,
+    active: lightbox != null,
+  });
 
   if (!domain) {
     // The shared "nothing here yet" panel rather than a bare line of grey text
@@ -189,13 +217,15 @@ export default function PhotoGallery({
 
       {open ? (
         <div
+          ref={lightboxRef}
           className="fixed inset-0 z-50 flex flex-col bg-black/90 p-3"
           role="dialog"
           aria-modal="true"
           aria-label={`Photo from ${open.date}`}
           data-testid="photo-lightbox"
           onKeyDown={(e) => {
-            if (e.key === "Escape") setLightbox(null);
+            // Escape is the shared hook's, on the capture phase (above). The
+            // arrows stay here: paging is this surface's own vocabulary.
             if (e.key === "ArrowLeft" && neighbors?.prev != null)
               setLightbox(neighbors.prev);
             if (e.key === "ArrowRight" && neighbors?.next != null)

@@ -1,7 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState } from "react";
 import { IconX, IconRotateClockwise } from "@tabler/icons-react";
 import type { Equipment } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
@@ -15,7 +14,7 @@ import {
   barbellTotal,
 } from "@/lib/plates";
 import { createEquipmentAction } from "@/app/(app)/equipment/actions";
-import { useFocusTrap } from "@/components/useFocusTrap";
+import ModalShell from "@/components/ModalShell";
 
 // select() sentinel for the "create a custom barbell" row at the bottom.
 const NEW_BAR = "__new__";
@@ -242,9 +241,6 @@ export default function PlateBuilderModal({
   onCreated: (e: Equipment) => void;
   onClose: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useFocusTrap({ panelRef, onClose });
   // Only equipment with a known weight can act as a bar.
   const bars = useMemo(
     () => equipment.filter((e) => e.weight_kg != null),
@@ -363,40 +359,23 @@ export default function PlateBuilderModal({
     onUse(total, barId);
   }
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-900/40 p-4 sm:p-8 dark:bg-black/70"
-      onClick={onClose}
+  // CONVERGED ONTO THE DIALOG HOST (#3405, owner ruling 2026-08-20). This used to
+  // be its own portal, its own scrim, its own `z-60`, its own scroller and its own
+  // `max-w-md` — sharing only `useFocusTrap` with the rest of the family. It is now
+  // an ordinary ModalShell consumer, so it is a SHEET below `md` and a centred card
+  // above, over a locked body, with one scroll owner and the host's Escape and
+  // discard-confirm behaviour (#3420). The declared `size="sm"` resolves to
+  // `sm:max-w-md`, which is the width it always had.
+  return (
+    <ModalShell
+      title="Plate builder"
+      onClose={onClose}
+      size="sm"
+      testId="plate-builder"
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <h2
-            id={titleId}
-            className="text-lg font-bold text-slate-900 dark:text-slate-100"
-          >
-            Plate builder
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
-            aria-label="Close"
-            title="Close"
-          >
-            <IconX className="h-5 w-5" />
-          </button>
-        </div>
-
+      <div>
         {/* Bar selector / create */}
-        <div className="mt-4">
+        <div>
           <label className="label">Barbell</label>
           {!creating ? (
             <select
@@ -564,7 +543,6 @@ export default function PlateBuilderModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 }
