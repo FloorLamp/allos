@@ -16,7 +16,10 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
+import {
+  NO_PUSH_STAMP_WARNING,
+  parseHealthConnectPayload,
+} from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import {
   upsertMetricSamples,
@@ -533,6 +536,106 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
         .map((r) => r.value)
         .sort()
     ).toEqual([3000, 3500]);
+  });
+});
+
+describe("a STAMPLESS push can never delete, however its rows are bundled", () => {
+  // The sharpest form of the window-fallback defect, and the one a merely-harmless case
+  // cannot catch. A fallback of "furthest-forward end in the push" is computed over the
+  // WHOLE push, so bundling a stale re-sent record with an unrelated row that happens to
+  // end later — a hydration row, here — manufactures a stamp newer than the row it would
+  // then delete. Nothing about the steps data changed; a glass of water did.
+  const steps = (start: string, end: string, count: number) => ({
+    start_time: start,
+    end_time: end,
+    count,
+    metadata: { data_origin: ORIGIN },
+  });
+  const unstamped = (body: Record<string, unknown>) =>
+    ingestHealthConnectPayload(p0(), parseHealthConnectPayload(body, "UTC"));
+  let profile = 0;
+  const p0 = () => profile;
+
+  it("leaves the converged row alone when a stale record rides in beside a later one", () => {
+    profile = freshProfile("STAMPLESS-BUNDLED");
+    unstamped({
+      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+    });
+    unstamped({
+      steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
+    });
+    // The replay, bundled with a hydration row reaching further forward than anything
+    // stored. MUTATION: give `pushStampFor` any window-derived fallback and the 3500
+    // row is deleted here, by a push that stated no time at all.
+    const third = unstamped({
+      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+      hydration: [
+        {
+          start_time: "2026-05-02T01:00:00Z",
+          end_time: "2026-05-02T02:00:00Z",
+          liters: 0.3,
+          metadata: { data_origin: ORIGIN },
+        },
+      ],
+    });
+    expect(third.split.superseded).toBe(0);
+    expect(
+      stored(profile, "steps")
+        .map((r) => r.value)
+        .sort()
+    ).toEqual([3000, 3500]);
+  });
+
+  it("says so in Review rather than going quiet about it", () => {
+    // A stampless push leaves the day reading HIGH. That is the deliberate direction,
+    // but it needs a cause a person can find. MUTATION: drop the warning and the only
+    // symptom is a doubled step count with nothing anywhere to explain it.
+    const parsed = parseHealthConnectPayload(
+      { steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)] },
+      "UTC"
+    );
+    expect(parsed.pushedAt).toBe(null);
+    expect(parsed.details.warnings).toContain(NO_PUSH_STAMP_WARNING);
+    // And it stays quiet when there was nothing it could have acted on anyway.
+    const pointOnly = parseHealthConnectPayload(
+      {
+        heart_rate_variability: [
+          { time: "2026-05-01T10:00:00Z", milliseconds: 40 },
+        ],
+      },
+      "UTC"
+    );
+    expect(pointOnly.details.warnings).not.toContain(NO_PUSH_STAMP_WARNING);
+  });
+});
+
+describe("the stored stamp is canonical", () => {
+  it("re-serializes whatever spelling the exporter used", () => {
+    // MUTATION: hand `upsertMetricSamples` `parsed.pushedAt` raw instead of routing it
+    // through `pushStampFor`, and `metric_samples.pushed_at` starts holding two shapes —
+    // which lib/__tests__/time-columns.test.ts freezes against for a new column, and
+    // which also skips the clock-skew bound on the way past.
+    const p = freshProfile("CANONICAL-STAMP");
+    push(
+      p,
+      {
+        steps: [
+          {
+            start_time: "2026-05-01T10:00:00Z",
+            end_time: "2026-05-02T01:00:00Z",
+            count: 3500,
+            metadata: { data_origin: ORIGIN },
+          },
+        ],
+      },
+      "2026-05-02T01:00:05.250Z"
+    );
+    const row = db
+      .prepare(
+        "SELECT pushed_at FROM metric_samples WHERE profile_id = ? AND metric = 'steps'"
+      )
+      .get(p) as { pushed_at: string };
+    expect(row.pushed_at).toBe("2026-05-02T01:00:05Z");
   });
 });
 

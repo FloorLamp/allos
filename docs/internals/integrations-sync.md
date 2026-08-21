@@ -789,26 +789,64 @@ carry it explicitly:
   uses for this judgement. The metric list alone is not enough: the same four metrics
   arrive as minute buckets at `1m`/`15m`, and `dataOrigin` reads only
   `metadata.data_origin`, so two devices that set none both parse to `origin = null`
-  and share one supersede group.
+  and share one supersede group. **It errs in both directions and its docstring says
+  so**: above the line a long window need not be a day bucket (two `full`-setting apps
+  with no `data_origin` can put a run record in one group with a background step
+  total), and below it a genuine day bucket cut within an hour of the old zone's
+  midnight can NEVER be superseded — a small residual on that day is PERMANENT until
+  #3439's repair reaches it, not "collapsed on the next push". The constant is also a
+  proxy borrowed from an explicitly informational detector and promoted here to gate a
+  DELETE; reuse prevents drift, it does not make the boundary right.
 - **`metric_samples.pushed_at`** — see below.
 
-**FRESHNESS COMES FROM THE PAYLOAD, NEVER FROM ARRIVAL ORDER.** Deciding "incoming
-wins" from position was refuted twice, in both directions. A push over
+**FRESHNESS COMES FROM THE PAYLOAD, NEVER FROM ARRIVAL ORDER AND NEVER FROM A
+WINDOW.** Deciding "incoming wins" from position was refuted twice. A push over
 `INGEST_CHUNK_SIZE` rows splits a mixed-anchoring pair across two chunks, and the
 chunk that met the stale row alone resolved it by arrival — the STALE bucket deleting
-the CURRENT one, which is worse than the repairable double count it was fixing. And a
-byte-identical REPLAY of a pre-switch payload (an exporter retry after a 5xx; the
-route has no idempotency key) deleted the converged row and re-inserted the stale one.
+the CURRENT one. And a byte-identical REPLAY of a pre-switch payload (an exporter
+retry after a 5xx; the route has no idempotency key) deleted the converged row.
 
-So every Health Connect row carries `metric_samples.pushed_at`: the exporter's own
-`payload.timestamp` when it states one, otherwise the LATEST end instant anywhere in
-the push. Both are derived from the payload, so a replay carries the same stamp as the
-push it replays. A row may supersede a stored row only when its stamp is STRICTLY
-older — and, symmetrically, a row that overlaps a stored row it is NOT newer than is
-**not written at all** (counted `unchanged`), because refusing to delete is only half
-the answer when the alternative is re-inserting the stale row under the key its own
-supersede had cleared. Two rows of one push share a stamp, so no chunk can ever delete
-another chunk's row.
+So every Health Connect row carries `metric_samples.pushed_at`: the instant the
+EXPORTER stamped on the push (`payload.timestamp`), canonicalised, and **nothing
+else**. A row may supersede a stored row only when its stamp is STRICTLY older. A
+replay carries the same stamp as the push it replays; two rows of one push share a
+stamp, so no chunk can out-rank another.
+
+**The stamp must be a PUSH TIME, and this is the mistake worth not repeating.** The
+first version fell back, for a push stating no `timestamp`, to the furthest-forward
+`ended_at` in that push. An END is a property of the READING. A re-anchored bucket for
+a day that has FINISHED ends EARLIER than the old-anchoring "today so far" row it
+overlaps — exactly the comparison `staleBatchOverlaps` already says must never be made
+between an incoming row and a stored one — so the correcting push read as the older
+one and the correcting reading was never written:
+
+```
+push 1  steps [15:00Z, 23:00Z) = 3000     old anchoring, still filling
+push 2  steps [10:00Z, 22:00Z) = 3500     re-anchored, COMPLETED
+        -> stored 3000, for 3500 walked, and nothing converges it
+```
+
+The bug this fixes reads a day too HIGH: visible in every total, repaired by the next
+push. That read it too LOW, looked exactly like a day nobody walked, and converged on
+nothing. **Every trade in this path goes the other way now** — a stated stamp or no
+supersede at all — and it was measured before removing: of 228 captured payloads, all
+175 carrying an `app_version` (every real exporter push) state a readable `timestamp`;
+the 53 without one carry no `app_version` either and are this repo's own synthetic
+bodies. A push that still states none supersedes nothing, leaves the double count, and
+says so in Review through `NO_PUSH_STAMP_WARNING`.
+
+`MAX_PUSH_CLOCK_SKEW_MS` bounds a phone whose clock claims the future: such a stamp
+would be written onto that push's rows and every later honest push would read as older
+than them, so nothing could supersede them again. Failing the bound yields no stamp,
+which can only make this path delete less.
+
+**NOTHING IN THIS PATH WITHHOLDS A WRITE.** An earlier version also refused to store an
+incoming row that overlapped a stored row it was not newer than, so a replay would be
+inert rather than merely harmless. It counted the dropped row `unchanged`, which
+`formatSplitLabel` renders as "nothing new", muted — a lost reading, invisible, which
+is strictly worse than the supersede this document argues must be visible. The most a
+stale row may now do is sit beside the fresh one as a double count until the next
+stamped push collapses it.
 
 Edit-locked rows survive and are counted in the `edited` split; tombstoned rows stay
 dead; POINT readings (`started_at == ended_at` — HRV, skin temperature, lean mass,
