@@ -2812,6 +2812,22 @@ export async function openCombobox(
   return page.getByRole("listbox");
 }
 
+// EVERY PICKABLE ROW of the shared Combobox's open list, for a spec that types a name
+// and takes "whichever row carries it".
+//
+// The list holds two KINDS of row, and since #3316 they carry different roles: the
+// vocabulary's rows are `option`s, and the free-text "Use '<query>'" row is a real
+// `button`, because it is a COMMAND on what was typed rather than a member of the
+// vocabulary. A spec that types a lift name and clicks the match wants either — the
+// name may already be in the catalog, or the spec may be about to create it — so
+// asking for one role would break on whichever case it did not anticipate. (That is
+// not hypothetical: it is exactly what a role-by-role sweep of this file's callers
+// turned red, because a plain `getByRole("button")` used to match BOTH.)
+export function comboboxRows(scope: Page | Locator): Locator {
+  const listbox = scope.getByRole("listbox");
+  return listbox.getByRole("option").or(listbox.getByRole("button"));
+}
+
 // Choose a shared-Combobox option by its VISIBLE LABEL — the combobox analog of
 // settledSelect, for the pickers #1675 converted from `<select>`s.
 //
@@ -2831,7 +2847,7 @@ export async function settledPickOption(
     await settledFill(page, field, label, { timeout: 5_000 });
     const option = page
       .getByRole("listbox")
-      .getByRole("button", { name: label, exact: true });
+      .getByRole("option", { name: label, exact: true });
     await expect(option).toBeVisible({ timeout: 2_000 });
     await option.click();
     await expect(field).toHaveValue(label, { timeout: 2_000 });

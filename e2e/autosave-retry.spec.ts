@@ -62,7 +62,7 @@ test("a save that dies in the swap window retries itself to success — zero tap
   await page.getByPlaceholder(/What did you do/).fill("Running");
   await page
     .getByRole("listbox")
-    .getByRole("button", { name: "Running", exact: true })
+    .getByRole("option", { name: "Running", exact: true })
     .click();
 
   // The window opens BEFORE the form turns savable: the duration below is the

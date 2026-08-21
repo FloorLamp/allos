@@ -1,7 +1,18 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  comboboxRows,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
+import { loginAs } from "./nav";
+import {
+  E2E_LOGIN_NUTRITION,
+  E2E_MEMBER_PASSWORD,
+  NUTRITION_PROFILE,
+} from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
@@ -23,6 +34,15 @@ const FINDING = "E2EComboFinding";
 const NEW_PROVIDER = "E2E Combobox Clinic";
 const SPECIALTY_DOC = "E2E Specialty Doc";
 const SUPP = "E2EComboSupp";
+// A NAME NO OTHER TEST IN THIS FILE MAY WRITE. The a11y test below asserts that a
+// FREE-TEXT row renders, which is true only while the typed name is NOT in the
+// profile's supplement vocabulary — and the situation-picker test above SAVES a
+// supplement called SUPP. Sharing the name made the a11y test pass alone and fail
+// deterministically whenever that sibling ran first on the same worker (each
+// Playwright WORKER gets a DB copy, not each test; this file's cleanup is
+// beforeAll/afterAll). "No submit — nothing is written" is true of the a11y test
+// itself, which is exactly what hid the coupling: the write is the neighbour's.
+const A11Y_SUPP = "E2EComboA11ySupp";
 const CUSTOM_SITUATION = "E2EMigraine";
 
 function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
@@ -84,7 +104,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await provider.fill("patel");
     const listbox = page.getByRole("listbox");
     const indivOption = listbox
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: /Patel/ })
       .first(); // first-ok: transient list this spec just opened by typing "patel"; the first Patel match is the intended row
     await expect(indivOption).toBeVisible();
@@ -98,9 +118,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // (2) An organization shows the building icon instead.
     await provider.fill("quest");
     await expect(
-      page
-        .getByRole("listbox")
-        .getByRole("button")
+      comboboxRows(page)
         .filter({ hasText: /Quest/ })
         .first() // first-ok: transient list opened by typing "quest"; first Quest match is intended
         .getByTestId("provider-icon-organization")
@@ -131,11 +149,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("combobox", { name: "Provider" })
       .fill("Combobox Clinic");
     await expect(
-      page
-        .getByRole("listbox")
-        .getByRole("button")
-        .filter({ hasText: NEW_PROVIDER })
-        .first() // first-ok: transient list opened by typing; first match is the just-created provider
+      comboboxRows(page).filter({ hasText: NEW_PROVIDER }).first() // first-ok: transient list opened by typing; first match is the just-created provider
     ).toBeVisible();
   });
 
@@ -157,9 +171,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // labels the native prefix-only datalist would have missed.
     const specialty = editForm.getByRole("combobox", { name: "Specialty" });
     await specialty.fill("cardio");
-    const match = page
-      .getByRole("listbox")
-      .getByRole("button")
+    const match = comboboxRows(page)
       .filter({ hasText: /cardio/i })
       .first(); // first-ok: transient NUCC list opened by typing "cardio"; first match is the intended pick
     await expect(match).toBeVisible();
@@ -232,11 +244,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     );
     await expect(
       // Portaled listbox (#3271) — resolved from the page, not the form.
-      page
-        .getByRole("listbox")
-        .getByRole("button")
-        .filter({ hasText: CUSTOM_SITUATION })
-        .first() // first-ok: transient list opened by typing; the created situation is the intended option
+      comboboxRows(page).filter({ hasText: CUSTOM_SITUATION }).first() // first-ok: transient list opened by typing; the created situation is the intended option
     ).toBeVisible();
   });
 
@@ -273,5 +281,153 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .click();
     await expect(doseEditor.getByLabel("Amount")).toHaveCount(2);
     // No submit — nothing is written to the DB.
+  });
+
+  // #3316 — the keyboard model was there and worked; it was only UNOBSERVABLE. The
+  // listbox held plain buttons, so `role="listbox"` had no `option` children at all
+  // and arrowing moved a highlight nothing announced. This drives the wiring an
+  // assistive technology actually reads: what the rows ARE, and which one the input
+  // says is active.
+  test("the listbox exposes options, and the input names the active one (#3316)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/nutrition?tab=supplements");
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(addCard).toBeVisible();
+
+    const field = addCard.getByLabel("Name");
+    await settledFill(page, field, "vitamin");
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+
+    // (1) The rows are OPTIONS. Before #3316 this locator found nothing: a listbox
+    // with no items, as far as the a11y tree was concerned.
+    const options = listbox.getByRole("option");
+    expect(await options.count()).toBeGreaterThan(1);
+
+    // (2) The input NAMES the active row, and (3) that row is the selected one.
+    const firstId = await options.nth(0).getAttribute("id");
+    expect(firstId).toBeTruthy();
+    await expect(field).toHaveAttribute("aria-activedescendant", firstId!);
+    await expect(options.nth(0)).toHaveAttribute("aria-selected", "true");
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "false");
+
+    // (4) Arrowing MOVES it — the assertion the old highlight could not support.
+    await field.press("ArrowDown");
+    const secondId = await options.nth(1).getAttribute("id");
+    expect(secondId).not.toBe(firstId);
+    await expect(field).toHaveAttribute("aria-activedescendant", secondId!);
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+
+    // (5) Enter takes the row aria-activedescendant names — the same row, not the
+    // one that merely looks highlighted.
+    const secondLabel = (await options.nth(1).innerText()).trim();
+    await field.press("Enter");
+    await expect(field).toHaveValue(secondLabel);
+
+    // (6) THE FREE-TEXT ROW IS A COMMAND, NOT AN OPTION. "Use '<query>'" acts on what
+    // the user typed; it does not name something the picker offers, so exposing it as
+    // an `option` would tell a screen-reader user the vocabulary contains their typo.
+    // It stays a button — and aria-activedescendant still names it, which announces
+    // it as the button it is.
+    await settledFill(page, field, A11Y_SUPP);
+    const useRow = listbox.getByRole("button", {
+      name: new RegExp(`Use .*${A11Y_SUPP}`),
+    });
+    await expect(useRow).toBeVisible();
+    await expect(listbox.getByRole("option")).toHaveCount(0);
+    await expect(field).toHaveAttribute(
+      "aria-activedescendant",
+      (await useRow.getAttribute("id"))!
+    );
+    // No submit — nothing is written to the DB.
+  });
+
+  // A FIELD WITH NOTHING TO SHOW MUST NOT SAY IT IS EXPANDED (#3316/#3100).
+  //
+  // `aria-expanded` used to track `open` — the field's own idea of whether it has
+  // focus — while the <ul> renders only when there is a row to put in it. The two
+  // come apart for a free-text picker whose vocabulary is EMPTY and whose value is
+  // still blank, and the widget then announced aria-expanded="true" with no listbox
+  // in the document and an aria-controls pointing at an id that does not exist.
+  //
+  // #3100 makes that state ORDINARY: the stack vocabulary is whatever THIS profile
+  // has called a stack, so it is empty for every profile that has never named one.
+  //
+  // WHY A SECOND LOGIN RATHER THAN THE ADMIN SESSION. Profile 1 is not in that
+  // state — `scripts/seed.ts` gives its Vitamin D3 and K2 a stack called "D3 + K2",
+  // which is also the field's placeholder text and reads like a placeholder in a
+  // grep. The Nutrition Trio profile keeps supplements and no stack, so it is the
+  // one that renders the empty vocabulary. The emptiness is ASSERTED below rather
+  // than assumed: a seed that later names a stack there must fail this loudly
+  // instead of quietly testing the populated case.
+  test("an empty vocabulary is not announced as an expanded listbox (#3316)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const profileId = withDb(
+      (db) =>
+        (
+          db
+            .prepare("SELECT id FROM profiles WHERE name = ?")
+            .get(NUTRITION_PROFILE) as { id: number }
+        ).id
+    );
+    const stacksNamed = withDb(
+      (db) =>
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS n FROM intake_items
+                 WHERE profile_id = ? AND stack IS NOT NULL AND TRIM(stack) <> ''`
+            )
+            .get(profileId) as { n: number }
+        ).n
+    );
+    // The precondition, stated: this profile's stack vocabulary is empty, which is
+    // the whole reason the field below has nothing to show.
+    expect(stacksNamed).toBe(0);
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_NUTRITION,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/nutrition?tab=supplements");
+      await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+      const addCard = page.getByRole("dialog", { name: "Add supplement" });
+      await expect(addCard).toBeVisible();
+
+      const editor = await openFact(page, "identity", addCard);
+      const stack = editor.getByLabel("Stack (optional)");
+      await stack.click();
+
+      // THE ABSENCE, and then the PRESENCE that makes the absence mean something. A
+      // "no listbox" assertion passes just as well against a field that never woke
+      // up, so the same field is made to expand for real a few lines down — same
+      // element, same session — before the absence is asserted again.
+      await expect(stack).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(stack).not.toHaveAttribute("aria-controls", /.*/);
+
+      await settledFill(page, stack, "E2EComboStack");
+      await expect(stack).toHaveAttribute("aria-expanded", "true");
+      const listbox = page.getByRole("listbox");
+      await expect(listbox).toBeVisible();
+      // aria-controls now RESOLVES — the id names the list that is actually there.
+      await expect(stack).toHaveAttribute(
+        "aria-controls",
+        (await listbox.getAttribute("id"))!
+      );
+
+      await stack.fill("");
+      await expect(stack).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      // No submit — nothing is written to the DB.
+    } finally {
+      await page.context().close();
+    }
   });
 });
