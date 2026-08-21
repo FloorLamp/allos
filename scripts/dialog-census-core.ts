@@ -156,6 +156,9 @@ export const HOSTLESS_DIALOGS: Record<string, HostlessRecord> = {
   "components/ProfileIdentityBar.tsx": {
     why: "RECORDED EXCEPTION, and converged onto components/overlay in the same way as ActivityOverlay — shared primitives, focus trap, body lock, contained scroller. Its anatomy is TOP-anchored: the panel drops out of the identity bar and a swipe UP retreats through it, which a centred host has no anchor to express (#1801).",
   },
+  "components/MobileNav.tsx": {
+    why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer slides in from the left screen edge and an edge swipe both opens and retreats through it (useDragGesture/useOverlayDrag, #1469), which a centred host has no edge to travel from. Found by ANATOMY rather than by ARIA (#3445) — it carries no role and no aria-modal, which is a real gap and is tracked separately from where it renders.",
+  },
   "components/MobileDetailPage.tsx": {
     scopedOut: true,
     why: "NOT A DIALOG. A full-page mobile takeover for master/detail: it replaces the page rather than floating over it, carries no scrim, and is dismissed by the back gesture (useHistoryBackClose) the way a page is. Scoped OUT of the dialog family by anatomy (owner ruling on #3405), not excepted from it.",
@@ -378,13 +381,93 @@ function bindingIsUsed(code: string, local: string): boolean {
 // before `role` is `[`. Querying for dialogs is not being one, and a census that
 // cried wolf on the shared focus trap would be deleted within a week — taking
 // the real census with it.
-const DIALOG_ROLE_RE = /(^|[\s{])role=\{?["'](dialog|alertdialog)["']/m;
+//
+// THE ROLE MAY BE COMPUTED. `role={danger ? "alertdialog" : "dialog"}` declares
+// an ARIA dialog role at runtime, and the first spelling of this pattern
+// required a quote IMMEDIATELY after the optional `{`, so it did not match
+// (#3445). The braces group cannot cross a `}`, which keeps `role={role}`
+// followed by an unrelated `"dialog"` string later in the file from matching.
+const DIALOG_ROLE_RE =
+  /(^|[\s{])role=(\{[^}]*?)?["'](dialog|alertdialog)["']/m;
 const ARIA_MODAL_RE = /(^|[\s{])aria-modal[=\s]/m;
+// The native element whose entire purpose is to be a dialog. `</dialog>` cannot
+// match — the character after `<` is `/` — and neither can `<dialogue>`.
+const NATIVE_DIALOG_RE = /<dialog[\s>/]/m;
 
-/** Does this file RENDER a dialog surface itself, rather than asking a host to? */
+/**
+ * Does this file DECLARE a dialog, in the accessibility tree?
+ *
+ * This is the ARIA half of the question and it is deliberately narrow: what a
+ * screen reader would be told. It is NOT the whole of "hand-rolls a dialog
+ * surface" — see `declaresModalAnatomy` for the half that has no ARIA at all.
+ */
 export function declaresOwnDialog(code: string): boolean {
-  return DIALOG_ROLE_RE.test(code) || ARIA_MODAL_RE.test(code);
+  return (
+    DIALOG_ROLE_RE.test(code) ||
+    ARIA_MODAL_RE.test(code) ||
+    NATIVE_DIALOG_RE.test(code)
+  );
 }
+
+// ── Reading a JSX opening tag ────────────────────────────────────────────────
+//
+// Needed because "is there an `onClick` near a `fixed inset-0`" is a question
+// about ONE ELEMENT, and a line-level or file-level answer is wrong in both
+// directions: prettier breaks a long className onto its own line (so the line
+// answer misses), and any file with a scrim somewhere and a button somewhere
+// would pass a file answer (so the file answer over-matches).
+
+function skipStringFrom(code: string, i: number): number {
+  const quote = code[i];
+  i += 1;
+  while (i < code.length && code[i] !== quote) {
+    if (code[i] === "\\") i += 2;
+    else i += 1;
+  }
+  return i + 1;
+}
+
+/**
+ * Every JSX opening tag in `code` whose text matches `inner`, returned as the
+ * tag source from `<` through its closing `>`.
+ *
+ * Brace depth is tracked so an expression attribute containing a `>` (an arrow
+ * function, a comparison) does not end the tag early, and strings are skipped so
+ * a `>` inside a class string does not either.
+ */
+export function openingTagsMatching(code: string, inner: RegExp): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < code.length; i += 1) {
+    if (code[i] !== "<") continue;
+    if (!/[A-Za-z]/.test(code[i + 1] ?? "")) continue;
+    const start = i;
+    let j = i + 1;
+    let depth = 0;
+    while (j < code.length) {
+      const ch = code[j];
+      if (ch === '"' || ch === "'" || ch === "`") {
+        j = skipStringFrom(code, j);
+        continue;
+      }
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) break;
+      j += 1;
+    }
+    const tag = code.slice(start, Math.min(j + 1, code.length));
+    if (inner.test(tag)) out.push(tag);
+  }
+  return out;
+}
+
+// The scrim, in the two spellings this repo actually uses: the shared token
+// (components/overlay/tokens.ts) and the literal tint it expands to. Matched
+// because a DIALOG dims the page under it while a menu's click-catcher is
+// transparent — components/CompactDateMenu.tsx renders `fixed inset-0 z-20`
+// with nothing drawn on it.
+const SCRIM_RE = /OVERLAY_SCRIM|\bbg-(?:black|slate-900|slate-950)\/\d/;
+const FULL_VIEWPORT_RE = /\bfixed inset-0\b/;
+const CLOSE_CONTROL_RE = /aria-label=\{?["']Close/;
 
 // ── What a hostless dialog hand-rolls ────────────────────────────────────────
 
@@ -405,9 +488,30 @@ export interface HandRolled {
   overscrollContained: boolean;
   /** Covers the viewport with its own `fixed inset-0`. */
   ownFullViewportLayer: boolean;
+  /**
+   * Dims the page beneath it — the shared `OVERLAY_SCRIM` token or the literal
+   * tint it expands to.
+   *
+   * REPORTED SEPARATELY FROM `ownFullViewportLayer` because that is where the
+   * dialogs and the menus part company: components/CompactDateMenu.tsx also
+   * covers the viewport, with a transparent click-catcher that draws nothing.
+   */
+  scrim: boolean;
+  /**
+   * Offers a dismissal of its own: Escape, a click on its scrim or its
+   * full-viewport layer, or a labelled Close control.
+   *
+   * A full-viewport layer with NO dismissal is a blocking curtain (a splash, a
+   * route transition, a saving guard), not a dialog. This is the clause that
+   * keeps `declaresModalAnatomy` from calling one of those a dialog.
+   */
+  dismissible: boolean;
 }
 
-function handRolled(file: SourceFile, bindings: ImportedBinding[]): HandRolled {
+export function handRolled(
+  file: SourceFile,
+  bindings: ImportedBinding[]
+): HandRolled {
   const code = withoutComments(file.text);
   const imports = (module: string, local?: string) =>
     bindings.some(
@@ -416,6 +520,7 @@ function handRolled(file: SourceFile, bindings: ImportedBinding[]): HandRolled {
   const scrollerLines = code
     .split("\n")
     .filter((line) => /\boverflow-y-auto\b/.test(line));
+  const ownEscape = /["'`]Escape["'`]/.test(code);
   return {
     // MATCHED ON THE IMPORT, and this is not pedantry: lib/portals.ts exports a
     // completely unrelated `createPortal` for the patient-portals domain, and a
@@ -429,13 +534,58 @@ function handRolled(file: SourceFile, bindings: ImportedBinding[]): HandRolled {
     sharedOverlayPrimitives: bindings.some((b) =>
       b.module.startsWith("components/overlay")
     ),
-    ownEscapeHandler: /["'`]Escape["'`]/.test(code),
+    ownEscapeHandler: ownEscape,
     ownScroller: scrollerLines.length > 0,
     overscrollContained:
       scrollerLines.length > 0 &&
       scrollerLines.every((line) => /\boverscroll-contain\b/.test(line)),
-    ownFullViewportLayer: /\bfixed inset-0\b/.test(code),
+    ownFullViewportLayer: FULL_VIEWPORT_RE.test(code),
+    scrim: SCRIM_RE.test(code),
+    // MATCHED ON THE ELEMENT, not on the file. `openingTagsMatching` returns the
+    // one tag that carries the layer or the scrim, and the question is whether
+    // THAT tag takes the click — a file-level `onClick` grep would pass on any
+    // component that has a button in it, which is all of them.
+    dismissible:
+      ownEscape ||
+      CLOSE_CONTROL_RE.test(code) ||
+      openingTagsMatching(code, FULL_VIEWPORT_RE).some((tag) =>
+        /\bonClick=/.test(tag)
+      ) ||
+      openingTagsMatching(code, SCRIM_RE).some((tag) => /\bonClick=/.test(tag)),
   };
+}
+
+/**
+ * Does this file hand-roll a MODAL SURFACE, judged by its anatomy alone?
+ *
+ * THIS IS THE HALF `declaresOwnDialog` CANNOT SEE, and #3445 is the receipt: the
+ * detector asked only whether a file spelled `role="dialog"` / `aria-modal`, so
+ * "hand-rolls a dialog surface" had quietly become "hand-rolls a dialog surface
+ * AND remembered the ARIA" — the weaker claim reading as the stronger one. The
+ * modal most in need of being found is exactly the one that forgot, because it is
+ * inaccessible as well as unhosted.
+ *
+ * THE THREE CLAUSES, and what each one is holding out:
+ *
+ *   1. It covers the viewport with a layer of its own. A panel anchored to its
+ *      trigger is a popover; this one owns the screen.
+ *   2. It leaves its own DOM neighbourhood — it portals, or it locks the body.
+ *      A dropdown rendered in place under its button does neither, and neither
+ *      does a toast in its own corner. This is what components/CompactDateMenu.tsx
+ *      fails: a `fixed inset-0` catcher rendered inline, no portal, no lock.
+ *   3. It can be dismissed. Without this a blocking curtain — a splash, a route
+ *      transition, an in-flight guard — reads as a dialog.
+ *
+ * THE BIAS IS THE MODULE'S OWN, stated on `handRolled` and restated by #3445:
+ * REPORT and let a human decide, rather than stay silent. A surface that meets
+ * all three and is not a dialog is answered by a `scopedOut` record, which costs
+ * one entry and leaves the fact visible; a surface that is a dialog and stays
+ * silent costs the register its meaning.
+ */
+export function declaresModalAnatomy(h: HandRolled): boolean {
+  return (
+    h.ownFullViewportLayer && (h.portal || h.sharedBodyLock) && h.dismissible
+  );
 }
 
 // ── The census ───────────────────────────────────────────────────────────────
@@ -459,6 +609,15 @@ export interface DialogEntry {
   via: string[];
   /** For "hostless": what it answers for itself. */
   handRolled?: HandRolled;
+  /**
+   * For "hostless": WHICH signal classified it.
+   *
+   * Printed, because the two are different findings. "aria" means the file says
+   * it is a dialog and a screen reader is told so; "anatomy" means nothing in it
+   * says dialog and it was recognised by what it renders (#3445) — which also
+   * means it is unlabelled to assistive technology, a defect on its own.
+   */
+  declaredBy?: "aria" | "anatomy";
 }
 
 export interface DialogCensus {
@@ -522,13 +681,22 @@ export function censusDialogs(files: SourceFile[]): DialogCensus {
       entries.push({ rel: file.rel, kind: "hosted", hosts, via });
       continue;
     }
-    if (declaresOwnDialog(code)) {
+    // TWO ROUTES INTO "hostless", and the second one is #3445. The first asks
+    // what the file DECLARES (role/aria-modal/<dialog>); the second asks what it
+    // RENDERS, so a hand-rolled modal carrying no ARIA at all is seen. A census
+    // that only had the first was answering "nobody has hand-rolled a dialog
+    // WHILE ALSO WRITING role=dialog", which is the weaker claim and read as the
+    // stronger one.
+    const hr = handRolled(file, bindings);
+    const declared = declaresOwnDialog(code);
+    if (declared || declaresModalAnatomy(hr)) {
       entries.push({
         rel: file.rel,
         kind: "hostless",
         hosts,
         via,
-        handRolled: handRolled(file, bindings),
+        handRolled: hr,
+        declaredBy: declared ? "aria" : "anatomy",
       });
       continue;
     }
