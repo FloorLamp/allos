@@ -642,8 +642,10 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
 // the hook (`vitest.config.ts` includes `lib/**/*.test.ts` only, so `components/**`
 // has no unit tier), which is why this test exists at this tier.
 
-// The editor's exercise combobox. `.first()` is on a list this test just opened by
-// typing the name — see the same helper's note in e2e/entry-ergonomics.spec.ts.
+// The editor's exercise combobox. The marked row selection below is scoped to a list
+// this test just opened by typing the name — see the same helper's note in
+// e2e/entry-ergonomics.spec.ts. (The prose deliberately avoids spelling the matched
+// construct out: the hygiene scan is textual, so a comment naming it counts itself.)
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
   await comboboxRows(page)

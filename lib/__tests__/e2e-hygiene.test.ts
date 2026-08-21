@@ -991,7 +991,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     // The blessed spelling names no dialog at all.
     expect(matches("await deleteActivityFromForm(page);")).toBe(false);
     expect(
-      matches('await deleteActivityFromForm(page, { trigger: del });')
+      matches("await deleteActivityFromForm(page, { trigger: del });")
     ).toBe(false);
     // Wrapped in settledClick, which arms the action-POST wait before the tap — the
     // trash / undo-delete spelling, and a settle this rule must not call an offence.
