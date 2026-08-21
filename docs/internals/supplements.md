@@ -1520,15 +1520,45 @@ so a corpus over the tree reports zero occurrences forever, while `persistDocume
 `intake_item_doses.amount` — is exactly where the substitution arrives. Same evidence
 class as U+0027: admitted on how the input reaches us, not on what the character is for.
 
-**The slash is deliberately not in that class,** and the difference is that `/` already
-means something beside a digit here: `5/325 mg` is a combination strength, `100 mg/5 mL`
-a concentration, `1/2 tablet` everyday warfarin dosing — all three parsed on purpose by
-`COUNT` and `RATIO_TAIL`. Giving a load-bearing character a second job to rescue `B/12`,
-which nobody writes, is the wrong trade.
+**The slash is deliberately not in that class, and it looks wrong until you measure it.**
+`LABEL_UNIT_COUNT_RE` is spelled `(?<![\d.,/])` — without the `/` the `2` of `1/2 tablet`
+reads as two tablets — so the file already knows a slash binds a digit, and the obvious
+conclusion is that this guard forgot. It is the opposite, because **the two guards sit on
+branches that do opposite things**: `LABEL_UNIT_COUNT_RE`'s lookbehind blocks a _read_, so
+adding `/` removes a fabrication; this one guards a _refusal_, so adding `/` blocks the
+refusal and lets the ordinary scan restart after the space, _creating_ one. Measured both
+ways: with `/` in this class, `"1/2 000 mg"` and `"5/325 000 mg"` become a confident 0 mg,
+against one arguable gain (`"1/2 500 mg tablet"` reading 500). Two fabrications for one
+read is the wrong trade here. Pinned in both directions.
 
-**What the widening costs, as a direction rather than a string:** a name ending in a
-digit, spelled with a **space** instead of a hyphen, followed by a strength —
-`Omega 3 1000 mg`. There is no narrowing available. The obvious one (also refuse after
+**Not every separator is one character, and an early cut of this fix keyed on exactly
+one.** `"1  000 mg"` with a **double** space, a tab, a mixed run, and the zero-width
+family (`U+00AD`, `U+200B`, `U+2060`, `U+FEFF`) all still read a confident zero after the
+first fix landed, while the correctly-typed single space was refused. The refusal now
+keys on a **run**: more than one separator character of any kind, or a single character
+that is not in the read set. The zero-width ones are why that is an explicit list rather
+than `\s` — a soft hyphen between two digit runs _renders as nothing_, so the person sees
+`1000` and the string holds `1<U+00AD>000`. Reading it and refusing it are both
+defensible; returning a confident zero is not.
+
+**A read-set character is a thousands separator only _between two digit runs_.** Putting
+that same set into the scan's start lookbehind and its optional leading separator applied
+the claim in two positions where it is not true — and NBSP, narrow NBSP, thin space and
+figure space are overwhelmingly ordinary **word spaces**, which is what Word, HTML and PDF
+extraction put between a name and a number. The cost was silent: `Niacin<NBSP>1000 mg`
+yielded no strength at all, so the item was filed under the whole string and the sig's
+`1 tablet` landed in the amount column — which reads `none`, not `unreadable`, and
+`getUnreadableDoseAmounts` filters `none` out. A real 1000 mg niacin dose, absent from
+every total, with nothing prompting anyone to look. Those two positions carry `[.,]` and
+nothing more, exactly as they did before this change.
+
+**What the widening costs, as a family rather than a string:** any name whose last token
+before the strength is a bare digit run held by a **space** — `Omega 3 1000 mg`,
+`Vitamin B 12 500 mcg`, `PreserVision AREDS 2 500 mg`, `Coenzyme Q 10 100 mg`,
+`Sinemet 25 100 mg`. **`PreserVision AREDS 2` is a shipped catalog entry**
+(`lib/supplement-catalog.ts`), so the family is reachable rather than hypothetical — the
+bare name is untouched, but a strength appended to it in one string refuses and the
+grouping name drops the `2`. There is no narrowing available. The obvious one (also refuse after
 letter-then-space) rescues it and simultaneously un-refuses `Vitamin C 1 000 mg`, handing
 back a confident zero on one of the commonest label shapes there is; that assertion is
 pinned in `lib/__tests__/dri.test.ts`. **The remedy, if complaints appear, is to normalise
@@ -1537,12 +1567,21 @@ times over; widening the reader to accept the spaced form is the same edit as re
 `1 0000 mg` as a number. The dose becomes a visible unreadable gap and the name renders as
 `Omega` — visibly odd and correctable, which is exactly what a confident zero is not.
 
-**One residual, named rather than implied.** The rule keys on a plain space, so a
-separator that is neither a space nor a member of the read set still restarts the scan:
-`"1_000 mg"` reads 0. An underscore is a programming digit separator and no label
-spelling, so it is not admitted to the read set either — it is out of reach, and
-`lib/__tests__/dri.test.ts` asserts that it is, so the day it changes the change is
-deliberate.
+**Two residuals, named rather than implied — and the list is a test, not a sentence.**
+A character in neither class still lets the scan restart: `"1_000 mg"` reads 0 (an
+underscore is a programming digit separator, no label spelling) and `"1-000 mg"` reads 0
+(a hyphen between digits means a **range** here, which `COUNT` and `DOSE_RANGE` parse on
+purpose — same trade as the slash). Reading a range is a separate defect from reading a
+separator and is not fixed here: `"100-200 mg"` still reads 200, as on main. Both are
+asserted in `lib/__tests__/dri.test.ts` so the day either changes the change is
+deliberate — and the list is written this way because an adversarial pass found that
+"one residual" was nineteen while the branch keyed on a single literal space.
+
+**A corpus over string literals cannot see a two-part shape,** which is worth recording
+because an earlier round concluded from exactly such a corpus that the spaced-name
+spelling appeared nowhere in the tree. The measurement was sound; the conclusion was not.
+The defect needs a **name and a strength adjacent**, and those never co-occur in one
+literal by construction — the catalog stores names, the seeds store amounts.
 
 The heading in `lib/dri.ts` is wide again as a result, and now says **separator**
 rather than naming characters. `readIngredientAmount` stopped spelling its own

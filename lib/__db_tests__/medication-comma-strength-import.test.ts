@@ -228,6 +228,26 @@ const CASES: {
     reads: "unreadable",
     was: "0000 mg, read as 0 \u2014 a mistyped label reading as a confident zero",
   },
+  // A READ-SET CHARACTER STANDING WHERE A WORD SPACE STANDS, at the tier where getting
+  // it wrong was worse than doing nothing (#3451, adversarial round).
+  //
+  // NBSP is a thousands separator BETWEEN TWO DIGIT RUNS and an ordinary word space
+  // everywhere else — and a word space is overwhelmingly what Word, HTML and PDF
+  // extraction put between a drug name and its strength. An interim cut of this fix put
+  // the read set into the scan's start lookbehind, so "Pyridoxine<NBSP>100 mg" yielded
+  // NO strength at all: the item was filed under the whole string, the sig's "1 tablet"
+  // landed in the amount column, and that reads `none` rather than `unreadable` — which
+  // `getUnreadableDoseAmounts` filters out. A real dose, silently absent from every
+  // total, with nothing anywhere prompting anyone to look. This row is here so that
+  // cannot come back.
+  {
+    name: "Pyridoxine\u00a0100 mg",
+    grouping: "Pyridoxine",
+    amount: "100 mg",
+    reads: 100,
+    unit: "mg",
+    was: "no strength at all \u2014 filed under the whole string, dose silently absent",
+  },
   // THE CONTROL FOR THE SPACE BRANCH'S LOOKBEHIND, at the tier that stores rows. A
   // supplement name may END IN A DIGIT, and there the space before the strength is not
   // inside a number at all. If the branch ever stops refusing to start after a letter,

@@ -20,6 +20,7 @@ import {
   elementalReading,
   doseUnitCount,
   readDoseQuantity,
+  unreadableDoseAmountMessage,
   type DoseUnit,
   type StackItem,
   type StackIngredient,
@@ -605,18 +606,137 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   // RATIO_TAIL in lib/prescription-parse.ts. Adding it to the lookbehind to rescue
   // "B/12", which nobody writes, would put a second job on a character that is already
   // load-bearing.
+  // #3451, ADVERSARIAL ROUND. Every one of these read a confident ZERO after the first
+  // cut of this fix, because the refuse branch carried ONE LITERAL U+0020 and nothing
+  // else. A double space is the same defect as a single one with one keystroke more.
+  it("refuses every unreadable separator run, not just one literal space", () => {
+    const CASES: [string, string][] = [
+      ["  ", "U+0020 x2 — a DOUBLE space, the same defect one keystroke on"],
+      ["\t", "U+0009 tab"],
+      [" \t", "a mixed whitespace run"],
+      [
+        "\u00a0\u00a0",
+        "two NBSPs — one is a group, two is nobody's convention",
+      ],
+      ["\u00a0 ", "NBSP then a plain space"],
+      ["\u00ad", "U+00AD soft hyphen — invisible unless a line breaks there"],
+      ["\u200b", "U+200B zero-width space"],
+      ["\u200c", "U+200C zero-width non-joiner"],
+      ["\u200d", "U+200D zero-width joiner"],
+      ["\u2060", "U+2060 word joiner"],
+      ["\ufeff", "U+FEFF byte-order mark, landed mid-string"],
+      ["\u2003", "U+2003 em space"],
+      ["\u205f", "U+205F medium mathematical space"],
+      ["\u3000", "U+3000 ideographic space"],
+    ];
+    for (const [sep, why] of CASES) {
+      const amount = `1${sep}000 mg`;
+      expect(
+        readDoseQuantity(amount),
+        `${why} — ${JSON.stringify(amount)}`
+      ).toEqual({ kind: "unreadable" });
+      // Named because it is the ONE wrong answer that cannot be seen downstream.
+      expect(readDoseQuantity(amount)).not.toEqual({
+        kind: "quantity",
+        value: 0,
+        unit: "mg",
+      });
+    }
+  });
+
+  // THE ZERO-WIDTH ONES ARE WHY THE REFUSAL IS A LIST AND NOT `\s`, and why the choice
+  // between reading and refusing them is a real one. "1<U+00AD>000 mg" RENDERS AS
+  // "1000 mg": the person sees a number this app cannot claim to have read. Refusing
+  // puts the string in front of the only person who can check it against the label.
+  it("treats an invisible character between digits as unreadable, not as absent", () => {
+    expect(readDoseQuantity("1\u00ad000 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("1\u200b000 mg")).toEqual({ kind: "unreadable" });
+    // The control: the same invisible character NOT between two digit runs is none of
+    // this rule's business, and the number beside it still reads.
+    expect(readDoseQuantity("Niacin\u200b 1000 mg")).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+  });
+
+  // THE TWO NEAREST GLYPHS TO THE SWISS APOSTROPHE. U+2019 and U+0027 were admitted on
+  // the "1'000" argument; U+2032 PRIME and U+02BC MODIFIER APOSTROPHE are the same mark
+  // as several fonts and IMEs render it, and they were still reading zero.
+  it("reads the prime and the modifier apostrophe as the Swiss separator they are", () => {
+    expect(readDoseQuantity("1\u2032000 mg")).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("1\u02bc000 mg")).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+    // And they obey the comma's grouping rule like every other member of the read set.
+    expect(readDoseQuantity("0\u2032125 mg").kind).toBe("unreadable");
+  });
+
+  // THE BUG THIS ROUND EXISTED TO FIND, and the one that was strictly worse than main.
+  //
+  // A read-set character is only a thousands separator BETWEEN TWO DIGIT RUNS. Putting
+  // that same character set into the scan's START LOOKBEHIND and its optional LEADING
+  // separator applied the claim in two positions where it is not true — and NBSP,
+  // narrow NBSP, thin space and figure space are overwhelmingly ordinary WORD SPACES,
+  // which is what Word, HTML and PDF extraction put between a word and a number.
+  //
+  // The cost was silent and unbounded: "Niacin<NBSP>1000 mg" stopped yielding a
+  // strength at all, so the item was filed under the whole string and the sig's
+  // "1 tablet" landed in the amount column. That reads `none`, not `unreadable`, and
+  // `getUnreadableDoseAmounts` filters on `unreadable` — so a 1000 mg niacin dose, 28x
+  // the UL, was absent from every total with NOTHING anywhere prompting a person to
+  // look. Worse than the visible refusal, and worse than main.
+  it("treats a read-set character before a strength as the word space it is", () => {
+    for (const sep of ["\u00a0", "\u202f", "\u2009", "\u2007", " "]) {
+      expect(
+        readDoseQuantity(`Niacin${sep}1000 mg`),
+        `separator U+${sep.codePointAt(0)!.toString(16)} before a strength`
+      ).toEqual({ kind: "quantity", value: 1000, unit: "mg" });
+    }
+    // A leading read-set character is a word space too, so the number after it reads.
+    // (`.125 mg` stays refused — that is the naked decimal, and `.` really is a
+    // separator wherever it appears.)
+    expect(readDoseQuantity("\u00a0125 mg")).toEqual({
+      kind: "quantity",
+      value: 125,
+      unit: "mg",
+    });
+    expect(readDoseQuantity(".125 mg")).toEqual({ kind: "unreadable" });
+  });
+
   it("leaves the slash notations exactly as they were", () => {
-    // THE ASSERTIONS THAT ACTUALLY PIN THE RULING. Keeping "5/325 mg" working does not
-    // — it reads the same whether or not "/" is in the guard, because the ambiguous
-    // branch never engages there. What putting "/" in the guard DOES do is stop the
-    // branch engaging after a slash, which hands a confident ZERO back for a
-    // space-grouped number in a denominator or after a fraction. Measured, both ways.
+    // A LOOKBEHIND ON A REFUSAL BRANCH IS NOT THE SAME INSTRUMENT AS ONE ON A READ
+    // BRANCH, and this is where that distinction is worth its own test.
+    //
+    // LABEL_UNIT_COUNT_RE below is spelled `(?<![\d.,/])` and its comment says why:
+    // without the "/" the "2" of "1/2 tablet" would be read as TWO tablets. There the
+    // slash BLOCKS A READ, so adding it removes a fabrication.
+    //
+    // Here the branch it guards REFUSES. Adding "/" blocks the refusal, which lets the
+    // ordinary scan restart after the space and hand back the tail of the number —
+    // so the same character that removes a fabrication one guard down CREATES one here.
+    // Measured both ways rather than reasoned: with "/" in this guard,
+    // "1/2 000 mg" and "5/325 000 mg" become a confident 0 mg.
     expect(readDoseQuantity("1/2 000 mg")).toEqual({ kind: "unreadable" });
     expect(readDoseQuantity("5/325 000 mg")).toEqual({ kind: "unreadable" });
     expect(readDoseQuantity("1/2 000 mg")).not.toEqual({
       kind: "quantity",
       value: 0,
       unit: "mg",
+    });
+    // AND THE COST OF LEAVING IT OUT, pinned in the same breath so the trade is one
+    // decision and not two. A fraction before a strength refuses along with the rest of
+    // the family: "1/2 500 mg tablet" is half of a 500 mg tablet, and it is the same
+    // string shape as "1/2 000 mg" — "2 500" and "2 000" — so no rule reads one and
+    // refuses the other. Refusing both is the side that never invents a number.
+    expect(readDoseQuantity("1/2 500 mg tablet")).toEqual({
+      kind: "unreadable",
     });
 
     // And the notations the slash carries are untouched, so this is not passing by
@@ -693,10 +813,68 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   // label spelling, so it is not admitted to the read set, and nothing about a space
   // can catch it. Asserted rather than described, so the day someone changes it the
   // change is deliberate.
-  it("still reads 1_000 mg as zero — a named residual, not a claim of coverage", () => {
+  // THE REFUSAL HAS TO BE ACTIONABLE, and quoting the string back is not always enough.
+  // For "2,5 mg" it is — the person sees the comma. For the separators this issue is
+  // about it is not: a double space reads as one, an NBSP looks exactly like a space,
+  // and a zero-width space RENDERS AS NOTHING, so "1<ZWSP>000 mg" is quoted back
+  // looking like "1000 mg" and the person has no way to act on it. Naming the character
+  // is a fact about their input, not advice about how to write a label.
+  it("names the separator when that is why the amount was refused", () => {
+    expect(unreadableDoseAmountMessage("1 000 mg")).toContain(
+      "There's a space inside the number."
+    );
+    expect(unreadableDoseAmountMessage("1  000 mg")).toContain(
+      "There are extra spaces inside the number."
+    );
+    expect(unreadableDoseAmountMessage("1\t000 mg")).toContain(
+      "There's a tab inside the number."
+    );
+    expect(unreadableDoseAmountMessage("1\u200b000 mg")).toContain(
+      "There's an invisible character inside the number."
+    );
+    // A refusal with a different cause says nothing extra — the comma is visible in the
+    // quoted string, so a second sentence would be noise.
+    expect(unreadableDoseAmountMessage("2,5 mg")).not.toContain(
+      "inside the number"
+    );
+    expect(unreadableDoseAmountMessage(".125 mg")).not.toContain(
+      "inside the number"
+    );
+    // The guidance every refusal carries is unchanged in all cases.
+    for (const a of ["1 000 mg", "2,5 mg", ".125 mg"]) {
+      expect(unreadableDoseAmountMessage(a)).toContain(
+        "Use one number and a unit"
+      );
+      expect(unreadableDoseAmountMessage(a)).toContain(a);
+    }
+  });
+
+  // THE RESIDUALS, ASSERTED SO THE LIST IS CHECKABLE RATHER THAN RHETORICAL. The rule
+  // keys on a separator being whitespace-or-invisible (refused) or a thousands separator
+  // (read). A character in neither class still lets the scan restart. These are the two,
+  // and an adversarial pass is how we learned that "one residual" was nineteen when the
+  // branch keyed on a single literal space — so the list is a test now, not a sentence.
+  it("names its residuals exactly: the underscore and the hyphen still read zero", () => {
+    // A programming digit separator; no label spelling anywhere.
     expect(readDoseQuantity("1_000 mg")).toEqual({
       kind: "quantity",
       value: 0,
+      unit: "mg",
+    });
+    // A hyphen between digits means a RANGE in this domain, and COUNT/DOSE_RANGE in
+    // lib/prescription-parse.ts parse ranges on purpose. Folding it into the thousands
+    // question would collide with a notation that carries meaning — same trade as the
+    // slash, one guard up.
+    expect(readDoseQuantity("1-000 mg")).toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+    // And the range it protects is untouched — reading a RANGE is a separate defect
+    // from reading a SEPARATOR, unchanged from main and not fixed here.
+    expect(readDoseQuantity("100-200 mg")).toEqual({
+      kind: "quantity",
+      value: 200,
       unit: "mg",
     });
   });
