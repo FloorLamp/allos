@@ -28,7 +28,6 @@ const ISOLATED = specsNeedingIsolation(root, [
 // that reseeds and rebinds per file.
 const ACTION_SETUP = "lib/__action_tests__/setup.ts";
 
-
 export default defineConfig({
   resolve: { alias },
   test: {
