@@ -15,6 +15,30 @@
 // `readDoseQuantity` / `readGroupedNumber`. A SQL or regex copy would be a second
 // version of the rule #3153 finished unifying, and a census that disagrees with the
 // engine it describes is worse than no census.
+//
+// WHAT IT MEASURES IS THE STORED STRING, AND THAT IS ITS WHOLE SCOPE (#3444).
+//
+// Worth stating, because this census once reported a clean population over rows where a
+// number had been fabricated. It was not misclassifying them: it was reading a string
+// that had ALREADY been rewritten before it reached the column. The medication import
+// parsed "Bisoprolol 2,5 mg" with a grammar that could not span a comma, stored "5 mg",
+// and `classifyDoseAmount("5 mg")` correctly answered `always-correct` — because "5 mg"
+// IS read the same before and after #3153. Both halves of that are true and the
+// population was still wrong.
+//
+// The moral is about SCOPE, not accuracy. This census answers "what does the text in
+// this column read as, before the fix and after". It cannot answer "does that text say
+// what the document said", because the document is not in its hand. That question lives
+// on the write path and is guarded there now (lib/prescription-parse.ts, swept by
+// lib/__tests__/dose-number-readers.test.ts).
+//
+// ROWS IMPORTED BEFORE #3444 STILL CARRY THE REWRITE, and this census will go on
+// calling them `always-correct` — honestly, because as strings they are. They are not
+// unfindable, though: the item kept the NAME the strength was taken from, so running
+// the corrected `strengthFromName` over `intake_items.name` and comparing it with the
+// dose row's `amount` identifies them exactly. Nothing here does that, and no repair is
+// implied by it. A comma decimal is the shape this file's own rule refuses to resolve,
+// so the fix is a person confirming their own label — never a migration guessing one.
 import { readDoseQuantity, readGroupedNumber } from "./dri";
 
 export type DoseAmountCensusBucket =

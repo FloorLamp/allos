@@ -166,7 +166,17 @@ export interface ParsedQuantity {
   unit: DoseUnit;
 }
 
-// ONE RULE FOR READING A WRITTEN NUMBER, SHARED BY BOTH HALVES OF A LABEL (#3153).
+// ONE RULE FOR READING A WRITTEN NUMBER, SHARED BY EVERY READER OF A LABEL
+// (#3153, #3319, #3444).
+//
+// It used to say "both halves of a label", meaning the dose half and the ingredient
+// half, and that sentence was not true of the tree. There was a THIRD reader —
+// lib/prescription-parse.ts, on the medication IMPORT WRITE PATH — which spelled its
+// own number pattern and answered "5" to "what does 2,5 mean", then stored that answer
+// as a dose. It now reads through `WRITTEN_NUMBER` and `readGroupedNumber` below, like
+// everything else. The heading is deliberately no longer counting halves: the claim is
+// that there is one rule, and a count is a claim about the tree that goes stale the
+// next time somebody needs to read a number.
 //
 // A separator in a number is either a thousands group or a decimal point, and which
 // one it is depends on where the label was printed. The ingredient write boundary
