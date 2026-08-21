@@ -744,6 +744,62 @@ those secondary consumers from disagreeing with authoritative totals.
 Metric-sample tombstones use the same origin/start identity, so deleting an
 in-progress snapshot remains sticky when its next push has a later end.
 
+**A re-anchored day bucket SUPERSEDES what it overlaps (#3424).** #1101's key
+answers the moving-END case and cannot see the moving-START one. The exporter cuts
+each `daily` record at DEVICE-local midnight, so a timezone change re-anchors
+"today" and the next push arrives with a start the natural key has never seen: the
+old row is never superseded, and `getMetricDailyTotals` sums both into one
+profile-local day. Measured on prod profile 1 after a one-tap New York → Los
+Angeles switch — 23330 steps on a day with 11721, and the same shape on
+`distance_km`, `total_kcal` and `active_kcal`. The rule that fixes it lives in
+`lib/metric-window-overlap.ts` and runs in two phases, both scoped to
+`source = health-connect`, the one source whose buckets re-anchor under the app's
+feet:
+
+1. **Inside one push**, two same-`(metric, origin)` windows that overlap are always
+   a mixed-anchoring pair — the rolling ~48h window re-sending the pre-switch record
+   beside the re-anchored one that re-contains it. The window reaching FURTHEST
+   FORWARD is the anchoring the exporter is still filling, so `isStaleMetricSnapshot`
+   (#1101's own freshness test, reused rather than re-invented) picks the survivor.
+   Batch ORDER cannot: travelling west the new zone's midnight is EARLIER than the
+   old one's, so the re-anchored bucket sorts first and "last writer wins" keeps the
+   stale record.
+2. **Against the store**, the surviving incoming row deletes the non-edit-locked rows
+   its `[started_at, ended_at)` window overlaps, then upserts itself. Unconditional,
+   because after phase 1 anything stored that it overlaps carries an anchoring the
+   exporter has moved on from. Freshness deliberately does NOT apply here: a completed
+   re-anchored bucket for a past day legitimately ends earlier than the old-anchoring
+   "today so far" row it overlaps, and blocking it there was measured to leave the
+   profile half-converged with an 11-hour gap between the two anchorings.
+
+Edit-locked rows survive and are counted in the `edited` split; tombstoned rows stay
+dead; POINT readings (`started_at == ended_at` — HRV, skin temperature, lean mass,
+bone mass, BMR, height) are never interval rows and never touched; disjoint buckets
+from a fine-grained exporter setting have no overlap and are untouched. The deletes
+write no re-import tombstone, matching the #608 sweep: the source is expected to keep
+sending the span under its current anchoring. `integration_sync_events.superseded`
+(migration `20260821-hc-overlap-supersede`) counts them so Review can show a delete
+happened — and it is the ONE count segment deliberately absent from `received`,
+because a superseded row is a stored row we removed, not a row the source sent.
+
+**The trailing edge is LOSSY, and that is the accepted trade.** "Incoming deletes
+what it overlaps" is exact in the interior of the rolling window and lossy at its
+trailing edge: an incoming re-anchored bucket that starts AFTER the stored bucket it
+overlaps takes that bucket's leading hours, `[stored.start, incoming.start)`, with it.
+Those hours come back only if the exporter also re-sends the PREVIOUS re-anchored
+bucket, which at the edge of a ~48h window it may not. Westward the sliver is the old
+zone's midnight to the new zone's midnight — near-zero steps, a few hours of BMR on
+`total_kcal`. Eastward it is worse: the first Tokyo bucket starts `15:00Z`, so it
+takes the New York row holding that New York MORNING, which lives only in the previous
+day's Tokyo bucket. Inside the window that bucket arrives and the morning is recounted;
+at the trailing edge it does not. There is no third option once the source has
+re-anchored — the alternative to dropping the sliver is double-counting it — so the
+loss is bounded, stated, and visible in Review through the `superseded` count rather
+than discovered later. The same migration replays the rule over stored history in `id`
+order (ingest order is anchoring order: the old zone's rows were inserted before the
+switch), which is what returns an already-corrupted profile's past trips to sane day
+totals with no reader change.
+
 **A stored sleep session is an ABSOLUTE INSTANT (#2096).** `started_at` is both
 the natural upsert key and the value every read path hands to `new Date()`, and
 ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary

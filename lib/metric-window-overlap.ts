@@ -25,6 +25,26 @@ import { isStaleMetricSnapshot } from "./metric-snapshot";
 // lib/__db_tests__/hc-overlap-supersede.test.ts pins the SQL narrowing against it —
 // the `planSyncEventPrune` discipline (a pure rule, pinned against its DB twin).
 //
+// AND IT IS LOSSY AT THE TRAILING EDGE OF THE ROLLING WINDOW — accepted, not
+// overlooked. "Incoming deletes what it overlaps" is exact in the interior of the
+// window. At its trailing edge it is not: an incoming re-anchored bucket that starts
+// AFTER the stored bucket it overlaps takes that bucket's leading hours,
+// [stored.start, incoming.start), with it, and those hours come back only if the
+// exporter also re-sends the PREVIOUS re-anchored bucket — which at the edge of a ~48h
+// window it may not. Westward the sliver is the old zone's midnight to the new zone's
+// midnight: near-zero steps, a few hours of BMR on total_kcal. EASTWARD IS THE BAD
+// CASE — the first Tokyo bucket starts 15:00Z, so it takes the New York row holding
+// that New York MORNING, which lives only in the previous day's Tokyo bucket. Inside
+// the window that bucket arrives and the morning is recounted; at the trailing edge it
+// does not, and the day before the window starts loses its morning.
+//
+// There is NO THIRD OPTION once the source has re-anchored: the alternative to dropping
+// the sliver is double-counting it, which is the bug. So the loss is bounded, stated
+// here, and made visible — every superseded row is counted into the sync event's
+// `superseded` split so a person can see in Review that a delete happened. The ingest
+// also processes each batch in ascending started_at order, so within one push every
+// leading sliver that IS re-sent lands before the row it would otherwise be lost from.
+//
 // IT FAILS TOWARD KEEPING ROWS. This path DELETES stored health data, so every
 // uncertainty resolves to "no overlap": an instant this module cannot read as an
 // unambiguous UTC instant, a window with no duration, a candidate outside the day

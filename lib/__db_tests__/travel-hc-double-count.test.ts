@@ -1,18 +1,24 @@
-// REPRO — investigation evidence for the travel/tz review, deliberately named
-// `.repro.ts` so the `*.test.ts` globs never collect it. To run it, rename to
-// `.test.ts` and use `npx vitest run --config vitest.db.config.ts <file>`.
-// It FAILS on main: the switch day reads 6500 steps for 3500 walked.
+// DB INTEGRATION TIER — #3424's acceptance criterion 1, and the whole bug in one test.
 //
-// Health Connect daily-window records double count on the travel switch day
-// (#3263 follow-up).
+// This file began as the runnable repro pushed with the travel/tz review
+// (claude/travel-tz-adjustment-review-7qj8t4, `travel-hc-double-count.repro.ts`). It
+// FAILED on main reading 6500 steps for 3500 walked; it is kept verbatim in its setup
+// and promoted to a real test here, so the exact scenario that was measured is the one
+// that stays guarded.
 //
-// The exporter's recommended setting for steps is `daily`: one record per
-// device-local day, window = local midnight → now. When the device (and, via the
-// travel banner, the profile) moves zones, the exporter's "today" window is
-// re-anchored to the NEW zone's midnight — a NEW started_at. The old-zone daily
-// record stays in metric_samples (its key never re-appears in a push, so nothing
-// replaces it), the new record's window overlaps it, and both carry the same
-// profile-local `date` at ingest → getMetricDailyTotals SUMs them.
+// The mechanism, in one paragraph. The exporter's recommended `daily` setting for steps
+// sends one record per DEVICE-LOCAL day: window = local midnight → now. When the device
+// (and, via the travel banner, the profile) moves zones, "today" is re-anchored to the
+// NEW zone's midnight — a NEW `started_at`, so a NEW natural key. The old-zone record
+// stays in metric_samples because its key never re-appears in a push, the new record's
+// window overlaps it, both carry the same profile-local `date` after ingest, and
+// getMetricDailyTotals SUMs them.
+//
+// The rule that fixes it is lib/metric-window-overlap.ts; the wider guard suite is
+// lib/__db_tests__/hc-overlap-supersede.test.ts. What this file adds is the SCENARIO —
+// a real parse, a real one-tap switch, a real second push.
+//
+// SYNTHETIC ONLY: a fictional traveller, invented step counts, no PHI.
 
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { db, today } from "@/lib/db";
@@ -52,7 +58,7 @@ beforeAll(() => {
 });
 
 describe("HC daily steps across a westward travel switch", () => {
-  it("counts the pre-switch steps twice on the switch day", () => {
+  it("counts the switch day once, not twice", () => {
     freeze(SWITCH_INSTANT);
 
     // Push 1, before the switch (device on Tokyo time). The exporter's `daily`
@@ -109,16 +115,28 @@ describe("HC daily steps across a westward travel switch", () => {
 
     const rows = db
       .prepare(
-        "SELECT date, started_at, value FROM metric_samples WHERE profile_id = ? AND metric = 'steps' ORDER BY started_at"
+        "SELECT date, started_at, ended_at, value FROM metric_samples WHERE profile_id = ? AND metric = 'steps' ORDER BY started_at"
       )
-      .all(profileId) as { date: string; started_at: string; value: number }[];
-    // Investigation aid: show what actually landed.
-    console.log("metric_samples rows:", rows);
+      .all(profileId) as {
+      date: string;
+      started_at: string;
+      ended_at: string;
+      value: number;
+    }[];
 
+    // Only the Honolulu-anchored record survives — the Tokyo-anchored one it
+    // re-contains was superseded rather than left to sum beside it.
+    expect(rows).toEqual([
+      {
+        date: "2026-05-01",
+        started_at: "2026-05-01T10:00:00Z",
+        ended_at: "2026-05-02T01:00:00Z",
+        value: 3500,
+      },
+    ]);
+
+    // The person walked 3500 steps in total. The switch day reads 3500.
     const totals = getMetricDailyTotals(profileId, "steps");
-    console.log("daily totals:", totals);
-
-    // The person walked 3500 steps in total. The switch day should read 3500.
     const switchDay = totals.find((t) => t.date === "2026-05-01");
     expect(switchDay?.value).toBe(3500);
   });
