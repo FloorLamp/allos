@@ -300,6 +300,20 @@ test("the pending update is recorded where the crash boundary can read it (#1906
 // tier, and every other spec that touches this machinery calls `spendAutoReloadRation`
 // to disable the automatic path so it can drive the manual one. Deleting the gate left
 // lint, typecheck and the whole pure suite green.
+//
+// WHAT EACH ONE ACTUALLY CATCHES, mutation-measured 2026-08-21 rather than asserted:
+//
+//   * `pageDeclaresUnrecoverableWork()` removed from `useAutoUpdateReload` (both OR
+//     sites and the import — exactly the deletion that used to pass every gate):
+//     the FIRST test reds, `update-ready-bar` never appears because the tab
+//     converges over the dialog instead of holding for it.
+//   * `markUnsavedWork` moved back behind the 600ms debounce (reachable only from
+//     `useFormDraft`'s `write`, i.e. the tree as #3371 first shipped it): the SECOND
+//     test reds, and reds on the drafts store being empty 20s after the reload.
+//
+// AND WHAT THEY DO NOT CATCH, said here so nobody reads a green suite as more than it
+// is: the post-await re-check inside `takeUpdate` is a strictly narrower race guard
+// and no spec here distinguishes it. Its own comment says so at the site.
 
 /** Every draft row in the browser's allos-offline store whose key names `formKey`. */
 async function draftsFor(page: Page, formKey: string): Promise<string[]> {
@@ -561,24 +575,25 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
     })
     .toContain(ROUTINE);
 
-  // ── AND THE ASSERTION THAT ACTUALLY DISCRIMINATES ──────────────────────────
+  // ── AND THE USER-FACING HALF OF THE SAME FACT ─────────────────────────────
   //
-  // SAID PLAINLY, because the poll above looks like the verdict and is not: in a
-  // worker-less context the reload's own fallback (SW_RELOAD_FALLBACK_MS, 1.5s)
-  // outlasts the 600ms debounce, so the draft lands before the document dies WHETHER
-  // OR NOT the flush registered anything. Measured, not assumed — with the fix
-  // reverted, that poll still passed. It is kept because it is the guarantee; it just
-  // cannot carry the verdict here.
+  // MUTATION-MEASURED, 2026-08-21, both halves of this test against the registration
+  // moved back behind the debounce (`markUnsavedWork` reachable only from `write`,
+  // which is the tree as #3371 first shipped it):
   //
-  // WHAT DOES: whether `captureUnsavedWork()` had anything to flush AT CAPTURE TIME.
-  // It returns a resume pointer only when a registered entry hands one back, and
-  // `takeUpdate` writes RESUME_EDITOR_KEY only then — otherwise it REMOVES it. So the
-  // difference survives into the next document as the difference between the editor
-  // coming back by itself (#2471's promise) and being offered a banner. That is a
-  // user-facing pair, and it is exactly opposite in the two worlds:
+  //   * the drafts poll above went RED, `""` after the full 20s ceiling — the reload
+  //     crossed the keystroke and NOTHING was ever written. It is the verdict, not
+  //     scenery: the reload's own fallback does not outlast a debounce that the
+  //     navigation cancels.
+  //   * so the pair below never got to run under the mutant. It is asserted anyway,
+  //     because it is the shape a user meets, and because it fails on a DIFFERENT
+  //     mechanism — whether `captureUnsavedWork()` had a registered entry to take a
+  //     resume pointer FROM. `takeUpdate` writes RESUME_EDITOR_KEY only when one came
+  //     back and REMOVES it otherwise, so the two worlds diverge into the next
+  //     document and stay diverged:
   //
-  //   registered   → marker written → the draft auto-applies, no banner
-  //   unregistered → marker removed → today's offer banner, an empty field
+  //       registered   → marker written → the draft auto-applies, no banner
+  //       unregistered → marker removed → today's offer banner, an empty field
   await expect(page.getByTestId("routines-section")).toBeVisible();
   await hydratedClick(page, page.getByTestId("routine-new"));
   const reopened = page.getByTestId("routine-builder");
