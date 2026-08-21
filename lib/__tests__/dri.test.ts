@@ -25,6 +25,8 @@ import {
   type StackItem,
   type StackIngredient,
 } from "../dri";
+import { readIngredientAmount } from "../intake-ingredients";
+import { cleanMedicationName } from "../prescription-parse";
 
 // Pure tests for the supplement stack-total UL checker (issue #148): unit parsing +
 // conversion (mg/mcg/IU/RAE), per-profile summation, the supplemental-vs-total UL
@@ -513,6 +515,16 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
       "2 500 mg tablets",
       "1 000 mg",
       "1 000 000 mg",
+      "Omega 3 1 000 mg",
+      "Vitamin B 12 1 000 mcg",
+      // TWO RUNS IN ONE NUMBER, which is what the `+` on the run group buys and the only
+      // shape that shows it. A name digit, a plain space, then a number grouped with a
+      // READ separator: the branch must span both runs to refuse. Weaken `+` to exactly
+      // one and it spans only "12 5", fails to reach a unit, and the scan then reads
+      // "5’125" as a CONFIDENT 5125 mg. Found by a per-key differential, after a
+      // one-sided `diff | grep '^>'` read pointed at the wrong string entirely.
+      "Vitamin B 12 5\u2019125 mg",
+      "PreserVision AREDS 2 5\u2019500 IU",
       // THE DECIMAL TAIL, and it is the case that decides the shape of the pattern
       // rather than a variation on the ones above. Without `(?:[.,]\d+)?` on the space
       // branch the branch fails on this string, the ordinary branch then starts after
@@ -710,7 +722,89 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
     expect(readDoseQuantity(".125 mg")).toEqual({ kind: "unreadable" });
   });
 
-  it("leaves the slash notations exactly as they were", () => {
+  // THE CROSS-PRODUCT, because two tests that each vary one axis leave the cell where
+  // both vary uncovered — and that cell held a confident overdose.
+  //
+  // One test had digit-ending names against the PLAIN SPACE. Another had the space-family
+  // separators against "Niacin", a name ending in a LETTER. Neither had a digit-ending
+  // name against a read-set separator, which is where "B12<NBSP>500 mcg" read 12500 and
+  // "Niacin B3<NBSP>500 mg" read 3500 — a hundred times the 35 mg niacin UL, stated as a
+  // confident quantity with no gap and no census bucket behind it.
+  //
+  // So this varies BOTH axes and asserts the whole grid.
+  it("no name-ending digit welds to a strength, for any separator (the cross-product)", () => {
+    const NAMES: [string, number, DoseUnit][] = [
+      ["B12", 500, "mcg"],
+      ["B6", 100, "mg"],
+      ["CoQ10", 200, "mg"],
+      ["Vitamin D3", 5000, "iu"],
+      ["Niacin B3", 500, "mg"],
+    ];
+    const UNIT: Record<string, string> = { mcg: "mcg", mg: "mg", iu: "IU" };
+    // Every separator that can sit between two digit runs: the nine read as a group, the
+    // comma main already mishandles here, and the plain space as the control.
+    const SEPARATORS = [
+      "\u00a0",
+      "\u202f",
+      "\u2009",
+      "\u2007",
+      "\u2019",
+      "'",
+      "\u066c",
+      "\u2032",
+      "\u02bc",
+      ",",
+    ];
+    for (const [name, value, unit] of NAMES) {
+      for (const sep of SEPARATORS) {
+        const amount = `${name}${sep}${value} ${UNIT[unit]}`;
+        const reading = readDoseQuantity(amount);
+        // The name's trailing digits must never be absorbed into the strength. Refusing
+        // is the answer; a quantity of any size is a fabrication, and the ones this
+        // caught were 12500 mcg, 10200 mg and 3500 mg.
+        expect(reading, `${JSON.stringify(amount)} must not weld`).toEqual({
+          kind: "unreadable",
+        });
+      }
+      // THE CONTROL, and it is what stops this passing by refusing everything: with an
+      // ordinary space the same name reads its real strength, exactly as on main.
+      expect(readDoseQuantity(`${name} ${value} ${UNIT[unit]}`)).toEqual({
+        kind: "quantity",
+        value,
+        unit,
+      });
+    }
+  });
+
+  // THE CLASS, SWEPT — not a list of members. The refusal is derived (anything that is
+  // not a digit or an ASCII letter, unless it is one of the four characters this file
+  // gives a meaning to), so the claim can be checked over the WHOLE code space instead of
+  // over whichever members someone remembered.
+  //
+  // An earlier revision enumerated the unreadable characters by hand and left eight
+  // members — \n \r \f \v U+2008 U+200A U+2028 U+2029 — with no test at all: each could
+  // be deleted and all 15,917 pure tests still passed, while "1 000 mg" went back to a
+  // confident zero. A swept claim cannot rot that way.
+  it("refuses every code point that is not a digit, a letter, or one of the four", () => {
+    const READ = new Set([
+      0xa0, 0x202f, 0x2009, 0x2007, 0x2019, 0x27, 0x66c, 0x2032, 0x2bc,
+    ]);
+    const MEANINGFUL = new Set([0x2e, 0x2c, 0x2d, 0x2f]); // . , - /
+    const offenders: string[] = [];
+    for (let c = 1; c < 0x10000; c++) {
+      if (c >= 0xd800 && c <= 0xdfff) continue; // lone surrogates are not characters
+      const ch = String.fromCodePoint(c);
+      if (/[0-9A-Za-z]/.test(ch)) continue;
+      if (READ.has(c) || MEANINGFUL.has(c)) continue;
+      const reading = readDoseQuantity(`1${ch}000 mg`);
+      if (reading.kind === "quantity") {
+        offenders.push(`U+${c.toString(16).toUpperCase().padStart(4, "0")}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps the slash out of the guard, which refuses more than it reads", () => {
     // A LOOKBEHIND ON A REFUSAL BRANCH IS NOT THE SAME INSTRUMENT AS ONE ON A READ
     // BRANCH, and this is where that distinction is worth its own test.
     //
@@ -761,35 +855,56 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
     expect(doseUnitCount("1-2 tablets")).toBe(2);
   });
 
-  // THE PRICE OF REFUSING EVERY DIGIT-SPACE-DIGIT RUN, pinned so it is a decision
-  // rather than a surprise. A name ending in a STANDALONE digit — "Omega 3" written
-  // with a space rather than a hyphen — is structurally indistinguishable from a
-  // mistyped group: "3 1000" and "1 0000" are the same string shape, and no local rule
-  // can tell them apart.
+  // THE PRICE OF REFUSING EVERY UNREADABLE RUN, and where that price is NOT paid.
   //
-  // IT IS A FAMILY AND IT IS REACHABLE. "Vitamin B 12 500 mcg", "Coenzyme Q 10 100 mg",
-  // "Sinemet 25 100 mg" — and "PreserVision AREDS 2", which is a SHIPPED CATALOG ENTRY
-  // (lib/supplement-catalog.ts). The bare name is untouched; a strength appended to it
-  // in one string is not. An earlier round of this work said the spelling appeared
-  // nowhere in the tree, on the strength of a differ over 58,769 string literals. That
-  // was wrong, and the way it was wrong is worth keeping: the differ compares reader
-  // answers on ONE LITERAL AT A TIME, and this defect needs a NAME AND A STRENGTH
-  // ADJACENT — a pairing that cannot occur in a single literal, because the catalog
-  // stores names and the seeds store amounts.
+  // A name ending in a standalone digit followed by a strength — "Omega 3 1000 mg" — is
+  // structurally identical to a mistyped group ("3 1000" and "1 0000" are the same string
+  // shape), so the DOSE reader refuses it. That is a field a person sees and can retype.
   //
-  // It is the right side to land on, by the same asymmetry that governs U+0020 itself:
-  // reading "1 0000 mg" gives a CONFIDENT ZERO that feeds a limit check and is
-  // invisible, while refusing "Omega 3 1000 mg" gives an unreadable amount the person
-  // is shown and can retype. One is unrecoverable; the other is a correction.
-  it("refuses a strength after a SPACE-separated standalone name digit, knowingly", () => {
+  // The GROUPING NAME is a different matter and is not affected: an interim revision let
+  // lib/prescription-parse.ts's name grammar span these runs too, which collapsed
+  // "Vitamin B 12" / "Vitamin B 6" / "Vitamin B 1" to one key and made
+  // `medicationFamilies` merge three vitamins into one redose family. Nothing renders a
+  // key, so that cost was silent — the opposite of correctable. The name half is pinned
+  // in lib/__tests__/dose-number-readers.test.ts; this asserts the two halves now differ
+  // on purpose.
+  it("refuses the dose but keeps the name, for a space-held name digit", () => {
     expect(readDoseQuantity("Omega 3 1000 mg").kind).toBe("unreadable");
     expect(readDoseQuantity("Omega 3 60 mg").kind).toBe("unreadable");
-    // The grouping name loses the digit too — "Omega", not "Omega 3" — and that is
-    // asserted in lib/__tests__/dose-number-readers.test.ts beside the rest of the
-    // naming half, since this file does not read names. It is NOT the silent kind of
-    // wrong: the row renders as "Omega" with an unreadable-dose gap beside it, so a
-    // person meets something visibly odd and can fix it. That is the whole difference
-    // from a confident zero, which renders as a plausible row nobody looks at twice.
+    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega 3");
+    expect(cleanMedicationName("Vitamin B 12 1000 mcg")).toBe("Vitamin B 12");
+  });
+
+  // THE READERS AGREE BETWEEN TWO DIGIT RUNS, AND ONLY THERE — the heading in lib/dri.ts
+  // says so and this is what makes that qualifier checkable. A leading separator is not
+  // the separator rule's business at all: the ingredient reader must see ONE quantity end
+  // to end, so a leading character it cannot account for sinks the whole string, while a
+  // dose amount is scanned free text where a leading apostrophe is just prose. Predates
+  // #3451; pinned so nobody reads the heading as claiming more than it does.
+  it("differs on a LEADING separator, by anchoring rather than by rule", () => {
+    for (const c of ["\u2019", "'", "\u066c", "\u2032", "\u02bc"]) {
+      expect(readDoseQuantity(`${c}125 mg`)).toEqual({
+        kind: "quantity",
+        value: 125,
+        unit: "mg",
+      });
+      expect(readIngredientAmount(`${c}125 mg`)).toEqual({
+        kind: "unreadable",
+      });
+    }
+    // BETWEEN two digit runs — the position the rule is about — they agree.
+    for (const c of ["\u2019", "'", "\u066c", "\u2032", "\u02bc"]) {
+      expect(readDoseQuantity(`1${c}000 mg`)).toEqual({
+        kind: "quantity",
+        value: 1000,
+        unit: "mg",
+      });
+      expect(readIngredientAmount(`1${c}000 mg`)).toEqual({
+        kind: "quantity",
+        amount: 1000,
+        unit: "mg",
+      });
+    }
   });
 
   // THE MISTYPED GROUPS, both directions (#3451, second round). A group too SHORT and
@@ -862,18 +977,27 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   // (read). A character in neither class still lets the scan restart. These are the two,
   // and an adversarial pass is how we learned that "one residual" was nineteen when the
   // branch keyed on a single literal space — so the list is a test now, not a sentence.
-  it("names its residuals exactly: the underscore and the hyphen still read zero", () => {
-    // A programming digit separator; no label spelling anywhere.
-    expect(readDoseQuantity("1_000 mg")).toEqual({
-      kind: "quantity",
-      value: 0,
-      unit: "mg",
-    });
+  it("names its residuals exactly: the four characters that carry a meaning", () => {
+    // THE LIST IS NOW DERIVED, so it is short and it is complete. A single separator is
+    // resolvable only if this file gives it a meaning; everything else is refused. The
+    // four with meanings are "." "," (decimal or group) and "-" "/" (range, combination),
+    // and only the last two can still let a scan restart.
+    //
+    // The underscore USED to be here and is not any more: it has no meaning, so the
+    // derived rule refuses it without anyone having to think of it. That is the whole
+    // point of inverting the classes.
+    expect(readDoseQuantity("1_000 mg")).toEqual({ kind: "unreadable" });
     // A hyphen between digits means a RANGE in this domain, and COUNT/DOSE_RANGE in
     // lib/prescription-parse.ts parse ranges on purpose. Folding it into the thousands
     // question would collide with a notation that carries meaning — same trade as the
     // slash, one guard up.
     expect(readDoseQuantity("1-000 mg")).toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+    // And the slash, for the same reason and measured in the slash test above.
+    expect(readDoseQuantity("1/000 mg")).toEqual({
       kind: "quantity",
       value: 0,
       unit: "mg",

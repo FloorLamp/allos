@@ -248,6 +248,25 @@ const CASES: {
     unit: "mg",
     was: "no strength at all \u2014 filed under the whole string, dose silently absent",
   },
+  // THE CROSS-PRODUCT CELL, at the tier that stores rows. This spec had a digit-ending
+  // name against a PLAIN SPACE ("B12 500 mcg") and a letter-ending name against an NBSP
+  // ("Pyridoxine<NBSP>100 mg"), and missed the cell where both vary — which is exactly
+  // where "B12<NBSP>500 mcg" read a confident 12500 mcg, twenty-five times the label.
+  //
+  // AND THE ANSWER IS THE REASSURING ONE, WHICH IS WHY IT IS WORTH STORING: the import
+  // splits the name BEFORE anything reads a number, and that splitter's guard blocks a
+  // start after a letter — so the dose column gets "500 mcg" and reads 500, not 12500.
+  // The weld can only bite a dose amount that holds the whole name, which is the manual
+  // entry path, pinned in lib/__tests__/dri.test.ts. This row is the proof the import
+  // path is not that path, and it goes red if the two guards are ever unified wrongly.
+  {
+    name: "Cyanocobalamin B12\u00a0500 mcg",
+    grouping: "Cyanocobalamin B12",
+    amount: "500 mcg",
+    reads: 500,
+    unit: "mcg",
+    was: "500 mcg via the name split \u2014 12500 only if the whole string reaches the reader",
+  },
   // THE CONTROL FOR THE SPACE BRANCH'S LOOKBEHIND, at the tier that stores rows. A
   // supplement name may END IN A DIGIT, and there the space before the strength is not
   // inside a number at all. If the branch ever stops refusing to start after a letter,

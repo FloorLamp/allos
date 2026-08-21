@@ -53,6 +53,9 @@ const CORPUS: {
   amount: string;
   trueMg: number | null;
   was: string;
+  // See "THE NAME GRAMMAR IS EXEMPT" below — this entry's `or nothing` binds the dose
+  // readers only, and the name splitter's actual answer is pinned separately.
+  nameSplitterKeepsTheTail?: true;
 }[] = [
   { amount: "2,5 mg", trueMg: 2.5, was: "5 mg" },
   { amount: "1,25 mg", trueMg: 1.25, was: "25 mg" },
@@ -90,6 +93,7 @@ const CORPUS: {
   {
     amount: "2 500 mg",
     trueMg: null,
+    nameSplitterKeepsTheTail: true,
     was: "500 mg \u2014 or 2500, and nobody can tell",
   },
 ];
@@ -114,14 +118,25 @@ function contributedMg(answer: unknown): number | null {
 // Each reader in the tree that turns a dose string into a number, or into a string
 // something else turns into a number. `read` returns whatever that reader answers;
 // `contributedMg` above reduces it to the quantity that reaches a total.
-const READERS: { name: string; read: (amount: string) => unknown }[] = [
+const READERS: {
+  name: string;
+  read: (amount: string) => unknown;
+  // Answers "where does the NAME end", not "what is this number" — see the exemption
+  // and its pinned residual below.
+  splitsNames?: true;
+}[] = [
   { name: "dri.readDoseQuantity", read: (a) => a && parseQuantityMg(a) },
   { name: "dri.parseQuantity", read: (a) => parseQuantity(a)?.value ?? null },
   { name: "intake-ingredients.readIngredientAmount", read: readIngredientMg },
-  { name: "prescription-parse.strengthFromName", read: strengthFromName },
+  {
+    name: "prescription-parse.strengthFromName",
+    read: strengthFromName,
+    splitsNames: true,
+  },
   {
     name: "prescription-parse.parsePrescription(name).strength",
     read: (a) => parsePrescription({ name: `Bisoprolol ${a}` }).strength,
+    splitsNames: true,
   },
   {
     name: "prescription-parse.parsePrescription(sig).strength",
@@ -134,6 +149,7 @@ const READERS: { name: string; read: (amount: string) => unknown }[] = [
   {
     name: "medication-renewal.comparableNewStrength",
     read: comparableNewStrength,
+    splitsNames: true,
   },
   { name: "prn-redose.parseAmountMg", read: parseAmountMg },
   {
@@ -155,12 +171,42 @@ function readIngredientMg(amount: string): number | null {
 describe("no reader of a dose amount invents a number (#3444)", () => {
   for (const c of CORPUS) {
     for (const reader of READERS) {
+      if (c.nameSplitterKeepsTheTail && reader.splitsNames) continue;
       it(`${reader.name} on ${JSON.stringify(c.amount)} — ${c.trueMg} mg or nothing (was ${c.was})`, () => {
         const contributed = contributedMg(reader.read(c.amount));
         if (contributed !== null) expect(contributed).toBe(c.trueMg);
       });
     }
   }
+
+  // THE NAME GRAMMAR IS EXEMPT FROM ONE CORPUS ENTRY, AND THE EXEMPTION IS PINNED HERE
+  // RATHER THAN SKIPPED — an exclusion nobody can see is how a defect becomes a policy.
+  //
+  // `strengthFromName` and its two dependants answer "WHERE DOES THE NAME END", not
+  // "what is this number". #3451 made the dose readers take "2 500" whole so they could
+  // refuse it; making the NAME grammar do the same was measured and reverted, because it
+  // moves the split on every drug whose name ends in a number — "Vitamin B 12",
+  // "Sinemet 25", "Humulin 70 30" — and `medicationFamilies` then merges distinct drugs
+  // into one redose family. Silent, and uncorrectable.
+  //
+  // So for a name like "Metformin 2 500 mg" the splitter still answers "500 mg", exactly
+  // as on main. THAT IS A REAL REMAINING DEFECT, not a resolved one: if the label meant
+  // 2500 mg it is a fivefold understatement, stated readably. It is unchanged from main,
+  // it is the count-then-strength ambiguity ("one 500 mg tablet" is the other reading,
+  // and 500 is the conservative of the two), and the ZERO case — which is the one #3451
+  // was filed for — IS repaired, because a strength reading zero proves the split landed
+  // mid-number and the splitter then extends left by exactly one digit run.
+  it("the name splitter keeps a non-zero tail, and repairs a zero one", () => {
+    // The residual, asserted so it cannot quietly become something else.
+    expect(strengthFromName("Metformin 2 500 mg")).toBe("500 mg");
+    expect(cleanMedicationName("Metformin 2 500 mg")).toBe("Metformin 2");
+    // The repair, which is what #3451 asked for.
+    expect(strengthFromName("Metformin 1 000 mg")).toBe("1 000 mg");
+    expect(cleanMedicationName("Metformin 1 000 mg")).toBe("Metformin");
+    // And the repair extends by ONE digit run, never far enough to eat a name's own.
+    expect(cleanMedicationName("Vitamin B 12 1 000 mcg")).toBe("Vitamin B 12");
+    expect(strengthFromName("Vitamin B 12 1 000 mcg")).toBe("1 000 mcg");
+  });
 
   // A COUNT is a number against a dose unit too, and a fabricated count multiplies an
   // ingredient amount just as a fabricated mass does. `doseUnitCount`'s lookbehind is
@@ -300,31 +346,38 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
       `Omega${"\u2013"}3`
     );
 
-    // AND THE ONE THE TRADE COSTS, asserted so it is a decision rather than a surprise.
-    // THE DIRECTION, not the string: a name ending in a digit, spelled with a SPACE
-    // instead of a hyphen, followed by a strength. "Omega 3 1000 mg" is the example;
-    // the class is every name of that shape.
+    // AND THE NAMES THAT USED TO BE THE COST OF THIS FIX, now asserted as KEPT.
     //
-    // It is structurally identical to a mistyped group — "3 1000" and "1 0000" are the
-    // same string to any local rule — and the narrowing that would rescue it
-    // (also refusing after letter-then-space) un-refuses "Vitamin C 1 000 mg" and hands
-    // back a confident zero, which is pinned in lib/__tests__/dri.test.ts. So there is
-    // no narrowing available, and the cost is the shape of the problem.
+    // An interim revision let the NAME grammar span an unreadable separator run too, so
+    // every name ending in a number lost its last token: "Omega 3", "Vitamin B 12",
+    // "Sinemet 25", "PreserVision AREDS 2". That was disclosed as an acceptable cost on
+    // the strength of it being "visible and correctable" — and it is neither, because
+    // what it moves is the grouping KEY. `medicationFamilies` merged "Vitamin B 12",
+    // "Vitamin B 6" and "Vitamin B 1" into ONE family, so a B6 dose armed the B12 redose
+    // clock under a rendered claim that they share an active ingredient. Nothing renders
+    // a key; nobody can correct one.
     //
-    // THE REMEDY, IF ANYONE COMPLAINS, IS TO NORMALISE THE NAME — NOT THE READER.
-    // "Omega-3" already reads, and it is what this tree spells twenty times over.
-    // Widening the reader to accept the spaced form is the thing that must not happen:
-    // it is the same edit as reading "1 0000 mg" as a number.
-    //
-    // AND IT IS A FAMILY, AND IT IS REACHABLE: "Vitamin B 12 500 mcg",
-    // "PreserVision AREDS 2 500 mg" — that last name is a SHIPPED CATALOG ENTRY
-    // (lib/supplement-catalog.ts). A differ over 58,769 string literals reported this
-    // spelling as absent from the tree, which was wrong: it compares reader answers one
-    // literal at a time, and the defect needs a NAME AND A STRENGTH ADJACENT, which no
-    // single literal contains. The dose becomes a visible unreadable gap and the name
-    // renders as "Omega" — visibly odd and correctable, which is precisely what a
-    // confident zero is not.
-    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega");
+    // The name grammar no longer spans, so all of these are main's answers again.
+    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega 3");
+    expect(cleanMedicationName("Vitamin B 12 1000 mcg")).toBe("Vitamin B 12");
+    expect(cleanMedicationName("Vitamin B 6 100 mg")).toBe("Vitamin B 6");
+    expect(cleanMedicationName("Sinemet 25 100 mg")).toBe("Sinemet 25");
+    expect(cleanMedicationName("PreserVision AREDS 2 500 mg")).toBe(
+      "PreserVision AREDS 2"
+    );
+    expect(cleanMedicationName("Humulin 70 30 100 units/mL")).toBe(
+      "Humulin 70 30"
+    );
+    // THE THREE KEYS THAT MUST STAY APART, which is the property the family merge broke.
+    expect(
+      new Set(
+        [
+          "Vitamin B 12 1000 mcg",
+          "Vitamin B 6 100 mg",
+          "Vitamin B 1 100 mg",
+        ].map((n) => cleanMedicationName(n).toLowerCase())
+      ).size
+    ).toBe(3);
   });
 
   // A COUNT IS A NUMBER AGAINST A DOSE UNIT TOO, and the space branch sits directly on

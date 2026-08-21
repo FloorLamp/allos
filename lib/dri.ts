@@ -184,11 +184,18 @@ export interface ParsedQuantity {
 // this very file cites as its motivating example. The heading was then narrowed to
 // "`.` or `,`" and the divergence tracked separately (#3451).
 //
-// #3451 CLOSED IT, so the heading is wide again — and it says SEPARATOR rather than
-// naming characters, because the rule is now about a class rather than a pair. What the
-// code below delivers, and all it claims: every separator listed in
-// `THOUSANDS_SEP_CHARS`, plus `.` and `,` and the plain space, gets ONE answer from
-// every reader in the tree. A character outside that set is still not covered.
+// #3451 CLOSED IT FOR THE POSITION THE RULE IS ABOUT, and the qualifier is load-bearing.
+// What the code below delivers, and ALL it claims: for a separator BETWEEN TWO DIGIT
+// RUNS, every reader gives one answer.
+//
+// It does not claim agreement for a separator anywhere else, and there the two halves
+// still differ — "’125 mg" reads 125 from `readDoseQuantity` and `unreadable` from
+// `readIngredientAmount`, and the same holds for U+0027, U+066C, U+2032 and U+02BC. That
+// difference is ANCHORING, not separators: an ingredient amount must be one quantity end
+// to end, so a leading character it cannot account for sinks the whole string, while a
+// dose amount is free text that gets scanned and a leading apostrophe is just prose. It
+// predates this issue, it is pinned in lib/__tests__/dri.test.ts, and a heading that
+// implied otherwise would be the fourth overstatement in this comment's history.
 //
 // AND THE ONE ANSWER IS NOT THE SAME ANSWER FOR ALL OF THEM. #3451 offered two
 // outcomes — read the space family as a thousands group, or refuse it — and the
@@ -269,47 +276,40 @@ export interface ParsedQuantity {
 // "1" (preceded by "B") or at "2" (preceded by "1"), so the branch never engages and
 // the ordinary branch reads 500.
 //
-// WHAT IT COSTS. A FAMILY, not a string: any name whose last token before the strength
-// is a BARE DIGIT RUN HELD BY A PLAIN SPACE — "Omega 3 1000 mg", "Vitamin B 12 500 mcg",
-// "PreserVision AREDS 2 500 mg", "Coenzyme Q 10 100 mg", "Sinemet 25 100 mg". Each is
-// structurally identical to a mistyped group ("3 1000" and "1 0000" are the same string
-// to any local rule) and no lookbehind separates them.
+// WHAT IT COSTS, AND WHERE THAT COST IS NOT PAID. The branch spans a run, so on a string
+// that is a NAME PLUS A STRENGTH it takes the name's trailing digits with it:
+// `readDoseQuantity("Omega 3 1000 mg")` is `unreadable`, and so are the same shapes built
+// on "Vitamin B 12", "Sinemet 25" and "PreserVision AREDS 2" (a shipped catalog entry,
+// lib/supplement-catalog.ts).
 //
-// AND THE FAMILY IS REACHABLE, NOT HYPOTHETICAL: "PreserVision AREDS 2" is a shipped
-// catalog entry (lib/supplement-catalog.ts). The bare NAME is untouched — it carries no
-// strength, so no reader here has an opinion about it — but the moment a strength is
-// appended to it in one string, the dose refuses and the grouping name drops the "2".
+// That is confined to the DOSE AMOUNT column, which is a field a person can see and
+// retype. It is NOT paid by the grouping name, and the difference is the whole reason
+// lib/prescription-parse.ts composes `WRITTEN_NUMBER_SCAN` rather than this one: an
+// interim revision let the name grammar span too, and `medicationFamilies` then merged
+// "Vitamin B 12", "Vitamin B 6" and "Vitamin B 1" into a single redose family. Nothing
+// renders a grouping key, so nobody could have corrected it. See the two-scan comment
+// below `WRITTEN_NUMBER`.
 //
-// A CORPUS OVER STRING LITERALS CANNOT SEE THIS, and that is worth recording because an
-// earlier round of this work concluded from exactly such a corpus that the spelling
-// appeared "nowhere in the tree". The measurement was sound and the conclusion was not:
-// the defect needs a NAME AND A STRENGTH ADJACENT, and those two never co-occur in one
-// literal by construction — the catalog stores names, the seeds store amounts. A differ
-// over literals is blind to every two-part shape, whatever else it proves.
+// WHAT REMAINS OUT OF REACH, and the list is short because the rule is now DERIVED rather
+// than enumerated. A run is refused unless it is exactly one character this file gives a
+// meaning to. Those are four — "." and "," (readGroupedNumber's question) and:
 //
-// It is still the right side to land on, for the same reason U+0020 is refused at all:
-// reading "1 0000 mg" gives a confident zero that feeds a limit check and is invisible,
-// while refusing "PreserVision AREDS 2 500 mg" gives an amount the person is shown and
-// can retype beside a name that renders visibly wrong. One is unrecoverable; the other
-// is a correction. The remedy if it ever bites is to NORMALISE THE NAME, not the reader.
-//
-// WHAT REMAINS OUT OF REACH, and this list is the whole of it rather than an example.
-// The rule keys on a separator being WHITESPACE-OR-INVISIBLE (refused) or a member of
-// THOUSANDS_SEP_CHARS (read). A character in neither class still lets the scan restart:
-//
-//   "1_000 mg"  -> 0   an underscore is a programming digit separator, no label spelling
 //   "1-000 mg"  -> 0   a hyphen between digits means a RANGE here, and `COUNT` /
-//                      `DOSE_RANGE` in lib/prescription-parse.ts parse ranges on
-//                      purpose. Folding it into the thousands question would collide
-//                      with a notation that carries meaning — the same reason the slash
-//                      stays out, and the same trade. Note "100-200 mg" already reads a
-//                      fragment (200) on main and still does: reading a RANGE is a
-//                      separate defect from reading a SEPARATOR, and it is not fixed here.
+//   "1/000 mg"  -> 0   `DOSE_RANGE` parse ranges, combination strengths ("5/325 mg") and
+//                      fractions ("1/2 tablet") on purpose. Folding either into the
+//                      thousands question would collide with a notation that carries
+//                      meaning. Note "100-200 mg" already read a fragment (200) on main
+//                      and still does: reading a RANGE is a separate defect from reading
+//                      a SEPARATOR, and it is not fixed here.
 //
-// Both are asserted in lib/__tests__/dri.test.ts so the day either changes, the change
-// is deliberate. THIS PARAGRAPH IS THE CLAIM: two characters, named, with reasons —
-// not "one residual", which an adversarial pass showed to be nineteen when the branch
-// keyed on a single literal space.
+// Both are asserted in lib/__tests__/dri.test.ts so the day either changes, the change is
+// deliberate. THE CLAIM IS STRUCTURAL, WHICH IS WHY IT CAN BE MADE AT ALL: every other
+// character — every Unicode space, every format character, every one added in a future
+// Unicode revision — is refused because it is not in the four, not because anyone
+// remembered it. Three earlier revisions of this comment enumerated the complement
+// instead, and each was found incomplete: one literal space missed the double space and
+// the tab, a list of "the invisible ones" missed 166 code points, and a two-character
+// rule missed the runs whose other member was outside both lists.
 //
 // A separator in a number is either a thousands group or a decimal point, and which
 // one it is depends on where the label was printed. The ingredient write boundary
@@ -353,76 +353,134 @@ const THOUSANDS_GROUPED = /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/;
 const PLAIN_NUMBER = /^\d+(?:\.\d+)?$/;
 const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 
-// The separators that EXIST to group thousands, spelled out because this is a LIST and
-// not a rule — a character earns a place here by being a thousands separator in some
-// real printing convention, never by looking like one (#3451):
+// THE NINE SEPARATORS READ AS A THOUSANDS GROUP. A LIST, and every member is here on
+// stated evidence — this file has no rule that infers one from a character's appearance.
+// Two grounds are used, and which one applies to which member is the part worth keeping:
 //
-//   U+00A0 no-break space          the ordinary word-processor grouping space
-//   U+202F narrow no-break space   the SI / ISO-80000 grouping space
-//   U+2009 thin space              the same, in typesetting
-//   U+2007 figure space            digit-width space, used to align columns of figures
-//   U+2019 right single quote      the Swiss spelling, "1’000"
-//   U+0027 apostrophe              the Swiss spelling as typed on an ASCII keyboard
-//   U+066C Arabic thousands separator
+//   IT IS A THOUSANDS SEPARATOR BY CONVENTION — some real printing tradition uses it
+//   for exactly this job.
+//     U+00A0 no-break space          the ordinary word-processor grouping space  (invisible)
+//     U+202F narrow no-break space   the SI / ISO-80000 grouping space           (invisible)
+//     U+2009 thin space              the same, in typesetting                    (invisible)
+//     U+2007 figure space            digit-width, for columns of figures         (invisible)
+//     U+2019 right single quote      the Swiss spelling, "1’000"                 (VISIBLE)
+//     U+066C Arabic thousands separator                                          (VISIBLE)
+//
+//   IT IS HOW THAT SEPARATOR ACTUALLY REACHES US — a rendering or a substitution of one
+//   of the six above, admitted on evidence of use rather than on what the character is
+//   nominally for. This ground is looser and is stated plainly so nobody mistakes it for
+//   the first one.
+//     U+0027 apostrophe              Swiss, as typed on an ASCII keyboard        (VISIBLE)
+//     U+2032 prime                   the Swiss apostrophe in several fonts       (VISIBLE)
+//     U+02BC modifier apostrophe     the Swiss apostrophe from several IMEs      (VISIBLE)
+//
+// Five of the nine are VISIBLE and four are invisible, which is why the constant below is
+// written as escapes: a rule nobody can read is a rule nobody can check.
 //
 // U+0020 IS DELIBERATELY ABSENT — see the heading above. It is the one spelling a label
 // also uses for count-then-strength, so it is refused rather than read.
 //
-// Each one is normalized to a comma and then answered by the comma rule, so nothing
-// below has a second opinion about grouping, leading zeros or decimals.
-// SPELLED AS ESCAPES, not as the characters themselves. Six of the seven are invisible
-// or near-invisible in an editor, and a rule nobody can read is a rule nobody can check.
+// Each one is normalized to a comma and then answered by the comma rule, so nothing below
+// has a second opinion about grouping, leading zeros or decimals.
+// ─────────────────────────────────────────────────────────────────────────────────────
+// EVERY POSITION A SEPARATOR CHARACTER CAN INFLUENCE A READING, AND WHETHER THE
+// "BETWEEN TWO DIGIT RUNS" ARGUMENT ACTUALLY HOLDS THERE.
+//
+// This table exists because three separate defects on this change were the SAME mistake:
+// the rule reached into a position the argument for it did not cover. Enumerating the
+// positions is the only check that finds that class rather than its instances, so it is
+// written here, next to the constants, and every entry names its own justification.
+//
+//  1. readGroupedNumber's normalization (`token.replace(THOUSANDS_SEP_RE, ",")`)
+//     ARGUMENT DOES NOT APPLY, AND DOES NOT NEED TO. It rewrites whatever is in the
+//     token. Safety comes from the two ANCHORED patterns it feeds — THOUSANDS_GROUPED
+//     and PLAIN_NUMBER both demand digits end to end — so a token that is not a number
+//     ("B12,500", "’125") cannot survive normalization into a value.
+//
+//  2. SEP_RUN_CHAR / 3. MEANINGFUL_SINGLE  (inside UNREADABLE_SEP_RUN)
+//     HOLDS BY CONSTRUCTION. The run is only ever interpolated between two `\d+`.
+//
+//  4. AMBIGUOUS_SPACE_NUMBER — `\d+(?:RUN\d+)+`
+//     HOLDS, BUT ONLY WITH NAME_DIGIT_BOUNDARY. The separator is between two digit runs;
+//     the question the position raises is whether the LEFT run belongs to a name
+//     ("B12 500 mcg"). That is what the boundary answers.
+//
+//  5. MID_NUMBER_PREFIX — `\d+RUN$` against the text before a strength
+//     HOLDS. The right-hand digit run is the strength itself, immediately after.
+//
+//  6. unreadableSeparatorSentence — `\d(RUN)\d`
+//     HOLDS. Spelled with the digits on both sides explicitly.
+//
+//  7. NAME_DIGIT_BOUNDARY — `(?<![A-Za-z0-9_\-–.,SEPS])`
+//     A DIFFERENT ARGUMENT, AND IT MUST NOT BE CONFUSED WITH THIS ONE. It is not about
+//     what sits between digits; it is about WHAT MAY PRECEDE A NUMBER. The read set is
+//     listed so the refusal branch cannot start in the middle of a number some other
+//     branch will read whole.
+//
+//  8. WRITTEN_NUMBER — `\d+(?:[.,SEPS]\d+)*`
+//     THE ARGUMENT HOLDS ONLY BECAUSE OF ENTRY 9. The separator is between two digit
+//     runs — and the left run may still be A NAME'S. This is where the third defect
+//     lived: widening this class to the read set turned "B12<NBSP>500 mcg" into 12500,
+//     and main has the same defect for "," alone.
+//
+//  9. NAME_WELDED_NUMBER — `[A-Za-z]\d+(?:[.,SEPS]\d+)+`
+//     HOLDS. The read-side twin of entry 7, and the reason entry 8 is safe.
+//
+// AND THE TWO POSITIONS THIS CHANGE REMOVED, because the argument DID NOT hold in them —
+// they are listed so nobody restores them thinking they were an oversight:
+//
+// 10. the scan's start lookbehind, once `(?<![\d.,SEPS])`
+// 11. the scan's optional leading separator, once `[.,SEPS]?`
+//     NEITHER IS BETWEEN TWO DIGIT RUNS. In both, the character sits before a number with
+//     no digit on its left — which is overwhelmingly an ordinary WORD SPACE, since NBSP
+//     is what Word, HTML and PDF extraction put between a name and a number. Including
+//     the read set there made "Niacin<NBSP>1000 mg" yield no strength at all, so the sig
+//     landed in the amount column reading `none` — not `unreadable` — and
+//     getUnreadableDoseAmounts filters `none` out. A real dose, silently absent, which is
+//     worse than main. Both carry `[.,]` and nothing more.
+// ─────────────────────────────────────────────────────────────────────────────────────
 const THOUSANDS_SEP_CHARS = String.raw`\u00a0\u202f\u2009\u2007\u2019\u0027\u066c\u2032\u02bc`;
 const THOUSANDS_SEP_RE = new RegExp(`[${THOUSANDS_SEP_CHARS}]`, "g");
 
-// EVERY OTHER SPACE-LIKE OR INVISIBLE CHARACTER, which between two digit runs is not a
-// grouping convention anywhere — it is a typo, a stray tab, or an artifact of the
-// pipeline that produced the string. Enumerated as the complement of the read set above,
-// because the question "can a person see what this is" has to be answered for ALL of
-// them or the answer is not worth having:
+// WHAT MAY SIT BETWEEN TWO DIGIT RUNS, DERIVED RATHER THAN ENUMERATED (#3451).
 //
-//   \t \n \r \f \v ' '            plain whitespace. A DOUBLE space is the case that
-//                                 matters most: it is "1  000 mg", the same defect as
-//                                 "1 000 mg" with one keystroke more, and a branch that
-//                                 keys on a single literal space misses it entirely.
-//   \u00ad soft hyphen            invisible unless a line breaks there
-//   \u200b \u200c \u200d \u2060    zero-width space / non-joiner / joiner / word joiner
-//   \ufeff byte-order mark        what a UTF-8 BOM becomes mid-string
-//   \u2000-\u2006 \u2008 \u200a    the en/em/punctuation/hair spaces, minus the three the
-//   \u205f \u3000                 read set already claims (\u2007 \u2009 \u202f)
-//   \u2028 \u2029                 line/paragraph separators
+// THIS WAS A HAND-WRITTEN LIST THREE TIMES AND WAS INCOMPLETE THREE TIMES. First one
+// literal space, which missed the double space and the tab. Then a list of "the invisible
+// ones", which missed U+1680 OGHAM SPACE MARK, U+200E LRM, U+0085 NEL and U+2066 LRI —
+// 166 code points that are Unicode White_Space or Cf, every one of them returning a
+// CONFIDENT ZERO and bucketing `always-correct`. Then a two-character run whose other
+// member fell outside both lists: "1 -000 mg" and "1- 000 mg", the mistyped-label shape
+// this whole change is about.
 //
-// THE ZERO-WIDTH ONES ARE THE REASON THIS IS A LIST AND NOT `\s`. `\s` does not contain
-// them, and they are the members that most need containing. A soft hyphen or a ZWSP
-// between two digit runs RENDERS AS NOTHING: the person sees "1000" and the string holds
-// "1<U+00AD>000". Reading it as 1000 is defensible and refusing it is defensible; what is
-// not defensible is the third answer, which is what the tree did — restart after it and
-// return a confident ZERO. Refusal is the one that matches this file's doctrine (accept a
-// grouping that is unambiguous, refuse one that is not), and it is the only one that puts
-// the string in front of the person who can see the original label.
+// THE LESSON IS ABOUT THE SHAPE OF THE RULE, NOT ABOUT THE MISSING MEMBERS. Enumerating
+// the unreadable characters means enumerating a complement, and a complement of a set
+// Unicode keeps growing cannot be written down. So the classes are inverted: this file
+// names the characters it CAN resolve, and everything else between two digit runs is
+// refused by construction.
 //
-// THE REFUSAL IS A DELIBERATE CHOICE AND NOT THE END STATE. Stripping these characters
-// and reading "1000" is arguably MORE correct — it makes the parser agree with the
-// person's own eye, which is the only reading either of them can check. It is not done
-// here because the real question is bigger than this reader: the same invisible character
-// in a medication NAME breaks grouping in exactly the same way, and nothing about that is
-// about numbers. That makes it INPUT NORMALISATION at the write boundary for every field,
-// tracked as #3472. A normalisation pass would SUPERSEDE this clause rather than
-// contradict it — by the time the string reached here it would no longer contain the
-// character, and this list would simply stop matching.
-const UNREADABLE_SEP_CHARS = String.raw`\t\n\r\f\v \u00ad\u200b\u200c\u200d\u2060\ufeff\u2000-\u2006\u2008\u200a\u2028\u2029\u205f\u3000`;
-
-// A separator RUN between two digit runs that cannot be resolved to a thousands group.
-// Two shapes, and the second is the one an earlier cut of this fix missed entirely:
+//   SEP_RUN_CHAR        anything that is not a digit and not an ASCII letter. Letters are
+//                       excluded because they END a separator run rather than belong to
+//                       one — it is what keeps "2 capsules (500 mg)" reading 500 instead
+//                       of being swallowed whole.
+//   MEANINGFUL_SINGLE   the four single characters this file gives a meaning to:
+//                       "." and "," (decimal or group — readGroupedNumber's question),
+//                       "-" (a RANGE) and "/" (a combination strength or a fraction),
+//                       both parsed on purpose by COUNT and DOSE_RANGE in
+//                       lib/prescription-parse.ts.
+//   THOUSANDS_SEP_CHARS the separators that mean "thousands group" on their own.
 //
-//   [any]{2,}    MORE THAN ONE separator character, whatever they are. Exactly one
-//                member of the read set means "thousands group"; two of anything means
-//                nobody can say. "1  000" (two spaces), "1 \t000", "1<NBSP><NBSP>000".
-//   [unreadable] a single character that is not in the read set at all.
-//
-// A single read-set character does not match either shape, so it falls through to the
-// ordinary branch and is read as the group it is.
-const UNREADABLE_SEP_RUN = String.raw`(?:[${THOUSANDS_SEP_CHARS}${UNREADABLE_SEP_CHARS}]{2,}|[${UNREADABLE_SEP_CHARS}])`;
+// So a run is REFUSED when it is two or more characters — whatever they are, which is
+// what closes "1 -000 mg" — or when it is a single character that is neither meaningful
+// nor a thousands separator, which is what closes every present and future member of the
+// whitespace and format-character families at once.
+const SEP_RUN_CHAR = String.raw`[^0-9A-Za-z]`;
+const MEANINGFUL_SINGLE = String.raw`.,\-/`;
+// The read set is NOT excluded from the single-character alternative, and that is
+// measured rather than assumed. Excluding it changes no answer: if this branch claims
+// "1<NBSP>000", `readGroupedNumber` normalizes the NBSP to a comma and returns 1000
+// exactly as the ordinary branch would have. The branch decides WHERE a number ends;
+// what it MEANS is decided in one place, and that place already knows the read set.
+const UNREADABLE_SEP_RUN = String.raw`(?:${SEP_RUN_CHAR}{2,}|(?![${MEANINGFUL_SINGLE}])${SEP_RUN_CHAR})`;
 
 export function readGroupedNumber(token: string): number | null {
   // A TOKEN SPANNING A PLAIN SPACE — "1 000", "2 500", "1 000.5" — IS REFUSED BY
@@ -479,17 +537,29 @@ export type DoseQuantityReading =
 // form could never change an answer — measured again at #3444: it differs from the
 // unguarded pattern on 0 of 300,000 random strings.
 //
-// THE STRONGER FORM IS LOAD-BEARING, and the difference is the character class. The
-// weaker spelling only blocks a start preceded by a DIGIT; `(?<![\d.,])` also blocks
-// one preceded by a SEPARATOR THAT HAS NO DIGITS BEFORE IT. That is not a hypothetical
-// string — it is the ISMP "naked decimal", `.125 mg`, written exactly that way BECAUSE
-// people drop the leading zero, and it is the same 1000x on the same drug this whole
-// issue is about. Unguarded, the scan starts at the "125" and reads a confident 125 mg
-// for a 0.125 mg dose of digoxin. Measured: `(?<![\d.,])` differs from the unguarded
-// pattern on 1205 of the same 300,000 strings, EVERY difference is the unguarded one
-// inventing a number out of a separator-led fragment (".9mcg" -> 9, "iu.952g" -> 952),
-// and 0 of 22 legitimate label shapes change — `1.5 mL (1.25 mg)` still reads 1.25 mg,
-// `2 capsules (500 mg)` still reads 500 mg, `Vitamin C, 500 mg` still reads 500.
+// THE STRONGER FORM WAS LOAD-BEARING AT #3444 AND IS NOT ANY MORE, and saying so is the
+// point of this paragraph — a comment that claims a guard is holding something up, when
+// it is not, is how the next person mis-reads everything around it.
+//
+// What it did at #3444: `(?<![\d.,])` blocks a start preceded by a SEPARATOR THAT HAS NO
+// DIGITS BEFORE IT — the ISMP "naked decimal" `.125 mg`, where the unguarded scan starts
+// at the "125" and reads a confident 125 mg for a 0.125 mg digoxin dose. It differed from
+// the unguarded pattern on 1205 of 300,000 random strings, every difference a
+// fabrication.
+//
+// What holds that up NOW is `[.,]?` on the next line, not this lookbehind. Measured at
+// this head: DELETING THIS LOOKBEHIND changes 0 of 285,592 differential inputs and leaves
+// every test green, while deleting `[.,]?` reds seven. The naked decimal is caught
+// because the leading separator is taken INTO the token, where readGroupedNumber refuses
+// it — the lookbehind is now a second lock on a door the token shape already closes.
+//
+// IT STAYS ANYWAY, and this is the one place in this file where a measured-redundant
+// guard is kept rather than deleted. The differential that measured it has a known blind
+// spot for exactly this shape: it builds strings as name + digits + separator + digits +
+// unit, so it never emits a separator-LED string at all, and the seven red tests are the
+// only thing that saw the difference. A guard whose absence is invisible to the corpus
+// that cleared it has not been shown to be safe to remove — it has been shown to be
+// invisible to that corpus.
 //
 // AND THE LEADING SEPARATOR IS TAKEN INTO THE TOKEN, not skipped past. `[.,]?` in front
 // means ".125 mg" MATCHES, with ".125" as its number — which `readGroupedNumber` then
@@ -539,19 +609,25 @@ export type DoseQuantityReading =
 //                        leading separator so a naked decimal is refused rather than
 //                        silently skipped. Any reader that SCANS wants this one.
 //
-// WRITTEN_NUMBER does NOT contain the plain space, and that is not an oversight (#3451).
-// It is interpolated into lib/prescription-parse.ts's `COUNT`, `RATIO_TAIL` and
-// `NAME_STRENGTH_RE`, where a space is the ordinary gap between a count and its unit
-// ("1 mg/kg", "1 to 2 tablets"). A number that could swallow a space would rewrite that
-// grammar. The plain space belongs to the SCAN, where the question being asked is "where
-// does this number end" and the answer has to be "past the space, so nobody can restart
-// inside it".
+// WRITTEN_NUMBER HAS EXACTLY ONE CONSUMER — lib/intake-ingredients.ts's `AMOUNT_RE`,
+// which anchors it end to end and therefore has no scan to misplace. It is exported so
+// that reader cannot spell its own number; nothing else uses it.
 //
-// THE SCAN IS AN ALTERNATION, AND ORDER MATTERS. The space branch is FIRST, because at
-// the position of the "1" in "1 000 mg" both branches match and the shorter one ("1")
-// would leave the scan free to find "000 mg" one character later — the very restart this
-// exists to prevent. It is wrapped in `(?:…)` because callers interpolate it BARE into
-// larger patterns, where a loose `|` would rewrite their precedence.
+// The two SCANS below are what the rest of the tree composes with, and they are where the
+// plain space question lives — not here.
+//
+// THE SCAN IS AN ALTERNATION, AND ITS ORDER TURNS OUT NOT TO MATTER — measured, because
+// the obvious reasoning says it should. The intuition is that the refusal branch must
+// come first, since at the "1" of "1 000 mg" both branches match and the shorter one
+// would leave the scan free to find "000 mg" a character later. That is wrong about how
+// this pattern is USED: the branches sit inside `(…)\s*(unit)`, so a shorter match that
+// cannot reach a unit fails and the engine BACKTRACKS into the other arm at the same
+// position. Swapping the arms changes 0 of 285,592 differential inputs.
+//
+// The order is kept as written because it reads in the order the file explains it, not
+// because anything depends on it. What DOES matter is the `(?:…)` wrapper: callers
+// interpolate this bare into larger patterns, where a loose `|` would rewrite their
+// precedence.
 //
 // The space branch's own guards, each earning its place:
 //   (?<![A-Za-z0-9_\-\u2013.,seps])
@@ -613,9 +689,61 @@ export type DoseQuantityReading =
 const NAME_DIGIT_BOUNDARY = String.raw`(?<![A-Za-z0-9_\-\u2013.,${THOUSANDS_SEP_CHARS}])`;
 const AMBIGUOUS_SPACE_NUMBER = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREADABLE_SEP_RUN}\d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
-export const WRITTEN_NUMBER_SCAN = String.raw`(?:${AMBIGUOUS_SPACE_NUMBER}|(?<![\d.,])[.,]?${WRITTEN_NUMBER})`;
+
+// TWO SCANS, BECAUSE TWO DIFFERENT QUESTIONS ARE BEING ASKED (#3451, third round).
+//
+// One grammar answered both for a while, and the two needs are opposite:
+//
+//   A READER that must be able to REFUSE wants "1 000" taken WHOLE, so the scan cannot
+//   restart after the space and hand back "000" as a confident zero.
+//
+//   A NAME SPLITTER wants the opposite. "Vitamin B 12 1000 mcg" is a name ending in a
+//   number followed by a strength, and taking "12 1000" whole moves the split left —
+//   yielding the grouping name "Vitamin B". That is not a cosmetic loss: `Vitamin B 12`,
+//   `Vitamin B 6` and `Vitamin B 1` all collapse to the same key, `medicationFamilies`
+//   (lib/medication-family.ts) merges them into ONE family, and a B6 dose then arms the
+//   B12 redose clock while the app states that they "share the same active ingredient".
+//   It also breaks medFoldCandidates, pickRenewalTarget and getMedicationInfo. Every one
+//   of those failures is SILENT — a person cannot correct a name key they never see,
+//   which is exactly what makes it different from the visible dose gap this change is
+//   otherwise happy to create.
+//
+// So `WRITTEN_NUMBER_SCAN` stays what it was: where a written number starts and ends for
+// a GRAMMAR that is carving a string into name and strength. `DOSE_NUMBER_SCAN` adds the
+// unreadable-run branch, for readers whose answer is a QUANTITY and whose safe fallback
+// is refusal. The two agree about `.` and `,`, which is the part that had to be shared.
+export const WRITTEN_NUMBER_SCAN = String.raw`(?<![\d.,])[.,]?${WRITTEN_NUMBER}`;
+// The text that must sit immediately BEFORE a strength for that strength to be the TAIL
+// OF A NUMBER rather than a strength: a digit run, then a separator run nobody can read.
+// Anchored at the end, so a caller tests it against the prefix it is about to split off.
+//
+// ONE STEP, NOT A RE-SCAN, and the difference is a safety property. A first cut retried
+// the whole name/strength match with the wider number and let the leftmost match win —
+// which on "Vitamin B 12 1 000 mcg" swallowed the name's own "12" and gave back the name
+// "Vitamin B", reintroducing the family merge this fallback exists to avoid. Extending by
+// exactly one digit-run-plus-separator is the minimum that repairs the split, and the
+// minimum is the only amount that cannot take a name digit with it.
+export const MID_NUMBER_PREFIX = String.raw`${NAME_DIGIT_BOUNDARY}\d+${UNREADABLE_SEP_RUN}$`;
+
+// A GROUPED NUMBER WELDED TO THE END OF A NAME — "B12,500 mcg", or the same with any of
+// the nine read separators. The digits before the separator are part of the NAME, so the
+// separator is not a thousands separator and the string states no quantity anyone can
+// read. The token deliberately includes the trailing letter of the name, which is what
+// makes it unresolvable: `readGroupedNumber` sees a non-digit and refuses.
+//
+// MAIN HAS THIS DEFECT FOR THE COMMA — `readDoseQuantity("B12,500 mcg")` is 12500 there,
+// a 25x overstatement on the exact shape lib/__tests__/prescription-parse.test.ts:669
+// pins with the words "must not become 12". Widening `WRITTEN_NUMBER` to the read set
+// would have extended it to eight more characters, so closing it is part of this change
+// rather than a separate kindness: "B12<NBSP>500 mcg" must not be 12500 either.
+//
+// It is the READ-side twin of NAME_DIGIT_BOUNDARY on the refusal branch. Both say the
+// same thing — a digit welded to a name is not the start of a number — and they have to
+// be said twice because one guards a scan that reads and the other a scan that refuses.
+const NAME_WELDED_NUMBER = String.raw`[A-Za-z]\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)+`;
+export const DOSE_NUMBER_SCAN = String.raw`(?:${NAME_WELDED_NUMBER}|${AMBIGUOUS_SPACE_NUMBER}|${WRITTEN_NUMBER_SCAN})`;
 const DOSE_QUANTITY_RE = new RegExp(
-  String.raw`(${WRITTEN_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
+  String.raw`(${DOSE_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
   "i"
 );
 
@@ -659,12 +787,27 @@ function unreadableSeparatorSentence(amountText: string): string | null {
   );
   if (!m) return null;
   const run = m[1];
-  if (run.length > 1) return "There are extra spaces inside the number.";
-  if (run === " ") return "There's a space inside the number.";
+  // THE WORDS COME FROM WHAT THE RUN *IS*, NEVER FROM HOW LONG IT IS. A first cut keyed
+  // the plural branch on `run.length > 1` and told anyone with two zero-width spaces to
+  // go and find "extra spaces" — in a string that renders to them as "1000 mg", with no
+  // spaces anywhere in it. That is a false statement in exactly the case this sentence
+  // exists for, which is worse than saying nothing.
+  //
+  // `\p{White_Space}` is the test, derived rather than listed: a character the person can
+  // see as a gap is described as a space, and anything else is described as invisible,
+  // whatever it turns out to be. A MIXED run is called invisible too — it contains at
+  // least one character they cannot see, and that is the part they cannot act on.
+  const chars = [...run];
+  const visible = chars.every((c) => /\p{White_Space}/u.test(c));
+  if (!visible) {
+    return chars.length > 1
+      ? "There are invisible characters inside the number."
+      : "There's an invisible character inside the number.";
+  }
   if (run === "\t") return "There's a tab inside the number.";
-  // Everything left in the class is invisible or all but invisible on screen, so the
-  // honest description is what it does rather than what it is called.
-  return "There's an invisible character inside the number.";
+  return chars.length > 1
+    ? "There are extra spaces inside the number."
+    : "There's a space inside the number.";
 }
 
 // The message the item form shows when a dose amount could not be read. Names the

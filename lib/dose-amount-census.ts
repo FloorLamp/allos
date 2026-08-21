@@ -39,11 +39,7 @@
 // dose row's `amount` identifies them exactly. Nothing here does that, and no repair is
 // implied by it. A comma decimal is the shape this file's own rule refuses to resolve,
 // so the fix is a person confirming their own label — never a migration guessing one.
-import {
-  readDoseQuantity,
-  readGroupedNumber,
-  WRITTEN_NUMBER_SCAN,
-} from "./dri";
+import { readDoseQuantity, readGroupedNumber, DOSE_NUMBER_SCAN } from "./dri";
 
 export type DoseAmountCensusBucket =
   // No number+unit in the string at all ("1 capsule") — never affected, then or now.
@@ -94,7 +90,7 @@ export function preFixDoseReading(
 // inspection. `PRE_FIX_DOSE_RE` above stays unguarded on purpose — it answers what the
 // row read as YESTERDAY, and yesterday had no guard.
 const EVERY_QUANTITY_RE = new RegExp(
-  String.raw`(${WRITTEN_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
+  String.raw`(${DOSE_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
   "gi"
 );
 
