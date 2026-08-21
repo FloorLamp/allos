@@ -19,6 +19,16 @@ import {
   useOverlayDrag,
 } from "./overlay";
 
+// A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
+// docs/internals/overlays.md. It is not hostless in the sense that matters: it is
+// CONVERGED, onto components/overlay rather than onto the dialog host, and it is
+// registered in lib/__tests__/overlay-motion-chokepoint.test.ts as an
+// OVERLAY_SURFACE. The dialog host is transactional — mount to open, unmount to
+// close, swipe-down resolves to DISCARD — and this workspace is the opposite of
+// all three: a live workout runs for an hour, survives navigation as the minimized
+// bar, and its drag resolves to MINIMIZE. See the lifecycle note below, which is
+// the same argument in the words of #1469.
+//
 // The one activity workspace around the shared ActivityForm. Every create, edit,
 // repeat, and live entry uses it: full-screen on mobile and a right drawer from
 // the sm breakpoint up. Pages never re-parent the form into their own layout.

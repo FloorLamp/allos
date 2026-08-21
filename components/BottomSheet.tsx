@@ -102,6 +102,7 @@ export default function BottomSheet({
   titleHidden = false,
   size = "sm",
   showClose = false,
+  closeDisabled = false,
   onGestureDismiss,
 }: {
   open: boolean;
@@ -141,6 +142,22 @@ export default function BottomSheet({
   // CENTERED card has neither, so every dialog-presentation consumer that used
   // to be a ModalShell keeps the "✕" it has always had.
   showClose?: boolean;
+  // Refuse the Close control while the surface has a reason to refuse dismissal
+  // — a write already in flight, which closing would not cancel (#3405 review).
+  //
+  // WHY THIS IS A PROP AND NOT THE CONSUMER'S PROBLEM. A consumer that wants
+  // "no dismissal right now" can already pass a no-op `onClose`, and that is
+  // exactly the shape this exists to stop: the ✕ still looks live, still takes
+  // the tap, and does nothing — an affordance lying about what it will do, two
+  // pixels from a Cancel button that is honestly `disabled`. An ORNAMENT moving
+  // is not a reason to widen this API; an AFFORDANCE LYING is.
+  //
+  // It disables ONLY the visible control. Escape and the gestures keep going to
+  // `onGestureDismiss`/`onClose`, where the consumer's own guard already decides
+  // — a surface that refuses dismissal refuses it there, and one that merely
+  // wants the button greyed out (a submit in flight) still answers Escape. The
+  // two questions are separate and this prop is deliberately the narrower one.
+  closeDisabled?: boolean;
   // Called INSTEAD of onClose when the surface is dismissed by a GESTURE — a
   // flick on the drag handle, a tap on the scrim — or by ESCAPE. A consumer
   // hosting a form that may hold five typed minutes of family history routes them
@@ -347,7 +364,8 @@ export default function BottomSheet({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
+              disabled={closeDisabled}
+              className="shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
               aria-label="Close"
               title="Close"
             >

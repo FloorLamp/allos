@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import ModalShell from "@/components/ModalShell";
 import PageContainer from "@/components/PageContainer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -443,19 +444,6 @@ function EntryModal({
     });
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Escape closes; once an outcome is showing, closing also refreshes the board.
-      if (e.key === "Escape") {
-        if (saved) done();
-        else onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, saved]);
-
   const missingEquipment =
     def.equipment != null &&
     !equipmentNames.some((n) => n.includes(def.equipment!.needs.toLowerCase()));
@@ -496,38 +484,37 @@ function EntryModal({
     }
   }
 
+  // CONVERGED ONTO THE DIALOG HOST (#3405, owner ruling 2026-08-20; the defect it
+  // carried is #3421). This panel hand-rolled the host's ENTIRE anatomy — its own
+  // scrim, its own bottom-sheet-below-`sm` / centred-above shape, its own
+  // `max-h-[85vh] overflow-y-auto` scroller, its own window-level Escape listener
+  // and no focus trap — and it never portalled, which is why the chokepoint guard
+  // could not see it and its scroller shipped without `overscroll-contain` for the
+  // whole of #2774. Every one of those now comes from ModalShell: the sheet
+  // presentation, the locked body, the ONE contained scroll owner
+  // (`data-sheet-content`), the shared focus trap, and Escape routed through the
+  // #3420 discard confirm — which this surface WANTS, because the body below is a
+  // form someone has been typing measurements into.
+  //
+  // `saved ? done : onClose` is preserved verbatim as the close handler even though
+  // `done()` is `onClose()` today: the outcome moment (#1307) is where a future
+  // "refresh the board on close" belongs, and collapsing the two here would delete
+  // the seam rather than simplify it.
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      onClick={saved ? done : onClose}
-      role="presentation"
+    <ModalShell
+      title={def.label}
+      onClose={saved ? done : onClose}
+      size="sm"
+      testId={`fitness-entry-${def.key}`}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={def.label}
-        data-testid={`fitness-entry-${def.key}`}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-(--border) bg-surface p-4 shadow-xl sm:rounded-2xl"
-      >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            {/* The same figure as the tile — one keyed lookup, no second mapping. */}
-            <FitnessPictogram
-              testKey={def.key}
-              className="h-8 w-8 shrink-0 text-slate-500 dark:text-slate-400"
-            />
-            <h3 className="text-base font-semibold">{def.label}</h3>
-          </div>
-          <button
-            type="button"
-            onClick={saved ? done : onClose}
-            className="text-sm text-slate-500 hover:underline dark:text-slate-400"
-            data-testid={`fitness-close-${def.key}`}
-          >
-            Close
-          </button>
-        </div>
+      <div>
+        {/* The same figure as the tile — one keyed lookup, no second mapping. The
+            host owns the title now, so the pictogram leads the body instead of
+            sitting beside a heading this file no longer renders. */}
+        <FitnessPictogram
+          testKey={def.key}
+          className="mb-2 h-8 w-8 shrink-0 text-slate-500 dark:text-slate-400"
+        />
 
         {saved && outcome ? (
           <OutcomePanel outcome={outcome} onDone={done} testKey={def.key} />
@@ -535,7 +522,7 @@ function EntryModal({
           renderForm()
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 
   // Rendered inline (a plain function, not a `<Component/>`) so the timer + input state

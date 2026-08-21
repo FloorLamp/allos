@@ -22,6 +22,15 @@ import {
 import { motionMs } from "@/lib/motion";
 import { identityBarLabel, identityBarView } from "@/lib/profile-identity";
 
+// A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
+// docs/internals/overlays.md. Like ActivityOverlay it is converged onto
+// components/overlay rather than onto the dialog host, and registered as an
+// OVERLAY_SURFACE in lib/__tests__/overlay-motion-chokepoint.test.ts. Its anatomy
+// is TOP-anchored: the panel drops out of the identity bar it belongs to and a
+// swipe UP retreats through that bar. A centred dialog host has no anchor to drop
+// from and would put the switcher at the opposite edge from the control that opens
+// it.
+//
 // THE identity bar (issue #1801) — the app's one answer to "whose data is this,
 // and who am I acting as?", on every viewport.
 //
