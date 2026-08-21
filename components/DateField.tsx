@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type SetStateAction } from "react";
-import { createPortal } from "react-dom";
-import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
+import AnchoredPanel from "@/components/overlay/AnchoredPanel";
+import { useCompactViewport } from "@/components/useCompactViewport";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import {
   dateStrInTz,
@@ -20,6 +20,19 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // Styled, theme-consistent replacement for <input type="date">. The browser's
 // native date popup can't be CSS-styled, so we render our own calendar.
+//
+// WHERE THAT CALENDAR OPENS FORKS AT `md` (#3376). This file had zero `md:`
+// classes and no touch handling, so a phone got the desktop calendar: a 288px
+// panel of 36px day cells hanging off the field. It now hands its content to
+// components/overlay/AnchoredPanel.tsx, which mounts it as a bottom sheet below
+// `md` and as the anchored popover from `md` up — the same calendar, authored
+// once, never a `hidden md:` twin (#2305).
+//
+// Falling back to the bare native `<input type="date">` on phones was the
+// recorded alternative and is NOT what shipped: the custom calendar exists
+// precisely for the today ring, the min/max range hints and the theme the native
+// popup cannot carry, and dropping to native below `md` would mean the phone
+// loses exactly the affordances the desktop keeps.
 //
 // Works both uncontrolled (pass `name` + optional `defaultValue` — submits the
 // ISO yyyy-mm-dd value in a form, exactly like the native input) and controlled
@@ -73,20 +86,12 @@ export default function DateField({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // The calendar is portaled to <body> and positioned `fixed` from the field's
-  // bounding rect so it's never clipped by an `overflow` ancestor (e.g. the
-  // training log editor's max-h scroll container). The placement is the shared
-  // hook (#3271) — this file used to carry its own near-copy of OverflowMenu's,
-  // which is how it came to be the one MISSING the #2839 layout-shift tracking.
-  const {
-    pos,
-    attachPanel,
-    panelRef: popRef,
-  } = useAnchoredPopover({
-    open,
-    anchorRef: ref,
-    fallbackWidth: PANEL_WIDTH,
-  });
+  const popRef = useRef<HTMLElement | null>(null);
+  // WHICH HOST THE CALENDAR OPENS IN, below `md` versus above it (#3376). The
+  // panel itself is components/overlay/AnchoredPanel.tsx's decision and this
+  // file does not repeat it — but the OUTSIDE-CLICK policy genuinely differs by
+  // host, and that is what this reads. See the two guards below.
+  const compact = useCompactViewport();
 
   // Is this ISO date outside the optional [min, max] window? Plain string
   // comparison works because ISO yyyy-mm-dd sorts chronologically.
@@ -139,10 +144,16 @@ export default function DateField({
     }));
   }
 
-  // Close on outside click. The panel is portaled outside `ref`, so a click
-  // inside it must also count as "inside" or picking a day would close first.
+  // Close on outside click — the POPOVER's dismissal, and only its. The panel is
+  // portaled outside `ref`, so a click inside it must also count as "inside" or
+  // picking a day would close first.
+  //
+  // The SHEET owns its own dismissal (scrim, flick, Escape) and must not have
+  // this running underneath it: `mousedown` lands before `click`, so a listener
+  // that treats the sheet's chrome as "outside" would close the calendar — and
+  // unmount the day button — before the tap on it ever became a click.
   useEffect(() => {
-    if (!open) return;
+    if (!open || compact) return;
     function onDown(e: MouseEvent) {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !popRef.current?.contains(t))
@@ -150,7 +161,7 @@ export default function DateField({
     }
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [open, popRef]);
+  }, [open, compact, popRef]);
 
   const cells = monthGridCells(cursor.y, cursor.m, weekStart);
 
@@ -191,6 +202,10 @@ export default function DateField({
       // mousedown-only outside-click handler misses. The panel is portaled, so
       // focus landing in it counts as staying inside.
       onBlur={(e) => {
+        // Same split as the outside-click listener above: below `md` the sheet
+        // traps focus and owns dismissal, so "focus left the field" is what
+        // OPENING it looks like, not a reason to close.
+        if (compact) return;
         const to = e.relatedTarget as Node | null;
         if (!ref.current?.contains(to) && !popRef.current?.contains(to))
           setOpen(false);
@@ -209,7 +224,16 @@ export default function DateField({
         title="Date in YYYY-MM-DD format"
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
-        onFocus={() => setOpen(true)}
+        // FOCUS OPENS THE CALENDAR ONLY WHERE IT IS A POPOVER. From `md` up the
+        // panel floats beside the field and focus stays in the input, so opening
+        // on focus costs the typist nothing. Below `md` the calendar is a modal
+        // sheet that TAKES focus — opening it the moment the field is tapped
+        // would mean the field could never be typed into on a phone at all. The
+        // calendar button beside the input is the phone's way in, and manual ISO
+        // entry keeps working at every width (#3376's invariant).
+        onFocus={() => {
+          if (!compact) setOpen(true);
+        }}
         // The field renders the vocabulary's year-bearing short form ("Jul 24,
         // 2026") rather than formatLongDate's "Friday, July 24" (issue #1450
         // cluster A / #1448): ~20% narrower, and dated, which a date being EDITED
@@ -251,21 +275,29 @@ export default function DateField({
         </p>
       )}
 
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={attachPanel}
-            data-testid="date-field-calendar"
-            data-escape-layer="true"
-            style={{
-              position: "fixed",
-              top: pos?.top ?? 0,
-              left: pos?.left ?? 0,
-              visibility: pos ? "visible" : "hidden",
-            }}
-            className="z-70 w-72 rounded-lg border border-black/10 bg-surface p-3 shadow-lg dark:border-white/10"
-          >
+      <AnchoredPanel
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={ref}
+        // The sheet's heading. The field it belongs to is right behind the
+        // scrim, so this says what the surface is FOR rather than repeating a
+        // label the viewer can still see.
+        title="Choose a date"
+        testId="date-field-calendar"
+        sheetTestId="date-field-sheet"
+        panelRef={popRef}
+        fallbackWidth={PANEL_WIDTH}
+        panelClassName="w-72 p-3"
+        popoverZIndexClass="z-70"
+        sheetZIndexClass="z-70"
+        // The field keeps its own outside-click and blur handling: a
+        // full-viewport catcher here would swallow the click that moves to the
+        // NEXT field instead of letting it land.
+        backdrop={false}
+        escapeLayer
+      >
+        {() => (
+          <>
             <div className="mb-2 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">
                 <select
@@ -303,7 +335,7 @@ export default function DateField({
                   onClick={() => shift(-1)}
                   aria-label="Previous month"
                   title="Previous month"
-                  className="flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronLeft className="h-4 w-4" />
                 </button>
@@ -312,7 +344,7 @@ export default function DateField({
                   onClick={() => shift(1)}
                   aria-label="Next month"
                   title="Next month"
-                  className="flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronRight className="h-4 w-4" />
                 </button>
@@ -337,7 +369,10 @@ export default function DateField({
                     type="button"
                     disabled={disabled}
                     onClick={() => pick(cell)}
-                    className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm transition ${
+                    // 44px below `md` (#644's floor, and #3376's acceptance
+                    // criterion); the desktop popover keeps its compact 36px
+                    // grid, which is what its 288px panel is measured for.
+                    className={`mx-auto flex h-11 w-11 items-center justify-center rounded-full text-sm transition md:h-9 md:w-9 ${
                       selected
                         ? "bg-brand-600 font-semibold text-white hover:bg-brand-700"
                         : disabled
@@ -362,7 +397,7 @@ export default function DateField({
                   setVal("");
                   setOpen(false);
                 }}
-                className="font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                className="py-3 font-medium text-slate-500 hover:text-slate-700 md:py-0 dark:text-slate-400 dark:hover:text-slate-200"
               >
                 Clear
               </button>
@@ -373,14 +408,14 @@ export default function DateField({
                   setVal(todayStr);
                   setOpen(false);
                 }}
-                className="font-medium text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-brand-400 dark:hover:text-brand-300"
+                className="py-3 font-medium text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40 md:py-0 dark:text-brand-400 dark:hover:text-brand-300"
               >
                 Today
               </button>
             </div>
-          </div>,
-          document.body
+          </>
         )}
+      </AnchoredPanel>
     </div>
   );
 }
