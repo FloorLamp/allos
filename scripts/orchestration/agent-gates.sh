@@ -71,51 +71,60 @@ db_tier_paths=(
   ":(exclude)scripts/orchestration/"
   vitest.db.config.ts
   vitest.isolation.ts
+  vitest.timeouts.ts
   package.json
   package-lock.json
   tsconfig.json
 )
 
-run_gate "lint" npm run lint
-run_gate "typecheck" npm run typecheck
-run_gate "test (pure)" npm test
-
-# THE DB TIER'S PER-TEST CEILING, RAISED FOR THIS BOX ONLY (#3436).
+# THE VITEST PER-TEST CEILING, RAISED FOR THIS BOX ONLY (#3436).
 #
-# Up to five agents share four cores here. Measured 2026-08-21, the identical
-# tier on the identical tree:
+# Up to five agents share four cores here. Measured 2026-08-21, the DB tier on
+# the identical tree:
 #
 #   load 0.78-6.03 (tier alone)   161 s wall, worst single test  3 407 ms
 #   load 18.1 (four lanes + tier) 862 s wall, worst single test 16 308 ms
 #
 # 5.35x on wall time, 5.7x at the per-test p99 — the "about six times slower"
 # the environment runbook already states, now with a measurement behind it. Both
-# runs passed 6489/6489 tests once the ceiling allowed for the slowdown.
-#
-# AND CONTENTION DOES NOT ONLY COST TIME, which #3436 believed and this lane
-# disproved. The same tier at the stock 5000 ms ceiling, load average 21.6, lost
-# 92 tests: 77 reported `Test timed out in 5000ms`, and ONE reported a WRONG
-# VALUE — `AssertionError: expected [ 7, 8 ] to deeply equal [ 7 ]` in
-# document-sync-provenance, the test that runs directly after a timed-out
-# sibling and reads the row that sibling abandoned mid-write. A timeout aborts a
-# test between its writes and its cleanup, so the next test in the file inherits
-# the debris. That failure is indistinguishable from a real regression by
-# inspection, in a file the diff never touched. Raising the ceiling removes the
-# abort that causes it.
+# runs passed 6489/6489 once the ceiling allowed for the slowdown.
 #
 # 60 000 ms = 3.7x the worst test measured at load 18.1, which covers the load
 # 22 this box has been seen at (16 308 ms x 22/18.1 = ~20 000 ms) with room for
 # a burst this measurement did not sample. It is deliberately NOT a slowdown
-# detector — CI is, at the strict 15 000 ms default in vitest.db.config.ts,
-# where the derivation lives. Read it there before changing either number.
+# detector — CI is, at the strict 15 000 ms default in vitest.timeouts.ts, where
+# the derivation lives. Read it there before changing either number.
 #
-# A DB timeout at THIS ceiling is not contention any more: 60 s is 3.7x the
-# worst thing a fully loaded box has been measured to do. Treat it as a real
-# hang and diagnose the test.
-export ALLOS_DB_TEST_TIMEOUT_MS="${ALLOS_DB_TEST_TIMEOUT_MS:-60000}"
+# ONE variable covers BOTH tiers because both are vitest on the same four cores.
+# The pure tier is not the cheap one it looks: its worst test measured 3 863 ms
+# alone, THINNER against 5 000 ms than the DB tier's 3 407 ms, and this gate has
+# been observed losing four pure tests to `Test timed out in 5000ms` at load 16
+# on a diff that touches no pure-tier input.
+#
+# A timeout at THIS ceiling is not contention any more: 60 s is 3.7x the worst
+# thing a fully loaded box has been measured to do. Treat it as a real hang.
+#
+# AND CONTENTION DOES NOT ONLY COST TIME, which #3436 believed and this lane
+# disproved. The DB tier at the stock 5000 ms ceiling, load average 21.6, lost 92
+# tests: 77 reported `Test timed out in 5000ms`, and ONE reported a WRONG VALUE —
+# `AssertionError: expected [ 7, 8 ] to deeply equal [ 7 ]` in
+# document-sync-provenance, the test that runs directly after a timed-out sibling
+# and reads the row that sibling abandoned mid-write. A timeout aborts a test
+# between its writes and its cleanup, so the next test inherits the debris. That
+# failure is indistinguishable from a real regression by inspection, in a file
+# the diff never touched. Raising the ceiling removes the abort that causes it.
+#
+# What this canNOT rescue is a test that measures elapsed time and asserts on it:
+# boot-lock-race.test.ts compares two writes against a same-runner baseline and
+# still fails under load. Re-run that file alone — see environment.md.
+export ALLOS_VITEST_TIMEOUT_MS="${ALLOS_VITEST_TIMEOUT_MS:-60000}"
+
+run_gate "lint" npm run lint
+run_gate "typecheck" npm run typecheck
+run_gate "test (pure, per-test ceiling ${ALLOS_VITEST_TIMEOUT_MS} ms)" npm test
 
 if paths_changed "${db_tier_paths[@]}"; then
-  run_gate "test:db (per-test ceiling ${ALLOS_DB_TEST_TIMEOUT_MS} ms)" npm run test:db
+  run_gate "test:db (per-test ceiling ${ALLOS_VITEST_TIMEOUT_MS} ms)" npm run test:db
 else
   echo
   echo "=== GATE test:db: SKIPPED (nothing the DB tier imports changed vs ${base:0:12}) ==="

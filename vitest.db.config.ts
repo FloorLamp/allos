@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { specsNeedingIsolation } from "./vitest.isolation";
+// Both ceilings, with their derivation and their unit, live in ONE place.
+import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
 // DB integration tests (a SEPARATE tier from the pure unit suite in
 // lib/__tests__). These open real better-sqlite3 handles to exercise code that
@@ -26,65 +28,6 @@ const ISOLATED = specsNeedingIsolation(root, [
 // that reseeds and rebinds per file.
 const ACTION_SETUP = "lib/__action_tests__/setup.ts";
 
-// PER-TEST CEILING FOR THIS TIER — a HANG detector, not a performance budget.
-//
-// Vitest's implicit default is 5 000 ms, sized for a unit test that touches no
-// disk. This tier's fixtures BUILD DATABASES: the shared project reseeds a
-// pre-migrated template per file, and a few specs replay the whole migration
-// chain inside a single `it()`. Measured 2026-08-21 on a 4-core box, the tier
-// running ALONE (load average 0.78 rising to 6.03, its own four workers):
-//
-//   761 files / 6489 tests / 161 s wall
-//   per-test p50 4 ms · p95 111 ms · p99 768 ms · p99.9 1 155 ms
-//   worst single test 3 407 ms — lib/__action_tests__/video.actions.test.ts
-//
-// So the 5 000 ms default gave the tier's WORST test 1.47x of headroom on an
-// idle machine. That is not a ceiling anyone chose; it is the one vitest ships,
-// and the tier had grown under it until a single slow fixture would have tipped
-// it. The number below is chosen against the measurement instead:
-//
-//   15 000 ms = 4.4x the measured worst test (3 407 ms)
-//             = 13x the measured p99.9 (1 155 ms)
-//
-// It still FAILS a regression that makes the slowest test 4.4x slower, or any
-// ordinary test ~13x slower, which is the size of regression a per-test ceiling
-// can honestly detect. Gradual tier-wide slowdown is not this constant's job —
-// CI's whole-tier wall time is, and it is stable enough to read: sampling 100
-// `test-db` jobs from 18–21 Aug 2026 gave median 153 s, p95 167 s, max 181 s
-// (max/median 1.18x), on 99 distinct ephemeral runners for 100 jobs. CI does
-// not co-schedule this job with anything, so a tight ceiling there is a real
-// tripwire rather than a flake generator — that is what makes 15 000 ms safe to
-// keep strict in CI while the orchestration box overrides it below.
-//
-// RE-DERIVE, do not nudge: run the tier alone with
-// `--testTimeout=120000 --reporter=json` and read the slowest test back out.
-// If the worst test has crept past ~5 000 ms, the right answer is to fix that
-// test (the migration chain grows with every merge — see #3436), not to raise
-// this number again.
-const DEFAULT_TEST_TIMEOUT_MS = 15_000;
-
-// ORCHESTRATION-BOX ESCAPE HATCH, in milliseconds. Up to five agents share four
-// cores on the dispatch box, and the same tier measured there at load average
-// 18.1 took 862 s instead of 161 s — 5.35x wall, 5.7x at the per-test p99, worst
-// single test 16 308 ms. Under the 5 000 ms default at load 21.6 that is 92
-// tests lost — the failure shape #3436 records four lanes paying a re-run cycle
-// to diagnose, and one of those 92 came back as a WRONG VALUE rather than a
-// timeout (see agent-gates.sh: a timed-out test abandons rows its neighbour
-// then reads). So the ceiling is not only costing time.
-//
-// `scripts/orchestration/agent-gates.sh` sets this to 60 000 ms. Nothing in CI
-// sets it, so CI keeps DEFAULT_TEST_TIMEOUT_MS.
-const testTimeout = Number(
-  process.env.ALLOS_DB_TEST_TIMEOUT_MS ?? DEFAULT_TEST_TIMEOUT_MS
-);
-
-// Vitest ships hookTimeout at 2x testTimeout, and that ratio is load-bearing
-// here: 433 of the tier's files do their setup in a `beforeAll`/`beforeEach`,
-// so a hook ceiling left at its 10 000 ms default while the test ceiling moves
-// would simply become the new binding constraint — and it fails with a
-// different sentence ("Hook timed out in 10000ms") that no runbook describes.
-// Keep them proportional.
-const hookTimeout = testTimeout * 2;
 
 export default defineConfig({
   resolve: { alias },

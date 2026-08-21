@@ -12,11 +12,11 @@
   share inodes because nothing writes to it; a linked build directory would let
   one cluster's build corrupt another's. The harness seeds it — see
   `docs/orchestration/e2e-ci.md`.
-- Concurrent DB gates run about six times slower (161 s alone, 862 s at load
-  18). `agent-gates.sh` gives the tier a 60 s per-test ceiling, CI keeps 15 s,
-  and `vitest.db.config.ts` derives both. A timeout at 60 s is a real hang.
-- Contention fakes WRONG VALUES too: a timed-out test abandons rows its
-  neighbour reads. Re-run an odd assertion in an untouched DB file alone.
+- Concurrent gates run about six times slower (DB tier: 161 s alone, 862 s at
+  load 18). `agent-gates.sh` gives both vitest tiers a 60 s per-test ceiling, CI
+  keeps 15 s, and `vitest.timeouts.ts` derives both. A 60 s timeout is a hang.
+- Contention fakes WRONG VALUES too — a timed-out test abandons rows its
+  neighbour reads. Re-run an odd assertion in an untouched file alone.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
