@@ -27,8 +27,10 @@
 //
 // SYNTHETIC ONLY: fictional profiles, invented step counts, no PHI.
 
+import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { runMigrations } from "@/lib/migrations/runner";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import {
@@ -157,6 +159,100 @@ const LA: [string, string, number] = [
 let era: { startedAt: string; lastUnstampedId: number } | null;
 beforeEach(() => {
   era = readUnstampedEra();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SCHEMA FACT THE WHOLE `id` HALF RESTS ON, MADE EXECUTABLE.
+//
+// `pushOutranks` deletes a NULL-stamped row when `stored.id <= lastUnstampedId`, and
+// calls that EXACT rather than a heuristic. It is exact for one reason and one only:
+// `metric_samples.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, so SQLite keeps a
+// high-water mark in `sqlite_sequence` and never hands back an id it has already used.
+// Drop the keyword and rowids are `MAX(rowid) + 1` over the rows that still EXIST — so
+// deleting the newest rows lets a later insert land at or below a persisted watermark,
+// and post-era rows start reading as pre-era. That is losable, which is the defect this
+// change exists to close, arriving through the schema instead of through the rule.
+//
+// The claim is written in three places of prose (this migration, the rule header,
+// `pushOutranks`'s docstring) and this is the only thing that can SEE it. It is not
+// hypothetical: migration 083 rebuilt this very table (`metric_samples_083_new`), and
+// this codebase rebuilds tables.
+//
+// TWO ASSERTIONS, because either can fail without the other. The DDL and
+// `sqlite_sequence` name the MECHANISM; the delete-then-insert names the PROPERTY the
+// rule actually needs. What neither can catch is a rebuild that RENUMBERS on copy —
+// 083 carries `sample.id` across explicitly, and a future one that did not would move
+// every id once, silently. That is a review question for a table rebuild, and it is
+// stated here so the next person rebuilding this table finds it.
+describe("metric_samples.id is monotonic, which is what makes the id half exact", () => {
+  // Its own migrated database, like `time-column-index.test.ts`: the claim is about the
+  // SCHEMA and about nothing any test has stored.
+  function migrated(): Database.Database {
+    const mem = new Database(":memory:");
+    runMigrations(mem);
+    return mem;
+  }
+
+  it("declares INTEGER PRIMARY KEY AUTOINCREMENT and keeps a sqlite_sequence row", () => {
+    const mem = migrated();
+    try {
+      const ddl = (
+        mem
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'metric_samples'"
+          )
+          .get() as { sql: string }
+      ).sql;
+      // MUTATION: rebuild the table without the keyword and this is the line that says
+      // so, instead of the rule quietly starting to delete rows it may not.
+      expect(ddl.replace(/\s+/g, " ")).toContain(
+        "id INTEGER PRIMARY KEY AUTOINCREMENT"
+      );
+      mem.prepare("INSERT INTO profiles (name) VALUES ('SEQ')").run();
+      mem
+        .prepare(
+          `INSERT INTO metric_samples
+             (profile_id, source, metric, date, started_at, ended_at, value)
+           VALUES (1, 'health-connect', 'steps', '2026-08-20',
+                   '2026-08-20T04:00:00Z', '2026-08-20T20:00:00Z', 1)`
+        )
+        .run();
+      // AUTOINCREMENT is what puts the table in sqlite_sequence at all.
+      expect(
+        mem
+          .prepare(
+            "SELECT name FROM sqlite_sequence WHERE name = 'metric_samples'"
+          )
+          .get()
+      ).toBeTruthy();
+    } finally {
+      mem.close();
+    }
+  });
+
+  it("never re-uses the id of the highest row after it is deleted", () => {
+    // The property, asserted as behaviour rather than as spelling. Without
+    // AUTOINCREMENT the second insert lands back on the id the first one had.
+    const mem = migrated();
+    try {
+      mem.prepare("INSERT INTO profiles (name) VALUES ('SEQ')").run();
+      const ins = mem.prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, metric, date, started_at, ended_at, value)
+         VALUES (1, 'health-connect', 'steps', '2026-08-20',
+                 '2026-08-20T04:00:00Z', '2026-08-20T20:00:00Z', ?)`
+      );
+      const first = Number(ins.run(1).lastInsertRowid);
+      mem.prepare("DELETE FROM metric_samples WHERE id = ?").run(first);
+      expect(Number(ins.run(2).lastInsertRowid)).toBeGreaterThan(first);
+      // And after emptying the table entirely — the case that would otherwise reset the
+      // counter to 1 and put fresh rows below a persisted watermark.
+      mem.prepare("DELETE FROM metric_samples").run();
+      expect(Number(ins.run(3).lastInsertRowid)).toBeGreaterThan(first);
+    } finally {
+      mem.close();
+    }
+  });
 });
 
 describe("the era the migration recorded", () => {
