@@ -17,7 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
-  NO_PUSH_STAMP_WARNING,
+  overlapsLeftWarning,
   parseHealthConnectPayload,
 } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
@@ -36,6 +36,13 @@ function freshProfile(name: string): number {
       .lastInsertRowid
   );
 }
+
+function warningsOf(_result: unknown): string[] {
+  return lastParsedDetails?.warnings ?? [];
+}
+
+/** The details object of the most recent push, which the ingest appends its line to. */
+let lastParsedDetails: { warnings: string[] } | null = null;
 
 function stored(profile: number, metric: string) {
   return db
@@ -91,10 +98,12 @@ function push(
   const stamp =
     timestamp ??
     new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z";
-  return ingestHealthConnectPayload(
-    profile,
-    parseHealthConnectPayload({ ...body, timestamp: stamp }, "UTC")
+  const parsed = parseHealthConnectPayload(
+    { ...body, timestamp: stamp },
+    "UTC"
   );
+  lastParsedDetails = parsed.details;
+  return ingestHealthConnectPayload(profile, parsed);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,40 +138,41 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
   // the per-row rule resolved it by arrival: the STALE 1800 kcal record deleted the
   // CURRENT 2400 one. Before the PR both rows survived — a visible, repairable double
   // count. After it, the correct row was gone.
-  it("resolves the mixed-anchoring pair, and keeps the CURRENT row", () => {
+  it("stores both anchorings and deletes nothing, at the shipped chunk size", () => {
+    // THE ORIGINAL DEFECT: the pair straddled the 1000-row boundary, the batch-scoped
+    // pass never saw it, and the per-row rule resolved it by ARRIVAL — the stale 1800
+    // record deleting the current 2400 one. Both halves of that are now impossible: the
+    // rows of one push share a stamp so neither can supersede the other, and there is no
+    // within-push ranking left to depend on which chunk a row landed in.
+    // MUTATION: let a row supersede another of the same push (relax `pushIsNewer` to
+    // `>=`) and which of these two survives becomes a function of the chunk split.
     const p = freshProfile("R1-CHUNK");
-    const result = push(p, {
-      total_calories: [
-        {
-          start_time: "2026-05-01T15:00:00Z", // stale, pre-switch anchoring
-          end_time: "2026-05-01T23:00:00Z",
-          calories: 1800,
-          metadata: { data_origin: ORIGIN },
-        },
-        {
-          start_time: "2026-05-01T10:00:00Z", // re-anchored, still filling
-          end_time: "2026-05-02T01:00:00Z",
-          calories: 2400,
-          metadata: { data_origin: ORIGIN },
-        },
-      ],
-      ...oneMinuteBuckets("steps", "count"),
-      ...oneMinuteBuckets("distance", "meters"),
-      ...oneMinuteBuckets("active_calories", "calories"),
-      ...oneMinuteBuckets("hydration", "liters"),
-    });
-    // MUTATION: move `staleBatchOverlaps` back inside `upsertMetricSamples` only, and
-    // this stores [1800] — the stale record, and the current one deleted.
-    expect(stored(p, "total_kcal")).toEqual([
+    const result = push(
+      p,
       {
-        started_at: "2026-05-01T10:00:00Z",
-        ended_at: "2026-05-02T01:00:00Z",
-        value: 2400,
+        total_calories: [
+          {
+            start_time: "2026-05-01T15:00:00Z", // pre-switch anchoring
+            end_time: "2026-05-01T23:00:00Z",
+            calories: 1800,
+            metadata: { data_origin: ORIGIN },
+          },
+          {
+            start_time: "2026-05-01T10:00:00Z", // re-anchored, still filling
+            end_time: "2026-05-02T01:00:00Z",
+            calories: 2400,
+            metadata: { data_origin: ORIGIN },
+          },
+        ],
+        ...oneMinuteBuckets("steps", "count"),
+        ...oneMinuteBuckets("distance", "meters"),
+        ...oneMinuteBuckets("active_calories", "calories"),
+        ...oneMinuteBuckets("hydration", "liters"),
       },
-    ]);
-    // Nothing in this push may DELETE anything: the pair was settled before the write,
-    // and the minute buckets are out of the rule's reach entirely.
+      "2026-05-02T01:00:05Z"
+    );
     expect(result.split.superseded).toBe(0);
+    expect(stored(p, "total_kcal").map((r) => r.value)).toEqual([2400, 1800]);
   });
 
   it("will not let one device's minute bucket delete another's", () => {
@@ -214,6 +224,16 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
   });
 });
 
+/** One Health Connect steps record, origin-tagged the way `dataOrigin` actually reads. */
+function steps(start: string, end: string, count: number) {
+  return {
+    start_time: start,
+    end_time: end,
+    count,
+    metadata: { data_origin: ORIGIN },
+  };
+}
+
 /** 300 one-minute buckets from a given UTC hour, for a metric OTHER than the pair's. */
 function fillerBuckets(
   key: string,
@@ -236,87 +256,70 @@ function fillerBuckets(
   return { [key]: out };
 }
 
-describe("phase 1 is what settles a mixed-anchoring pair INSIDE one push", () => {
-  // WHY THIS TEST EXISTS. The push stamp makes every row of one push equal in freshness,
-  // so the per-row rule can neither delete nor be written against a sibling — it falls
-  // back on ARRIVAL, and the batch is written in ascending started_at order. Westward the
-  // re-anchored bucket starts EARLIER, so arrival happens to keep the right one and
-  // disabling `staleBatchOverlaps` stays green on every westward case in the tree.
+describe("a push carrying BOTH anchorings leaves a double count, and converges", () => {
+  // THERE IS NO WITHIN-PUSH RULE, and this is what that costs. #3424 says the rolling
+  // window re-sends the pre-switch record ALONGSIDE the re-anchored one, so two earlier
+  // versions had a first phase that picked a winner between two overlapping rows of ONE
+  // push. Ask what evidence such a phase could use and there is none: the stamp is
+  // per-PUSH so both rows carry the same one, and the ENDS are a window quantity that
+  // lib/metric-window-overlap.ts's header spends a page explaining is invalid on exactly
+  // this pair. The phase that ranked by ends stored 3000 for 3500 walked, and against an
+  // already-converged store its kept stale row then superseded the correct one.
   //
-  // EASTWARD IS THE OPPOSITE. Tokyo midnight is 15:00Z the day before, so the
-  // still-filling re-anchored bucket starts LATER than the completed New York day it
-  // overlaps. Written in start order, the STALE New York row lands first and the fresh
-  // Tokyo bucket is blocked behind it. Only freshness gets this right, and only phase 1
-  // applies freshness within a push.
-  it("keeps the STILL-FILLING bucket even though it starts LATER", () => {
-    const p = freshProfile("PHASE1-EASTWARD");
-    push(p, {
-      steps: [
-        {
-          // The pre-switch New York day, COMPLETE: 04:00Z to 04:00Z.
-          start_time: "2026-08-20T04:00:00Z",
-          end_time: "2026-08-21T04:00:00Z",
-          count: 9000,
-          metadata: { data_origin: ORIGIN },
-        },
-        {
-          // The re-anchored Tokyo day, still filling to the push moment.
-          start_time: "2026-08-20T15:00:00Z",
-          end_time: "2026-08-21T06:00:00Z",
-          count: 11000,
-          metadata: { data_origin: ORIGIN },
-        },
-      ],
-    });
-    // MUTATION: hand `upsertMetricSamples` an empty batchStale (or move the pass back
-    // inside it), and this stores the 9000 New York row instead — the old anchoring,
-    // kept because it happened to be written first.
-    expect(stored(p, "steps")).toEqual([
-      {
-        started_at: "2026-08-20T15:00:00Z",
-        ended_at: "2026-08-21T06:00:00Z",
-        value: 11000,
-      },
-    ]);
+  // Measured over the captured payloads before removing it: 306 pushes, 964 additive
+  // records, 394 at day-bucket granularity, TWO distinct anchorings present in the
+  // corpus (04:00Z and 00:00Z) — and NOT ONE push carrying two overlapping
+  // same-(metric, origin) day buckets. A record carries `start_time`, `end_time`, its
+  // value and `metadata.data_origin`: one metadata key, no id, no last-modified time,
+  // no client record version, no device.
+  //
+  // So both rows are stored. The day reads HIGH — visible in every total, said out loud
+  // in Review — and the next push whose stamp is newer collapses it.
+  const NY = steps("2026-08-20T04:00:00Z", "2026-08-21T04:00:00Z", 9000);
+  const TOKYO = steps("2026-08-20T15:00:00Z", "2026-08-21T06:00:00Z", 11000);
+
+  it("stores both, says so, and deletes nothing", () => {
+    // MUTATION: reinstate any within-push ranking and one of these two disappears —
+    // which one depends on a comparison that cannot be justified.
+    const p = freshProfile("BOTH-ANCHORINGS-ONE-PUSH");
+    const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
+    expect(only.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
+    expect(warningsOf(only)).toContain(overlapsLeftWarning(1));
   });
 
-  it("still keeps it when the pair is SPLIT across chunks", () => {
-    // The same eastward pair, with 1200 filler rows of OTHER metrics sorting between the
-    // two anchorings so the `steps` pair straddles the 1000-row chunk boundary. This is
-    // the case that makes the WHOLE-PAYLOAD scope of phase 1 load-bearing rather than
-    // defence in depth: a per-chunk pass never sees the pair, the stale New York row
-    // lands in chunk 1, and the fresh Tokyo bucket in chunk 2 is then blocked behind it
-    // by its own push stamp — silently, with `superseded` reading 0.
-    const p = freshProfile("PHASE1-EASTWARD-CHUNKED");
-    push(p, {
-      steps: [
-        {
-          start_time: "2026-08-20T04:00:00Z",
-          end_time: "2026-08-21T04:00:00Z",
-          count: 9000,
-          metadata: { data_origin: ORIGIN },
-        },
-        {
-          start_time: "2026-08-20T15:00:00Z",
-          end_time: "2026-08-21T06:00:00Z",
-          count: 11000,
-          metadata: { data_origin: ORIGIN },
-        },
-      ],
-      ...fillerBuckets("distance", "meters", 2026, 7, 20, 10),
-      ...fillerBuckets("active_calories", "calories", 2026, 7, 20, 10),
-      ...fillerBuckets("hydration", "liters", 2026, 7, 20, 10),
-      ...fillerBuckets("nutrition", "calories", 2026, 7, 20, 10),
-    });
-    // MUTATION: stop passing `batchStale` down from ingestHealthConnectPayload, so the
-    // pass is scoped to a chunk again, and this stores the 9000 New York row.
-    expect(stored(p, "steps")).toEqual([
+  it("collapses on the next push that carries only the new anchoring", () => {
+    // The half that makes the trade acceptable: it is transient, and it converges
+    // WITHOUT anything having to decide between two rows of one push.
+    const p = freshProfile("BOTH-ANCHORINGS-CONVERGE");
+    push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
+    const next = push(
+      p,
+      { steps: [steps("2026-08-20T15:00:00Z", "2026-08-21T12:00:00Z", 11400)] },
+      "2026-08-21T12:00:05Z"
+    );
+    expect(next.split.superseded).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([11400]);
+  });
+
+  it("does the same when the pair is SPLIT across chunks", () => {
+    // At the shipped chunk size, with 1200 filler rows of other metrics sorting between
+    // the two anchorings. Nothing here depends on which chunk a row landed in, which is
+    // the property the first refutation was about.
+    const p = freshProfile("BOTH-ANCHORINGS-CHUNKED");
+    const split = push(
+      p,
       {
-        started_at: "2026-08-20T15:00:00Z",
-        ended_at: "2026-08-21T06:00:00Z",
-        value: 11000,
+        steps: [NY, TOKYO],
+        ...fillerBuckets("distance", "meters", 2026, 7, 20, 10),
+        ...fillerBuckets("active_calories", "calories", 2026, 7, 20, 10),
+        ...fillerBuckets("hydration", "liters", 2026, 7, 20, 10),
+        ...fillerBuckets("nutrition", "calories", 2026, 7, 20, 10),
       },
-    ]);
+      "2026-08-21T06:00:05Z"
+    );
+    expect(split.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
   });
 });
 
@@ -545,14 +548,11 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
   // WHOLE push, so bundling a stale re-sent record with an unrelated row that happens to
   // end later — a hydration row, here — manufactures a stamp newer than the row it would
   // then delete. Nothing about the steps data changed; a glass of water did.
-  const steps = (start: string, end: string, count: number) => ({
-    start_time: start,
-    end_time: end,
-    count,
-    metadata: { data_origin: ORIGIN },
-  });
-  const unstamped = (body: Record<string, unknown>) =>
-    ingestHealthConnectPayload(p0(), parseHealthConnectPayload(body, "UTC"));
+  const unstamped = (body: Record<string, unknown>) => {
+    const parsed = parseHealthConnectPayload(body, "UTC");
+    lastParsedDetails = parsed.details;
+    return ingestHealthConnectPayload(p0(), parsed);
+  };
   let profile = 0;
   const p0 = () => profile;
 
@@ -586,26 +586,53 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
     ).toEqual([3000, 3500]);
   });
 
-  it("says so in Review rather than going quiet about it", () => {
-    // A stampless push leaves the day reading HIGH. That is the deliberate direction,
-    // but it needs a cause a person can find. MUTATION: drop the warning and the only
-    // symptom is a doubled step count with nothing anywhere to explain it.
-    const parsed = parseHealthConnectPayload(
-      { steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)] },
-      "UTC"
+  it("says so in Review, from what HAPPENED rather than from why", () => {
+    // MUTATION: gate the line on `parsed.pushedAt === null` again and it is wrong in
+    // BOTH directions — it fires for a stampless push whose windows the rule could never
+    // have acted on, and stays SILENT when the clock bound rejects a stamp that is
+    // present and readable, or when a phone whose clock went backwards stamps every push
+    // in the past. All three leave the same double count.
+    profile = freshProfile("OVERLAP-LEFT-WARNS");
+    unstamped({
+      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+    });
+    const second = unstamped({
+      steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
+    });
+    expect(second.split.superseded).toBe(0);
+    expect(warningsOf(second)).toContain(overlapsLeftWarning(1));
+
+    // A stamp the CLOCK BOUND refuses says the same thing, though `pushedAt` is set.
+    const far = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString();
+    const third = push(
+      profile,
+      { steps: [steps("2026-05-01T09:00:00Z", "2026-05-02T02:00:00Z", 3600)] },
+      far.slice(0, 19) + "Z"
     );
-    expect(parsed.pushedAt).toBe(null);
-    expect(parsed.details.warnings).toContain(NO_PUSH_STAMP_WARNING);
-    // And it stays quiet when there was nothing it could have acted on anyway.
-    const pointOnly = parseHealthConnectPayload(
-      {
-        heart_rate_variability: [
-          { time: "2026-05-01T10:00:00Z", milliseconds: 40 },
-        ],
-      },
-      "UTC"
+    expect(third.split.superseded).toBe(0);
+    expect(warningsOf(third)).toContain(overlapsLeftWarning(2));
+  });
+
+  it("stays quiet when there was no overlap to leave standing", () => {
+    // MUTATION: emit the line unconditionally, or from a shape test that answers true
+    // for everything, and every ordinary push starts announcing a problem it does not
+    // have — which is how a real signal gets tuned out.
+    profile = freshProfile("OVERLAP-LEFT-QUIET");
+    const only = unstamped({
+      steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
+    });
+    expect(warningsOf(only).some((w) => w.includes("timezone change"))).toBe(
+      false
     );
-    expect(pointOnly.details.warnings).not.toContain(NO_PUSH_STAMP_WARNING);
+    // Nor for a payload with nothing the rule could ever act on.
+    const points = unstamped({
+      heart_rate_variability: [
+        { time: "2026-05-01T10:00:00Z", milliseconds: 40 },
+      ],
+    });
+    expect(warningsOf(points).some((w) => w.includes("timezone change"))).toBe(
+      false
+    );
   });
 });
 
@@ -764,6 +791,76 @@ describe("R5 — the supersede DELETE names profile_id", () => {
     expect(counts.superseded).toBe(1);
     expect(stored(theirs, "steps").map((r) => r.value)).toEqual([777]);
     expect(stored(mine, "steps").map((r) => r.value)).toEqual([222]);
+  });
+});
+
+describe("m24i — a Health Connect push meets a FOREIGN source's row", () => {
+  // THE MUTANT THAT SURVIVED THE WHOLE SUITE. The source gate exists twice — the
+  // `supersedes` flag, and `AND source = ?` in the candidate SELECT — and only the flag
+  // was observed. Every "leaves other sources alone" case pushed a NON-HC source at
+  // non-HC rows, so an HC push had never been let anywhere near a foreign row. Drop the
+  // SELECT's clause and a Health Connect push DELETES A WITHINGS ROW, with both tiers
+  // green.
+  //
+  // The window below is deliberately one a Withings sleep session really can occupy and
+  // one the rule really would act on if it could see it: same profile, same metric, same
+  // origin (null on both), overlapping, day-bucket granularity, no edit lock, and an
+  // older `pushed_at` — every precondition satisfied except the source.
+  it("never reaches it, whatever else lines up", () => {
+    const p = freshProfile("M24I-FOREIGN-SOURCE");
+    const foreign: NormMetricSample = {
+      metric: "steps",
+      date: "2026-05-01",
+      started_at: "2026-05-01T00:00:00Z",
+      ended_at: "2026-05-01T20:00:00Z",
+      value: 4242,
+      origin: null,
+    };
+    upsert(p, [foreign], "withings");
+    // ...and an ordinary Health Connect day bucket that covers the same window.
+    const counts = upsert(
+      p,
+      [{ ...foreign, started_at: "2026-05-01T04:00:00Z", value: 9000 }],
+      HC
+    );
+    expect(counts.superseded).toBe(0);
+    const bySource = db
+      .prepare(
+        `SELECT source, value FROM metric_samples
+          WHERE profile_id = ? AND metric = 'steps' ORDER BY source`
+      )
+      .all(p) as { source: string; value: number }[];
+    expect(bySource).toEqual([
+      { source: HC, value: 9000 },
+      { source: "withings", value: 4242 },
+    ]);
+  });
+
+  it("and the reverse: a foreign push never reaches a Health Connect row", () => {
+    const p = freshProfile("M24I-REVERSE");
+    const row: NormMetricSample = {
+      metric: "steps",
+      date: "2026-05-01",
+      started_at: "2026-05-01T04:00:00Z",
+      ended_at: "2026-05-02T04:00:00Z",
+      value: 9000,
+      origin: null,
+    };
+    upsert(p, [row], HC);
+    upsert(
+      p,
+      [{ ...row, started_at: "2026-05-01T00:00:00Z", value: 4242 }],
+      "withings"
+    );
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'steps'"
+          )
+          .get(p) as { n: number }
+      ).n
+    ).toBe(2);
   });
 });
 

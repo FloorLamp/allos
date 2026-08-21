@@ -1,11 +1,7 @@
 import { writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
-import {
-  compareWindowStarts,
-  pushStampFor,
-  staleBatchOverlaps,
-} from "@/lib/metric-window-overlap";
+import { compareWindowStarts, pushStampFor } from "@/lib/metric-window-overlap";
 import {
   emptyCounts,
   foldCounts,
@@ -13,6 +9,7 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
+  metricSampleUpsertReport,
   upsertActivities,
   upsertBodyMetrics,
   upsertHrMinutes,
@@ -20,7 +17,11 @@ import {
   upsertVitals,
   type IngestCounts,
 } from "./normalize";
-import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
+import {
+  HEALTH_CONNECT_ID,
+  overlapsLeftWarning,
+  type ParsedPayload,
+} from "./health-connect";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -89,6 +90,9 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
+  // Overlapping day buckets the supersede declined to collapse, across every chunk.
+  // Surfaced as a Review line below rather than left for someone to notice in a total.
+  let overlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
   // inserted/updated rows they persist; the id captured is committed by the chunk's
@@ -145,21 +149,6 @@ export function ingestHealthConnectPayload(
     const orderedSamples = [...parsed.samples].sort((a, b) =>
       compareWindowStarts(a.started_at, b.started_at)
     );
-    // PHASE 1 OVER THE WHOLE PAYLOAD, not per chunk (#3424, and the defect an
-    // adversarial review found in the first cut). A push taken across a timezone change
-    // carries BOTH anchorings, and only the fresher of an overlapping pair may be
-    // written. Computing that per chunk was defended with an arithmetic claim — "a
-    // `daily` push carries a handful of rows against INGEST_CHUNK_SIZE = 1000" — which
-    // is a claim about payload COMPOSITION and does not hold: the route accepts
-    // MAX_INGEST_RECORDS = 100_000, and any push whose rows sort across the 1000-row
-    // boundary between the two anchorings splits the pair. The chunk that then met the
-    // stale row alone resolved it by arrival and DELETED THE CURRENT ONE, which is worse
-    // than the double count it was fixing.
-    //
-    // Computed here, once, over every sample, and handed to every chunk. The rows it
-    // names are still delivered to the upsert (so they are still counted) — it decides
-    // which of them must not be stored, not which are skipped.
-    const batchStale = staleBatchOverlaps(orderedSamples);
     // ONE stamp for the whole push — what the exporter stated, bounded against a
     // device clock that claims the future. Null when the push states nothing readable,
     // and then this push supersedes nothing at all.
@@ -167,12 +156,10 @@ export function ingestHealthConnectPayload(
     commitChunks(
       orderedSamples,
       (slice, sink) =>
-        upsertMetricSamples(profileId, slice, source, sink, {
-          pushedAt,
-          batchStale,
-        }),
+        upsertMetricSamples(profileId, slice, source, sink, { pushedAt }),
       (c) => {
         samples = foldCounts([samples, c]);
+        overlapsLeft += metricSampleUpsertReport(c)?.overlapsLeftStanding ?? 0;
       }
     );
     commitChunks(
@@ -265,6 +252,11 @@ export function ingestHealthConnectPayload(
     );
   }
 
+  // The Review line, appended to the details this push already carries. Emitted from
+  // what HAPPENED, so it covers every reason a supersede was declined.
+  if (overlapsLeft > 0) {
+    parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
+  }
   return {
     counts: {
       bodyMetrics: total(bodyMetrics),

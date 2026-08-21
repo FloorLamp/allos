@@ -63,7 +63,7 @@ beforeAll(() => {
 // supersede group, and not the one this scenario claims to be about. The original repro
 // had it at the top level and an adversarial review caught it.
 describe("HC daily steps across a westward travel switch", () => {
-  it("counts the switch day once, not twice", () => {
+  it("counts the switch day once, not twice — by the push after the switch", () => {
     freeze(SWITCH_INSTANT);
 
     // Push 1, before the switch (device on Tokyo time). The exporter's `daily`
@@ -133,17 +133,54 @@ describe("HC daily steps across a westward travel switch", () => {
       value: number;
     }[];
 
-    // Only the Honolulu-anchored record survives — the Tokyo-anchored one it
-    // re-contains was superseded rather than left to sum beside it.
-    expect(rows).toEqual([
-      {
-        date: "2026-05-01",
-        started_at: "2026-05-01T10:00:00Z",
-        ended_at: "2026-05-02T01:00:00Z",
-        value: 3500,
-      },
-    ]);
+    // THIS DIVERGES FROM #3424's ACCEPTANCE CRITERION 1 AS WRITTEN, deliberately, and
+    // it is the one place in this branch where that is true. The AC says the switch day
+    // reads 3500 after "the one-tap switch + next push". It does — but after the push
+    // AFTER this one, not this one.
+    //
+    // WHY. This payload puts both anchorings in a SINGLE push, and nothing in a push can
+    // tell them apart. The stamp is per-push, so both rows carry the same one. The ends
+    // are a window quantity, and lib/metric-window-overlap.ts's header is a page on why
+    // that comparison is invalid on exactly this pair — two earlier versions made it
+    // anyway and stored 3000 for 3500 walked, then regressed an already-correct store.
+    // Nothing else exists to decide with: measured over 306 captured payloads and 964
+    // additive records, a record carries `start_time`, `end_time`, its value and
+    // `metadata.data_origin`. One metadata key.
+    //
+    // Nor is the shape observed: not one of those 306 pushes carries two overlapping
+    // same-(metric, origin) day buckets, though the corpus holds two distinct anchorings
+    // (04:00Z and 00:00Z). The re-send-alongside claim comes from #3424's narrative.
+    //
+    // So the switch day reads HIGH for one push — visible in every total, and stated in
+    // Review — and converges below. Reading high is repairable; the alternative on offer
+    // was a reading that vanished. WHETHER THAT MEETS THE AC IS THE OWNER'S CALL, and
+    // this comment exists so the question is not silently answered by a fixture.
+    expect(rows.map((r) => r.value)).toEqual([3500, 3000]);
+    const afterSwitchPush = getMetricDailyTotals(profileId, "steps").find(
+      (t) => t.date === "2026-05-01"
+    );
+    expect(afterSwitchPush?.value).toBe(6500);
 
+    // Push 3, the next ordinary push of the rolling window: one anchoring, a later
+    // stamp, and the stale row goes.
+    freeze("2026-05-02T05:00:00Z");
+    ingestHealthConnectPayload(
+      profileId,
+      parseHealthConnectPayload(
+        {
+          timestamp: "2026-05-02T05:00:05Z",
+          steps: [
+            {
+              start_time: "2026-05-01T10:00:00Z",
+              end_time: "2026-05-02T05:00:00Z",
+              count: 3500,
+              metadata: { data_origin: "com.fitbit.FitbitMobile" },
+            },
+          ],
+        },
+        getTimezone(profileId)
+      )
+    );
     // The person walked 3500 steps in total. The switch day reads 3500.
     const totals = getMetricDailyTotals(profileId, "steps");
     const switchDay = totals.find((t) => t.date === "2026-05-01");

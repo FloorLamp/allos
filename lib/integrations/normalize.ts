@@ -31,7 +31,6 @@ import {
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
-  staleBatchOverlaps,
   supersedeDateRange,
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
@@ -490,6 +489,29 @@ const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 // it is skipped and NOT counted rather than re-splitting the measure across two
 // tables.
 /** What the Health Connect ingest knows about a push that one CHUNK of it cannot. */
+/**
+ * What a split alone cannot say: overlapping day buckets this call LEFT STANDING.
+ *
+ * Not a count segment — nothing was received or written for it — and not a schema
+ * column. It is a diagnostic the caller turns into a Review line, because a declined
+ * supersede means a day still reads wrong and nothing else in the app would mention it.
+ * The REASON does not matter to the person reading their totals: no stamp on this push,
+ * a stamp the clock bound refused, a stamp older than the stored row's (a phone whose
+ * clock went BACKWARDS stamps every push in the past), or the #133 edit lock.
+ */
+export interface MetricSampleUpsertReport {
+  overlapsLeftStanding: number;
+}
+
+const upsertReports = new WeakMap<UpsertCounts, MetricSampleUpsertReport>();
+
+/** The report for a split `upsertMetricSamples` returned, if it made one. */
+export function metricSampleUpsertReport(
+  counts: UpsertCounts
+): MetricSampleUpsertReport | undefined {
+  return upsertReports.get(counts);
+}
+
 export interface MetricSampleUpsertOptions {
   /**
    * The exporter's stamp on this push (`ParsedPayload.pushedAt`). Stored on every row
@@ -497,13 +519,6 @@ export interface MetricSampleUpsertOptions {
    * rule falls back on arrival order, which an exporter retry defeats.
    */
   pushedAt?: string | null;
-  /**
-   * Rows this push must not write because a FRESHER row of the same push covers their
-   * window. Computed by the caller over the WHOLE payload, because a chunk cannot see
-   * a mixed-anchoring pair the 1000-row split separated. Omitted, the batch handed to
-   * this call is treated as the whole payload and the set is computed here.
-   */
-  batchStale?: ReadonlySet<NormMetricSample>;
 }
 
 export function upsertMetricSamples(
@@ -584,6 +599,8 @@ export function upsertMetricSamples(
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
   // count of ROWS held, not of times we looked at them.
   const lockHeld = new Set<number>();
+  // Overlapping stored day buckets this batch declined to collapse — see the report type.
+  let left = 0;
   // ASCENDING started_at (#3424's trailing-edge instruction). "Incoming deletes what
   // it overlaps" is lossy at the LEADING edge of the row it deletes, so within one push
   // a re-sent leading sliver must land BEFORE the later bucket that would otherwise
@@ -603,12 +620,6 @@ export function upsertMetricSamples(
   // Batch-scoped, so it sees one CHUNK: a `daily` push carries a handful of interval
   // rows per type against INGEST_CHUNK_SIZE = 1000, so a mixed-anchoring pair never
   // straddles the split.
-  const staleInBatch: ReadonlySet<NormMetricSample> = !supersedes
-    ? new Set<NormMetricSample>()
-    : (options.batchStale ??
-      staleBatchOverlaps(
-        ordered.filter((r) => !BODY_METRIC_SAMPLE_MEASURES.includes(r.metric))
-      ));
 
   for (const r of ordered) {
     if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
@@ -647,13 +658,6 @@ export function upsertMetricSamples(
       counts.suppressed++;
       continue;
     }
-    if (staleInBatch.has(r)) {
-      // A fresher row in this same push covers this window. Persisting it beside that
-      // row IS the double count, so it is dropped — accounted `unchanged` like the
-      // stale-snapshot retry below, because it was received and deliberately not stored.
-      tallyUpsert(counts, classifyUpsert(true, true));
-      continue;
-    }
     // A delayed retry of an older cumulative snapshot (checked for real below, where
     // its own accounting branch lives). Read here too, because a stale retry must not
     // supersede: its window is a strict prefix of what is already stored, so acting on
@@ -683,6 +687,7 @@ export function upsertMetricSamples(
           r.started_at
         ) as MetricWindow[];
         const plan = planSupersede({ ...r, pushedAt }, candidates);
+        left += plan.left;
         for (const victim of plan.supersede) {
           dropOverlap.run(victim.id, profileId);
           counts.superseded++;
@@ -743,6 +748,7 @@ export function upsertMetricSamples(
       });
     }
   }
+  if (supersedes) upsertReports.set(counts, { overlapsLeftStanding: left });
   return counts;
 }
 

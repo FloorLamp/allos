@@ -214,15 +214,29 @@ export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
   "total_kcal",
 ]);
 
-// A push that states no usable `timestamp` cannot be compared with any other push, so
-// #3424's supersede declines to act on it and an overlapping re-anchored day bucket is
-// left standing beside the row it re-contains. That reads HIGH rather than losing a
-// reading — the deliberate direction — but it is worth SAYING, because "my steps
-// doubled after I flew" otherwise has no visible cause anywhere in the app.
-export const NO_PUSH_STAMP_WARNING =
-  "This push carried no `timestamp`, so overlapping daily totals from a timezone " +
-  "change were left in place rather than replaced. Totals for those days may read high " +
-  "until a push that states one arrives.";
+// A DOUBLE COUNT THIS PUSH COULD NOT COLLAPSE, said out loud.
+//
+// #3424's supersede declines whenever it cannot establish that the incoming row is
+// newer: the push stated no `timestamp`, the clock bound refused the one it stated, a
+// phone whose clock went BACKWARDS stamps every push in the past, or the #133 lock
+// protects the stored row. All four leave the same thing behind — two day buckets
+// summing into one day — and the person reading their totals does not care which.
+//
+// So the line is emitted from what HAPPENED (the count of overlapping stored buckets
+// left standing) rather than from a guess made at parse time. The version this replaces
+// gated on `pushedAt === null` and was wrong in BOTH directions: it fired for a
+// stampless push whose windows the rule could never have acted on, and stayed silent
+// when the clock bound rejected a stamp that was present and readable. Its text was
+// wrong too — it said totals "may read high", which is right for a declined supersede
+// and was NOT right for the within-push case it also covered, where the day read low.
+export function overlapsLeftWarning(count: number): string {
+  const totals = count === 1 ? "1 daily total" : `${count} daily totals`;
+  return (
+    `${totals} from before a timezone change could not be replaced by this push, so ` +
+    "those days count some activity twice and read HIGH. They collapse on the next push " +
+    "that carries a later timestamp than the reading it replaces."
+  );
+}
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
 // the hint. Two independent short windows in one batch is the fine-grained shape. (The
@@ -679,15 +693,6 @@ function secondsBetween(start?: string, end?: string): number | null {
   const b = new Date(end).getTime();
   if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
   return (b - a) / 1000;
-}
-
-/** Is this a row #3424's supersede could have acted on, had the push been stamped? */
-function isSupersedableShape(sample: NormMetricSample): boolean {
-  if (!DAY_BUCKET_METRICS.has(sample.metric)) return false;
-  const start = Date.parse(sample.started_at);
-  const end = Date.parse(sample.ended_at);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
-  return end - start > SUB_DAILY_WINDOW_MAX_MIN * 60_000;
 }
 
 // The exporter stamps every push with a top-level `timestamp`. Read it as an ABSOLUTE
@@ -1311,11 +1316,6 @@ export function parseHealthConnectPayload(
   }
 
   out.details.origins = originChoices(out.samples);
-  // Only when it could actually have mattered: a stampless push carrying day-bucket
-  // rows of a tiling metric is the one shape the supersede would otherwise have acted on.
-  if (out.pushedAt === null && out.samples.some(isSupersedableShape)) {
-    out.details.warnings.push(NO_PUSH_STAMP_WARNING);
-  }
 
   // Wrong-granularity diagnostics (#1065): read the raw payload shape and append any
   // actionable hints to the warnings surfaced in Data → Review. Informational only —

@@ -106,7 +106,20 @@ function storedRows(
 }
 
 describe("the westward switch the prod incident and the repro both describe", () => {
-  it("keeps the current anchoring and drops the re-anchored duplicate", () => {
+  // WHAT CHANGED HERE, AND WHY IT IS NOT A REGRESSION IN THE RULE. #3424's repro puts
+  // the re-sent pre-switch record and the re-anchored one in the SAME push, and two
+  // earlier versions of this code picked a winner between them. Neither could justify
+  // the choice: the stamp is per-PUSH so both rows carry the same one, and ranking by
+  // `ended_at` is the window comparison lib/metric-window-overlap.ts's header spends a
+  // page explaining is invalid on exactly this pair — it stored 3000 for 3500 walked.
+  // There is no third source of evidence in a push: 306 captured payloads, 964 additive
+  // records, and a record carries `start_time`, `end_time`, its value and
+  // `metadata.data_origin`. Nothing else.
+  //
+  // So a push carrying both anchorings stores both, the day reads HIGH, Review says so,
+  // and the next push whose stamp is newer collapses it. Reading high is visible and
+  // repairable; the alternative was a reading that vanished.
+  it("stores both when one push carries both anchorings, and says so", () => {
     const p = freshProfile("WEST");
     // Push 1, device on Tokyo time: the Tokyo day bucket, 3000 steps so far.
     upsert(
@@ -144,25 +157,18 @@ describe("the westward switch the prod incident and the repro both describe", ()
       ],
       HC
     );
-
-    expect(storedRows(p, "steps")).toEqual([
-      {
-        source: HC,
-        started_at: "2026-05-01T10:00:00Z",
-        ended_at: "2026-05-02T01:00:00Z",
-        value: 3500,
-      },
-    ]);
-    // THE SUPERSEDE IS VISIBLE. Review has to be able to show that a stored row was
-    // deleted; a silent delete is the failure this segment exists to prevent (#3424).
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3500, 3000]);
+    // ONE delete DID happen, and it is the legitimate one: the Honolulu row replaced
+    // push 1's STORED Tokyo row, whose stamp is older. What did not happen is a delete
+    // between the two rows of THIS push — they share a stamp, so the re-sent Tokyo
+    // record is simply written back, and counted as an overlap left standing.
+    // MUTATION: any within-push ranking makes one of these two rows disappear on a
+    // basis that cannot be defended.
     expect(counts.superseded).toBe(1);
   });
 
-  it("gets there from EITHER batch order — freshness, not arrival, decides", () => {
-    // MUTATION: make the incoming row always win and the reversed order below stores
-    // the stale 3000-step Tokyo record instead. That is the bug the ascending sort
-    // was originally supposed to fix and could not.
-    const p = freshProfile("WEST-REVERSED");
+  it("collapses to the walked count on the next push", () => {
+    const p = freshProfile("WEST-CONVERGES");
     upsert(
       p,
       [
@@ -182,21 +188,37 @@ describe("the westward switch the prod incident and the repro both describe", ()
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T10:00:00Z",
-          "2026-05-02T01:00:00Z",
-          3500
-        ),
-        sample(
-          "steps",
-          "2026-05-02",
           "2026-05-01T15:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-05-01T10:00:00Z",
+          "2026-05-02T01:00:00Z",
+          3500
+        ),
       ],
       HC
     );
-    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3500]);
+    // Push 3 carries only the current anchoring, grown to the new push moment. It is
+    // newer than everything stored, so it takes the stale row with it.
+    const third = upsert(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-05-01T10:00:00Z",
+          "2026-05-02T05:00:00Z",
+          3800
+        ),
+      ],
+      HC
+    );
+    expect(third.superseded).toBe(1);
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3800]);
   });
 });
 

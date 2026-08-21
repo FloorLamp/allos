@@ -50,14 +50,12 @@ import {
 // STRICTLY OLDER. A replay carries the same stamp as the push it replays, so it takes
 // nothing; two rows of ONE push carry the SAME stamp, so no chunk can out-rank another.
 //
-// AND THE STAMP MUST BE A PUSH TIME, NOT A WINDOW QUANTITY. The first version of this
-// fell back, when a push stated no `timestamp`, to the furthest-forward `ended_at` in
-// the push. That was refuted, and the refutation is the reason this comment is long:
-// an END is a property of the READING, not of the push, and comparing ends across
-// pushes is precisely what `staleBatchOverlaps` says below must never be done between
-// an incoming row and a stored one. A re-anchored bucket for a COMPLETED day ends
-// EARLIER than the old-anchoring "today so far" row it overlaps, so the fallback read
-// the correcting push as older and the reading was never written at all:
+// AND THE STAMP MUST BE A PUSH TIME, NOT A WINDOW QUANTITY. An earlier version fell
+// back, when a push stated no `timestamp`, to the furthest-forward `ended_at` in the
+// push. An END is a property of the READING, not of the push. A re-anchored bucket for a
+// COMPLETED day ends EARLIER than the old-anchoring "today so far" row it overlaps, so
+// the fallback read the correcting push as older and the correcting reading was never
+// written at all:
 //
 //     push 1  steps [15:00Z, 23:00Z) = 3000   old anchoring, still filling
 //     push 2  steps [10:00Z, 22:00Z) = 3500   re-anchored, COMPLETED
@@ -66,14 +64,34 @@ import {
 // THAT IS THE FAILURE THIS FILE EXISTS TO NOT HAVE. The bug it was sent to fix reads a
 // day too HIGH, which a person can see and which the next push can repair. A missing
 // reading reads too LOW, looks exactly like a day you did not walk, and converges on
-// nothing. Every trade in this module goes the other way: a stated stamp or no
-// supersede at all.
+// nothing. Every trade here goes the other way: a stated stamp or no supersede at all.
 //
-// MEASURED before removing the fallback, over the captured exporter payloads: of 228
-// bodies, the 175 carrying an `app_version` - i.e. every real exporter push - state a
-// readable `timestamp`, 175 of 175. The 53 without one carry no `app_version` either;
-// they are this repo's own synthetic test bodies. The case the fallback was invented
-// for does not occur.
+// MEASURED before removing that fallback: of 228 captured payloads, the 175 carrying an
+// `app_version` — every real exporter push — state a readable `timestamp`, 175 of 175.
+//
+// THERE IS NO WITHIN-PUSH RULE, AND THAT IS AN ANSWER RATHER THAN A GAP. #3424 says the
+// rolling window re-sends the pre-switch record ALONGSIDE the re-anchored one, so two
+// earlier versions had a first phase that picked a winner between two overlapping rows
+// of ONE push. Ask what evidence such a phase can use:
+//
+//   * THE STAMP is per-PUSH. Both rows carry the same one, so freshness is silent here
+//     by construction.
+//   * THE ENDS are a window quantity, and the paragraph above is the whole argument for
+//     why that comparison is invalid on exactly this pair. Phase 1 made it anyway, in
+//     the function whose stated purpose was that pair: a completed re-anchored bucket
+//     ranked STALER than the old-anchoring row still filling, so the push stored 3000
+//     for 3500 walked — and against an already-converged store, the stale row it kept
+//     then superseded the correct one.
+//   * NOTHING ELSE EXISTS. Measured over 306 captured pushes and 964 additive records: a
+//     record carries `start_time`, `end_time`, its value, and `metadata.data_origin`.
+//     ONE metadata key. No record id, no last-modified time, no client record version,
+//     no recording method, no device. Array ORDER is arrival, which the first refutation
+//     already disposed of as a basis.
+//
+// Nor is the case evidenced: across those 306 pushes — which hold TWO distinct
+// anchorings, 04:00Z and 00:00Z — not one carries two overlapping same-(metric, origin)
+// day buckets. So a push carrying both stores BOTH: a double count, visible in every
+// total, said out loud in Review, and collapsed by the next push with a newer stamp.
 //
 // IT IS LOSSY AT THE TRAILING EDGE OF THE ROLLING WINDOW - accepted, not overlooked.
 // "Incoming deletes what it overlaps" is exact in the interior of the window. At its
@@ -320,7 +338,9 @@ export function pushStampFor(
  * wrote the stored row; and the #133 lock does not protect it.
  *
  * `locked` is every overlapped row the edit lock held out, reported rather than dropped
- * so the caller can count them into the `edited` split.
+ * so the caller can count them into the `edited` split. `left` counts every overlap this
+ * row DECLINED to collapse, whatever the reason — the caller turns it into a Review line,
+ * because a declined supersede means a day still reads wrong.
  *
  * NOTHING HERE WITHHOLDS A WRITE, and that is a rule rather than an omission. An
  * earlier version also reported the stored rows the incoming row was NOT newer than,
@@ -339,9 +359,12 @@ export function planSupersede(
     pushedAt?: string | null;
   },
   stored: readonly MetricWindow[]
-): { supersede: MetricWindow[]; locked: MetricWindow[] } {
+): { supersede: MetricWindow[]; locked: MetricWindow[]; left: number } {
   const supersede: MetricWindow[] = [];
   const locked: MetricWindow[] = [];
+  // Overlapping stored day buckets this row did NOT replace, for ANY reason. A double
+  // count left standing, which the caller surfaces rather than leaving to be noticed.
+  let left = 0;
   if (
     !isSupersedingWindow(
       incoming.metric,
@@ -349,7 +372,7 @@ export function planSupersede(
       incoming.ended_at
     )
   ) {
-    return { supersede, locked };
+    return { supersede, locked, left };
   }
   for (const row of stored) {
     if (
@@ -368,87 +391,15 @@ export function planSupersede(
     // The payload's own account of which push is newer. A replay, or a second chunk
     // of the SAME push, is not newer, so it takes nothing. It is still WRITTEN — see
     // the note above about never withholding a write.
-    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) continue;
-    // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
-    if (row.edited) locked.push(row);
-    else supersede.push(row);
-  }
-  return { supersede, locked };
-}
-
-/** The shape `staleBatchOverlaps` needs of an incoming row. */
-export interface BatchWindow {
-  metric: string;
-  origin?: string | null;
-  started_at: string;
-  ended_at: string;
-}
-
-/**
- * WITHIN ONE PUSH, the rows cut under the PREVIOUS anchoring - the ones that must not
- * be written at all.
- *
- * A push normally carries one anchoring and its windows are pairwise disjoint. A push
- * taken across a timezone change does not: #3424's rolling ~48h window re-sends the
- * pre-switch record ALONGSIDE the re-anchored one that re-contains it, and storing both
- * is the double count itself. Two rows of the same (metric, origin) that overlap INSIDE
- * ONE BATCH are therefore a mixed-anchoring pair - under the same preconditions as
- * everything else here, which is why `isSupersedingWindow` gates entry.
- *
- * IT MUST SEE THE WHOLE PAYLOAD. The first cut ran this per CHUNK and defended it with
- * an arithmetic claim about payload composition; a push over INGEST_CHUNK_SIZE rows
- * breaks the claim and splits a mixed-anchoring pair across two chunks, where the
- * per-row rule then resolved it by arrival order and deleted the CURRENT row.
- * `ingestHealthConnectPayload` computes this ONCE over `parsed.samples` and hands the
- * result to every chunk; `upsertMetricSamples` still computes it for the batch it is
- * given directly, which for every other caller IS the whole payload.
- *
- * WHICH ONE IS CURRENT IS A FRESHNESS QUESTION, NOT AN ORDER ONE. Travelling west the
- * new zone's midnight is EARLIER than the old one's (Tokyo 15:00Z to Honolulu 10:00Z),
- * so the re-anchored bucket sorts FIRST and "the row later in the batch wins" keeps the
- * stale record - measured against #3424's repro, which read 3000 steps for 3500 walked
- * under exactly that rule. These buckets end at the moment they were last pushed, so the
- * window reaching FURTHEST FORWARD is the one the exporter is still filling. That is
- * `isStaleMetricSnapshot`, #1101's own freshness test, applied to a pair that does not
- * share a key - reused rather than re-invented, and it answers correctly from either
- * travel direction.
- *
- * This is deliberately NOT applied between an incoming row and a STORED one: a
- * completed re-anchored bucket for a past day legitimately ends EARLIER than the
- * old-anchoring "today so far" row it overlaps, and blocking it there would leave the
- * profile half-converged with a gap between the two anchorings.
- */
-export function staleBatchOverlaps<T extends BatchWindow>(
-  rows: readonly T[]
-): Set<T> {
-  const dropped = new Set<T>();
-  const byGroup = new Map<string, T[]>();
-  for (const row of rows) {
-    if (!isSupersedingWindow(row.metric, row.started_at, row.ended_at))
+    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) {
+      left++;
       continue;
-    const key = `${row.metric} ${row.origin ?? ""}`;
-    const bucket = byGroup.get(key);
-    if (bucket) bucket.push(row);
-    else byGroup.set(key, [row]);
-  }
-  for (const group of byGroup.values()) {
-    // Freshest first, longest first on a tie, so the greedy keep below always retains
-    // the window that reaches furthest forward.
-    const ranked = [...group].sort((a, b) => {
-      // `isStaleMetricSnapshot(x, y)` is "y ends before x". So a ranks first when b is
-      // the staler of the two.
-      if (isStaleMetricSnapshot(a.ended_at, b.ended_at)) return -1;
-      if (isStaleMetricSnapshot(b.ended_at, a.ended_at)) return 1;
-      return compareWindowStarts(a.started_at, b.started_at);
-    });
-    const kept: T[] = [];
-    for (const row of ranked) {
-      const clashes = kept.some((k) =>
-        windowsOverlap(k.started_at, k.ended_at, row.started_at, row.ended_at)
-      );
-      if (clashes) dropped.add(row);
-      else kept.push(row);
     }
+    // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
+    if (row.edited) {
+      locked.push(row);
+      left++;
+    } else supersede.push(row);
   }
-  return dropped;
+  return { supersede, locked, left };
 }

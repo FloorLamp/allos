@@ -27,7 +27,6 @@ import {
   planSupersede,
   pushIsNewer,
   pushStampFor,
-  staleBatchOverlaps,
   supersedeDateRange,
   windowsOverlap,
   type MetricWindow,
@@ -327,6 +326,13 @@ describe("pushStampFor — the push's OWN time, and nothing that looks like it",
     expect(pushStampFor("2026-05-03T00:00:00", NOW)).toBe(null);
   });
 
+  it("states the bound in hours, so widening it is a visible edit", () => {
+    // MUTATION: 12 h -> 12 days. The boundary test below builds its fixture FROM the
+    // constant, so it pins the comparison and not the magnitude — this pins the
+    // magnitude. A bound nobody has written down is a bound that drifts.
+    expect(MAX_PUSH_CLOCK_SKEW_MS).toBe(12 * 60 * 60 * 1000);
+  });
+
   it("refuses a stamp further ahead of this clock than MAX_PUSH_CLOCK_SKEW_MS", () => {
     // A phone with a fast clock writes its stamp onto the rows it stores, and every
     // later honest push then reads as older than them — so nothing could supersede
@@ -337,6 +343,75 @@ describe("pushStampFor — the push's OWN time, and nothing that looks like it",
     // not a clock-sync check.
     const nearly = new Date(NOW.getTime() + MAX_PUSH_CLOCK_SKEW_MS - 60_000);
     expect(pushStampFor(nearly.toISOString(), NOW)).toBe(utcInstant(nearly));
+  });
+});
+
+describe("a stamp in the PAST is believed, and reported instead", () => {
+  it("accepts an arbitrarily old stamp — the bound is deliberately one-sided", () => {
+    // A phone whose clock went BACKWARDS stamps every later push in the past, so
+    // `pushIsNewer` is false forever and the day keeps reading high. Refusing an old
+    // stamp would not help: it would yield no stamp, which declines the supersede in
+    // exactly the same way. The bound exists only for the FUTURE direction, where a
+    // believed stamp is written onto rows and poisons them against every later push.
+    // What covers the backwards clock is the other half of this design — the count of
+    // overlaps LEFT STANDING, which is emitted from what happened rather than from why.
+    expect(pushStampFor("2019-01-01T00:00:00Z", NOW)).toBe(
+      "2019-01-01T00:00:00Z"
+    );
+  });
+
+  it("counts an overlap it declined, whatever the reason", () => {
+    const stored = [
+      win(
+        1,
+        "2026-05-01",
+        "2026-05-01T10:00:00Z",
+        "2026-05-02T01:00:00Z",
+        0,
+        "2026-05-02T01:00:00Z"
+      ),
+    ];
+    // Older stamp: declined, and COUNTED.
+    expect(
+      planSupersede(
+        incoming(
+          "2026-05-01T15:00:00Z",
+          "2026-05-01T23:00:00Z",
+          "2026-05-01T23:00:00Z"
+        ),
+        stored
+      ).left
+    ).toBe(1);
+    // No stamp at all: same.
+    expect(
+      planSupersede(
+        incoming("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", null),
+        stored
+      ).left
+    ).toBe(1);
+    // The edit lock is a declined overlap too — the day still double counts.
+    const locked = [{ ...stored[0], edited: 1 }];
+    const plan = planSupersede(
+      incoming(
+        "2026-05-01T15:00:00Z",
+        "2026-05-01T23:00:00Z",
+        "2026-05-03T00:00:00Z"
+      ),
+      locked
+    );
+    expect(plan.supersede).toEqual([]);
+    expect(plan.left).toBe(1);
+    // And a supersede that DID happen leaves nothing standing.
+    expect(
+      planSupersede(
+        incoming(
+          "2026-05-01T15:00:00Z",
+          "2026-05-01T23:00:00Z",
+          "2026-05-03T00:00:00Z"
+        ),
+        stored
+      ).left
+    ).toBe(0);
   });
 });
 
@@ -429,7 +504,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
     expect(planSupersede(replay, converged).supersede).toEqual([]);
   });
 
-  it("reports NO third list — nothing here may withhold a write", () => {
+  it("reports only what it deletes and what a lock held — never a write to withhold", () => {
     // MUTATION: bring back a `blocked` list and have the caller drop the incoming row.
     // That version could LOSE a reading and say "nothing new" about it; the most a
     // stale row may do now is sit beside the fresh one as a visible double count.
@@ -449,6 +524,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
       "2026-05-01T23:00:00Z"
     );
     expect(Object.keys(planSupersede(replay, converged)).sort()).toEqual([
+      "left",
       "locked",
       "supersede",
     ]);
@@ -494,148 +570,6 @@ describe("isSupersedingWindow — the three preconditions, composed", () => {
         "2026-05-01T00:00:00Z"
       )
     ).toBe(false);
-  });
-});
-
-describe("staleBatchOverlaps — the mixed-anchoring pair inside ONE push", () => {
-  const tokyo = {
-    metric: "steps",
-    origin: "com.fitbit.FitbitMobile",
-    started_at: "2026-05-01T15:00:00Z",
-    ended_at: "2026-05-01T23:00:00Z",
-  };
-  const honolulu = {
-    metric: "steps",
-    origin: "com.fitbit.FitbitMobile",
-    started_at: "2026-05-01T10:00:00Z",
-    ended_at: "2026-05-02T01:00:00Z",
-  };
-
-  it("drops the pre-switch record and keeps the re-anchored one", () => {
-    // MUTATION: return an empty set and #3424's repro reads 6500 steps for 3500
-    // walked — the original bug, back inside a single push.
-    expect([...staleBatchOverlaps([tokyo, honolulu])]).toEqual([tokyo]);
-  });
-
-  it("gives the same answer from either batch order", () => {
-    expect([...staleBatchOverlaps([honolulu, tokyo])]).toEqual([tokyo]);
-  });
-
-  // EASTWARD, where freshness and batch order DISAGREE — and the only shape that can
-  // tell the two rules apart. Westward the re-anchored bucket starts EARLIER, so
-  // "keep the earliest start" happens to keep the right one and a mutation from
-  // freshness to start order stays green on the pair above. Flying NY -> Tokyo the
-  // re-anchored bucket starts LATER: Tokyo midnight is 15:00Z the day before, and the
-  // stale New York bucket it overlaps is a COMPLETED day that ends at NY midnight
-  // while the Tokyo one is still filling to the push moment.
-  const newYorkCompleted = {
-    metric: "steps",
-    origin: "com.fitbit.FitbitMobile",
-    started_at: "2026-08-20T04:00:00Z",
-    ended_at: "2026-08-21T04:00:00Z",
-  };
-  const tokyoFilling = {
-    metric: "steps",
-    origin: "com.fitbit.FitbitMobile",
-    started_at: "2026-08-20T15:00:00Z",
-    ended_at: "2026-08-21T06:00:00Z",
-  };
-
-  it("keeps the STILL-FILLING re-anchored bucket when it starts LATER (eastward)", () => {
-    // MUTATION: rank by started_at instead of freshness and this keeps the New York
-    // row — the old anchoring — while dropping the bucket the exporter is still
-    // filling. Both batch orders, because a wrong rule is wrong from either end.
-    expect([...staleBatchOverlaps([newYorkCompleted, tokyoFilling])]).toEqual([
-      newYorkCompleted,
-    ]);
-    expect([...staleBatchOverlaps([tokyoFilling, newYorkCompleted])]).toEqual([
-      newYorkCompleted,
-    ]);
-  });
-
-  it("breaks an EQUAL-ends tie by start, keeping the re-anchored bucket", () => {
-    // Two buckets of one push that both end at the push moment — the shape a westward
-    // switch produces when the exporter cuts both anchorings at the same instant. The
-    // ends tie, so freshness cannot decide and the START does: the re-anchored Honolulu
-    // bucket begins at the new zone's midnight, EARLIER than the old zone's.
-    // MUTATION: flip the tie-break to `compareWindowStarts(b, a)` and this keeps the
-    // stale Tokyo record instead. Nothing else in the tree could see that flip.
-    const tokyoTied = { ...tokyo, ended_at: "2026-05-01T22:00:00Z" };
-    const honoluluTied = { ...honolulu, ended_at: "2026-05-01T22:00:00Z" };
-    expect([...staleBatchOverlaps([tokyoTied, honoluluTied])]).toEqual([
-      tokyoTied,
-    ]);
-    expect([...staleBatchOverlaps([honoluluTied, tokyoTied])]).toEqual([
-      tokyoTied,
-    ]);
-  });
-
-  it("keeps every row of an ordinary single-anchoring push", () => {
-    const disjoint = Array.from({ length: 12 }, (_, h) => ({
-      metric: "steps",
-      origin: null,
-      started_at: `2026-05-01T${String(h * 2).padStart(2, "0")}:00:00Z`,
-      ended_at: `2026-05-01T${String(h * 2 + 2).padStart(2, "0")}:00:00Z`,
-    }));
-    expect(staleBatchOverlaps(disjoint).size).toBe(0);
-  });
-
-  it("never compares across metric or origin", () => {
-    const other = { ...tokyo, metric: "distance_km" };
-    const otherOrigin = { ...tokyo, origin: "com.google.android.apps.fitness" };
-    expect(staleBatchOverlaps([honolulu, other, otherOrigin]).size).toBe(0);
-  });
-
-  it("ignores point readings entirely", () => {
-    const point = {
-      metric: "hrv_ms",
-      origin: null,
-      started_at: "2026-05-01T18:00:00Z",
-      ended_at: "2026-05-01T18:00:00Z",
-    };
-    expect(
-      staleBatchOverlaps([
-        point,
-        {
-          ...point,
-          started_at: "2026-05-01T19:00:00Z",
-          ended_at: "2026-05-01T19:00:00Z",
-        },
-      ]).size
-    ).toBe(0);
-  });
-
-  it("never drops a nested NUTRITION row from a push", () => {
-    // The other half of the nutrition refutation: at ingest the first cut dropped the
-    // snack inside one push and reported it `unchanged`, which is invisible in Review.
-    const meal = {
-      metric: "nutrition_kcal",
-      origin: null,
-      started_at: "2026-05-01T12:00:00Z",
-      ended_at: "2026-05-01T13:00:00Z",
-    };
-    const snack = {
-      metric: "nutrition_kcal",
-      origin: null,
-      started_at: "2026-05-01T12:10:00Z",
-      ended_at: "2026-05-01T12:20:00Z",
-    };
-    expect(staleBatchOverlaps([meal, snack]).size).toBe(0);
-  });
-
-  it("never drops overlapping SUB-DAILY buckets from a push", () => {
-    const a = {
-      metric: "steps",
-      origin: null,
-      started_at: "2026-05-01T10:00:00Z",
-      ended_at: "2026-05-01T10:01:00Z",
-    };
-    const b = {
-      ...a,
-      started_at: "2026-05-01T10:00:30Z",
-      ended_at: "2026-05-01T10:01:30Z",
-    };
-    expect(staleBatchOverlaps([a, b]).size).toBe(0);
   });
 });
 
