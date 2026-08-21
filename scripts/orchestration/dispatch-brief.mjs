@@ -621,9 +621,38 @@ ${MIGRATION_LINES}
   staring at the number would have surfaced, because the number was irrelevant. Having
   to say out loud what a bound is bounding is the check. Demand the stated unit even
   when the constant looks obviously right.
-- Run YOUR changed e2e specs at CI parity on your assigned port range:
-  E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
-  Do NOT run the full suite — the orchestrator owns full-suite runs.
+- E2E SPLITS IN TWO, AND ONLY ONE HALF RUNS ON THIS BOX.
+  * SPECS YOU AUTHORED OR EDITED: run locally, at CI parity, on your assigned port
+    range: E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is
+    E2E_PORT, never PORT. This is usually one to three files and it is where you can
+    actually introduce a flake, so the repeat is earned here.
+  * EVERY OTHER SPEC — the blast radius, the geometry-asserting sweep, the specs that
+    merely exercise code you changed: DO NOT RUN THEM LOCALLY. Push, and read CI.
+  Do NOT run the full suite locally — the orchestrator owns full-suite runs.
+
+  WHY, IN NUMBERS, because this reverses what lanes did until 2026-08-21: CI runs ALL
+  438 spec files across TWELVE parallel shards in 4-5 MINUTES of wall clock. A lane
+  running ~20 named files in a batch takes 2.5-4 minutes PER BATCH and needs about
+  nine of them to cover a blast radius — call it 30 minutes, for a fraction of the
+  coverage, on four cores it is sharing with every sibling lane. CI is both faster
+  and more complete, and it costs this box nothing.
+
+  AND \`--repeat-each=3\` BUYS ALMOST NOTHING ON THE BLAST RADIUS, which is the part
+  that makes this a correctness argument and not only a speed one. The failures a
+  repeat would catch in a spec you did NOT author are co-residency effects — a spec
+  behaving differently because of WHO IT RAN BESIDE. Those depend on shard
+  composition, and a local run does not reproduce shard composition at all. So
+  repeating a blast-radius spec locally re-rolls a die that is not the die CI throws.
+  Repeat what you wrote; let CI run what you did not.
+
+- THE PR IS AN INSTRUMENT, NOT A FINISH LINE. CI triggers on \`pull_request\` only —
+  never on a branch push — so until the PR exists you have no CI, and the policy
+  above cannot work. Open it as soon as lint, typecheck and the pure tier are clean,
+  then iterate against CI. \`concurrency: cancel-in-progress\` is keyed per ref, so a
+  second push CANCELS your own earlier run rather than queueing behind it or behind
+  a sibling; pushing again is cheap and is the intended loop.
+  A red on your own PR before review is not a broken window. A red you LEAVE is.
+  Read every CI red and say what it was — yours, contention, or a re-partition.
 - \`e2e (N)\` IS NOT \`--shard=N/12\`, and reaching for the obvious spelling gives you a
   FALSE GREEN off the wrong 113 tests. CI builds each shard from a DURATION-BALANCED
   plan (scripts/e2e-shard-plan.ts over e2e/spec-durations.json); Playwright's own
