@@ -577,6 +577,73 @@ Two changes close it:
 The general form, when a helper flakes under more workers: ask whether its retry
 is idempotent before assuming its ceiling is too low.
 
+## A guard for a RACE needs an assertion that the race ran (2026-08-21, #3441)
+
+A spec whose subject is a race is the one shape where `settledClick` is the wrong
+tool: settling the link is what the guard exists NOT to do. #3440 settled a live
+workout's start — correctly, because that spec's subject was toast stacking — and
+the racing path stopped being exercised anywhere in the suite. So a replacement
+guard has to hold the link open on purpose.
+
+That leaves a second, quieter problem, and it is the one to learn. **A guard that
+drives a race by wall clock is a guard that can stop racing without saying so, and
+it fails toward GREEN.** #3441's witness held the start POST for a fixed 2 s and
+depended on the editor's own 700 ms debounce coming due inside that window.
+Measured on the tree with the defect present, by inserting client latency and
+changing nothing else:
+
+| extra client latency | result, with the bug in the tree              |
+| -------------------- | --------------------------------------------- |
+| +0 ms                | red 4/4                                       |
+| +700 ms              | red 2/2                                       |
+| **+1200 ms**         | **4 passed — green, with the defect present** |
+
+The spec was `test.slow()`, so a second of extra latency cost nothing anyone would
+have noticed, and nothing anywhere asserted that the POST was still open when the
+save came due. On a loaded shard that guard reproduces the exact outcome it was
+written to prevent.
+
+**Two rules come out of it.**
+
+1. **A timing-dependent assertion needs an assertion that the timing condition
+   held.** Otherwise its green means "the fix works _or_ the race did not run", and
+   those are different facts. Make the failure a wrong-SETUP error — loud, named,
+   distinct from a wrong-behaviour one.
+2. **Better than fusing a wall clock: anchor the window to the app's own progress
+   and delete the constant.** Hold the request until the spec is told the racing
+   condition has been reached, then release. Box speed then moves both sides of the
+   window together and there is no number a loaded shard can invalidate. #3441's
+   guard holds the start POST on a promise the test resolves, and resolves it when
+   the editor announces that a rowless save came due against a session with no id.
+   With the anchor in place the same defect stays red at +1200 ms and at +5000 ms.
+
+**The fuse has to be fix-INDEPENDENT, and that is the part worth designing.** If
+the fuse can only fire when the fix is present, a tree with the fix removed fails
+at the fuse instead of at the assertion, and the mutation evidence stops meaning
+anything — the assertion you care about is never reached. #3441 gets this by having
+the app announce the _condition_ (`LIVE_CREATE_RACE_EVENT`, in
+`components/activity-form/useActivityAutosave.ts`) OUTSIDE the decision the fix
+makes about it, so the announcement fires on both trees and only the row count
+separates them.
+
+**A shared constant between a spec and the app must come from a LEAF module.** The
+marker was first exported from the hook that logs it. `playwright test --list`
+IMPORTS every spec, and `scripts/e2e-shard-plan.ts --verify` parses that listing's
+JSON off stdout — so the spec's import pulled in the Server Action module, and
+through it `lib/db`, which opened the database and printed `INFO [migrate] …` onto
+the stdout being parsed. CI died on `Unexpected non-whitespace character after JSON
+at position 4`, in a job whose name says nothing about specs. `lib/live-workout.ts`
+would have done the same thing (coaching → lifts → units → settings → db). Only a
+module that imports nothing is safe: `lib/live-session-race-event.ts`. Run
+`npx tsx scripts/e2e-shard-plan.ts --verify` after adding any import to a spec.
+
+**Where a race has no network-visible signature, the app has to lend you one.** The
+fixed tree in #3441 issues no extra request, writes no extra row and renders no
+different markup inside the window — the whole difference lives in the form's state
+machine. Instrumentation is not a shortcut there; it is the only observable. See
+the "let instrumentation survive its own usefulness" note in the interaction module
+and write the comment addressed to the reviewer who will reach to delete it.
+
 ## Measure a relative layout as ONE snapshot (2026-08-11, #2437)
 
 `await Promise.all([a.boundingBox(), b.boundingBox(), …])` is not atomic — each

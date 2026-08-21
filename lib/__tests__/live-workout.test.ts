@@ -6,6 +6,7 @@ import {
   suggestedRestSec,
   clampRestSec,
   leadExerciseName,
+  shouldDeferRowlessSave,
 } from "../live-workout";
 
 describe("suggestedRestSec", () => {
@@ -71,5 +72,46 @@ describe("leadExerciseName", () => {
   it("returns empty string when nothing is named", () => {
     expect(leadExerciseName([])).toBe("");
     expect(leadExerciseName(["", "  "])).toBe("");
+  });
+});
+
+describe("shouldDeferRowlessSave (#3441)", () => {
+  // The whole point of lifting this out of the hook: every term is checked in BOTH
+  // directions. A clause mutated to be ALWAYS taken dies in an e2e run; a clause
+  // mutated to be NEVER taken — which is where a wrong exemption would actually
+  // live — sails through one, because no user path reaches the combination. These
+  // four corners are the ones nothing else in the tree can see.
+  const racing = { createPending: true, hasRow: false, closePath: false };
+
+  it("defers a rowless mid-session save while the create-at-start is in flight", () => {
+    // The defect itself: without this the save builds a null id and inserts a
+    // SECOND row for one session.
+    expect(shouldDeferRowlessSave(racing)).toBe(true);
+  });
+
+  it("does not defer once the form owns a row", () => {
+    // An adopted row, an edit, or the form's own earlier create — the id is known,
+    // so the save UPDATEs and there is nothing to wait for. Deferring here would
+    // stall every save for the life of a create that already answered.
+    expect(shouldDeferRowlessSave({ ...racing, hasRow: true })).toBe(false);
+  });
+
+  it("does not defer when no create-at-start is outstanding", () => {
+    // Every ordinary create — "New activity", an offline capture, a repeat — is
+    // rowless and must go straight through. This is the term whose failure would
+    // stop the app saving anything at all.
+    expect(shouldDeferRowlessSave({ ...racing, createPending: false })).toBe(
+      false
+    );
+  });
+
+  it("never defers a CLOSE-path flush, even mid-race", () => {
+    // THE EXEMPTION NOTHING ELSE CAN SEE. A close abandons the session and the
+    // provider invalidates the in-flight create in the same breath, so its answer
+    // can never be adopted: deferring would hold the last edit behind a request
+    // nobody is listening to, and the #1596 offline capture — reachable only from a
+    // close-path persist — would stop happening on exactly the dead connection it
+    // exists for. Mutate this to `false` and the whole e2e suite stays green.
+    expect(shouldDeferRowlessSave({ ...racing, closePath: true })).toBe(false);
   });
 });
