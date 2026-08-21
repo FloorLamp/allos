@@ -163,7 +163,7 @@ test("a half-entered workout survives a reload and comes back on request (#1699)
     await page.getByPlaceholder(/What did you do/).fill("Running");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "Running", exact: true })
+      .getByRole("option", { name: "Running", exact: true })
       .click();
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
     await expect(

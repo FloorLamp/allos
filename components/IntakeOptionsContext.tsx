@@ -28,6 +28,10 @@ function curatedFallback(): IntakeCatalogOptions {
       medications: curatedMedicationOptions(),
       medicationBrands: medicationBrandOptions(),
       supplements: curatedSupplementOptions(),
+      // A stack name is whatever THIS profile called one, so there is no curated,
+      // profile-independent tier to fall back to (#3100). An empty list is the
+      // honest fallback: the field still takes free text, it just suggests nothing.
+      stacks: [],
     };
   }
   return fallback;

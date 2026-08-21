@@ -379,11 +379,12 @@ export async function chartsSettled(
 
 // Take a toast down before the next round trip, and prove it is gone (#2861).
 //
-// The toast stack is `fixed` at the viewport's bottom-right (components/Toast.tsx —
-// `w-72` cards, auto-dismiss at 6s for a success and 10s for an error). That quadrant
-// is where a table's right-aligned actions cell lives and where an OverflowMenu panel
-// opens, so the very next click after a write that toasted lands UNDER a card that is
-// still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// The toast layer is `fixed` on the viewport's bottom edge (components/Toast.tsx —
+// `w-72` cards at the bottom-RIGHT from `md` up, one full-width bar below it since
+// #3373; auto-dismiss at 6s for a success and 10s for an error). That is where a
+// table's right-aligned actions cell lives and where an OverflowMenu panel opens, so
+// the very next click after a write that toasted lands UNDER a card that is still
+// up. Playwright's actionability then blocks on it — before #2859 the unbounded
 // click simply absorbed the whole auto-dismiss window in silence (the sleep-page
 // delete test was losing ~10s of every run, green CI included), and with the run-wide
 // 15s actionTimeout the same collision fails NAMED:
@@ -394,9 +395,11 @@ export async function chartsSettled(
 // Never wait it out and never widen the budget: a click blocked by
 // `<div class="fixed bottom-…">` is the toast, and the fix is to dismiss it.
 //
-// SCOPED BY TEXT, always. Toasts stack, so "the toast" is not a thing — dismissing by
-// testid alone would take down whichever card happened to be on top, which on an undo
-// path is the one the NEXT assertion is about. The filter also documents at the call
+// SCOPED BY TEXT, always. Toasts stack from `md` up, so "the toast" is not a thing —
+// dismissing by testid alone would take down whichever card happened to be on top,
+// which on an undo path is the one the NEXT assertion is about. Below `md` only the
+// head of the queue is on screen, so the same filter is what tells you whether the
+// toast you meant has had its turn yet. The filter also documents at the call
 // site which write the test just made.
 //
 // The Dismiss button is a pure client control: it posts nothing, so this is
@@ -1146,6 +1149,28 @@ export async function expectInView(
       opts.mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
     )
   ).toHaveAttribute("data-view-count", String(count));
+}
+
+// Wait out an element's OWN CSS animations before measuring it (#3373).
+//
+// This is `settledBoxes`' rule for a different source of motion. Since the toast
+// bar joined the overlay motion convergence it ARRIVES — `overlay-slide-up-in`
+// over `--overlay-ms` — so a box read the instant it becomes visible is a box read
+// mid-flight. Measured, not theorised: `bottom-edge-stacking.mobile` read the bar
+// ~46px low and reported a bottom edge of 833 against a dock top of 787, which is
+// indistinguishable from the bottom-edge claim being broken. It failed sometimes
+// and by the SAME amount every time — the signature of a real quantity measured at
+// an unstable moment, not of noise.
+//
+// It waits on the ANIMATION rather than widening a tolerance, so an element that
+// genuinely does sit over the bar still fails. An element with nothing running
+// (reduced motion, or a keyframe that has already finished) resolves immediately,
+// and a cancelled animation rejects `finished` — caught, because a cancelled
+// animation is also "not running any more".
+export async function settledAfterAnimation(target: Locator): Promise<void> {
+  await target.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {})))
+  );
 }
 
 // Measure SEVERAL elements as ONE consistent layout snapshot — the group analog of
@@ -2812,6 +2837,22 @@ export async function openCombobox(
   return page.getByRole("listbox");
 }
 
+// EVERY PICKABLE ROW of the shared Combobox's open list, for a spec that types a name
+// and takes "whichever row carries it".
+//
+// The list holds two KINDS of row, and since #3316 they carry different roles: the
+// vocabulary's rows are `option`s, and the free-text "Use '<query>'" row is a real
+// `button`, because it is a COMMAND on what was typed rather than a member of the
+// vocabulary. A spec that types a lift name and clicks the match wants either — the
+// name may already be in the catalog, or the spec may be about to create it — so
+// asking for one role would break on whichever case it did not anticipate. (That is
+// not hypothetical: it is exactly what a role-by-role sweep of this file's callers
+// turned red, because a plain `getByRole("button")` used to match BOTH.)
+export function comboboxRows(scope: Page | Locator): Locator {
+  const listbox = scope.getByRole("listbox");
+  return listbox.getByRole("option").or(listbox.getByRole("button"));
+}
+
 // Choose a shared-Combobox option by its VISIBLE LABEL — the combobox analog of
 // settledSelect, for the pickers #1675 converted from `<select>`s.
 //
@@ -2831,7 +2872,7 @@ export async function settledPickOption(
     await settledFill(page, field, label, { timeout: 5_000 });
     const option = page
       .getByRole("listbox")
-      .getByRole("button", { name: label, exact: true });
+      .getByRole("option", { name: label, exact: true });
     await expect(option).toBeVisible({ timeout: 2_000 });
     await option.click();
     await expect(field).toHaveValue(label, { timeout: 2_000 });
