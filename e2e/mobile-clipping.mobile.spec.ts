@@ -2,7 +2,9 @@ import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import {
   expectNoClippedContent,
+  expectNoEscapingOverflow,
   hydratedClick,
+  overflowStory,
   settledBoxes,
   touchSwipe,
 } from "./helpers";
@@ -247,59 +249,10 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
     });
   }
 
-  // WHAT IS STICKING OUT, not just how far. KEEP THIS even when the assertion it
-  // annotates is green — a reviewer will read it as dead weight and it is the
-  // opposite. `scrollWidth - clientWidth` is a number with no author: the first
-  // time this went red on CI it said "Received: 5" and nothing else, and 5px in a
-  // dialog body can be a bleed, a hit-area pseudo-element, sub-pixel rounding, or
-  // a child that was transiently wide during mount. Those need different fixes.
-  // This walks the region and names the deepest element whose own scroll extent
-  // exceeds its box, which is where the overflow is actually born, so the NEXT
-  // red arrives with its cause attached instead of a bare integer. (It found the
-  // real one: a `tap-target` extension on the preferences button, #3384.)
-  async function overflowStory(content: Locator): Promise<string> {
-    return content.evaluate((node) => {
-      const over = node.scrollWidth - node.clientWidth;
-      if (over <= 0) return "nothing overflows";
-      const edge = node.getBoundingClientRect().right;
-      // RANKED BY REACH PAST THE REGION'S EDGE, not by "does this element
-      // overflow at all". Nearly every `tap-target` in the sheet overflows its
-      // own box by 6px — that is what the hit-area extension IS — and listing
-      // them all buries the one that matters under a wall of innocents. Only an
-      // element whose overflow actually arrives at the region's right edge can
-      // make the region scrollable, so that is the question asked.
-      const culprits = Array.from(node.querySelectorAll("*"))
-        .filter(
-          (el): el is HTMLElement =>
-            el instanceof HTMLElement &&
-            // Only overflow that ESCAPES can make the region scrollable. A
-            // `truncate` span overruns its box by a mile and clips every pixel of
-            // it, so it is not a suspect — including it put three innocent labels
-            // at the top of this list the first time round.
-            getComputedStyle(el).overflowX === "visible"
-        )
-        .map((el) => ({
-          el,
-          reach:
-            el.getBoundingClientRect().right +
-            (el.scrollWidth - el.clientWidth) -
-            edge,
-        }))
-        .filter((c) => c.reach > -0.5)
-        .sort((a, b) => b.reach - a.reach)
-        .slice(0, 3)
-        .map(
-          ({ el, reach }) =>
-            `<${el.tagName.toLowerCase()} data-testid="${
-              el.getAttribute("data-testid") ?? ""
-            }" class="${el.className}"> reaches ${Math.round(reach)}px past`
-        );
-      return `region overflows by ${over}px; ${
-        culprits.join(" | ") ||
-        "no element reaches the edge — check text, a pseudo-element, or a mid-mount width"
-      }`;
-    });
-  }
+  // `overflowStory` USED TO LIVE HERE, inline, and #3395 moved it to
+  // e2e/helpers.ts so the guard below can run it over every dialog body instead
+  // of over this one sheet. The comment explaining what it ranks and why the
+  // computed-overflow filter is load-bearing moved with it.
 
   test("the quick-entry food sheet stays where it was opened", async ({
     page,
@@ -398,5 +351,221 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
     expect(
       await content.evaluate((node) => getComputedStyle(node).overflowY)
     ).toBe("auto");
+  });
+});
+
+// NO DIALOG BODY OVERFLOWS SIDEWAYS, AT A COARSE-POINTER VIEWPORT (#3395).
+//
+// The two tests above pin ONE sheet and the HOST's refusal. Neither one would
+// have caught the defect that produced this issue arriving in a different body,
+// and that is the shape of the thing: `tap-target`'s `inset: -6px` hit-area
+// extension is invisible three ways at once — it paints nothing, `overflow-x:
+// hidden` stops it scrolling, and `<main>`'s clip hides the same shape
+// everywhere a person is more likely to look. The only symptom is a dialog body
+// a thumb can nudge, with (per #3360) no way back.
+//
+// So this runs the probe as an ASSERTION over each body, and the trigger it
+// guards is not "someone adds a bad element" — it is any change that removes
+// horizontal padding from a container holding a flush-edge compact control,
+// which is exactly what #3361's body-chrome rule encourages.
+//
+// THE VIEWPORT IS WHY THIS FILE. `*.mobile.spec.ts` runs in the phone project
+// with `hasTouch`, so `@media (pointer: coarse)` MATCHES and the extension is
+// actually applied. At 1280×900 with a mouse there is nothing to measure: the
+// rule that creates the overflow does not apply, and the same assertions pass
+// while looking at a different box.
+//
+// NO NEW SPEC FILE, deliberately. Adding one re-partitions all twelve
+// duration-balanced shards and changes which neighbours every other spec runs
+// beside (#3388). These belong beside the probe they use.
+//
+// Fixture hygiene (#868): read-only. Every case opens a sheet, measures it and
+// navigates away; nothing is submitted.
+test.describe("no dialog body overflows sideways at a phone viewport (#3395)", () => {
+  // One host, nine bodies. The quick-entry sheet is the app's widest single
+  // spread of dialog CONTENT — nine unrelated forms mounted into one
+  // `data-sheet-content` — which is the right unit for a defect that belongs to
+  // the body rather than to the host. Each row names a child of the MOUNTED
+  // form, never the container: `quick-entry-body` renders a loading paragraph
+  // while its form arrives, and a paragraph fits any width, so a check taken
+  // there passes for a reason that has nothing to do with the sheet. That race
+  // resolves toward the empty DOM, which fails toward GREEN — it sailed through
+  // twenty-four shards on #3384 without ever examining the form it named.
+  const QUICK_ENTRY_BODIES: {
+    id: string;
+    label: string;
+    /**
+     * A named child of the MOUNTED form.
+     *
+     * A locator factory rather than a selector string so the two rows with two
+     * legitimate shapes can say `.or(...)` instead of a comma selector narrowed
+     * to whichever match came first. Narrowing to the first match on a shared
+     * surface is banned by the hygiene guard, and rightly: it turns "this exact
+     * thing" into "whichever of these happened to render first".
+     */
+    ready: (sheet: Locator) => Locator;
+  }[] = [
+    {
+      id: "log-food",
+      label: "food",
+      ready: (sheet) => sheet.getByTestId("food-log-bar"),
+    },
+    {
+      id: "log-measurements",
+      label: "measurements",
+      ready: (sheet) => sheet.getByTestId("measurements-quick-add"),
+    },
+    {
+      id: "log-dose",
+      label: "doses",
+      // Either the list or its empty state — both are the mounted form, and
+      // which one the seed produces is not this guard's business.
+      ready: (sheet) =>
+        sheet
+          .getByTestId("quick-entry-dose-list")
+          .or(sheet.getByTestId("quick-entry-dose-empty")),
+    },
+    {
+      id: "log-practice",
+      label: "practices",
+      ready: (sheet) => sheet.getByTestId("quick-entry-practice-list"),
+    },
+    {
+      id: "log-mood",
+      label: "mood",
+      ready: (sheet) => sheet.getByTestId("quick-mood-checkin"),
+    },
+    {
+      id: "log-period",
+      label: "cycle",
+      ready: (sheet) => sheet.getByTestId("quick-cycle-panel"),
+    },
+    {
+      id: "log-stool",
+      label: "stool",
+      ready: (sheet) => sheet.getByTestId("quick-entry-stool"),
+    },
+    {
+      id: "log-substance",
+      label: "substances",
+      ready: (sheet) =>
+        sheet
+          .getByTestId("quick-entry-substance-list")
+          .or(sheet.getByTestId("quick-entry-substance-error")),
+    },
+    {
+      id: "add-document",
+      label: "document upload",
+      ready: (sheet) => sheet.getByTestId("medical-upload-actions"),
+    },
+  ];
+
+  for (const body of QUICK_ENTRY_BODIES) {
+    test(`the ${body.label} sheet holds everything it contains`, async ({
+      page,
+    }) => {
+      await page.goto(`/?quick=${body.id}`);
+      const sheet = page.getByTestId("quick-entry-sheet");
+      await expect(sheet).toBeVisible();
+
+      // THE PRECONDITION, not scenery. Both halves: the placeholder is gone AND
+      // a named child of the real form is on screen. The second is what carries
+      // it — an absence assertion alone would be satisfied by a body that never
+      // rendered the placeholder at all.
+      await expect(page.getByTestId("quick-entry-loading")).toHaveCount(0);
+      await expect(body.ready(sheet)).toBeVisible();
+
+      const content = sheet.locator("[data-sheet-content]");
+      await expect(content).toBeVisible();
+      await expectNoEscapingOverflow(content, `the ${body.label} sheet`);
+    });
+  }
+
+  test("a record dialog opened from a page holds everything it contains", async ({
+    page,
+  }) => {
+    // A SECOND HOST ON A REAL ROUTE, not a deep link. The visit form is a
+    // summary-first chip row (#3223) inside a ModalShell — a body made almost
+    // entirely of compact controls, which is the population this defect draws
+    // from. Same opener the convergence spec uses.
+    await page.goto("/records/history/visits");
+    await expect(page.getByTestId("visits-upcoming")).toBeVisible();
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await expect(dialog).toBeVisible();
+    // The chip row, not the panel — the same precondition as above, and here it
+    // is the row of compact controls that has to be laid out before its extent
+    // means anything.
+    await expect(dialog.getByTestId("visit-fact-row")).toBeVisible();
+
+    const content = dialog.locator("[data-sheet-content]");
+    await expect(content).toBeVisible();
+    await expectNoEscapingOverflow(content, "the add-visit dialog");
+  });
+
+  // PROOF THE GUARD CAN SEE, in the shape the defect actually takes. A guard
+  // green over a complying tree says nothing about what it can see, and the two
+  // halves of this one are separable: `expectNoEscapingOverflow` could be
+  // measuring the right box and reporting the wrong element, or ranking
+  // correctly over a region it never reads.
+  test("the probe names a flush-edge tap-target that escapes, and stays silent on a clipped one", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-food");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    await expect(content).toBeVisible();
+
+    // A clean body first — the control the guard exists for reports nothing
+    // while its container gives the extension room (#3392's `pr-1.5`).
+    expect(await overflowStory(content)).toBe("nothing overflows");
+
+    // NOW REPRODUCE #3384, by the mechanism the issue names rather than by
+    // injecting an over-wide box: a compact control flush against the region's
+    // right edge, whose hit-area extension has nowhere to sit.
+    await content.evaluate((node) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.justifyContent = "flex-end";
+      const button = document.createElement("button");
+      button.setAttribute("data-testid", "e2e-flush-tap-target");
+      button.className = "tap-target";
+      button.style.height = "40px";
+      button.style.width = "40px";
+      node.appendChild(row);
+      row.appendChild(button);
+    });
+    const story = await overflowStory(content);
+    expect(story, "the probe must NAME the control, not just count pixels")
+      .toContain("e2e-flush-tap-target");
+    expect(story).toMatch(/region overflows by \d+px/);
+    expect(story).toMatch(/reaches \d+px past/);
+
+    // …and the assertion built on it actually fails on this body, rather than
+    // reporting a story nobody checks.
+    await expect(
+      expectNoEscapingOverflow(content, "the forged body")
+    ).rejects.toThrow(/the forged body/);
+
+    // SILENCE ON THE BENIGN NEIGHBOUR, which is the half that keeps the guard
+    // alive. A `truncate` label overruns its own box by a mile and CLIPS every
+    // pixel of it, so it can never make the region scrollable. Without the
+    // computed-overflow filter three innocent labels topped this list.
+    await content.evaluate((node) => {
+      node.querySelector('[data-testid="e2e-flush-tap-target"]')?.remove();
+      const clipped = document.createElement("div");
+      clipped.setAttribute("data-testid", "e2e-clipped-label");
+      clipped.className = "truncate";
+      clipped.style.overflow = "hidden";
+      clipped.style.whiteSpace = "nowrap";
+      clipped.textContent = "an extremely long label ".repeat(20);
+      node.appendChild(clipped);
+    });
+    expect(
+      await overflowStory(content),
+      "a clipped overrun is not a suspect — it cannot make the region scrollable"
+    ).toBe("nothing overflows");
   });
 });
