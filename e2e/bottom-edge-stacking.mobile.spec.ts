@@ -5,8 +5,8 @@ import { openCommandPalette } from "./nav";
 import {
   deleteActivityFromForm,
   dismissToast,
-  hydratedClick,
   settledAfterAnimation,
+  settledClick,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { workerDbPath } from "./worker-env";
@@ -104,7 +104,21 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // a set that the draft auto-saves — that INSERT is the presence the dock reads.
     await page.goto("/training?tab=log");
     const sheet = await openLogSheet(page);
-    await hydratedClick(page, await showLogRow(sheet, "live-workout"));
+    // SETTLED, NOT HYDRATED — the start POSTS, and its INSERT is the id every later
+    // save in this flow has to carry. Left un-settled, the exercise pick below fires
+    // while that create is still in the air, carries no id, and CREATES A SECOND
+    // DRAFT. The editor then discards one of the two; the other stays live, so the
+    // dock never goes and the failure reads as a broken discard — with a green
+    // delete and an "Activity deleted." toast above it, which is why it costs a
+    // whole diagnosis every time. The panel being visible (next line) was never
+    // evidence of the write; it is client state.
+    //
+    // MEASURED, one reading rather than a sample: hold the start POST for 2s with
+    // `page.route` and count live drafts on profile 1 the moment the first set is
+    // in. Un-settled: 2, on 4 of 4 runs, all 4 red. Settled: 1, on 4 of 4 runs, all
+    // 4 green. CPU throttling does NOT reproduce it — that slows the CLICKS too,
+    // which closes the very window the race needs.
+    await settledClick(page, await showLogRow(sheet, "live-workout"));
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await pickActivity(page, "Barbell Bench Press");
     await page
