@@ -237,17 +237,27 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
     await closeEditor(page, addCard);
 
+    // WAIT FOR THE CONTENT, NOT FOR THE ROW. Counting drafts is satisfied by the
+    // write the NAME field triggered seconds earlier, so under load this reloaded
+    // between the two debounces and restored a draft holding the name and no dose —
+    // and the failure landed four lines below, on the dose assertion, reading as a
+    // broken `extra` restore. Measured on this box: green alone, red about one run in
+    // three under two workers. The race is in the wait, so the wait is where it is
+    // removed (`toPass` over the stored payload rather than over its existence).
     await expect
       .poll(
         async () =>
-          (await draftRows(page)).filter((r) => r.key.includes(":supplement:"))
-            .length,
+          JSON.stringify(
+            (await draftRows(page)).filter((r) =>
+              r.key.includes(":supplement:")
+            )
+          ),
         {
           timeout: DRAFT_SETTLE_MS,
-          message: "the supplement draft to reach IndexedDB",
+          message: "the supplement draft to reach IndexedDB WITH its dose row",
         }
       )
-      .toBe(1);
+      .toContain("25 mg");
 
     await page.reload();
     await page.getByTestId("supplement-add-toggle").click();
@@ -436,7 +446,10 @@ test("the reactive unsaved signature is cheap enough to run per keystroke (#3371
       [SIGNATURE_ITERATIONS] as const
     );
 
-    expect(measured, "the intake form to be on screen to measure").not.toBeNull();
+    expect(
+      measured,
+      "the intake form to be on screen to measure"
+    ).not.toBeNull();
     // ANTI-VACUITY, and these are what keep the number honest: a signature over an
     // empty form would also be fast. Measured 2026-08-21, this form renders TEN
     // controls the browser composes (the rest of its 1770 lines are derived fact
