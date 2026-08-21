@@ -295,6 +295,10 @@
    token itself is at the platform floor and is NOT touched here (a text line in a
    card is already ~83% of a 390px viewport); what steps down is the SECOND layer.
 
+   This comment is the MECHANISM (why the rules are spelled the way they are);
+   docs/internals/design-system.md is the INDEX a reader looking for "which class
+   do I add" will reach for, and it carries both tier tables side by side.
+
    ONE convention, THREE tiers, chosen by the inset the box carries TODAY:
 
        today's inset        add this class        phone     desktop

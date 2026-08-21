@@ -100,16 +100,30 @@ test("class C: a section seam is one notch tighter ON SCREEN, not just in the ca
   // now, and the assertion below is the one that would have caught it.
   expect(await px(hero, "margin-bottom")).toBe(16);
 
-  // The RENDERED gap, between the two elements the seam actually separates. Read
-  // with settledBoxes rather than two independent boundingBox calls, which can
-  // describe a layout that never existed.
-  const [bioAge, fitness] = await settledBoxes([
-    main.getByTestId("longevity-bio-age"),
+  // The RENDERED gap, measured from the element that CARRIES the seam to the next
+  // section — not from the wrapper around it. The wrapper (`longevity-bio-age`)
+  // has no padding or border of its own today, so reading off it would give the
+  // same number; but that is an UNPINNED PREMISE of exactly the shape this file
+  // already refuses to accept on `VitalsTodayStrip`'s `p-0!`. Give that wrapper a
+  // `pb-2` and a wrapper-based reading still says 16 while the reader sees 24.
+  // Measuring from the seam's own element needs no premise: whatever any ancestor
+  // adds lands INSIDE the quantity and the assertion fails, which is what tight
+  // means. Read with settledBoxes rather than two independent boundingBox calls,
+  // which can describe a layout that never existed.
+  const [heroBox, fitnessBox] = await settledBoxes([
+    hero,
     main.getByTestId("longevity-fitness"),
   ]);
-  const renderedGap = fitness.y - (bioAge.y + bioAge.height);
+  const renderedGap = fitnessBox.y - (heroBox.y + heroBox.height);
   // An equality, not a ceiling: `<= 24` would also pass on a seam collapsed to
   // nothing, and `>= 16` would pass on the 24 this test exists to reject.
+  //
+  // ATTRIBUTION, because this number has TWO causes. Adjacent margins collapse to
+  // the larger, so the gap reads 24 if EITHER the seam or the stack it lands
+  // beside is unstepped — one mutant cannot tell those apart. The retained
+  // `margin-bottom` assertion above is the discriminator: it fires only when the
+  // SEAM is the missing half, and stays green when the STACK is. Both mutants are
+  // run separately; see the PR.
   expect(renderedGap).toBe(16);
 });
 
