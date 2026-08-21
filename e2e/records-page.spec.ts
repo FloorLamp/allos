@@ -170,7 +170,14 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
 // filled pills on Problems, a "Show" + <select> on Immunizations, an "All statuses"
 // <select> on Skin and Dental. One affordance now, the outline pill group, and each
 // state is a real URL where the filter rides a query param.
-test("list surfaces share ONE filter affordance — outline pills, no dropdown (#1449)", async ({
+// #3408 gave the filter its OWN shape — an inset `rounded-md` control rather
+// than the family's rounded-full navigation outline — because a filter dressed as
+// a destination is how a phone came to stack three look-alike pill strips with
+// three different meanings. What this test owns is unchanged and is the point:
+// ONE filter affordance across every list surface, and it is never a dropdown.
+// The shape is asserted where the shapes are compared
+// (e2e/records-pane-anatomy.mobile.spec.ts).
+test("list surfaces share ONE filter affordance — pills, never a dropdown (#1449)", async ({
   page,
 }) => {
   await page.goto("/records/problems/conditions");
@@ -399,4 +406,57 @@ test("the Medical nav group links to Health record (#1079)", async ({
   await page.goto("/records/history/visits");
   const nav = page.locator("aside nav");
   await expect(nav.getByRole("link", { name: "Health record" })).toBeVisible();
+});
+
+// THE DESKTOP HALF OF THE #3408 WIDTH FORK, kept beside the hub's other desktop
+// assertions rather than in the phone spec that removes this chrome. The phone
+// half is e2e/records-pane-anatomy.mobile.spec.ts.
+//
+// This exists because the failure mode of a width fork is not the phone: it is
+// the DESKTOP quietly losing something to an over-broad `hidden` class, which
+// nothing would catch — the phone spec passes harder the more chrome disappears.
+test.describe("Records panes — the desktop anatomy is unchanged (#3408)", () => {
+  test("the pane intro draws its title and prose, and the vaccine list is a table", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+
+    // The h2 and its orientation line, both PAINTED. Below `md` neither is; from
+    // `md` up this is exactly what #1449 cluster B specified and #3236 shared
+    // with Results' panes.
+    const intro = page.getByTestId("records-pane-intro");
+    await expect(
+      intro.getByRole("heading", { name: "Immunizations" })
+    ).toBeVisible();
+    await expect(
+      intro.getByText("Your vaccination record measured against")
+    ).toBeVisible();
+
+    // A REAL TABLE WITH REAL SORT HEADERS. `ResponsiveTable` is one `<table>`
+    // that re-lays as cards below `sm`; from `sm` up nothing about it moved, so
+    // the header row is back and the card-mode sort control is gone.
+    // Addressed by its own marker: the pane holds a SECOND responsive table (the
+    // "All recorded doses" history), so `table.table-cards` is a strict-mode
+    // violation — which is the guard doing its job.
+    const section = page.getByTestId("records-immunizations");
+    const table = section.getByTestId("immunization-vaccines-table");
+    await expect(table.locator("thead")).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: /Vaccine/ })
+    ).toBeVisible();
+    await expect(section.getByLabel("Sort vaccines")).toBeHidden();
+  });
+
+  test("nav chips and filter chips stay two different shapes at every width", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+    await expect(page.getByTestId("records-sub-tabs")).toHaveAttribute(
+      "data-chip-role",
+      "nav"
+    );
+    await expect(
+      page.getByTestId("immunization-status-filter")
+    ).toHaveAttribute("data-chip-role", "filter");
+  });
 });

@@ -82,11 +82,30 @@ test("a Visits focus deep link opens entry without secondary description chrome 
   await hydratedClick(page, dialog.getByRole("button", { name: "Close" }));
   await expect(dialog).toBeHidden();
   await expect(page.getByTestId("add-visit-panel-toggle")).toBeFocused();
+  // THE PANE INTRO DRAWS NOTHING VISIBLE BELOW `md` (#3408, item A, owner
+  // decision), which SUPERSEDES the #1497 reading this assertion carried: it
+  // used to prove the orientation prose was present and un-disclosed. The
+  // question it existed to answer — "is there secondary description chrome
+  // between the deep link and the records?" — is now answered by there being
+  // none at all, which is a stronger version of the same claim.
+  //
+  // The heading stays in the DOCUMENT as `sr-only` so the phone's outline is not
+  // left with content under no heading; that is why this asserts the PROSE is
+  // hidden rather than that the intro is gone. Its desktop rendering is pinned by
+  // e2e/records-pane-anatomy.spec.ts.
+  //
+  // READ AS STRUCTURE, NOT AS COPY. Both assertions here used to name the words:
+  // the visits sentence verbatim, and a "More" disclosure label. Both are
+  // ABSENCE assertions over a text match, so a reword makes the locator match
+  // nothing and the assertion passes on zero elements — green while the pane
+  // paints prose below `md`. Demonstrated: with `PaneIntro`'s `hidden md:block`
+  // deleted this line goes red today, but deleted AND the sentence reworded, it
+  // goes green. `PaneIntro` renders exactly one `<p>` (its prose) and no controls
+  // at all, so the element and the role are the durable questions and the copy is
+  // free to change.
   const intro = page.getByTestId("records-pane-intro");
-  await expect(
-    intro.getByText("Manage upcoming appointments and your visit history.")
-  ).toBeVisible();
-  await expect(intro.getByText("More", { exact: true })).toHaveCount(0);
+  await expect(intro.locator("p")).toBeHidden();
+  await expect(intro.getByRole("button")).toHaveCount(0);
 });
 
 test("the first data row fits in the first viewport on key record panes (#1497)", async ({
@@ -99,17 +118,30 @@ test("the first data row fits in the first viewport on key record panes (#1497)"
     },
     {
       href: "/records/problems/conditions",
-      row: () => page.getByTestId("records-conditions").getByRole("row").nth(1),
+      // THE SAME `.nth(1)` DEFECT AS THE IMMUNIZATIONS LINE BELOW, fixed for the
+      // same reason. `getByRole("row")` skips hidden elements, and `.table-cards`
+      // hides `thead` below `sm` — so the index that means "skip the header" at
+      // desktop silently means "the SECOND condition" on a phone, and this file
+      // is the phone project. `tbody tr` is a CSS locator over the one authored
+      // table (components/ResponsiveTable.tsx: card mode is pure CSS, no second
+      // markup tree), so it names the first DATA row at both presentations
+      // without counting.
+      row: () =>
+        page.getByTestId("records-conditions").locator("tbody tr").first(), // first-ok: the topmost condition row — which is exactly the "first data row" this test measures
     },
     {
       href: "/records/history/immunizations",
+      // ADDRESSED BY ITS OWN CELL, NOT BY A ROW INDEX (#3408, item D). This used
+      // to be `getByRole("row").nth(1)` — row 0 being the header. Card mode hides
+      // `thead`, and `getByRole` skips hidden elements, so `.nth(1)` silently
+      // became the SECOND vaccine: the assertion would have stayed green while
+      // measuring a different row than the one it names. The first vaccine's own
+      // link is the row's identity and survives both presentations.
       row: () =>
         page
           .getByTestId("records-immunizations")
-          .getByRole("table")
-          .nth(0)
-          .getByRole("row")
-          .nth(1),
+          .locator('a[href^="/immunizations/"]')
+          .first(), // first-ok: the topmost vaccine in the sorted list — which is exactly the "first data row" this test measures
     },
   ];
 
