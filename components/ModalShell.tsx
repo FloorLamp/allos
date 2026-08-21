@@ -52,9 +52,21 @@ import type { OverlaySize } from "./overlay";
 // still dismisses in one gesture: the confirm appears only when there is
 // something to lose, which is what keeps it from becoming a click-through.
 //
-// Escape and the Close button are deliberately NOT guarded. They are targeted
-// actions on a named control — the user aimed at "close" — where a flick and a
-// scrim tap are the two dismissals a hand can produce by accident.
+// ESCAPE IS ON THIS PATH TOO (owner ruling, #3420). It was not, on the reading
+// that a keypress on a named key is a targeted action rather than an accident —
+// which still governs a dialog holding NOTHING unsaved, where Escape closes
+// outright with no prompt, because that is what `onGestureDismiss` below does when
+// the guard answers clean. It stopped governing a dialog holding unsaved work the
+// moment #3417 made Escape reachable on the four fact-hosting forms: one keystroke
+// destroyed exactly the typing a scrim tap two pixels away would have asked about.
+// The registry already knew the difference, so the question is asked only when
+// there is something to lose. The accepted cost is a keyboard user who expects
+// Escape to always close now sometimes getting a question.
+//
+// THE CLOSE BUTTON IS UNTOUCHED and still closes without a prompt. It is the
+// control the person aimed at, and a confirm on it would be the ask-before-acting
+// pattern the house grammar declines. That half of #2774 is narrowed, not repealed
+// — docs/internals/overlays.md states the amended rule.
 //
 // ── The forms this guard could not see (issue #3356) ─────────────────────────
 //
@@ -79,23 +91,26 @@ import type { OverlaySize } from "./overlay";
 //     ConsumptionSection, PassportControls, ImmunizationRecordActions,
 //     MedicationListActions.
 //
-//   HAND-COMPOSED — invisible to the registry, and the reason this exists:
-//     SleepMoodEditDialog — not a `<form>` at all. It declares `data-unsaved` now,
-//       and e2e/sleep-page.spec.ts pins the gesture dismiss.
+//   HAND-COMPOSED — invisible to the registry, and the reason this exists. All of
+//   them declare now (#3371 closed the three #3356 left):
+//     SleepMoodEditDialog — not a `<form>` at all. It declares `data-unsaved` off its
+//       own state, and e2e/sleep-page.spec.ts pins the gesture dismiss.
 //     ProviderAffiliations — THE ONE A grep MISSES, and the reason "count the
 //       `name=`s" is the wrong check. It looks covered: a `<form>` carrying
 //       `name="name"`. That name lands on `ProviderCombobox`, whose named input is
 //       `type="hidden"` — excluded outright — while the VISIBLE field the person
 //       types into carries no name at all. The right question is not "does this file
 //       contain `name=`?" but "is any name on a control the registry will TRACK?".
+//       It declares off the combobox's own `onChange`, which reports what would post.
 //     AddSupplementModal + EditableSupplementRow (IntakeItemForm — ONE `name=` in
 //       1770 lines, on a provider combobox, so effectively none).
 //     RoutinesManager (RoutineBuilder — a `<form>` with zero `name=`).
+//       Those last two, and every future draft-backed form, are answered by
+//       `components/useFormDraft.ts` rather than by a bespoke adopter each: the hook
+//       already computes "has the content moved off the mount snapshot", which is
+//       exactly the question, so it publishes it.
 //     FoodLogBar (DietaryPreferencesForm — hand-composed, but it AUTOSAVES, so it
 //       has nothing unsaved to lose and is owed no guard).
-//     All but FoodLogBar and the sleep dialog still discard silently. Each needs the
-//     same one-line declaration the sleep dialog now carries, off its OWN honest
-//     dirty value — which is why they are left on #3356 rather than guessed at here.
 //
 //   NOTHING TO LOSE — no typed input to discard, so no guard is owed:
 //     CommandPalette (a search box, deliberately untracked), RawPayloadDialog and
@@ -131,6 +146,8 @@ export default function ModalShell({
   const confirm = useOptionalConfirm();
   const hasUnsavedInputWithin = useUnsavedInputWithin();
 
+  // Reached by a flick, a scrim tap, and Escape (#3420) — never by the Close
+  // button.
   const onGestureDismiss = useCallback(() => {
     if (!confirm || !hasUnsavedInputWithin(panelRef.current)) {
       onClose();
