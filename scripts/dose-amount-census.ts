@@ -21,6 +21,33 @@
 //     FROM intake_item_doses;
 //
 // It over-counts on purpose: every ordinary decimal ("2.5 mg") lands in it too.
+//
+// WHAT THIS CENSUS CANNOT COUNT, AND HOW TO SIZE IT INSTEAD (#3444).
+//
+// Every bucket below classifies the TEXT IN THE COLUMN. Until #3444 the medication
+// import rewrote that text before it got there: "Bisoprolol 2,5 mg" was stored with a
+// dose of "5 mg", which reads identically before and after #3153 and is therefore
+// counted — correctly, and uselessly — as `always-correct`. No bucket can separate
+// those rows from rows that really do say 5 mg, because by the time this script sees
+// them they are the same string.
+//
+// The item NAME is what survived, so the rows are identifiable through it. The ceiling
+// is pure SQL and needs no rule at all: a medication whose NAME carries a comma decimal
+// while its dose does NOT is a row where the strength was re-spelled between the two.
+// Since #3444 the stored amount keeps the comma, so newly imported rows fall out of it.
+//
+//   SELECT i.name, d.amount
+//     FROM intake_item_doses d
+//     JOIN intake_items i ON i.id = d.item_id
+//    WHERE i.kind = 'medication'
+//      AND i.name GLOB '*[0-9],[0-9]*'
+//      AND d.amount NOT GLOB '*[0-9],[0-9]*';
+//
+// Read it as a candidate list, not a verdict: a dose legitimately edited afterwards, or
+// one taken from the sig rather than the name, lands in it too. NOTHING HERE REPAIRS
+// THEM, and nothing should. A comma decimal is the exact shape `readGroupedNumber`
+// refuses to resolve, so a migration would have to guess the locale this codebase has
+// now twice decided not to guess. The repair is a person confirming their own label.
 
 import "./load-env";
 import path from "node:path";
