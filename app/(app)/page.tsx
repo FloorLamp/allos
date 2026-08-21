@@ -2471,7 +2471,11 @@ async function renderDashboard(
   // — and `mx-auto` centres it inside the shell exactly the way
   // app/(app)/records/layout.tsx already does.
   return (
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer
+      width="wide"
+      className="mx-auto"
+      data-testid="dashboard-canvas"
+    >
       <DashboardPlacementCanvas
         dateLabel={formatLongDate(on, formatPrefs)}
         placements={dashboardPlacements}
