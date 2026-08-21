@@ -44,6 +44,12 @@
           "title": "On a phone the ⋯ menu and every date picker open as a sheet you can actually tap, instead of a desktop popover",
           "kind": "fix",
           "issues": [3374, 3376]
+        },
+        {
+          "pr": 3455,
+          "title": "The last dialogs behave like the rest when you scroll or dismiss them, and Close greys out mid-save",
+          "kind": "fix",
+          "issues": [3405, 3421, 3395]
         }
       ]
     },
