@@ -44,6 +44,10 @@ restating it.
    | `p-3` (12)                 | `subpanel-inset-sm` | 10px  |
    | `p-2.5` (10)               | `subpanel-inset-xs` | 8px   |
 
+A card that pads with `p-0!` and lets its own cells carry the gutter (the Trends
+"Today" strip is the one in the tree) has **one** padding layer, not two: those
+cells _are_ the card token reproduced, so they take no sub-panel tier.
+
 Section rhythm — the vertical seam _between_ page sections — follows the same
 shape and the same one-notch step (#3466):
 
@@ -65,6 +69,15 @@ catch badges, chips and fields, none of which are gutters; and a tree-wide guard
 would have to allow-list roughly a hundred boxes that #3466 cleared as list
 rhythm or field chrome. Reach for the table when you add a padded box inside a
 card or a seam between sections.
+
+Section rhythm applies to **every section-level seam in the app shell**. Out of
+scope, deliberately: `app/(auth)/*` and `/offline` (not app routes), negative
+margins, and seams that are already breakpoint-scoped (`md:mb-6`, `sm:mb-6`).
+
+Both conventions — and every exemption from them, together with the premise that
+licenses each one — are enforced by
+`lib/__tests__/mobile-density-convention.test.ts`. That is where a new site or a
+new exemption is recorded.
 
 ## Action grammar: one primary per surface
 
