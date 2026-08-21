@@ -400,3 +400,53 @@ test("the Medical nav group links to Health record (#1079)", async ({
   const nav = page.locator("aside nav");
   await expect(nav.getByRole("link", { name: "Health record" })).toBeVisible();
 });
+
+// THE DESKTOP HALF OF THE #3408 WIDTH FORK, kept beside the hub's other desktop
+// assertions rather than in the phone spec that removes this chrome. The phone
+// half is e2e/records-pane-anatomy.mobile.spec.ts.
+//
+// This exists because the failure mode of a width fork is not the phone: it is
+// the DESKTOP quietly losing something to an over-broad `hidden` class, which
+// nothing would catch — the phone spec passes harder the more chrome disappears.
+test.describe("Records panes — the desktop anatomy is unchanged (#3408)", () => {
+  test("the pane intro draws its title and prose, and the vaccine list is a table", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+
+    // The h2 and its orientation line, both PAINTED. Below `md` neither is; from
+    // `md` up this is exactly what #1449 cluster B specified and #3236 shared
+    // with Results' panes.
+    const intro = page.getByTestId("records-pane-intro");
+    await expect(
+      intro.getByRole("heading", { name: "Immunizations" })
+    ).toBeVisible();
+    await expect(
+      intro.getByText("Your vaccination record measured against")
+    ).toBeVisible();
+
+    // A REAL TABLE WITH REAL SORT HEADERS. `ResponsiveTable` is one `<table>`
+    // that re-lays as cards below `sm`; from `sm` up nothing about it moved, so
+    // the header row is back and the card-mode sort control is gone.
+    const section = page.getByTestId("records-immunizations");
+    const table = section.locator("table.table-cards");
+    await expect(table.locator("thead")).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: /Vaccine/ })
+    ).toBeVisible();
+    await expect(section.getByLabel("Sort vaccines")).toBeHidden();
+  });
+
+  test("nav chips and filter chips stay two different shapes at every width", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+    await expect(page.getByTestId("records-sub-tabs")).toHaveAttribute(
+      "data-chip-role",
+      "nav"
+    );
+    await expect(
+      page.getByTestId("immunization-status-filter")
+    ).toHaveAttribute("data-chip-role", "filter");
+  });
+});
