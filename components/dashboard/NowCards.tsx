@@ -35,6 +35,16 @@ export interface NowStripCard {
 // The glyph gutter is deliberately BESIDE the card rather than inside it: the cards
 // are heterogeneous server components with their own headers and controls, and a
 // badge dropped into a corner would land on top of one of them.
+//
+// AND THAT GUTTER IS DESKTOP-ONLY (#3459 item 3). On a 390px line it reads as a
+// stray icon floating in the left margin and costs every card ~24px of width, so
+// below `sm` it is not shown and the card's own leading icon carries the eye —
+// every Now-capable card already opens with one INSIDE its frame (DOMAIN_ICON in
+// DashboardAttentionAtom, the cockpit's IconVirus). A fold-in was considered and
+// rejected: a corner overlay collides with exactly those leading icons, and a
+// card-header slot would reverse #3253's no-prop decision for a decorative mark.
+// Ahead is untouched at every width — its glyph already rides inline in the member
+// row, which IS the folded-in form.
 export default function NowCards({
   cards,
 }: {
@@ -98,7 +108,7 @@ export default function NowCards({
     );
 
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-3">
+    <div className="grid min-w-0 grid-cols-1 items-start gap-2 sm:gap-3">
       {cards.map((card) => {
         const animating = motion.animate.has(card.id);
         return (
@@ -114,7 +124,10 @@ export default function NowCards({
               animating ? plan.className : ""
             }`}
           >
-            <CandidateKindGlyph kind={card.kind} />
+            <CandidateKindGlyph
+              kind={card.kind}
+              className="mt-1 hidden h-4 w-4 shrink-0 text-slate-500 sm:block dark:text-slate-400"
+            />
             <div className="min-w-0 flex-1">{card.node}</div>
           </div>
         );
