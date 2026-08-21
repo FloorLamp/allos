@@ -66,9 +66,11 @@ const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 // ORCHESTRATION-BOX ESCAPE HATCH, in milliseconds. Up to five agents share four
 // cores on the dispatch box, and the same tier measured there at load average
 // 18.1 took 862 s instead of 161 s — 5.35x wall, 5.7x at the per-test p99, worst
-// single test 16 308 ms. Under the 5 000 ms default that is 59 tests over the
-// ceiling and none of them wrong, which is the failure shape #3436 records four
-// lanes paying a re-run cycle to diagnose.
+// single test 16 308 ms. Under the 5 000 ms default at load 21.6 that is 92
+// tests lost — the failure shape #3436 records four lanes paying a re-run cycle
+// to diagnose, and one of those 92 came back as a WRONG VALUE rather than a
+// timeout (see agent-gates.sh: a timed-out test abandons rows its neighbour
+// then reads). So the ceiling is not only costing time.
 //
 // `scripts/orchestration/agent-gates.sh` sets this to 60 000 ms. Nothing in CI
 // sets it, so CI keeps DEFAULT_TEST_TIMEOUT_MS.

@@ -90,9 +90,18 @@ run_gate "test (pure)" npm test
 #
 # 5.35x on wall time, 5.7x at the per-test p99 — the "about six times slower"
 # the environment runbook already states, now with a measurement behind it. Both
-# runs passed 6489/6489 tests when the ceiling was lifted, so contention here
-# costs TIME and never correctness: under the stock ceiling those same runs lose
-# 59 tests to `Test timed out in 5000ms` and not one assertion.
+# runs passed 6489/6489 tests once the ceiling allowed for the slowdown.
+#
+# AND CONTENTION DOES NOT ONLY COST TIME, which #3436 believed and this lane
+# disproved. The same tier at the stock 5000 ms ceiling, load average 21.6, lost
+# 92 tests: 77 reported `Test timed out in 5000ms`, and ONE reported a WRONG
+# VALUE — `AssertionError: expected [ 7, 8 ] to deeply equal [ 7 ]` in
+# document-sync-provenance, the test that runs directly after a timed-out
+# sibling and reads the row that sibling abandoned mid-write. A timeout aborts a
+# test between its writes and its cleanup, so the next test in the file inherits
+# the debris. That failure is indistinguishable from a real regression by
+# inspection, in a file the diff never touched. Raising the ceiling removes the
+# abort that causes it.
 #
 # 60 000 ms = 3.7x the worst test measured at load 18.1, which covers the load
 # 22 this box has been seen at (16 308 ms x 22/18.1 = ~20 000 ms) with room for
