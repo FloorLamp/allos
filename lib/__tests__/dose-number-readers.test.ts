@@ -392,6 +392,8 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(strengthFromName(`Folic Acid B-9${NBSP}400 mcg`)).toBe("400 mcg");
     expect(strengthFromName(`Omega\u20133${NBSP}500 mg`)).toBe("500 mg");
     expect(strengthFromName(`Omega_3${NBSP}500 mg`)).toBe("500 mg");
+    expect(strengthFromName(`Omega/3${NBSP}500 mg`)).toBe("500 mg");
+    expect(strengthFromName(`Vitamin B/12${NBSP}500 mcg`)).toBe("500 mcg");
     // Controls: a plain space is unchanged, and so is a name with no binder at all.
     expect(strengthFromName("Omega-3 500 mg")).toBe("500 mg");
     expect(strengthFromName("Metformin 500 mg")).toBe("500 mg");

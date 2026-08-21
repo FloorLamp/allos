@@ -750,6 +750,38 @@ export type DoseQuantityReading =
 // that makes the token unresolvable.
 export const NAME_BINDER_CHARS = String.raw`A-Za-z_\-\u2013`;
 
+// AND ONE MORE THAT BELONGS IN SOME OF THOSE POSITIONS AND NOT OTHERS. `/` binds a digit
+// to a name exactly as a hyphen does — "Omega/3", "Vitamin B/12" — so leaving it out of
+// the WELD left a live 25x: "Vitamin B/12<NBSP>500 mcg" read 12500 mcg.
+//
+// It cannot go in `NAME_BINDER_CHARS` itself, and the measurement says so. Adding it
+// there closes that hole and simultaneously REOPENS two confident zeros:
+//
+//     with "/" in the boundary:  "1/2 000 mg" -> 0 mg     "5/325 000 mg" -> 0 mg
+//     without:                   both `unreadable`
+//
+// THE REASON IS THE READ/REFUSE DIRECTION, the same distinction that keeps "/" out of
+// LABEL_UNIT_COUNT_RE's neighbour. `NAME_DIGIT_BOUNDARY` is a DO-NOT-REFUSE guard: a
+// character added there stops the run-based branch engaging, so it REMOVES a refusal.
+// `NAME_WELDED_NUMBER` is a DO-REFUSE trigger: a character added there CREATES one. So
+// "/" is safe in the second and unsafe in the first, and that is not a special case —
+// it is the file's standing rule about which way a guard points.
+//
+// AND THE MECHANISM THAT PROTECTS "1/2 000 mg" HAS CHANGED SINCE THAT MEASUREMENT WAS
+// FIRST TAKEN, which is worth writing down because it makes the old note misleading.
+// Before the classes were inverted, those two strings were refused by the ordinary scan
+// failing. Now they are refused because the AMBIGUOUS branch engages at the "2" and takes
+// "2 000" whole. Putting "/" in the boundary is what stops that branch engaging — so the
+// exclusion is load-bearing for a different reason than it used to be, and re-measuring
+// it on the assumption that it had expired is how this was checked rather than assumed.
+//
+// THE INVARIANT, and lib/__tests__/dri.test.ts asserts it: the weld's set may be a
+// SUPERSET of NAME_BINDER_CHARS and may never be a subset. A subset is what caused the
+// hyphen-binder defect; a superset is only ever more refusal.
+const WELD_ONLY_BINDER_CHARS = String.raw`/`;
+export const NAME_SPLIT_BINDER_CHARS =
+  NAME_BINDER_CHARS + WELD_ONLY_BINDER_CHARS;
+
 const NAME_DIGIT_BOUNDARY = String.raw`(?<![${NAME_BINDER_CHARS}0-9.,${THOUSANDS_SEP_CHARS}])`;
 const AMBIGUOUS_SPACE_NUMBER = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREADABLE_SEP_RUN}\d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
@@ -817,7 +849,7 @@ export const MID_NUMBER_PREFIX = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREAD
 // now built from ONE constant (`NAME_BINDER_CHARS`) rather than asserted to agree. They
 // have to exist twice because one guards a scan that reads and the other a scan that
 // refuses; they no longer have to be KEPT in agreement by anyone remembering to.
-const NAME_WELDED_NUMBER = String.raw`[${NAME_BINDER_CHARS}]\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)+`;
+const NAME_WELDED_NUMBER = String.raw`[${NAME_SPLIT_BINDER_CHARS}]\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)+`;
 export const DOSE_NUMBER_SCAN = String.raw`(?:${NAME_WELDED_NUMBER}|${AMBIGUOUS_SPACE_NUMBER}|${WRITTEN_NUMBER_SCAN})`;
 const DOSE_QUANTITY_RE = new RegExp(
   String.raw`(${DOSE_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,

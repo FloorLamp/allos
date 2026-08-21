@@ -24,6 +24,8 @@ import {
   type DoseUnit,
   type StackItem,
   type StackIngredient,
+  NAME_BINDER_CHARS,
+  NAME_SPLIT_BINDER_CHARS,
 } from "../dri";
 import { readIngredientAmount } from "../intake-ingredients";
 import { cleanMedicationName } from "../prescription-parse";
@@ -758,6 +760,20 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
       // underscore
       ["Omega_3", 500, "mg"],
     ];
+
+    // THE SLASH-BOUND NAMES ARE A SEPARATE LIST, because their plain-space CONTROL has a
+    // different answer and pretending otherwise would have hidden that.
+    //
+    // "/" is a binder for the WELD but not for the boundary, so the run-based branch is
+    // free to engage after it: "Omega/3 500 mg" refuses rather than reading 500. That is
+    // the SAME SHAPE as "1/2 500 mg tablet" — slash, digit, space, digits — which this
+    // file already refuses on purpose, because half of a 500 mg tablet and a 500 mg dose
+    // of Omega-3 are not distinguishable from the string. Refusing both is the consistent
+    // answer; reading one and refusing the other would not be.
+    const SLASH_BOUND: [string, number, DoseUnit][] = [
+      ["Omega/3", 500, "mg"],
+      ["Vitamin B/12", 500, "mcg"],
+    ];
     const UNIT: Record<string, string> = { mcg: "mcg", mg: "mg", iu: "IU" };
     // Every separator that can sit between two digit runs: the nine read as a group, the
     // comma main already mishandles here, and the plain space as the control.
@@ -790,6 +806,21 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
         kind: "quantity",
         value,
         unit,
+      });
+    }
+
+    // The slash-bound names weld the same way…
+    for (const [name, value, unit] of SLASH_BOUND) {
+      for (const sep of SEPARATORS) {
+        expect(
+          readDoseQuantity(`${name}${sep}${value} ${UNIT[unit]}`),
+          `${name}${sep}${value} must not weld`
+        ).toEqual({ kind: "unreadable" });
+      }
+      // …and their plain-space control refuses too, for the reason above. Asserted so the
+      // difference from the letter- and hyphen-bound names is a decision on the record.
+      expect(readDoseQuantity(`${name} ${value} ${UNIT[unit]}`)).toEqual({
+        kind: "unreadable",
       });
     }
   });
@@ -1039,6 +1070,48 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
     expect(readDoseQuantity(fullwidth.normalize("NFKC"))).toEqual({
       kind: "quantity",
       value: 1000,
+      unit: "mg",
+    });
+  });
+
+  // THE INVARIANT BETWEEN THE TWO BINDER SETS, asserted rather than trusted.
+  //
+  // The weld's set may be a SUPERSET of the boundary's and may NEVER be a subset. A
+  // subset is exactly what caused the hyphen-binder defect — the weld named `[A-Za-z]`
+  // while the boundary named fifteen characters, and every binder in the difference was a
+  // live fabrication. A superset is only ever more refusal, which is the safe direction.
+  //
+  // `/` is the one member of the difference, and it is there because the two guards point
+  // opposite ways: adding a character to the boundary REMOVES a refusal (it stops the
+  // run-based branch engaging), while adding one to the weld CREATES a refusal. Measured
+  // both ways — with `/` in the boundary, "1/2 000 mg" and "5/325 000 mg" go back to a
+  // confident 0 mg.
+  it("keeps the weld's binder set a superset of the boundary's, never a subset", () => {
+    for (const c of NAME_BINDER_CHARS) {
+      expect(
+        NAME_SPLIT_BINDER_CHARS.includes(c),
+        `${JSON.stringify(c)} is in the boundary's set but not the weld's — that is the shape of the hyphen-binder defect`
+      ).toBe(true);
+    }
+    // And the difference is exactly the slash, so a future addition has to be deliberate.
+    const extra = [...NAME_SPLIT_BINDER_CHARS].filter(
+      (c) => !NAME_BINDER_CHARS.includes(c)
+    );
+    expect(extra).toEqual(["/"]);
+  });
+
+  // THE SLASH'S EXCLUSION FROM THE BOUNDARY IS LOAD-BEARING, and for a DIFFERENT reason
+  // than when it was first measured — which is why it was re-measured rather than
+  // inherited. Before the separator classes were inverted, these two were refused because
+  // the ordinary scan failed. Now they are refused because the run-based branch engages at
+  // the "2" and takes "2 000" whole. Putting `/` in the boundary stops that branch
+  // engaging, so the same exclusion now protects the same strings through a new mechanism.
+  it("refuses a space-grouped number after a fraction, which the boundary's slash would undo", () => {
+    expect(readDoseQuantity("1/2 000 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("5/325 000 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("1/2 000 mg")).not.toEqual({
+      kind: "quantity",
+      value: 0,
       unit: "mg",
     });
   });

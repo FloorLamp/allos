@@ -89,7 +89,7 @@ const NAME_STEMS = [
   "Sinemet",
   "Vitamin D",
 ];
-const BINDERS = ["-", "\u2013", "_", "", " "];
+const BINDERS = ["-", "\u2013", "_", "/", "", " "];
 const DIGIT_TAILS = ["3", "12", "9", "10", "2", "6"];
 
 const PREFIXES = [
