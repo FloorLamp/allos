@@ -34,7 +34,10 @@ export default function NowStrip({
       data-testid="now-strip"
       data-count={cards.length}
       aria-labelledby="dashboard-now-title"
-      className="mb-6"
+      // Tighter under the strip on a phone (#3460): the strip is the tallest block
+      // on the page there, and every unit it keeps pushes the first reading further
+      // down. Desktop keeps the section rhythm it has.
+      className="mb-4 sm:mb-6"
     >
       {/* Now was the ONLY zone without a visible label (#3238): Standing and Ahead
           both render an h2, so the strip's cards read as orphaned fragments floating

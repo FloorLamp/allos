@@ -17,6 +17,16 @@ import SingleReadingMark from "@/components/SingleReadingMark";
 // mobile and desktop expose identical facts in identical order, so the plot may never
 // be the only carrier of anything.
 //
+// THAT SEAM IS SPELLED IN rem, NEVER IN px, and the spelling is load-bearing
+// (#3459): Tailwind orders an arbitrary px breakpoint BEFORE its named rem ones, so
+// a px-spelled variant loses the cascade to any `sm:` rule setting the same
+// property. 45rem is the same 720px at the root default. See the note on the row
+// template in DashboardStandingCluster.
+//
+// (Spelled in prose rather than as a literal class on purpose: the px-vs-rem census
+// greps for arbitrary-breakpoint utilities, and a warning that names the forbidden
+// token would show up in its own sweep as a hit — #3477.)
+//
 // NO NEW HEALTH COMPUTATION. The series handed in are the reads the row's own domain
 // already derives for the page it links to; a row whose domain has no trend read gets
 // no sparkline at all rather than a new query. Everything below is drawing.
@@ -100,7 +110,7 @@ export default function StandingSparkline({
       <div
         data-testid="standing-sparkline"
         data-sparkline-state="single-reading"
-        className={`hidden min-[720px]:block ${tone}`}
+        className={`hidden min-[45rem]:block ${tone}`}
         // Taller than the plot band, because this mark is a drawing AND a caption
         // while the plot is only a drawing. The shared component keeps its own type
         // size — a one-off smaller one here would be the micro-text the #794 guard
@@ -166,7 +176,7 @@ export default function StandingSparkline({
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       width={WIDTH}
       height={HEIGHT}
-      className={`hidden min-[720px]:block ${tone}`}
+      className={`hidden min-[45rem]:block ${tone}`}
       role="img"
       aria-label={series.name}
       preserveAspectRatio="xMidYMid meet"
