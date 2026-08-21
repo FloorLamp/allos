@@ -114,6 +114,7 @@ naming the same files.
 | `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.        |
 | `components/ActivityOverlay.tsx`                | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                 |
 | `components/ProfileIdentityBar.tsx`             | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                  |
+| `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445) — it carries no `role` and no `aria-modal`, which is a real gap and a separate question from where it renders. |
 
 `components/MobileDetailPage.tsx` is **not on this table and not an exception**.
 It is a full-page mobile takeover — it replaces the page rather than floating
@@ -446,6 +447,30 @@ wrong in both directions: it counted `MergeConflictDialog` off a comment, and it
 could not see any dialog that hand-rolls its own surface.
 `scripts/dialog-census-core.ts`
 matches on the import and on the rendered JSX instead.
+
+**What "sees a hand-rolled dialog" means, stated so you can check it.** That
+sentence was true of the over-match and only half true of the under-match until
+#3445: the census asked whether a file spelled `role="dialog"`, `role="alertdialog"`
+or `aria-modal`, so what it really reported was "hand-rolls a dialog **and
+remembered the ARIA**" — the weaker claim, reading as the stronger one, in the
+paragraph above. It now asks two questions and prints which one answered:
+
+- **by ARIA** — the file declares a dialog: `role="dialog"` / `role="alertdialog"`
+  (including a computed `role={danger ? "alertdialog" : "dialog"}`), `aria-modal`,
+  or a native `<dialog>` element.
+- **by ANATOMY** — the file declares nothing, and is recognised by what it
+  renders: a full-viewport layer of its own, **and** a portal or the shared body
+  lock, **and** a dismissal (Escape, a click on that layer or its scrim, or a
+  labelled Close control). All three, because each holds something out: an
+  anchored popover has no full-viewport layer (`components/Combobox.tsx`,
+  `components/InfoTooltipIcon.tsx`), a click-catcher under a menu never leaves its
+  own DOM neighbourhood (`components/CompactDateMenu.tsx`), and a blocking curtain
+  with no dismissal is not a dialog.
+
+The anatomy route deliberately **reports and lets a human decide** rather than
+staying silent — the same bias the module states over `handRolled`. Being found
+by anatomy is itself a finding: it means the surface tells assistive technology
+nothing, so `npm run census:dialogs` prints it as `found by ANATOMY`.
 
 It reports dialogs belonging to no dialog host rather than omitting them, in two
 sections that are two different answers: RECORDED EXCEPTIONS (the table above),

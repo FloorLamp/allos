@@ -157,7 +157,16 @@ export const HOSTLESS_DIALOGS: Record<string, HostlessRecord> = {
     why: "RECORDED EXCEPTION, and converged onto components/overlay in the same way as ActivityOverlay — shared primitives, focus trap, body lock, contained scroller. Its anatomy is TOP-anchored: the panel drops out of the identity bar and a swipe UP retreats through it, which a centred host has no anchor to express (#1801).",
   },
   "components/MobileNav.tsx": {
-    why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer slides in from the left screen edge and an edge swipe both opens and retreats through it (useDragGesture/useOverlayDrag, #1469), which a centred host has no edge to travel from. Found by ANATOMY rather than by ARIA (#3445) — it carries no role and no aria-modal, which is a real gap and is tracked separately from where it renders.",
+    // RECORDED RATHER THAN SCOPED OUT, and the alternative reading is real
+    // enough to state. docs/internals/overlays.md's host table already routes
+    // MENU or NAVIGATION to this drawer rather than to the dialog host, which
+    // reads as "it is a host, not an exception" — the MobileDetailPage argument.
+    // It sits here instead because its nearest neighbour in this register is
+    // ProfileIdentityBar: an anchored, non-transactional panel that floats over
+    // the page with a scrim and converged onto components/overlay. MobileNav is
+    // that shape. MobileDetailPage is not — it replaces the page and carries no
+    // scrim.
+    why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (useDragGesture/useOverlayDrag, #1416/#2746), which a centred card has no edge to travel from. Found by ANATOMY rather than by ARIA (#3445) — it carries no role and no aria-modal, which is a real gap and a separate question from where it renders.",
   },
   "components/MobileDetailPage.tsx": {
     scopedOut: true,
@@ -439,6 +448,13 @@ export function openingTagsMatching(code: string, inner: RegExp): string[] {
   const out: string[] = [];
   for (let i = 0; i < code.length; i += 1) {
     if (code[i] !== "<") continue;
+    // `<` FOLLOWED BY A LETTER is a heuristic, and it deliberately does not try
+    // to be a parser: a type parameter (`Map<string, string>`) and a tight
+    // comparison (`i<n`) both open a "tag" here. That costs nothing, because the
+    // slice is only ever consulted through `inner` — a run of source that is not
+    // a tag will not carry `fixed inset-0` AND an `onClick` on the same element.
+    // The failure to avoid is the opposite one, ending a real tag early, which
+    // is what the brace depth and the string skipping below are for.
     if (!/[A-Za-z]/.test(code[i + 1] ?? "")) continue;
     const start = i;
     let j = i + 1;
@@ -581,6 +597,19 @@ export function handRolled(
  * all three and is not a dialog is answered by a `scopedOut` record, which costs
  * one entry and leaves the fact visible; a surface that is a dialog and stays
  * silent costs the register its meaning.
+ *
+ * AND THAT BIAS IS ONLY AFFORDABLE AT A VOLUME A HUMAN ACTUALLY READS. A rule
+ * that reported thirty files would end the register as surely as silence does,
+ * from the other side. So it was MEASURED before it was adopted, over the tree at
+ * 6de40080: this route classifies exactly TWO files that the ARIA-only detector
+ * could not see — components/LevelBadge.tsx (which converged, and is a ModalShell
+ * consumer now) and components/MobileNav.tsx (recorded above). It declines three
+ * near-misses that carry a portal or a full-viewport layer and are not dialogs:
+ * components/CompactDateMenu.tsx, components/Combobox.tsx and
+ * components/InfoTooltipIcon.tsx. Those five files are asserted BY NAME in
+ * lib/__tests__/dialog-census.test.ts, on the real source rather than on a
+ * fixture, because a rule proven only against fixtures written from its own
+ * premise is the defect #3445 filed.
  */
 export function declaresModalAnatomy(h: HandRolled): boolean {
   return (
