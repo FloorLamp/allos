@@ -88,12 +88,28 @@ export default function ScrollFade({
   className,
   hideScrollbar = false,
   "data-testid": testId,
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   hideScrollbar?: boolean;
   "data-testid"?: string;
-}) {
+  // SEMANTICS BELONG ON THE SCROLLER, not on a wrapper around it (#3408). A
+  // control group that IS the scrolling row — the filter pill strip — must carry
+  // its own `role`/`aria-label`, and splitting them onto an outer div would put
+  // the accessible name on one element and the `data-fade-*` affordance markers
+  // on another, so a spec could no longer ask one locator both questions. The
+  // hook half of this file (`useScrollFade`) exists for the cases where the
+  // scroller must be a DIFFERENT element entirely; this is the cheaper case, so
+  // it stays here.
+  //
+  // Deliberately NOT a `...React.HTMLAttributes<HTMLDivElement>` spread: this
+  // element owns its `ref`, its `onScroll`, its `className` and its `style` (the
+  // mask), and letting a caller pass any of those in would silently defeat the
+  // fade. The narrow list is the point.
+} & Pick<React.HTMLAttributes<HTMLDivElement>, "role" | "aria-label"> & {
+    [key: `data-${string}`]: string | undefined;
+  }) {
   const ref = useRef<HTMLDivElement>(null);
   const { update, fadeProps } = useScrollFade(ref);
 
@@ -103,6 +119,7 @@ export default function ScrollFade({
       onScroll={update}
       data-testid={testId}
       className={`overflow-x-auto ${hideScrollbar ? "scrollbar-none [&::-webkit-scrollbar]:hidden" : ""} ${className ?? ""}`}
+      {...rest}
       {...fadeProps}
     >
       {children}

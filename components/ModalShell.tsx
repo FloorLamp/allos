@@ -125,6 +125,7 @@ export default function ModalShell({
   children,
   size = "md",
   presentation = "dialog",
+  fullScreenBelowMd = false,
   initialFocusRef,
   closeDisabled = false,
   testId = "modal-shell",
@@ -140,6 +141,11 @@ export default function ModalShell({
   // fallback). Each one is registered in
   // lib/__tests__/overlay-motion-chokepoint.test.ts with its justification.
   presentation?: Extract<SheetPresentation, "dialog" | "centered">;
+  // Fill the phone viewport instead of floating a card in it, below `md` only
+  // (#3423). Passes straight through to BottomSheet, which documents the whole
+  // decision; a `dialog` presentation is already a sheet at that width and has
+  // no use for it.
+  fullScreenBelowMd?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   // Grey out the ✕ while this surface has a reason to refuse dismissal — a write
   // already in flight, which closing would not cancel (#3405 review).
@@ -191,6 +197,7 @@ export default function ModalShell({
       onGestureDismiss={onGestureDismiss}
       title={title}
       presentation={presentation}
+      fullScreenBelowMd={fullScreenBelowMd}
       size={size}
       showClose
       closeDisabled={closeDisabled}
