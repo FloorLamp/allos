@@ -196,6 +196,24 @@ const CASES: {
     unit: "mg",
     was: "2.5 mg — always correct",
   },
+  // THE NAKED DECIMAL (#3444, second round). Not a comma at all — a dropped leading
+  // zero, which ISMP names as its own error class because prescribers write it that
+  // way. It reaches the dose column through the identical mechanism: the scan was free
+  // to start after the separator, so it read the "125".
+  {
+    name: "Digitoxin .125 mg",
+    grouping: "Digitoxin",
+    amount: ".125 mg",
+    reads: "unreadable",
+    was: "125 mg — a thousandfold overdose, from a missing character",
+  },
+  {
+    name: "Liothyronine .05 mg",
+    grouping: "Liothyronine",
+    amount: ".05 mg",
+    reads: "unreadable",
+    was: "05 mg, read as 5 — a hundredfold",
+  },
 ];
 
 let profile: number;

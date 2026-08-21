@@ -62,6 +62,11 @@ const CORPUS: {
   // A genuine thousands group: the one comma shape that MUST read, so that "refuse
   // anything with a comma" cannot pass this file.
   { amount: "1,000 mg", trueMg: 1000, was: "000 mg → 0" },
+  // The NAKED DECIMAL — the same restart reached by dropping a character rather than
+  // by changing one (#3444, second round).
+  { amount: ".125 mg", trueMg: 0.125, was: "125 mg" },
+  { amount: ",125 mg", trueMg: 0.125, was: "125 mg" },
+  { amount: ".5 mg", trueMg: 0.5, was: "5 mg" },
 ];
 
 // The quantity a reader's answer ultimately contributes to a total, whatever shape the
@@ -177,6 +182,27 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(preFixDoseReading("1,000 mg")).toEqual({ value: 0, unit: "mg" });
   });
 
+  // A CANDIDATE IS OFFERED TO A PERSON, so a fabricated one is the worst output in this
+  // file: a wrong dose with a confirm button beside it. `recoverableCandidates` had its
+  // own unguarded scan and read ".125 mg" as a recoverable "125 mg" — the census
+  // declaring a naked decimal repairable and proposing the exact thousandfold number.
+  // Found by the DB tier, not by reading the code.
+  it("never offers a candidate read out of the tail of a number", () => {
+    for (const amount of [
+      ".125 mg",
+      ",125 mg",
+      ".5 mg",
+      "0,125 mg",
+      "2,5 mg",
+    ]) {
+      expect(recoverableCandidates(amount)).toEqual([]);
+      expect(classifyDoseAmount(amount)).toBe("unreadable-unrecoverable");
+    }
+    // THE CONTROL — a row that really does restate its dose still yields the candidate,
+    // so this is not passing by refusing everything.
+    expect(recoverableCandidates("2,5 g (2500 mg)")).toEqual(["2500 mg"]);
+  });
+
   it("an unreadable comma decimal is bucketed as unreadable, not as correct", () => {
     for (const c of CORPUS.filter((x) => x.trueMg !== 1000)) {
       expect(classifyDoseAmount(c.amount)).toBe("unreadable-unrecoverable");
@@ -221,6 +247,26 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
 // It also says nothing about a reader that does not use a regex at all (an indexOf, a
 // hand-rolled character loop, a parseFloat over a substring). The behavioural sweep is
 // the only half that can see those, and only for readers listed in it.
+//
+// THREE MORE LIMITS, FOUND BY FEEDING IT RESPELLINGS RATHER THAN BY READING IT. An
+// adversarial pass handed this census fourteen plausible ways to write "scan for a
+// number and a unit" and it missed thirteen. Three of those are now closed and named in
+// the reach tests below — the bare `\d+`, the `new RegExp("…")` constructor form (which
+// matters because this very fix is written that way), and `g` missing from the unit
+// list even though `readDoseQuantity` accepts it. What remains open, so nobody has to
+// rediscover it:
+//
+//   * A pattern assembled at RUNTIME from anything but a plain string literal — a
+//     template with an interpolation, a variable, a `.source` splice. Same blind spot as
+//     the composed grammar above, same reason: the text never exists in one place.
+//   * A unit spelled some other way — "milligram", "MG." with a period, a localised
+//     abbreviation. The list is the six `readDoseQuantity` accepts, and it is a list, not
+//     a rule.
+//   * Anything under e2e/ or in a test file, excluded by scope (see `trackedSources`).
+//
+// The honest summary is that this census raises the cost of reintroducing the defect in
+// the shapes people actually write. It does not make the defect unreachable, and a
+// reader who treats a green run here as proof of that will be wrong.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -236,12 +282,32 @@ const NON_SPANNING_NUMBER = [
   String.raw`\d+\.?\d*`,
   String.raw`[0-9]+(?:\.[0-9]+)?`,
   String.raw`[0-9]+(\.[0-9]+)?`,
+  // The SIMPLEST non-spanning scan, and the one most likely to be written by someone
+  // who is not thinking about separators at all. It stops at a "." as surely as the
+  // decorated spellings do, so on "2,5 mg" it matches the "5".
+  String.raw`\d+`,
+  String.raw`[0-9]+`,
 ];
+
+// A number pattern that DOES span its separators still fabricates if the scan may begin
+// after one — that is the naked-decimal half of #3444, and it is a different question
+// from whether the number is spanning. `WRITTEN_NUMBER_SCAN` carries the guard; a
+// hand-rolled spanning scan usually does not.
+const SPANNING_NUMBER = [
+  String.raw`\d+(?:[.,]\d+)*`,
+  String.raw`\d+([.,]\d+)*`,
+  String.raw`[0-9]+(?:[.,][0-9]+)*`,
+];
+const START_GUARD = String.raw`(?<![\d.,])`;
 
 // A DOSE UNIT, not any word. A number followed by `[a-z]+` is a different question
 // (`doseUnitCount` asks it, with its own lookbehind); a number followed by "mg" is a
 // quantity someone will add up.
-const DOSE_UNIT_TOKEN = /\b(?:mg|mcg|µg|ug|meq|iu)\b/i;
+// `g` is in the list because `readDoseQuantity` accepts it — leaving it out was a hole
+// the adversarial pass named. It is tested against the pattern BODY ONLY: a regex
+// literal ends in its flags, and `/…/gi` would otherwise match on the `g` flag and
+// report every global regex in the tree as a dose scan.
+const DOSE_UNIT_TOKEN = /\b(?:mg|mcg|µg|ug|meq|iu|g)\b/i;
 
 /**
  * Regex literals that pair a non-spanning number with a dose unit AND are not anchored
@@ -260,14 +326,30 @@ const ALLOWED_UNANCHORED: Record<string, string> = {
 };
 
 function trackedSources(): string[] {
-  return execFileSync("git", ["ls-files", "-z", "*.ts", "*.tsx"], {
-    cwd: REPO,
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .toString("utf8")
-    .split("\u0000")
-    .filter(Boolean)
-    .filter((f) => !f.startsWith("e2e/"));
+  return (
+    execFileSync("git", ["ls-files", "-z", "*.ts", "*.tsx"], {
+      cwd: REPO,
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .toString("utf8")
+      .split("\u0000")
+      .filter(Boolean)
+      // PRODUCTION READERS ONLY, and this is a scope statement rather than a convenience.
+      // A dose is read for real in lib/, components/, app/ and scripts/; a spec file's
+      // regexes assert on RENDERED COPY ("goal 120-150 g of protein"), which pairs a
+      // number with a unit word and reads nothing. Including them made the census report a
+      // protein nudge's assertion as a dosing defect, and a guard that cries wolf on
+      // shipped code is removed within a week, taking the real guard with it. The cost is
+      // real and stated: a dose reader living only in a test helper is outside this sweep,
+      // as are this file's own fixtures.
+      .filter(
+        (f) =>
+          !f.startsWith("e2e/") &&
+          !f.includes("__tests__/") &&
+          !f.includes("__db_tests__/") &&
+          !/\.test\.tsx?$/.test(f)
+      )
+  );
 }
 
 /**
@@ -347,9 +429,17 @@ function patternFragments(code: string): string[] {
   const out: string[] = [];
   const literal =
     /\/(?![/*])(?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+\/[dgimsuvy]*/g;
-  for (const m of code.matchAll(literal)) out.push(m[0]);
+  // The BODY only — the trailing flags are not part of the pattern, and `g` is a unit.
+  for (const m of code.matchAll(literal))
+    out.push(m[0].replace(/\/[dgimsuvy]*$/, "/"));
   const raw = /String\.raw`(?:[^`\\]|\\.)*`/g;
   for (const m of code.matchAll(raw)) out.push(m[0]);
+  // `new RegExp("…")` with an ORDINARY string literal, where every backslash is
+  // doubled. Missed until the adversarial pass pointed out that this very PR builds its
+  // patterns with `new RegExp`, so the constructor form is exactly the one a reader
+  // would reach for next.
+  const ctor = /new RegExp\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
+  for (const m of code.matchAll(ctor)) out.push(m[1].replace(/\\\\/g, "\\"));
   return out;
 }
 
@@ -362,12 +452,25 @@ function isAnchored(fragment: string): boolean {
 }
 
 export function unanchoredDoseScans(code: string): string[] {
-  return patternFragments(code).filter(
-    (fragment) =>
-      NON_SPANNING_NUMBER.some((n) => fragment.includes(n)) &&
-      DOSE_UNIT_TOKEN.test(fragment) &&
-      !isAnchored(fragment)
-  );
+  return patternFragments(code).filter((fragment) => {
+    if (!DOSE_UNIT_TOKEN.test(fragment)) return false;
+    if (isAnchored(fragment)) return false;
+
+    const spans = SPANNING_NUMBER.some((n) => fragment.includes(n));
+
+    // A SPANNING TOKEN IS REMOVED BEFORE LOOKING FOR A NON-SPANNING ONE, because
+    // `\d+(?:[.,]\d+)*` CONTAINS the literal `\d+`. Testing for the bare spelling
+    // without this step reports every correct pattern in the tree as defective — which
+    // is not a small false positive but an inverted census, green on the defect and red
+    // on the fix.
+    let rest = fragment;
+    for (const n of SPANNING_NUMBER) rest = rest.split(n).join("");
+    const nonSpanning = NON_SPANNING_NUMBER.some((n) => rest.includes(n));
+
+    // Either half of the defect: a number that cannot span a separator at all, or one
+    // that can but whose scan may still begin after one (the naked decimal).
+    return nonSpanning || (spans && !fragment.includes(START_GUARD));
+  });
 }
 
 describe("the unanchored-dose-scan census (#3444)", () => {
@@ -467,13 +570,41 @@ describe("the census's reach", () => {
     ).toEqual([]);
   });
 
-  it("STAYS SILENT on a pattern that spans the separator — the fix it asks for", () => {
+  it("STAYS SILENT on a spanning pattern that also GUARDS ITS START — the whole fix", () => {
     expect(
       scan(
         "spanning.ts",
-        "const RE = /(\\d+(?:[.,]\\d+)*)\\s*(mg|mcg|iu)\\b/i;\n"
+        "const RE = /(?<![\\d.,])[.,]?(\\d+(?:[.,]\\d+)*)\\s*(mg|mcg|iu)\\b/i;\n"
       )
     ).toEqual([]);
+  });
+
+  it("SEES a spanning pattern whose scan may still start after a separator", () => {
+    // The naked-decimal half. This one reads "2,5 mg" correctly and STILL reads
+    // ".125 mg" as 125, because nothing stops the match beginning at the "1". It is the
+    // shape `recoverableCandidates` shipped with, and the shape the first round of this
+    // PR would have left behind.
+    expect(
+      scan(
+        "unguarded.ts",
+        "const RE = /(\\d+(?:[.,]\\d+)*)\\s*(mg|mcg|iu)\\b/gi;\n"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("SEES the constructor form, which is how this fix itself is written", () => {
+    expect(
+      scan(
+        "ctor.ts",
+        'const RE = new RegExp("(\\\\d+(?:\\\\.\\\\d+)?)\\\\s*(mg|mcg|iu)", "i");\n'
+      )
+    ).toHaveLength(1);
+  });
+
+  it("SEES a bare digit-plus scan, the simplest non-spanning spelling of all", () => {
+    expect(
+      scan("bare.ts", "const RE = /(\\d+)\\s*(mg|mcg|iu)\\b/i;\n")
+    ).toHaveLength(1);
   });
 
   it("STAYS SILENT on the retired pattern QUOTED IN A COMMENT to argue against it", () => {
@@ -485,7 +616,7 @@ describe("the census's reach", () => {
         [
           "// The scan used to read `\\d+(?:\\.\\d+)?` against (mg|mcg|iu), which could",
           "// not span a comma. Do not reintroduce it.",
-          "const RE = /(\\d+(?:[.,]\\d+)*)\\s*(mg|iu)\\b/i;",
+          "const RE = /(?<![\\d.,])[.,]?(\\d+(?:[.,]\\d+)*)\\s*(mg|iu)\\b/i;",
           "",
         ].join("\n")
       )

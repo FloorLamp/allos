@@ -14,7 +14,7 @@
 // the schedule machinery never marks due — no reminders/escalation) rather than
 // a fabricated daily reminder the document never actually prescribed.
 
-import { WRITTEN_NUMBER } from "./dri";
+import { WRITTEN_NUMBER_SCAN } from "./dri";
 import { parseDosage, spreadDoseTimes } from "./intake-schedule";
 
 // "as needed", "as required", "when needed", "if needed", "prn" — a PRN med is
@@ -82,7 +82,7 @@ const NAME_FORM_TAIL_RE =
 // in the formulary.
 //
 // So the fix is not a wider pattern here; a second wider pattern is how the tree got
-// two answers to "what does 2,5 mean" in the first place. `WRITTEN_NUMBER` is the ONE
+// two answers to "what does 2,5 mean" in the first place. `WRITTEN_NUMBER_SCAN` is the ONE
 // spelling of "where does a written number start and end", exported from lib/dri.ts
 // beside `readGroupedNumber`, the ONE rule for what it MEANS. Taking the number whole
 // is what makes refusal possible at all: only a reader that has the entire "2,5" in its
@@ -93,7 +93,13 @@ const NAME_FORM_TAIL_RE =
 // nothing to add. The person sees the strength their document stated; the safety maths
 // declines to invent a number from it. That is the conservative reading, and it is the
 // only one that cannot contradict the name it came from.
-const NUM = WRITTEN_NUMBER;
+//
+// IT IS THE *SCAN* SPELLING, because this file scans free text. The same restart that
+// turned "2,5 mg" into "5 mg" turns the ISMP naked decimal "Digoxin .125 mg" into
+// "125 mg" — measured on this path, not inferred — and the guard inside
+// WRITTEN_NUMBER_SCAN is what stops it. See its comment in lib/dri.ts for why the
+// obvious weaker lookbehind would not have.
+const NUM = WRITTEN_NUMBER_SCAN;
 const COUNT = String.raw`${NUM}(?:\s*/\s*${NUM})*(?:\s*(?:-|–|to|or)\s*${NUM}(?:\s*/\s*${NUM})*)?`;
 const DOSE_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)`;
 const DENOM_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|l|kg|lb|m2|iu|units?|meq)\b|%|m²)`;
@@ -316,7 +322,22 @@ export function strengthFromName(raw: string): string | null {
   // SAME product written with or without brackets yields the same strength:
   // "Amoxicillin 400 MG/5ML Suspension" → "400 MG/5ML", not the bare "400 MG" the
   // numerator-only pattern used to stop at (#2939).
-  const m = raw.match(new RegExp(String.raw`\b${QUANTITY}`, "i"));
+  //
+  // THE PREFIX IS A LOOKBEHIND, NOT `\b`, AND THE TWO ARE THE SAME ASSERTION HERE FOR
+  // EVERY DIGIT-LED STRENGTH. `\b` before a word character means "the character before
+  // is not a word character", which is exactly `(?<![A-Za-z0-9_])`. It stops a strength
+  // being read out of the middle of a token ("B12 500 mcg" must yield 500 mcg, never
+  // "12"), and that job is unchanged.
+  //
+  // They differ on ONE input, and it is the reason for the swap: a strength that begins
+  // with a SEPARATOR. `\b` before the "." of "Digoxin .125 mg" demands the PRECEDING
+  // character be a word character — it is a space — so the match failed there and the
+  // scan moved on to the "125", returning "125 mg" for a 0.125 mg dose. The lookbehind
+  // asks the question that was actually meant, so the naked decimal is matched WHOLE and
+  // refused downstream instead of being re-read as a thousandfold larger dose (#3444).
+  const m = raw.match(
+    new RegExp(String.raw`(?<![A-Za-z0-9_])${QUANTITY}`, "i")
+  );
   return m ? m[0].replace(/\s{2,}/g, " ").trim() : null;
 }
 

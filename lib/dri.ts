@@ -166,17 +166,28 @@ export interface ParsedQuantity {
   unit: DoseUnit;
 }
 
-// ONE RULE FOR READING A WRITTEN NUMBER, SHARED BY EVERY READER OF A LABEL
-// (#3153, #3319, #3444).
+// ONE RULE FOR WHAT A `.` OR A `,` INSIDE A NUMBER MEANS (#3153, #3319, #3444).
 //
-// It used to say "both halves of a label", meaning the dose half and the ingredient
-// half, and that sentence was not true of the tree. There was a THIRD reader —
-// lib/prescription-parse.ts, on the medication IMPORT WRITE PATH — which spelled its
-// own number pattern and answered "5" to "what does 2,5 mean", then stored that answer
-// as a dose. It now reads through `WRITTEN_NUMBER` and `readGroupedNumber` below, like
-// everything else. The heading is deliberately no longer counting halves: the claim is
-// that there is one rule, and a count is a claim about the tree that goes stale the
-// next time somebody needs to read a number.
+// THE HEADING IS NARROW ON PURPOSE, and it has now been wrong in both directions.
+//
+// It first said "shared by both halves of a label", meaning the dose half and the
+// ingredient half, and that was false because there was a THIRD reader —
+// lib/prescription-parse.ts, on the medication IMPORT WRITE PATH — which spelled its own
+// number pattern and answered "5" to "what does 2,5 mean", then stored that answer as a
+// dose. That reader now goes through `WRITTEN_NUMBER_SCAN` and `readGroupedNumber`
+// below, so the fork is closed.
+//
+// Widening it to "every reader of a label" then over-claimed in the other direction, and
+// the counter-example is live: for a group separated by a SPACE — "1 000 mg", and the
+// same with NBSP, thin space, a Swiss apostrophe or U+066C — `readDoseQuantity` returns
+// a confident ZERO while `readIngredientAmount` returns `unreadable`. Two readers, two
+// answers, on the shape this very file cites as its motivating example. Tracked
+// separately; not fixed here.
+//
+// So the claim is exactly what the code below delivers: `.` and `,` inside a number get
+// ONE answer everywhere. Any other separator is not covered by this rule yet, and a
+// heading that implied otherwise would be the same kind of overstatement the third
+// reader was.
 //
 // A separator in a number is either a thousands group or a decimal point, and which
 // one it is depends on where the label was printed. The ingredient write boundary
@@ -250,17 +261,53 @@ export type DoseQuantityReading =
 // nothing to the upper-limit total, and a zero meaning "we could not read this" is
 // indistinguishable from a zero meaning "none".
 //
-// NO LOOKBEHIND GUARDS THE START, AND IT DOES NOT NEED ONE — the obvious defence here
-// is unreachable, so it is deliberately absent. A first cut carried
-// `(?<!\d)(?<!\d[.,])` to stop the scan starting mid-number the way the old pattern
-// did on the "000". Mutating them out left every test green, and the reason is
-// structural: `\d+(?:[.,]\d+)*` is GREEDY over a maximal digit-and-separator run, so a
-// start inside that run can only ever end where a start at its head already ended. If
-// the run's end is followed by a unit the head match takes the whole number; if it is
-// not, every shorter match ends on a digit or a separator, which no unit can follow.
-// The guard could never change an answer. Re-adding it for safety would be adding a
-// branch nothing can reach — note that the lookbehind in LABEL_UNIT_COUNT_RE below IS
-// load-bearing, for a different reason its own comment gives.
+// A LOOKBEHIND GUARDS THE START, AND WHICH SPELLING IT IS DECIDES WHETHER IT MATTERS.
+//
+// This comment used to say no guard was needed, and it was right about the guard it had
+// tested and wrong to generalise from it. Both halves are worth keeping, because the
+// difference between them is one character and a thousandfold dose error.
+//
+// THE WEAKER FORM IS GENUINELY UNREACHABLE. A first cut carried `(?<!\d)(?<!\d[.,])`,
+// and mutating it out left every test green. The reason is structural:
+// `\d+(?:[.,]\d+)*` is GREEDY over a maximal digit-and-separator run, so a start
+// INSIDE that run can only ever end where a start at its head already ended. If the
+// run's end is followed by a unit the head match takes the whole number; if it is not,
+// every shorter match ends on a digit or a separator, which no unit can follow. That
+// form could never change an answer — measured again at #3444: it differs from the
+// unguarded pattern on 0 of 300,000 random strings.
+//
+// THE STRONGER FORM IS LOAD-BEARING, and the difference is the character class. The
+// weaker spelling only blocks a start preceded by a DIGIT; `(?<![\d.,])` also blocks
+// one preceded by a SEPARATOR THAT HAS NO DIGITS BEFORE IT. That is not a hypothetical
+// string — it is the ISMP "naked decimal", `.125 mg`, written exactly that way BECAUSE
+// people drop the leading zero, and it is the same 1000x on the same drug this whole
+// issue is about. Unguarded, the scan starts at the "125" and reads a confident 125 mg
+// for a 0.125 mg dose of digoxin. Measured: `(?<![\d.,])` differs from the unguarded
+// pattern on 1205 of the same 300,000 strings, EVERY difference is the unguarded one
+// inventing a number out of a separator-led fragment (".9mcg" -> 9, "iu.952g" -> 952),
+// and 0 of 22 legitimate label shapes change — `1.5 mL (1.25 mg)` still reads 1.25 mg,
+// `2 capsules (500 mg)` still reads 500 mg, `Vitamin C, 500 mg` still reads 500.
+//
+// AND THE LEADING SEPARATOR IS TAKEN INTO THE TOKEN, not skipped past. `[.,]?` in front
+// means ".125 mg" MATCHES, with ".125" as its number — which `readGroupedNumber` then
+// refuses, because neither PLAIN_NUMBER nor THOUSANDS_GROUPED admits a leading
+// separator. So the reading is `unreadable` rather than `none`, and that distinction is
+// the whole point of having both: `none` says "no quantity here", which the write
+// boundary accepts and no data-quality gap ever mentions, while `unreadable` refuses
+// the save and names the string. A naked decimal is a number nobody can read, not an
+// absence, and this file's own history is the argument — a value that means "we could
+// not read this" must never be indistinguishable from one that means "there is none".
+// By construction this branch cannot fabricate: a separator-led token has no reading at
+// all, so the only answers it can produce are a refusal or no match.
+//
+// WHAT THE GUARD DOES NOT REACH: a group separated by a SPACE ("1 000 mg", NBSP, thin
+// space, Swiss apostrophe, U+066C). The scan restarts after the space, "000" is
+// preceded by whitespace rather than by `[\d.,]`, and the reading is a confident ZERO.
+// That is live, it is a different defect from this one, and it is tracked separately —
+// do not read this guard as covering it.
+//
+// The lookbehind in LABEL_UNIT_COUNT_RE below is load-bearing too, for a third reason
+// its own comment gives.
 //
 // The scan itself is unchanged and still stops at the FIRST unit-bearing number, so a
 // combo amount ("2000 IU / 100 mcg", Vitamin D3 + K2) still yields the leading
@@ -269,18 +316,26 @@ export type DoseQuantityReading =
 // ("Vitamin C, 500 mg" reads 500). "mcg", "µg" and "ug" all normalize to mcg; the unit
 // match is case-insensitive.
 //
-// THE NUMBER HALF OF THAT PATTERN IS EXPORTED, because "taking it whole" is not a
-// local convenience — it is the only thing standing between a scan and a FABRICATED
-// number, and any reader that spells it differently gets the fabrication back (#3444).
-// `readGroupedNumber` decides what a written number MEANS; `WRITTEN_NUMBER` decides
-// where one STARTS AND ENDS, and a reader needs both or neither. lib/prescription-parse.ts
-// had the second half wrong — its `\d+(?:\.\d+)?` stopped at the comma in
-// "Bisoprolol 2,5 mg", the scan RESTARTED after it, and the medication import stored
-// "5 mg" as the dose of a 2,5 mg tablet. Nothing downstream could tell: "5 mg" is
-// perfectly readable, it just belongs to a different prescription.
+// BOTH HALVES OF THE PATTERN ARE EXPORTED, because "taking it whole" is not a local
+// convenience — it is the only thing standing between a scan and a FABRICATED number,
+// and any reader that spells it differently gets the fabrication back (#3444).
+// `readGroupedNumber` decides what a written number MEANS; these two decide where one
+// STARTS AND ENDS, and a reader needs both or neither. lib/prescription-parse.ts had
+// that half wrong — its `\d+(?:\.\d+)?` stopped at the comma in "Bisoprolol 2,5 mg",
+// the scan RESTARTED after it, and the medication import stored "5 mg" as the dose of a
+// 2,5 mg tablet. Nothing downstream could tell: "5 mg" is perfectly readable, it just
+// belongs to a different prescription.
+//
+//   WRITTEN_NUMBER       what a written number IS — digits, spanning its separators.
+//                        For a whole-string test, where there is no scan to misplace.
+//   WRITTEN_NUMBER_SCAN  how to FIND one inside free text: the same number, guarded so
+//                        the scan cannot begin in the middle of one, and admitting a
+//                        leading separator so a naked decimal is refused rather than
+//                        silently skipped. Any reader that SCANS wants this one.
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,]\d+)*`;
+export const WRITTEN_NUMBER_SCAN = String.raw`(?<![\d.,])[.,]?${WRITTEN_NUMBER}`;
 const DOSE_QUANTITY_RE = new RegExp(
-  String.raw`(${WRITTEN_NUMBER})\s*(mcg|µg|ug|mg|g|iu)\b`,
+  String.raw`(${WRITTEN_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
   "i"
 );
 

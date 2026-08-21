@@ -213,6 +213,40 @@ describe("parseQuantity separators (#3153)", () => {
       why: "THE SYMMETRY PARTNER — the period side has always refused this",
     },
 
+    // ── the NAKED DECIMAL: a separator with no digits before it (#3444). ISMP names
+    // this as its own error class precisely because people drop the leading zero, and
+    // it lands on the same drugs. Before the scan was guarded, the match simply STARTED
+    // after the separator: ".125 mg" read 125 — a thousandfold overdose from a string
+    // that is missing one character. Refused rather than skipped, so the write boundary
+    // declines the save and the data-quality gap names it, instead of it reading as an
+    // absence nothing mentions.
+    {
+      amount: ".125 mg",
+      expected: "unreadable",
+      why: "digoxin without its leading zero; read as 125 mg before",
+    },
+    {
+      amount: ",125 mg",
+      expected: "unreadable",
+      why: "the same thing with the European separator; also read as 125",
+    },
+    {
+      amount: ".5 mg",
+      expected: "unreadable",
+      why: "read as 5 mg before — ten times, and the commonest naked decimal",
+    },
+    {
+      amount: ".9mcg",
+      expected: "unreadable",
+      why: "no space either; the separator still cannot start a number",
+    },
+    {
+      amount: "0.5 mg",
+      expected: 0.5,
+      unit: "mg",
+      why: "THE CONTROL — writing the zero is what makes it readable, and must stay",
+    },
+
     // ── period sitting where a thousands group would: REFUSED, same coin flip ──
     {
       amount: "10.000 IU",

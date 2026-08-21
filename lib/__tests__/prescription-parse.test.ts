@@ -642,6 +642,37 @@ describe("comma-decimal strengths (#3444)", () => {
       reads: "unreadable",
       was: "5 MG/3ML — 2x, and the name kept its parenthetical",
     },
+    // THE NAKED DECIMAL, the same defect reached by dropping a character rather than by
+    // changing one. A scan that may begin after a separator reads "Digoxin .125 mg" as
+    // 125 mg just as surely as it read "0,125" as 125 — and this spelling is the one
+    // ISMP warns about by name, because prescribers write it.
+    {
+      name: "Digoxin .125 mg",
+      strength: ".125 mg",
+      grouping: "Digoxin",
+      reads: "unreadable",
+      was: "125 mg — 1000x, from a missing zero",
+    },
+    {
+      name: "Levothyroxine .05 mg",
+      strength: ".05 mg",
+      grouping: "Levothyroxine",
+      reads: "unreadable",
+      was: "05 mg, which reads as 5 — 100x",
+    },
+    // THE CONTROL FOR THE PREFIX SWAP. `strengthFromName` used to guard its scan with
+    // `\b`; it now uses the lookbehind that `\b` means for a digit-led match. If that
+    // equivalence were wrong, a strength would start being read out of the middle of a
+    // token — so the shape that proves it is a name whose OWN digits precede the
+    // strength.
+    {
+      name: "B12 500 mcg",
+      strength: "500 mcg",
+      grouping: "B12",
+      reads: 500,
+      unit: "mcg",
+      was: "500 mcg — must not become 12",
+    },
   ];
 
   for (const c of cases) {
