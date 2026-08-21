@@ -1462,3 +1462,43 @@ zero — but its comma branch accepted `0,125` as one and returned `125`. So the
 that exists to refuse rather than guess was itself stating a thousandfold overdose
 for the commonest digoxin strength, on the manual dose-entry path as well as the
 import. The leading group is now `[1-9]`, and the two branches agree.
+
+**A separator that is not a comma, and the one that stays refused (#3451).** The
+same restart was reachable through seven other characters. `"1 000 mg"` — and the
+same with a no-break space, a narrow no-break space, a thin space, a figure space,
+a Swiss apostrophe (`1’000`, and the `1'000` people type for it) or U+066C — read
+as a confident **zero**, on the very niacin shape `lib/dri.ts` cites as its reason
+for taking a number whole. It defeated every net: the name was torn in half too
+(`Metformin 1 000 mg` filed the item as `Metformin 1` with a dose of `000 mg`), the
+census called the row `always-correct`, and no data-quality gap mentioned it.
+
+The fix is **deliberately not uniform across the seven**, and the split is a safety
+claim in both directions:
+
+- The six that exist _because_ they are thousands separators are **read**. They
+  normalize to a comma and go through the comma rule unchanged, so `1’000` is 1000
+  for the same reason `1,000` is, and `0’125` is refused for the same reason
+  `0,125` is.
+- The plain ASCII space **U+0020 is refused**. On a label `"1 500 mg"` is as
+  plausibly _one 500 mg tablet_ — count then strength, a shape this codebase
+  already parses (`doseUnitCount`, and `COUNT` in `lib/prescription-parse.ts`) — as
+  it is fifteen hundred milligrams. Measured before the fix,
+  `readDoseQuantity("2 500 mg tablets")` answered 500 mg; reading the space as a
+  group would have made it 2500, swapping a confident zero for a confident
+  fivefold overdose. The number is taken whole so the scan cannot restart inside
+  it, and then declined — the row becomes a visible `dose-amount-unreadable` gap,
+  the same answer `"2,5 mg"` gets.
+
+**A name may end in a digit,** which is why the space branch refuses to start after
+a letter, digit or underscore: `B12 500 mcg`, `CoQ10 200 mg`, `Vitamin D3 5000 IU`
+and `Omega 3 1000 mg` all read exactly as they did before. It matches the
+thousands-group _shape_ only (one to three digits, then groups of exactly three),
+so a malformed run like `"1 0000 mg"` is not covered and still reads 0 — widening
+the group would have swallowed `Omega 3 1000 mg`.
+
+The heading in `lib/dri.ts` is wide again as a result, and now says **separator**
+rather than naming characters. `readIngredientAmount` stopped spelling its own
+number pattern in the same change: the shape comes from `WRITTEN_NUMBER` and the
+meaning from `readGroupedNumber`, so the only thing local to the ingredient half is
+its anchoring. `lib/__tests__/dose-number-readers.test.ts` asks both halves the
+same string and insists on the same answer, for all eight spellings.

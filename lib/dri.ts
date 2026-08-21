@@ -432,9 +432,16 @@ export type DoseQuantityReading =
 //   (?:[.,]\d+)?             a decimal tail, so "1 000.5 mg" is taken whole too. Without
 //                            it the branch failed on that string and the ordinary branch
 //                            picked up "000.5" — a confident 0.5 mg.
-//   (?!\d)                   so the branch cannot match a PREFIX of a longer digit run
-//                            and leave the remainder to be read on its own.
-const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_.,${THOUSANDS_SEP_CHARS}])\d{1,3}(?: \d{3})+(?:[.,]\d+)?(?!\d)`;
+//
+// A TRAILING `(?!\d)` WAS WRITTEN HERE AND THEN MEASURED UNREACHABLE, the same way the
+// weaker start lookbehind was at #3444. The intent was to stop the branch matching a
+// PREFIX of a longer digit run ("1 0000"). It cannot change an answer, because every
+// place this grammar embeds a number puts a UNIT or a DOSE FORM immediately after it,
+// and no digit satisfies either — so a prefix match simply fails one step later and the
+// engine backtracks to the ordinary branch at the same position. Deleting it left all
+// 468 assertions in the five separator suites green, and reverting the decimal tail
+// beside it still went red — so its absence is measured, not assumed.
+const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_.,${THOUSANDS_SEP_CHARS}])\d{1,3}(?: \d{3})+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
 export const WRITTEN_NUMBER_SCAN = String.raw`(?:${AMBIGUOUS_SPACE_NUMBER}|(?<![\d.,${THOUSANDS_SEP_CHARS}])[.,${THOUSANDS_SEP_CHARS}]?${WRITTEN_NUMBER})`;
 const DOSE_QUANTITY_RE = new RegExp(
