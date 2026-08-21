@@ -544,9 +544,7 @@ export function upsertMetricSamples(
   // profile-scoped SELECT above. Cheap, and it means a future refactor that widened the
   // candidate query could not turn this into a cross-profile delete.
   const dropOverlap = supersedes
-    ? db.prepare(
-        "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
-      )
+    ? db.prepare("DELETE FROM metric_samples WHERE id = ? AND profile_id = ?")
     : null;
   // Distinct edit-locked rows this batch held OUT of a supersede. A Set, because one
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
