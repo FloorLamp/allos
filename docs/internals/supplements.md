@@ -1432,3 +1432,33 @@ version of the rule #3153 unified, and a census that disagrees with the engine i
 describes is worse than none. The one re-implementation there is the _pre-fix_
 pattern, kept to answer "what did this row read as yesterday": the artifact being
 measured, not a rule.
+
+**The census measures the stored string, and there was a third reader upstream of
+it (#3444).** `lib/prescription-parse.ts` — the medication import — spelled its
+own `\d+(?:\.\d+)?` and so carried the identical defect on the identical shapes,
+one step earlier and in the direction that hides. On `Bisoprolol 2,5 mg` the scan
+stopped at the comma, restarted after it, and stored **`5 mg`** as the dose;
+`Digoxin 0,125 mg` stored `125 mg`; `Metformin 1,000 mg` stored `000 mg`, a
+confident zero. Every reader downstream then agreed, this census included — `5 mg`
+reads the same before and after #3153, so it is `always-correct`, correctly, and
+the population looked clean over rows whose number no document ever stated. The
+number pattern is now imported (`WRITTEN_NUMBER`, `lib/dri.ts`) rather than
+respelled, so a comma-decimal strength survives verbatim into the dose column and
+is refused there like any other unresolvable separator, where the
+`dose-amount-unreadable` gap names it.
+`lib/__tests__/dose-number-readers.test.ts` sweeps every reader of a number
+against a dose unit and pins what each one is allowed to answer.
+
+Two consequences to carry. The "one rule shared by both halves of a label" claim
+was **counting halves when there was a third**, which is why the heading in
+`lib/dri.ts` no longer counts. And a census over stored text **cannot see a value
+fabricated before the text was stored** — rows imported before this fix keep their
+rewritten amount, findable only by comparing a dose against the item name it was
+parsed from, and repairable only by the person holding the label.
+
+**A leading zero settles the separator, on both sides (#3444).** `readGroupedNumber`
+refused `0.125` from the start — no label writes a thousands group beginning with a
+zero — but its comma branch accepted `0,125` as one and returned `125`. So the rule
+that exists to refuse rather than guess was itself stating a thousandfold overdose
+for the commonest digoxin strength, on the manual dose-entry path as well as the
+import. The leading group is now `[1-9]`, and the two branches agree.
