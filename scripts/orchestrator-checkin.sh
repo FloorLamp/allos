@@ -41,6 +41,35 @@
 
 set -uo pipefail
 
+# THE STAMP MUST SURVIVE A TRUNCATED READ, and this is not a hypothetical
+# reader — it is the ordinary one. This script prints ~40 lines and stamps at
+# the very END (deliberately: see the block down there). Reading it with
+# `orchestrator-checkin.sh | head -30` — the natural way to look at a long
+# recorder output, and what the runbook's own "first action of every check-in"
+# invites — closes the pipe early, SIGPIPE kills the script mid-print, and the
+# stamp NEVER RUNS.
+#
+# The next run then reads the stale boot-id, declares a restart that did not
+# happen, and prints "DIRTY AND NO AGENT: RESCUE NOW" over live agents'
+# worktrees. Measured 2026-08-21T05:42Z through 06:27Z: a real restart was
+# handled correctly, four agents were rescued and relaunched, and then THREE
+# consecutive check-ins kept reporting the same restart and kept flagging a
+# live lane for rescue — because every one of those reads was piped through
+# `head` and none of them could stamp. `--relaunched` cleared the sticky flag
+# and did not help, because the flag was not the thing that was stale.
+#
+# So: ignore SIGPIPE. A closed stdout now costs the unread tail of the report
+# and nothing else. The state writes are the load-bearing half and they are not
+# stdout.
+#
+# This is the THIRD direction this recorder's alarm has been wrong — after
+# soothing over dead agents (fixed by the sticky verdict) and screaming over
+# live ones because the state dir did not exist (fixed by mkdir -p). All three
+# share one root: THE RECORDER'S OUTPUT AND THE RECORDER'S STATE ARE DIFFERENT
+# THINGS, and every failure came from something breaking the second while the
+# first still looked fine.
+trap '' PIPE
+
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 

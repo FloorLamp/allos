@@ -922,3 +922,57 @@ The general shape, worth carrying to any state-based detector: **a detector
 that cannot persist its state does not fail closed, it fails LOUD AND WRONG.**
 Absent state and changed state are the same reading. Check that you can write
 before you trust what you read.
+
+## The recorder that could not stamp when you only read the top of it (2026-08-21)
+
+A real container restart at 05:42Z killed a five-agent fleet. The drill worked:
+`ListAgents` confirmed the fleet dead, three dirty worktrees were committed as
+`WIP RESCUE - no gate has been run` and pushed, the fourth was already banked,
+all four were relaunched, and `--relaunched` cleared the sticky flag.
+
+Then the next three check-ins each reported the SAME restart, and one of them
+printed `DIRTY AND NO AGENT: RESCUE NOW` over a lane that `ListAgents` showed
+`running`. Clearing the sticky flag had not helped, because the flag was not
+the stale thing.
+
+**The cause was the reader, not the recorder.** This script prints ~40 lines
+and stamps the boot-id and session-id at the very END — deliberately, so a
+crash mid-check-in still reports the restart next time. Every one of those
+check-ins was read as `orchestrator-checkin.sh | head -N`, which is the
+natural way to look at a long report and exactly what "run it as the FIRST
+action of every check-in" invites. `head` closes the pipe after N lines, the
+next `echo` takes SIGPIPE, and the script dies before the stamp block. The
+stored boot-id stayed at its pre-restart value, so every later run compared
+the kernel's id against a stale file and correctly concluded "different" —
+about a restart that had already been handled.
+
+Proof, and it is a one-liner: the same script run WITHOUT a pipe exits 0,
+prints `boot-id stamped`, and the following run says `UNCHANGED`.
+
+Fix: `trap '' PIPE` at the top. A closed stdout now costs the unread tail of
+the report and nothing else; the state writes are not stdout. Verified against
+the failing invocation itself — with the stored id reset to a junk value and
+the output piped through `head -5`, the stamp still lands and the next run
+reports `UNCHANGED`.
+
+**This is the third direction this one alarm has been wrong**, and the three
+together are the real lesson:
+
+1. It soothed over dead agents, because reading the verdict consumed it —
+   fixed by making the verdict sticky.
+2. It screamed over live agents, because `$STATE_DIR` did not exist and every
+   stamp write failed silently — fixed by `mkdir -p` plus a hard exit when the
+   directory cannot be created.
+3. It screamed over live agents, because the reader truncated the output and
+   killed the process before it could stamp — fixed here.
+
+Every one of them is the same root: **the recorder's OUTPUT and the recorder's
+STATE are different things, and each failure broke the state while the output
+still looked fine.** A state-based detector has to be judged on whether its
+write happened, never on whether its report read plausibly. When an alarm you
+have already acted on fires again unchanged, suspect the write before you
+suspect the world.
+
+Corollary for anyone extending this script: nothing that runs AFTER the last
+`echo` may be load-bearing unless the process is protected from its own
+stdout.
