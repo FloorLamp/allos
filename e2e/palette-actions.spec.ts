@@ -251,3 +251,61 @@ test.describe("command palette — per-hit actions (#662)", () => {
     });
   });
 });
+
+// THE DESKTOP HALF OF THE #3423 WIDTH FORK, kept beside the palette's other
+// desktop assertions rather than in the phone spec that removes these strings —
+// so "the phone lost it" and "the desktop kept it" are two readings of one pair.
+// The phone half is e2e/command-palette-shell.mobile.spec.ts.
+//
+// A keyboard EXISTS here, so the palette keeps saying so verbatim. This exists
+// because the failure mode of a copy fork is not the phone: it is the desktop
+// quietly losing an instruction to an over-broad `hidden` class, which nothing
+// would have caught — the phone spec passes harder the more copy disappears.
+test.describe("command palette — the keyboard copy survives from md up (#3423)", () => {
+  test("the hint names the keys, the commit row says Enter, and the card still floats", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    const input = await openCommandPalette(page);
+    await input.fill("weight 82.5");
+
+    const panel = page.getByTestId("modal-shell").locator("[data-sheet-panel]");
+    await expect(panel).toBeVisible();
+
+    // Verbatim, both halves of the sentence, in one string — a fork that split
+    // the line into two spans must still read as one sentence to a person.
+    await expect(panel).toContainText("arrows to move, Enter to run", {
+      useInnerText: true,
+    });
+
+    const quickLog = page.getByTestId("palette-quicklog");
+    await expect(quickLog).toBeVisible();
+    // `useInnerText`, and it is load-bearing on BOTH halves of this pair. The
+    // fork is a `hidden md:inline` twin, so `textContent` — Playwright's default
+    // — reads BOTH spellings at both widths and the row's raw text really is
+    // "Tap to saveEnter to save". Measured: the negative assertion below failed
+    // against a correct render until it was told to read what is PAINTED.
+    await expect(quickLog).toContainText("Enter to save", {
+      useInnerText: true,
+    });
+    await expect(quickLog).not.toContainText("Tap to save", {
+      useInnerText: true,
+    });
+
+    // The "↵" glyph draws where the Return key is. It hangs off the highlight,
+    // which the quick-log row holds as the first item in the list.
+    await expect(
+      quickLog.locator(".tabler-icon-corner-down-left")
+    ).toBeVisible();
+
+    // STILL A CENTRED CARD, not the phone's full-bleed surface: inset from the
+    // left edge and narrower than the viewport. This is the assertion that fails
+    // if `fullScreenBelowMd`'s `md:` classes are ever written without their
+    // breakpoint — a mistake the phone spec cannot see.
+    const box = await panel.boundingBox();
+    const viewport = page.viewportSize()!;
+    expect(box!.x).toBeGreaterThan(0);
+    expect(box!.width).toBeLessThan(viewport.width);
+    expect(box!.height).toBeLessThan(viewport.height);
+  });
+});

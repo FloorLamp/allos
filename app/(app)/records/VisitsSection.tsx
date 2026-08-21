@@ -114,9 +114,72 @@ export default function VisitsSection({
   const upcomingScheduled = scheduled.filter((a) => a.date >= now);
   const overdueScheduled = scheduled.filter((a) => a.date < now);
 
+  // ── CONTENT LEADS; AN ABSENCE DOES NOT (#3408, item B) ────────────────────
+  //
+  // Upcoming led unconditionally, and for a profile with no appointments — which
+  // is the COMMON case — that meant the first thing under the pane chip was a
+  // `p-10` dashed billboard announcing nothing, with the PAST list (the reason
+  // the visit happened, and the only records on the pane) starting about 250px
+  // down a 430px screen.
+  //
+  // TWO CHANGES, AND THEY ARE DIFFERENT SIZES. The empty state goes `compact`
+  // ALWAYS — one line and its action instead of a billboard, which is #2399's
+  // rule that an absence stops reserving room. The ORDER only flips when the
+  // whole Upcoming section is empty, and "empty" here means what the section
+  // renders, not just the scheduled list: an overdue appointment or a settled one
+  // is a real record and Upcoming still leads when it holds either.
+  //
+  // ORDER STAYS UPCOMING-FIRST WHEN APPOINTMENTS EXIST (the issue left this to
+  // the implementer). An appointment is a thing you are about to DO; a past visit
+  // is a thing you look up. Leading with what is coming is the right reading of
+  // the pane whenever there is anything coming — the defect was never the order,
+  // it was paying a screen for the order when there is nothing to order.
+  const upcomingEmpty =
+    upcomingScheduled.length === 0 &&
+    overdueScheduled.length === 0 &&
+    settled.length === 0;
+
+  // AUTHORED ONCE, PLACED TWICE (#2305). The Past list is the same node in both
+  // orders — a `hidden`/`md:block` twin pair, or two copies of this markup with
+  // one branch dead, is two lists to keep in step and the unused one is the one
+  // that rots. Only its POSITION in the parent moves.
+  const pastSection = (
+    // Past — the encounter history, without an entry form between the two lists.
+    <section data-testid="visits-past">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h3 className="section-label">Past</h3>
+        {showHousehold && (
+          <Link
+            href={EPISODES_HREF}
+            className="shrink-0 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+            data-testid="household-view-link"
+          >
+            View illness episodes →
+          </Link>
+        )}
+      </div>
+      <EncounterList
+        items={encounters}
+        defaultDate={now}
+        linkedRecordCounts={linkedRecordCounts}
+        episodes={encounterEpisodes}
+        multiView={
+          multi ? { actingProfileId: scope.actingProfileId } : undefined
+        }
+      />
+    </section>
+  );
+
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="space-y-10">
+      <div
+        className="space-y-10"
+        data-testid="visits-body"
+        // The order the pane resolved to, declared rather than inferred from two
+        // bounding boxes — an e2e that wants to know WHY it saw Past first should
+        // read this, not measure.
+        data-lead={upcomingEmpty ? "past" : "upcoming"}
+      >
         <AddEntryPanel
           testId="add-visit-panel"
           panelId="add-visit-panel-body"
@@ -134,6 +197,8 @@ export default function VisitsSection({
           />
         </AddEntryPanel>
 
+        {upcomingEmpty && pastSection}
+
         {/* Upcoming — the appointments surface. */}
         <section data-testid="visits-upcoming">
           <h3 className="mb-3 flex items-center gap-2 section-label">
@@ -149,7 +214,10 @@ export default function VisitsSection({
                 list; the count that carries information lives with it. */}
             <section>
               {upcomingScheduled.length === 0 ? (
-                <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
+                <EmptyState
+                  compact
+                  message="No scheduled appointments. Add one to see it here and on Upcoming."
+                />
               ) : (
                 <AppointmentList
                   items={upcomingScheduled}
@@ -200,31 +268,7 @@ export default function VisitsSection({
           </div>
         </section>
 
-        {/* Past — the encounter history follows Upcoming without an entry form
-          between the two lists. */}
-        <section data-testid="visits-past">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <h3 className="section-label">Past</h3>
-            {showHousehold && (
-              <Link
-                href={EPISODES_HREF}
-                className="shrink-0 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
-                data-testid="household-view-link"
-              >
-                View illness episodes →
-              </Link>
-            )}
-          </div>
-          <EncounterList
-            items={encounters}
-            defaultDate={now}
-            linkedRecordCounts={linkedRecordCounts}
-            episodes={encounterEpisodes}
-            multiView={
-              multi ? { actingProfileId: scope.actingProfileId } : undefined
-            }
-          />
-        </section>
+        {!upcomingEmpty && pastSection}
       </div>
     </ProviderOptionsProvider>
   );
