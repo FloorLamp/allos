@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { deleteActivityFromForm } from "./helpers";
+import { comboboxRows, deleteActivityFromForm } from "./helpers";
 // Issue #1422: the two hardware affordances the phone-at-the-gym flow depends on —
 // a screen wake lock while the live editor is on screen, and haptic cues for the two
 // moments you're not looking at the phone. Both are progressive enhancement: absent
@@ -78,9 +78,7 @@ const vibrations = (page: Page) =>
 // entry-ergonomics documents, same as live-workout.spec.ts).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

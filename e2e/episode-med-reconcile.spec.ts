@@ -3,7 +3,7 @@ import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page, type Locator, type Browser } from "@playwright/test";
 import Database from "better-sqlite3";
 import { followLink, loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { comboboxRows, settledClick } from "./helpers";
 import { hashPasswordSync } from "../lib/password";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { createFixtureProfile } from "./fixture-profile";
@@ -92,11 +92,7 @@ async function pickMedication(
   await input.fill(value);
   // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
   const root = "page" in scope ? scope.page() : scope;
-  const option = root
-    .getByRole("listbox")
-    .getByRole("option")
-    .filter({ hasText: value })
-    .first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
+  const option = comboboxRows(root).filter({ hasText: value }).first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
   await expect(option).toBeVisible();
   await option.click();
 }

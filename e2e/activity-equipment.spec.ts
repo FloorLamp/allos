@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import {
+  comboboxRows,
   deleteActivityFromForm,
   followLink,
   hydratedClick,
@@ -279,9 +280,7 @@ test("the strength picker creates and selects a travel machine without losing th
     // pick before it can save) — and its "Barbell" variant is what the quick-add
     // defaults the new row's category from.
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-    await page
-      .getByRole("listbox")
-      .getByRole("option")
+    await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
@@ -409,9 +408,7 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
     );
 
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-    await page
-      .getByRole("listbox")
-      .getByRole("option")
+    await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
@@ -508,9 +505,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);
     await page.getByPlaceholder(/What did you do/).fill("Rowing");
-    await page
-      .getByRole("listbox")
-      .getByRole("option")
+    await comboboxRows(page)
       .filter({ hasText: "Rowing" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();

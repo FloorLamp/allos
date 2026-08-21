@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  comboboxRows,
   followLink,
   hydratedClick,
   settledClick,
@@ -51,9 +52,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
     page.getByPlaceholder(/What did you do/),
     "Back Squat"
   );
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: "Back Squat" })
     .first() // first-ok: transient combobox list this spec just opened by typing the name
     .click();

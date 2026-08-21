@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import {
+  comboboxRows,
   hydratedClick,
   setRpeColumn,
   settledClick,
@@ -67,9 +68,7 @@ async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
 // the entry-ergonomics / live-workout specs document).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

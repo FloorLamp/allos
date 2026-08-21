@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { comboboxRows } from "./helpers";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_FORM_INJURY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -17,9 +18,7 @@ import { E2E_LOGIN_FORM_INJURY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // Pick an activity in the editor's exercise combobox (match by substring).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: the exercise combobox dropdown on this spec's own FORM_INJURY session (mirrors form-fill-paths' pickActivity)
     .click();

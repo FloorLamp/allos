@@ -182,7 +182,11 @@ describe("droppedGroups: the dev-time guard", () => {
   });
 
   it("stays SILENT on the single-vocabulary picker, the benign case", () => {
-    const view = groupedRelevanceView(named("Lift", 400), () => "Exercises", ROWS);
+    const view = groupedRelevanceView(
+      named("Lift", 400),
+      () => "Exercises",
+      ROWS
+    );
     expect(view.droppedGroups).toEqual([]);
   });
 });

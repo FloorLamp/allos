@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { deleteActivityFromForm } from "./helpers";
+import { comboboxRows, deleteActivityFromForm } from "./helpers";
 
 // #2870 step 3 — ONE URL. Starting a workout creates its row up front
 // (create-at-start) and stands the tab on the session's canonical page; the
@@ -11,9 +11,7 @@ import { deleteActivityFromForm } from "./helpers";
 // Same shape-tolerant combobox pick the live-workout spec documents.
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

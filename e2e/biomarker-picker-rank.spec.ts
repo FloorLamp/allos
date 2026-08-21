@@ -133,6 +133,22 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
         BIOMARKER_PICKER_OVERDUE
       );
 
+      // EVERY BUCKET IS REPRESENTED BEFORE TYPING (#3410), and the list is still
+      // eight rows at most. This is the widest grouped picker that ships — the
+      // ungrouped clear row plus three headers — so it is where the invariant is
+      // cheapest to watch. It is NOT a discriminating regression test: no shipped
+      // picker today has enough rows ahead of its last bucket to lose one, which is
+      // exactly why #3410 was latent and was found by BUILDING a new picker (#3220)
+      // rather than by reading the component. The exhaustive rule — two ranked
+      // vocabularies concatenated, and what happens when there are more groups than
+      // rows — is pinned in lib/__tests__/relevance-view.test.ts.
+      await expect(groups(listbox)).toHaveText([
+        RELEVANT_GROUP,
+        "Metrics",
+        YOUR_GROUP,
+      ]);
+      expect(await options(listbox).count()).toBeLessThanOrEqual(8);
+
       // A pick writes the series key into cmpA — the param the overlay reads, which
       // #1675 did not touch.
       await listbox

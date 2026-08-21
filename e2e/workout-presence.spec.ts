@@ -10,7 +10,7 @@ import {
   PRESENCE_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { deleteActivityFromForm, hydratedClick } from "./helpers";
+import { comboboxRows, deleteActivityFromForm, hydratedClick } from "./helpers";
 import { shiftDateStr } from "@/lib/date";
 
 // Derived workout presence (issue #921), driven end-to-end:
@@ -27,9 +27,7 @@ import { shiftDateStr } from "@/lib/date";
 // the live-workout spec documents).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

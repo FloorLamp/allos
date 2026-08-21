@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
+  comboboxRows,
   expectNoClippedContent,
   openDashboardAll,
   settledClick,
@@ -259,11 +260,7 @@ async function expand(cockpit: Locator) {
 async function pickMedication(page: Page, scope: Page | Locator, name: string) {
   await settledFill(page, scope.getByRole("combobox", { name: "Name" }), name);
   // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
-  const option = page
-    .getByRole("listbox")
-    .getByRole("option")
-    .filter({ hasText: name })
-    .first(); // first-ok: the typed medication narrows this transient list
+  const option = comboboxRows(page).filter({ hasText: name }).first(); // first-ok: the typed medication narrows this transient list
   await expect(option).toBeVisible();
   await option.click();
 }

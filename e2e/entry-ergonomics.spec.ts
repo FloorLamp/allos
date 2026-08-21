@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  comboboxRows,
   followLink,
   hydratedClick,
   openCombobox,
@@ -19,9 +20,7 @@ import {
 // live component; see PR #547 review thread.)
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

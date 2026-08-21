@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { expectNoClippedContent, setRpeColumn, settledFill } from "./helpers";
+import {
+  comboboxRows,
+  expectNoClippedContent,
+  setRpeColumn,
+  settledFill,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
@@ -31,9 +36,7 @@ import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 // Type an exercise name into the combobox and take the matching option.
 async function pickActivity(page: Page, name: string): Promise<void> {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

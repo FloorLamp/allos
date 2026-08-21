@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { expectNoClippedContent, settledFill } from "./helpers";
+import { comboboxRows, expectNoClippedContent, settledFill } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Issue #1613 — the activity form's sticky exercise header at phone width.
@@ -28,9 +28,7 @@ async function pickActivity(
   name: string
 ): Promise<void> {
   await field.fill(name);
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();

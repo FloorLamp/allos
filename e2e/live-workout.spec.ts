@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  comboboxRows,
   deleteActivityFromForm,
   hydratedClick,
   settledClick,
@@ -28,11 +29,7 @@ import {
 async function pickActivity(page: Page, name: string) {
   const field = page.getByPlaceholder(/What did you do/);
   await settledFill(page, field, name);
-  const option = page
-    .getByRole("listbox")
-    .getByRole("option")
-    .filter({ hasText: name })
-    .first(); // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  const option = comboboxRows(page).filter({ hasText: name }).first(); // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
   await hydratedClick(page, option);
   await expect(field).toHaveValue(name);
 }

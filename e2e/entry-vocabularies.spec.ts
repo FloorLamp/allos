@@ -8,6 +8,8 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
+import { openCombobox } from "./helpers";
+import { openFact } from "./intake-form-helpers";
 import {
   allergyWarnings,
   allergyWarningRows,
@@ -40,6 +42,10 @@ const THIOPURINE_MED = "E2E VOCAB Azathioprine";
 const PGX_LAB = "E2E VOCAB Lab";
 const CARE_ITEM = "E2E VOCAB scope";
 const DRIFTED_ALLERGEN = "Anti-inflammatories";
+// #3100's field. The stack that already exists, and a name for a brand-new one.
+const STACK_MEMBER = "E2E VOCAB Magnesium";
+const EXISTING_STACK = "E2E VOCAB Evening";
+const NEW_STACK = "E2E VOCAB Travel";
 const PICKED_ALLERGEN = "NSAIDs (non-steroidal anti-inflammatory drugs)";
 
 function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
@@ -98,6 +104,12 @@ function seedMeds(): void {
          VALUES (1, ?, 1, 'medication', 'must')`
       ).run(name);
     }
+    // One supplement already in a named stack, so the stack picker has a vocabulary
+    // to offer (#3100). Deleted by cleanupMeds with the rest of the MED_PREFIX rows.
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation, stack)
+       VALUES (1, ?, 1, 'supplement', 'should', ?)`
+    ).run(STACK_MEMBER, EXISTING_STACK);
   });
 }
 
@@ -363,5 +375,41 @@ test.describe("Entry vocabularies (#1676)", () => {
         .locator('[data-testid^="upcoming-item-careplan:"]')
         .filter({ hasText: CARE_ITEM })
     ).toHaveCount(0);
+  });
+  // #3100 — the field #1676's sweep walked past, because its scope rule was "the
+  // vocabulary exists in lib/" and a stack has no vocabulary file: its names are
+  // whatever THIS profile has already called one. Everything that groups by stack
+  // groups by EXACT STRING, so retyping was the only way in and one capital letter
+  // minted a second cluster.
+  test("stack: the field offers this profile's own stacks, and a new name is still one keystroke away", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/nutrition?tab=supplements");
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+    const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(addDialog).toBeVisible();
+
+    // The stack lives on the identity fact, beside Brand and Product.
+    const editor = await openFact(page, "identity", addDialog);
+    const field = editor.getByLabel("Stack (optional)");
+    const listbox = await openCombobox(page, field);
+
+    // The vocabulary is the profile's own, and picking stores the EXACT string the
+    // existing cluster is keyed by — which is the whole point of offering it.
+    await listbox
+      .getByRole("option", { name: EXISTING_STACK, exact: true })
+      .click();
+    await expect(field).toHaveValue(EXISTING_STACK);
+
+    // …and it suggests without gating (#1676): a stack this profile has never named
+    // is still accepted, through the explicit "Use …" row.
+    await settledFill(page, field, NEW_STACK);
+    await page
+      .getByRole("listbox")
+      .getByRole("button", { name: new RegExp(`Use .*${NEW_STACK}`) })
+      .click();
+    await expect(field).toHaveValue(NEW_STACK);
+    // Nothing is submitted: the form is never saved, so no row is written.
   });
 });

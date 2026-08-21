@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { comboboxRows } from "./helpers";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
@@ -48,9 +49,7 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: "Naproxen" })
     .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
@@ -109,9 +108,7 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: "Dextromethorphan" })
     .first() // first-ok: transient combobox list this spec just opened (Dextromethorphan suggestion); first match is intended
     .click();
@@ -143,9 +140,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
+  await comboboxRows(page)
     .filter({ hasText: "Naproxen" })
     .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
@@ -184,9 +179,7 @@ test("a pediatric formulation persists from quick add to the medication list", a
 
     await quickAdd.getByLabel("Name").fill("Acetaminophen");
     // Portaled listbox (#3271) — resolved from the page, not the panel.
-    await page
-      .getByRole("listbox")
-      .getByRole("option")
+    await comboboxRows(page)
       .filter({ hasText: "Acetaminophen" })
       .first() // first-ok: transient combobox list this spec just opened (Acetaminophen suggestion); first match is intended
       .click();

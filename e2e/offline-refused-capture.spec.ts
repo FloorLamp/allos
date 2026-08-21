@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, openDashboardAll, settledClick } from "./helpers";
+import {
+  comboboxRows,
+  hydratedClick,
+  openDashboardAll,
+  settledClick,
+} from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_LOGIN_MOBILITY,
@@ -309,9 +314,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     // queue — and be refused.
     await context.setOffline(true);
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-    await page
-      .getByRole("listbox")
-      .getByRole("option")
+    await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
       .click();

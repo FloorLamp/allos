@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  comboboxRows,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
@@ -98,9 +103,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // (2) An organization shows the building icon instead.
     await provider.fill("quest");
     await expect(
-      page
-        .getByRole("listbox")
-        .getByRole("option")
+      comboboxRows(page)
         .filter({ hasText: /Quest/ })
         .first() // first-ok: transient list opened by typing "quest"; first Quest match is intended
         .getByTestId("provider-icon-organization")
@@ -131,11 +134,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("combobox", { name: "Provider" })
       .fill("Combobox Clinic");
     await expect(
-      page
-        .getByRole("listbox")
-        .getByRole("option")
-        .filter({ hasText: NEW_PROVIDER })
-        .first() // first-ok: transient list opened by typing; first match is the just-created provider
+      comboboxRows(page).filter({ hasText: NEW_PROVIDER }).first() // first-ok: transient list opened by typing; first match is the just-created provider
     ).toBeVisible();
   });
 
@@ -157,9 +156,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // labels the native prefix-only datalist would have missed.
     const specialty = editForm.getByRole("combobox", { name: "Specialty" });
     await specialty.fill("cardio");
-    const match = page
-      .getByRole("listbox")
-      .getByRole("option")
+    const match = comboboxRows(page)
       .filter({ hasText: /cardio/i })
       .first(); // first-ok: transient NUCC list opened by typing "cardio"; first match is the intended pick
     await expect(match).toBeVisible();
@@ -232,11 +229,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     );
     await expect(
       // Portaled listbox (#3271) — resolved from the page, not the form.
-      page
-        .getByRole("listbox")
-        .getByRole("option")
-        .filter({ hasText: CUSTOM_SITUATION })
-        .first() // first-ok: transient list opened by typing; the created situation is the intended option
+      comboboxRows(page).filter({ hasText: CUSTOM_SITUATION }).first() // first-ok: transient list opened by typing; the created situation is the intended option
     ).toBeVisible();
   });
 
@@ -272,6 +265,68 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("button", { name: "Add dose", exact: true })
       .click();
     await expect(doseEditor.getByLabel("Amount")).toHaveCount(2);
+    // No submit — nothing is written to the DB.
+  });
+
+  // #3316 — the keyboard model was there and worked; it was only UNOBSERVABLE. The
+  // listbox held plain buttons, so `role="listbox"` had no `option` children at all
+  // and arrowing moved a highlight nothing announced. This drives the wiring an
+  // assistive technology actually reads: what the rows ARE, and which one the input
+  // says is active.
+  test("the listbox exposes options, and the input names the active one (#3316)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/nutrition?tab=supplements");
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(addCard).toBeVisible();
+
+    const field = addCard.getByLabel("Name");
+    await settledFill(page, field, "vitamin");
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+
+    // (1) The rows are OPTIONS. Before #3316 this locator found nothing: a listbox
+    // with no items, as far as the a11y tree was concerned.
+    const options = listbox.getByRole("option");
+    expect(await options.count()).toBeGreaterThan(1);
+
+    // (2) The input NAMES the active row, and (3) that row is the selected one.
+    const firstId = await options.nth(0).getAttribute("id");
+    expect(firstId).toBeTruthy();
+    await expect(field).toHaveAttribute("aria-activedescendant", firstId!);
+    await expect(options.nth(0)).toHaveAttribute("aria-selected", "true");
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "false");
+
+    // (4) Arrowing MOVES it — the assertion the old highlight could not support.
+    await field.press("ArrowDown");
+    const secondId = await options.nth(1).getAttribute("id");
+    expect(secondId).not.toBe(firstId);
+    await expect(field).toHaveAttribute("aria-activedescendant", secondId!);
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+
+    // (5) Enter takes the row aria-activedescendant names — the same row, not the
+    // one that merely looks highlighted.
+    const secondLabel = (await options.nth(1).innerText()).trim();
+    await field.press("Enter");
+    await expect(field).toHaveValue(secondLabel);
+
+    // (6) THE FREE-TEXT ROW IS A COMMAND, NOT AN OPTION. "Use '<query>'" acts on what
+    // the user typed; it does not name something the picker offers, so exposing it as
+    // an `option` would tell a screen-reader user the vocabulary contains their typo.
+    // It stays a button — and aria-activedescendant still names it, which announces
+    // it as the button it is.
+    await settledFill(page, field, SUPP);
+    const useRow = listbox.getByRole("button", {
+      name: new RegExp(`Use .*${SUPP}`),
+    });
+    await expect(useRow).toBeVisible();
+    await expect(listbox.getByRole("option")).toHaveCount(0);
+    await expect(field).toHaveAttribute(
+      "aria-activedescendant",
+      (await useRow.getAttribute("id"))!
+    );
     // No submit — nothing is written to the DB.
   });
 });
