@@ -427,6 +427,11 @@ describe("a grouped dose amount reaches the UL warnings (#3153)", () => {
 
 // The spellings that mean "thousands group" and nothing else. Written as escapes:
 // six of the seven are invisible or near-invisible in an editor.
+// U+2013. Named rather than inlined for the same reason the separators above are
+// escapes: an en dash and a hyphen are the same mark to a reader's eye, and telling them
+// apart is the entire point of the guard that admits it.
+const EN_DASH = "\u2013";
+
 const UNAMBIGUOUS_SEPARATORS: { sep: string; why: string }[] = [
   { sep: "\u00a0", why: "no-break space — the word-processor grouping space" },
   { sep: "\u202f", why: "narrow no-break space — the SI/ISO-80000 spelling" },
@@ -550,6 +555,90 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
       value: 60,
       unit: "mg",
     });
+
+    // AND THE EN DASH A DOCUMENT PIPELINE MAKES OF THAT HYPHEN. U+2013 is not a
+    // spelling anybody chooses — it is what a word processor's autocorrect, a PDF
+    // exporter or an OCR pass PRODUCES from a typed "-". No sweep of this repo can
+    // evidence it, because every file here is hand-authored TypeScript; the path that
+    // carries it is persistDocumentImport, which is where real pharmacy printouts land.
+    expect(readDoseQuantity(`Omega${EN_DASH}3 1000 mg`)).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+    expect(readDoseQuantity(`Omega${EN_DASH}3 60 mg`)).toEqual({
+      kind: "quantity",
+      value: 60,
+      unit: "mg",
+    });
+  });
+
+  // WHY THE Omega-3 REGRESSION BELOW CANNOT BE NARROWED AWAY, and this is the assertion
+  // that closes the question rather than asserting it closed.
+  //
+  // The obvious rescue for "Omega 3 1000 mg" is to also refuse to start after
+  // LETTER-THEN-SPACE. It does rescue it. It also un-refuses "Vitamin C 1 000 mg" —
+  // where the characters before the "1" are letter-then-space too — and hands back a
+  // confident ZERO on one of the commonest label shapes there is. That trade gives up a
+  // safe refusal to reinstate the exact defect this whole change exists to kill, so the
+  // narrowing is not available and the regression is the shape of the problem rather
+  // than a corner somebody failed to cut.
+  it("keeps refusing a space group after a letter — the narrowing that must not happen", () => {
+    expect(readDoseQuantity("Vitamin C 1 000 mg")).toEqual({
+      kind: "unreadable",
+    });
+    expect(readDoseQuantity("Vitamin C 1 500 mg")).toEqual({
+      kind: "unreadable",
+    });
+    // Each would be a confident 0 mg and 500 mg respectively if the guard grew a
+    // letter-then-space clause.
+    expect(readDoseQuantity("Vitamin C 1 000 mg")).not.toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+  });
+
+  // THE SLASH IS NOT IN THE GUARD, asserted through the notations that would notice.
+  // "/" already means something beside a digit here — a combination strength, a
+  // concentration, a fraction — and all three are parsed on purpose by COUNT and
+  // RATIO_TAIL in lib/prescription-parse.ts. Adding it to the lookbehind to rescue
+  // "B/12", which nobody writes, would put a second job on a character that is already
+  // load-bearing.
+  it("leaves the slash notations exactly as they were", () => {
+    // THE ASSERTIONS THAT ACTUALLY PIN THE RULING. Keeping "5/325 mg" working does not
+    // — it reads the same whether or not "/" is in the guard, because the ambiguous
+    // branch never engages there. What putting "/" in the guard DOES do is stop the
+    // branch engaging after a slash, which hands a confident ZERO back for a
+    // space-grouped number in a denominator or after a fraction. Measured, both ways.
+    expect(readDoseQuantity("1/2 000 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("5/325 000 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("1/2 000 mg")).not.toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+
+    // And the notations the slash carries are untouched, so this is not passing by
+    // refusing everything with a slash in it.
+    expect(readDoseQuantity("5/325 mg")).toEqual({
+      kind: "quantity",
+      value: 325,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("100 mg/5 mL")).toEqual({
+      kind: "quantity",
+      value: 100,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("1 mg/kg")).toEqual({
+      kind: "quantity",
+      value: 1,
+      unit: "mg",
+    });
+    // A fraction is not a count of two, and a range still counts its lower bound.
+    expect(doseUnitCount("1/2 tablet")).toBe(1);
+    expect(doseUnitCount("1-2 tablets")).toBe(2);
   });
 
   // THE PRICE OF REFUSING EVERY DIGIT-SPACE-DIGIT RUN, pinned so it is a decision
@@ -567,9 +656,12 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   it("refuses a strength after a SPACE-separated standalone name digit, knowingly", () => {
     expect(readDoseQuantity("Omega 3 1000 mg").kind).toBe("unreadable");
     expect(readDoseQuantity("Omega 3 60 mg").kind).toBe("unreadable");
-    // The grouping name loses the digit too, which is the silent half of this trade.
-    // It is asserted in lib/__tests__/dose-number-readers.test.ts, beside the rest of
-    // the naming half — this file does not read names.
+    // The grouping name loses the digit too — "Omega", not "Omega 3" — and that is
+    // asserted in lib/__tests__/dose-number-readers.test.ts beside the rest of the
+    // naming half, since this file does not read names. It is NOT the silent kind of
+    // wrong: the row renders as "Omega" with an unreadable-dose gap beside it, so a
+    // person meets something visibly odd and can fix it. That is the whole difference
+    // from a confident zero, which renders as a plausible row nobody looks at twice.
   });
 
   // THE MISTYPED GROUPS, both directions (#3451, second round). A group too SHORT and

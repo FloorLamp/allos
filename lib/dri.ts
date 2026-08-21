@@ -238,6 +238,23 @@ export interface ParsedQuantity {
 // — and spells it "Omega 3" never. A hyphen binds the digit to the name exactly as a
 // letter does, so it belongs on the same side of the guard.
 //
+// AND THE EN DASH IS IN IT FOR A REASON NO CORPUS OVER THIS TREE COULD SHOW. U+2013 is
+// not a spelling anybody CHOOSES; it is what a word processor's autocorrect, a PDF
+// exporter or an OCR pass PRODUCES from a typed "-". Every file here is hand-authored
+// TypeScript, so a sweep of the tree will report zero occurrences forever — and
+// `persistDocumentImport`, the path that carries real discharge summaries and pharmacy
+// printouts into `intake_item_doses.amount`, is exactly where the substitution arrives.
+// Same evidence class as U+0027 above: admitted on how the input reaches us, not on what
+// the character is for.
+//
+// THE SLASH IS DELIBERATELY NOT IN IT, and the difference is that "/" ALREADY MEANS
+// SOMETHING beside digits in this domain. "5/325 mg" is US e-prescribing for a
+// combination strength, "100 mg/5 mL" is a concentration and "1/2 tablet" is everyday
+// warfarin dosing — all three parsed on purpose by `COUNT` and `RATIO_TAIL` in
+// lib/prescription-parse.ts. Putting it in this lookbehind would interact with a
+// notation that carries meaning, in order to rescue "B/12", which nobody writes. A
+// character that is already load-bearing next to a digit does not get a second job here.
+//
 // THE BRANCH REFUSES EVERY DIGIT-SPACE-DIGIT RUN, NOT ONLY A WELL-FORMED GROUP, and
 // getting that wrong first is worth recording. A first cut matched the THOUSANDS-GROUP
 // SHAPE — `\d{1,3}(?: \d{3})+`, one to three digits then groups of exactly three. It
@@ -466,9 +483,11 @@ export type DoseQuantityReading =
 // larger patterns, where a loose `|` would rewrite their precedence.
 //
 // The space branch's own guards, each earning its place:
-//   (?<![A-Za-z0-9_\-.,seps])  a name may end in a digit, welded to a letter
+//   (?<![A-Za-z0-9_\-\u2013.,seps])
+//                             a name may end in a digit, welded to a letter
 //                             ("B12 500 mcg", "CoQ10 200 mg") or held by a hyphen
-//                             ("Omega-3 1000 mg"), and there the space is not inside a
+//                             ("Omega-3 1000 mg") or the en dash a document pipeline
+//                             turned that hyphen into. There the space is not inside a
 //                             number at all. This guard is the ONLY thing keeping those
 //                             names readable, which is why the branch below can afford
 //                             to demand nothing about the group's size.
@@ -489,7 +508,7 @@ export type DoseQuantityReading =
 // engine backtracks to the ordinary branch at the same position. Deleting it left every
 // assertion in the five separator suites green, and reverting the decimal tail beside it
 // still went red — so its absence is measured, not assumed.
-const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_\-.,${THOUSANDS_SEP_CHARS}])\d+(?: \d+)+(?:[.,]\d+)?`;
+const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_\-\u2013.,${THOUSANDS_SEP_CHARS}])\d+(?: \d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
 export const WRITTEN_NUMBER_SCAN = String.raw`(?:${AMBIGUOUS_SPACE_NUMBER}|(?<![\d.,${THOUSANDS_SEP_CHARS}])[.,${THOUSANDS_SEP_CHARS}]?${WRITTEN_NUMBER})`;
 const DOSE_QUANTITY_RE = new RegExp(

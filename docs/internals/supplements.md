@@ -1493,7 +1493,7 @@ claim in both directions:
   the same answer `"2,5 mg"` gets.
 
 **A name may end in a digit,** which is why the space branch refuses to start after a
-letter, digit, underscore or hyphen: `B12 500 mcg`, `CoQ10 200 mg`,
+letter, digit, underscore, hyphen or en dash: `B12 500 mcg`, `CoQ10 200 mg`,
 `Vitamin D3 5000 IU` and `Omega-3 1000 mg` all read exactly as they did before. That
 guard is the whole reason the branch can afford to demand nothing about the group's
 size. `lib/__tests__/prescription-parse.test.ts` already pinned `"B12 500 mcg"` with
@@ -1511,6 +1511,31 @@ literals from the tracked tree plus 50 label shapes, dropping it changes **four*
 beyond the two it fixes, all one family — a name ending in a standalone digit held by a
 _space_ (`Omega 3 1000 mg`, a spelling this tree never uses), which is structurally
 identical to a mistyped group and cannot be separated from one by any local rule.
+
+**The en dash is in that class for a reason no sweep of this repo could show.** U+2013 is
+not a spelling anybody chooses — it is what a word processor's autocorrect, a PDF exporter
+or an OCR pass _produces_ from a typed `-`. Every file here is hand-authored TypeScript,
+so a corpus over the tree reports zero occurrences forever, while `persistDocumentImport`
+— the path carrying real discharge summaries and pharmacy printouts into
+`intake_item_doses.amount` — is exactly where the substitution arrives. Same evidence
+class as U+0027: admitted on how the input reaches us, not on what the character is for.
+
+**The slash is deliberately not in that class,** and the difference is that `/` already
+means something beside a digit here: `5/325 mg` is a combination strength, `100 mg/5 mL`
+a concentration, `1/2 tablet` everyday warfarin dosing — all three parsed on purpose by
+`COUNT` and `RATIO_TAIL`. Giving a load-bearing character a second job to rescue `B/12`,
+which nobody writes, is the wrong trade.
+
+**What the widening costs, as a direction rather than a string:** a name ending in a
+digit, spelled with a **space** instead of a hyphen, followed by a strength —
+`Omega 3 1000 mg`. There is no narrowing available. The obvious one (also refuse after
+letter-then-space) rescues it and simultaneously un-refuses `Vitamin C 1 000 mg`, handing
+back a confident zero on one of the commonest label shapes there is; that assertion is
+pinned in `lib/__tests__/dri.test.ts`. **The remedy, if complaints appear, is to normalise
+the name — not the reader.** `Omega-3` already reads and is what this tree spells twenty
+times over; widening the reader to accept the spaced form is the same edit as reading
+`1 0000 mg` as a number. The dose becomes a visible unreadable gap and the name renders as
+`Omega` — visibly odd and correctable, which is exactly what a confident zero is not.
 
 **One residual, named rather than implied.** The rule keys on a plain space, so a
 separator that is neither a space nor a member of the read set still restarts the scan:

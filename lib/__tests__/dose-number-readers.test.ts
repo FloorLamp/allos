@@ -295,13 +295,31 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(cleanMedicationName("CoQ10 200 mg")).toBe("CoQ10");
     expect(cleanMedicationName("Omega-3 1000 mg")).toBe("Omega-3");
     expect(cleanMedicationName("Vitamin D3 5000 IU")).toBe("Vitamin D3");
-    // AND THE ONE THE TRADE COSTS, asserted so it is a decision rather than a
-    // surprise. "Omega 3" written with a SPACE is structurally identical to a mistyped
-    // group ("3 1000" and "1 0000" are the same shape), so refusing every
-    // digit-space-digit run takes this with it. The dose becomes a visible unreadable
-    // gap; the grouping name silently loses its digit, which is why it is written down.
-    // Measured cost over 58,769 tree strings: this spelling and nothing else, and the
-    // tree never uses it.
+    // The en dash a document pipeline makes of that hyphen is on the same side.
+    expect(cleanMedicationName(`Omega${"\u2013"}3 1000 mg`)).toBe(
+      `Omega${"\u2013"}3`
+    );
+
+    // AND THE ONE THE TRADE COSTS, asserted so it is a decision rather than a surprise.
+    // THE DIRECTION, not the string: a name ending in a digit, spelled with a SPACE
+    // instead of a hyphen, followed by a strength. "Omega 3 1000 mg" is the example;
+    // the class is every name of that shape.
+    //
+    // It is structurally identical to a mistyped group — "3 1000" and "1 0000" are the
+    // same string to any local rule — and the narrowing that would rescue it
+    // (also refusing after letter-then-space) un-refuses "Vitamin C 1 000 mg" and hands
+    // back a confident zero, which is pinned in lib/__tests__/dri.test.ts. So there is
+    // no narrowing available, and the cost is the shape of the problem.
+    //
+    // THE REMEDY, IF ANYONE COMPLAINS, IS TO NORMALISE THE NAME — NOT THE READER.
+    // "Omega-3" already reads, and it is what this tree spells twenty times over.
+    // Widening the reader to accept the spaced form is the thing that must not happen:
+    // it is the same edit as reading "1 0000 mg" as a number.
+    //
+    // Measured cost over 58,769 tree string literals plus 50 label shapes: this
+    // spelling and nothing else, and the tree never uses it. The dose becomes a visible
+    // unreadable gap and the name renders as "Omega" — visibly odd, and correctable,
+    // which is precisely what a confident zero is not.
     expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega");
   });
 
