@@ -57,6 +57,13 @@ export default function IllnessCockpitBody({
   // cockpit; the acting profile's own cockpit omits it (active-profile write path).
   const target = crossProfile ? profileId : undefined;
 
+  // THE SEAMS STEP DOWN ONE UNIT ON A PHONE (#3460). The cockpit is the single
+  // tallest block on a sick day's dashboard, and its internal rhythm was 16px at
+  // every seam. Below `sm` each `*-4` seam becomes `*-3` and the section headers'
+  // `mb-3` becomes `mb-2`; from `sm` up the rhythm is unchanged. NOTHING is removed
+  // — every symptom, med, reading, temperature and footer control is still here,
+  // which is the safety ruling this spacing pass is explicitly not allowed to touch
+  // — and no row loses its 40px tap floor (`min-h-10` is untouched everywhere).
   return (
     <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
       <EpisodeLatestReadings
@@ -66,14 +73,14 @@ export default function IllnessCockpitBody({
         nowIso={nowIso}
         linkMedication
         feverFree={feverFree}
-        className="mb-4 border-b border-black/5 pb-4 dark:border-white/5"
+        className="mb-3 border-b border-black/5 pb-3 sm:mb-4 sm:pb-4 dark:border-white/5"
         temperatureIdentity={temperatureIdentity}
         medicationIdentity={medicationIdentity}
       />
 
       {canWrite && controls ? (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <h3 className="mb-2 text-sm font-semibold text-slate-700 sm:mb-3 dark:text-slate-200">
             Symptoms
           </h3>
           {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
@@ -107,7 +114,7 @@ export default function IllnessCockpitBody({
       ) : null}
 
       {canWrite && controls?.staleNudge && (
-        <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
+        <div className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
           <StaleEpisodeNudge
             episodeId={controls.staleNudge.episodeId}
             profileId={target}
@@ -123,7 +130,7 @@ export default function IllnessCockpitBody({
         ownsSharedProfileControls &&
         (controls.prnMeds.length > 0 || !crossProfile) && (
           <div
-            className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
+            className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
             data-testid="cockpit-prn"
           >
             {/* Its inline quick-add reads the SAME ranked medication options the
@@ -143,7 +150,7 @@ export default function IllnessCockpitBody({
         )}
 
       {canWrite && controls && episode.id != null && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-4 dark:border-white/5">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
           <CockpitEndEpisode
             episodeId={episode.id}
             profileId={target}
