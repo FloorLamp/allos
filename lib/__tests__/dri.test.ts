@@ -487,12 +487,12 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
     // Silent: nothing may be invented, so no warning and no total. Identical outcome
     // to the confident zero, which is why the assertion below it is the load-bearing
     // one.
-    expect(stackUlWarnings([active("Niacin", ["1 000 mg"])], 40, "male")).toEqual(
-      []
-    );
-    expect(summarizeStack([active("Niacin", ["1 000 mg"])], 40, "male")).toEqual(
-      []
-    );
+    expect(
+      stackUlWarnings([active("Niacin", ["1 000 mg"])], 40, "male")
+    ).toEqual([]);
+    expect(
+      summarizeStack([active("Niacin", ["1 000 mg"])], 40, "male")
+    ).toEqual([]);
     // Visible: `unreadable` is the reading the write boundary refuses and the
     // data-quality gap lists. `quantity 0` is the reading nothing anywhere can see.
     expect(readDoseQuantity("1 000 mg").kind).toBe("unreadable");

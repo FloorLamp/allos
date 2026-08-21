@@ -87,7 +87,11 @@ const CORPUS: {
   { amount: "1\u0027000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
   { amount: "1\u066c000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
   { amount: "1 000 mg", trueMg: null, was: "000 mg \u2192 0" },
-  { amount: "2 500 mg", trueMg: null, was: "500 mg \u2014 or 2500, and nobody can tell" },
+  {
+    amount: "2 500 mg",
+    trueMg: null,
+    was: "500 mg \u2014 or 2500, and nobody can tell",
+  },
 ];
 
 // The quantity a reader's answer ultimately contributes to a total, whatever shape the
@@ -236,14 +240,22 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
   //
   // So this asks the question the heading actually makes: same string, same answer.
   // ─────────────────────────────────────────────────────────────────────────────
-  const SEPARATORS: { sep: string; name: string; reads: 1000 | "unreadable" }[] = [
+  const SEPARATORS: {
+    sep: string;
+    name: string;
+    reads: 1000 | "unreadable";
+  }[] = [
     { sep: ",", name: "U+002C comma (the control)", reads: 1000 },
     { sep: "\u00a0", name: "U+00A0 no-break space", reads: 1000 },
     { sep: "\u202f", name: "U+202F narrow no-break space", reads: 1000 },
     { sep: "\u2009", name: "U+2009 thin space", reads: 1000 },
     { sep: "\u2007", name: "U+2007 figure space", reads: 1000 },
     { sep: "\u2019", name: "U+2019 Swiss apostrophe", reads: 1000 },
-    { sep: "\u0027", name: "U+0027 apostrophe (Swiss, ASCII keyboard)", reads: 1000 },
+    {
+      sep: "\u0027",
+      name: "U+0027 apostrophe (Swiss, ASCII keyboard)",
+      reads: 1000,
+    },
     { sep: "\u066c", name: "U+066C Arabic thousands separator", reads: 1000 },
     { sep: " ", name: "U+0020 space", reads: "unreadable" },
   ];
@@ -313,7 +325,15 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     // The six that now READ move to `recovered-from-zero` — the bucket whose whole
     // definition is "read as zero before the fix, correct now", which is exactly what
     // happened to them.
-    for (const sep of ["\u00a0", "\u202f", "\u2009", "\u2007", "\u2019", "\u0027", "\u066c"]) {
+    for (const sep of [
+      "\u00a0",
+      "\u202f",
+      "\u2009",
+      "\u2007",
+      "\u2019",
+      "\u0027",
+      "\u066c",
+    ]) {
       expect(classifyDoseAmount(`1${sep}000 mg`)).toBe("recovered-from-zero");
     }
     // And the controls stay put, so this is not passing by reclassifying everything.

@@ -203,7 +203,7 @@ const CASES: {
     grouping: "Niacin",
     amount: "1 000 mg",
     reads: "unreadable",
-    was: "000 mg, read as 0 \u2014 28x the 35 mg UL, and the item filed as \"Niacin 1\"",
+    was: '000 mg, read as 0 \u2014 28x the 35 mg UL, and the item filed as "Niacin 1"',
   },
   // THE SWISS SPELLING, which is the half that must READ. An apostrophe between digit
   // groups is a thousands separator and nothing else, so refusing it would make the app
