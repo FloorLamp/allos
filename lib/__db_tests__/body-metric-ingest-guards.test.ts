@@ -63,6 +63,7 @@ describe("upsertBodyMetrics collapses same-day readings deterministically (#605)
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow("2024-07-01", WITHINGS)?.weight_kg).toBe(76.1);
     // Re-sending the SAME batch (either order) is a no-op — no perpetual churn.
@@ -72,6 +73,7 @@ describe("upsertBodyMetrics collapses same-day readings deterministically (#605)
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(upsertBodyMetrics(profileId, [late, early], WITHINGS)).toEqual({
       inserted: 0,
@@ -79,6 +81,7 @@ describe("upsertBodyMetrics collapses same-day readings deterministically (#605)
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow("2024-07-01", WITHINGS)?.weight_kg).toBe(76.1);
   });
@@ -121,6 +124,7 @@ describe("upsertBodyMetrics partial-window guard (#606)", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow("2024-07-10", HC)?.resting_hr).toBe(58);
   });
@@ -146,6 +150,7 @@ describe("upsertBodyMetrics partial-window guard (#606)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow("2024-07-11", HC)).toMatchObject({
       resting_hr: 60,

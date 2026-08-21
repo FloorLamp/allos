@@ -55,6 +55,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // Identical re-ingest → unchanged (a no-op that info.changes would mis-report).
     expect(upsertActivities(profileId, rows, SOURCE)).toEqual({
@@ -63,6 +64,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // Mutate one field → updated.
     const changed = [{ ...rows[0], title: "Evening run" }];
@@ -72,6 +74,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // And a metric-only change (avg_hr) is also an update.
     const metricChanged = [{ ...changed[0], avg_hr: 150 }];
@@ -81,6 +84,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -110,6 +114,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     const stored = db
       .prepare(
@@ -176,6 +181,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(upsertBodyMetrics(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
@@ -183,6 +189,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const changed = [{ ...rows[0], weight_kg: toKg(79.5, "kg") }];
     expect(upsertBodyMetrics(profileId, changed, SOURCE)).toEqual({
@@ -191,6 +198,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // A window carrying only an already-stored subset is still unchanged (merge
     // fills no gap and overwrites nothing).
@@ -201,6 +209,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -227,6 +236,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     const stored = db
       .prepare(
@@ -263,6 +273,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     expect(second.ids).toEqual([]);
     const stored = db
@@ -289,6 +300,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(upsertMetricSamples(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
@@ -296,6 +308,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const changed = [{ ...rows[0], value: 8500 }];
     expect(upsertMetricSamples(profileId, changed, SOURCE)).toEqual({
@@ -304,6 +317,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -317,6 +331,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(upsertHrMinutes(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
@@ -324,6 +339,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const changed = [{ ...rows[0], bpm: 72 }];
     expect(upsertHrMinutes(profileId, changed, SOURCE)).toEqual({
@@ -332,6 +348,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -354,6 +371,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(first.ids).toHaveLength(1);
 
@@ -364,6 +382,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // The row id is still returned on an unchanged pass (reconcileFlags needs it).
     expect(second.ids).toEqual(first.ids);
@@ -376,6 +395,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(third.ids).toEqual(first.ids);
   });

@@ -469,20 +469,6 @@ export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
 // a shape test that a future source could accidentally match.
 const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 
-// The stored rows an incoming interval may supersede: same profile / metric / source /
-// origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
-// row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
-// merge all belong to it). The overlap test itself is deliberately NOT in this SQL:
-// `started_at` is a documented `mixed`-shape column, so string comparison would answer
-// a different question than instants do. SQL narrows on the indexed
-// (profile_id, metric, date) prefix; lib/metric-window-overlap.ts decides.
-const SUPERSEDE_CANDIDATES_SQL = `SELECT id, date, started_at, ended_at, edited
-     FROM metric_samples
-    WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
-      AND date >= ? AND date <= ?
-      AND started_at <> ?
-    ORDER BY id`;
-
 // Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
 // (or two origins inside Health Connect) each keep their own row. `ended_at` is
@@ -537,9 +523,30 @@ export function upsertMetricSamples(
 
   // ── overlap-supersede (#3424), Health Connect only ────────────────────────────
   const supersedes = source === OVERLAP_SUPERSEDE_SOURCE;
-  const findOverlaps = supersedes ? db.prepare(SUPERSEDE_CANDIDATES_SQL) : null;
+  // The stored rows an incoming interval may supersede: same profile / metric / source /
+  // origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
+  // row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
+  // merge all belong to it). The overlap test itself is deliberately NOT in this SQL:
+  // `started_at` is a documented `mixed`-shape column, so string comparison would answer
+  // a different question than instants do. SQL narrows on the indexed
+  // (profile_id, metric, date) prefix; lib/metric-window-overlap.ts decides.
+  const findOverlaps = supersedes
+    ? db.prepare(
+        `SELECT id, date, started_at, ended_at, edited
+           FROM metric_samples
+          WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
+            AND date >= ? AND date <= ?
+            AND started_at <> ?
+          ORDER BY id`
+      )
+    : null;
+  // The delete re-states `profile_id` even though every id it is given came out of the
+  // profile-scoped SELECT above. Cheap, and it means a future refactor that widened the
+  // candidate query could not turn this into a cross-profile delete.
   const dropOverlap = supersedes
-    ? db.prepare("DELETE FROM metric_samples WHERE id = ?")
+    ? db.prepare(
+        "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+      )
     : null;
   // Distinct edit-locked rows this batch held OUT of a supersede. A Set, because one
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
@@ -644,7 +651,7 @@ export function upsertMetricSamples(
         ) as MetricWindow[];
         const plan = planSupersede(r, candidates);
         for (const victim of plan.supersede) {
-          dropOverlap.run(victim.id);
+          dropOverlap.run(victim.id, profileId);
           counts.superseded++;
         }
         for (const held of plan.locked) {
