@@ -65,7 +65,7 @@ const OVERRIDE_ENV = "ALLOS_VITEST_TIMEOUT_MS";
  * the test checks.
  */
 export function resolveTestTimeoutMs(
-  env: NodeJS.ProcessEnv = process.env
+  env: Readonly<Record<string, string | undefined>> = process.env
 ): number {
   if (env.CI) return DEFAULT_TEST_TIMEOUT_MS;
   const raw = env[OVERRIDE_ENV];
