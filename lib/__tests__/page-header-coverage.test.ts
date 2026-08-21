@@ -166,7 +166,7 @@ const H1_SCALE_OK: Record<string, string> = {
   "app/(app)/onboarding/page.tsx":
     "The onboarding flow's own title. It runs as a standalone first-run surface with no PageHeader above it, so this h1 IS the page heading rather than a section competing with one.",
   "components/ProfilePassport.tsx":
-    "The passport artifact's own title (the person's name). It is the page heading in the standalone /share and print renders, where no app chrome exists; on /profile it reads as the artifact's masthead, not a section heading.",
+    "The passport artifact's own title (the person's name), and since #3242 it carries page scale ONLY in the share render: the standalone /share surface has no PageHeader above it, so that h1 is the document's one page heading. Inside the app the same name is an h2 at section scale under the page's own 'Health passport' h1, and gets 24px back only under print, where the sheet IS the artifact.",
 };
 
 function walkTsx(dir: string): string[] {

@@ -269,9 +269,10 @@ test.describe("goal facts-with-editors (#3220)", () => {
       "the title field is DOM-owned: `defaultValue` seeds it and an onChange mirrors it into the chips, so the registry still has a server value to compare against"
     ).toBe("");
 
-    // A scrim tap is a GESTURE dismissal, which is the one ModalShell guards
-    // (#2774): it asks before throwing a dirty form away. Escape and the Close
-    // button are deliberately unguarded, so neither would test this.
+    // A scrim tap is a GESTURE dismissal, which ModalShell guards (#2774): it asks
+    // before throwing a dirty form away. Escape joined that path in #3420 and would
+    // now test the same guard by a second route; the Close button is still
+    // deliberately unguarded, so it would not.
     //
     // AIMED AT A CORNER, not at the backdrop's centre. The scrim is `fixed inset-0`,
     // so its centre is underneath the centred dialog panel and a default click

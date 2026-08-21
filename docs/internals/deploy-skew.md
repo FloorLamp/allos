@@ -113,6 +113,16 @@ Two registries report dirtiness and they mean different things:
 - a **draft-backed** form (`components/useFormDraft.ts`) holds its content in
   IndexedDB. A reload over it is lossless once the debounce has been flushed — which
   is a step in the reload SEQUENCE, not an input to the decision.
+
+  That only holds while the form is REGISTERED to be flushed. Until #3371's fix round
+  `markUnsavedWork` was reached from the post-debounce `write()` alone, so for 600ms
+  after every keystroke a draft-backed form was in neither registry: `captureUnsavedWork()`
+  answered `{ ok: true }` over an empty drafts store and the reload took the typing.
+  A hidden tab skips the quiet window entirely, so that needed no waiting to reach.
+  The hook now registers from the first keystroke. **The exclusion and the registration
+  are one fact** — move the registration back behind the debounce and the exclusion is
+  a hole again. `e2e/update-notice.spec.ts` is what says so out loud.
+
 - **any other form holding unsaved input** — reported by the #1878 dirty-form
   registry, which already sees every `<form>` in the app — has no durable copy at all.
   `markUnrecoverableWork` is that axis, and `hold` is the answer.

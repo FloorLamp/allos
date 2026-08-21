@@ -254,13 +254,18 @@ export default async function HouseholdPage() {
       <PageHeader
         title="Household"
         subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
+        // The action gets its OWN LINE on a phone (#3403). Two affordances plus the
+        // title do not fit 360px, and the shell clips rather than scrolls, so an
+        // un-wrapping row would hide one of them outright. This used to be bought by
+        // letting the group SHRINK beside the title and wrap inside itself; stacking is
+        // the stronger version of the same thing — the title gets the full width too,
+        // and the group still wraps within its own line. From `sm` up it is beside the
+        // title exactly as before.
+        stackActionBelowSm
         action={
           // Cross-profile surfaces live here, and the medicine cabinet is one of them
           // (#1522) — a household-scoped registry that lost its nav row and is now
           // reached from the stable parents that consume it.
-          // Wraps on a phone for the same reason the Medications header does: two
-          // affordances plus the title do not fit 360px, and the shell clips rather
-          // than scrolls, so an un-wrapping row would hide one of them outright.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={countVisiblePools(profileIds)} />
             <Link

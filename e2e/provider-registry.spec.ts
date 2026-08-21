@@ -89,6 +89,58 @@ test.describe("Provider registry closeout", () => {
       .click();
   });
 
+  test("the affiliation picker answers for itself; Escape asks, Close does not (#3371, #3420)", async ({
+    page,
+  }) => {
+    // THE ENTRY A `name=` GREP MISSES, driven. This dialog's <form> carries
+    // `name="name"` and looks tracked — but that name lands on ProviderCombobox's
+    // `type="hidden"` input, which the #1878 registry excludes outright, while the
+    // VISIBLE field carries none. So the discard guard was silently absent and a
+    // dismissal threw the pick away with nothing asking.
+    await page.goto(`/providers/${providerId("Dr. Cora Bell (e2e)")}`);
+    const affiliations = page.getByTestId("provider-affiliations");
+    await affiliations.getByTestId("affiliation-add-toggle").click();
+    const dialog = page.getByRole("dialog", { name: "Link affiliation" });
+    const form = dialog.getByTestId("affiliation-add-form");
+
+    // THE FORM'S OWN ANSWER FIRST, so a broken marker cannot red as a dismissal bug.
+    await expect(
+      form,
+      "an untouched picker has nothing to lose and must say so"
+    ).toHaveAttribute("data-unsaved", "false");
+    await dialog.getByLabel("Affiliated with").fill("Ng Family Practice");
+    await expect(
+      form,
+      "the picker must publish its own unsaved state — its only name= lands on a hidden input the registry excludes"
+    ).toHaveAttribute("data-unsaved", "true");
+
+    // The combobox list is open on top of the dialog and owns the first Escape
+    // (`useFocusTrap` yields to `[data-escape-layer="true"]`, #3409). Close it
+    // deliberately, so the assertion below is unambiguously about the NEXT press.
+    const picker = page.locator('[data-escape-layer="true"]');
+    await expect(picker).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+
+    await page.keyboard.press("Escape");
+    const confirm = page.getByTestId("confirm-dialog");
+    await expect(
+      confirm,
+      "Escape over a dialog holding an unsaved pick must route through the discard confirm (#3420)"
+    ).toBeVisible();
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
+    await expect(dialog).toBeVisible();
+    await expect(confirm).toHaveCount(0);
+
+    // AND THE HALF THE RULING LEFT ALONE. The Close button is a named control the
+    // person aimed at, so it still closes outright — no confirm — on the very same
+    // dirty form that just refused Escape. If this ever starts prompting, #3420's
+    // stated scope has been widened by accident.
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  });
+
   test("provider activity links to clinical destinations, not source documents", async ({
     page,
   }) => {

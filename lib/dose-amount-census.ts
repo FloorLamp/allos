@@ -15,7 +15,35 @@
 // `readDoseQuantity` / `readGroupedNumber`. A SQL or regex copy would be a second
 // version of the rule #3153 finished unifying, and a census that disagrees with the
 // engine it describes is worse than no census.
-import { readDoseQuantity, readGroupedNumber } from "./dri";
+//
+// WHAT IT MEASURES IS THE STORED STRING, AND THAT IS ITS WHOLE SCOPE (#3444).
+//
+// Worth stating, because this census once reported a clean population over rows where a
+// number had been fabricated. It was not misclassifying them: it was reading a string
+// that had ALREADY been rewritten before it reached the column. The medication import
+// parsed "Bisoprolol 2,5 mg" with a grammar that could not span a comma, stored "5 mg",
+// and `classifyDoseAmount("5 mg")` correctly answered `always-correct` — because "5 mg"
+// IS read the same before and after #3153. Both halves of that are true and the
+// population was still wrong.
+//
+// The moral is about SCOPE, not accuracy. This census answers "what does the text in
+// this column read as, before the fix and after". It cannot answer "does that text say
+// what the document said", because the document is not in its hand. That question lives
+// on the write path and is guarded there now (lib/prescription-parse.ts, swept by
+// lib/__tests__/dose-number-readers.test.ts).
+//
+// ROWS IMPORTED BEFORE #3444 STILL CARRY THE REWRITE, and this census will go on
+// calling them `always-correct` — honestly, because as strings they are. They are not
+// unfindable, though: the item kept the NAME the strength was taken from, so running
+// the corrected `strengthFromName` over `intake_items.name` and comparing it with the
+// dose row's `amount` identifies them exactly. Nothing here does that, and no repair is
+// implied by it. A comma decimal is the shape this file's own rule refuses to resolve,
+// so the fix is a person confirming their own label — never a migration guessing one.
+import {
+  readDoseQuantity,
+  readGroupedNumber,
+  WRITTEN_NUMBER_SCAN,
+} from "./dri";
 
 export type DoseAmountCensusBucket =
   // No number+unit in the string at all ("1 capsule") — never affected, then or now.
@@ -55,7 +83,20 @@ export function preFixDoseReading(
 // Every unambiguous number+unit anywhere in the string, in order. An unreadable amount
 // whose parenthetical restates the dose has a recoverable original sitting in the row;
 // one that does not is a row only a person can repair.
-const EVERY_QUANTITY_RE = /(\d+(?:[.,]\d+)*)\s*(mcg|µg|ug|mg|g|iu)\b/gi;
+//
+// GUARDED WITH THE SHARED SCAN, and this one is not decoration (#3444). What this
+// function returns is offered to a PERSON as the reading they might confirm, so a
+// fabricated candidate is worse than no candidate at all — it is a wrong dose with a
+// button next to it. Spelled with its own unguarded scan, it read ".125 mg" as a
+// recoverable "125 mg": the census would have looked at a naked decimal, declared the
+// row repairable, and proposed the exact thousandfold number the guard exists to
+// prevent. Caught by the DB tier when the naked-decimal rows were added, not by
+// inspection. `PRE_FIX_DOSE_RE` above stays unguarded on purpose — it answers what the
+// row read as YESTERDAY, and yesterday had no guard.
+const EVERY_QUANTITY_RE = new RegExp(
+  String.raw`(${WRITTEN_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
+  "gi"
+);
 
 export function recoverableCandidates(amount: string | null): string[] {
   if (!amount) return [];
