@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledBoxes } from "./helpers";
 import type { Locator } from "@playwright/test";
 
 // The phone density sweep (#3466), measured at 390×844 rather than read off a
@@ -79,7 +80,7 @@ test("class A: a sub-panel inside a card pads less than the card does (#3466)", 
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 });
 
-test("class C: a section seam is one notch tighter than its desktop scale (#3466)", async ({
+test("class C: a section seam is one notch tighter ON SCREEN, not just in the cascade (#3466)", async ({
   page,
 }) => {
   test.slow();
@@ -89,9 +90,27 @@ test("class C: a section seam is one notch tighter than its desktop scale (#3466
   const hero = main.getByTestId("bio-age-hero");
   await expect(hero.getByTestId("bio-age-value")).toBeVisible();
 
-  // `mb-6` (24) on desktop, 16 here. Asserted as an equality, not a ceiling: a
-  // "<= 24" would also pass on a seam that had collapsed to nothing.
+  // THE COMPUTED VALUE IS NOT THE SEAM, and this test used to assert only the
+  // computed value — which passed identically whether the step reached the screen
+  // or not. It did not: `bio-age-hero` is the ONLY child of its section, so its
+  // bottom margin collapses straight through and meets the next stack sibling's
+  // margin-top. Adjacent margins collapse to the LARGER, so a 16 that lands beside
+  // an un-stepped 24 renders 24 and the computed 16 is a fact about the cascade
+  // that no reader can see. `app/(app)/longevity/page.tsx`'s stack is stepped too
+  // now, and the assertion below is the one that would have caught it.
   expect(await px(hero, "margin-bottom")).toBe(16);
+
+  // The RENDERED gap, between the two elements the seam actually separates. Read
+  // with settledBoxes rather than two independent boundingBox calls, which can
+  // describe a layout that never existed.
+  const [bioAge, fitness] = await settledBoxes([
+    main.getByTestId("longevity-bio-age"),
+    main.getByTestId("longevity-fitness"),
+  ]);
+  const renderedGap = fitness.y - (bioAge.y + bioAge.height);
+  // An equality, not a ceiling: `<= 24` would also pass on a seam collapsed to
+  // nothing, and `>= 16` would pass on the 24 this test exists to reject.
+  expect(renderedGap).toBe(16);
 });
 
 test("class A + the tap floor: appointment rows tighten without shrinking (#3466)", async ({
