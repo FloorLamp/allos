@@ -86,6 +86,12 @@
           "title": "Starting a workout and picking an exercise quickly no longer leaves two activities for one session",
           "kind": "fix",
           "issues": [3441]
+        },
+        {
+          "pr": 3494,
+          "title": "On a phone, panels inside a card and the gaps between sections both step down a notch, so less of the screen is padding",
+          "kind": "feature",
+          "issues": [3466]
         }
       ]
     },
