@@ -351,7 +351,17 @@ export function useFormDraft<E = undefined>({
       // THE REGISTRATION, and it is NOT gated on `ownsUnsavedMarker`: the marker is
       // an attribute for the discard guard, this is the flush contract for the reload
       // gate, and every draft-backed form owes the second one whether or not it
-      // publishes the first.
+      // publishes the first. `entryRef` is declared below and read here through the
+      // closure, which is the same indirection `write` already uses — the callback
+      // only ever runs after the component body has finished.
+      //
+      // COSTS A `Map.set` PER KEYSTROKE AND NOTHING MORE: `markUnsavedWork` notifies
+      // only on a TRANSITION, so re-marking an already-dirty key wakes no subscriber.
+      // Re-marking is not waste either — it is what keeps the entry's `capture`
+      // closure pointing at the CURRENT mount, which is the property the registry's
+      // own comment asks callers for.
+      const k = keyRef.current;
+      if (k != null) markUnsavedWork(k, dirty, entryRef.current);
       return dirty;
     },
     [active, ownsUnsavedMarker, scopeRef, formRef, snapshot]
@@ -366,19 +376,12 @@ export function useFormDraft<E = undefined>({
     const snap = snapshot();
     const sig = draftSig(snap.fields, snap.extra);
     if (initialSigRef.current == null) initialSigRef.current = sig;
-    // Free: the signature this decision needs is the signature the marker needs.
-    // This also registers (or releases) the flush — `write` no longer calls
-    // `markUnsavedWork` itself, because doing so here is what closed the debounce
-    // hole, and a second call would just be a second place to keep in step.
-    syncUnsavedWork(sig);
-    if (
-      !shouldPersistDraft({
-        currentSig: sig,
-        initialSig: initialSigRef.current,
-      })
-    )
-      return Promise.resolve();
-    markUnsavedWork(k, true, entryRef.current);
+    // Free: the signature this decision needs is the signature the marker needs, and
+    // it is the same predicate again — so this ALSO registers (or releases) the
+    // flush, and `write` no longer calls `markUnsavedWork` itself. Registering from
+    // `schedule` instead is what closed the debounce hole; keeping a second call here
+    // would just be a second place to hold the same fact.
+    if (!syncUnsavedWork(sig)) return Promise.resolve();
     lastWrittenSigRef.current = sig;
     return putDraft({
       key: k,
