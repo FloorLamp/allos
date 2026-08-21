@@ -42,7 +42,6 @@ import ScheduleGrid from "@/app/(app)/immunizations/ScheduleGrid";
 import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
 import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
 import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
-import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
 import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRecordActions";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
@@ -228,11 +227,7 @@ export default function ImmunizationsSection({
           >
             <ImmunizationForm action={addImmunization} defaultDate={now} />
           </AddEntryPanel>
-          <ImmunizationRecordActions
-            extraItems={({ close, itemClass }) => (
-              <MyChartImport menuItemClass={itemClass} onNavigate={close} />
-            )}
-          />
+          <ImmunizationRecordActions includeImport />
         </div>
 
         {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
@@ -244,11 +239,14 @@ export default function ImmunizationsSection({
             of their OWN under the sentence and shrink to a running-text scale;
             from `md` up, where there is room for both on one line, nothing
             changes. */}
-        <div className="mb-6 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between">
+        <div className="mb-4 flex flex-col gap-1 md:mb-6 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {subtitle}
           </p>
-          <div className="flex gap-4 md:gap-2">
+          <div
+            className="flex gap-3 md:gap-2"
+            data-testid="immunization-summary-counts"
+          >
             <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
             <Summary count={summary.dueCount} label="Due" tone="amber" />
             <Summary
@@ -329,7 +327,10 @@ export default function ImmunizationsSection({
           // table again.
           <div className="mb-6 sm:card sm:overflow-hidden sm:p-0">
             <ScrollFade className="sm:max-h-[70vh] sm:overflow-y-auto">
-              <ResponsiveTable className="w-full">
+              <ResponsiveTable
+                className="w-full"
+                data-testid="immunization-vaccines-table"
+              >
                 <thead>
                   <tr className="border-b border-black/5 dark:border-white/10">
                     <SortableHeader
@@ -414,9 +415,18 @@ export default function ImmunizationsSection({
                         >
                           {a.lastDate ?? "—"}
                         </Td>
+                        {/* "Doses 0" is not a fact about this vaccine, it is the
+                            absence of one — and on the phone card it is a whole
+                            line saying nothing, on the rows (unknown / due) that
+                            dominate the list. It keeps its CELL so the desktop
+                            grid stays aligned; it just claims no card slot
+                            (#531–#534, "label by what DIFFERS"). A required-dose
+                            count is real information even at zero, so a vaccine
+                            with a known series still shows "0 / 2". */}
                         <Td
                           slot="meta"
                           label="Doses"
+                          empty={a.dosesReceived === 0 && a.dosesRequired == null}
                           className="hidden text-slate-600 md:table-cell dark:text-slate-300"
                         >
                           {a.dosesReceived}
@@ -575,6 +585,18 @@ export default function ImmunizationsSection({
   );
 }
 
+// THE COUNTS ARE A LINE ON A PHONE AND A TILE ROW ON A DESKTOP (#3408, item 6).
+//
+// Three stacked `text-2xl` numerals with a caption under each is ~100px of
+// vertical space to say "1 overdue, 0 due, 3 no record" — on the one viewport
+// where vertical space is the scarce resource, directly above the list those
+// three numbers are ABOUT. Below `md` the same three facts read as one running
+// line at `text-sm`, which is ~20px; from `md` up, where the row sits beside the
+// status sentence with room to spare, the tiles are unchanged.
+//
+// ONE AUTHORED NODE, NOT TWO (#2305). The number and its label are the same two
+// elements at both widths — `inline`/`md:block` and a scale swap — so there is no
+// hidden twin holding a stale count.
 function Summary({
   count,
   label,
@@ -590,9 +612,15 @@ function Summary({
     slate: "text-slate-500 dark:text-slate-400",
   };
   return (
-    <div className="text-center">
-      <div className={`text-2xl font-bold ${tones[tone]}`}>{count}</div>
-      <div className="text-xs text-slate-400">{label}</div>
+    <div className="flex items-baseline gap-1 md:block md:text-center">
+      <span
+        className={`text-sm font-semibold md:block md:text-2xl md:font-bold ${tones[tone]}`}
+      >
+        {count}
+      </span>
+      <span className="text-xs text-slate-500 md:block md:text-slate-400 dark:text-slate-400">
+        {label}
+      </span>
     </div>
   );
 }

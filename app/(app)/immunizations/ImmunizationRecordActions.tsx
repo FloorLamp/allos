@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconCopy, IconCheck } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import MyChartImport from "./MyChartImport";
 import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
@@ -33,9 +34,16 @@ import { createImmunizationShareLinkAction } from "./actions";
 // THIS FILE OWNS THE MENU RATHER THAN THE PANE, because it owns the share MODAL:
 // hoisting the three items into ImmunizationsSection would have left the modal's
 // state stranded a component away from the item that opens it, or forced a second
-// copy of it. The import LINK is passed in (`extraItems`) because it is the
-// PANE's, not the record's — this component stays the record's print/share pair
-// and simply hosts the fold.
+// copy of it.
+//
+// AND IT RENDERS THE IMPORT ITEM ITSELF, VIA A BOOLEAN. The first attempt took a
+// render prop — `extraItems({ close, itemClass })` — so the pane could compose
+// its own item. That is a FUNCTION crossing the server/client boundary from a
+// Server Component, which React refuses, and the whole Immunizations route
+// rendered its error boundary. (Measured, not reasoned: every assertion on the
+// route failed as "element(s) not found" against a page reading "Something went
+// wrong".) A boolean crosses that boundary fine, and the coupling it costs is one
+// import of a sibling in this same directory.
 //
 // EVERY ITEM KEEPS ITS TESTID AND ITS ACCESSIBLE NAME. Reaching them is now two
 // taps instead of one; what they are and what they do is unchanged, which is why
@@ -44,15 +52,12 @@ const PRINT_HREF = "/immunizations/print" as AppRoute;
 const MANAGE_HREF = "/profile" as AppRoute;
 
 export default function ImmunizationRecordActions({
-  extraItems,
+  includeImport = false,
 }: {
-  // Pane-level items that belong in the same fold — the import door today. A
-  // render prop, so the caller composes its own link and this file does not grow
-  // a second vocabulary of "kinds of menu item".
-  extraItems?: (helpers: {
-    close: () => void;
-    itemClass: string;
-  }) => React.ReactNode;
+  // Fold the pane's import door in with the record's own rare actions. The
+  // caller is a Server Component, so this is a BOOLEAN and not a render prop —
+  // see above.
+  includeImport?: boolean;
 } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [open, setOpen] = useState(false);
@@ -120,7 +125,9 @@ export default function ImmunizationRecordActions({
             >
               Share immunization record
             </button>
-            {extraItems?.({ close, itemClass: MENU_ITEM })}
+            {includeImport && (
+              <MyChartImport menuItemClass={MENU_ITEM} onNavigate={close} />
+            )}
           </>
         )}
       </OverflowMenu>

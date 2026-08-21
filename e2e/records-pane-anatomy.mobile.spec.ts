@@ -32,6 +32,24 @@ import { hydratedClick } from "./helpers";
 // The `mobile` project's viewport (playwright.config.ts). The issue's screenshots
 // were taken at 430; 390 is below `md` too and is the harder of the two.
 const VIEWPORT_HEIGHT = 844;
+
+// WHERE THE VACCINE LIST STARTS, AND WHAT THE NUMBER IS BOUNDING.
+//
+// MEASURED at 390×844 on 2026-08-21, against an origin/main control worktree at
+// a78a6b93 and this branch, same harness, one reading each:
+//
+//   origin/main   the list's `<table>` began at y=530
+//   this branch   it begins at y=393
+//
+// The 137px is the pane's own name, its orientation prose, three standing
+// rare-cadence controls and a three-tile count block, all removed or folded.
+// The ceiling below is that measurement plus ~60px of headroom, and the headroom
+// is for the two things that legitimately move it: a longer status sentence
+// wrapping to a third line, and the no-birthdate Notice on a profile that has
+// none. It is NOT a viewport-fraction bound — "fits on the first screen" was
+// already true before this issue and is the wrong question. The question is
+// whether the chrome came off, so the number is a comparison, not a guess.
+const LIST_TOP_CEILING = 455;
 // The app's own touch floor (app/globals.css, `tap-target`; #644).
 const TAP_FLOOR = 44;
 
@@ -61,24 +79,31 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     const intro = page.getByTestId("records-pane-intro");
     await expect(intro).toBeAttached();
 
-    // NEITHER THE TITLE NOR THE PROSE IS PAINTED. The selected chip above has
-    // just named this pane; the h2 restated it at section scale and the prose
-    // added read-once orientation, together the top of the stack that pushed the
-    // first record down.
-    await expect(
-      intro.getByRole("heading", { name: "Immunizations" })
-    ).toBeHidden();
+    // THE PROSE IS NOT PAINTED. `hidden md:block`, so this one is a plain
+    // visibility question.
     await expect(
       intro.getByText("Your vaccination record measured against")
     ).toBeHidden();
 
-    // THE HEADING IS STILL IN THE DOCUMENT, `sr-only`. "Renders neither" is about
-    // pixels: a pane whose content sits under no heading at all leaves an
-    // assistive-tech reader navigating by heading with nothing between the hub's
-    // sr-only h1 and a card's h3.
-    await expect(
-      intro.locator("h2", { hasText: "Immunizations" })
-    ).toBeAttached();
+    // THE HEADING IS `sr-only` — IN THE DOCUMENT, COSTING NO PIXELS. "Renders
+    // neither" is about pixels: a pane whose content sits under no heading at all
+    // leaves an assistive-tech reader navigating by heading with nothing between
+    // the hub's `sr-only` h1 and a card's h3.
+    //
+    // ASSERTED BY MEASUREMENT, NOT BY `toBeHidden()`. An `sr-only` element is a
+    // 1px clipped box, not `display: none`, so Playwright reports it VISIBLE and
+    // a `toBeHidden` here fails against a correct implementation — measured, on
+    // the first run of this file. The claim that matters is that it takes no
+    // vertical space, and that is what this reads.
+    const heading = intro.getByRole("heading", { name: "Immunizations" });
+    await expect(heading).toBeAttached();
+    const headingBox = await heading.boundingBox();
+    expect(headingBox!.height).toBeLessThanOrEqual(1);
+
+    // And the WRAPPER reserves nothing either: an element that paints nothing
+    // must not keep its margin (#2399's rule, one level up).
+    const introBox = await intro.boundingBox();
+    expect(introBox!.height).toBe(0);
 
     // RESULTS INHERITS IT WITH NO RESULTS-SPECIFIC CODE, because the decision
     // landed in components/PaneIntro.tsx rather than under /records (#3236).
@@ -86,6 +111,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     const resultsIntro = page.getByTestId("results-pane-intro");
     await expect(resultsIntro).toBeAttached();
     await expect(resultsIntro.locator("p")).toBeHidden();
+    expect((await resultsIntro.boundingBox())!.height).toBe(0);
   });
 
   test("navigation chips and filter chips are visibly different things", async ({
@@ -176,16 +202,19 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
     await page.keyboard.press("Escape");
 
-    // THE FIRST VACCINE IS ON THE FIRST SCREEN. This is the issue's headline
-    // complaint stated as a number: it sat roughly a full viewport down behind
-    // the pane's own name, its prose, and a standing row of four button species.
-    const firstVaccine = page
-      .getByTestId("records-immunizations")
-      .locator('a[href^="/immunizations/"]')
-      .first(); // first-ok: the topmost row of the sorted list, which is the row this measures
-    await expect(firstVaccine).toBeVisible();
-    const box = await firstVaccine.boundingBox();
-    expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT / 2);
+    // THE LIST STARTS 137px HIGHER THAN IT DID. The issue's headline complaint,
+    // stated as the number it was measured as — see LIST_TOP_CEILING.
+    //
+    // ADDRESSED BY THE TABLE, NOT BY "the first /immunizations/ link". That was
+    // the first spelling, and it silently measured the PRINT LINK, whose href is
+    // `/immunizations/print` — so the control read 315 for a control on the
+    // toolbar and would have reported this change as a 92px REGRESSION. A check
+    // that matches something other than what it names is worse than no check.
+    const table = page.getByTestId("immunization-vaccines-table");
+    await expect(table).toBeVisible();
+    const box = await table.boundingBox();
+    expect(box!.y).toBeLessThan(LIST_TOP_CEILING);
+    expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT);
   });
 
   test("the vaccine list is cards below sm, sortable without header cells", async ({
@@ -200,7 +229,10 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // the claim is not "no table element" (the issue's AC says that, and it
     // contradicts the machinery the issue's own body asks for). The claim is that
     // the table PRESENTS as cards: its header row is not painted.
-    const table = section.locator("table.table-cards");
+    // Addressed by its own marker, not by `table.table-cards`: the pane holds a
+    // SECOND responsive table (the "All recorded doses" history), so the class
+    // selector is a strict-mode violation — which is the guard doing its job.
+    const table = section.getByTestId("immunization-vaccines-table");
     await expect(table).toBeAttached();
     await expect(table.locator("thead")).toBeHidden();
 
@@ -219,19 +251,38 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     await expect(page).toHaveURL(/dir=asc/);
   });
 
-  test("an instrument reading's actions fold, Remove still confirms, and the crisis line stands", async ({
+  test("the mental-health crisis line stands at phone width", async ({
     page,
   }) => {
     await page.goto("/records/specialty/mental-health");
 
-    // THE INVARIANT THIS ISSUE MAY NOT TOUCH. The crisis affordance renders
-    // standing, above the history, at every width — no item in #3408 may demote
-    // it, and the ⋯ fold below is exactly the kind of change that could have.
-    await expect(
-      page.getByTestId("instrument-crisis-support-link")
-    ).toBeVisible();
+    // THE INVARIANT THIS ISSUE MAY NOT TOUCH: the crisis affordance renders
+    // standing, above the history, at every width — never folded, never below the
+    // fold. Nothing in #3408 may demote it, and folding this pane's row actions
+    // is exactly the kind of change that could have.
+    const link = page.getByTestId("instrument-crisis-support-link");
+    await expect(link).toBeVisible();
+    const box = await link.boundingBox();
+    expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT);
 
-    const row = page.getByTestId(/^instrument-reading-\d+$/).first(); // first-ok: any reading row — the claim is about the row SHAPE, identical on every one
+    // It is ABOVE the history, not merely present somewhere on the page.
+    const history = page.getByTestId("instrument-history");
+    const historyBox = await history.boundingBox();
+    expect(box!.y).toBeLessThan(historyBox!.y);
+  });
+
+  test("an instrument reading's actions fold behind the row's sheet", async ({
+    page,
+  }) => {
+    // SUBSTANCE USE, NOT MENTAL HEALTH, because that is where a reading is
+    // SEEDED. scripts/seed.ts gives profile 1 one synthetic AUDIT-C score; the
+    // mental-health pane is deliberately score-free in the shared seed (its own
+    // spec administers questionnaires and owns those writes, #716). Both surfaces
+    // render the SAME InstrumentHistoryList — that is the whole reason the
+    // component exists — so the row shape asserted here is the row shape there.
+    await page.goto("/records/specialty/substance-use");
+
+    const row = page.getByTestId(/^substance-reading-\d+$/).first(); // first-ok: any reading row — the claim is about the row SHAPE, identical on every one
     await expect(row).toBeVisible();
 
     // NO STANDING DESTRUCTIVE BUTTON. A permanently rendered red "Remove" beside
