@@ -338,6 +338,19 @@ export interface ParsedPayload {
   vitals: NormVital[];
   skipped: number;
   details: HealthConnectSyncDetails;
+  // THE EXPORTER'S OWN STAMP ON THIS PUSH (`payload.timestamp`), as an absolute
+  // instant, or null when the payload states none this module can read.
+  //
+  // It is the only thing in a push that says WHEN the push happened, and #3424's
+  // overlap-supersede needs exactly that: a rule that decides freshness from arrival
+  // order lets an ordinary exporter RETRY delete the row that superseded it, and lets
+  // one chunk of a push delete another chunk's row. Stored per row on
+  // `metric_samples.pushed_at`, so a replay carries the same stamp as the push it
+  // replays and is therefore not newer than what it would delete.
+  //
+  // Zone-qualified or nothing: a bare local date-time would resolve against the
+  // SERVER's zone, which must never decide whether a health row is deleted.
+  pushedAt: string | null;
 }
 
 export interface HealthConnectOriginChoice {
@@ -642,6 +655,15 @@ function secondsBetween(start?: string, end?: string): number | null {
   return (b - a) / 1000;
 }
 
+// The exporter stamps every push with a top-level `timestamp`. Read it as an ABSOLUTE
+// instant or not at all: an offset-less spelling resolves against the process zone, and
+// a delete decision that moves with where the server runs is not a decision (#3424).
+function payloadPushInstant(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw)) return null;
+  return Number.isFinite(Date.parse(raw)) ? raw : null;
+}
+
 export function parseHealthConnectPayload(
   body: unknown,
   tz: string
@@ -654,10 +676,12 @@ export function parseHealthConnectPayload(
     vitals: [],
     skipped: 0,
     details: { warnings: [], origins: [] },
+    pushedAt: null,
   };
   if (!body || typeof body !== "object") {
     return out;
   }
+  out.pushedAt = payloadPushInstant((body as Record<string, unknown>).timestamp);
   const payload = body as Record<string, unknown>;
 
   // Records of a type the parser has no home for are dropped but COUNTED (issue #419)

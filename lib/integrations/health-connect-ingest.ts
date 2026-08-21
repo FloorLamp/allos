@@ -1,7 +1,10 @@
 import { writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
-import { compareWindowStarts } from "@/lib/metric-window-overlap";
+import {
+  compareWindowStarts,
+  staleBatchOverlaps,
+} from "@/lib/metric-window-overlap";
 import {
   emptyCounts,
   foldCounts,
@@ -131,19 +134,38 @@ export function ingestHealthConnectPayload(
         bodyMetrics = foldCounts([bodyMetrics, c]);
       }
     );
-    // ASCENDING started_at BEFORE THE CHUNK SPLIT (#3424). The overlap-supersede rule
-    // is order-dependent — an incoming interval deletes what it overlaps, which is
-    // lossy at the leading edge of the row it deletes, so a re-sent leading sliver has
-    // to land before the later bucket that would otherwise swallow it. upsertMetricSamples
+    // ASCENDING started_at BEFORE THE CHUNK SPLIT (#3424). The supersede is lossy at
+    // the leading edge of the row it deletes, so a re-sent leading sliver has to land
+    // before the later bucket that would otherwise swallow it. `upsertMetricSamples`
     // orders what it is GIVEN, but it only ever sees one chunk: `chunk()` slices in
-    // array order, so without a sort here a 1000-row boundary could still hand it a
-    // later bucket in an earlier chunk. Sorting the whole batch first is what makes the
+    // array order, so without a sort here a 1000-row boundary could hand it a later
+    // bucket in an earlier chunk. Sorting the whole batch first is what makes the
     // per-chunk order a global order.
+    const orderedSamples = [...parsed.samples].sort((a, b) =>
+      compareWindowStarts(a.started_at, b.started_at)
+    );
+    // PHASE 1 OVER THE WHOLE PAYLOAD, not per chunk (#3424, and the defect an
+    // adversarial review found in the first cut). A push taken across a timezone change
+    // carries BOTH anchorings, and only the fresher of an overlapping pair may be
+    // written. Computing that per chunk was defended with an arithmetic claim — "a
+    // `daily` push carries a handful of rows against INGEST_CHUNK_SIZE = 1000" — which
+    // is a claim about payload COMPOSITION and does not hold: the route accepts
+    // MAX_INGEST_RECORDS = 100_000, and any push whose rows sort across the 1000-row
+    // boundary between the two anchorings splits the pair. The chunk that then met the
+    // stale row alone resolved it by arrival and DELETED THE CURRENT ONE, which is worse
+    // than the double count it was fixing.
+    //
+    // Computed here, once, over every sample, and handed to every chunk. The rows it
+    // names are still delivered to the upsert (so they are still counted) — it decides
+    // which of them must not be stored, not which are skipped.
+    const batchStale = staleBatchOverlaps(orderedSamples);
     commitChunks(
-      [...parsed.samples].sort((a, b) =>
-        compareWindowStarts(a.started_at, b.started_at)
-      ),
-      (slice, sink) => upsertMetricSamples(profileId, slice, source, sink),
+      orderedSamples,
+      (slice, sink) =>
+        upsertMetricSamples(profileId, slice, source, sink, {
+          pushedAt: parsed.pushedAt,
+          batchStale,
+        }),
       (c) => {
         samples = foldCounts([samples, c]);
       }

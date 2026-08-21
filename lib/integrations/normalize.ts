@@ -29,7 +29,7 @@ import {
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
 import {
   compareWindowStarts,
-  isSupersedingInterval,
+  isSupersedingWindow,
   planSupersede,
   staleBatchOverlaps,
   supersedeDateRange,
@@ -469,6 +469,18 @@ export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
 // a shape test that a future source could accidentally match.
 const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 
+// THE SUPERSEDE'S DELETE, as a named constant so its profile scoping can be asserted.
+//
+// `profile_id` here is REDUNDANT BY CONSTRUCTION and that is the point: every id handed
+// to it came out of the profile-scoped candidate SELECT above, so removing this clause
+// changes no observable behaviour and no behavioural test can go red on it. A barrier
+// nothing observes is a barrier a future refactor deletes as noise — so
+// lib/__tests__/metric-window-overlap.test.ts asserts on this string instead, which is
+// the only assertion that CAN fail when only this half is removed. It is a shape
+// assertion on purpose, and it says so.
+export const SUPERSEDE_DELETE_SQL =
+  "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?";
+
 // Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
 // (or two origins inside Health Connect) each keep their own row. `ended_at` is
@@ -489,11 +501,29 @@ const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 // programming error (a parser mis-routing a body metric into the samples path), so
 // it is skipped and NOT counted rather than re-splitting the measure across two
 // tables.
+/** What the Health Connect ingest knows about a push that one CHUNK of it cannot. */
+export interface MetricSampleUpsertOptions {
+  /**
+   * The exporter's stamp on this push (`ParsedPayload.pushedAt`). Stored on every row
+   * written and required before any row may supersede another (#3424): without it the
+   * rule falls back on arrival order, which an exporter retry defeats.
+   */
+  pushedAt?: string | null;
+  /**
+   * Rows this push must not write because a FRESHER row of the same push covers their
+   * window. Computed by the caller over the WHOLE payload, because a chunk cannot see
+   * a mixed-anchoring pair the 1000-row split separated. Omitted, the batch handed to
+   * this call is treated as the whole payload and the set is computed here.
+   */
+  batchStale?: ReadonlySet<NormMetricSample>;
+}
+
 export function upsertMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
   source: string,
-  sink?: SyncRowSink
+  sink?: SyncRowSink,
+  options: MetricSampleUpsertOptions = {}
 ): UpsertCounts {
   // Pre-image on the natural key the ON CONFLICT below merges on, so a re-send of
   // the rolling window that lands the same value/date is counted unchanged rather
@@ -505,8 +535,9 @@ export function upsertMetricSamples(
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, started_at, ended_at, value, activity_external_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value,
+        activity_external_id, pushed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value,
        date = excluded.date,
@@ -514,7 +545,11 @@ export function upsertMetricSamples(
        activity_external_id = COALESCE(
          excluded.activity_external_id,
          metric_samples.activity_external_id
-       )`
+       ),
+       -- The stamp of the push that last WROTE this row. COALESCE so a caller with no
+       -- stamp (every non-Health-Connect source) cannot blank one that a stamped push
+       -- already set, which would re-open the row to a replay.
+       pushed_at = COALESCE(excluded.pushed_at, metric_samples.pushed_at)`
   );
   // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
   // re-inserted by the rolling window. Loaded once for the batch.
@@ -523,6 +558,10 @@ export function upsertMetricSamples(
 
   // ── overlap-supersede (#3424), Health Connect only ────────────────────────────
   const supersedes = source === OVERLAP_SUPERSEDE_SOURCE;
+  // The exporter's stamp on this push. Written on every row, and required before any
+  // row may supersede another — the rule's freshness comes from what the PAYLOAD says,
+  // never from which chunk or which push arrived last (see metric-window-overlap.ts).
+  const pushedAt = supersedes ? (options.pushedAt ?? null) : null;
   // The stored rows an incoming interval may supersede: same profile / metric / source /
   // origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
   // row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
@@ -532,7 +571,7 @@ export function upsertMetricSamples(
   // (profile_id, metric, date) prefix; lib/metric-window-overlap.ts decides.
   const findOverlaps = supersedes
     ? db.prepare(
-        `SELECT id, date, started_at, ended_at, edited
+        `SELECT id, date, started_at, ended_at, edited, pushed_at
            FROM metric_samples
           WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
             AND date >= ? AND date <= ?
@@ -540,12 +579,7 @@ export function upsertMetricSamples(
           ORDER BY id`
       )
     : null;
-  // The delete re-states `profile_id` even though every id it is given came out of the
-  // profile-scoped SELECT above. Cheap, and it means a future refactor that widened the
-  // candidate query could not turn this into a cross-profile delete.
-  const dropOverlap = supersedes
-    ? db.prepare("DELETE FROM metric_samples WHERE id = ? AND profile_id = ?")
-    : null;
+  const dropOverlap = supersedes ? db.prepare(SUPERSEDE_DELETE_SQL) : null;
   // Distinct edit-locked rows this batch held OUT of a supersede. A Set, because one
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
   // count of ROWS held, not of times we looked at them.
@@ -569,11 +603,12 @@ export function upsertMetricSamples(
   // Batch-scoped, so it sees one CHUNK: a `daily` push carries a handful of interval
   // rows per type against INGEST_CHUNK_SIZE = 1000, so a mixed-anchoring pair never
   // straddles the split.
-  const staleInBatch = supersedes
-    ? staleBatchOverlaps(
+  const staleInBatch: ReadonlySet<NormMetricSample> = !supersedes
+    ? new Set<NormMetricSample>()
+    : (options.batchStale ??
+      staleBatchOverlaps(
         ordered.filter((r) => !BODY_METRIC_SAMPLE_MEASURES.includes(r.metric))
-      )
-    : new Set<NormMetricSample>();
+      ));
 
   for (const r of ordered) {
     if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
@@ -636,7 +671,7 @@ export function upsertMetricSamples(
     // counting into that row's day. A locked natural-key twin still skips the write
     // below; its overlaps are still cleared, which is what makes its day total right.
     if (supersedes && !staleRetry && findOverlaps && dropOverlap) {
-      if (isSupersedingInterval(r.started_at, r.ended_at)) {
+      if (isSupersedingWindow(r.metric, r.started_at, r.ended_at)) {
         const { from, to } = supersedeDateRange(r.date);
         const candidates = findOverlaps.all(
           profileId,
@@ -647,7 +682,7 @@ export function upsertMetricSamples(
           to,
           r.started_at
         ) as MetricWindow[];
-        const plan = planSupersede(r, candidates);
+        const plan = planSupersede({ ...r, pushedAt }, candidates);
         for (const victim of plan.supersede) {
           dropOverlap.run(victim.id, profileId);
           counts.superseded++;
@@ -686,7 +721,8 @@ export function upsertMetricSamples(
       r.started_at,
       r.ended_at,
       r.value,
-      r.activity_external_id ?? null
+      r.activity_external_id ?? null,
+      pushedAt
     );
     const equal =
       !!found &&
