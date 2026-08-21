@@ -247,20 +247,10 @@ export interface ParsedQuantity {
 // Same evidence class as U+0027 above: admitted on how the input reaches us, not on what
 // the character is for.
 //
-// THE SLASH IS DELIBERATELY NOT IN IT, AND THAT LOOKS WRONG UNTIL YOU MEASURE IT.
-// `LABEL_UNIT_COUNT_RE` below is spelled `(?<![\d.,/])` and its comment says why:
-// without the "/" the "2" of "1/2 tablet" reads as TWO tablets. The file already knows a
-// slash binds a digit, so the obvious conclusion is that this guard forgot it.
-//
-// IT IS THE OPPOSITE, BECAUSE THE TWO GUARDS SIT ON BRANCHES THAT DO OPPOSITE THINGS.
-// LABEL_UNIT_COUNT_RE's lookbehind blocks a READ, so adding "/" REMOVES a fabrication.
-// This one guards a REFUSAL, so adding "/" blocks the refusal and lets the ordinary scan
-// restart after the space — CREATING one. Measured both ways rather than argued: with
-// "/" in this class, "1/2 000 mg" and "5/325 000 mg" become a confident 0 mg, against
-// one arguable gain ("1/2 500 mg tablet" reading 500). Two fabrications for one read is
-// the wrong trade on this surface, and the notations the slash carries — "5/325 mg",
-// "100 mg/5 mL", "1 mg/kg", the count in "1/2 tablet" — are untouched either way.
-// Pinned in both directions in lib/__tests__/dri.test.ts.
+// THE SLASH IS DELIBERATELY NOT IN IT, and the reason is a trap rather than a detail: a
+// sibling guard one screen down carries "/" for what looks like the same purpose, and
+// copying it here would CREATE a fabrication rather than remove one. The argument lives
+// at `NAME_DIGIT_BOUNDARY`, where anyone about to make that edit will be standing.
 //
 // THE BRANCH REFUSES EVERY UNREADABLE-SEPARATOR RUN BETWEEN TWO DIGIT RUNS, not only a
 // well-formed group and not only a single literal space (see UNREADABLE_SEP_RUN), and
@@ -402,13 +392,24 @@ const THOUSANDS_SEP_RE = new RegExp(`[${THOUSANDS_SEP_CHARS}]`, "g");
 //   \u205f \u3000                 read set already claims (\u2007 \u2009 \u202f)
 //   \u2028 \u2029                 line/paragraph separators
 //
-// THE ZERO-WIDTH ONES ARE THE REASON THIS IS A LIST AND NOT `\s`. A soft hyphen or a
-// ZWSP between two digit runs RENDERS AS NOTHING: the person sees "1000" and the string
-// holds "1<U+00AD>000". Reading it as 1000 is defensible and refusing it is defensible;
-// what is not defensible is the third answer, which is what the tree did — restart after
-// it and return a confident ZERO. Refusal is the one that matches this file's doctrine
-// (accept a grouping that is unambiguous, refuse one that is not), and it is the only
-// one that puts the string in front of the person who can see the original label.
+// THE ZERO-WIDTH ONES ARE THE REASON THIS IS A LIST AND NOT `\s`. `\s` does not contain
+// them, and they are the members that most need containing. A soft hyphen or a ZWSP
+// between two digit runs RENDERS AS NOTHING: the person sees "1000" and the string holds
+// "1<U+00AD>000". Reading it as 1000 is defensible and refusing it is defensible; what is
+// not defensible is the third answer, which is what the tree did — restart after it and
+// return a confident ZERO. Refusal is the one that matches this file's doctrine (accept a
+// grouping that is unambiguous, refuse one that is not), and it is the only one that puts
+// the string in front of the person who can see the original label.
+//
+// THE REFUSAL IS A DELIBERATE CHOICE AND NOT THE END STATE. Stripping these characters
+// and reading "1000" is arguably MORE correct — it makes the parser agree with the
+// person's own eye, which is the only reading either of them can check. It is not done
+// here because the real question is bigger than this reader: the same invisible character
+// in a medication NAME breaks grouping in exactly the same way, and nothing about that is
+// about numbers. That makes it INPUT NORMALISATION at the write boundary for every field,
+// tracked as #3472. A normalisation pass would SUPERSEDE this clause rather than
+// contradict it — by the time the string reached here it would no longer contain the
+// character, and this list would simply stop matching.
 const UNREADABLE_SEP_CHARS = String.raw`\t\n\r\f\v \u00ad\u200b\u200c\u200d\u2060\ufeff\u2000-\u2006\u2008\u200a\u2028\u2029\u205f\u3000`;
 
 // A separator RUN between two digit runs that cannot be resolved to a thousands group.
@@ -578,6 +579,37 @@ export type DoseQuantityReading =
 // engine backtracks to the ordinary branch at the same position. Deleting it left every
 // assertion in the five separator suites green, and reverting the decimal tail beside it
 // still went red — so its absence is measured, not assumed.
+// WHAT MAY PRECEDE A DIGIT RUN WITHOUT THE REFUSAL BRANCH ENGAGING: a letter, a digit,
+// an underscore, a hyphen or an en dash — the characters that bind a digit to a NAME
+// ("B12 500 mcg", "CoQ10 200 mg", "Omega-3 1000 mg"), plus `.` `,` and the read set so
+// the branch cannot engage mid-number.
+//
+// THE SLASH IS NOT IN THIS CLASS, AND THAT LOOKS LIKE AN OVERSIGHT UNTIL YOU CHECK WHICH
+// WAY THE GUARD POINTS. Read this before you "fix" it — a reviewer with the whole file in
+// front of them reached for the change and was wrong.
+//
+// `LABEL_UNIT_COUNT_RE` below is spelled `(?<![\d.,/])`, and its own comment explains the
+// "/": without it the "2" of "1/2 tablet" reads as TWO tablets. So the file already knows
+// a slash binds a digit, and the natural inference is that this guard simply forgot it.
+//
+// THE INFERENCE DOES NOT TRANSFER, BECAUSE THE TWO GUARDS SIT ON BRANCHES THAT DO
+// OPPOSITE THINGS. LABEL_UNIT_COUNT_RE's lookbehind protects a READ: adding a character
+// there stops a number being read, which REMOVES a fabrication. This one protects a
+// REFUSAL: adding a character here stops a number being refused, which lets the ordinary
+// scan restart after the separator and hand back the tail — CREATING one. The same
+// character has opposite effects in the two places, so a precedent from one is no
+// evidence about the other.
+//
+// Measured rather than argued: with "/" in this class, "1/2 000 mg" and "5/325 000 mg"
+// become a confident 0 mg, against one arguable gain ("1/2 500 mg tablet" reading 500) —
+// and those two are the same string shape ("2 500" and "2 000"), so no rule reads one and
+// refuses the other. Two fabrications for one read is the wrong trade on a surface that
+// feeds limit checks. Both directions are pinned in lib/__tests__/dri.test.ts, and the
+// mutant that adds "/" here dies there.
+//
+// The general form, worth carrying to any guard in this file: BEFORE COPYING A LOOKBEHIND
+// FROM A NEIGHBOUR, ASK WHETHER THE NEIGHBOUR'S BRANCH READS OR REFUSES. Widening a guard
+// is conservative on a read and permissive on a refusal.
 const NAME_DIGIT_BOUNDARY = String.raw`(?<![A-Za-z0-9_\-\u2013.,${THOUSANDS_SEP_CHARS}])`;
 const AMBIGUOUS_SPACE_NUMBER = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREADABLE_SEP_RUN}\d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
