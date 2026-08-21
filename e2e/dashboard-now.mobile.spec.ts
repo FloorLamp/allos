@@ -350,9 +350,8 @@ test("the attention atom flows on one line inside one gutter on a phone, and kee
     // Wait for the DETAIL, not the card: the thing being measured is the flow
     // between two elements, and a card that has only painted its title would let
     // this pass by measuring nothing.
-    await expect(
-      card.getByTestId("attention-item-detail").first()
-    ).toBeVisible(); // first-ok: the card above is one atom
+    const detail = card.getByTestId("attention-item-detail").first(); // first-ok: the card above is one atom
+    await expect(detail).toBeVisible();
 
     const geometry = await card.evaluate((node) => {
       const strip = document
