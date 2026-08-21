@@ -85,27 +85,48 @@ function AttentionRow({
   return (
     <div
       data-testid={`attention-item-${item.key}`}
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-lg px-2 py-2 transition hover:bg-slate-50 sm:flex sm:flex-nowrap sm:items-center dark:hover:bg-ink-850"
+      // ONE GUTTER ON A PHONE (#3460). The `px-2 py-2` inset exists to give the
+      // hover fill room to breathe — a DESKTOP affordance — while the card this row
+      // sits in already pads itself (`p-4`, #1416 section A). Below `sm` that is a
+      // double gutter on a 390px line, so the inset starts at `sm:` and the card's
+      // own padding is the only one.
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-lg transition hover:bg-slate-50 sm:flex sm:flex-nowrap sm:items-center sm:px-2 sm:py-2 dark:hover:bg-ink-850"
     >
       <Icon
         className={`h-5 w-5 shrink-0 ${tone}`}
         stroke={1.75}
         aria-hidden="true"
       />
-      <div className="min-w-0 flex-1">
+      {/* TITLE AND DETAIL SHARE A LINE ON A PHONE (#3460) — "Vitamin D3 · 2000 IU"
+        rather than a two-line block spending 40px on two short facts. They still
+        WRAP when the text needs it (flex-wrap, not truncation: a phone may never be
+        the viewport that hides a fact). From `sm` up the stacked desktop block is
+        exactly what it was, `lg:truncate` included. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5 sm:block">
         <Link
           href={item.href}
-          className="block wrap-break-word font-medium text-slate-800 hover:text-brand-700 hover:underline lg:truncate dark:text-slate-100 dark:hover:text-brand-400"
+          className="wrap-break-word font-medium text-slate-800 hover:text-brand-700 hover:underline sm:block lg:truncate dark:text-slate-100 dark:hover:text-brand-400"
         >
           {item.title}
         </Link>
         {item.detail && (
-          <div
-            data-testid="attention-item-detail"
-            className="wrap-break-word text-xs whitespace-normal text-slate-500 lg:truncate dark:text-slate-400"
-          >
-            {item.detail}
-          </div>
+          <>
+            {/* The separator belongs to the one-line form only, and it is a MARK,
+              not a word: the reading order is unchanged for anyone who hears the
+              row rather than sees it. */}
+            <span
+              aria-hidden="true"
+              className="text-xs text-slate-400 sm:hidden"
+            >
+              ·
+            </span>
+            <div
+              data-testid="attention-item-detail"
+              className="wrap-break-word text-xs whitespace-normal text-slate-500 sm:block lg:truncate dark:text-slate-400"
+            >
+              {item.detail}
+            </div>
+          </>
         )}
       </div>
       <div
