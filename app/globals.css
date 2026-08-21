@@ -1503,6 +1503,43 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── SECTION: Touch tap targets ── */
+/* THE BUTTON FAMILY'S HEIGHT FLOOR (#3486), declared ONCE for the whole family.
+   `btn` / `btn-ghost` / `btn-danger` set padding and nothing else, so a button's
+   height was whatever its CONTENT happened to be: a 20px text line gives 36px,
+   and the same button with its label hidden below `sm` (`hidden sm:inline`) has
+   only a 16px icon left, so it renders 32px — measurably shorter than the labeled
+   sibling beside it. That is the "shorter wellness +" the 2026-08-21 phone review
+   spotted, and two call sites had already hand-fixed their own copy of it with a
+   local `min-h-10 min-w-10 … sm:min-h-0 sm:min-w-0`. Those hand fixes are the
+   evidence, not the fix: the ninth icon-only composition added next month would
+   have inherited nothing.
+
+   So the floor lives with the family, at the 40px tap floor #644/#3377 already
+   set for this app, and only below `sm` — desktop density keeps its compact
+   `btn-sm` rows, where a mouse is doing the pointing. `btn-sm` composes as
+   `btn btn-sm`, so it inherits this from `.btn` rather than needing its own rule.
+   Width too, not just height: an icon-only button is the one shape that can be
+   narrower than the floor, and a labeled button is already wider than 40px, so
+   the width half is a no-op everywhere it is not needed.
+
+   A bare rule rather than an `@apply` inside each `@utility`: four utilities
+   repeating one number is the drift this rule exists to end, and an unlayered
+   rule also outranks a call site's own `min-h-*`, which is what makes it a FLOOR
+   instead of a default. A control that genuinely must be shorter on a phone is
+   not a member of this family.
+
+   The guard is e2e/button-height-floor.mobile.spec.ts, which measures RENDERED
+   bounding boxes at 390px — a class-string assertion would have passed against
+   the very tree this defect shipped in. */
+@media (max-width: 639.98px) {
+  .btn,
+  .btn-ghost,
+  .btn-danger {
+    min-block-size: 2.5rem;
+    min-inline-size: 2.5rem;
+  }
+}
+
 /* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
    density, which is below the ~44px touch-target guideline. On coarse-pointer
    (touch) devices only, extend the clickable area with an invisible pseudo
