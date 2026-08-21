@@ -61,7 +61,6 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   // A. Boxed sub-panels inside cards, worst first (the issue's own order).
   ["app/(app)/settings/ai/AiTierSettings.tsx", "subpanel-inset", "p-4"],
   ["components/practices/PracticeTrends.tsx", "subpanel-inset", "p-4 sm:p-5"],
-  ["app/(app)/trends/VitalsTodayStrip.tsx", "subpanel-inset", "px-4 py-3.5"],
   ["app/(app)/settings/server/BackupSettings.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/settings/server/SmtpSettings.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/settings/family/FamilyManager.tsx", "subpanel-inset-sm", "p-3"],
@@ -145,6 +144,29 @@ describe("phone density conventions (#3466)", () => {
         src,
         `${file} must still carry its own '${from}' — the convention is an ADDITION beside the desktop vocabulary, never a replacement for it; a site that drops it has moved its desktop value too`
       ).toContain(from);
+    }
+  });
+
+  // A card that pads with `p-0!` and lets its CELLS carry the gutter has one
+  // padding layer, not two — so a "sub-panel" inset there IS the #1416 card token,
+  // and stepping it tightens the very floor #3466 declares untouchable. Measured
+  // while #3466 was implemented: the strip's text would have sat 4px left of every
+  // other card's text in a vertical stack at 390px. #3466's table lists this site
+  // and says the table was "verified in code"; for THIS row that claim does not
+  // hold, and the owner reverted it on 2026-08-21. Asserted rather than commented,
+  // because the next reader working the table will otherwise "finish" it.
+  it("a card that delegates its own gutter to its cells is NOT a sub-panel site (#3466, owner-reverted)", () => {
+    const src = read("app/(app)/trends/VitalsTodayStrip.tsx");
+    expect(
+      src,
+      "the strip's section must still be `p-0!` — this exemption is only true while the CARD carries no padding of its own"
+    ).toContain("p-0!");
+    for (const tier of TIERS.keys()) {
+      if (!tier.startsWith("subpanel-")) continue;
+      expect(
+        src,
+        `VitalsTodayStrip must not carry ${tier}: its card is \`p-0!\`, so \`px-4 py-3.5\` is the card's OWN gutter reproducing the #1416 token, not a second layer inside it`
+      ).not.toContain(tier);
     }
   });
 
