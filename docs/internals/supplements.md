@@ -1241,6 +1241,28 @@ disagree with itself (#221). The BRAND field keeps its post-name-pick narrowing 
 chosen drug's own brands; only its PRE-pick state changed, to lead with the
 brands this profile has recorded.
 
+**Eight rows, shared out per group (#3410).** "The first eight" is right for ONE
+vocabulary and silently wrong for two: a picker fed two ranked lists concatenated
+spent all eight on the higher-ranked one, and the other never appeared — no header,
+no "more", and a list that looked complete because it was short. When the caller
+passes `groupFor`, `lib/relevance-view.ts` shares the eight out a row at a time in
+the caller's group order, so every group is represented; the total is still eight,
+and a picker with more groups than rows says which ones it could not fit (a
+development-only `console.warn`). A single-group picker is unchanged by
+construction. WITHOUT `groupFor` a concatenated list has no seam in it and nothing
+can detect the loss — so a picker that merges vocabularies must pass one.
+
+**The stack field is one of these vocabularies (#3100).** `IntakeCatalogOptions`
+carries `stacks` — this profile's distinct, trimmed, non-empty `stack` values,
+active items' stacks first then most recent — and the intake form's "Stack
+(optional)" field is an `IntakeItemCombobox` over it, free text still on.
+Everything that groups by stack groups by EXACT STRING (`doseSortKey`, the
+supplement row's chip), so retyping was the only way into an existing stack and one
+capital letter minted a second cluster. Distinctness is exact on purpose: a profile
+already carrying both "AM stack" and "AM Stack" has two real clusters, and folding
+them here would leave one unreachable by name. There is no curated tier — a stack is
+whatever this profile called one — so the context fallback is `[]`.
+
 The sibling rankers live beside them: `lib/provider-rank.ts` (recency-decayed
 provider use across every provider-bearing domain, plus the specialty head, fed
 by `lib/queries/provider-options.ts`) and `lib/immunization-rank.ts` (age/life-
