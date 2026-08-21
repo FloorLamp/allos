@@ -397,10 +397,7 @@ test("a hand-composed dialog holds the tab against an automatic reload (#3371)",
   // dismissal #3420 deliberately left unguarded, so this needs no confirm and the
   // dialog's state goes with it.
   // The Close control belongs to the HOST, not to the dialog body this testid names.
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Close" })
-    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   await expect
     .poll(() => loads(page), {
@@ -537,9 +534,7 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
     // is the tab-switch or screen-lock that reproduces the hazard, taken inside the
     // debounce and in the same page task as the keystroke.
     const flippedAt = performance.now() - started; // clock-ok: same duration
-    (
-      window as unknown as { __goHidden: () => void }
-    ).__goHidden();
+    (window as unknown as { __goHidden: () => void }).__goHidden();
     document.dispatchEvent(new Event("visibilitychange"));
     return { markedAt, flippedAt, draftsBefore };
   }, ROUTINE);
