@@ -1,5 +1,10 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
+import { utcInstant } from "../../date";
+import {
+  UNSTAMPED_ERA_AT_KEY,
+  UNSTAMPED_ERA_MAX_ID_KEY,
+} from "../../metric-window-overlap";
 
 // Issue #3424 — the two columns the Health Connect overlap-supersede needs.
 //
@@ -26,8 +31,30 @@ import type { Migration } from "../runner";
 //     rather than from arrival order. Without it the rule is defeated by an ordinary
 //     exporter retry: a byte-identical replay of a pre-switch push deleted the row that
 //     had superseded it and re-inserted the stale one. NULL on every row written before
-//     this migration and on every non-Health-Connect row, which the rule reads as "no
-//     stamp, may be superseded once" — those are exactly the already-corrupted rows.
+//     this migration and on every non-Health-Connect row.
+//
+// AND TWO `settings` VALUES, WHICH ARE WHY THAT NULL IS SAFE. An earlier cut of this
+// comment said the rule reads a NULL stamp as "no stamp, may be superseded once — those
+// are exactly the already-corrupted rows". THAT WAS FALSE, and it was the last defect in
+// this lane: NULL is every row written before this migration, the CORRECT ones included,
+// and it stays NULL for any day the exporter's rolling window no longer reaches until
+// #3439 runs. Read as "old", a byte-identical replay of a pre-switch push deleted the
+// correct re-anchored row — the day went from reading 23330 (wrong, visible, repairable)
+// to 11609 (wrong, invisible, and past #3439's reach because the right row was gone).
+//
+// NULL means UNKNOWN. So this migration writes down the two facts that make a subset of
+// those NULLs checkable, and the rule will delete no others:
+//
+//  3. `hc_overlap_unstamped_era_at` — the instant `pushed_at` began being written. A
+//     push stamped after it happened after every row already in the table.
+//  4. `hc_overlap_unstamped_era_max_id` — `MAX(metric_samples.id)` at that instant.
+//     `id` is INTEGER PRIMARY KEY AUTOINCREMENT (migration 083), so it is monotonic and
+//     never reused: `id <= that` cannot become true for a row written later.
+//
+// Written FIRST-WRITE-WINS, never moved. A re-run — a restore, a half-applied database,
+// a second boot — happens later than the moment the column landed, and moving the marker
+// forward would re-classify every row written in between as pre-existing, which is the
+// confusion the marker exists to end.
 //
 // THERE IS NO REPAIR REPLAY HERE, deliberately, and its absence is the change this
 // migration went through. The first cut also replayed the supersede rule over stored
@@ -81,6 +108,24 @@ export function up(db: Database.Database): void {
       if (hasColumn(db, onTable, addColumn)) continue;
       db.exec(`ALTER TABLE ${onTable} ADD COLUMN ${addColumn} ${type};`);
     }
+    // The era markers. `MAX(id)` on an INTEGER PRIMARY KEY is an index lookup, not a
+    // scan, so this stays the "touches no row" migration it was: on the 30,000-row
+    // database the first pass measured, it is two `settings` inserts and one seek.
+    //
+    // DO NOTHING, not DO UPDATE: first write wins, for the reason in the header. Written
+    // here rather than through lib/settings because a migration takes its handle as an
+    // argument and must not reach back into `@/lib/db`, which is what runs it.
+    const maxId =
+      (
+        db.prepare("SELECT MAX(id) AS maxId FROM metric_samples").get() as {
+          maxId: number | null;
+        }
+      ).maxId ?? 0;
+    const put = db.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING"
+    );
+    put.run(UNSTAMPED_ERA_AT_KEY, utcInstant());
+    put.run(UNSTAMPED_ERA_MAX_ID_KEY, String(maxId));
   }).immediate();
 }
 

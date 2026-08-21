@@ -25,7 +25,7 @@ import {
   isDayBucketWindow,
   isSupersedingWindow,
   planSupersede,
-  pushIsNewer,
+  pushOutranks,
   pushStampFor,
   supersedeDateRange,
   windowsOverlap,
@@ -37,13 +37,18 @@ import { utcInstant } from "@/lib/date";
 /** A fixed "now" so the clock-skew bound is asserted against a stated instant. */
 const NOW = new Date("2026-05-03T12:00:00Z");
 
+// A STORED ROW IS STAMPED BY DEFAULT, because that is what every row written since the
+// migration is. A NULL stamp is a state of its own — see `pushOutranks` — so the cases
+// that mean it say it, rather than inheriting it from a helper's default.
+const STORED_STAMP = "2026-05-01T00:00:00Z";
+
 function win(
   id: number,
   date: string,
   started_at: string,
   ended_at: string,
   edited: number | null = 0,
-  pushed_at: string | null = null
+  pushed_at: string | null = STORED_STAMP
 ): MetricWindow {
   return { id, date, started_at, ended_at, edited, pushed_at };
 }
@@ -263,36 +268,99 @@ describe("the DAY-BUCKET GRANULARITY gate", () => {
   });
 });
 
-describe("pushIsNewer — freshness as the PAYLOAD states it", () => {
+describe("pushOutranks — freshness as the PAYLOAD states it, in THREE states", () => {
   // WHY IT EXISTS. The first cut decided freshness from arrival, which was refuted
   // twice: a byte-identical REPLAY of a pre-switch payload deleted the row that had
   // superseded it, and a mixed-anchoring pair split across two 1000-row chunks was
   // resolved by which chunk ran last — the stale bucket deleting the current one.
+  const stamped = (pushed_at: string | null, id = 1) => ({ id, pushed_at });
+  // A store migrated at 2026-06-01 that held 100 rows at that moment.
+  const ERA = { startedAt: "2026-06-01T00:00:00Z", lastUnstampedId: 100 };
+
   it("is true only when the incoming push is STRICTLY newer", () => {
-    expect(pushIsNewer("2026-05-02T01:00:00Z", "2026-05-01T23:00:00Z")).toBe(
-      true
-    );
-    expect(pushIsNewer("2026-05-01T23:00:00Z", "2026-05-02T01:00:00Z")).toBe(
-      false
-    );
+    expect(
+      pushOutranks("2026-05-02T01:00:00Z", stamped("2026-05-01T23:00:00Z"), ERA)
+    ).toBe(true);
+    expect(
+      pushOutranks("2026-05-01T23:00:00Z", stamped("2026-05-02T01:00:00Z"), ERA)
+    ).toBe(false);
   });
 
   it("is FALSE on an equal stamp — a replay, or a second chunk of the same push", () => {
     // MUTATION: relax this to `>=` and both refutations come straight back.
-    expect(pushIsNewer("2026-05-01T23:00:00Z", "2026-05-01T23:00:00Z")).toBe(
+    expect(
+      pushOutranks("2026-05-01T23:00:00Z", stamped("2026-05-01T23:00:00Z"), ERA)
+    ).toBe(false);
+  });
+
+  // ── THE THIRD STATE. A NULL stamp means UNKNOWN, not "older than everything". ──
+  //
+  // Reading it as old is the defect that survived four adversarial rounds: on deploy
+  // day EVERY row is NULL, the correct ones included, so a byte-identical replay of a
+  // pre-switch push deleted the CORRECT re-anchored row and the day went from reading
+  // 23330 (visible, repairable by #3439) to 11609 (invisible, and unrepairable, because
+  // the row holding the right number was gone).
+  it("supersedes a NULL row ONLY when both era facts are proven", () => {
+    // The row was in the table when the column landed, and the push happened after.
+    expect(pushOutranks("2026-06-02T00:00:00Z", stamped(null, 100), ERA)).toBe(
+      true
+    );
+  });
+
+  it("refuses a NULL row the migration never saw — a stampless push wrote it AFTER", () => {
+    // MUTATION: drop the `id <= lastUnstampedId` clause. A stampless Health Connect
+    // push writes the CURRENT anchoring with a NULL stamp; a stale stamped push then
+    // deletes it and the day reads LOW. Verified red as zzr6-attack A2b.
+    expect(pushOutranks("2026-06-02T00:00:00Z", stamped(null, 101), ERA)).toBe(
       false
     );
   });
 
-  it("treats a NULL stored stamp as supersedable — that is the corrupted history", () => {
-    expect(pushIsNewer("2026-05-01T23:00:00Z", null)).toBe(true);
+  it("refuses a push made BEFORE the column landed — the delayed stale retry", () => {
+    // MUTATION: drop the `incoming > startedAt` clause. A push queued on a phone that
+    // went offline before the deploy and drained after it carries a stamp from before
+    // the era, and every row it would delete is one it cannot possibly know about.
+    // Verified red as zzr6-staleretry E2/E3 and zzr6-replay B1.
+    expect(pushOutranks("2026-05-31T23:59:59Z", stamped(null, 100), ERA)).toBe(
+      false
+    );
+  });
+
+  it("refuses every NULL row when there is no era at all", () => {
+    // No marker, or an unreadable one: nothing is known, so nothing is deleted.
+    expect(pushOutranks("2026-06-02T00:00:00Z", stamped(null, 1), null)).toBe(
+      false
+    );
+    expect(
+      pushOutranks("2026-06-02T00:00:00Z", stamped(null, 1), {
+        startedAt: "2026-06-01T00:00:00",
+        lastUnstampedId: 100,
+      })
+    ).toBe(false);
+  });
+
+  it("leaves a STAMPED row's comparison alone, era or no era", () => {
+    // The era licenses nothing extra: a stamped row is decided by its own stamp, so an
+    // era cannot widen what a stale push may delete.
+    expect(
+      pushOutranks("2026-05-01T00:00:00Z", stamped("2026-05-02T00:00:00Z"), ERA)
+    ).toBe(false);
+    expect(
+      pushOutranks(
+        "2026-07-01T00:00:00Z",
+        stamped("2026-05-02T00:00:00Z"),
+        null
+      )
+    ).toBe(true);
   });
 
   it("refuses a push that cannot say when it happened", () => {
-    expect(pushIsNewer(null, null)).toBe(false);
-    expect(pushIsNewer(undefined, "2026-05-01T00:00:00Z")).toBe(false);
+    expect(pushOutranks(null, stamped(null), ERA)).toBe(false);
+    expect(pushOutranks(undefined, stamped("2026-05-01T00:00:00Z"), ERA)).toBe(
+      false
+    );
     // Zone-less: unreadable, so it deletes nothing.
-    expect(pushIsNewer("2026-05-02T00:00:00", null)).toBe(false);
+    expect(pushOutranks("2026-05-02T00:00:00", stamped(null), ERA)).toBe(false);
   });
 });
 
@@ -349,7 +417,7 @@ describe("pushStampFor — the push's OWN time, and nothing that looks like it",
 describe("a stamp in the PAST is believed, and reported instead", () => {
   it("accepts an arbitrarily old stamp — the bound is deliberately one-sided", () => {
     // A phone whose clock went BACKWARDS stamps every later push in the past, so
-    // `pushIsNewer` is false forever and the day keeps reading high. Refusing an old
+    // `pushOutranks` is false forever and the day keeps reading high. Refusing an old
     // stamp would not help: it would yield no stamp, which declines the supersede in
     // exactly the same way. The bound exists only for the FUTURE direction, where a
     // believed stamp is written onto rows and poisons them against every later push.
@@ -380,15 +448,15 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
           "2026-05-01T23:00:00Z"
         ),
         stored
-      ).left
-    ).toBe(1);
+      ).left.map((r) => r.id)
+    ).toEqual([1]);
     // No stamp at all: same.
     expect(
       planSupersede(
         incoming("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", null),
         stored
-      ).left
-    ).toBe(1);
+      ).left.map((r) => r.id)
+    ).toEqual([1]);
     // The edit lock is a declined overlap too — the day still double counts.
     const locked = [{ ...stored[0], edited: 1 }];
     const plan = planSupersede(
@@ -400,7 +468,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
       locked
     );
     expect(plan.supersede).toEqual([]);
-    expect(plan.left).toBe(1);
+    expect(plan.left.map((r) => r.id)).toEqual([1]);
     // And a supersede that DID happen leaves nothing standing.
     expect(
       planSupersede(
@@ -411,7 +479,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
         ),
         stored
       ).left
-    ).toBe(0);
+    ).toEqual([]);
   });
 });
 
@@ -464,6 +532,92 @@ describe("planSupersede — what an incoming window does to the store", () => {
     expect(planSupersede(wide, nullLock).supersede.map((r) => r.id)).toEqual([
       1,
     ]);
+  });
+
+  // ── WHAT `left` COUNTS. It promised "every overlap this row DECLINED to collapse,
+  // whatever the reason" and did not deliver two of them, including the ONLY one no
+  // later push repairs. And it counted PAIRS, so two incoming buckets over one stored
+  // row reported "2 daily totals" for one day that reads wrong.
+  it("counts the stored SUB-DAILY bucket it may never collapse — the permanent one", () => {
+    // MUTATION: `continue` before pushing this row and a day reads 9200 for 9000 walked,
+    // forever, with `warnings: []`. Verified red as zzr6-attack A3a and zzr6-count D2.
+    const shortBucket = win(
+      1,
+      "2026-05-01",
+      "2026-05-01T04:00:00Z",
+      "2026-05-01T04:20:00Z",
+      0,
+      "2026-05-01T04:20:05Z"
+    );
+    const plan = planSupersede(
+      incoming(
+        "2026-04-30T15:00:00Z",
+        "2026-05-01T13:00:00Z",
+        "2026-05-01T13:00:05Z"
+      ),
+      [shortBucket]
+    );
+    expect(plan.supersede).toEqual([]);
+    expect(plan.left.map((r) => r.id)).toEqual([1]);
+  });
+
+  it("counts a FINE-GRAINED incoming row landing on a stored day bucket", () => {
+    // Verified red as zzr6-count D3. Not reachable from `upsertMetricSamples`, which
+    // only looks up day-bucket windows — one indexed query per minute bucket is not a
+    // cost this path may take. Said at the call site rather than promised here.
+    const dayBucket = win(
+      1,
+      "2026-05-01",
+      "2026-05-01T04:00:00Z",
+      "2026-05-02T00:00:00Z",
+      0,
+      null
+    );
+    const minute = {
+      metric: "steps",
+      started_at: "2026-05-01T07:00:00Z",
+      ended_at: "2026-05-01T07:30:00Z",
+      pushedAt: "2026-05-01T07:30:05Z",
+    };
+    expect(planSupersede(minute, [dayBucket]).left.map((r) => r.id)).toEqual([
+      1,
+    ]);
+  });
+
+  it("says NOTHING about two overlapping MINUTE buckets — that is two devices summing", () => {
+    // MUTATION: count an overlap when NEITHER side is a day bucket, and two origin-less
+    // devices at `1m` produce a Review line on every push of every day.
+    const deviceA = win(
+      1,
+      "2026-05-01",
+      "2026-05-01T10:00:00Z",
+      "2026-05-01T10:01:00Z"
+    );
+    const deviceB = {
+      metric: "steps",
+      started_at: "2026-05-01T10:00:30Z",
+      ended_at: "2026-05-01T10:01:30Z",
+      pushedAt: "2030-01-01T00:00:00Z",
+    };
+    const plan = planSupersede(deviceB, [deviceA]);
+    expect(plan.supersede).toEqual([]);
+    expect(plan.left).toEqual([]);
+  });
+
+  it("says nothing about a nested meal and snack either", () => {
+    const meal = win(
+      1,
+      "2026-05-01",
+      "2026-05-01T12:00:00Z",
+      "2026-05-01T13:00:00Z"
+    );
+    const snack = {
+      metric: "nutrition_kcal",
+      started_at: "2026-05-01T12:10:00Z",
+      ended_at: "2026-05-01T12:20:00Z",
+      pushedAt: "2030-01-01T00:00:00Z",
+    };
+    expect(planSupersede(snack, [meal]).left).toEqual([]);
   });
 
   it("leaves disjoint neighbours alone", () => {

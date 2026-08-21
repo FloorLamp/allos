@@ -20,6 +20,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
+  metricSampleUpsertReport,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
@@ -420,7 +421,18 @@ describe("what the rule must NEVER delete", () => {
     expect(storedRows(p, "hrv_ms")).toHaveLength(4);
   });
 
-  it("holds an EDIT-LOCKED overlapped row and counts it `edited`", () => {
+  // WHAT CHANGED, AND WHY IT IS NOT A LOSS OF VISIBILITY. #3424's AC 4 asks for the
+  // held row to be "counted `edited`". It cannot be, and `lib/integrations/sync-log.ts`
+  // says why in its own words: `edited` IS part of `received`, and `received` is
+  // "everything the source handed us". A held overlap is a row OUR STORE already had —
+  // the source did not send it — so counting it made a one-sample payload report
+  // `received: 2`, which is a number the sender can check and would find wrong.
+  //
+  // The lock stays visible through the channel that was built for exactly this: the
+  // count of overlaps LEFT STANDING, whose Review line already names the #133 lock as
+  // one of the four reasons a day still double counts. Nothing is quieter than before;
+  // it is reported as what it is.
+  it("holds an EDIT-LOCKED overlapped row, and reports it as a day left double counting", () => {
     const p = freshProfile("LOCKED");
     upsert(
       p,
@@ -453,7 +465,10 @@ describe("what the rule must NEVER delete", () => {
       HC
     );
     expect(counts.superseded).toBe(0);
-    expect(counts.edited).toBe(1);
+    // MUTATION: count the held row into `edited` again and `received` reads 2 for a
+    // 1-sample payload (lib/__tests__/sync-log.test.ts pins the arithmetic).
+    expect(counts.edited).toBe(0);
+    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
     // The hand-corrected row is still there, with its hand-corrected value.
     expect(
       storedRows(p, "steps")
@@ -462,7 +477,7 @@ describe("what the rule must NEVER delete", () => {
     ).toEqual([3000, 3500]);
   });
 
-  it("counts one held lock ONCE however many incoming rows overlap it", () => {
+  it("counts one stored row left standing ONCE however many incoming rows overlap it", () => {
     const p = freshProfile("LOCKED-ONCE");
     upsert(
       p,
@@ -500,7 +515,10 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    expect(counts.edited).toBe(1);
+    // MUTATION: drop the Set and count PAIRS again — the Review line says "2 daily
+    // totals" for ONE day that reads wrong. Verified red as zzr6-attack A5a.
+    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(counts.edited).toBe(0);
   });
 
   it("keeps a TOMBSTONED row dead — a supersede is not a resurrection", () => {
@@ -538,46 +556,151 @@ describe("what the rule must NEVER delete", () => {
     ]);
   });
 
-  it("lets a DELAYED STALE RETRY delete nothing — it carries the old anchoring", () => {
-    // The one shape where this guard is reachable: a store that has NOT converged yet.
-    // Once ingest has run the group is pairwise disjoint, a stale retry's window is a
-    // strict PREFIX of its own stored twin's, and the only stored row it could overlap
-    // is that twin — which the candidate SELECT already excludes. But an
-    // ALREADY-CORRUPTED profile (the prod shape, before the repair migration or the
-    // first re-anchored push) holds both anchorings at once, and there a retry of the
-    // OLD snapshot overlaps the NEW anchoring's row.
-    const p = freshProfile("STALE-RETRY");
-    db.prepare(
-      `INSERT INTO metric_samples
+  // WHAT USED TO STAND HERE, AND WHY IT DID NOT. This case was guarded by `!staleRetry`
+  // — `isStaleMetricSnapshot(found.ended_at, r.ended_at)`, an `ended_at` comparison,
+  // which lib/metric-window-overlap.ts's own header spends a page explaining cannot
+  // decide which of two ANCHORINGS is current. It was also STRICT, so it only ever fired
+  // for a retry whose window is a strict PREFIX. Change the fixture's `end_time` below
+  // from 18:00 to the stored twin's 20:00 — a byte-identical replay, the ordinary shape
+  // when a phone queues pushes offline in flight — and the guard was walked straight
+  // through and the Los Angeles row deleted.
+  //
+  // The stamp is what answers this. `!staleRetry` is gone from the supersede condition
+  // and stays where #1101 put it: the moving-END merge for the natural-key twin. The
+  // three cases below are the same store under a prefix retry, a byte-identical replay,
+  // and a retry that ends LATER — one rule, one answer.
+  it.each([
+    [
+      "a PREFIX retry, ending earlier than the stored twin",
+      "2026-08-20T18:00:00Z",
+      9000,
+    ],
+    [
+      "a BYTE-IDENTICAL replay of the pre-switch push",
+      "2026-08-20T20:00:00Z",
+      11609,
+    ],
+    [
+      "a retry ending LATER than the stored twin",
+      "2026-08-20T22:00:00Z",
+      11800,
+    ],
+  ])(
+    "lets %s delete nothing — it carries the old anchoring",
+    (_name, endedAt, value) => {
+      // The one shape where this is reachable: a store that has NOT converged yet.
+      // Once ingest has run the group is pairwise disjoint, a stale retry's window is a
+      // strict PREFIX of its own stored twin's, and the only stored row it could overlap
+      // is that twin — which the candidate SELECT already excludes. But an
+      // ALREADY-CORRUPTED profile (the prod shape, before the repair migration or the
+      // first re-anchored push) holds both anchorings at once, and there a retry of the
+      // OLD snapshot overlaps the NEW anchoring's row.
+      const p = freshProfile("STALE-RETRY");
+      db.prepare(
+        `INSERT INTO metric_samples
          (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, ?, ?, 'steps', '2026-08-20', ?, ?, ?)`
-    ).run(p, HC, ORIGIN, "2026-08-20T04:00:00Z", "2026-08-20T20:00:00Z", 11609);
-    db.prepare(
-      `INSERT INTO metric_samples
+      ).run(
+        p,
+        HC,
+        ORIGIN,
+        "2026-08-20T04:00:00Z",
+        "2026-08-20T20:00:00Z",
+        11609
+      );
+      db.prepare(
+        `INSERT INTO metric_samples
          (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, ?, ?, 'steps', '2026-08-20', ?, ?, ?)`
-    ).run(p, HC, ORIGIN, "2026-08-20T07:00:00Z", "2026-08-20T21:00:00Z", 11721);
+      ).run(
+        p,
+        HC,
+        ORIGIN,
+        "2026-08-20T07:00:00Z",
+        "2026-08-20T21:00:00Z",
+        11721
+      );
 
-    // A push that got queued BEFORE the switch and only arrives now: the New York
-    // snapshot, ending EARLIER than the row already stored under its own key.
-    const counts = upsert(
+      // A push that got queued BEFORE the switch and only arrives now: the New York
+      // snapshot, ending EARLIER than the row already stored under its own key.
+      const counts = upsert(
+        p,
+        [sample("steps", "2026-08-20", "2026-08-20T04:00:00Z", endedAt, value)],
+        HC
+      );
+      // Both rows carry NULL, and both were written AFTER the era the migration recorded
+      // — so nothing here is a row this rule has any evidence about, and it takes none of
+      // them. MUTATION: read a NULL stamp as "older than everything" again and the Los
+      // Angeles row — the CURRENT anchoring — is deleted by a snapshot the source has
+      // already moved past. Verified red as zzr6-staleretry E2/E3.
+      expect(counts.superseded).toBe(0);
+      // BOTH anchorings survive. The retry's own natural-key TWIN is a different question
+      // — #1101's moving-END merge owns it, and in the third case it legitimately updates
+      // that row's value — but the row holding the CURRENT anchoring is untouched.
+      expect(storedRows(p, "steps").map((r) => r.started_at)).toEqual([
+        "2026-08-20T04:00:00Z",
+        "2026-08-20T07:00:00Z",
+      ]);
+      expect(
+        storedRows(p, "steps").find(
+          (r) => r.started_at === "2026-08-20T07:00:00Z"
+        )?.value
+      ).toBe(11721);
+    }
+  );
+
+  it("reports a stored SUB-DAILY bucket it may never collapse, instead of nothing", () => {
+    // A genuine `daily` bucket pushed 20 minutes after local midnight is itself below
+    // the granularity gate, and no later push ever widens a row already in the table —
+    // so this day reads high until #3439 replays the rule over history. It used to do
+    // that with `superseded: 0`, `warnings: []` and no other trace.
+    // MUTATION: `continue` past this row without counting it and the day reads 9200 for
+    // 9000 walked with nothing said. Verified red as zzr6-attack A3a.
+    const p = freshProfile("SHORT-STORED");
+    upsert(
       p,
       [
         sample(
           "steps",
-          "2026-08-20",
-          "2026-08-20T04:00:00Z",
-          "2026-08-20T18:00:00Z",
+          "2026-05-01",
+          "2026-05-01T04:00:00Z",
+          "2026-05-01T04:20:00Z",
+          200
+        ),
+      ],
+      HC
+    );
+    let counts = upsert(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-04-30T15:00:00Z",
+          "2026-05-01T09:00:00Z",
           9000
         ),
       ],
       HC
     );
-    // MUTATION: drop `!staleRetry` from the supersede condition and the Los Angeles
-    // row — the CURRENT anchoring — is deleted by a snapshot the source has already
-    // moved past, while the stale value is not even written in its place.
     expect(counts.superseded).toBe(0);
-    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([11609, 11721]);
+    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    // And it is still reported on the NEXT push, because nothing repaired it.
+    counts = upsert(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-04-30T15:00:00Z",
+          "2026-05-01T13:00:00Z",
+          9000
+        ),
+      ],
+      HC
+    );
+    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([9000, 200]);
   });
 
   it("writes NO tombstone for a superseded row — the delete is sync-internal", () => {

@@ -38,7 +38,8 @@ import {
 //      setting is what makes that unreachable: this repo already calls a window an hour
 //      or narrower a fine-grained setting (`SUB_DAILY_WINDOW_MAX_MIN`), and the rule
 //      declines to act on one.
-//   3. ONLY WHEN THE PAYLOAD SAYS THE INCOMING ROW IS NEWER (`pushIsNewer`), below.
+//   3. ONLY WHEN THE PAYLOAD SAYS THE INCOMING ROW OUTRANKS THE STORED ONE
+//      (`pushOutranks`), below.
 //
 // FRESHNESS IS STATED BY THE PAYLOAD, NEVER FROM ARRIVAL ORDER AND NEVER FROM A WINDOW.
 // Deciding "incoming wins" from position was refuted twice - a push over
@@ -49,6 +50,50 @@ import {
 // (`payload.timestamp`), and a row may only supersede a stored row whose stamp is
 // STRICTLY OLDER. A replay carries the same stamp as the push it replays, so it takes
 // nothing; two rows of ONE push carry the SAME stamp, so no chunk can out-rank another.
+
+// AND A NULL STAMP IS *UNKNOWN*, NOT "OLDER THAN EVERYTHING". This is the third state
+// the rule needs, and reading it as the second one was a defect that survived four
+// rounds. `pushed_at` is NULL on every row written before the column existed - which on
+// deploy day is EVERY row in the store, the correct ones included, and stays NULL for
+// any day the exporter's rolling window no longer reaches until #3439 runs. Treating
+// NULL as losable made the exact replay this column was added to kill work again: a
+// byte-identical re-delivery of a pre-switch push deleted the CORRECT re-anchored row
+// and left the day reading 11609 for 11721 walked - LOW, invisible, and no longer
+// repairable by #3439, because the row that held the right number was gone. Pre-PR the
+// same day read 23330: wrong, but visibly wrong and still repairable. A patch that
+// makes a bug quieter and permanent is worse than the bug.
+//
+// So a NULL-stamped row is deleted only on PROOF that it predates the stamped era, and
+// only by a push that PROVABLY postdates it. The migration records both halves once,
+// as two `settings` values (`UnstampedEra`, below):
+//
+//   * `startedAt`      the instant `metric_samples.pushed_at` began being written.
+//   * `lastUnstampedId` the highest `metric_samples.id` that existed at that instant.
+//
+// `id` is `INTEGER PRIMARY KEY AUTOINCREMENT` (migration 083), so it is monotonic and
+// never reused - `id <= lastUnstampedId` is an EXACT statement that the row was already
+// in the table when the column landed, not a heuristic. And `incoming > startedAt` is an
+// exact statement that the push happened after that. Together they say the only thing
+// that is actually known about a NULL row: it is one of the pre-existing rows the
+// migration itself saw, and this push is newer than all of them. Every OTHER NULL - a
+// row a stampless push wrote afterwards, a row whose provenance the store cannot
+// establish - is simply not superseded, and the double count stays visible.
+//
+// TWO CLOSURES WERE WEIGHED AND LOST, both recorded here so this is not re-opened:
+//
+//   * A PER-GROUP HIGH-WATER MARK (supersede a NULL row only from a push at least as new
+//     as the newest stamp seen for that group). It needs no migration state, but its
+//     value MOVES AS THIS PUSH WRITES: row 2 of a push reads the stamp row 1 just wrote,
+//     so what survives depends on row order and on where the chunk split falls - the
+//     class of defect round 1 died on. Making it order-free means computing it for the
+//     whole push before any chunk writes and threading it through, and it still cannot
+//     act on the FIRST stamped push after deploy, because a store of NULLs offers no
+//     high-water mark to beat.
+//   * BACKFILLING `pushed_at` in the migration. Same semantics as the era markers, but
+//     it writes the migration instant onto every historical row - a value no exporter
+//     ever sent - so the column stops meaning what its own docstring says, #3439's
+//     "NULL stamps on both sides" replay loses the state it walks, and a boot pays a
+//     full-table UPDATE instead of two `settings` rows.
 //
 // AND THE STAMP MUST BE A PUSH TIME, NOT A WINDOW QUANTITY. An earlier version fell
 // back, when a push stated no `timestamp`, to the furthest-forward `ended_at` in the
@@ -235,8 +280,16 @@ export function windowsOverlap(
  * the number keeps its one derivation.
  *
  * A genuine `daily` bucket pushed within the first hour of local midnight is itself an
- * hour or narrower, so this declines to act on it. That is the safe direction: the
- * double count survives until the next push and is collapsed then.
+ * hour or narrower, so this declines to act on it — in BOTH roles. As the incoming row
+ * that is transient: the next push carries the same day grown past the hour and acts.
+ * As the STORED row it is PERMANENT: nothing ever widens a row already in the table, so
+ * no later push may collapse it and the day reads high until #3439 replays the rule over
+ * history. Measured: a 20-minute stored bucket under three later day-bucket pushes left
+ * a day reading 9200 for 9000 walked, indefinitely.
+ *
+ * That is still the safe direction — the alternative is a rule that deletes minute
+ * buckets — but it is a residual rather than a delay, so it is counted into the overlaps
+ * LEFT STANDING and said out loud, and this comment no longer claims otherwise.
  */
 export function isDayBucketWindow(start: string, end: string): boolean {
   const s = instantMs(start);
@@ -275,23 +328,63 @@ export function isSupersedingWindow(
 }
 
 /**
- * Is the push carrying an incoming row strictly newer than the push that wrote a row
- * stamped `storedPushedAt`?
+ * WHEN THE COLUMN STARTED BEING WRITTEN, AND WHAT WAS ALREADY IN THE TABLE.
  *
- * A NULL stored stamp is a row written before the column existed, which is every
- * already-corrupted row this fix exists for, so those may be superseded. An unreadable
- * or absent INCOMING stamp is refused outright: a push that cannot say when it happened
- * gets to delete nothing.
+ * Recorded once by `20260821-hc-overlap-supersede` and never moved again. It is the
+ * only thing that licenses deleting a NULL-stamped row — see the header. Both halves
+ * are exact facts about the store rather than estimates:
+ *
+ *   - `startedAt` is the instant the migration ran, so a push stamped after it happened
+ *     after every row that was already there.
+ *   - `lastUnstampedId` is `MAX(metric_samples.id)` at that instant. The column is
+ *     `INTEGER PRIMARY KEY AUTOINCREMENT` (migration 083): monotonic, never reused, so
+ *     `id <= lastUnstampedId` cannot become true for a row written later.
  */
-export function pushIsNewer(
+export interface UnstampedEra {
+  startedAt: string;
+  lastUnstampedId: number;
+}
+
+// The two app-global `settings` keys the era is written to. They live HERE, in the
+// db-free rule module, because the migration that WRITES them and the reader that
+// consumes them must not be able to drift apart — and the migration cannot import the
+// reader, which reaches the settings table through `@/lib/db`.
+export const UNSTAMPED_ERA_AT_KEY = "hc_overlap_unstamped_era_at";
+export const UNSTAMPED_ERA_MAX_ID_KEY = "hc_overlap_unstamped_era_max_id";
+
+/**
+ * May the push carrying an incoming row supersede this stored row, on freshness?
+ *
+ * THREE STATES, not two.
+ *
+ *   - The stored row HAS a stamp: the plain comparison. Strictly newer wins, so a
+ *     replay (same stamp) and a second chunk of the same push (same stamp) take nothing.
+ *   - The stored row's stamp is NULL and it is one of the rows the migration SAW
+ *     (`id <= era.lastUnstampedId`), and this push happened after the migration
+ *     (`incoming > era.startedAt`): superseded. That is the pre-PR double count the fix
+ *     exists to collapse, and both halves are proven rather than assumed.
+ *   - The stored row's stamp is NULL and either half is unproven: NOT superseded. NULL
+ *     means UNKNOWN. A row whose provenance the store cannot establish is not a row this
+ *     path may delete, so the double count stays — visible, counted, and repairable.
+ *
+ * An unreadable or absent INCOMING stamp is refused outright in every state: a push that
+ * cannot say when it happened gets to delete nothing.
+ */
+export function pushOutranks(
   incomingPushedAt: string | null | undefined,
-  storedPushedAt: string | null | undefined
+  stored: Pick<MetricWindow, "id" | "pushed_at">,
+  era: UnstampedEra | null
 ): boolean {
   const incoming = instantMs(incomingPushedAt);
   if (incoming === null) return false;
-  const stored = instantMs(storedPushedAt);
-  if (stored === null) return true;
-  return incoming > stored;
+  const storedMs = instantMs(stored.pushed_at);
+  if (storedMs !== null) return incoming > storedMs;
+  if (era === null) return false;
+  const eraMs = instantMs(era.startedAt);
+  if (eraMs === null) return false;
+  if (!Number.isFinite(stored.id) || stored.id > era.lastUnstampedId)
+    return false;
+  return incoming > eraMs;
 }
 
 // HOW FAR AHEAD OF THIS MACHINE'S CLOCK A PUSH MAY CLAIM TO HAVE HAPPENED.
@@ -341,13 +434,29 @@ export function pushStampFor(
  *
  * A stored row is superseded when ALL of these hold: the incoming window is a
  * day-bucket window of a tiling metric; the two overlap as instants; the STORED window
- * is itself a day-bucket window; the incoming PUSH is strictly newer than the one that
- * wrote the stored row; and the #133 lock does not protect it.
+ * is itself a day-bucket window; the incoming PUSH outranks the one that wrote the
+ * stored row (`pushOutranks`, which is where a NULL stamp is read as UNKNOWN rather
+ * than as old); and the #133 lock does not protect it.
  *
- * `locked` is every overlapped row the edit lock held out, reported rather than dropped
- * so the caller can count them into the `edited` split. `left` counts every overlap this
- * row DECLINED to collapse, whatever the reason — the caller turns it into a Review line,
- * because a declined supersede means a day still reads wrong.
+ * `locked` is every overlapped row the edit lock held out, reported rather than dropped.
+ *
+ * `left` IS THE ROWS, NOT A TALLY OF LOOKS AT THEM. Every stored day bucket this
+ * incoming row overlapped and did not collapse, whatever the reason - so the caller can
+ * union them across the whole push and count DISTINCT rows. Counting pairs said "2 daily
+ * totals" when two incoming buckets declined over ONE stored row, which is not what the
+ * Review line it feeds claims to be counting. `locked` rows are in both lists: the lock
+ * is one of the reasons a day is still double counted.
+ *
+ * WHICH OVERLAPS ARE COUNTED, AND THE ONE THAT IS NOT. An overlap goes into `left` when
+ * EITHER side is a day bucket. That admits the two shapes that are otherwise silent -
+ * a stored sub-daily bucket the rule may never collapse (permanent until #3439), and a
+ * fine-grained incoming row landing on a stored day bucket - and excludes the one shape
+ * where an overlap is not a double count at all: two devices that set no
+ * `metadata.data_origin` both parse to `origin = null` and their MINUTE buckets share a
+ * group, where an overlap is two readings being legitimately summed. The remaining
+ * over-report is a `daily` device and a `1m` device sharing `origin = null`; that warns
+ * where it need not, which is the cheaper error than a permanently wrong day nothing
+ * mentions.
  *
  * NOTHING HERE WITHHOLDS A WRITE, and that is a rule rather than an omission. An
  * earlier version also reported the stored rows the incoming row was NOT newer than,
@@ -365,22 +474,22 @@ export function planSupersede(
     ended_at: string;
     pushedAt?: string | null;
   },
-  stored: readonly MetricWindow[]
-): { supersede: MetricWindow[]; locked: MetricWindow[]; left: number } {
+  stored: readonly MetricWindow[],
+  era: UnstampedEra | null = null
+): { supersede: MetricWindow[]; locked: MetricWindow[]; left: MetricWindow[] } {
   const supersede: MetricWindow[] = [];
   const locked: MetricWindow[] = [];
   // Overlapping stored day buckets this row did NOT replace, for ANY reason. A double
   // count left standing, which the caller surfaces rather than leaving to be noticed.
-  let left = 0;
-  if (
-    !isSupersedingWindow(
-      incoming.metric,
-      incoming.started_at,
-      incoming.ended_at
-    )
-  ) {
-    return { supersede, locked, left };
-  }
+  const left: MetricWindow[] = [];
+  // Nutrition and sleep nest legitimately, so nothing about them is an anomaly and
+  // nothing about them is reportable either.
+  if (!isDayBucketMetric(incoming.metric)) return { supersede, locked, left };
+  const incomingIsBucket = isSupersedingWindow(
+    incoming.metric,
+    incoming.started_at,
+    incoming.ended_at
+  );
   for (const row of stored) {
     if (
       !windowsOverlap(
@@ -392,20 +501,34 @@ export function planSupersede(
     ) {
       continue;
     }
+    const storedIsBucket = isDayBucketWindow(row.started_at, row.ended_at);
+    // Two fine-grained windows overlapping is two devices being summed, not a double
+    // count — see the docstring. Nothing to do and nothing to say.
+    if (!incomingIsBucket && !storedIsBucket) continue;
     // A stored row cut at sub-daily granularity is not a bucket this rule may collapse,
-    // whatever the incoming row looks like.
-    if (!isDayBucketWindow(row.started_at, row.ended_at)) continue;
-    // The payload's own account of which push is newer. A replay, or a second chunk
-    // of the SAME push, is not newer, so it takes nothing. It is still WRITTEN — see
-    // the note above about never withholding a write.
-    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) {
-      left++;
+    // whatever the incoming row looks like — and it is the one residual that NO later
+    // push repairs, so it is the one that most needs saying out loud.
+    if (!storedIsBucket) {
+      left.push(row);
+      continue;
+    }
+    // A fine-grained incoming row cannot collapse anything either, but it does land on
+    // top of a stored day bucket, and that day reads high until something else moves.
+    if (!incomingIsBucket) {
+      left.push(row);
+      continue;
+    }
+    // The payload's own account of which push is newer, with a NULL stored stamp read
+    // as UNKNOWN. A replay, or a second chunk of the SAME push, does not outrank, so it
+    // takes nothing. It is still WRITTEN — see the note above about never withholding.
+    if (!pushOutranks(incoming.pushedAt, row, era)) {
+      left.push(row);
       continue;
     }
     // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
     if (row.edited) {
       locked.push(row);
-      left++;
+      left.push(row);
     } else supersede.push(row);
   }
   return { supersede, locked, left };

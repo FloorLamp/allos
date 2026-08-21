@@ -53,6 +53,8 @@ function seed(): Database.Database {
       suppressed INTEGER,
       edited INTEGER
     );
+
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   // The prod pileup from #3424's own table, so "it touches no row" is asserted against
   // the exact shape the removed replay used to delete.

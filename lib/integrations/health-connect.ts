@@ -218,22 +218,31 @@ export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
 //
 // #3424's supersede declines whenever it cannot establish that the incoming row is
 // newer: the push stated no `timestamp`, the clock bound refused the one it stated, a
-// phone whose clock went BACKWARDS stamps every push in the past, or the #133 lock
-// protects the stored row. All four leave the same thing behind — two day buckets
-// summing into one day — and the person reading their totals does not care which.
+// phone whose clock went BACKWARDS stamps every push in the past, the stored row has no
+// stamp and no proof it predates the column, the stored bucket was cut at sub-daily
+// granularity, or the #133 lock protects it. They all leave the same thing behind — two
+// day buckets summing into one day — and the person reading their totals does not care
+// which.
 //
-// So the line is emitted from what HAPPENED (the count of overlapping stored buckets
-// left standing) rather than from a guess made at parse time. The version this replaces
-// gated on `pushedAt === null` and was wrong in BOTH directions: it fired for a
-// stampless push whose windows the rule could never have acted on, and stayed silent
-// when the clock bound rejected a stamp that was present and readable. Its text was
-// wrong too — it said totals "may read high", which is right for a declined supersede
-// and was NOT right for the within-push case it also covered, where the day read low.
+// So the line is emitted from what HAPPENED (the count of distinct stored buckets left
+// standing) rather than from a guess made at parse time. The version this replaces gated
+// on `pushedAt === null` and was wrong in BOTH directions: it fired for a stampless push
+// whose windows the rule could never have acted on, and stayed silent when the clock
+// bound rejected a stamp that was present and readable. Its text was wrong too — it said
+// totals "may read high", which is right for a declined supersede and was NOT right for
+// the within-push case it also covered, where the day read low.
+//
+// AND IT NO LONGER PROMISES THE NEXT PUSH WILL FIX IT. It used to end "they collapse on
+// the next push that carries a later timestamp", which is true of most of the causes
+// above and false of one: a stored bucket cut within an hour of the old zone's midnight
+// is below the granularity gate, so NO later push may collapse it (#3439 does). Saying
+// "usually" is the honest shape — telling someone their total will fix itself when it
+// will not is worse than not mentioning it.
 export function overlapsLeftWarning(count: number): string {
   const totals = count === 1 ? "1 daily total" : `${count} daily totals`;
   return (
     `${totals} from before a timezone change could not be replaced by this push, so ` +
-    "those days count some activity twice and read HIGH. They collapse on the next push " +
+    "those days count some activity twice and read HIGH. Most clear on the next push " +
     "that carries a later timestamp than the reading it replaces."
   );
 }
