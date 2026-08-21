@@ -80,6 +80,12 @@
           "title": "A dose written 1 000 mg is read as 1000 or says it cannot be read — never counted as nothing",
           "kind": "fix",
           "issues": [3451]
+        },
+        {
+          "pr": 3483,
+          "title": "Starting a workout and picking an exercise quickly no longer leaves two activities for one session",
+          "kind": "fix",
+          "issues": [3441]
         }
       ]
     },
