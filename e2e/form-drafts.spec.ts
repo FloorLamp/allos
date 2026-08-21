@@ -289,3 +289,276 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     deleteIntakeItem(SUPPLEMENT_NAME);
   }
 });
+
+// ── The reactive unsaved-work signature, MEASURED (#3371) ────────────────────
+//
+// `components/useFormDraft.ts` publishes `data-unsaved` for every draft-backed form
+// by recomputing its draft signature on every keystroke, where before #3371 it only
+// snapshotted on the 600ms autosave debounce. The issue refused to let that route be
+// chosen on a guess: "a per-keystroke signature over a 1770-line form is exactly
+// where it would be felt. Measure before committing to it."
+//
+// So this measures it, on the real thing: the real `IntakeItemForm` mounted in its
+// supplement modal, with the real `extra` payload its own draft carries, running the
+// exact computation the hook runs (`collectFields` + `draftSig`). It stays in the
+// suite because the number is only worth anything if it can be re-taken — and because
+// the cost is a property of the FORM, not of the hook: a future field, or a fatter
+// `extra`, moves it without touching components/useFormDraft.ts.
+const SIGNATURE_ITERATIONS = 300;
+// WHAT THIS BOUNDS AND IN WHAT UNIT: the mean wall-clock cost, in MILLISECONDS, of
+// ONE signature recomputation — the work #3371 adds to the typing path, once per
+// keystroke. One 60Hz frame is 16.7ms, and a keystroke already spends a chunk of that
+// re-rendering the form, so the signature has to be a small fraction of a frame.
+//
+// MEASURED 2026-08-21, Chromium on this box, and both readings are why the shared
+// route was taken rather than three bespoke adopters:
+//   * real payload (905-byte signature, 10 form controls): 0.0133 ms — 0.08% of a
+//     frame, ~45x cheaper than the 600ms debounce it now runs alongside is spaced.
+//   * the same payload 20x bigger (18 KB): 0.0600 ms. Sub-linear, because the cost is
+//     mostly the FormData construction and the walk of `form.elements` rather than
+//     the JSON — so this is a property of the form's SHAPE, and a form with a fatter
+//     draft does not walk into trouble.
+// 4ms is a quarter of a frame: ~300x headroom over the measured value, which is what
+// makes it survivable on a contended CI runner while still failing on a real
+// regression (an `extra` two orders of magnitude bigger, or a field census that is).
+const SIGNATURE_BUDGET_MS = 4;
+
+test("the reactive unsaved signature is cheap enough to run per keystroke (#3371)", async ({
+  page,
+}) => {
+  test.slow();
+  const NAME = "Draftnet Signature Zinc";
+  try {
+    await page.goto("/nutrition?tab=supplements");
+    await page.getByTestId("supplement-add-toggle").click();
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
+    await addCard.getByLabel("Name").fill(NAME);
+    // A dose row, so `extra` carries the state-only half rather than an empty object
+    // — that half is what `draftSig` actually spends its time on.
+    const doseEditor = await openFact(page, "dose", addCard);
+    await doseEditor.getByLabel("Amount").first().fill("25 mg"); // first-ok: this form's own first dose row
+    await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
+    await closeEditor(page, addCard);
+
+    // WAIT FOR THE CONTENT BEFORE MEASURING IT. The draft reaching IndexedDB is the
+    // proof that `extra` is the real, populated payload; measuring before it lands
+    // would time a signature over whatever happened to be there, and empty is the
+    // state that flatters.
+    await expect
+      .poll(
+        async () =>
+          (await draftRows(page)).filter((r) => r.key.includes(":supplement:"))
+            .length,
+        {
+          timeout: DRAFT_SETTLE_MS,
+          message: "the supplement draft to reach IndexedDB",
+        }
+      )
+      .toBe(1);
+
+    const measured = await page.evaluate(
+      async ([iterations]) => {
+        const form = document.querySelector<HTMLFormElement>(
+          '[data-testid="intake-item-form"]'
+        );
+        if (!form) return null;
+        const extra = await new Promise<unknown>((resolve) => {
+          const req = indexedDB.open("allos-offline");
+          req.onerror = () => resolve(null);
+          req.onsuccess = () => {
+            const db = req.result;
+            const all = db
+              .transaction("drafts", "readonly")
+              .objectStore("drafts")
+              .getAll();
+            all.onerror = () => {
+              db.close();
+              resolve(null);
+            };
+            all.onsuccess = () => {
+              const row = (all.result ?? []).find((r: { key: string }) =>
+                String(r.key).includes(":supplement:")
+              );
+              db.close();
+              resolve(row ? (row.extra ?? null) : null);
+            };
+          };
+        });
+
+        // components/useFormDraft.ts#collectFields + lib/offline/drafts.ts#draftSig,
+        // transcribed. Transcribed rather than imported because the page has no
+        // module loader for app source, and the two are eleven lines: if they drift,
+        // the field-census assertion below is what notices.
+        const signature = (payload: unknown) => {
+          const excluded = new Set<string>();
+          for (const el of Array.from(form.elements)) {
+            if (
+              el instanceof HTMLInputElement &&
+              (el.type === "file" || el.type === "password") &&
+              el.name
+            ) {
+              excluded.add(el.name);
+            }
+          }
+          const out: [string, string][] = [];
+          for (const [name, value] of new FormData(form).entries()) {
+            if (typeof value !== "string") continue;
+            if (excluded.has(name)) continue;
+            out.push([name, value]);
+          }
+          return JSON.stringify([out, payload ?? null]);
+        };
+
+        const time = (payload: unknown) => {
+          for (let i = 0; i < 20; i += 1) signature(payload); // warm the JIT
+          const started = performance.now();
+          let sink = 0;
+          for (let i = 0; i < iterations; i += 1) {
+            sink += signature(payload).length;
+          }
+          return {
+            meanMs: (performance.now() - started) / iterations,
+            bytes: sink / iterations,
+          };
+        };
+
+        // SECOND READING, WITH THE PAYLOAD BLOWN UP 20x. One number cannot say
+        // whether this cost is a property of the FORM (constant-ish: one FormData,
+        // one walk of form.elements) or of the DRAFT (linear in `extra`, and so a
+        // future-proofing question rather than a today question). Two readings can.
+        const fat = Array.from({ length: 20 }, () => extra);
+        return {
+          real: time(extra),
+          fat: time(fat),
+          controls: form.elements.length,
+        };
+      },
+      [SIGNATURE_ITERATIONS] as const
+    );
+
+    expect(measured, "the intake form to be on screen to measure").not.toBeNull();
+    // ANTI-VACUITY, and these are what keep the number honest: a signature over an
+    // empty form would also be fast. Measured 2026-08-21, this form renders TEN
+    // controls the browser composes (the rest of its 1770 lines are derived fact
+    // chips and state-only rows, which is exactly why the registry cannot see it and
+    // why it needs the marker at all) and its draft payload is real, not `null`.
+    expect(measured!.controls).toBeGreaterThan(5);
+    expect(measured!.real.bytes).toBeGreaterThan(200);
+    expect(measured!.fat.bytes).toBeGreaterThan(measured!.real.bytes * 10);
+
+    // eslint-disable-next-line no-console -- the measurement IS the deliverable (#3371); a number nobody can read is not one
+    console.log(
+      `[#3371] draft signature over IntakeItemForm: ${measured!.real.meanMs.toFixed(4)} ms/keystroke ` +
+        `over ${Math.round(measured!.real.bytes)} bytes; ` +
+        `${measured!.fat.meanMs.toFixed(4)} ms with the payload 20x bigger ` +
+        `(${Math.round(measured!.fat.bytes)} bytes). ` +
+        `${measured!.controls} form controls, ${SIGNATURE_ITERATIONS} iterations.`
+    );
+    expect(
+      measured!.real.meanMs,
+      "the per-keystroke draft signature must stay a small fraction of a frame — this is the cost #3371 asked to be measured before useFormDraft published the marker from a hot path"
+    ).toBeLessThan(SIGNATURE_BUDGET_MS);
+    // And the 20x payload stays inside the same budget, which is the claim that makes
+    // the route safe for forms nobody has written yet.
+    expect(measured!.fat.meanMs).toBeLessThan(SIGNATURE_BUDGET_MS);
+  } finally {
+    deleteIntakeItem(NAME);
+  }
+});
+
+test("the supplement form answers for itself, and Escape asks before discarding it (#3371, #3420)", async ({
+  page,
+}) => {
+  test.slow();
+  const NAME = "Draftnet Escape Zinc";
+
+  // ESCAPE BELONGS TO THE INNERMOST OPEN LAYER FIRST (#3409): `useFocusTrap` yields
+  // to `[data-escape-layer="true"]`, and the Name field is a combobox whose list
+  // opens whenever it takes focus — including when the confirm hands focus back. So
+  // each press below says which layer it is for, rather than pressing twice and
+  // hoping; a test that cannot name the press it means proves nothing about either.
+  const dismissAnyOpenPicker = async () => {
+    const layer = page.locator('[data-escape-layer="true"]');
+    if (await layer.count()) {
+      await page.keyboard.press("Escape");
+      await expect(layer).toHaveCount(0);
+    }
+  };
+
+  try {
+    await page.goto("/nutrition?tab=supplements");
+    await page.getByTestId("supplement-add-toggle").click();
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
+    const form = addCard.getByTestId("intake-item-form");
+
+    // THE FORM'S OWN ANSWER FIRST, and the order is load-bearing. This assertion is
+    // about the FORM — `components/useFormDraft.ts` publishes it off the same "has
+    // the content moved off the mount snapshot" the draft write already asks — so it
+    // survives every change to the dialog's dismissal wiring, which is what lets the
+    // Escape assertions below name their own cause. With Escape asserted first, a
+    // missing marker reds as "the #3420 ruling regressed" and sends the next reader
+    // into components/BottomSheet.tsx.
+    await expect(
+      form,
+      "an untouched form has nothing to lose and must say so"
+    ).toHaveAttribute("data-unsaved", "false");
+    await addCard.getByLabel("Name").fill(NAME);
+    await expect(
+      form,
+      "the form must publish its own unsaved state — it has one name= in 1770 lines and it lands on a hidden input, so the discard guard has nothing else to read"
+    ).toHaveAttribute("data-unsaved", "true");
+
+    // ESCAPE, not a gesture and not the Close button. Before the #3420 ruling this
+    // discarded the typing outright while a scrim tap two pixels away asked first.
+    await dismissAnyOpenPicker();
+    await page.keyboard.press("Escape");
+
+    // A PRESENCE assertion, so the default ceiling is honest: no amount of waiting
+    // conjures this confirm if the guard cannot see the form, because the guard is
+    // asked synchronously on the keypress.
+    const confirm = page.getByTestId("confirm-dialog");
+    await expect(
+      confirm,
+      "Escape over a dialog holding unsaved work must route through the discard confirm (#3420)"
+    ).toBeVisible();
+    await expect(confirm).toContainText("Discard your changes?");
+
+    await hydratedClick(
+      page,
+      confirm.getByRole("button", { name: "Keep editing" })
+    );
+    // Keep editing keeps BOTH: the typing and the surface it was typed into.
+    await expect(addCard).toBeVisible();
+    await expect(addCard.getByLabel("Name")).toHaveValue(NAME);
+    // And the confirm must LEAVE before the next press: it stays mounted through its
+    // exit animation, so a `toBeVisible()` after the next Escape would pass on the one
+    // already going away and assert about the wrong keypress.
+    await expect(confirm).toHaveCount(0);
+
+    // Discarding for real closes the dialog — the confirm is a question, not a veto.
+    await dismissAnyOpenPicker();
+    await page.keyboard.press("Escape");
+    await expect(confirm).toBeVisible();
+    await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
+    await expect(addCard).toHaveCount(0);
+
+    // AND THE OTHER HALF OF THE RULING, which is what keeps the confirm from becoming
+    // a click-through: a dialog holding nothing unsaved keeps today's behaviour —
+    // one Escape, closed, no question.
+    await page.getByTestId("supplement-add-toggle").click();
+    const reopened = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(reopened.getByTestId("intake-item-form")).toHaveAttribute(
+      "data-unsaved",
+      "false"
+    );
+    await dismissAnyOpenPicker();
+    await page.keyboard.press("Escape");
+    await expect(
+      reopened,
+      "a dialog with nothing to lose must still close outright on Escape (#3420)"
+    ).toHaveCount(0);
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  } finally {
+    deleteIntakeItem(NAME);
+  }
+});

@@ -295,14 +295,21 @@ export function useFormDraft<E = undefined>({
    * and nothing else writes that attribute here.
    *
    * WHAT THE SIGNATURE COSTS, MEASURED rather than assumed (#3371 asked for the
-   * number before this route was chosen). The recomputation is `collectFields` +
-   * `draftSig` — one `new FormData`, one walk of `form.elements`, one
-   * `JSON.stringify` — run once per keystroke instead of once per 600ms debounce.
-   * Measured in Chromium against the REAL supplement add form (the 1770-line
-   * `IntakeItemForm`), with its real `extra` payload: see
-   * `e2e/form-drafts.spec.ts`'s "the reactive unsaved signature is cheap enough to
-   * run per keystroke" test, which re-runs the measurement and holds the ceiling it
-   * was chosen against.
+   * number before this route was chosen, because a per-keystroke signature over a
+   * 1770-line form is exactly where it would be felt). The recomputation is
+   * `collectFields` + `draftSig` — one `new FormData`, one walk of `form.elements`,
+   * one `JSON.stringify` — run once per keystroke instead of once per 600ms debounce.
+   *
+   * Chromium, against the REAL supplement add form (`IntakeItemForm`) with its real
+   * `extra` payload, 2026-08-21: **0.0133 ms per keystroke** (905-byte signature, 10
+   * browser-composed controls), and **0.0600 ms** with the payload twenty times
+   * bigger. 0.08% of a 60Hz frame, sub-linear in the payload because the DOM half
+   * dominates. That is what licensed the shared route over three bespoke adopters.
+   *
+   * `e2e/form-drafts.spec.ts`'s "the reactive unsaved signature is cheap enough to run
+   * per keystroke" re-takes both readings and holds the ceiling they were judged
+   * against — the cost is a property of the FORM, so it can move without this file
+   * changing at all.
    */
   const publishUnsaved = useCallback(
     (knownSig?: string) => {
