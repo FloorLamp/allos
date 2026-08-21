@@ -11,6 +11,20 @@ import {
   type SourceFile,
 } from "@/scripts/dialog-census-core";
 
+/**
+ * The real file, read off disk.
+ *
+ * THE REACH FIXTURES BELOW USED TO BE ENTIRELY SYNTHETIC, and every one of them
+ * spelled `role="dialog"` — the one thing the detector looked for. So the suite
+ * proved the detector could see the shape it had been written from, and #3445
+ * is what that costs: two real hand-rolled modal surfaces sat in the tree
+ * unclassified while the suite ran green. A fixture the rule was designed
+ * around cannot fail; a file somebody else wrote can.
+ */
+function realFile(rel: string): SourceFile {
+  return { rel, text: fs.readFileSync(path.join(REPO_ROOT, rel), "utf8") };
+}
+
 // The guard over the dialog census (#3405).
 //
 // WHAT IT FAILS ON, and deliberately what it does not. It fails when a dialog
@@ -199,11 +213,63 @@ describe("dialog census — the register over the real tree", () => {
       "app/(app)/trends/ChartJumpMenu.tsx",
       "components/CompactDateMenu.tsx",
       "components/OverflowMenu.tsx",
-      "components/LevelBadge.tsx",
-      "components/MobileNav.tsx",
+      // ── THE TWO THAT LEFT THIS LIST IN #3445, and why ────────────────────
+      //
+      // `LevelBadge` and `MobileNav` used to be asserted here, as menus. They
+      // were not menus. Both were listed because the census produced no entry
+      // for them, and the census produced no entry for them because neither
+      // spells `role="dialog"` — so this assertion was reading the detector's
+      // blind spot back as a fact about the tree, which is the whole of #3445 in
+      // one line. `LevelBadge` renders ModalShell now; `MobileNav` is a recorded
+      // exception. Both are pinned below, in the direction that is now true.
+      //
+      // The three above are genuine, and the discriminator is stated where it
+      // lives (`declaresModalAnatomy`): a menu is anchored to its trigger, or its
+      // full-viewport layer is a transparent catcher rather than a scrim, or it
+      // never leaves its own DOM neighbourhood. CompactDateMenu is the tree's own
+      // near-miss — a real `fixed inset-0` that is not a dialog.
+      "components/InfoTooltipIcon.tsx",
+      "components/Combobox.tsx",
     ]) {
       expect(hostless, `${rel} is not a dialog`).not.toContain(rel);
     }
+  });
+
+  // ── The two the widened detector found (#3445) ─────────────────────────────
+  //
+  // Pinned as REAL FILES rather than as fixtures, because the defect was that
+  // every reach fixture had been written from the detector's own premise. These
+  // two cannot be: nobody wrote them to be found.
+  it("classifies MobileNav, which declares no role and no aria-modal", () => {
+    const entry = CENSUS.hostless.find((e) => e.rel === "components/MobileNav.tsx");
+    expect(
+      entry,
+      "The mobile nav drawer portals to <body>, covers the viewport with its own " +
+        "scrimmed `fixed inset-0`, takes the shared body lock and handles Escape. " +
+        "It carries no `role` and no `aria-modal`, which is exactly why the census " +
+        "could not see it (#3445). If it has converged onto the dialog host, drop " +
+        "its HOSTLESS_DIALOGS entry — do not weaken the detector."
+    ).toBeDefined();
+    // FOUND BY WHAT IT RENDERS, not by what it says. If somebody adds
+    // `role="dialog"` to the drawer this flips to "aria" and the anatomy route
+    // stops being exercised by a real file — which is worth knowing, so it is
+    // asserted rather than left to drift.
+    expect(entry?.declaredBy).toBe("anatomy");
+    expect(entry?.handRolled?.portal).toBe(true);
+    expect(entry?.handRolled?.sharedBodyLock).toBe(true);
+    expect(entry?.handRolled?.scrim).toBe(true);
+  });
+
+  it("puts the converged LevelBadge on the host, not in the register", () => {
+    const rel = "components/LevelBadge.tsx";
+    // It was a hand-rolled centred card over a `bg-slate-900/40` scrim with no
+    // ARIA at all — the anatomy #3445 describes, live in the tree. The census
+    // found it, and the answer was convergence, which is the default.
+    expect(CENSUS.hosted.map((e) => e.rel)).toContain(rel);
+    expect(CENSUS.hostless.map((e) => e.rel)).not.toContain(rel);
+    expect(CENSUS.hosted.find((e) => e.rel === rel)?.hosts).toContain(
+      "components/ModalShell.tsx"
+    );
   });
 });
 
