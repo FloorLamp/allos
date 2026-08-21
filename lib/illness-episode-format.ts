@@ -386,6 +386,14 @@ export function episodeHeadline(ep: AssembledEpisode): string {
 
 export interface EpisodeCollapsedStatus {
   dayLabel: string;
+  // The SAME day, without the situation's name — for a host whose own header already
+  // says "Illness" one line above (#3238). The full `dayLabel` stays the default and is
+  // what a surface showing this status ALONE renders: on /encounters and the dashboard's
+  // illness state card the situation is the only thing naming what the day belongs to.
+  // Two fields rather than a flag because both are read on the same page at once.
+  // NULL when the episode has no derivable day number: the full label is then just the
+  // situation's name, and a host that already printed that name has nothing left to say.
+  dayOnlyLabel: string | null;
   temperature: {
     id: number | string;
     value: string;
@@ -477,6 +485,7 @@ export function episodeCollapsedStatus(
   const lastDose = episodeLatestDose(ep);
   return {
     dayLabel: day != null ? `${ep.situation} · Day ${day}` : ep.situation,
+    dayOnlyLabel: day != null ? `Day ${day}` : null,
     temperature: temperature
       ? {
           id:

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
+import { trackedPageFor } from "@/lib/recent-pages";
+import StandingSparkline, {
+  type StandingSparklineSeries,
+} from "./StandingSparkline";
 import {
   STANDING_READING_ORDER,
   type StandingSectionKey,
@@ -14,6 +18,26 @@ export interface DashboardStandingPresentation {
   href?: AppRoute;
   actionLabel?: string;
   presence?: "never" | "current" | "dormant";
+  /**
+   * The row's existing trend read, drawn in the desktop column (#3252). Absent for
+   * every row whose domain has no trend read — that is the rule, not an omission.
+   */
+  series?: StandingSparklineSeries;
+  /**
+   * A sentence the row carries on hover, behind its own numbers. Today the sleep
+   * rows' usual band ("Usual 10:40 PM – 5:45 AM"), sourced verbatim from the
+   * classifier that already answers it (#3253's rider). Silence when it answers null.
+   */
+  hoverNote?: string;
+}
+
+// The door's label: the DESTINATION's own name, taken from the one list that already
+// maps a route to what it is called (lib/recent-pages TRACKED_PAGES, which also cuts
+// the `#body` fragment — a section is a position on a page, never a different page).
+// Nothing is invented here: an untracked href simply gets no door, which is the honest
+// answer when the app has no name for where the row goes.
+function doorLabel(href: AppRoute): string | null {
+  return trackedPageFor(href)?.label ?? null;
 }
 
 const SECTIONS: readonly {
@@ -67,96 +91,142 @@ export default function DashboardStandingCluster({
                 {section.label}
               </h3>
               <dl>
-                {families.map(({ family, members }) => (
-                  <div
-                    key={family.key}
-                    className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4"
-                    data-standing-family={family.key}
-                    data-standing-composition={family.composition}
-                  >
-                    <dt className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                      {family.label}
-                    </dt>
-                    <dd className="min-w-0">
-                      <ul
-                        className={`flex min-w-0 gap-1.5 ${
-                          family.composition === "members"
-                            ? "flex-col"
-                            : "flex-row flex-wrap gap-x-4"
-                        }`}
-                      >
-                        {members.map((placement) => {
-                          const { candidate } = placement;
-                          const presentation = presentations.get(
-                            candidate.candidateId
-                          );
-                          if (!presentation) return null;
-                          const engagement =
-                            candidate.relevance.kind === "profile-data"
-                              ? candidate.relevance.engagement
-                              : undefined;
-                          const content = (
-                            <>
-                              {presentation.label && (
-                                // The row's IDENTITY — what the reading is, as
-                                // opposed to what it says. Named so a layout guard
-                                // can assert a long value never costs a Standing
-                                // reading its name (#2614), which is a claim about
-                                // this span rather than about any one family.
-                                <span
-                                  data-testid="standing-label"
-                                  className="text-xs text-slate-500 dark:text-slate-400"
-                                >
-                                  {presentation.label}
-                                </span>
-                              )}
-                              {presentation.value != null && (
-                                <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                                  {presentation.value}
-                                </span>
-                              )}
-                              {presentation.detail != null && (
-                                <span className="text-xs text-slate-500 dark:text-slate-400">
-                                  {presentation.detail}
-                                </span>
-                              )}
-                              {presentation.actionLabel && (
-                                <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
-                                  {presentation.actionLabel} →
-                                </span>
-                              )}
-                            </>
-                          );
-                          const className =
-                            "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm";
-                          return (
-                            <li
-                              key={candidate.candidateId}
-                              data-testid="dashboard-candidate"
-                              data-candidate-id={candidate.candidateId}
-                              data-fact-key={candidate.factKey}
-                              data-lane="standing"
-                              data-kind={candidate.kind}
-                              data-engagement={engagement}
-                              data-presence={presentation.presence}
-                            >
-                              {presentation.href ? (
-                                <Link
-                                  href={presentation.href}
-                                  className={`${className} hover:text-brand-700 dark:hover:text-brand-400`}
-                                >
-                                  {content}
-                                </Link>
-                              ) : (
-                                <div className={className}>{content}</div>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </dd>
-                  </div>
-                ))}
+                {families.map(({ family, members }) => {
+                  // ONE sparkline per FAMILY, in a fixed trailing column, which is what
+                  // makes the column ALIGNED rather than a plot tucked after each
+                  // member's text: every family's third cell starts at the same x. The
+                  // family's series is its primary reading's — the weight family's
+                  // "Latest" row carries it, its "Trend" row is a link.
+                  const series = members
+                    .map(
+                      (placement) =>
+                        presentations.get(placement.candidate.candidateId)
+                          ?.series
+                    )
+                    .find((entry) => entry != null);
+                  return (
+                    <div
+                      key={family.key}
+                      className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 min-[720px]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[720px]:items-center"
+                      data-standing-family={family.key}
+                      data-standing-composition={family.composition}
+                    >
+                      <dt className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                        {family.label}
+                      </dt>
+                      <dd className="min-w-0">
+                        <ul
+                          className={`flex min-w-0 gap-1.5 ${
+                            family.composition === "members"
+                              ? "flex-col"
+                              : "flex-row flex-wrap gap-x-4"
+                          }`}
+                        >
+                          {members.map((placement) => {
+                            const { candidate } = placement;
+                            const presentation = presentations.get(
+                              candidate.candidateId
+                            );
+                            if (!presentation) return null;
+                            const engagement =
+                              candidate.relevance.kind === "profile-data"
+                                ? candidate.relevance.engagement
+                                : undefined;
+                            const content = (
+                              <>
+                                {presentation.label && (
+                                  // The row's IDENTITY — what the reading is, as
+                                  // opposed to what it says. Named so a layout guard
+                                  // can assert a long value never costs a Standing
+                                  // reading its name (#2614), which is a claim about
+                                  // this span rather than about any one family.
+                                  <span
+                                    data-testid="standing-label"
+                                    className="text-xs text-slate-500 dark:text-slate-400"
+                                  >
+                                    {presentation.label}
+                                  </span>
+                                )}
+                                {presentation.value != null && (
+                                  <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                                    {presentation.value}
+                                  </span>
+                                )}
+                                {presentation.detail != null && (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {presentation.detail}
+                                  </span>
+                                )}
+                                {presentation.actionLabel && (
+                                  <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
+                                    {presentation.actionLabel} →
+                                  </span>
+                                )}
+                              </>
+                            );
+                            const className =
+                              "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm";
+                            // The door: where this row goes, revealed on hover and on
+                            // keyboard focus alike. It sits IN FLOW as the row's last
+                            // element and only fades and slides — so it can never move
+                            // the row, and the age it stands in for keeps its own box
+                            // while it steps aside (app/globals.css, "Dashboard hover
+                            // doors"). No door on a row that is not a link.
+                            const door = presentation.href
+                              ? doorLabel(presentation.href)
+                              : null;
+                            return (
+                              <li
+                                key={candidate.candidateId}
+                                data-testid="dashboard-candidate"
+                                data-candidate-id={candidate.candidateId}
+                                data-fact-key={candidate.factKey}
+                                data-lane="standing"
+                                data-kind={candidate.kind}
+                                data-engagement={engagement}
+                                data-presence={presentation.presence}
+                              >
+                                {presentation.href ? (
+                                  <Link
+                                    href={presentation.href}
+                                    title={presentation.hoverNote}
+                                    className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  >
+                                    {content}
+                                    {door && (
+                                      <span
+                                        data-testid="standing-door"
+                                        className="standing-door ml-auto text-xs font-medium text-brand-700 dark:text-brand-400"
+                                        aria-hidden="true"
+                                      >
+                                        {door} ›
+                                      </span>
+                                    )}
+                                  </Link>
+                                ) : (
+                                  <div
+                                    className={className}
+                                    title={presentation.hoverNote}
+                                  >
+                                    {content}
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </dd>
+                      {/* The column exists as a CELL at every desktop width, drawn or
+                        not, so a family with no trend read does not pull its
+                        neighbours' plots out of line. Below 720px the whole track is
+                        gone (the grid drops back to two columns) and the row's facts
+                        stand alone. */}
+                      <div className="hidden min-[720px]:flex min-[720px]:justify-end">
+                        {series && <StandingSparkline series={series} />}
+                      </div>
+                    </div>
+                  );
+                })}
               </dl>
             </section>
           );

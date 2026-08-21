@@ -67,6 +67,28 @@ export interface GlanceAgeToken {
 const AGE_CLASS_CURRENT = "text-slate-500 dark:text-slate-400";
 const AGE_CLASS_STALE = "font-medium text-amber-600 dark:text-amber-400";
 
+// THE SAME DECISION, WORN BY A SERIES (#3252). The Standing sparkline sits inches from
+// the age label for the same reading, so the two cannot be allowed to disagree about
+// whether that reading is current: an amber "4y" beside a confident green plot is the
+// card contradicting itself in one glance. The sparkline therefore inherits `stale`
+// from the token above rather than re-deciding — this is the treatment, not a second
+// opinion, which is why it lives here beside the text classes.
+//
+// The green is the BRAND green, not emerald: #1445 folded emerald out of the palette
+// on contrast grounds. Both tones are ONE STEP DARKER than the label's on light, and
+// that is measured rather than taste: a 2px stroke is a graphical object and owes 3:1,
+// and against this app's light surface (#f4f8f0) amber-600 lands at 2.96:1 — under the
+// floor — while amber-700 is 4.67:1 and brand-700 4.66:1. Dark mode keeps the label's
+// own 400 steps, which are already ~10:1 there. Same hues as the age beside it, so the
+// pair still reads as one statement about one reading.
+const SERIES_CLASS_CURRENT = "text-brand-700 dark:text-brand-400";
+const SERIES_CLASS_STALE = "text-amber-700 dark:text-amber-400";
+
+/** The tone a series drawn beside a glance age must take. `currentColor` does the rest. */
+export function glanceSeriesToneClass(stale: boolean): string {
+  return stale ? SERIES_CLASS_STALE : SERIES_CLASS_CURRENT;
+}
+
 export interface GlanceAgeInput {
   /** The reading's own day (YYYY-MM-DD). */
   date: string;
