@@ -57,7 +57,10 @@ export default function DashboardStandingCluster({
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
   return (
-    <section className="section-seam-lg mb-8" aria-labelledby="dashboard-standing-title">
+    <section
+      className="section-seam-lg mb-8"
+      aria-labelledby="dashboard-standing-title"
+    >
       <h2
         id="dashboard-standing-title"
         className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"

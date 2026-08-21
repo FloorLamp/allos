@@ -113,7 +113,10 @@ export default async function WellnessPage(props: {
       ) : null}
 
       {practiceValues.length > 0 && (
-        <section data-testid="practice-history" className="section-seam-lg mb-8">
+        <section
+          data-testid="practice-history"
+          className="section-seam-lg mb-8"
+        >
           <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
             Practice history
           </h2>

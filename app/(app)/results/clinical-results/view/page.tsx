@@ -616,7 +616,11 @@ export default async function ClinicalResultDetailPage(props: {
       />
 
       {derivedReading && (
-        <Notice tone="slate" testid="derived-note" className="section-seam mb-6">
+        <Notice
+          tone="slate"
+          testid="derived-note"
+          className="section-seam mb-6"
+        >
           <span className="font-semibold">Derived index.</span> These values are
           computed from your other lab readings on the same draw date, not
           measured directly.{" "}

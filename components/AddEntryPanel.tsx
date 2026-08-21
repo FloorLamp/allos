@@ -86,7 +86,8 @@ export default function AddEntryPanel({
     // the CTA that opened it after React commits the close.
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
-  const gap = presentation === "modal" ? "" : dense ? "mb-5" : "section-seam mb-6";
+  const gap =
+    presentation === "modal" ? "" : dense ? "mb-5" : "section-seam mb-6";
 
   if (presentation === "modal") {
     return (
