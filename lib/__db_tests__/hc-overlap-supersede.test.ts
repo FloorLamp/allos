@@ -31,6 +31,8 @@ import {
   supersedeDateRange,
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
+import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
+import type { ParsedPayload } from "@/lib/integrations/health-connect";
 
 const HC = "health-connect";
 const ORIGIN = "com.fitbit.FitbitMobile";
@@ -409,9 +411,11 @@ describe("what the rule must NEVER delete", () => {
     expect(counts.superseded).toBe(0);
     expect(counts.edited).toBe(1);
     // The hand-corrected row is still there, with its hand-corrected value.
-    expect(storedRows(p, "steps").map((r) => r.value).sort()).toEqual([
-      3000, 3500,
-    ]);
+    expect(
+      storedRows(p, "steps")
+        .map((r) => r.value)
+        .sort()
+    ).toEqual([3000, 3500]);
   });
 
   it("counts one held lock ONCE however many incoming rows overlap it", () => {
@@ -429,7 +433,9 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    db.prepare("UPDATE metric_samples SET edited = 1 WHERE profile_id = ?").run(p);
+    db.prepare("UPDATE metric_samples SET edited = 1 WHERE profile_id = ?").run(
+      p
+    );
     const counts = upsertMetricSamples(
       p,
       [
@@ -667,5 +673,74 @@ describe("the accounting contract", () => {
       HC
     );
     expect(storedRows(other, "steps").map((r) => r.value)).toEqual([7777]);
+  });
+});
+
+describe("each batch is processed in ascending started_at order", () => {
+  // #3424's trailing-edge section asks for this by name, and it is the one clause of
+  // the fix whose effect on the FINAL STORE STATE is nil: after phase 1 the surviving
+  // rows of a push are pairwise disjoint per (metric, origin), so none of them can
+  // delete another and the survivor set is the same whatever order they are written
+  // in. That is exactly why it needs its own pin — a refactor that dropped either sort
+  // would leave every other test in this file green.
+  //
+  // What IS observable is the order of the WRITES, and `metric_samples.id` records it:
+  // rowids ascend with insertion, so a batch handed to us shuffled must still come out
+  // of the table in started_at order when read by id.
+  function insertOrder(profile: number): string[] {
+    return (
+      db
+        .prepare(
+          `SELECT started_at FROM metric_samples
+            WHERE profile_id = ? AND metric = 'steps' ORDER BY id`
+        )
+        .all(profile) as { started_at: string }[]
+    ).map((r) => r.started_at);
+  }
+
+  // Four DISJOINT sub-daily buckets — nothing here overlaps anything, so the supersede
+  // never fires and the only thing under test is the order.
+  const WINDOWS: [string, string][] = [
+    ["2026-06-01T00:00:00Z", "2026-06-01T06:00:00Z"],
+    ["2026-06-01T06:00:00Z", "2026-06-01T12:00:00Z"],
+    ["2026-06-01T12:00:00Z", "2026-06-01T18:00:00Z"],
+    ["2026-06-01T18:00:00Z", "2026-06-02T00:00:00Z"],
+  ];
+  const ASCENDING = WINDOWS.map(([start]) => start);
+
+  it("orders a shuffled batch inside upsertMetricSamples", () => {
+    const p = freshProfile("ORDER-UPSERT");
+    // Handed to us newest-first, which is the order that loses a re-sent leading
+    // sliver at the trailing edge of the rolling window.
+    const shuffled = [...WINDOWS]
+      .reverse()
+      .map(([start, end], i) =>
+        sample("steps", "2026-06-01", start, end, i + 1)
+      );
+    upsertMetricSamples(p, shuffled, HC);
+    expect(insertOrder(p)).toEqual(ASCENDING);
+  });
+
+  it("orders the WHOLE payload before the chunk split, not just within a chunk", () => {
+    // chunkSize 2 with four descending rows: sorting only inside upsertMetricSamples
+    // would write [12:00, 18:00] then [00:00, 06:00] — each chunk internally ordered
+    // and the batch as a whole still backwards. The sort in ingestHealthConnectPayload
+    // is what makes the per-chunk order a global one.
+    const p = freshProfile("ORDER-CHUNKED");
+    const parsed: ParsedPayload = {
+      bodyMetrics: [],
+      samples: [...WINDOWS]
+        .reverse()
+        .map(([start, end], i) =>
+          sample("steps", "2026-06-01", start, end, i + 1)
+        ),
+      hrMinutes: [],
+      activities: [],
+      vitals: [],
+      skipped: 0,
+      details: { warnings: [], origins: [] },
+    };
+    ingestHealthConnectPayload(p, parsed, HC, 2);
+    expect(insertOrder(p)).toEqual(ASCENDING);
   });
 });
