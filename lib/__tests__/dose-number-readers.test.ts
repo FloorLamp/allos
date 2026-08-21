@@ -287,12 +287,22 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(strengthFromName("Metformin 1 000 mg")).toBe("1 000 mg");
     expect(cleanMedicationName("Metformin 1\u2019000 mg")).toBe("Metformin");
     expect(strengthFromName("Metformin 1\u2019000 mg")).toBe("1\u2019000 mg");
-    // The controls. A name whose OWN digits precede the strength must keep them, and a
-    // second group of four digits is not a thousands group at all.
+    // The controls. A name whose OWN digits precede the strength must keep them —
+    // whether the digit is welded to a letter ("B12") or held by a hyphen ("Omega-3",
+    // which is how this tree spells it, twenty times, and it never spells it with a
+    // space).
     expect(cleanMedicationName("B12 500 mcg")).toBe("B12");
     expect(cleanMedicationName("CoQ10 200 mg")).toBe("CoQ10");
-    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega 3");
+    expect(cleanMedicationName("Omega-3 1000 mg")).toBe("Omega-3");
     expect(cleanMedicationName("Vitamin D3 5000 IU")).toBe("Vitamin D3");
+    // AND THE ONE THE TRADE COSTS, asserted so it is a decision rather than a
+    // surprise. "Omega 3" written with a SPACE is structurally identical to a mistyped
+    // group ("3 1000" and "1 0000" are the same shape), so refusing every
+    // digit-space-digit run takes this with it. The dose becomes a visible unreadable
+    // gap; the grouping name silently loses its digit, which is why it is written down.
+    // Measured cost over 58,769 tree strings: this spelling and nothing else, and the
+    // tree never uses it.
+    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega");
   });
 
   // A COUNT IS A NUMBER AGAINST A DOSE UNIT TOO, and the space branch sits directly on

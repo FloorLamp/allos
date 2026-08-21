@@ -216,6 +216,18 @@ const CASES: {
     unit: "mg",
     was: "000 mg, read as 0 \u2014 an ordinary paracetamol dose contributing nothing",
   },
+  // THE MISTYPED GROUP, at the tier that stores rows. A group too LONG is not a
+  // thousands-group shape at all, and an earlier cut of #3451 refused only the
+  // well-formed shape — so this row went on storing "0000 mg" and reading a confident
+  // zero while its correctly-typed neighbour above was refused. The refusal keys on the
+  // plain space, not on the group's size, precisely so both land here together.
+  {
+    name: "Allopurinol 1 0000 mg",
+    grouping: "Allopurinol",
+    amount: "1 0000 mg",
+    reads: "unreadable",
+    was: "0000 mg, read as 0 \u2014 a mistyped label reading as a confident zero",
+  },
   // THE CONTROL FOR THE SPACE BRANCH'S LOOKBEHIND, at the tier that stores rows. A
   // supplement name may END IN A DIGIT, and there the space before the strength is not
   // inside a number at all. If the branch ever stops refusing to start after a letter,

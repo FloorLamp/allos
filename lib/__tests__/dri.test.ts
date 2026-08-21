@@ -536,11 +536,75 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
       value: 5000,
       unit: "iu",
     });
-    // The second group has FOUR digits, so it is not a thousands-group shape and the
-    // space branch must not claim it.
-    expect(readDoseQuantity("Omega 3 1000 mg")).toEqual({
+    // A HYPHEN COUNTS AS PART OF THE NAME TOO. This is the tree's own spelling —
+    // lib/biomarker-panels.ts and lib/derived-biomarkers.ts write "Omega-3" twenty
+    // times and "Omega 3" never — and the branch refuses to start after a hyphen for
+    // exactly the reason it refuses to start after a letter.
+    expect(readDoseQuantity("Omega-3 1000 mg")).toEqual({
       kind: "quantity",
       value: 1000,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("Omega-3 60 mg")).toEqual({
+      kind: "quantity",
+      value: 60,
+      unit: "mg",
+    });
+  });
+
+  // THE PRICE OF REFUSING EVERY DIGIT-SPACE-DIGIT RUN, pinned so it is a decision
+  // rather than a surprise. A name ending in a STANDALONE digit — "Omega 3" written
+  // with a space rather than a hyphen — is structurally indistinguishable from a
+  // mistyped group: "3 1000" and "1 0000" are the same string shape, and no local rule
+  // can tell them apart. Measured over 58,769 string literals from the tracked tree
+  // plus 50 label shapes, this spelling is the ONLY thing the wider refusal costs, and
+  // it appears nowhere in the tree.
+  //
+  // It is the right side to land on, by the same asymmetry that governs U+0020 itself:
+  // reading "1 0000 mg" gives a CONFIDENT ZERO that feeds a limit check and is
+  // invisible, while refusing "Omega 3 1000 mg" gives an unreadable amount the person
+  // is shown and can retype. One is unrecoverable; the other is a correction.
+  it("refuses a strength after a SPACE-separated standalone name digit, knowingly", () => {
+    expect(readDoseQuantity("Omega 3 1000 mg").kind).toBe("unreadable");
+    expect(readDoseQuantity("Omega 3 60 mg").kind).toBe("unreadable");
+    // The grouping name loses the digit too, which is the silent half of this trade.
+    // It is asserted in lib/__tests__/dose-number-readers.test.ts, beside the rest of
+    // the naming half — this file does not read names.
+  });
+
+  // THE MISTYPED GROUPS, both directions (#3451, second round). A group too SHORT and
+  // a group too LONG are the same defect from either side, and both are what a
+  // fat-fingered label looks like. Neither is a thousands-group shape, so an earlier
+  // cut of this fix — which refused only `\d{1,3}(?: \d{3})+` — read both as a
+  // confident ZERO while refusing the correctly-typed separator beside them. That is
+  // the wrong way round: it closed the issue for well-formed input only.
+  it("refuses a mistyped group as firmly as a well-formed one", () => {
+    expect(readDoseQuantity("1 00 mg")).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity("1 0000 mg")).toEqual({ kind: "unreadable" });
+    // Each was `{ kind: "quantity", value: 0 }` before — the exact confident zero this
+    // issue exists to remove, surviving in the shape nobody typed on purpose.
+    expect(readDoseQuantity("1 00 mg")).not.toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("1 0000 mg")).not.toEqual({
+      kind: "quantity",
+      value: 0,
+      unit: "mg",
+    });
+  });
+
+  // THE RESIDUAL, NAMED. The rule keys on a plain SPACE between digit runs, so a
+  // separator that is neither a space nor a member of the read set still restarts the
+  // scan. `1_000` is the case: an underscore is a programming digit separator and no
+  // label spelling, so it is not admitted to the read set, and nothing about a space
+  // can catch it. Asserted rather than described, so the day someone changes it the
+  // change is deliberate.
+  it("still reads 1_000 mg as zero — a named residual, not a claim of coverage", () => {
+    expect(readDoseQuantity("1_000 mg")).toEqual({
+      kind: "quantity",
+      value: 0,
       unit: "mg",
     });
   });

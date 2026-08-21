@@ -194,12 +194,20 @@ export interface ParsedQuantity {
 // outcomes — read the space family as a thousands group, or refuse it — and the
 // measured shapes say the seven spellings are not one kind of thing:
 //
-//   * NBSP, narrow NBSP, thin space, figure space, the Swiss apostrophe (U+2019 and the
-//     ASCII U+0027 people type for it) and U+066C exist BECAUSE they are thousands
-//     separators. Between two digit groups they mean one thing. They are READ, by being
-//     normalized to a comma and put through the comma rule unchanged — so "1’000" is
-//     1000 for the same reason "1,000" is, and "0’125" is refused for the same reason
-//     "0,125" is.
+//   * NBSP, narrow NBSP, thin space, figure space, the Swiss apostrophe U+2019 and
+//     U+066C exist BECAUSE they are thousands separators. Between two digit groups they
+//     mean one thing. They are READ, by being normalized to a comma and put through the
+//     comma rule unchanged — so "1’000" is 1000 for the same reason "1,000" is, and
+//     "0’125" is refused for the same reason "0,125" is.
+//
+//     U+0027, THE ASCII APOSTROPHE, IS THE ONE MEMBER ADMITTED ON EVIDENCE OF USE
+//     RATHER THAN ON THE CHARACTER'S DEFINITION. An apostrophe is not a thousands
+//     separator by definition — it is a quote mark, a possessive and a foot symbol.
+//     It is here because a Swiss label typed on an ASCII keyboard writes "1'000", that
+//     input produced a confident ZERO on main, and the rule it enters is
+//     digit-separator-digit against a dose unit, which no possessive or quote in prose
+//     can reach. If a future case shows an apostrophe between digits meaning something
+//     else, this is the entry to remove, and it is separable from the other six.
 //
 //   * The plain ASCII space U+0020 is NOT that. On a label "1 500 mg" is as plausibly
 //     ONE 500 mg TABLET — count then strength — as it is fifteen hundred milligrams,
@@ -216,20 +224,53 @@ export interface ParsedQuantity {
 //
 // WHY THE SPACE BRANCH CARRIES ITS OWN LOOKBEHIND, and it is the case that decides the
 // shape of the pattern. A drug or supplement name may END IN A DIGIT — "B12 500 mcg",
-// "CoQ10 200 mg", "Vitamin D3 5000 IU", "Omega 3 1000 mg" — and there the space between
+// "CoQ10 200 mg", "Vitamin D3 5000 IU", "Omega-3 1000 mg" — and there the space between
 // the name's digit and the strength is not a separator inside a number at all.
 // lib/__tests__/prescription-parse.test.ts already pins "B12 500 mcg" with the words
-// "must not become 12". So the space branch refuses to start after a letter, digit or
-// underscore, which is the same assertion `strengthFromName` uses for the same hazard,
-// and those four names read exactly as they did before.
+// "must not become 12", which is the strongest argument in the tree for this whole
+// split: somebody already met this hazard and wrote it down. So the space branch
+// refuses to start after a letter, digit, underscore OR HYPHEN, which is the same
+// assertion `strengthFromName` uses for the same hazard, and those four names read
+// exactly as they did before.
 //
-// WHAT THE SPACE BRANCH DOES NOT REACH, stated so nobody has to rediscover it: it
-// matches the THOUSANDS-GROUP SHAPE ("1 000", "12 345 678", "1 000.5") — one to three
-// digits, then groups of exactly three. A malformed run like "1 0000 mg" is not that
-// shape, so the scan still restarts and still reads a confident 0. Widening the group to
-// `\d{3,}` would catch it and would also swallow "Omega 3 1000 mg", turning a supplement
-// whose name ends in a digit into an unreadable dose. Between a typo nobody writes and a
-// name thousands of people take, the shape stays at exactly three.
+// THE HYPHEN IS IN THAT CLASS ON MEASURED EVIDENCE. This tree spells the fatty acid
+// "Omega-3" — twenty times across lib/biomarker-panels.ts and lib/derived-biomarkers.ts
+// — and spells it "Omega 3" never. A hyphen binds the digit to the name exactly as a
+// letter does, so it belongs on the same side of the guard.
+//
+// THE BRANCH REFUSES EVERY DIGIT-SPACE-DIGIT RUN, NOT ONLY A WELL-FORMED GROUP, and
+// getting that wrong first is worth recording. A first cut matched the THOUSANDS-GROUP
+// SHAPE — `\d{1,3}(?: \d{3})+`, one to three digits then groups of exactly three. It
+// refused "1 000 mg" and left "1 00 mg" and "1 0000 mg" reading a confident ZERO: a
+// group too short and a group too long, which is what a mistyped label looks like from
+// either side. So the correctly-typed separator was refused and the mistyped one was
+// fabricated from — precisely the wrong way round, and it closed the issue for
+// well-formed input only.
+//
+// THE LEVER IS THE REFUSAL, NOT THE GROUP SHAPE. Widening the shape (`\d{3,}`) is the
+// wrong instrument: it still misses "1 00" and it starts swallowing names. Dropping the
+// shape requirement entirely and leaning on the lookbehind is the right one, because
+// the lookbehind is ALREADY doing this job — in "B12 500 mcg" a match cannot begin at
+// "1" (preceded by "B") or at "2" (preceded by "1"), so the branch never engages and
+// the ordinary branch reads 500.
+//
+// WHAT IT COSTS, MEASURED RATHER THAN ARGUED. Over 58,769 string literals from the
+// tracked tree plus 50 label shapes, dropping the group requirement changes FOUR
+// strings beyond the two it fixes, and they are one family: a name ending in a
+// STANDALONE digit held by a space rather than a letter or hyphen — "Omega 3 1000 mg".
+// That is structurally identical to a mistyped group ("3 1000" and "1 0000" are the
+// same shape) and no local rule can separate them. The tree contains that spelling
+// nowhere. It is the right side to land on for the same reason U+0020 is refused at
+// all: reading "1 0000 mg" gives a confident zero that feeds a limit check and is
+// invisible, while refusing "Omega 3 1000 mg" gives an amount the person is shown and
+// can retype. One is unrecoverable; the other is a correction.
+//
+// AND ONE RESIDUAL THAT SURVIVES ALL OF THIS, named so nobody reads more coverage into
+// the rule than it has: the rule keys on a plain SPACE, so a separator that is neither
+// a space nor a member of the read set still restarts the scan. "1_000 mg" reads a
+// confident 0. An underscore is a programming digit separator and no label spelling, so
+// it is not admitted to the read set either — it is simply out of reach, and
+// lib/__tests__/dri.test.ts asserts that it is.
 //
 // A separator in a number is either a thousands group or a decimal point, and which
 // one it is depends on where the label was printed. The ingredient write boundary
@@ -425,23 +466,30 @@ export type DoseQuantityReading =
 // larger patterns, where a loose `|` would rewrite their precedence.
 //
 // The space branch's own guards, each earning its place:
-//   (?<![A-Za-z0-9_.,seps])  a name may end in a digit — "B12 500 mcg", "CoQ10 200 mg" —
-//                            and there the space is not inside a number at all.
-//   \d{1,3}(?: \d{3})+       the thousands-group SHAPE, so "Omega 3 1000 mg" (a 4-digit
-//                            second group) is not one and reads 1000 mg as it always did.
-//   (?:[.,]\d+)?             a decimal tail, so "1 000.5 mg" is taken whole too. Without
-//                            it the branch failed on that string and the ordinary branch
-//                            picked up "000.5" — a confident 0.5 mg.
+//   (?<![A-Za-z0-9_\-.,seps])  a name may end in a digit, welded to a letter
+//                             ("B12 500 mcg", "CoQ10 200 mg") or held by a hyphen
+//                             ("Omega-3 1000 mg"), and there the space is not inside a
+//                             number at all. This guard is the ONLY thing keeping those
+//                             names readable, which is why the branch below can afford
+//                             to demand nothing about the group's size.
+//   \d+(?: \d+)+              ANY digit-space-digit run, not just a well-formed group.
+//                             "1 00 mg" and "1 0000 mg" are mistyped labels and were
+//                             both reading a confident ZERO while the correctly-typed
+//                             "1 000 mg" was refused. See the heading for what the
+//                             wider refusal costs and why it is worth it.
+//   (?:[.,]\d+)?              a decimal tail, so "1 000.5 mg" is taken whole too. Without
+//                             it the branch failed on that string and the ordinary branch
+//                             picked up "000.5" — a confident 0.5 mg.
 //
 // A TRAILING `(?!\d)` WAS WRITTEN HERE AND THEN MEASURED UNREACHABLE, the same way the
 // weaker start lookbehind was at #3444. The intent was to stop the branch matching a
 // PREFIX of a longer digit run ("1 0000"). It cannot change an answer, because every
 // place this grammar embeds a number puts a UNIT or a DOSE FORM immediately after it,
 // and no digit satisfies either — so a prefix match simply fails one step later and the
-// engine backtracks to the ordinary branch at the same position. Deleting it left all
-// 468 assertions in the five separator suites green, and reverting the decimal tail
-// beside it still went red — so its absence is measured, not assumed.
-const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_.,${THOUSANDS_SEP_CHARS}])\d{1,3}(?: \d{3})+(?:[.,]\d+)?`;
+// engine backtracks to the ordinary branch at the same position. Deleting it left every
+// assertion in the five separator suites green, and reverting the decimal tail beside it
+// still went red — so its absence is measured, not assumed.
+const AMBIGUOUS_SPACE_NUMBER = String.raw`(?<![A-Za-z0-9_\-.,${THOUSANDS_SEP_CHARS}])\d+(?: \d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
 export const WRITTEN_NUMBER_SCAN = String.raw`(?:${AMBIGUOUS_SPACE_NUMBER}|(?<![\d.,${THOUSANDS_SEP_CHARS}])[.,${THOUSANDS_SEP_CHARS}]?${WRITTEN_NUMBER})`;
 const DOSE_QUANTITY_RE = new RegExp(

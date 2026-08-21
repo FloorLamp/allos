@@ -1485,16 +1485,39 @@ claim in both directions:
   it is fifteen hundred milligrams. Measured before the fix,
   `readDoseQuantity("2 500 mg tablets")` answered 500 mg; reading the space as a
   group would have made it 2500, swapping a confident zero for a confident
-  fivefold overdose. The number is taken whole so the scan cannot restart inside
+  fivefold overdose. U+0027 is the one member of the read set admitted on evidence of
+  use rather than on the character's definition — an apostrophe is a quote mark, not a
+  separator, but a Swiss label typed on an ASCII keyboard writes `1'000` and that input
+  produced a confident zero. The number is taken whole so the scan cannot restart inside
   it, and then declined — the row becomes a visible `dose-amount-unreadable` gap,
   the same answer `"2,5 mg"` gets.
 
-**A name may end in a digit,** which is why the space branch refuses to start after
-a letter, digit or underscore: `B12 500 mcg`, `CoQ10 200 mg`, `Vitamin D3 5000 IU`
-and `Omega 3 1000 mg` all read exactly as they did before. It matches the
-thousands-group _shape_ only (one to three digits, then groups of exactly three),
-so a malformed run like `"1 0000 mg"` is not covered and still reads 0 — widening
-the group would have swallowed `Omega 3 1000 mg`.
+**A name may end in a digit,** which is why the space branch refuses to start after a
+letter, digit, underscore or hyphen: `B12 500 mcg`, `CoQ10 200 mg`,
+`Vitamin D3 5000 IU` and `Omega-3 1000 mg` all read exactly as they did before. That
+guard is the whole reason the branch can afford to demand nothing about the group's
+size. `lib/__tests__/prescription-parse.test.ts` already pinned `"B12 500 mcg"` with
+the words _"must not become 12"_ — somebody had met this hazard and written it down
+before the issue existed, which is the strongest argument in the tree for the split.
+
+**It refuses every digit-space-digit run, not only a well-formed group,** and the
+first cut got that wrong. Matching the thousands-group _shape_ (`\d{1,3}(?: \d{3})+`)
+refused `"1 000 mg"` and left `"1 00 mg"` and `"1 0000 mg"` reading a confident **zero**
+— a group too short and a group too long, both of which are what a mistyped label looks
+like. That refused the correctly-typed separator and fabricated from the mistyped one,
+which is the wrong way round. The lever is the refusal, not the shape: dropping the size
+requirement and leaning on the lookbehind closes both. Measured over 58,769 string
+literals from the tracked tree plus 50 label shapes, dropping it changes **four** strings
+beyond the two it fixes, all one family — a name ending in a standalone digit held by a
+_space_ (`Omega 3 1000 mg`, a spelling this tree never uses), which is structurally
+identical to a mistyped group and cannot be separated from one by any local rule.
+
+**One residual, named rather than implied.** The rule keys on a plain space, so a
+separator that is neither a space nor a member of the read set still restarts the scan:
+`"1_000 mg"` reads 0. An underscore is a programming digit separator and no label
+spelling, so it is not admitted to the read set either — it is out of reach, and
+`lib/__tests__/dri.test.ts` asserts that it is, so the day it changes the change is
+deliberate.
 
 The heading in `lib/dri.ts` is wide again as a result, and now says **separator**
 rather than naming characters. `readIngredientAmount` stopped spelling its own
