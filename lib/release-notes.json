@@ -62,6 +62,12 @@
           "title": "Test runs stop failing just because the machine was busy, so a red means a real problem",
           "kind": "fix",
           "issues": [3436]
+        },
+        {
+          "pr": 3456,
+          "title": "On a phone the command palette fills the screen, and Records leads with your records instead of its own name",
+          "kind": "feature",
+          "issues": [3423, 3408]
         }
       ]
     },
