@@ -67,6 +67,27 @@ const CORPUS: {
   { amount: ".125 mg", trueMg: 0.125, was: "125 mg" },
   { amount: ",125 mg", trueMg: 0.125, was: "125 mg" },
   { amount: ".5 mg", trueMg: 0.5, was: "5 mg" },
+
+  // ── #3451: the same restart reached through a separator that is not `.` or `,`. ──
+  //
+  // Each of these returned a confident ZERO from `readDoseQuantity` while
+  // `readIngredientAmount` returned `unreadable` — one reader fabricating and the
+  // other refusing, under a heading in lib/dri.ts claiming they agreed.
+  //
+  // `trueMg` is 1000 for the six spellings that can only be a thousands group, and
+  // NULL for the plain ASCII space: on a label "1 500 mg" is as plausibly one 500 mg
+  // tablet as it is fifteen hundred milligrams, so no reader may produce a number from
+  // it. A null here is stricter than a value — it fails on ANY number, including the
+  // 1000 a uniform fix would have returned.
+  { amount: "1\u00a0000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u202f000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u2009000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u2007000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u2019000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u0027000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1\u066c000 mg", trueMg: 1000, was: "000 mg \u2192 0" },
+  { amount: "1 000 mg", trueMg: null, was: "000 mg \u2192 0" },
+  { amount: "2 500 mg", trueMg: null, was: "500 mg \u2014 or 2500, and nobody can tell" },
 ];
 
 // The quantity a reader's answer ultimately contributes to a total, whatever shape the
@@ -203,6 +224,75 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(recoverableCandidates("2,5 g (2500 mg)")).toEqual(["2500 mg"]);
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // THE CONSISTENCY HALF OF #3451.
+  //
+  // lib/dri.ts heads its grammar "ONE RULE FOR WHAT A SEPARATOR INSIDE A NUMBER
+  // MEANS". A heading that overstates its reach is how the next person stops checking,
+  // and it DID overstate: `readDoseQuantity("1\u2019000 mg")` was a confident 0 while
+  // `readIngredientAmount("1\u2019000 mg")` was `unreadable`. The sweep above catches a
+  // reader that INVENTS a number; it cannot catch two readers that merely DISAGREE,
+  // because "the label's number or nothing" is satisfied by both answers.
+  //
+  // So this asks the question the heading actually makes: same string, same answer.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const SEPARATORS: { sep: string; name: string; reads: 1000 | "unreadable" }[] = [
+    { sep: ",", name: "U+002C comma (the control)", reads: 1000 },
+    { sep: "\u00a0", name: "U+00A0 no-break space", reads: 1000 },
+    { sep: "\u202f", name: "U+202F narrow no-break space", reads: 1000 },
+    { sep: "\u2009", name: "U+2009 thin space", reads: 1000 },
+    { sep: "\u2007", name: "U+2007 figure space", reads: 1000 },
+    { sep: "\u2019", name: "U+2019 Swiss apostrophe", reads: 1000 },
+    { sep: "\u0027", name: "U+0027 apostrophe (Swiss, ASCII keyboard)", reads: 1000 },
+    { sep: "\u066c", name: "U+066C Arabic thousands separator", reads: 1000 },
+    { sep: " ", name: "U+0020 space", reads: "unreadable" },
+  ];
+
+  for (const { sep, name, reads } of SEPARATORS) {
+    it(`the dose half and the ingredient half agree about 1${sep}000 mg — ${name}`, () => {
+      const dose = readDoseQuantity(`1${sep}000 mg`);
+      const ingredient = readIngredientAmount(`1${sep}000 mg`);
+      expect(dose.kind).toBe(ingredient.kind);
+      if (reads === "unreadable") {
+        expect(dose.kind).toBe("unreadable");
+      } else {
+        expect(dose).toEqual({ kind: "quantity", value: 1000, unit: "mg" });
+        expect(ingredient).toEqual({
+          kind: "quantity",
+          amount: 1000,
+          unit: "mg",
+        });
+      }
+    });
+  }
+
+  // THE SECOND, INDEPENDENT WAY THE ROW WENT WRONG (#3451). The strength was not just
+  // misread — it was CUT IN HALF, and the front half stayed welded to the name. A
+  // "Metformin 1" never folds with the profile's other Metformin rows, so the same drug
+  // appears twice and neither entry carries the whole dose.
+  it("a space-grouped strength does not tear the drug name in half", () => {
+    expect(cleanMedicationName("Metformin 1 000 mg")).toBe("Metformin");
+    expect(strengthFromName("Metformin 1 000 mg")).toBe("1 000 mg");
+    expect(cleanMedicationName("Metformin 1\u2019000 mg")).toBe("Metformin");
+    expect(strengthFromName("Metformin 1\u2019000 mg")).toBe("1\u2019000 mg");
+    // The controls. A name whose OWN digits precede the strength must keep them, and a
+    // second group of four digits is not a thousands group at all.
+    expect(cleanMedicationName("B12 500 mcg")).toBe("B12");
+    expect(cleanMedicationName("CoQ10 200 mg")).toBe("CoQ10");
+    expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega 3");
+    expect(cleanMedicationName("Vitamin D3 5000 IU")).toBe("Vitamin D3");
+  });
+
+  // A COUNT IS A NUMBER AGAINST A DOSE UNIT TOO, and the space branch sits directly on
+  // top of the count-then-strength shape. `doseUnitCount` must not start reading a
+  // count out of a group, and must keep reading the counts it always did.
+  it("doseUnitCount is unmoved by a space-grouped amount", () => {
+    expect(doseUnitCount("1 000 mg")).toBe(1);
+    expect(doseUnitCount("1\u2019000 mg")).toBe(1);
+    expect(doseUnitCount("2 capsules (500 mg)")).toBe(2);
+    expect(doseUnitCount("2 caps")).toBe(2);
+  });
+
   it("an unreadable comma decimal is bucketed as unreadable, not as correct", () => {
     for (const c of CORPUS.filter((x) => x.trueMg !== 1000)) {
       expect(classifyDoseAmount(c.amount)).toBe("unreadable-unrecoverable");
@@ -210,6 +300,25 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
       // as a candidate. A guess is not a candidate.
       expect(recoverableCandidates(c.amount)).toEqual([]);
     }
+  });
+
+  // THE CENSUS MUST STOP CERTIFYING THE ROW (#3451). It reported "1 000 mg" as
+  // `always-correct` with no data-quality gap — honestly, by its own rule, because the
+  // pre-fix reader and the shipped reader BOTH answered 0 and the census only asks
+  // whether they agree. Two readers agreeing on a fabrication is not a clean row, and a
+  // bucket that says otherwise is the loudest possible way to stop anyone looking.
+  it("the dose-amount census no longer calls a space-grouped row always-correct", () => {
+    expect(classifyDoseAmount("1 000 mg")).toBe("unreadable-unrecoverable");
+    expect(classifyDoseAmount("2 500 mg")).toBe("unreadable-unrecoverable");
+    // The six that now READ move to `recovered-from-zero` — the bucket whose whole
+    // definition is "read as zero before the fix, correct now", which is exactly what
+    // happened to them.
+    for (const sep of ["\u00a0", "\u202f", "\u2009", "\u2007", "\u2019", "\u0027", "\u066c"]) {
+      expect(classifyDoseAmount(`1${sep}000 mg`)).toBe("recovered-from-zero");
+    }
+    // And the controls stay put, so this is not passing by reclassifying everything.
+    expect(classifyDoseAmount("500 mg")).toBe("always-correct");
+    expect(classifyDoseAmount("1 capsule")).toBe("no-quantity");
   });
 });
 

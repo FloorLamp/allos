@@ -400,6 +400,172 @@ describe("a grouped dose amount reaches the UL warnings (#3153)", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// #3451 — A THOUSANDS SEPARATOR THAT IS NOT A COMMA.
+//
+// Same failure as #3153, reached by a different character: the scan stopped at the
+// separator, restarted after it, matched "000 mg" and returned a CONFIDENT ZERO. A
+// niacin dose of 1 000 mg is 28x the 35 mg adult UL, and the warning simply did not
+// fire — a zero meaning "we could not read this" is indistinguishable from a zero
+// meaning "none".
+//
+// THE FIX IS DELIBERATELY NOT UNIFORM ACROSS THE SEVEN SPELLINGS, and this file is
+// where that split has to be visible, because both halves are safety claims:
+//
+//   * the six separators that EXIST to group thousands are READ, so the warning fires;
+//   * the plain ASCII space U+0020 is REFUSED, because on a label "1 500 mg" is as
+//     plausibly one 500 mg tablet as it is fifteen hundred milligrams. Reading it as a
+//     group would have swapped a confident zero for a confident overdose.
+//
+// So the "refused" half asserts something weaker than a warning ON PURPOSE: the dose
+// contributes nothing, exactly as before — but it is now `unreadable` rather than a
+// quantity of 0, which is what makes the write boundary refuse the save
+// (intake-actions.unreadableDoseAmount) and the row appear in the
+// `dose-amount-unreadable` gap (queries/data-quality.getUnreadableDoseAmounts). The
+// silence is the same; the visibility is the whole difference.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The spellings that mean "thousands group" and nothing else. Written as escapes:
+// six of the seven are invisible or near-invisible in an editor.
+const UNAMBIGUOUS_SEPARATORS: { sep: string; why: string }[] = [
+  { sep: "\u00a0", why: "no-break space — the word-processor grouping space" },
+  { sep: "\u202f", why: "narrow no-break space — the SI/ISO-80000 spelling" },
+  { sep: "\u2009", why: "thin space — the same, in typesetting" },
+  { sep: "\u2007", why: "figure space — digit-width, for columns of figures" },
+  { sep: "\u2019", why: "right single quote — the Swiss spelling, 1\u2019000" },
+  { sep: "\u0027", why: "apostrophe — Swiss, as typed on an ASCII keyboard" },
+  { sep: "\u066c", why: "Arabic thousands separator" },
+];
+
+describe("a non-comma thousands separator never reads as a confident zero (#3451)", () => {
+  for (const { sep, why } of UNAMBIGUOUS_SEPARATORS) {
+    const amount = `1${sep}000 mg`;
+    it(`U+${sep.codePointAt(0)!.toString(16).padStart(4, "0")} reads 1000 mg (${why})`, () => {
+      expect(readDoseQuantity(amount)).toEqual({
+        kind: "quantity",
+        value: 1000,
+        unit: "mg",
+      });
+    });
+
+    // THE ASSERTION THE ISSUE IS ACTUALLY ABOUT. A parser test that never reaches the
+    // limit check leaves the harm unpinned, so each spelling is walked all the way to
+    // the warning a person would or would not have seen.
+    it(`U+${sep.codePointAt(0)!.toString(16).padStart(4, "0")} niacin at 1${sep}000 mg warns against the 35 mg UL`, () => {
+      const [warning] = stackUlWarnings(
+        [active("Niacin", [amount])],
+        40,
+        "male"
+      );
+      expect(warning).toBeDefined();
+      expect(warning.total).toBe(1000);
+      // The control: the same stack with no separator at all has always warned, so a
+      // fix that merely stopped returning zero (by returning some OTHER number) does
+      // not pass this.
+      const [plain] = stackUlWarnings(
+        [active("Niacin", ["1000 mg"])],
+        40,
+        "male"
+      );
+      expect(warning.total).toBe(plain.total);
+    });
+  }
+
+  // THE PLAIN SPACE, WHICH IS THE ONE THAT MUST NOT BE READ.
+  it("refuses U+0020 rather than reading it as a group OR as a zero", () => {
+    const reading = readDoseQuantity("1 000 mg");
+    expect(reading).toEqual({ kind: "unreadable" });
+    // Spelled out because BOTH wrong answers are single-token edits away, and each is
+    // a different disaster: 0 is the silent one this issue was filed for, 1000 is the
+    // confident-overdose one that a uniform fix would have introduced.
+    expect(reading).not.toEqual({ kind: "quantity", value: 0, unit: "mg" });
+    expect(reading).not.toEqual({ kind: "quantity", value: 1000, unit: "mg" });
+    expect(parseQuantity("1 000 mg")).toBeNull();
+  });
+
+  it("a space-separated niacin dose is SILENT but VISIBLE, not a zero", () => {
+    // Silent: nothing may be invented, so no warning and no total. Identical outcome
+    // to the confident zero, which is why the assertion below it is the load-bearing
+    // one.
+    expect(stackUlWarnings([active("Niacin", ["1 000 mg"])], 40, "male")).toEqual(
+      []
+    );
+    expect(summarizeStack([active("Niacin", ["1 000 mg"])], 40, "male")).toEqual(
+      []
+    );
+    // Visible: `unreadable` is the reading the write boundary refuses and the
+    // data-quality gap lists. `quantity 0` is the reading nothing anywhere can see.
+    expect(readDoseQuantity("1 000 mg").kind).toBe("unreadable");
+  });
+
+  // WHY U+0020 IS REFUSED AND NOT READ, as behaviour rather than as a comment. On a
+  // real label a count precedes a strength, and this codebase already parses that
+  // shape (doseUnitCount, and COUNT in lib/prescription-parse.ts).
+  it("never reads a count-then-strength label as a thousands group", () => {
+    for (const amount of [
+      "1 500 mg tablet",
+      "2 500 mg tablets",
+      "1 000 mg",
+      "1 000 000 mg",
+      // THE DECIMAL TAIL, and it is the case that decides the shape of the pattern
+      // rather than a variation on the ones above. Without `(?:[.,]\d+)?` on the space
+      // branch the branch fails on this string, the ordinary branch then starts after
+      // the space, and "000.5 mg" reads as a confident 0.5 mg.
+      "1 000.5 mg",
+    ]) {
+      expect(readDoseQuantity(amount)).toEqual({ kind: "unreadable" });
+    }
+  });
+
+  // A NAME MAY END IN A DIGIT, and then the space before the strength is not inside a
+  // number at all. These are the four commonest such names in a supplement stack; each
+  // read correctly before #3451 and must still.
+  it("leaves a strength that follows a digit-ending name alone", () => {
+    expect(readDoseQuantity("B12 500 mcg")).toEqual({
+      kind: "quantity",
+      value: 500,
+      unit: "mcg",
+    });
+    expect(readDoseQuantity("CoQ10 200 mg")).toEqual({
+      kind: "quantity",
+      value: 200,
+      unit: "mg",
+    });
+    expect(readDoseQuantity("Vitamin D3 5000 IU")).toEqual({
+      kind: "quantity",
+      value: 5000,
+      unit: "iu",
+    });
+    // The second group has FOUR digits, so it is not a thousands-group shape and the
+    // space branch must not claim it.
+    expect(readDoseQuantity("Omega 3 1000 mg")).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+  });
+
+  // The grouping rule is the comma's, not a second one: a leading zero still proves
+  // the separator is a decimal, and a group that is not three digits is still refused.
+  it("puts the new separators through the comma's grouping rule, not a looser one", () => {
+    expect(readDoseQuantity("1\u2019000\u2019000 mg")).toEqual({
+      kind: "quantity",
+      value: 1000000,
+      unit: "mg",
+    });
+    // "0,125" is refused because no convention groups thousands behind a leading zero;
+    // "0\u2019125" is the same string in Swiss and gets the same answer.
+    expect(readDoseQuantity("0\u2019125 mg").kind).toBe("unreadable");
+    expect(readDoseQuantity("1\u20190000 mg").kind).toBe("unreadable");
+    // A decimal tail after a real group still reads, exactly as "1,000.500" does.
+    expect(readDoseQuantity("1\u2019000.5 mg")).toEqual({
+      kind: "quantity",
+      value: 1000.5,
+      unit: "mg",
+    });
+  });
+});
+
 describe("toNutrientUnit", () => {
   it("converts retinol IU to mcg RAE for vitamin A (0.3 mcg/IU)", () => {
     const vitA = nutrientByKey("vitamin_a")!;

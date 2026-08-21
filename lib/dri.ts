@@ -296,12 +296,15 @@ const THOUSANDS_SEP_CHARS = String.raw`\u00a0\u202f\u2009\u2007\u2019\u0027\u066
 const THOUSANDS_SEP_RE = new RegExp(`[${THOUSANDS_SEP_CHARS}]`, "g");
 
 export function readGroupedNumber(token: string): number | null {
-  // A plain space inside the token means the token spans a U+0020 group — "1 000",
-  // "2 500". It reached here WHOLE on purpose (WRITTEN_NUMBER_SCAN's space branch), so
-  // that the scan could not restart after the space and hand back "000" as a confident
-  // zero. There is nothing to resolve: refusing is the answer, and it is the same
-  // answer "2,5" gets.
-  if (token.includes(" ")) return null;
+  // A TOKEN SPANNING A PLAIN SPACE — "1 000", "2 500", "1 000.5" — IS REFUSED BY
+  // CONSTRUCTION, with no clause of its own (#3451). Neither of the two accepted shapes
+  // below admits a space, and both are anchored, so such a token falls out at
+  // `!PLAIN_NUMBER.test(...)` exactly as ".125" does. An explicit `token.includes(" ")`
+  // was written here first and measured redundant: reverting it changed no answer.
+  // Said out loud because the arrival of that token is the deliberate part —
+  // WRITTEN_NUMBER_SCAN's space branch takes it WHOLE so the scan cannot restart after
+  // the space and hand back "000" as a confident zero. Being unresolvable is what makes
+  // it safe; getting it here entire is what makes it unresolvable.
   const normalized = token.replace(THOUSANDS_SEP_RE, ",");
   const grouped = THOUSANDS_GROUPED.test(normalized);
   if (!grouped && !PLAIN_NUMBER.test(normalized)) return null;
