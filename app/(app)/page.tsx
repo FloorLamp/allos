@@ -148,6 +148,7 @@ import {
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
 import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
+import PageContainer from "@/components/PageContainer";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
 import type { DashboardAheadPresentation } from "@/components/dashboard/DashboardPlacementCanvas";
 import IllnessNowGroup, {
@@ -2396,24 +2397,32 @@ async function renderDashboard(
     };
   });
 
+  // The placement canvas gets a DECLARED width (#3253). The dashboard rendered bare
+  // into the shell, whose only limit is the 110rem 3xl cap, so on a wide monitor
+  // "Mark taken" sat ~1,400px from its own card's title and Standing's rows were
+  // two-thirds dead space. `wide` is the existing 72rem token — no new width invented
+  // — and `mx-auto` centres it inside the shell exactly the way
+  // app/(app)/records/layout.tsx already does.
   return (
-    <DashboardPlacementCanvas
-      dateLabel={formatLongDate(on, formatPrefs)}
-      placements={dashboardPlacements}
-      candidateNodes={candidateNodes}
-      standingPresentations={standingPresentations}
-      aheadPresentations={aheadPresentations}
-      attentionBadgeCount={attentionBadgeCount}
-      illnessGroupNode={
-        placedIllnessCockpits.length > 0 ? (
-          <IllnessNowGroup
-            cockpits={placedIllnessCockpits}
-            initialCollapsedActive={illnessUi.collapsedActive}
-            initialOpenOtherKey={illnessUi.openOtherKey}
-            saveState={saveIllnessNowState}
-          />
-        ) : undefined
-      }
-    />
+    <PageContainer width="wide" className="mx-auto">
+      <DashboardPlacementCanvas
+        dateLabel={formatLongDate(on, formatPrefs)}
+        placements={dashboardPlacements}
+        candidateNodes={candidateNodes}
+        standingPresentations={standingPresentations}
+        aheadPresentations={aheadPresentations}
+        attentionBadgeCount={attentionBadgeCount}
+        illnessGroupNode={
+          placedIllnessCockpits.length > 0 ? (
+            <IllnessNowGroup
+              cockpits={placedIllnessCockpits}
+              initialCollapsedActive={illnessUi.collapsedActive}
+              initialOpenOtherKey={illnessUi.openOtherKey}
+              saveState={saveIllnessNowState}
+            />
+          ) : undefined
+        }
+      />
+    </PageContainer>
   );
 }

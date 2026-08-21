@@ -36,9 +36,20 @@ export default function NowStrip({
     <section
       data-testid="now-strip"
       data-count={cards.length}
-      aria-label="Right now"
+      aria-labelledby="dashboard-now-title"
       className="mb-6"
     >
+      {/* Now was the ONLY zone without a visible label (#3238): Standing and Ahead
+          both render an h2, so the strip's cards read as orphaned fragments floating
+          between the page header and "Standing". Same scale as its siblings, and the
+          section's accessible name still says "Right now" — it now comes from the
+          heading rather than from an aria-label repeating it. */}
+      <h2
+        id="dashboard-now-title"
+        className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
+      >
+        Right now
+      </h2>
       {dateLabel && (
         <div
           data-testid="now-strip-date"
