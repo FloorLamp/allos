@@ -94,6 +94,46 @@ import { timelineMonthLabel, timelineMonthKey } from "./timeline-window";
 export const SCRUBBER_HIT_WIDTH_PX = 44;
 
 /**
+ * The app content column's own right margin below `md`, in CSS pixels —
+ * `pr-[max(1rem,env(safe-area-inset-right))]` on the container in
+ * `app/(app)/layout.tsx`. It matters here because the rail is fixed to the VIEWPORT
+ * edge, not to the column: this margin is already standing between the column's
+ * content and the rail, so every surface in the column gets it for free.
+ */
+export const APP_CONTENT_GUTTER_PX = 16;
+
+/**
+ * HOW FAR THE RAIL ACTUALLY INTRUDES INTO THE CONTENT COLUMN — its hit width minus
+ * the page margin it is already standing on. 44 − 16 = 28.
+ *
+ * This is the quantity an overlapped surface must reserve. Reserving the rail's RAW
+ * width counts the page margin a second time, and the leftover band is exactly the
+ * page gutter: at 430px the rail sat at 386→430 and intruded to 414, while the feed
+ * and the controls reserved 44 and stopped at 370 — 16px reserved for nothing, read
+ * by the owner as "a gap on the right" (#3403).
+ */
+export const SCRUBBER_COLUMN_INTRUSION_PX =
+  SCRUBBER_HIT_WIDTH_PX - APP_CONTENT_GUTTER_PX;
+
+/**
+ * The ONE class every surface under the rail reserves with: `pr-7`, which is
+ * `SCRUBBER_COLUMN_INTRUSION_PX`. THREE surfaces share this column — the page header,
+ * the filter block and the feed — and three literals is how the header came to reserve
+ * nothing at all while the other two over-reserved. A token cannot be adopted by only
+ * some of them, and it is the single place to change if the page gutter ever stops
+ * being 16px.
+ *
+ * Applied only while the rail actually renders (`scrubberStops.length > 0`): a
+ * timeline with no rail reserves nothing, exactly as before.
+ *
+ * From `md` up the page margin is 20px, so this over-reserves by 4px there. That is
+ * deliberate: the rail starts at `md:top-44` and overlaps neither the header nor the
+ * sticky controls at that width, and a breakpoint-dependent gutter is a worse trade
+ * for a value three surfaces have to agree on than 4px of slack on desktop.
+ */
+export const SCRUBBER_GUTTER_CLASS = "pr-7";
+
+/**
  * How far a pointer may travel and still count as a TAP. Above it the gesture was a
  * drag, and a drag only positions the scroll — it never expands anything.
  */

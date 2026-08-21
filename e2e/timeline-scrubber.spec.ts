@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledBoxes } from "./helpers";
+import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // THE TIMELINE JUMP RAIL (issue #2657 item 4).
@@ -356,5 +356,139 @@ test.describe("timeline jump rail under reduced motion (#2657 item 4)", () => {
     await expect(bubble(page)).not.toHaveText(first ?? "");
     await expect(bubble(page).locator("span")).not.toHaveClass(/motion-tick/);
     await page.mouse.up();
+  });
+});
+
+// THE RAIL OVERLAPS THREE SURFACES, AND EACH RESERVES ITS INTRUSION (#3403).
+//
+// The invariant the rail's own comment states — it sits above everything in that
+// column, which is only safe because what it overlaps gives up a gutter — was written
+// for TWO surfaces and there are three. The page header was the one nobody counted,
+// and it is the one carrying a primary link ("Year in review"), whose right ~28px
+// therefore returned the RAIL to `elementFromPoint`: a tap there dragged the scrubber.
+//
+// The gutter is also the rail's INTRUSION, not the rail's width. The strip is fixed to
+// the VIEWPORT, so the content column's own 16px right margin already stands between
+// the two: 44 − 16 = 28. Reserving 44 counted the page margin twice and left a 16px
+// band down the right of the whole feed reserved for nothing, which is what the owner
+// saw as "a gap on the right".
+//
+// Measured at the owner's own 430×932, since the numbers in #3403 are that width's.
+test.describe("the rail's column on a phone (#3403)", () => {
+  test.use({ viewport: { width: 430, height: 932 } });
+  test.beforeAll(seed);
+  test.afterAll(cleanup);
+
+  // A surface's CONTENT right edge: its border box minus the gutter it reserves.
+  // Comparing padded boxes would say every surface agrees while their contents do
+  // not, which is the exact shape of the bug.
+  async function contentRight(page: Page, selector: string): Promise<number> {
+    return page.evaluate((sel) => {
+      const el = document.querySelector(sel)!;
+      const r = el.getBoundingClientRect();
+      return r.right - parseFloat(getComputedStyle(el).paddingRight);
+    }, selector);
+  }
+
+  test("the header's action stays on one line and stays tappable", async ({
+    page,
+  }) => {
+    await page.goto(FEED);
+    const link = page.getByTestId("timeline-retrospective-link");
+    await expect(link).toBeVisible();
+    await railReady(page);
+
+    const [linkBox] = await settledBoxes([link]);
+    // ONE LINE. It measured 62px wide and 40px tall — two lines — because
+    // `PageHeader` let the page's long subtitle squeeze the action to the width of
+    // its longest word. The ceiling is its own line box plus the icon's slack, not a
+    // round number: a single line of `text-sm` is 20px and the `h-4` icon fits
+    // inside it, so anything at or under 28 is one line and 40 is two.
+    expect(linkBox.height).toBeLessThanOrEqual(28);
+
+    // …and its right edge belongs to the LINK. `elementFromPoint` is the only
+    // honest form of this: the link is visible, actionable and correctly sized in
+    // every other sense while an invisible 44px strip sits on top of it.
+    const atRightEdge = await link.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.right - 2, r.top + r.height / 2);
+      return {
+        insideLink: el.contains(hit),
+        testid: hit?.getAttribute("data-testid") ?? hit?.tagName ?? null,
+      };
+    });
+    expect(
+      atRightEdge.testid,
+      "the rail is on top of the link's right edge"
+    ).not.toBe("timeline-scrubber");
+    expect(atRightEdge.insideLink).toBe(true);
+  });
+
+  test("header, controls and feed share one right edge, and it is the rail's left one", async ({
+    page,
+  }) => {
+    await page.goto(FEED);
+    await expect(page.getByTestId("timeline-retrospective-link")).toBeVisible();
+    const rail = strip(page);
+    await railReady(page);
+    const [railBox] = await settledBoxes([rail]);
+
+    // The rail is flush to the viewport at its 44px hit width: 386→430 at 430px.
+    expect(railBox.width).toBe(44);
+
+    const edges = {
+      header: await contentRight(
+        page,
+        '[data-testid="timeline-retrospective-link"]'
+      ),
+      controls: await contentRight(page, "#timeline-controls > div"),
+      feed: await contentRight(page, "#timeline-feed"),
+    };
+    // The reserved band equals the intrusion with NOTHING left over: all three
+    // surfaces stop exactly where the rail begins. The feed used to stop at 370 —
+    // 16px short — while the header stopped at 414, 28px too far.
+    expect(edges.controls).toBeCloseTo(railBox.x, 0);
+    expect(edges.feed).toBeCloseTo(railBox.x, 0);
+    // The header's action is right-aligned in its own row, so its own right edge is
+    // the header's content edge.
+    expect(edges.header).toBeLessThanOrEqual(railBox.x + 1);
+    expect(edges.header).toBeGreaterThan(railBox.x - 8);
+
+    // Nothing bought that by pushing a box past the edge, at either phone width.
+    // Element-level and not a document-width comparison: the app shell clips
+    // horizontal overflow, so a document check is unconditionally true here and
+    // asserts nothing (#1543).
+    for (const width of [430, 390]) {
+      await page.setViewportSize({ width, height: 932 });
+      await expect(
+        page.getByTestId("timeline-retrospective-link")
+      ).toBeVisible();
+      await expectNoClippedContent(page);
+    }
+  });
+
+  test("a feed with no rail reserves nothing", async ({ page }) => {
+    // The gutter is gated on the rail existing, and stays gated. A single-day range
+    // has one period, which is below SCRUBBER_MIN_TICKS, so no rail renders — and
+    // the surfaces underneath must then use the full column rather than carrying an
+    // empty 28px band for a strip that is not there.
+    await page.goto(
+      `/timeline?category=goal&from=${DATES.mid}&to=${DATES.mid}`
+    );
+    await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+    await expect(strip(page)).toHaveCount(0);
+    // The feed itself rendered — a range that fell through to the empty state would
+    // make the padding read 0px for a reason this test is not asserting.
+    await expect(page.locator("#timeline-feed")).toBeVisible();
+
+    for (const selector of ["#timeline-controls > div", "#timeline-feed"]) {
+      expect(
+        await page.evaluate(
+          (sel) => getComputedStyle(document.querySelector(sel)!).paddingRight,
+          selector
+        ),
+        selector
+      ).toBe("0px");
+    }
   });
 });
