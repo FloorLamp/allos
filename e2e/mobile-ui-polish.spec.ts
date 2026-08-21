@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import type { Locator } from "@playwright/test";
-import { expectNoClippedContent, hydratedClick, settledBoxes } from "./helpers";
+import {
+  expectNoClippedContent,
+  hydratedClick,
+  openMobileDrawer,
+  settledBoxes,
+} from "./helpers";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -137,6 +142,76 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
       actionsBox!.x + actionsBox!.width
     );
+  });
+});
+
+test.describe("the phone drawer's month calendar clears the floor too (#3377)", () => {
+  test.use({ viewport: PHONE });
+
+  test("every day cell and both month arrows have a >=40px hit area in the drawer", async ({
+    page,
+  }) => {
+    test.slow(); // opening the drawer costs a hydration wait on a cold route
+    await page.goto("/");
+    // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
+    // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
+    // the phone nav drawer, which is what makes this grid a phone surface at all.
+    // The desktop copy is `display: none` here and would measure 0.
+    const drawer = await openMobileDrawer(page);
+    const prevMonth = drawer.getByLabel("Previous month");
+    const nextMonth = drawer.getByLabel("Next month");
+    await expect(prevMonth).toBeVisible();
+    // Settle the drawer's slide-in before reading any box: mid-animation the aside
+    // is still translated and every child reads a few pixels off.
+    await settledBoxes([drawer, prevMonth, nextMonth]);
+
+    // Both arrows AND every day of the rendered month — a floor that only the
+    // first cell clears is not a floor. The 28px circle and the 16px chevron are
+    // unchanged; what is measured here is the box a finger lands in.
+    const cells = await drawer.evaluate((aside) => {
+      const prev = aside.querySelector('[aria-label="Previous month"]')!;
+      const calendar = prev.closest("div")!.parentElement!;
+      const grids = calendar.querySelectorAll(".grid");
+      const days = Array.from(grids[grids.length - 1].children);
+      const box = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return { w: r.width, h: r.height };
+      };
+      return {
+        days: days.map(box),
+        dayCount: days.length,
+        glyph: box(days[0].firstElementChild!),
+      };
+    });
+    expect(cells.dayCount).toBeGreaterThanOrEqual(28);
+    for (const day of cells.days) {
+      expect(day.w).toBeGreaterThanOrEqual(40);
+      expect(day.h).toBeGreaterThanOrEqual(40);
+    }
+    // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
+    // idiom, not a bigger calendar: 28px circles, 40px targets.
+    expect(cells.glyph.w).toBeLessThanOrEqual(30);
+
+    const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
+    for (const arrow of [prevBox, nextBox]) {
+      expect(arrow.width).toBeGreaterThanOrEqual(40);
+      expect(arrow.height).toBeGreaterThanOrEqual(40);
+    }
+
+    // The destinations are untouched — growing a hit area must not re-point a day.
+    // EVERY day link, not a sampled one: a hit box that grew over its neighbour
+    // would still leave the first link's href correct.
+    const hrefs = await drawer
+      .locator('a[href^="/timeline?from="]')
+      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
+    expect(hrefs.length).toBeGreaterThan(0);
+    const shape =
+      /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
+    expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
+    // Nothing in the drawer sits past the viewport: the calendar gives up the
+    // drawer's own side padding to buy those 40px columns, so this is the check
+    // that the breakout lands flush rather than overhanging.
+    await expectNoClippedContent(page);
   });
 });
 

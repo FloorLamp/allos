@@ -151,6 +151,61 @@ test.describe("mobile clipping batch (#2614)", () => {
     }
     expect(await scrollableBy(family)).toBeLessThanOrEqual(1);
   });
+
+  test("item 5: the passport's immunizations table FITS the card instead of scrolling (#3242)", async ({
+    page,
+  }) => {
+    // The passport is a print-and-hand-over surface, so the rule here is stronger
+    // than the batch's usual one: a working scroller is not good enough. Every dose
+    // line used to be `whitespace-nowrap` ("2024–25 season: Jul 15, 2025"), which
+    // set the DOSES column's min-content and pushed the table far past a 390px
+    // card — at `scrollLeft: 0` the header read "DOSE" and the dates cut
+    // mid-character with nothing saying sideways scroll existed.
+    await page.goto("/profile");
+    const table = page.getByTestId("passport-immunizations");
+    await expect(table).toBeVisible();
+    // Wait for a real dose cell, not the container: a table measured before its
+    // rows are laid out fits any width (the #3384 lesson).
+    const doses = table.locator("tbody tr td:last-child");
+    await expect(doses.first()).toBeVisible(); // first-ok: presence proves the rows rendered; the assertions below read ALL of them
+    await expect(doses.filter({ hasText: "season" }).first()).toBeVisible(); // first-ok: the seeded labelled flu dose — the longest line in the column, and the one that used to set the min-content width
+
+    // It fits: nothing to scroll sideways to, inside its own scroller OR the card.
+    expect(await scrollableBy(table)).toBeLessThanOrEqual(1);
+    const card = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Immunizations" }) });
+    expect(
+      await overhangWithin(table.locator("table"), card)
+    ).toBeLessThanOrEqual(1);
+
+    // …and no dose value bought that fit by being CUT. A wrapped line's box is
+    // narrower than its text Range, so width cannot answer this — but a clipped one
+    // has `scrollWidth > clientWidth` on the cell that holds it, and a wrapped one
+    // does not.
+    const clipped = await doses.evaluateAll((cells) =>
+      cells
+        .filter((cell) => cell.scrollWidth > cell.clientWidth + 1)
+        .map((cell) => `${cell.textContent?.trim()} clipped`)
+    );
+    expect(clipped, clipped.join("\n")).toEqual([]);
+
+    // The page keeps exactly ONE heading at page scale (#1449/#3242). The identity
+    // name is an h1 only on /share, where this component IS the page; here it is an
+    // h2 under "Health passport", and it used to be BOTH a second h1 and — at 24px
+    // against the header's 20px below `md` — the larger of the two.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Health passport"
+    );
+    const pageScale = await page.evaluate(
+      () =>
+        [...document.querySelectorAll("h1,h2")].filter(
+          (h) => parseFloat(getComputedStyle(h).fontSize) >= 20
+        ).length
+    );
+    expect(pageScale).toBe(1);
+  });
 });
 
 // Fixing a clip must never be paid for by letting content out of the viewport,

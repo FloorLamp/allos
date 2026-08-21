@@ -1317,10 +1317,7 @@ export default async function TimelinePage(props: {
            What it gives up is the rail's INTRUSION, not the rail's width (#3403): the
            strip is fixed to the VIEWPORT, so the page's own 16px right margin is
            already between this feed and the rail. */
-        <div
-          id="timeline-feed"
-          className={`relative ${railGutter}`}
-        >
+        <div id="timeline-feed" className={`relative ${railGutter}`}>
           {scrubberStops.length > 0 && (
             <TimelineScrubber stops={scrubberStops} />
           )}

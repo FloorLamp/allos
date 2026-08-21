@@ -686,7 +686,14 @@ export default function ProfilePassport({
             {summary.immunizations.length > 0 || summary.titers.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {summary.immunizations.length > 0 && (
-                  <div className="overflow-x-auto">
+                  // The scroller stays as the last resort for content nobody
+                  // anticipated, but it is no longer load-bearing: since #3242 the
+                  // table's own min-content fits a 390px card, which is what the
+                  // testid pins.
+                  <div
+                    className="overflow-x-auto"
+                    data-testid="passport-immunizations"
+                  >
                     <table className="w-full text-sm">
                       {/* Real headers (#1491 item 8): without a <thead> this is
                           a11y-invisible as a data table on the public share
