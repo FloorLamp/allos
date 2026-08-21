@@ -97,12 +97,15 @@ else.
 | stack `space-y-6` (24)                | `section-stack-sm`  | 16px  |
 
 Every tier is a `max-sm:` override carrying `!`, and both halves are
-load-bearing. `max-sm:` means the rule emits **only** inside
-`@media (width < 40rem)`, so **desktop is identical by construction** — there is
-no per-site desktop value to get wrong. The `!` means the tier beats a call
-site's own `p-4`: Tailwind 4 sorts custom utilities independently of source
-order, so without it the convention would apply or not depending on generated
-order.
+load-bearing. `max-sm:` compiles to a rule that emits **only** inside
+`@media (width < 40rem)`, so no tier can reach a desktop viewport and there is no
+per-site desktop value to get wrong. That is an **inference about what `max-sm:`
+compiles to**, not a guarantee the tiers enforce on themselves: it was verified
+by walking the compiled sheet (all seven rules inside that one media query, none
+outside), and it would stop holding if `--breakpoint-sm` moved — nothing in the
+test suite would notice. The `!` means the tier beats a call site's own `p-4`:
+Tailwind 4 sorts custom utilities independently of source order, so without it
+the convention would apply or not depending on generated order.
 
 Two traps the guards exist for, both found by measurement rather than reading:
 
@@ -116,12 +119,29 @@ Two traps the guards exist for, both found by measurement rather than reading:
   with the `p-0!` premise that licenses it, so the exemption cannot outlive its
   reason.
 
-Scope: section rhythm covers **every section-level seam in the app shell**. Out
-deliberately: `app/(auth)/*` and `/offline` (not app routes), negative margins,
-and seams already breakpoint-scoped (`md:mb-6`, `sm:mb-6`). Both conventions —
-and every exemption, with its premise — are enforced by
-`lib/__tests__/mobile-density-convention.test.ts`, which is where a new site or a
-new exemption is recorded.
+Scope, as **applied**: section rhythm was swept across every section-level seam
+in the app shell. Out deliberately: `app/(auth)/*` and `/offline` (not app
+routes), negative margins, and seams already breakpoint-scoped (`md:mb-6`,
+`sm:mb-6`).
+
+Scope, as **enforced** — and the two are not the same, which is the point of
+saying so here. `lib/__tests__/mobile-density-convention.test.ts` guards the
+conventions' DEFINITION: that each tier exists, is declared once, is spelled as a
+`max-sm:` override carrying `!`, that no second convention is hand-written
+anywhere in `app/`, `components/` or `lib/`, and that a NAMED census of sites and
+exemptions still holds. It does **not** verify that every seam in the app has
+adopted a tier. Measured on the sweep that shipped this: 77 tier applications
+across 53 files, 27 of them in the 18 files the census names and 50 in files no
+test names — and only 16 individually load-bearing, so most single applications
+can be deleted with the suite green.
+
+That gap is deliberate and it is the same trade this registry's doctrine names:
+these are **a vocabulary, not an automatic rule**. A structural selector would
+also catch badges, chips and fields, none of which are gutters; a tree-wide guard
+would have to allow-list roughly a hundred boxes that #3466 cleared as list
+rhythm or field chrome, and a guard carrying a hundred exceptions is deleted
+within a week — taking the real convention with it. A new site or a new exemption
+is recorded in that test; adoption elsewhere is a review question, not a gate.
 
 ## 3. Control grammar
 
@@ -201,7 +221,7 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 ## Work map
 
 Build order (the umbrella issue tracks it): this registry → #3446 → primitives
-(#3475, #3486, #3499, #3466, #3501, #3492) → idiom adopters (#3495, #3460,
+(#3475, #3486, #3499, #3466 ✓ shipped, #3501, #3492) → idiom adopters (#3495, #3460,
 #3491, #3473, plus standing #3374/#3378/#3408) → copy cluster (#3488, #3490,
 #3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
 #3481, #3493, #3496, #3497, #3498, #3500) ship independently and adopt the
