@@ -180,9 +180,26 @@ export default function ProfilePassport({
           <div className="flex items-center gap-4">
             <Avatar profile={profile} size="md" />
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold text-slate-900 dark:text-slate-100">
-                {identity.name}
-              </h1>
+              {/* THE IDENTITY NAME'S LEVEL FOLLOWS THE MODE (#3242, under the #1449
+                  one-h1 rule). On the SHARE surface this component IS the page — the
+                  logged-out render has no PageHeader above it — so the name is the
+                  document's only h1 and stays at page scale. Inside the app it sits
+                  UNDER "Health passport", the page's real h1, where an `<h1>` was a
+                  second one AND the larger of the two on a phone (24px against the
+                  header's 20px below `md`). It becomes section scale, the same
+                  `h2 text-lg font-semibold` the "Emergency card" heading on that page
+                  was demoted to in the same cluster.
+                  Print is unchanged either way: the printed passport still opens on
+                  the name at 24px bold, which is the artifact's own title. */}
+              {mode === "share" ? (
+                <h1 className="truncate text-2xl font-bold text-slate-900 dark:text-slate-100">
+                  {identity.name}
+                </h1>
+              ) : (
+                <h2 className="truncate text-lg font-semibold text-slate-900 print:text-2xl print:font-bold dark:text-slate-100">
+                  {identity.name}
+                </h2>
+              )}
               <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
                 {inScope(fields, "identity") && (
                   <>
@@ -669,7 +686,14 @@ export default function ProfilePassport({
             {summary.immunizations.length > 0 || summary.titers.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {summary.immunizations.length > 0 && (
-                  <div className="overflow-x-auto">
+                  // The scroller stays as the last resort for content nobody
+                  // anticipated, but it is no longer load-bearing: since #3242 the
+                  // table's own min-content fits a 390px card, which is what the
+                  // testid pins.
+                  <div
+                    className="overflow-x-auto"
+                    data-testid="passport-immunizations"
+                  >
                     <table className="w-full text-sm">
                       {/* Real headers (#1491 item 8): without a <thead> this is
                           a11y-invisible as a data table on the public share
@@ -698,13 +722,25 @@ export default function ProfilePassport({
                                 </span>
                               </td>
                               <td className="td text-right text-xs text-slate-500 dark:text-slate-400">
+                                {/* DOSE LINES WRAP (#3242). They were
+                                    `whitespace-nowrap`, so a labelled dose
+                                    ("2024–25 season: Jul 15, 2025") set this
+                                    column's min-content width and pushed the whole
+                                    table well past a 390px card. The wrapper below
+                                    does scroll, but at `scrollLeft: 0` the header
+                                    read "DOSE" and the dates cut mid-character with
+                                    nothing saying sideways scroll existed — and this
+                                    is a passport, a surface someone prints or hands
+                                    to a provider, so content that FITS beats content
+                                    that scrolls. The Recent-medical-history table
+                                    below has never had the nowrap and has always
+                                    fitted; this is that table's behaviour, not a new
+                                    idea. Only the date can break, and it breaks at a
+                                    space — a wrapped dose is still whole. */}
                                 {v.doses.length > 0 ? (
                                   <div className="flex flex-col gap-0.5">
                                     {v.doses.map((d, di) => (
-                                      <span
-                                        key={di}
-                                        className="whitespace-nowrap"
-                                      >
+                                      <span key={di}>
                                         {d.label ? `${d.label}: ` : ""}
                                         {fmtDate(d.date, formatPrefs)}
                                       </span>

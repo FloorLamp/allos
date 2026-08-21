@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   SCRUBBER_HIT_WIDTH_PX,
+  APP_CONTENT_GUTTER_PX,
+  SCRUBBER_COLUMN_INTRUSION_PX,
+  SCRUBBER_GUTTER_CLASS,
   SCRUBBER_MIN_TICKS,
   SCRUBBER_TAP_SLOP_PX,
   SCRUBBER_YEAR_LABEL_MIN_GAP_PX,
@@ -417,5 +420,30 @@ describe("the hit area", () => {
     // deliberately different numbers, and the component owns a gutter of exactly this
     // width so the strip never sits on top of the feed's own links.
     expect(SCRUBBER_HIT_WIDTH_PX).toBe(44);
+  });
+
+  it("intrudes into the content column by its width MINUS the page gutter (#3403)", () => {
+    // The rail is fixed to the VIEWPORT, and the content column already keeps a 16px
+    // right margin — so the strip only covers 28px of the column, not 44. Reserving
+    // the raw hit width counts that margin a second time, and the leftover band is
+    // exactly the margin: at 430px the feed stopped at 370 while the column ran to
+    // 414. This is the derivation, checked rather than restated.
+    expect(APP_CONTENT_GUTTER_PX).toBe(16);
+    expect(SCRUBBER_COLUMN_INTRUSION_PX).toBe(28);
+    expect(SCRUBBER_COLUMN_INTRUSION_PX).toBe(
+      SCRUBBER_HIT_WIDTH_PX - APP_CONTENT_GUTTER_PX
+    );
+  });
+
+  it("expresses that intrusion as the one class the overlapped surfaces share", () => {
+    // The three surfaces under the rail reserve with this class and nothing else.
+    // Tailwind's spacing unit is 0.25rem = 4px, so `pr-7` IS the 28px above — pinned
+    // here because the class and the number live in different languages and can drift
+    // silently, which is how the header came to reserve nothing at all.
+    const steps = /^pr-(\d+(?:\.\d+)?)$/.exec(SCRUBBER_GUTTER_CLASS);
+    expect(steps, `unexpected gutter class ${SCRUBBER_GUTTER_CLASS}`).not.toBe(
+      null
+    );
+    expect(Number(steps![1]) * 4).toBe(SCRUBBER_COLUMN_INTRUSION_PX);
   });
 });

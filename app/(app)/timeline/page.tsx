@@ -106,6 +106,7 @@ import {
 import {
   showTimelineScrubber,
   timelineScrubberTicks,
+  SCRUBBER_GUTTER_CLASS,
 } from "@/lib/timeline-scrubber";
 import TimelineScrubber, { type ScrubberStop } from "./TimelineScrubber";
 import { getIntradayDay } from "@/lib/queries/intraday";
@@ -837,6 +838,10 @@ export default async function TimelinePage(props: {
           : null,
       }))
     : [];
+  // The rail's clearance, as ONE value for the three surfaces it overlaps (#3403).
+  // See lib/timeline-scrubber.ts: it is the rail's intrusion into the content column
+  // (44px hit width − the column's own 16px right margin), not the rail's raw width.
+  const railGutter = scrubberStops.length > 0 ? SCRUBBER_GUTTER_CLASS : "";
 
   // ONE day group, rendered identically wherever it sits — the recent band, an
   // expanded month, or the unwindowed single-day feed. Extracted so the bands cannot
@@ -936,7 +941,14 @@ export default async function TimelinePage(props: {
 
   return (
     <div>
+      {/* THE HEADER IS THE THIRD SURFACE UNDER THE RAIL (#3403). At the top of the
+          page the rail (fixed, `top-20`) covers the header's right edge, where the
+          "Year in review" link sits — `elementFromPoint` at the link's right edge
+          used to return the rail, so a tap there dragged the scrubber instead of
+          opening the page. It reserves the same derived gutter the controls and the
+          feed do, from the same token. */}
       <PageHeader
+        className={railGutter}
         title="Timeline"
         subtitle="A chronological view of workouts, labs, documents, medications, visits, goals, and other health events."
         action={
@@ -976,8 +988,10 @@ export default async function TimelinePage(props: {
             gutter an invisible strip would be parked on top of them. An inner wrapper
             rather than a class on the block itself: this one already sets `md:px-2`,
             and two padding utilities racing for the same edge is not a thing to leave
-            to stylesheet order. */}
-        <div className={scrubberStops.length > 0 ? "pr-11" : ""}>
+            to stylesheet order. Same shared token as the header and the feed (#3403);
+            it used to be a `pr-11` literal, which reserved the page's own margin a
+            second time. */}
+        <div className={railGutter}>
           <ContextBar
             idPrefix="timeline-filters"
             label={contextLabel(
@@ -1298,12 +1312,12 @@ export default async function TimelinePage(props: {
         /* The rail's 44px hit strip is fixed to the viewport's right edge, and its
            whole point is that the touch target is far wider than the ~5px visual. That
            makes it overlap the feed's own right edge, where event-card links live — so
-           the feed gives up a gutter of exactly the rail's width whenever the rail
-           renders. The rail owns that column; it never squats on a tap target. */
-        <div
-          id="timeline-feed"
-          className={`relative ${scrubberStops.length > 0 ? "pr-11" : ""}`}
-        >
+           the feed gives up the column the rail takes from it whenever the rail
+           renders. The rail owns that column; it never squats on a tap target.
+           What it gives up is the rail's INTRUSION, not the rail's width (#3403): the
+           strip is fixed to the VIEWPORT, so the page's own 16px right margin is
+           already between this feed and the rail. */
+        <div id="timeline-feed" className={`relative ${railGutter}`}>
           {scrubberStops.length > 0 && (
             <TimelineScrubber stops={scrubberStops} />
           )}
