@@ -6,11 +6,11 @@ import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_SLEEP_EDIT,
   E2E_LOGIN_SLEEP_PHASE,
-  E2E_LOGIN_SLEEP_SEGMENTED,
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import {
+  awaitHydrated,
   dismissToast,
   chartsSettled,
   expectNoClippedContent,
@@ -510,7 +510,30 @@ test.describe("Sleep page (#1066)", () => {
     await page.getByTestId("sleep-add-entry-header").click();
     const dialog = page.getByTestId("sleep-mood-edit-dialog");
     await expect(dialog).toBeVisible();
+
+    // Summary-first (#3222 on #3218): the dialog opens onto the facts it is about
+    // to write, not onto a field. Each chip is the door to exactly one editor, and
+    // at most one editor is on screen — so every field below is reached by tapping
+    // the fact it belongs to.
+    const factRow = dialog.getByTestId("sleep-fact-row");
+    await expect(factRow).toBeVisible();
+    const editor = dialog.getByTestId("sleep-editor");
+
+    await dialog.getByTestId("sleep-fact-night").click();
+    await expect(editor).toHaveAttribute("data-panel", "night");
     await expect(dialog.getByTestId("sleep-entry-date")).toBeVisible();
+    // Done returns to the chips, and the chip row and the editor are never both up.
+    await dialog.getByTestId("sleep-editor-done").click();
+    await expect(editor).toHaveCount(0);
+    await expect(factRow).toBeVisible();
+    // AND FOCUS IS BACK ON THE CHIP THAT OPENED IT (#3311). Asserted as where focus IS,
+    // not that a focus call happened: opening the editor unmounted this chip, so the
+    // element that was clicked no longer exists and only the primitive's fact key can
+    // find its replacement. Before this, focus sat on <body> and the next Tab started
+    // from the top of the document.
+    await expect(dialog.getByTestId("sleep-fact-night")).toBeFocused();
+
+    await dialog.getByTestId("sleep-fact-duration").click();
     await expect(
       dialog.getByText("Sleep duration", { exact: true })
     ).toBeVisible();
@@ -519,9 +542,50 @@ test.describe("Sleep page (#1066)", () => {
     await expect(
       dialog.getByTestId("sleep-history-edit-readonly")
     ).toBeVisible();
+    await dialog.getByTestId("sleep-editor-done").click();
+
+    await dialog.getByTestId("sleep-fact-mood").click();
     await expect(dialog.getByRole("group", { name: "Mood" })).toBeVisible();
+    await dialog.getByTestId("sleep-editor-done").click();
+
+    // Nothing was stated, so nothing is saveable — the read-only night cannot take a
+    // manual duration and no mood was chosen.
     await expect(dialog.getByTestId("sleep-mood-edit-save")).toBeDisabled();
     await dialog.getByRole("button", { name: "Cancel" }).click();
+  });
+
+  test("Escape inside an open fact editor returns to the chips, not out of the dialog", async ({
+    page,
+  }) => {
+    // The contract the primitive states (#3218) and the one this consumer proved needs
+    // saying out loud (#3222): the shared focus trap answers Escape on the WINDOW
+    // CAPTURE phase, so an open panel has to declare itself an escape layer or the
+    // first Escape throws the whole dialog away instead of closing the one editor.
+    await page.goto("/sleep");
+    await page.getByTestId("sleep-add-entry-header").click();
+    const dialog = page.getByTestId("sleep-mood-edit-dialog");
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByTestId("sleep-fact-mood").click();
+    await expect(dialog.getByTestId("sleep-editor")).toHaveAttribute(
+      "data-panel",
+      "mood"
+    );
+
+    await page.keyboard.press("Escape");
+    // Editor closed, dialog still standing.
+    await expect(dialog.getByTestId("sleep-editor")).toHaveCount(0);
+    await expect(dialog.getByTestId("sleep-fact-row")).toBeVisible();
+
+    // Esc and Done are the same gesture, so Esc lands focus in the same place (#3311).
+    await expect(dialog.getByTestId("sleep-fact-mood")).toBeFocused();
+
+    // And the SECOND Escape reaches the dialog, exactly as it did before any of this —
+    // which is the assertion the focus return had to leave standing. Focus now sits on
+    // a chip inside the modal rather than on <body>, and a chip is not an escape layer,
+    // so the shared window-capture trap still answers this one.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
   });
 
   test("the nav gate HIDES the entry for a profile with no sleep data", async ({
@@ -537,10 +601,13 @@ test.describe("Sleep page (#1066)", () => {
     try {
       await page.goto("/");
       // A visible surface proves the shell rendered…
-      const timeline = page
-        .getByRole("link", { name: "Timeline", exact: true })
+      // A TOP-LEVEL row stands in for "the shell rendered" — #3079 moved Timeline
+      // into the collapsed "Plan & review" group, where a shell-mounted check would
+      // have started failing for a reason that has nothing to do with sleep.
+      const shellRow = page
+        .getByRole("link", { name: "Dashboard", exact: true })
         .first(); // first-ok: shared responsive nav leaf rendered in both viewports; first instance confirms the shell mounted
-      await expect(timeline).toBeVisible();
+      await expect(shellRow).toBeVisible();
       // …and the Sleep leaf is absent for this sleep-less profile (both navs).
       await expect(page.locator('nav a[href="/sleep"]')).toHaveCount(0);
 
@@ -905,6 +972,13 @@ test.describe("Sleep and mood log historical editing", () => {
       );
       await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const importedDialog = page.getByTestId("sleep-mood-edit-dialog");
+      // A synced night STATES its measured duration on the chip rather than making the
+      // person open an editor to be told they cannot use it; the read-only explanation
+      // is what sits behind that chip.
+      await expect(
+        importedDialog.getByTestId("sleep-fact-duration")
+      ).toContainText("6 h 30 m");
+      await importedDialog.getByTestId("sleep-fact-duration").click();
       await expect(
         importedDialog.getByTestId("sleep-history-edit-readonly")
       ).toBeVisible();
@@ -913,17 +987,32 @@ test.describe("Sleep and mood log historical editing", () => {
       await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
       await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      // An edit states the night's own stored duration, and states it as the person's
+      // own — never with the borrowed-value marking.
+      const durationChip = dialog.getByTestId("sleep-fact-duration");
+      await expect(durationChip).toContainText("7 h");
+      await expect(durationChip).toHaveAttribute("data-suggested", "0");
+
+      await durationChip.click();
       const hours = dialog.getByTestId("sleep-history-edit-hours");
       const minutes = dialog.getByTestId("sleep-history-edit-minutes");
       await expect(hours).toHaveValue("7");
       await expect(minutes).toHaveValue("0");
+      await hours.fill("8");
+      await minutes.fill("45");
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      await dialog.getByTestId("sleep-fact-mood").click();
       await expect(dialog.getByTestId("sleep-history-mood-2")).toHaveAttribute(
         "aria-pressed",
         "true"
       );
-      await hours.fill("8");
-      await minutes.fill("45");
       await dialog.getByTestId("sleep-history-mood-4").click();
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      // Both corrections survived their editors closing: the form posts whole.
+      await expect(durationChip).toContainText("8 h 45 m");
+      await expect(dialog.getByTestId("sleep-fact-mood")).toContainText("good");
       await settledClick(page, dialog.getByTestId("sleep-mood-edit-save"));
       await expect(dialog).toHaveCount(0);
       await expect(manualRow).toContainText("8h 45m");
@@ -1066,6 +1155,77 @@ test.describe("Sleep and mood log historical editing", () => {
     }
   });
 
+  test("a hand-composed dialog gets its discard confirm on a gesture dismiss (#3356)", async ({
+    browser,
+  }, testInfo) => {
+    // THE FORM THE GUARD COULD NOT SEE. ModalShell routes a flick or a scrim tap
+    // through "Discard your changes?" by asking the dirty-form registry, and the
+    // registry knows only about NAMED controls inside a `<form>`. This dialog is not
+    // a `<form>` and has not one named control — it composes its save by hand out of
+    // React state — so the registry answered "clean" however much had been stated,
+    // and the gesture threw a mood rating away with nothing asking.
+    //
+    // Not a hypothetical about a form somebody might write one day: this dialog is
+    // shipped, is hosted in a ModalShell, and behaved exactly this way on main.
+    const fixture = createSleepEditFixture(testInfo, "add");
+    let page: Page | null = null;
+    try {
+      page = await loginAs(browser, {
+        username: fixture.username,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      await page.goto("/sleep");
+      await page.getByTestId("sleep-add-entry-header").click();
+      const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      await expect(dialog).toBeVisible();
+
+      // THE DIALOG'S OWN ANSWER FIRST, and the order is load-bearing. This assertion
+      // is about the DIALOG — it publishes the same value its Save button is enabled
+      // by — so it survives every registry mutant, which is what lets the guard
+      // assertion below name its own cause. With the guard asserted first, a broken
+      // marker reds as "the discard guard regressed" and sends the next reader into
+      // the wrong file.
+      await expect(dialog).toHaveAttribute("data-unsaved", "false");
+      await dialog.getByTestId("sleep-fact-mood").click();
+      await dialog.getByTestId("sleep-history-mood-5").click();
+      await dialog.getByTestId("sleep-editor-done").click();
+      await expect(
+        dialog,
+        "the dialog must publish its own unsaved state — nothing else in this subtree can, and the guard has nothing else to read"
+      ).toHaveAttribute("data-unsaved", "true");
+
+      // The gesture, not the Close button: Escape and Close are deliberately
+      // unguarded (a targeted action on a named control), and a scrim tap is one of
+      // the two dismissals a hand produces by accident.
+      const backdrop = page.getByTestId("modal-shell-backdrop");
+      await awaitHydrated(backdrop);
+      await backdrop.click({ position: { x: 4, y: 4 } });
+
+      // A PRESENCE assertion, so the default ceiling is honest: no amount of waiting
+      // can conjure this confirm if the guard cannot see the dialog's state, because
+      // the guard is asked synchronously on the tap.
+      const confirm = page.getByTestId("confirm-dialog");
+      await expect(
+        confirm,
+        "a hand-composed form in a ModalShell must get its discard confirm (#3356) — the registry tracks named controls in a <form>, and this dialog has neither, so it could only ever be read as clean"
+      ).toBeVisible();
+      await expect(confirm).toContainText("Discard your changes?");
+
+      await hydratedClick(
+        page,
+        confirm.getByRole("button", { name: "Keep editing" })
+      );
+      // Keep editing keeps BOTH: the typing and the surface it was typed into.
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByTestId("sleep-fact-mood")).toContainText(
+        "great"
+      );
+    } finally {
+      if (page) await page.context().close();
+      destroySleepEditFixture(fixture);
+    }
+  });
+
   test("adds sleep and mood together for a date in the visible log", async ({
     browser,
   }, testInfo) => {
@@ -1085,10 +1245,39 @@ test.describe("Sleep and mood log historical editing", () => {
       await page.goto("/sleep");
       await page.getByTestId("sleep-add-entry-header").click();
       const dialog = page.getByTestId("sleep-mood-edit-dialog");
+      await dialog.getByTestId("sleep-fact-night").click();
       await dialog.getByTestId("sleep-entry-date").fill(entryDate);
+      // Focusing the date field opens its calendar, which is an escape layer of its own
+      // and sits over the panel's Done. Escape belongs to the innermost layer, so this
+      // closes the calendar and nothing else — the editor is still open below it.
+      await page.keyboard.press("Escape");
+      await expect(dialog.getByTestId("sleep-editor")).toHaveAttribute(
+        "data-panel",
+        "night"
+      );
+      await dialog.getByTestId("sleep-editor-done").click();
+
+      // The blank night borrows the profile's typical MANUAL duration — this fixture
+      // has one 7 h manual night — and says where the number came from. A borrowed
+      // value is a suggestion, not something the person stated (#846).
+      const durationChip = dialog.getByTestId("sleep-fact-duration");
+      await expect(durationChip).toContainText("7 h");
+      // The marking is the primitive's `data-suggested` (#3222), the same attribute the
+      // intake form's chips carry; only the wording beside it belongs to this surface.
+      await expect(durationChip).toHaveAttribute("data-suggested", "1");
+      await expect(durationChip).toContainText("from your usual");
+
+      await durationChip.click();
       await dialog.getByTestId("sleep-history-edit-hours").fill("7");
       await dialog.getByTestId("sleep-history-edit-minutes").fill("35");
+      await dialog.getByTestId("sleep-editor-done").click();
+      // Typing is what makes the number theirs, so the marking is gone.
+      await expect(durationChip).toHaveAttribute("data-suggested", "0");
+      await expect(durationChip).not.toContainText("from your usual");
+
+      await dialog.getByTestId("sleep-fact-mood").click();
       await dialog.getByTestId("sleep-history-mood-5").click();
+      await dialog.getByTestId("sleep-editor-done").click();
       await settledClick(page, dialog.getByTestId("sleep-mood-edit-save"));
       await expect(dialog).toHaveCount(0);
 

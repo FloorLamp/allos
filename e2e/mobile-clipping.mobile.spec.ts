@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
-import { expectNoClippedContent, hydratedClick, settledBoxes } from "./helpers";
+import {
+  expectNoClippedContent,
+  hydratedClick,
+  settledBoxes,
+  touchSwipe,
+} from "./helpers";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -159,4 +164,184 @@ test.describe("no surface pays for its fix with content past the edge (#2614)", 
       await expectNoClippedContent(page);
     });
   }
+});
+
+// A DIALOG BODY IS NOT A SIDEWAYS SCROLLER (#3360).
+//
+// The shape above is a container that clips content it should scroll. This is the
+// inverse, and it is worse: a container that SCROLLS when nothing asked it to.
+// `overflow-y-auto` on the sheet's content region is not a y-only declaration —
+// per CSS a non-`visible` `overflow-y` forces `overflow-x` to compute to `auto` —
+// so any mounted body with a stray full-bleed negative margin handed the region
+// real overflow. FoodLogBar's `-mx-2 px-2` header was the reported one: the owner
+// logged a serving on a phone, the drag carried a few pixels of horizontal, and
+// the whole sheet parked 8px left with no snap-back, no scrollbar on touch and no
+// affordance back. Text with no padding of its own then clipped at the screen
+// edge, so it read as "the header is broken" rather than "the sheet is scrolled".
+//
+// Two assertions, deliberately at two tiers: the consumer that was reported, and
+// the HOST contract that retires the class. The host one injects its own over-wide
+// child, so it keeps holding after every consumer's bleed is scoped away.
+test.describe("a dialog body cannot be parked sideways (#3360)", () => {
+  // What a parked sheet IS, asked of the element rather than of a screenshot: the
+  // region can be scrolled sideways, and once dragged it stays there.
+  async function parkSideways(content: Locator): Promise<number> {
+    return content.evaluate((node) => {
+      node.scrollLeft = 999;
+      return node.scrollLeft;
+    });
+  }
+
+  // WHAT IS STICKING OUT, not just how far. KEEP THIS even when the assertion it
+  // annotates is green — a reviewer will read it as dead weight and it is the
+  // opposite. `scrollWidth - clientWidth` is a number with no author: the first
+  // time this went red on CI it said "Received: 5" and nothing else, and 5px in a
+  // dialog body can be a bleed, a hit-area pseudo-element, sub-pixel rounding, or
+  // a child that was transiently wide during mount. Those need different fixes.
+  // This walks the region and names the deepest element whose own scroll extent
+  // exceeds its box, which is where the overflow is actually born, so the NEXT
+  // red arrives with its cause attached instead of a bare integer. (It found the
+  // real one: a `tap-target` extension on the preferences button, #3384.)
+  async function overflowStory(content: Locator): Promise<string> {
+    return content.evaluate((node) => {
+      const over = node.scrollWidth - node.clientWidth;
+      if (over <= 0) return "nothing overflows";
+      const edge = node.getBoundingClientRect().right;
+      // RANKED BY REACH PAST THE REGION'S EDGE, not by "does this element
+      // overflow at all". Nearly every `tap-target` in the sheet overflows its
+      // own box by 6px — that is what the hit-area extension IS — and listing
+      // them all buries the one that matters under a wall of innocents. Only an
+      // element whose overflow actually arrives at the region's right edge can
+      // make the region scrollable, so that is the question asked.
+      const culprits = Array.from(node.querySelectorAll("*"))
+        .filter(
+          (el): el is HTMLElement =>
+            el instanceof HTMLElement &&
+            // Only overflow that ESCAPES can make the region scrollable. A
+            // `truncate` span overruns its box by a mile and clips every pixel of
+            // it, so it is not a suspect — including it put three innocent labels
+            // at the top of this list the first time round.
+            getComputedStyle(el).overflowX === "visible"
+        )
+        .map((el) => ({
+          el,
+          reach:
+            el.getBoundingClientRect().right +
+            (el.scrollWidth - el.clientWidth) -
+            edge,
+        }))
+        .filter((c) => c.reach > -0.5)
+        .sort((a, b) => b.reach - a.reach)
+        .slice(0, 3)
+        .map(
+          ({ el, reach }) =>
+            `<${el.tagName.toLowerCase()} data-testid="${
+              el.getAttribute("data-testid") ?? ""
+            }" class="${el.className}"> reaches ${Math.round(reach)}px past`
+        );
+      return `region overflows by ${over}px; ${
+        culprits.join(" | ") ||
+        "no element reaches the edge — check text, a pseudo-element, or a mid-mount width"
+      }`;
+    });
+  }
+
+  test("the quick-entry food sheet stays where it was opened", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-food");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    await expect(content).toBeVisible();
+
+    // WAIT FOR THE FORM BEFORE MEASURING ANYTHING. `quick-entry-body` renders a
+    // loading paragraph while the food form arrives, and a paragraph fits any
+    // width — so the first version of this test measured the placeholder, passed
+    // for a reason that had nothing to do with the sheet, and only went red once
+    // CI happened to be past the mount. A race that resolves toward the EMPTY DOM
+    // is the worst kind: it fails toward green, so the spec reports success
+    // without ever having looked at the thing it names (#3384). These two waits
+    // are the assertion's precondition, not scenery.
+    const context = sheet.getByTestId("food-log-context");
+    await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
+    await expect(context).toBeVisible();
+
+    // Nothing to scroll to, because the mounted body fits: FoodLogBar's bleed is
+    // scoped to the `md:sticky` widths where it earns its keep, and the tap
+    // extension on its flush-right control has the room it needs.
+    expect(
+      await scrollableBy(content),
+      await overflowStory(content)
+    ).toBeLessThanOrEqual(0);
+    // And the region refuses the offset even so — the acceptance criterion as
+    // written: `scrollLeft = 999` leaves it at 0.
+    expect(await parkSideways(content)).toBe(0);
+
+    // The consequence the owner reported, stated as the thing they saw: the header
+    // block is inside the sheet's box, not hanging off its left edge.
+    const [contextBox, contentBox] = await settledBoxes([context, content]);
+    expect(contextBox.x).toBeGreaterThanOrEqual(contentBox.x - 1);
+    expect(await overhangWithin(context, content)).toBeLessThanOrEqual(1);
+  });
+
+  test("a dialog hosting a deliberately over-wide child still refuses", async ({
+    page,
+  }) => {
+    // The generic half, and the one that survives its own consumer. Any body may
+    // grow a full-bleed wrapper again; the host's job is that doing so costs a few
+    // clipped pixels of background instead of a scrollable viewport.
+    await page.goto("/?quick=log-food");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet).toBeVisible();
+    // Same precondition as above: measure a mounted body, never the placeholder.
+    await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    await expect(content).toBeVisible();
+
+    await content.evaluate((node) => {
+      const wide = document.createElement("div");
+      // Wider than any phone, and negatively margined the way a full-bleed
+      // wrapper is — the two ways a child can exceed its container.
+      wide.style.width = "1200px";
+      wide.style.marginLeft = "-40px";
+      wide.style.height = "8px";
+      wide.setAttribute("data-e2e-overwide", "true");
+      node.appendChild(wide);
+    });
+    await expect(content.locator("[data-e2e-overwide]")).toHaveCount(1);
+
+    // THE REPORTED GESTURE, on a body that genuinely overflows. This is the whole
+    // guarantee: a `hidden` box is not user-scrollable, so the sideways component
+    // of a logging tap moves nothing.
+    const box = await content.boundingBox();
+    expect(box).not.toBeNull();
+    const y = box!.y + Math.min(80, box!.height / 2);
+    await touchSwipe(
+      page,
+      { x: box!.x + box!.width - 40, y },
+      { x: box!.x + 40, y }
+    );
+    expect(
+      await content.evaluate((node) => node.scrollLeft),
+      "a thumb drag across a dialog body must not park it sideways"
+    ).toBe(0);
+
+    // `hidden`, never `auto` or `scroll` — and never `visible`, which would put
+    // the overflow back on the page. `clip` would be the stronger word and is not
+    // available: with a scrolling value on the other axis, CSS uses `hidden` for
+    // it, which Chromium confirms by reporting exactly that for `overflow-x-clip`
+    // here. `hidden` is therefore the strongest this y-scroller can be, and the
+    // reason #3360 also wanted bodies that do not overflow in the first place: a
+    // SCRIPT can still write an offset onto a `hidden` box (measured: 802 with
+    // this same injected child), even though no reader can.
+    expect(
+      await content.evaluate((node) => getComputedStyle(node).overflowX)
+    ).toBe("hidden");
+    // The y axis is still a real scroller with its overscroll contained — the
+    // x-axis declaration must not have cost the sheet its own scrolling.
+    expect(
+      await content.evaluate((node) => getComputedStyle(node).overflowY)
+    ).toBe("auto");
+  });
 });

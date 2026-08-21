@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -27,6 +26,7 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import { statusBadge } from "../status-ui";
 import OverrideControls from "./OverrideControls";
 import VaccineDoseHistory from "../VaccineDoseHistory";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +47,10 @@ export default async function VaccineDetailPage(props: {
   if (!entry) {
     return (
       <div>
-        <Link
+        <BackLink
           href="/records/history/immunizations"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" /> Back to immunizations
-        </Link>
+          label="Back to immunizations"
+        />
         <PageHeader title={vaccineDisplayName(code)} />
         <EmptyState message="Unknown vaccine. This detail view covers the tracked catalog vaccines." />
       </div>
@@ -101,12 +99,10 @@ export default async function VaccineDetailPage(props: {
   return (
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <div>
-        <Link
+        <BackLink
           href="/records/history/immunizations"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" /> Back to immunizations
-        </Link>
+          label="Back to immunizations"
+        />
 
         <PageHeader
           title={entry.name}

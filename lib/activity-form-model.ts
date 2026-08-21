@@ -5,10 +5,11 @@
 
 import type { ActivityType } from "@/lib/types";
 import { parseComponents } from "@/lib/types";
-import type { UnitPrefs } from "@/lib/settings";
+import type { UnitPrefs, WeightUnit } from "@/lib/settings";
 import { isTimed } from "@/lib/lifts";
-import { formatSeconds } from "@/lib/duration";
-import { round, kgTo, kmTo } from "@/lib/units";
+import { formatSeconds, parseSeconds } from "@/lib/duration";
+import { round, kgTo, kmTo, toKg } from "@/lib/units";
+import { summarizeExercise, type SetRow } from "@/lib/training-log-format";
 import { isCuratedActivity } from "@/lib/activities-catalog";
 import { legacyActivityName } from "@/lib/activity-meta";
 import { sideCompleteBy, sidePartialBy } from "@/lib/activity-validate";
@@ -511,6 +512,86 @@ export const setPartial = (name: string, set: SetEntry, perSide: boolean) =>
   sidePartial(name, set.weight, set.reps, set.duration) ||
   (perSide &&
     sidePartial(name, set.weightRight, set.repsRight, set.durationRight));
+
+// ---- The compact set notation (#3336) ----
+
+// How many sets a run has to be before stating it as one sentence beats reading the
+// rows. Two: "60 kg × 8 × 2" is already shorter than two rows of four controls, and a
+// single set has no run to compress — its row IS the sentence.
+export const MIN_COMPACT_SETS = 2;
+
+/**
+ * The part's sets stated as ONE SENTENCE — "60 kg × 8 × 3" — or null when they are not
+ * a uniform run and must stay a grid (#3336, #3228 item 4).
+ *
+ * REUSES THE ONE NOTATION rather than growing a second (the Recent panel, the training
+ * log card, the timeline and the export all render `summarizeExercise`). The editor
+ * holds display-unit STRINGS and that function reads canonical kg rows, so the sets are
+ * minted through `toKg` and handed over — a round trip that `round(…, 1)` absorbs
+ * exactly. Formatting the strings here instead would be a second spelling of "175 lb ×
+ * 8 × 3", and the two would drift on the first rounding or unit change.
+ *
+ * NULL IS THE WHOLE RULE, not a hint: a caller with no sentence has nothing to render
+ * in place of the grid, so "a non-uniform part never collapses" cannot be forgotten at
+ * a call site.
+ *
+ * A part qualifies when every set is COMPLETE, none is a WARMUP, and they are all
+ * IDENTICAL — because those are the differences the sentence cannot carry. A warmup is
+ * excluded from volume and from the target judgment (#338), and "8, 8, 7" states a
+ * variation someone chose; folding either into "× 3" would be the summary lying.
+ *
+ * Uniformity is compared on the RAW STRINGS the fields hold, so "60" and "60.0" read as
+ * different sets. That is the safe direction: the disagreement shows the grid, and the
+ * grid is what the person was going to look at anyway.
+ *
+ * RPE IS DELIBERATELY NOT PART OF UNIFORMITY. A rating varies across a run of identical
+ * sets by design, and `rpeSummaryText` states a range ("RPE 7–9") beside the sentence —
+ * so a part whose sets differ only in effort still compresses, and says so.
+ */
+export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
+  if (p.sets.length < MIN_COMPACT_SETS) return null;
+  const first = p.sets[0];
+  const uniform = p.sets.every(
+    (s) =>
+      !s.warmup &&
+      s.weight === first.weight &&
+      s.reps === first.reps &&
+      s.weightRight === first.weightRight &&
+      s.repsRight === first.repsRight &&
+      s.duration === first.duration &&
+      s.durationRight === first.durationRight
+  );
+  if (!uniform) return null;
+  // Every set equals the first, so completeness is one question. A per-side part needs
+  // BOTH sides — `setComplete` is satisfied by either, and "L 14 lb × 10 × 3 · R – × 3"
+  // is not a sentence anyone wants in place of the row they were about to fill in.
+  const complete = p.perSide
+    ? sideComplete(p.name, first.weight, first.reps, first.duration) &&
+      sideComplete(
+        p.name,
+        first.weightRight,
+        first.repsRight,
+        first.durationRight
+      )
+    : sideComplete(p.name, first.weight, first.reps, first.duration);
+  if (!complete) return null;
+
+  const timed = isTimed(p.name);
+  const rows: SetRow[] = p.sets.map((s, i) => ({
+    set_number: i + 1,
+    weight_kg: s.weight ? toKg(Number(s.weight), unit) : null,
+    reps: timed ? null : s.reps ? Number(s.reps) : null,
+    weight_kg_right:
+      p.perSide && s.weightRight ? toKg(Number(s.weightRight), unit) : null,
+    reps_right:
+      timed || !p.perSide ? null : s.repsRight ? Number(s.repsRight) : null,
+    duration_sec: timed ? parseSeconds(s.duration) : null,
+    duration_sec_right:
+      timed && p.perSide ? parseSeconds(s.durationRight) : null,
+    warmup: 0,
+  }));
+  return summarizeExercise(rows, unit).text;
+}
 
 // Working-set volume (weight × reps, summed across sets and both sides).
 // Warmups are excluded (#338) — they're not working volume.

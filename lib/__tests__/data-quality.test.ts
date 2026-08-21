@@ -29,6 +29,8 @@ const COMPLETE_ADULT: DataQualityInputs = {
   phenoAgeMissingPrimary: null,
   failedExtractions: 0,
   riskAttributesReviewed: true,
+  unreadableDoseAmounts: 0,
+  unreadableDoseAmountItem: null,
 };
 
 function keysOf(inputs: DataQualityInputs): string[] {
@@ -266,6 +268,8 @@ describe("leverage ranking is stable and deterministic", () => {
       phenoAgeMissingPrimary: "Albumin",
       failedExtractions: 1, // failed (1)
       riskAttributesReviewed: false, // risk gated on adult → suppressed (age null)
+      unreadableDoseAmounts: 0,
+      unreadableDoseAmountItem: null,
     });
     const order = gaps.map((g) => g.key);
     // Age is null: adult-gated smoking/risk/phenoage stay silent, so the visible
@@ -403,6 +407,8 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
         phenoAgeMissingPrimary: "Albumin",
         failedExtractions: 1,
         riskAttributesReviewed: false,
+        unreadableDoseAmounts: 2,
+        unreadableDoseAmountItem: { id: 42, kind: "medication" },
       }),
       ...detectDataQualityGaps({
         ...COMPLETE_ADULT,
@@ -432,6 +438,10 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
       "/records/care/overview",
       "/medications",
       /^\/medications\/\d+$/,
+      // The supplements tab (#3320): a supplement's dose rows are edited INLINE on
+      // it, so unlike a medication there is no per-item form to deep-link. Same
+      // deliberate list-level target the prescriber-link carve-out below names.
+      "/nutrition",
       "/trends",
       "/data",
     ];
@@ -478,5 +488,91 @@ describe("householdDataQualityLine", () => {
     expect(line).toContain(`${gaps.length} data gaps`);
     expect(line).toContain("birthdate");
     expect(line).toContain("sex");
+  });
+});
+
+describe("dose-amount-unreadable detector (#3320)", () => {
+  const withUnreadable = (
+    n: number,
+    kind: "supplement" | "medication",
+    id = 12
+  ) => ({
+    ...COMPLETE_ADULT,
+    unreadableDoseAmounts: n,
+    unreadableDoseAmountItem: { id, kind },
+  });
+
+  it("does NOT fire when every stored amount reads", () => {
+    expect(keysOf(COMPLETE_ADULT)).not.toContain("dose-amount-unreadable");
+  });
+
+  it("fires on a single unreadable amount and names the count", () => {
+    const gaps = detectDataQualityGaps(withUnreadable(1, "supplement"));
+    const gap = gaps.find((g) => g.key === "dose-amount-unreadable");
+    expect(gap?.label).toBe("Retype 1 dose amount");
+    expect(gap?.whyLine).toContain("upper-limit");
+  });
+
+  it("pluralizes and still names the count", () => {
+    const gaps = detectDataQualityGaps(withUnreadable(4, "supplement"));
+    const gap = gaps.find((g) => g.key === "dose-amount-unreadable");
+    expect(gap?.label).toBe("Retype 4 dose amounts");
+  });
+
+  it("deep-links the affected item's own editor", () => {
+    const supplement = detectDataQualityGaps(
+      withUnreadable(1, "supplement")
+    ).find((g) => g.key === "dose-amount-unreadable");
+    expect(supplement?.ctaHref).toBe("/nutrition?tab=supplements");
+    // A medication has a form of its own — never the bare list (#1146).
+    const medication = detectDataQualityGaps(
+      withUnreadable(1, "medication", 42)
+    ).find((g) => g.key === "dose-amount-unreadable");
+    expect(medication?.ctaHref).toBe("/medications/42?action=edit");
+  });
+
+  it("names exactly as many consumers as its leverage claims", () => {
+    // The rank and the copy can never disagree (the module's own invariant): the
+    // upper-limit warnings and the RDA share are the two totals that skip the dose.
+    const gap = detectDataQualityGaps(withUnreadable(2, "supplement")).find(
+      (g) => g.key === "dose-amount-unreadable"
+    );
+    expect(gap?.leverage).toBe(2);
+    expect(gap?.whyLine).toContain("upper-limit warnings");
+    expect(gap?.whyLine).toContain("RDA share");
+  });
+
+  it("ranks ahead of the other leverage-2 gaps (a safety total is the one at stake)", () => {
+    const keys = keysOf({
+      ...withUnreadable(1, "supplement"),
+      prescribersNeedingLink: 2,
+      smokingKnown: false,
+    });
+    expect(keys.indexOf("dose-amount-unreadable")).toBeLessThan(
+      keys.indexOf("prescriber-link")
+    );
+    expect(keys.indexOf("dose-amount-unreadable")).toBeLessThan(
+      keys.indexOf("smoking-status")
+    );
+  });
+
+  it("cannot fire without a surface to send the person to", () => {
+    // A count with no kind is an impossible gather (the count IS the row list's
+    // length), and a CTA that goes nowhere is worse than no card.
+    expect(
+      keysOf({
+        ...COMPLETE_ADULT,
+        unreadableDoseAmounts: 3,
+        unreadableDoseAmountItem: null,
+      })
+    ).not.toContain("dose-amount-unreadable");
+  });
+
+  it("joins the household one-liner as a named gap", () => {
+    const gaps = detectDataQualityGaps({
+      ...withUnreadable(1, "supplement"),
+      sexKnown: false,
+    });
+    expect(householdDataQualityLine(gaps)).toContain("dose amounts");
   });
 });

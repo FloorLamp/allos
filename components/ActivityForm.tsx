@@ -12,6 +12,7 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import type { RpeTracking } from "@/lib/rpe";
 import {
   compositeRollup,
   inferFreeTextType,
@@ -60,6 +61,8 @@ import {
   type Recap,
 } from "@/lib/session-recap";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
+import ActivitySessionFactRow from "./activity-form/ActivitySessionFactRow";
+import FactEditorHost, { useFactEditor } from "./facts/FactEditorHost";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import {
@@ -77,6 +80,11 @@ import {
   pickDefaultActivityEquipment,
   usesActivityEquipment,
 } from "@/lib/activity-equipment";
+import {
+  ACTIVITY_SESSION_FACT_NOUNS,
+  activitySessionFactSummary,
+  type ActivitySessionFactKey,
+} from "@/lib/activity-session-facts";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
 import { activityEditDataHasStrength } from "@/lib/activity-form-model";
@@ -124,6 +132,7 @@ export default function ActivityForm({
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
+  rpeTracking = null,
   onClose,
   onCloseRequestReady,
   onDeleted,
@@ -175,6 +184,10 @@ export default function ActivityForm({
   // injury axis (#221/#1115). Composed with the deload shave through contextualNextSet.
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
+  // The profile's opted-into RPE scale, or null (#3335). Null is not "off by
+  // default" — it is the absence of anything to render, which is why no strength
+  // surface can put an effort column on screen for a profile that never asked.
+  rpeTracking?: RpeTracking | null;
   onClose: () => void;
   // The containing dialog routes Escape through the same save-aware path as
   // Done, the backdrop, and the live-workout minimize control.
@@ -248,6 +261,13 @@ export default function ActivityForm({
   // Local copy so a bar created from the plate builder appears immediately in
   // both the equipment selector and the builder without waiting on a refetch.
   const [equipmentList, setEquipmentList] = useState<Equipment[]>(equipment);
+  // The same treatment for the RPE opt-in (#3335), so the column appears on the tap
+  // that asked for it rather than on the next server round-trip — the editor may be
+  // mid-session and must not lose its unsaved state to a refetch.
+  //
+  // The state holds what the ACTION answered with, never a locally minted scale:
+  // lib/rpe-tracking.ts stays the one producer even though the tap is optimistic.
+  const [rpeScale, setRpeScale] = useState<RpeTracking | null>(rpeTracking);
   // ONE editor-local append for every in-form equipment creation path — the plate
   // builder's bar (#335) and the strength picker's quick-add (#1611) — so a row
   // created mid-workout is immediately pickable on every part without a reload and
@@ -284,6 +304,31 @@ export default function ActivityForm({
       ? (editData.equipment_id ?? null)
       : (seed?.equipment_id ?? undefined)
   );
+  // The SESSION-LEVEL FACT CHIPS (#3334) and their one-editor-at-a-time contract, from
+  // the shared facts-with-editors primitive (#3218). This form supplies only its own
+  // fact keys; the chip row, the Done/Esc gesture and the focus return are the
+  // primitive's.
+  //
+  // THIS FORM IS SAFE TO UNMOUNT A CLOSED EDITOR, and that is a fact about THIS form
+  // rather than about the pattern — read it before adding a second fact here. #3228
+  // warns that the activity editor is a DOM-collected `<form action={handle}>`, where a
+  // field the browser cannot see is a field the save CLEARS (#2359). It is not: the
+  // <form> below only `preventDefault`s, and `buildFormData` composes every field by
+  // hand out of React state, exactly as the sleep dialog does. So the equipment link
+  // posts from `activityEquipmentId` whether or not its picker is mounted, and the
+  // "unsaved changes" prompt reads `dirty` off `formSig` — also state — rather than off
+  // the DOM-scanning dirty registry, which tracks NAMED controls only and finds not one
+  // in this tree. That `dirty` is published as `data-unsaved` on the <form> below, so a
+  // test can read it while the form is open (#3351). Both halves are pinned in
+  // e2e/activity-equipment.spec.ts, because a future field bound straight to the DOM
+  // would break them silently.
+  const factScopeRef = useRef<HTMLElement>(null);
+  const {
+    openEditor: openFact,
+    open: openFactEditor,
+    close: closeFactEditor,
+    onKeyDown: onFactKeyDown,
+  } = useFactEditor<ActivitySessionFactKey>({ scopeRef: factScopeRef });
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
@@ -559,6 +604,34 @@ export default function ActivityForm({
     activityEquipmentId === undefined
       ? defaultActivityEquipmentId
       : activityEquipmentId;
+
+  // What the equipment chip states (#3334).
+  //
+  // A LINK THIS EDITOR CANNOT NAME IS STILL A LINK. `equipmentList` is the whole list
+  // the form was given, so a miss means a row it never received; stating "no equipment"
+  // there would invite a tap that clears a fact nobody meant to clear. It states the
+  // noun instead, and the picker behind the chip keeps that row selectable exactly as it
+  // does today (ActivityEquipmentPicker's selectedMissing).
+  const sessionGearName =
+    effectiveActivityEquipmentId == null
+      ? null
+      : (equipmentList.find((e) => e.id === effectiveActivityEquipmentId)
+          ?.name ?? ACTIVITY_SESSION_FACT_NOUNS.equipment);
+  const sessionFacts = activitySessionFactSummary({
+    gearName: sessionGearName,
+    // `undefined` is precisely "the person has not chosen": the value on screen is the
+    // recency default computed for them, which is a suggestion and not an assertion
+    // (#846). An explicit None is `null` and is theirs.
+    gearSuggested: activityEquipmentId === undefined,
+  });
+  // The equipment fact can leave the row entirely — switch the session to pure strength
+  // and gear becomes per-set again. Close its editor with it, or the panel silently
+  // reopens the next time a cardio part comes back. Focus has nowhere to return to here
+  // (chip and row are both gone), and the primitive's three tiers all miss, which is the
+  // right answer: it stays where the person's own edit put it.
+  useEffect(() => {
+    if (sessionEquipmentType == null && openFact != null) closeFactEditor();
+  }, [sessionEquipmentType, openFact, closeFactEditor]);
 
   const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
   // Until the user edits the title, the input and saved value follow the generated
@@ -1191,6 +1264,31 @@ export default function ActivityForm({
     <form
       ref={formElRef}
       data-testid="activity-form"
+      // Whether this form is holding a change the server has not got yet — the
+      // SAME `dirty` the "Discard unsaved changes?" prompt consults a few lines
+      // up, published so it can be read from outside while the form is still
+      // open (#3351).
+      //
+      // WHY THIS EXISTS AT ALL, since a reviewer's first instinct is that the
+      // dirty-form registry already answers this. It does not, for this form.
+      // The registry tracks NAMED controls (`isTrackable` returns false without
+      // a `name`, DirtyFormRegistry.tsx) and this tree has none — every field is
+      // composed by hand out of React state by `buildFormData`. So the registry's
+      // answer for this form is a permanent "clean", and reaching for it here
+      // would be adopting a SECOND answer to one question rather than publishing
+      // the one the form already acts on.
+      //
+      // NOT NEW STATE, and it must not become any: `dirty` is autosave's
+      // `formSig !== savedSig`, computed in one place and read here. If a change
+      // ever needs this marker and the prompt to disagree, that is a bug in the
+      // change, not a reason for a second signal.
+      //
+      // TO THE REVIEWER WHO WANTS TO DELETE THIS as untested instrumentation: it
+      // is what lets a browser test observe a change being counted WITHOUT
+      // waiting out SAVED_FADE_MS, which is a constant chosen for how a
+      // confirmation feels. e2e/activity-equipment.spec.ts asserts on it; the
+      // #3334 pin used to race that fade instead.
+      data-unsaved={dirty ? "true" : "false"}
       // The form never submits on Enter — the debounced auto-save handles
       // persistence, so a stray Enter (e.g. right after picking from the
       // combobox) does nothing rather than forcing a premature save.
@@ -1286,11 +1384,14 @@ export default function ActivityForm({
             parts={parts}
             stickyFooter={stickyFooter}
             isEdit={isEdit}
+            live={liveMode}
             units={units}
             history={history}
             deloadContext={deloadContext}
             recoveringContext={recoveringContext}
             plateauHints={plateauHints}
+            rpeTracking={rpeScale}
+            onRpeTrackingChange={setRpeScale}
             currentActivityId={editData?.id ?? createdId}
             editedDate={editData?.date ?? null}
             equipmentList={equipmentList}
@@ -1333,9 +1434,14 @@ export default function ActivityForm({
           />
 
           <section
+            ref={factScopeRef}
             data-testid="session-details"
             aria-labelledby="session-details-title"
             className="py-1"
+            // The region the chips and the one editor share (#3218/#3311): it answers
+            // Esc for the open panel and is what the primitive searches to hand focus
+            // back to the chip that opened it.
+            onKeyDown={onFactKeyDown}
           >
             <div className="mb-3 flex items-center gap-3">
               <h3 id="session-details-title" className="label mb-0 shrink-0">
@@ -1386,9 +1492,42 @@ export default function ActivityForm({
                 onChange={setIntensity}
               />
 
-              {/* Session-level equipment (issue #342): the gear the whole non-strength
-              activity used — a ride's bike, a run's shoes. */}
+              {/* Session-level equipment (issue #342), stated as a fact rather than as
+              its own machinery (#3334): the row said "Equipment", a <select> and a
+              standing link on every non-strength session, whether or not the recency
+              default it had already computed was wrong. The chip states that default;
+              the picker — and the registry door inside it — is one tap behind.
+
+              The cell stays mounted while the editor is open so the two-column grid
+              keeps its shape and the intensity toggles do not resize under the person
+              mid-edit. */}
               {sessionEquipmentType != null && (
+                <div>
+                  {openFact == null && (
+                    <>
+                      {/* The cell's own heading, matching the Intensity legend beside
+                          it. It goes with the chips: the open panel renders the
+                          picker's own "Equipment" label, and two of them on screen
+                          would be one heading too many. */}
+                      <div className="label">Equipment</div>
+                      <ActivitySessionFactRow
+                        summary={sessionFacts}
+                        openEditor={openFact}
+                        onOpen={openFactEditor}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {sessionEquipmentType != null && openFact != null && (
+              <FactEditorHost
+                testId="activity-fact-editor"
+                doneTestId="activity-fact-editor-done"
+                panel={openFact}
+                className="mt-3 rounded-lg border border-(--border) bg-surface p-3"
+                onDone={closeFactEditor}
+              >
                 <ActivityEquipmentPicker
                   activityType={sessionEquipmentType}
                   activityName={sessionEquipmentName}
@@ -1399,8 +1538,8 @@ export default function ActivityForm({
                     setActivityEquipmentId(id);
                   }}
                 />
-              )}
-            </div>
+              </FactEditorHost>
+            )}
           </section>
 
           <ActivityMoreDetails

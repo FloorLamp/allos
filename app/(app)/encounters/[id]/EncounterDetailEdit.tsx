@@ -29,7 +29,11 @@ export default function EncounterDetailEdit({
       </button>
       {open ? (
         <ModalShell title="Edit visit" onClose={() => setOpen(false)}>
-          <div className="mt-4">
+          {/* Wrapper kept deliberately bare: the dialog host owns the gap under
+              the title (`mt-3` in components/BottomSheet.tsx), so this element
+              carries no margin of its own (#3361). It stays because removing it
+              would make the form the flex item instead of this box. */}
+          <div>
             <EncounterForm
               action={updateEncounter}
               encounter={encounter}

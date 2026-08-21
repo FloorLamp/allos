@@ -224,6 +224,12 @@ test("Edit uses the same activity workspace at desktop and phone widths", async 
 
   // Mobile Back uses the form's save-aware close request. A blocked edit must
   // ask before it is discarded, and cancelling restores the Back sentinel.
+  // AFFECTED BY #3336 AND NOT EDITED BY IT UNTIL NOW: this seeded Leg day is five
+  // uniform runs, so every part opens as the compact sentence and there is no
+  // `set1-weight` in the document at all. The grid is one tap behind the summary chip
+  // — `hydratedClick`, because a tap that lands pre-hydration is swallowed silently and
+  // the next line would read as "element not found" rather than as a missed click.
+  await hydratedClick(page, page.getByTestId("set-summary").first()); // first-ok: any part's sets can be made incomplete; the first is always present
   await page.getByTestId("set1-weight").first().fill(""); // first-ok: any incomplete stored set blocks this edit; set 1 is always present
   await page.goBack();
   const discard = page.getByTestId("confirm-dialog");

@@ -7,12 +7,15 @@ import { isRealIsoDate } from "@/lib/date";
 import {
   isSubstanceInstrument,
   substanceInstrumentDef,
-  isSubstance,
+  resolveSubstanceKey,
   substanceDef,
+  substanceLabel,
+  substanceNameError,
+  validateSubstanceName,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
-  type Substance,
+  type SubstanceKey,
   type SubstanceInstrument,
 } from "@/lib/substance-use";
 import {
@@ -23,6 +26,7 @@ import {
   instrumentMaxTotal,
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
+import { profileVocabulary } from "@/lib/vocabulary-store";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import {
   logSubstanceUnitCore,
@@ -173,19 +177,85 @@ export async function logSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance))
-    return { ok: false, error: "Unknown substance." };
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return { ok: false, error: "Unknown substance." };
+  return logOneUnit(profile.id, substance);
+}
+
+// The split-ledger dispatch, factored out so the keyed tap above and the NAMED tap
+// below are one write path with one revalidation — #3326 adds a way to reach this,
+// never a second way to do it.
+function logOneUnit(
+  profileId: number,
+  substance: SubstanceKey
+): SubstanceLogResult {
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? logFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
-      : logSubstanceUnitCore(profile.id, substance, today(profile.id));
+      ? logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
+      : logSubstanceUnitCore(profileId, substance, today(profileId));
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();
   return {
     ok: true,
-    weekCount: getSubstanceWeekState(profile.id, substance).count,
+    weekCount: getSubstanceWeekState(profileId, substance).count,
+  };
+}
+
+// ---- Naming your own substance (#3326) -------------------------------------
+//
+// THE ENTRY POINT, AND THERE IS NO CREATE STEP. #3323 shipped the whole custom
+// vocabulary and nothing in the app could reach it. A custom substance's identity IS
+// its normalized name in the ledger — no registration row, no new table — so LOGGING
+// IT IS CREATING IT, and this action is exactly `logSubstanceUnitAction` reached by a
+// typed name instead of a known key.
+//
+// WHAT IT ADDS over the keyed tap: the surface-level name gate. `resolveSubstanceKey`
+// truncates at 60 characters, which is right for a stored key and wrong for a person
+// typing (see validateSubstanceName). A too-long name is REFUSED with a sentence here
+// as well as in the form, because a Server Action is independently POST-callable.
+//
+// A TYPED NAME NEVER REACHES THE NUTRITION LEDGER. It can, however, resolve ONTO a
+// curated key: "Alcohol" collapses to `alcohol` so a typed name can never shadow the
+// catalog with a second ledger, and that one case rides food-log exactly as the
+// Alcohol card's own tap does. Nothing a person INVENTS lands there — `substanceDef`
+// gives every custom key the substance-log ledger, always.
+//
+// NOR DOES IT SHADOW A NAME THE PERSON ALREADY USES (#3325). This is the one place a
+// custom substance key is MINTED, so it is the one place the case-fold belongs: the
+// name is validated and resolved against THIS PROFILE'S own spellings, first-seen
+// first, so a typed "kratom" joins the existing "Kratom" card rather than opening a
+// second ledger that also looks correct. Case is still stored verbatim — "MDMA" keeps
+// its capitals — because the fold is only ever COMPARED (lib/vocabulary-fold.ts).
+// The keyed taps below stay bare: their key came from a card the app just rendered.
+//
+// The resolved key rides back so the caller can name what it actually logged: someone
+// who types "alcohol" is told the drink landed on Alcohol rather than being left to
+// wonder where their new card went.
+export type TrackSubstanceResult =
+  | { ok: true; substance: SubstanceKey; label: string; weekCount: number }
+  | { ok: false; error: string };
+
+export async function trackSubstanceUseAction(
+  formData: FormData
+): Promise<TrackSubstanceResult> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getProfileAge(profile.id)))
+    return { ok: false, error: MINOR_REFUSAL };
+  const name = validateSubstanceName(
+    String(formData.get("name") ?? ""),
+    profileVocabulary("substance", profile.id)
+  );
+  if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
+  const logged = logOneUnit(profile.id, name.key);
+  if (!logged.ok) return logged;
+  return {
+    ok: true,
+    substance: name.key,
+    label: substanceLabel(name.key),
+    weekCount: logged.weekCount,
   };
 }
 
@@ -196,9 +266,10 @@ export async function undoSubstanceUnitAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance))
-    return { ok: false, error: "Unknown substance." };
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? undoFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
@@ -218,14 +289,16 @@ function historyInput(
 ):
   | {
       ok: true;
-      substance: Substance;
+      substance: SubstanceKey;
       date: string;
       amount: number;
       notes: string | null;
     }
   | { ok: false; outcome: SubstanceHistoryMutationOutcome } {
-  const substanceRaw = String(formData.get("substance") ?? "");
-  if (!isSubstance(substanceRaw))
+  const substanceRaw = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substanceRaw === null)
     return { ok: false, outcome: { kind: "unknown-substance" } };
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date) || date > maxDate)
@@ -296,9 +369,11 @@ export async function deleteSubstanceDailyTotalAction(
       error: "Couldn't find that entry.",
     };
   }
-  const substance = String(formData.get("substance") ?? "");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
   const id = Number(formData.get("id"));
-  if (!isSubstance(substance) || !Number.isInteger(id) || id <= 0) {
+  if (substance === null || !Number.isInteger(id) || id <= 0) {
     return {
       kind: "not-found",
       undoId: null,
@@ -327,8 +402,10 @@ export async function setSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance)) return formError("Unknown substance.");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
   if (!Number.isInteger(capRaw) || capRaw < 0 || capRaw > MAX_WEEKLY_CAP) {
     return formError(`Enter a weekly cap between 0 and ${MAX_WEEKLY_CAP}.`);
@@ -354,8 +431,10 @@ export async function clearSubstanceTargetAction(
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
-  const substance = String(formData.get("substance") ?? "");
-  if (!isSubstance(substance)) return formError("Unknown substance.");
+  const substance = resolveSubstanceKey(
+    String(formData.get("substance") ?? "")
+  );
+  if (substance === null) return formError("Unknown substance.");
   const target = db
     .prepare(
       `SELECT id FROM frequency_targets

@@ -1,5 +1,6 @@
 import { requireScope } from "@/lib/scope";
 import PageContainer from "@/components/PageContainer";
+import PaneIntro from "@/components/PaneIntro";
 import GenomicsSection from "../GenomicsSection";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export default async function ResultsGenomicsPage() {
       className="mx-auto"
       data-testid="results-genomics"
     >
+      <PaneIntro title="Genomics" testId="results-pane-intro">
+        Genetic and pharmacogenomic results from clinical reports.
+      </PaneIntro>
       <GenomicsSection scope={scope} />
     </PageContainer>
   );

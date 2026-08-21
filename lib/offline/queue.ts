@@ -117,7 +117,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
   // moved could drop a move re-added from another device — not a capture).
   "mobility-move": "mobility",
   "substance-unit": arguedExclusion(
-    "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. The queue's scope line — anything with server-derived state stays online-only — applies to the surface, not just the write."
+    "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. The queue's scope line — anything with server-derived state stays online-only — applies to the surface, not just the write. NARROWED, NOT YET OVERTURNED (#3279), and for the same reason as the quick-log census twin: the understating readout IS the cap verdict, so the argument presumes a cap exists. A profile with no reduction cap has no verdict to understate and its taps are as additive as any other one-tap; a profile WITH a cap keeps today's online-only behaviour and this exact reasoning. The exclusion stays absolute here until that split is built."
   ),
   // AMENDED, not overridden (#2908 owner decision 3). The original #2130 exclusion —
   // preserved verbatim so the next reader sees the argument rather than rediscovering

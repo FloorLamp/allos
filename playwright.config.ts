@@ -1,7 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
 import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
-import { pinnedTimezone } from "./e2e/pinned-timezone";
 
 // Browser end-to-end tier (issue: always browser-test UI features). Separate
 // from the pure unit suite (`npm test`, lib/** only) and the DB tier
@@ -150,7 +149,24 @@ export default defineConfig({
     //
     // A spec that wants them to disagree still says so per-context, which is
     // exactly what e2e/travel-timezone.spec.ts does.
-    timezoneId: pinnedTimezone(FROZEN_NOW).zone,
+    //
+    // SET IN e2e/fixtures.ts, NOT HERE, AND THAT IS THE WHOLE POINT (#3364). This
+    // line used to read `timezoneId: pinnedTimezone(FROZEN_NOW).zone`, which is
+    // wrong for a reason this file states four paragraphs above and then walks
+    // into: WORKERS ARE SEPARATE PROCESSES THAT LOAD THIS CONFIG THEMSELVES, so
+    // `FROZEN_NOW` — a module-scope `new Date()` — is a DIFFERENT instant in every
+    // one of them. The seed pinned the profiles from the RUNNER's instant, which
+    // global-setup persists; a worker that loaded this file in the next UTC hour
+    // pinned its browser one hour away from every profile in its own database,
+    // because `pinnedTimezone` is a pure function of the UTC hour. Seconds of skew
+    // across :00 are enough.
+    //
+    // Device zone ≠ profile zone is exactly the travel banner's condition, so every
+    // own-profile page in that worker grew a 130px banner above the page content
+    // and every geometry assertion below it read 130px low — in specs that have
+    // nothing to do with timezones, on routes the PR's diff never rendered. It cost
+    // three lanes a full diagnosis each and read as an unreproducible flake, since
+    // whether a run crosses :00 is a fresh roll every time.
     // A placeholder only: the per-worker fixture OVERRIDES baseURL with this
     // worker's own server (PORT_BASE + parallelIndex). Nothing should reach the
     // base port unless the fixture failed to load.

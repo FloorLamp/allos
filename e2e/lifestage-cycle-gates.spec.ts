@@ -83,6 +83,14 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       await page.goto("/longevity");
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByTestId("longevity-fitness")).toHaveCount(0);
+      // #3079 made Longevity a child of the collapsed "Plan & review" group. Expand
+      // it — and prove the expansion with an ungated sibling — so this absence is
+      // still the ADULT-ONLY gate being observed and not a closed disclosure.
+      const sidebarNav = page.locator("aside nav");
+      await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
+      await expect(
+        sidebarNav.getByRole("link", { name: "Timeline" })
+      ).toBeVisible();
       await expect(page.getByRole("link", { name: "Longevity" })).toHaveCount(
         0
       );

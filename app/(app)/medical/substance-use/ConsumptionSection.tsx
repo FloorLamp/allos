@@ -25,7 +25,7 @@ import {
   MAX_SUBSTANCE_ENTRY_AMOUNT,
   MAX_WEEKLY_CAP,
   substanceDef,
-  type Substance,
+  type SubstanceKey,
 } from "@/lib/substance-use";
 import {
   addSubstanceDailyTotalAction,
@@ -58,7 +58,7 @@ export default function ConsumptionSection({
   defaultDate,
   formatPrefs,
 }: {
-  substance: Substance;
+  substance: SubstanceKey;
   weekCount: number;
   capSet: boolean;
   cap: number | null;
@@ -422,7 +422,7 @@ export default function ConsumptionSection({
           size="sm"
         >
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-2"
+            className="grid gap-3 sm:grid-cols-2"
             onSubmit={(event) => void addEntry(event)}
             data-testid={`substance-history-add-form-${substance}`}
           >
@@ -459,10 +459,7 @@ export default function ConsumptionSection({
           onClose={() => setCapOpen(false)}
           size="sm"
         >
-          <form
-            className="mt-4 space-y-4"
-            onSubmit={(event) => void saveCap(event)}
-          >
+          <form className="space-y-4" onSubmit={(event) => void saveCap(event)}>
             <label className="block text-sm">
               Weekly cap ({def.countPlural}, 0–{MAX_WEEKLY_CAP})
               <input

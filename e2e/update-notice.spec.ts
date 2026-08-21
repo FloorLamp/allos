@@ -135,10 +135,14 @@ test("a clean tab takes the deploy by itself and says so afterwards (#2471)", as
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_TAKEN_KEY)
   ).toBeNull();
+  // ANY client-side navigation will do here — this case is about the taken-build
+  // marker, not about which row was clicked. It uses a TOP-LEVEL row on purpose:
+  // #3079 moved Timeline into the collapsed "Plan & review" group, and a spec that
+  // has no opinion about nav shape should not have to expand a group to say so.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Timeline" }),
-    /\/timeline/
+    page.locator("aside nav").getByRole("link", { name: "Trends" }),
+    /\/trends/
   );
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_TAKEN_KEY)
@@ -216,10 +220,12 @@ test("with the automatic attempt spent, the deploy raises exactly one bar and it
 
   // It survives client-side navigation: the notice lives in the root layout, so it
   // rides along instead of being re-prompted per page.
+  // A top-level row (see the note on the first case): the bar's survival across a
+  // client navigation is the subject, not the nav registry.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Timeline" }),
-    /\/timeline/
+    page.locator("aside nav").getByRole("link", { name: "Trends" }),
+    /\/trends/
   );
   await expect(bar).toBeVisible();
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);
@@ -231,8 +237,8 @@ test("with the automatic attempt spent, the deploy raises exactly one bar and it
   await expect(bar).toHaveCount(0);
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Upcoming" }),
-    /\/upcoming/
+    page.locator("aside nav").getByRole("link", { name: "Nutrition" }),
+    /\/nutrition/
   );
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
 });

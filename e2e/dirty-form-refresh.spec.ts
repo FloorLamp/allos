@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { openVisitFact, withVisitFact } from "./visit-form-helpers";
 
 // The dirty-form registry, end to end (issue #1878).
 //
@@ -137,15 +138,57 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
+    // The fields sit behind fact chips since #3223. Opening a disclosure and focusing
+    // the field inside it is still not unsaved input.
+    await openVisitFact(dialog, "reason");
     const title = dialog.getByLabel("Reason / title");
     await expect(title).toBeVisible();
-
-    // Opening and focusing the form is still not unsaved input.
     await title.click();
     await expect(registry).toHaveAttribute("data-dirty", "0");
 
+    // Typed, and then each panel CLOSED again. By the time the registry is asked, both
+    // values are behind shut panels — the state a summary-first conversion loses in two
+    // different ways, and neither shows on screen.
     await title.fill(MARKER);
-    await dialog.getByLabel("Provider").fill("E2E Dirty Form Clinic");
+    await withVisitFact(dialog, "provider", async () => {
+      await dialog.getByLabel("Provider").fill("E2E Dirty Form Clinic");
+      // Its listbox is still open and floats over the Done button behind it. Escape
+      // closes the LISTBOX and not the editor — the primitive yields the first Escape
+      // to an expanded combobox on purpose, so that one key does not throw the whole
+      // fact away (FactEditorHost's `onKeyDown`).
+      await page.keyboard.press("Escape");
+    });
+    // WHY THE TITLE IS NOT A CONTROLLED FIELD, asserted rather than commented, because
+    // the failure it prevents is silent and this is what makes the line above
+    // self-describing.
+    //
+    // The registry ends its decision at `current !== serverValue`, and `serverValue` is
+    // the DOM `defaultValue` — which React KEEPS IN SYNC with `value` on a controlled
+    // field. So binding this input to React state to feed its chip would make it report
+    // current === serverValue forever, and `data-dirty` would stay "0" however mounted
+    // it is. Without this line that regression reads as "the deferral broke", which
+    // sends the reader to the registry rather than to the form.
+    //
+    // `live` covers the other half: a panel that UNMOUNTED on close would be skipped by
+    // `recordIsDirty`'s `!field.isConnected` guard. Two mechanisms, opposite fixes, one
+    // symptom — so both are named here.
+    const titleOwnership = await page.evaluate(() => {
+      const el = document.querySelector(
+        'input[name="title"]'
+      ) as HTMLInputElement | null;
+      return (
+        el && { value: el.value, def: el.defaultValue, live: el.isConnected }
+      );
+    });
+    expect(
+      titleOwnership,
+      "the title field must still be in the document with its panel closed"
+    ).toMatchObject({ live: true, value: MARKER });
+    expect(
+      titleOwnership?.def,
+      "the title field must stay DOM-owned: React syncs defaultValue onto a controlled field, and the dirty registry reads defaultValue as the saved value"
+    ).toBe("");
+
     await expect(registry).toHaveAttribute("data-dirty", "1");
 
     // The background event: the document the user uploaded earlier finishes
@@ -159,11 +202,20 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await expect(registry).toHaveAttribute("data-owed", "1");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
 
-    // THE POINT: what the user typed is still what the form holds.
-    await expect(title).toHaveValue(MARKER);
-    await expect(dialog.getByLabel("Provider")).toHaveValue(
+    // THE POINT: what the user typed is still what the form holds. Read back through
+    // the chips first — a value that survived but stopped being STATED would be just as
+    // lost to the person about to press Add.
+    await expect(dialog.getByTestId("visit-fact-reason")).toContainText(MARKER);
+    await expect(dialog.getByTestId("visit-fact-provider")).toContainText(
       "E2E Dirty Form Clinic"
     );
+    await openVisitFact(dialog, "reason");
+    await expect(title).toHaveValue(MARKER);
+    await withVisitFact(dialog, "provider", async () => {
+      await expect(dialog.getByLabel("Provider")).toHaveValue(
+        "E2E Dirty Form Clinic"
+      );
+    });
 
     // And it is what gets saved — the row is created WITH its title, not hollow.
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
@@ -210,6 +262,9 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
+    // This test fills and empties the same field repeatedly, so its editor stays open
+    // throughout; the closed-panel case is pinned by the test above.
+    await openVisitFact(dialog, "reason");
     const title = dialog.getByLabel("Reason / title");
     await settledFill(page, title, MARKER);
     await expect(registry).toHaveAttribute("data-dirty", "1");
@@ -261,6 +316,7 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await openVisitFact(dialog, "reason");
     const title = dialog.getByLabel("Reason / title");
     await expect(title).toBeVisible();
 

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
@@ -279,6 +279,181 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(page.getByTestId("substance-week-count-cannabis")).toHaveText(
       `${before} ${before === 1 ? "use" : "uses"} logged this week.`
     );
+  });
+
+  // #3326 — the entry point. #3323 shipped the whole custom vocabulary and nothing in
+  // the app could reach it; this drives the door that reaches it.
+  //
+  // The name is a low-entropy fixture word (#868), and the test is RELATIVE like every
+  // other in this file: it reads the card's count before and after, and undoes what it
+  // logged, so --repeat-each stays clean without reseeding.
+  test("name a substance and log a use in one step — no create step, and the card is a full card (#3326)", async () => {
+    const NAME = "Kava 1";
+    await page.goto("/records/specialty/substance-use");
+
+    const card = page.getByTestId(`substance-card-${NAME}`);
+    const before = (await card.count()) > 0 ? await weekCount(page, NAME) : 0;
+
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    const form = page.getByTestId("track-substance-form");
+    await expect(form).toBeVisible();
+    await settledFill(page, page.getByTestId("track-substance-name"), NAME);
+    await settledClick(page, page.getByTestId("track-substance-save"));
+
+    // The card exists because the USE does — there was no create step in between.
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    expect(await weekCount(page, NAME)).toBe(before + 1);
+
+    // Case is the person's own spelling, not a folded key. #3325 folded case for
+    // MATCHING in this vocabulary and the symptom one at once, and deliberately not
+    // for DISPLAY — the heading is still exactly what was typed.
+    await expect(card.getByRole("heading", { name: NAME })).toBeVisible();
+
+    // A FULL card, not a lesser one: the same one-tap log/undo the curated three get.
+    await expect(page.getByTestId(`substance-log-${NAME}`)).toBeVisible();
+    await expect(page.getByTestId(`substance-undo-${NAME}`)).toBeVisible();
+
+    // And NO cap or screener framing, because nobody opted into a target — the
+    // absence of a SubstanceCapStatus is the mechanism, so there is nothing to render
+    // (docs/internals/substances.md).
+    await expect(
+      page.getByTestId(`substance-cap-progress-${NAME}`)
+    ).toHaveCount(0);
+
+    // Undo what this test logged, so the fixture is where it started.
+    await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
+  });
+
+  // A LOST CLICK ON THIS BUTTON IS RESCUED, AND STILL LOGS EXACTLY ONE USE (#3359).
+  //
+  // THIS IS A TEST OF `e2e/helpers.ts` AND IT LIVES HERE ON PURPOSE — do not move it
+  // to a spec of its own. It needs a profile it may write to and then undo, and this
+  // file already OWNS one (#868) and runs serially against it; a standalone spec
+  // would either duplicate that fixture or write into a shared profile, which is
+  // exactly the hazard the ownership rule exists to prevent.
+  //
+  // `settledClick` re-dispatches a click it can prove was never delivered to its
+  // control. That is a retry on a WRITE — logging a use — so the thing that has to
+  // be true is not "it recovers" but "it recovers without logging twice", and a
+  // double-logged use is a wrong number in somebody's record rather than a red test.
+  // This pins that, on the one control the defect was seen on.
+  //
+  // The forge is the real mechanism, not an approximation of it: disabling the
+  // button between mousedown and mouseup is what Chromium needs to drop the click
+  // entirely (it dispatches no mouse events at all to a disabled form control), so
+  // the page reaches exactly the state #3359's CI annotation described — a click
+  // Playwright reports as done, an idle enabled control, and no POST ever issued.
+  // Re-enabling after 30 ms leaves the second dispatch a control to land on; a
+  // rescue that could not be re-clicked would prove nothing about double-writing.
+  test("a click the browser never delivers is re-dispatched, and still logs exactly one use (#3359)", async () => {
+    const NAME = "Kava 6";
+    await page.goto("/records/specialty/substance-use");
+
+    const card = page.getByTestId(`substance-card-${NAME}`);
+    const before = (await card.count()) > 0 ? await weekCount(page, NAME) : 0;
+
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    await expect(page.getByTestId("track-substance-form")).toBeVisible();
+    await settledFill(page, page.getByTestId("track-substance-name"), NAME);
+
+    await page.evaluate(() => {
+      const btn = document.querySelector(
+        '[data-testid="track-substance-save"]'
+      ) as HTMLButtonElement | null;
+      if (!btn) throw new Error("no save button to forge a lost click against");
+      // Declare the forgery ON THE PAGE, so the rescue's own log line can say this
+      // loss was deliberate. Without it this test prints three per run that are
+      // indistinguishable from a real recurrence on the same control (e2e/helpers.ts).
+      //
+      // A LOCAL FLAG ON PURPOSE: one setter here, one reader in `redispatchLostSubmit`,
+      // documented at both ends. Do not promote it to a shared export yet — a shared
+      // primitive with a single caller invites a second caller that does not quite
+      // fit. THE PROMOTION CONDITION IS A SECOND FORGING SITE: when some other spec
+      // needs to forge a lost click, give this key a named export and a type, and
+      // change both ends together.
+      (
+        window as unknown as { __allosForgedLostSubmit?: boolean }
+      ).__allosForgedLostSubmit = true;
+      const once = () => {
+        btn.disabled = true;
+        setTimeout(() => {
+          btn.disabled = false;
+        }, 30);
+        btn.removeEventListener("mousedown", once, true);
+      };
+      btn.addEventListener("mousedown", once, true);
+    });
+
+    // Resolves rather than times out: the helper proved the first click never
+    // activated the form and sent a second one.
+    await settledClick(page, page.getByTestId("track-substance-save"));
+
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    // THE CLAIM. Two clicks were dispatched and exactly one use exists.
+    expect(await weekCount(page, NAME)).toBe(before + 1);
+
+    // Undo what this test logged, so the fixture is where it started.
+    await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
+  });
+
+  test("a substance name over the cap is refused with a readable message, never trimmed to fit (#3326)", async () => {
+    await page.goto("/records/specialty/substance-use");
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    await expect(page.getByTestId("track-substance-form")).toBeVisible();
+
+    // 61 characters — one over. The old normalizer would have stored the first 60
+    // and said nothing, which is a different substance than the one typed.
+    const tooLong = "kava".repeat(15) + "x";
+    expect(tooLong.length).toBe(61);
+    await settledFill(page, page.getByTestId("track-substance-name"), tooLong);
+
+    // THE SUBMIT IS RETRIED, AND THE REASON IS NOT LATENCY — read this before
+    // "simplifying" it to a bare `.click()`, which is what it was when it went red.
+    //
+    // This refusal is computed ENTIRELY on the client: TrackSubstanceControl's
+    // handler calls validateSubstanceName, calls setError, and RETURNS — it never
+    // reaches the Server Action. So the error paragraph appears on the very next
+    // React commit or it never appears at all, and a bigger ceiling on the assertion
+    // below would be a budget spent waiting for something that was never produced.
+    // The inner ceiling is deliberately SHORT for that reason.
+    //
+    // What actually went wrong in CI (run 32349915874, e2e-changed, repeat 2 of 3)
+    // was a LOST submit: repeat 1 of this same test passed in 537 ms and repeat 2
+    // spent the whole 5 s ceiling with `track-substance-error` absent from the DOM,
+    // which is only reachable if the handler never ran. It did not reproduce here —
+    // ~100 local trials, including the full CI shape (both changed specs together,
+    // --repeat-each=3, 2 workers) and a CDP `Emulation.setCPUThrottlingRate` probe at
+    // rate 20 both with and without the hydration waits, 10/10 green — so the trigger
+    // is not pinned and the conservative shape is the honest one.
+    //
+    // A RETRY IS SAFE HERE, WHICH IS NOT TRUE OF MOST CLICKS. `hydratedClick` is the
+    // usual answer to a lost tap, but it cannot help this one: the panel's form is
+    // CREATED by the toggle interaction, so it is client-rendered and carries React's
+    // fibers from birth — the hydration probe passes instantly and the click it then
+    // makes is the same bare click. And unlike the toggle it sits behind
+    // (`setOpen(v => !v)`, where a second tap undoes the first), re-submitting a
+    // refused name is IDEMPOTENT: the handler returns before any write, so every
+    // extra attempt can only set the same error string. Nothing accumulates.
+    const error = page.getByTestId("track-substance-error");
+    await expect(async () => {
+      await page.getByTestId("track-substance-save").click();
+      await expect(
+        error,
+        "the submit did not render a refusal — handler never ran"
+      ).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000, intervals: [200, 500, 1000] }); // topass-ok: a client-only submit with no POST and no navigation to await, so there is no single awaitable event; safe to re-dispatch because the refusal path writes nothing and can only re-set the same error
+    await expect(error).toContainText("60");
+
+    // Nothing was created under any name — not the full one, and not a 60-character
+    // near-miss of it. This is an ABSENCE assertion, and it is deliberately made
+    // AFTER the presence assertion above: that error rendering is proof the handler
+    // ran and refused BEFORE reaching the Server Action, so there is no in-flight
+    // write this could race. A bigger ceiling here could only hide a real write,
+    // never reveal one.
+    await expect(page.getByTestId(`substance-card-${tooLong}`)).toHaveCount(0);
+    await expect(
+      page.getByTestId(`substance-card-${tooLong.slice(0, 60)}`)
+    ).toHaveCount(0);
   });
 
   test("an alcohol weekly cap shows the calm progress line; removing it clears the line", async () => {

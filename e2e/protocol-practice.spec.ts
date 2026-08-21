@@ -6,6 +6,7 @@ import {
   settledClick,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { withProtocolFact } from "./protocol-form-helpers";
 
 // Recovery gear + practice adherence on protocols (issue #344). Creates a protocol
 // that references a seeded recovery device ("E2E Protocol Sauna") and declares a
@@ -40,15 +41,24 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name").fill(uniqueName);
-  await form.locator("#pr-start-new").fill(start);
-  await page.keyboard.press("Escape"); // dismiss the date popover
+  // Each fact is its own editor behind its own chip since #3219.
+  await withProtocolFact(form, "window", async () => {
+    await form.locator("#pr-start-new").fill(start);
+    await page.keyboard.press("Escape"); // dismiss the date popover
+  });
 
   // Reference the seeded sauna and declare a sport 4×/week practice.
-  await form
-    .getByTestId("protocol-equipment")
-    .selectOption({ label: "E2E Protocol Sauna" });
-  await form.getByTestId("protocol-practice-type").selectOption("sport");
-  await form.getByTestId("protocol-practice-per-week").fill("4");
+  await withProtocolFact(form, "link", async () => {
+    await form
+      .getByTestId("protocol-equipment")
+      .selectOption({ label: "E2E Protocol Sauna" });
+  });
+  await withProtocolFact(form, "practice", async () => {
+    await form.getByTestId("protocol-practice-type").selectOption("sport");
+  });
+  await withProtocolFact(form, "cadence", async () => {
+    await form.getByTestId("protocol-practice-per-week").fill("4");
+  });
 
   await form.getByRole("button", { name: "Create protocol" }).click();
 
@@ -158,16 +168,24 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name", { exact: true }).fill(uniqueName);
-  await form.locator("#pr-start-new").fill(start);
-  await page.keyboard.press("Escape"); // dismiss the date popover
+  await withProtocolFact(form, "window", async () => {
+    await form.locator("#pr-start-new").fill(start);
+    await page.keyboard.press("Escape"); // dismiss the date popover
+  });
 
-  // A 3–5×/week custom wellness practice (the CREATE-owned path).
-  await form
-    .getByTestId("protocol-practice-type")
-    .selectOption({ label: "Other practice (custom)…" });
-  await form.getByTestId("protocol-practice-custom").fill(practiceName);
-  await form.getByTestId("protocol-practice-per-week").fill("3");
-  await form.getByTestId("protocol-practice-per-week-max").fill("5");
+  // A 3–5×/week custom wellness practice (the CREATE-owned path). The custom NAME
+  // shares the practice panel with the select that reveals it — one fact, one
+  // editor.
+  await withProtocolFact(form, "practice", async () => {
+    await form
+      .getByTestId("protocol-practice-type")
+      .selectOption({ label: "Other practice (custom)…" });
+    await form.getByTestId("protocol-practice-custom").fill(practiceName);
+  });
+  await withProtocolFact(form, "cadence", async () => {
+    await form.getByTestId("protocol-practice-per-week").fill("3");
+    await form.getByTestId("protocol-practice-per-week-max").fill("5");
+  });
 
   await form.getByRole("button", { name: "Create protocol" }).click();
 
@@ -307,12 +325,18 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     await page.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name", { exact: true }).fill(name);
-    await form.locator("#pr-start-new").fill(start);
-    await page.keyboard.press("Escape");
-    await form
-      .getByTestId("protocol-practice-type")
-      .selectOption(practiceValue);
-    await form.getByTestId("protocol-practice-per-week").fill("3");
+    await withProtocolFact(form, "window", async () => {
+      await form.locator("#pr-start-new").fill(start);
+      await page.keyboard.press("Escape");
+    });
+    await withProtocolFact(form, "practice", async () => {
+      await form
+        .getByTestId("protocol-practice-type")
+        .selectOption(practiceValue);
+    });
+    await withProtocolFact(form, "cadence", async () => {
+      await form.getByTestId("protocol-practice-per-week").fill("3");
+    });
     await settledClick(
       page,
       form.getByRole("button", { name: "Create protocol" })
@@ -358,7 +382,9 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await expect(cardioChip).toHaveAttribute("aria-pressed", "true");
   const customActivity = `Protocol cardio ${iteration}`;
   await activityForm.getByPlaceholder(/What did you do/).fill(customActivity);
-  await activityForm
+  // The free-text row is in the PORTALED listbox (#3271), not inside the form.
+  await page
+    .getByRole("listbox")
     .getByRole("button", { name: /Add .* as new activity/ })
     .click();
   await expect(

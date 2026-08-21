@@ -255,6 +255,26 @@ export default async function TrainingActivityPage(props: {
         className="mx-auto"
         data-testid="training-activity-page"
       >
+        {/* Back to the log, and ‹ older / newer › walking the ledger in
+          (date, id) order so a review session continues without bouncing back
+          to a list (#2870). All three answer their own tap (#2983).
+
+          ABOVE the title since #3237, which is where every other detail page
+          puts its way out: you decide to leave a page before you read it, and
+          below the h1 this bar sat between a title and the content it heads.
+          It stays its own component rather than adopting `BackLink` — its three
+          destinations are one ROW (a back and two ledger steps), and the
+          chevron pair is a different affordance from an arrow-plus-destination.
+          What the house component settled is placement, and this now matches. */}
+        <ActivityLedgerNav
+          olderId={data.olderId}
+          newerId={data.newerId}
+          lens={rideLens}
+          subjectProfileId={crossProfile ? subjectProfileId : undefined}
+          trainingRelevant={trainingRelevant}
+          contextLink={cyclingOverviewLink}
+        />
+
         <PageHeader
           title={data.row.title}
           leading={
@@ -295,18 +315,6 @@ export default async function TrainingActivityPage(props: {
           }
           stackActionBelowSm
           className="mb-3!"
-        />
-
-        {/* Back to the log, and ‹ older / newer › walking the ledger in
-          (date, id) order so a review session continues without bouncing back
-          to a list (#2870). All three answer their own tap (#2983). */}
-        <ActivityLedgerNav
-          olderId={data.olderId}
-          newerId={data.newerId}
-          lens={rideLens}
-          subjectProfileId={crossProfile ? subjectProfileId : undefined}
-          trainingRelevant={trainingRelevant}
-          contextLink={cyclingOverviewLink}
         />
 
         {liveActive ? (

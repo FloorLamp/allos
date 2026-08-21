@@ -20,6 +20,7 @@ import {
   addSubstanceDailyTotalAction,
   updateSubstanceDailyTotalAction,
   deleteSubstanceDailyTotalAction,
+  trackSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
@@ -29,7 +30,9 @@ import {
   getAllSubstanceDailyTotals,
   getSubstanceDailyTotals,
   getSubstanceWeekState,
+  getLoggedSubstanceKeys,
 } from "@/lib/queries";
+import { MAX_SUBSTANCE_NAME_LENGTH } from "@/lib/substance-use";
 
 function scoreRow(profileId: number, canon: string) {
   return db
@@ -268,12 +271,229 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(undone).toEqual({ ok: true, weekCount: 1 });
   });
 
-  it("rejects an unknown substance", async () => {
+  // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. It used to post
+  // "caffeine" as a stand-in for a key the app does not know, and that is no longer a
+  // refusal: the vocabulary is open, so "caffeine" is a perfectly good custom substance
+  // and posting it is how a person defines one. What survives as unloggable is text that
+  // NAMES NOTHING — empty or whitespace-only — so the refusal assertion moves there and
+  // keeps testing what it claimed. The old case becomes its positive twin below.
+  it("refuses a substance that names nothing", async () => {
     const login = createLogin();
     const profile = createProfile("su-bogus-substance", login.id);
     actAs(login, profile);
-    const r = await logSubstanceUnitAction(fd({ substance: "caffeine" }));
-    expect(r.ok).toBe(false);
+    expect((await logSubstanceUnitAction(fd({ substance: "" }))).ok).toBe(
+      false
+    );
+    expect((await logSubstanceUnitAction(fd({ substance: "   " }))).ok).toBe(
+      false
+    );
+  });
+
+  it("logs a CUSTOM substance the profile named itself, on the counter ledger", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-custom-substance", login.id);
+    actAs(login, profile);
+    // Typed with stray whitespace: the action normalizes at its own boundary, so this
+    // and a later clean "Kratom" are ONE ledger row, not two neighbours.
+    expect(
+      await logSubstanceUnitAction(fd({ substance: "  Kratom " }))
+    ).toEqual({ ok: true, weekCount: 1 });
+    expect(await logSubstanceUnitAction(fd({ substance: "Kratom" }))).toEqual({
+      ok: true,
+      weekCount: 2,
+    });
+    const row = db
+      .prepare(
+        `SELECT substance, units FROM substance_daily_totals WHERE profile_id = ?`
+      )
+      .all(profile.id) as { substance: string; units: number }[];
+    expect(row).toEqual([{ substance: "Kratom", units: 2 }]);
+    // A custom substance is EPISODIC and it is never a food: the nutrition ledger is
+    // untouched (docs/internals/substances.md — nothing typed may pollute it).
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+        )
+        .get(profile.id)
+    ).toEqual({ n: 0 });
+    // And it carries NO reduction framing, because no cap was ever set (#3279 ruling 1).
+    expect(getSubstanceWeekState(profile.id, "Kratom").status).toBeNull();
+  });
+});
+
+// #3326 — the entry point. There is no create step to test, because there is no
+// create step: naming a substance and logging its first use are one act, and the
+// substance exists afterwards because a ledger row does.
+describe("trackSubstanceUseAction (#3326)", () => {
+  it("names a substance and logs a use in one call, with no registration step", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track", login.id);
+    actAs(login, profile);
+
+    // Nothing registered it, and nothing had to.
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual([]);
+
+    const result = await trackSubstanceUseAction(fd({ name: "  Kratom " }));
+    expect(result).toEqual({
+      ok: true,
+      substance: "Kratom",
+      label: "Kratom",
+      weekCount: 1,
+    });
+    // It is on the ledger, on the substance store, and now part of what this
+    // profile tracks — which is what makes it reachable from the quick sheet.
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["Kratom"]);
+    expect(getSubstanceWeekState(profile.id, "Kratom").count).toBe(1);
+    // And it carries no reduction framing, because nobody opted into a cap.
+    expect(getSubstanceWeekState(profile.id, "Kratom").status).toBeNull();
+  });
+
+  it("refuses an over-long name instead of storing a shorter substance than the one typed", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-long", login.id);
+    actAs(login, profile);
+
+    const tooLong = "x".repeat(MAX_SUBSTANCE_NAME_LENGTH + 1);
+    const result = await trackSubstanceUseAction(fd({ name: tooLong }));
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain(
+      String(MAX_SUBSTANCE_NAME_LENGTH)
+    );
+    // The refusal is the POINT: nothing was written, so there is no truncated
+    // near-miss substance sitting in the ledger for the person to find later. A
+    // Server Action is independently POST-callable, so this cannot live only in
+    // the form.
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual([]);
+  });
+
+  it("refuses a name that is only whitespace", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-empty", login.id);
+    actAs(login, profile);
+
+    expect((await trackSubstanceUseAction(fd({ name: "   " }))).ok).toBe(false);
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual([]);
+  });
+
+  it("collapses a typed curated LABEL onto the curated key rather than opening a second ledger", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-curated", login.id);
+    actAs(login, profile);
+
+    const result = await trackSubstanceUseAction(fd({ name: "Alcohol" }));
+    expect(result).toEqual({
+      ok: true,
+      substance: "alcohol",
+      label: "Alcohol",
+      weekCount: 1,
+    });
+    // Alcohol's ledger is the food store, and this one typed name is the ONLY way
+    // a typed name reaches it — because it resolved onto a CURATED key first.
+    expect(getSubstanceDailyTotals(profile.id, "alcohol")).toHaveLength(1);
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["alcohol"]);
+    // No second, custom "Alcohol" substance was minted alongside it.
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`
+        )
+        .get(profile.id)
+    ).toEqual({ n: 0 });
+  });
+
+  it("keeps a typed name off the nutrition ledger whatever it is called", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-not-food", login.id);
+    actAs(login, profile);
+
+    // A name that reads like a food is still not a food: nothing typed can be SHOWN
+    // to be one, so it always rides substance_daily_totals (#860/#944).
+    await trackSubstanceUseAction(fd({ name: "Kava tea" }));
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+        )
+        .get(profile.id)
+    ).toEqual({ n: 0 });
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["Kava tea"]);
+  });
+
+  it("preserves case, so the label is the person's own spelling", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-case", login.id);
+    actAs(login, profile);
+
+    const result = await trackSubstanceUseAction(fd({ name: "MDMA" }));
+    expect(result.ok && result.label).toBe("MDMA");
+    // #3325 folded case for MATCHING and left it alone for DISPLAY. This fixture used
+    // to pin the DEFECT — two casings, two substances — with a note that folding one
+    // domain alone would re-fork the model. Both domains fold now, so the second
+    // casing joins the first substance and the capitals survive.
+    await trackSubstanceUseAction(fd({ name: "mdma" }));
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["MDMA"]);
+  });
+
+  it("folds three casings onto the first-seen spelling, and says which one took the log (#3325)", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-fold", login.id);
+    actAs(login, profile);
+
+    await trackSubstanceUseAction(fd({ name: "Kratom" }));
+    const lower = await trackSubstanceUseAction(fd({ name: "kratom" }));
+    const upper = await trackSubstanceUseAction(fd({ name: "  KRATOM " }));
+
+    // ONE substance, ONE label — and the result NAMES the card the use landed on, which
+    // is what keeps the fold from being a silent redirect: the toast reads
+    // "Kratom: 1 logged today" for somebody who typed "kratom".
+    expect(lower).toMatchObject({
+      ok: true,
+      substance: "Kratom",
+      label: "Kratom",
+    });
+    expect(upper).toMatchObject({
+      ok: true,
+      substance: "Kratom",
+      label: "Kratom",
+    });
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual(["Kratom"]);
+    // Three uses on one ledger, not one use on three.
+    expect(getSubstanceWeekState(profile.id, "Kratom").count).toBe(3);
+    expect(getSubstanceDailyTotals(profile.id, "kratom")).toEqual([]);
+  });
+
+  it("does not fold across profiles — another profile's spelling is not mine", async () => {
+    const loginA = createLogin();
+    const profileA = createProfile("su-track-fold-a", loginA.id);
+    actAs(loginA, profileA);
+    await trackSubstanceUseAction(fd({ name: "Kratom" }));
+
+    const loginB = createLogin();
+    const profileB = createProfile("su-track-fold-b", loginB.id);
+    actAs(loginB, profileB);
+    const mine = await trackSubstanceUseAction(fd({ name: "kratom" }));
+
+    // The vocabulary is the profile's own ledger, so B's card is spelled B's way.
+    expect(mine).toMatchObject({ ok: true, substance: "kratom" });
+    expect(getLoggedSubstanceKeys(profileB.id)).toEqual(["kratom"]);
+    expect(getLoggedSubstanceKeys(profileA.id)).toEqual(["Kratom"]);
+  });
+
+  it("refuses for a known minor, like every other write on this surface", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-track-minor", login.id);
+    actAs(login, profile);
+    setProfileSetting(profile.id, "age", "14");
+
+    const result = await trackSubstanceUseAction(fd({ name: "Kratom" }));
+    // The LIFE-STAGE refusal specifically, not merely some refusal — a name gate
+    // firing here instead would pass this test while leaving the #1174 hole open.
+    expect(result).toEqual({
+      ok: false,
+      error: "This isn't available for this profile.",
+    });
+    expect(getLoggedSubstanceKeys(profile.id)).toEqual([]);
   });
 });
 
@@ -325,7 +545,7 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       expect(r.ok, `cap ${cap} should be rejected`).toBe(false);
     }
     // Nicotine/cannabis targets are first-class since #1078 (the target layer was
-    // already substance-parameterized); an unknown substance still bounces.
+    // already substance-parameterized); a substance naming nothing still bounces.
     expect(
       (await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "3" })))
         .ok
@@ -334,9 +554,13 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       (await setSubstanceTargetAction(fd({ substance: "cannabis", cap: "0" })))
         .ok
     ).toBe(true);
+    // #3279: a cap on a CUSTOM substance is set the same way — the target table was
+    // never keyed to the curated three. A target that names nothing still bounces.
     expect(
-      (await setSubstanceTargetAction(fd({ substance: "caffeine", cap: "3" })))
-        .ok
+      (await setSubstanceTargetAction(fd({ substance: "Kratom", cap: "3" }))).ok
+    ).toBe(true);
+    expect(
+      (await setSubstanceTargetAction(fd({ substance: "  ", cap: "3" }))).ok
     ).toBe(false);
   });
 });

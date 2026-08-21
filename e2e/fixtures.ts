@@ -4,14 +4,16 @@ import {
   type Browser,
   type BrowserContext,
 } from "@playwright/test";
+import Database from "better-sqlite3";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
+import { pinnedTimezone } from "./pinned-timezone";
 import {
   strandedDraftMessage,
-  takeStrandedSharedDrafts,
+  takeStrandedDrafts,
 } from "./shared-profile-guard";
 import {
   ADMIN_PASSWORD,
@@ -86,6 +88,58 @@ type TestFixtures = {
    */
   noStrandedSharedDraft: void;
 };
+
+// THE ONE CLOCK, CHECKED — the standing guard against #3364.
+//
+// The seed pins the instance-default timezone from the run's frozen instant
+// (e2e/seed/prelude.ts) and the `timezoneId` fixture below pins the browser from the
+// same instant. Those are two DIFFERENT reads in two different processes — the seed
+// child's `ALLOS_TEST_NOW`, and this worker's read of the persisted run context —
+// and `pinnedTimezone` is a pure function of the UTC HOUR, so any drift between them
+// is total, off by a whole hour, and SILENT.
+//
+// Silent is the part that cost three lanes a diagnosis each. A worker whose browser
+// zone disagrees with its own database does not fail here; it renders
+// TravelTimezoneBanner on every own-profile page — the banner is CORRECT, the device
+// really is somewhere the profile is not — and then a geometry assertion in an
+// unrelated spec reads 130px low and gets blamed on whichever PR was running. Asking
+// the question once per worker turns that into one named failure before the first
+// test.
+//
+// TWO INDEPENDENT SOURCES on purpose: what the SEED WROTE, read back out of this
+// worker's own database, against what this worker is about to pin the browser to. A
+// check that derived both from one value would be a tautology, and would have been
+// green through the whole of #3364.
+function assertSeedAndBrowserShareOneZone(
+  dbPath: string,
+  pinned: string
+): void {
+  const db = new Database(dbPath, { fileMustExist: true });
+  let seeded: string | undefined;
+  try {
+    db.pragma("busy_timeout = 5000");
+    seeded = (
+      db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as
+        { value: string } | undefined
+    )?.value;
+  } finally {
+    db.close();
+  }
+  if (seeded === pinned) return;
+  throw new Error(
+    `[e2e] this worker's browser zone and its seeded profiles disagree (#3364):\n` +
+      `  seeded instance timezone: ${seeded ?? "<no row — did seedPrelude run?>"}\n` +
+      `  browser timezoneId:       ${pinned}\n\n` +
+      `Both derive from the run's frozen instant through pinnedTimezone(), which is ` +
+      `a pure function of the UTC HOUR — so this means the two sides read DIFFERENT ` +
+      `instants. The usual cause is a per-process clock read (a module-scope ` +
+      `\`new Date()\`) somewhere in that chain instead of the instant global-setup ` +
+      `persisted; playwright.config.ts carries the receipt.\n\n` +
+      `Left alone this does not fail here: every own-profile page grows a travel ` +
+      `banner above its content, and some unrelated geometry assertion fails 130px ` +
+      `low instead.`
+  );
+}
 
 const BOOT_TIMEOUT_MS = 120_000;
 
@@ -244,7 +298,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
-      const stranded = takeStrandedSharedDrafts(workerApp.dbPath);
+      const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
     },
     { auto: true },
@@ -395,6 +449,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           `boot=${bootMs}ms total=${Date.now() - started}ms`
       );
 
+      // One question, once per worker, before its first test (see the guard above).
+      // The demo template is seeded by scripts/seed.ts alone and stays UTC on
+      // purpose — its specs are time-neutral — so it has no pin to agree with.
+      //
+      // DO NOT "STRENGTHEN" THIS INTO `assert seeded === "UTC"`. It sounds stricter
+      // and is weaker: it would hard-code a SECOND source of truth for a zone
+      // scripts/seed.ts already decides, so the day the demo seed's zone changes,
+      // this fails for a reason that has nothing to do with the clock agreement it
+      // is here to check. A skip that names its reason is honest; an assertion that
+      // duplicates somebody else's decision is a second producer of it.
+      if (!demo) assertSeedAndBrowserShareOneZone(dbPath, pinnedZone());
+
       await use({ index: idx, slot, baseURL, port, dbPath, dir, demo });
 
       // Teardown: stop the server and drop its pid record — but only if the slot
@@ -433,6 +499,44 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(workerApp.demo ? undefined : workerAuthPath(workerApp.index));
   },
+
+  // THE DEVICE ZONE, FROM THE RUN'S PERSISTED INSTANT — not from this process's
+  // clock (#3364).
+  //
+  // The browser is pinned to the profiles' zone so the travel banner stays silent
+  // for the right reason (#3263 — playwright.config.ts says why at length). The
+  // pin has to be derived from the SAME instant the seed used, and this is the only
+  // place that can be true: `playwright.config.ts` is loaded by every worker
+  // PROCESS, so its module-scope `new Date()` is a fresh instant in each of them,
+  // while the seed pinned the instance timezone from the runner's instant. Both
+  // sides feed `pinnedTimezone`, which is a pure function of the UTC HOUR — so a
+  // worker that booted after the run crossed :00 pinned its browser one hour away
+  // from every profile in its own database.
+  //
+  // What that cost, before this line existed: `deviceZone !== profileZone` is
+  // exactly TravelTimezoneBanner's condition, so every own-profile page in that
+  // worker rendered a 130px banner above the page content, and every geometry
+  // assertion below it read 130px low — in specs that had nothing to do with
+  // timezones and whose diffs rendered nothing on the route. Three lanes diagnosed
+  // it as a co-residency leak (#3364) because it looked exactly like one: stable
+  // value, random occurrence, immune to re-runs.
+  //
+  // `readFrozenNow()` is the persisted instant global-setup wrote — the same read
+  // the worker server's own `ALLOS_TEST_NOW` uses above, so the browser, the app
+  // and the seed now answer one clock.
+  //
+  // A spec that WANTS the two to disagree still says so per context
+  // (`browser.newContext({ timezoneId })`), which is untouched by this.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  timezoneId: async ({}, use) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    await use(pinnedZone());
+  },
 });
+
+/** The zone the whole run is pinned to, from the instant global-setup persisted. */
+function pinnedZone(): string {
+  return pinnedTimezone(readFrozenNow()).zone;
+}
 
 export { expect };

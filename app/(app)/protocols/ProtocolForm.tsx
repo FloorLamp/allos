@@ -29,6 +29,14 @@ import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
+import ProtocolFactRow, {
+  type ProtocolOpenPanel,
+} from "@/components/protocols/ProtocolFactRow";
+import { PROTOCOL_FACT_NOUNS, protocolFactSummary } from "@/lib/protocol-facts";
 
 export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
@@ -37,24 +45,28 @@ export type ProtocolFormResult =
 // The protocol's "Activate situation" field. Same vocabulary, same widget, same
 // context as the situation picker on the supplement and medication forms (#1676):
 // they name the same thing, and the #221 rule says they read one options source.
-// Kept as its own component so the template-seed remount (the keyed field block
-// below) resets its controlled value the way the uncontrolled input it replaced did.
+//
+// CONTROLLED BY THE FORM since #3219: its value is one of the facts the chip row
+// states, so the form has to know it. It used to own the value itself and rely on the
+// template-seed remount to reset it — a remount this form no longer has (see
+// `resetToTemplate`).
 function SituationField({
   uid,
-  defaultValue,
+  value,
+  onChange,
 }: {
   uid: string | number;
-  defaultValue: string;
+  value: string;
+  onChange: (next: string) => void;
 }) {
   const options = useSituationOptions();
-  const [situation, setSituation] = useState(defaultValue);
   return (
     <Combobox
       id={`pr-situation-${uid}`}
       name="situation"
       ariaLabel="Situation"
-      value={situation}
-      onChange={setSituation}
+      value={value}
+      onChange={onChange}
       options={options}
       allowFreeText
       closeStopsPropagation
@@ -111,6 +123,41 @@ function practiceDefaults(
   };
 }
 
+/** The number a numeric field holds, or null when it is blank or out of range. */
+function positiveInt(raw: string): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.floor(n);
+}
+
+/**
+ * The practice the row should state, or null when there is not one yet.
+ *
+ * Mirrors `parseScopedPractice`'s own verdict rather than the select's raw value: the
+ * custom sentinel with no name typed writes NO practice, so the row must not claim one.
+ */
+function practiceScope(
+  selection: string,
+  custom: string
+): { scopeKind: "type" | "food_group" | "practice"; value: string } | null {
+  if (!selection) return null;
+  if (selection === CUSTOM_PRACTICE_VALUE) {
+    const trimmed = custom.trim();
+    return trimmed ? { scopeKind: "practice", value: trimmed } : null;
+  }
+  if (selection.startsWith("food_group:"))
+    return {
+      scopeKind: "food_group",
+      value: selection.slice("food_group:".length),
+    };
+  if (selection.startsWith("practice:"))
+    return {
+      scopeKind: "practice",
+      value: selection.slice("practice:".length),
+    };
+  return { scopeKind: "type", value: selection };
+}
+
 // Shared add/edit protocol form. Add mode: no `protocol`. Edit mode: pass the row
 // (renders a hidden id + Cancel). `options` is the outcome-metric picker (fixed
 // body/index metrics + the profile's tracked and derived biomarkers).
@@ -144,6 +191,7 @@ export default function ProtocolForm({
 }: ProtocolFormProps) {
   const router = useRouter();
   const toast = useToast();
+  const formatPrefs = useFormatPrefs();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!protocol;
   const initialTemplate = editing ? null : template;
@@ -156,17 +204,83 @@ export default function ProtocolForm({
       (key) => available.has(key)
     );
   });
+
+  // THE ROW NEEDS EVERY VALUE AS IT CHANGES, because it states what Save will write
+  // and a chip reading a stale default is worse than no chip at all. But WHO OWNS the
+  // value is a separate question from who reads it, and the answer here is: the DOM
+  // still does, for every plain field.
+  //
+  // A CONTROLLED FIELD USED TO BE INVISIBLE TO THE DIRTY-FORM REGISTRY, which cost
+  // #3219 a round to find and is fixed in the registry itself now (#3352). Kept here
+  // because the reasoning still decides how this form is written, and because a
+  // reader who meets `onChange` mirroring into state will otherwise ask why.
+  //
+  // WHAT IT WAS. `fieldHoldsUnsavedInput` ends at `current !== serverValue`, and
+  // `serverValue` was the DOM `defaultValue` — which React KEEPS IN SYNC with
+  // `value` on a controlled input. So a controlled field reported
+  // current === serverValue forever, the registry read that as "saved, not pending",
+  // and ModalShell's "Discard your changes?" guard never fired. Measured in the
+  // browser, not reasoned about: with `value={notes}` the textarea reported `value`
+  // and `defaultValue` both equal to the typed text while `isConnected` was true —
+  // mounted exactly as intended, and still invisible.
+  //
+  // WHAT IT IS NOW. The registry snapshots each field's DOM default at registration
+  // and stops trusting the LIVE default once it has moved onto exactly what the user
+  // typed — which only React mirroring a controlled `value` does — so
+  // CONVERTING ANY FIELD BELOW TO CONTROLLED STATE NO LONGER DISARMS ITS GUARD. That
+  // tidy-up is safe; it is simply not needed. These five stay DOM-owned because that
+  // is the cheaper shape — `defaultValue` seeds them, the DOM holds the value, and
+  // `onChange` mirrors into state that only the chips read — and because keeping one
+  // genuinely DOM-owned field in this form is what lets e2e/protocol-facts.spec.ts
+  // measure both ownerships against the same guard.
+  //
+  // THE TWO OTHER FIELD KINDS IN THIS FORM ARE NOT THE SAME AS EACH OTHER, and the
+  // difference is the one that decides all of this:
+  //   * a Combobox's named input is VISIBLE and React-controlled, so it is tracked —
+  //     and before #3352 it was tracked-but-permanently-clean;
+  //   * a DateField's named input is `type="hidden"`, which the registry excludes
+  //     outright (NON_INPUT_TYPES), so it is not tracked at all and #3352 does not
+  //     reach it.
+  const [name, setName] = useState(
+    protocol?.name ?? initialTemplate?.name ?? ""
+  );
   const [practiceSelection, setPracticeSelection] = useState(
     initialPractice.selection
   );
   const [practiceCustom, setPracticeCustom] = useState(initialPractice.custom);
+  const [perWeek, setPerWeek] = useState(
+    String(practice?.perWeek ?? initialTemplate?.practicePerWeek ?? "")
+  );
+  const [perWeekMax, setPerWeekMax] = useState(
+    String(practice?.perWeekMax ?? "")
+  );
+  const [startDate, setStartDate] = useState(protocol?.start_date ?? "");
+  const [endDate, setEndDate] = useState(protocol?.end_date ?? "");
+  const [equipmentId, setEquipmentId] = useState(
+    protocol?.equipment_id == null ? "" : String(protocol.equipment_id)
+  );
   const [intakeItemId, setIntakeItemId] = useState(
     protocol?.intake_item_id == null ? "" : String(protocol.intake_item_id)
   );
+  const [situation, setSituation] = useState(
+    protocol?.situation ?? initialTemplate?.situation ?? ""
+  );
+  const [notes, setNotes] = useState(
+    protocol?.notes ?? initialTemplate?.notes ?? ""
+  );
+
+  const {
+    openEditor,
+    open: openPanel,
+    close: closePanel,
+    onKeyDown,
+  } = useFactEditor<ProtocolOpenPanel>({ scopeRef: formRef });
+
   const activeTemplate = editing ? null : protocolTemplateById(templateId);
   const activeIntake = intakeItems.find(
     (item) => String(item.id) === intakeItemId
   );
+  const activeEquipment = equipment.find((e) => String(e.id) === equipmentId);
   const relevantPanels = useMemo(
     () =>
       protocolRelevantPanels({
@@ -182,17 +296,31 @@ export default function ProtocolForm({
     ]
   );
 
-  // Local draft (#1699): the named inputs (name, dates, notes, per-practice fields)
-  // ride in the form itself; the template/outcome/practice pickers are state.
+  // WHAT THE ROW STATES IS WHAT THE ACTION WILL PARSE, derived the same way
+  // `parseScopedPractice` derives it: a custom practice with no name typed is not a
+  // practice, and a cadence of nothing is not a cadence. So a chip never claims a
+  // value the write would discard.
+  const summary = protocolFactSummary(
+    {
+      practice: practiceScope(practiceSelection, practiceCustom),
+      perWeek: positiveInt(perWeek),
+      perWeekMax: positiveInt(perWeekMax),
+      startDate,
+      endDate,
+      intakeItemName: activeIntake?.name ?? null,
+      equipmentName: activeEquipment?.name ?? null,
+      situation,
+      notes,
+    },
+    formatPrefs
+  );
+
+  // Local draft (#1699): every fact still rides as a NAMED FIELD in the form, because
+  // the closed editors stay mounted — so the draft keeps collecting them exactly as it
+  // did. The pickers with no field of their own remain `extra`.
   const draftExtra = useMemo(
-    () => ({
-      templateId,
-      selectedKeys,
-      practiceSelection,
-      practiceCustom,
-      intakeItemId,
-    }),
-    [templateId, selectedKeys, practiceSelection, practiceCustom, intakeItemId]
+    () => ({ templateId, selectedKeys }),
+    [templateId, selectedKeys]
   );
   type ProtocolDraft = typeof draftExtra;
   const draft = useFormDraft<ProtocolDraft>({
@@ -203,23 +331,32 @@ export default function ProtocolForm({
     onRestore: (d) => {
       setTemplateId(d.templateId);
       setSelectedKeys(d.selectedKeys);
-      setPracticeSelection(d.practiceSelection);
-      setPracticeCustom(d.practiceCustom);
-      setIntakeItemId(d.intakeItemId);
     },
   });
 
-  function selectTemplate(id: string) {
+  // Seeding a template remounts the field block (the `key` below), which re-applies
+  // every `defaultValue`; this resets the MIRRORS and the controlled pickers to match,
+  // so the chips state the seeded protocol rather than the previous one.
+  function resetToTemplate(id: string) {
     const next = protocolTemplateById(id);
     const available = new Set(options.map((option) => option.key));
+    const defaults = practiceDefaults(null, next);
     setTemplateId(id);
     setSelectedKeys(
       (next?.outcomeKeys ?? []).filter((key) => available.has(key))
     );
-    const defaults = practiceDefaults(null, next);
+    setName(next?.name ?? "");
     setPracticeSelection(defaults.selection);
     setPracticeCustom(defaults.custom);
+    setPerWeek(String(next?.practicePerWeek ?? ""));
+    setPerWeekMax("");
+    setStartDate("");
+    setEndDate("");
+    setEquipmentId("");
     setIntakeItemId("");
+    setSituation(next?.situation ?? "");
+    setNotes(next?.notes ?? "");
+    closePanel();
     setError(null);
   }
 
@@ -253,8 +390,10 @@ export default function ProtocolForm({
       return;
     }
     if (!editing) {
+      // The uncontrolled fields go back to their defaults the way they always did;
+      // `resetToTemplate` takes the mirrors and the pickers with them.
       formRef.current?.reset();
-      selectTemplate("");
+      resetToTemplate("");
     }
     onDone?.();
   }
@@ -264,18 +403,31 @@ export default function ProtocolForm({
     <form
       ref={formRef}
       action={handle}
-      className="-mx-4 -mb-4 mt-4 flex min-h-0 flex-1 flex-col sm:-mx-6 sm:-mb-6"
+      onKeyDown={onKeyDown}
+      // FULL-BLEED, and the bleed has to step where the PANEL steps. Both mounts
+      // are ModalShell, whose panel pads `px-4` and steps to `px-6` at `md`
+      // (components/BottomSheet.tsx, `presentation="dialog"`) — so a bleed that
+      // stepped at `sm` over-pulled half a rem per side through the whole
+      // sm..md band and the footer's edge sat past the panel's (#3361). Every
+      // re-inset below steps at `md` for the same reason. The old `mt-4` is gone
+      // too: the host's content region already gives the title gap (#3361).
+      className="-mx-4 -mb-4 flex min-h-0 flex-1 flex-col md:-mx-6 md:-mb-6"
       data-testid="protocol-form"
     >
       {editing && <input type="hidden" name="id" value={protocol!.id} />}
       <DraftRestoreBanner
         draft={draft}
         noun="protocol"
-        className="mx-4 sm:mx-6"
+        className="mx-4 md:mx-6"
       />
+      {/* THE TEMPLATE-SEED REMOUNT STAYS (#571), and #3219 needs it more than
+          before. The five plain fields below are uncontrolled on purpose — see the
+          state block — so a new template's `defaultValue` only lands when they
+          remount. `resetToTemplate` resets the mirrors in the same gesture, which is
+          what keeps the chips and the DOM saying the same thing. */}
       <div
         key={editing ? "editing" : templateId || "blank"}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 sm:px-6"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 md:px-6"
         data-testid="protocol-form-scroll"
       >
         {!editing && (
@@ -291,7 +443,7 @@ export default function ProtocolForm({
                 id="protocol-template"
                 className="input"
                 value={templateId}
-                onChange={(event) => selectTemplate(event.target.value)}
+                onChange={(event) => resetToTemplate(event.target.value)}
                 data-testid="protocol-template-picker"
               >
                 <option value="">Blank protocol</option>
@@ -312,7 +464,7 @@ export default function ProtocolForm({
 
         <ProtocolFormSection
           title="Details"
-          description="Name the protocol and choose when it starts and ends."
+          description="Name it, then tap any fact to change it."
         >
           <div>
             <label className="label" htmlFor={`pr-name-${uid}`}>
@@ -323,66 +475,195 @@ export default function ProtocolForm({
               name="name"
               className="input"
               defaultValue={protocol?.name ?? activeTemplate?.name ?? ""}
+              onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Creatine 5 g/day, Sauna 4×/week"
               required
             />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor={`pr-start-${uid}`}>
-                Start date
-              </label>
-              <DateField
-                id={`pr-start-${uid}`}
-                name="start_date"
-                defaultValue={protocol?.start_date ?? ""}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor={`pr-end-${uid}`}>
-                End date{" "}
-                <span className="text-slate-400">(blank = ongoing)</span>
-              </label>
-              <DateField
-                id={`pr-end-${uid}`}
-                name="end_date"
-                defaultValue={protocol?.end_date ?? ""}
-              />
-            </div>
-          </div>
-        </ProtocolFormSection>
 
-        <ProtocolFormSection
-          title="Outcomes"
-          description="Choose the measurements that will show whether it worked."
-        >
-          <ProtocolOutcomePicker
-            options={options}
-            selectedKeys={selectedKeys}
-            onChange={setSelectedKeys}
-            relevantPanels={relevantPanels}
-          />
-        </ProtocolFormSection>
-
-        <ProtocolFormSection
-          title="What you're testing"
-          description="Optionally link the situation, item, or equipment this protocol is about."
-        >
-          <div>
-            <label className="label" htmlFor={`pr-situation-${uid}`}>
-              Situation <span className="text-slate-400">(optional)</span>
-            </label>
-            <SituationField
-              uid={uid}
-              defaultValue={
-                protocol?.situation ?? activeTemplate?.situation ?? ""
-              }
+          {/* THE SENTENCE, and the one open editor behind it (#3218/#3219). At most
+              one editor is on screen: the row is unmounted while a panel is open, and
+              the host is display:none while none is. */}
+          {openEditor == null && (
+            <ProtocolFactRow
+              summary={summary}
+              openEditor={openEditor}
+              onOpen={(key, focusKey) => openPanel(key, focusKey)}
             />
-          </div>
-          {(equipment.length > 0 || intakeItems.length > 0) && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {equipment.length > 0 && (
+          )}
+          <FactEditorHost
+            testId="protocol-editor"
+            doneTestId="protocol-editor-done"
+            panel={openEditor}
+            onDone={closePanel}
+            bodyClassName="space-y-3"
+            // HIDDEN RATHER THAN UNMOUNTED, and this is the write-path decision of
+            // #3219 rather than a styling choice.
+            //
+            // This form is DOM-COLLECTED: `<form action={handle}>` hands the action
+            // whatever FormData the browser gathers from the inputs mounted AT
+            // SUBMIT. A field that unmounts when its panel closes is therefore a
+            // field the form CLEARS (#2359) — someone edits a fact behind a chip,
+            // taps Done, saves, and the value is gone with nothing on screen to say
+            // so.
+            //
+            // It is also invisible to the dirty-form registry, which skips any field
+            // where `!field.isConnected` (components/DirtyFormRegistry.tsx): dismiss
+            // the dialog and the "Discard your changes?" prompt never appears,
+            // because as far as the registry can tell nothing was ever typed.
+            //
+            // Neither hazard reached the two consumers that shipped before this one.
+            // The intake form and the sleep dialog both build their FormData from
+            // state by hand, so unmounting a closed panel costs them nothing. This
+            // form does not, so it takes the primitive's other documented reading —
+            // "the editor is HIDDEN, not unmounted, so the value still posts with the
+            // form (#2014)" (components/facts/FactEditorHost.tsx). Every named input
+            // below is mounted at all times, whichever panel is open.
+            className={openEditor == null ? "hidden" : undefined}
+          >
+            <div hidden={openEditor !== "practice"}>
+              <label className="label" htmlFor={`pr-practice-type-${uid}`}>
+                Practice or habit
+              </label>
+              <select
+                id={`pr-practice-type-${uid}`}
+                name="practice_type"
+                className="input"
+                value={practiceSelection}
+                onChange={(event) => setPracticeSelection(event.target.value)}
+                data-testid="protocol-practice-type"
+              >
+                <option value="">Don&apos;t track one</option>
+                <optgroup label="Wellness practice">
+                  {PRACTICE_STARTER_LIST.map((practiceName) => (
+                    <option
+                      key={practiceName}
+                      value={practiceSelectValue("practice", practiceName)}
+                    >
+                      {practiceName}
+                    </option>
+                  ))}
+                  <option value={CUSTOM_PRACTICE_VALUE}>
+                    Other practice (custom)…
+                  </option>
+                </optgroup>
+                <optgroup label="Activity">
+                  {PRACTICE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {PRACTICE_TYPE_LABELS[t] ?? t}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Food habit">
+                  {FOOD_GROUPS.map((g) => (
+                    <option
+                      key={g.slug}
+                      value={practiceSelectValue("food_group", g.slug)}
+                    >
+                      {g.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {/* The custom name stays MOUNTED whatever the select holds, for the
+                  same reason every other field does: switching away and back must not
+                  silently blank a name the person already typed. */}
+              <div
+                className="mt-3"
+                hidden={practiceSelection !== CUSTOM_PRACTICE_VALUE}
+              >
+                <label className="label" htmlFor={`pr-practice-custom-${uid}`}>
+                  Custom practice
+                </label>
+                <input
+                  id={`pr-practice-custom-${uid}`}
+                  type="text"
+                  name="practice_custom"
+                  className="input"
+                  value={practiceCustom}
+                  onChange={(event) => setPracticeCustom(event.target.value)}
+                  placeholder="e.g. Grounding walk"
+                  data-testid="protocol-practice-custom"
+                />
+              </div>
+            </div>
+
+            <div hidden={openEditor !== "cadence"}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="label" htmlFor={`pr-practice-min-${uid}`}>
+                    Weekly minimum
+                  </label>
+                  <input
+                    id={`pr-practice-min-${uid}`}
+                    type="number"
+                    name="practice_per_week"
+                    min={1}
+                    max={14}
+                    className="input"
+                    defaultValue={
+                      practice?.perWeek ?? activeTemplate?.practicePerWeek ?? ""
+                    }
+                    onChange={(event) => setPerWeek(event.target.value)}
+                    placeholder="3"
+                    data-testid="protocol-practice-per-week"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`pr-practice-max-${uid}`}>
+                    Maximum <span className="text-slate-400">(optional)</span>
+                  </label>
+                  <input
+                    id={`pr-practice-max-${uid}`}
+                    type="number"
+                    name="practice_per_week_max"
+                    min={1}
+                    max={14}
+                    className="input"
+                    defaultValue={practice?.perWeekMax ?? ""}
+                    onChange={(event) => setPerWeekMax(event.target.value)}
+                    placeholder="5"
+                    data-testid="protocol-practice-per-week-max"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                This adds weekly progress and a quick-log action to the protocol
+                page.
+              </p>
+            </div>
+
+            <div hidden={openEditor !== "window"}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor={`pr-start-${uid}`}>
+                    Start date
+                  </label>
+                  <DateField
+                    id={`pr-start-${uid}`}
+                    name="start_date"
+                    value={startDate}
+                    onChange={setStartDate}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`pr-end-${uid}`}>
+                    End date{" "}
+                    <span className="text-slate-400">(blank = ongoing)</span>
+                  </label>
+                  <DateField
+                    id={`pr-end-${uid}`}
+                    name="end_date"
+                    value={endDate}
+                    onChange={setEndDate}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div hidden={openEditor !== "link"}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div hidden={equipment.length === 0}>
                   <label className="label" htmlFor={`pr-equipment-${uid}`}>
                     Recovery gear{" "}
                     <span className="text-slate-400">(optional)</span>
@@ -392,6 +673,7 @@ export default function ProtocolForm({
                     name="equipment_id"
                     className="input"
                     defaultValue={protocol?.equipment_id ?? ""}
+                    onChange={(event) => setEquipmentId(event.target.value)}
                     data-testid="protocol-equipment"
                   >
                     <option value="">None</option>
@@ -403,9 +685,7 @@ export default function ProtocolForm({
                     ))}
                   </select>
                 </div>
-              )}
-              {intakeItems.length > 0 && (
-                <div>
+                <div hidden={intakeItems.length === 0}>
                   <label className="label" htmlFor={`pr-intake-${uid}`}>
                     IntakeItem or medication{" "}
                     <span className="text-slate-400">(optional)</span>
@@ -427,143 +707,66 @@ export default function ProtocolForm({
                     ))}
                   </select>
                 </div>
-              )}
-            </div>
-          )}
-        </ProtocolFormSection>
-
-        <ProtocolFormSection
-          title="Weekly practice"
-          description="Choose a practice, activity, or food habit to repeat during this protocol."
-        >
-          <div>
-            <label className="label" htmlFor={`pr-practice-type-${uid}`}>
-              Practice or habit
-            </label>
-            <select
-              id={`pr-practice-type-${uid}`}
-              name="practice_type"
-              className="input"
-              value={practiceSelection}
-              onChange={(event) => setPracticeSelection(event.target.value)}
-              data-testid="protocol-practice-type"
-            >
-              <option value="">Don&apos;t track one</option>
-              <optgroup label="Wellness practice">
-                {PRACTICE_STARTER_LIST.map((name) => (
-                  <option
-                    key={name}
-                    value={practiceSelectValue("practice", name)}
-                  >
-                    {name}
-                  </option>
-                ))}
-                <option value={CUSTOM_PRACTICE_VALUE}>
-                  Other practice (custom)…
-                </option>
-              </optgroup>
-              <optgroup label="Activity">
-                {PRACTICE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {PRACTICE_TYPE_LABELS[t] ?? t}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Food habit">
-                {FOOD_GROUPS.map((g) => (
-                  <option
-                    key={g.slug}
-                    value={practiceSelectValue("food_group", g.slug)}
-                  >
-                    {g.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-          {practiceSelection && (
-            <>
-              {practiceSelection === CUSTOM_PRACTICE_VALUE && (
-                <div>
-                  <label
-                    className="label"
-                    htmlFor={`pr-practice-custom-${uid}`}
-                  >
-                    Custom practice
-                  </label>
-                  <input
-                    id={`pr-practice-custom-${uid}`}
-                    type="text"
-                    name="practice_custom"
-                    className="input"
-                    value={practiceCustom}
-                    onChange={(event) => setPracticeCustom(event.target.value)}
-                    placeholder="e.g. Grounding walk"
-                    data-testid="protocol-practice-custom"
-                  />
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label" htmlFor={`pr-practice-min-${uid}`}>
-                    Weekly minimum
-                  </label>
-                  <input
-                    id={`pr-practice-min-${uid}`}
-                    type="number"
-                    name="practice_per_week"
-                    min={1}
-                    max={14}
-                    className="input"
-                    defaultValue={
-                      practice?.perWeek ?? activeTemplate?.practicePerWeek ?? ""
-                    }
-                    placeholder="3"
-                    data-testid="protocol-practice-per-week"
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor={`pr-practice-max-${uid}`}>
-                    Maximum <span className="text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    id={`pr-practice-max-${uid}`}
-                    type="number"
-                    name="practice_per_week_max"
-                    min={1}
-                    max={14}
-                    className="input"
-                    defaultValue={practice?.perWeekMax ?? ""}
-                    placeholder="5"
-                    data-testid="protocol-practice-per-week-max"
-                  />
-                </div>
               </div>
-              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                This adds weekly progress and a quick-log action to the protocol
-                page.
-              </p>
-            </>
-          )}
+            </div>
+
+            <div hidden={openEditor !== "situation"}>
+              <label className="label" htmlFor={`pr-situation-${uid}`}>
+                Situation <span className="text-slate-400">(optional)</span>
+              </label>
+              <SituationField
+                uid={uid}
+                value={situation}
+                onChange={setSituation}
+              />
+            </div>
+
+            <div hidden={openEditor !== "notes"}>
+              <label className="sr-only" htmlFor={`pr-notes-${uid}`}>
+                Notes
+              </label>
+              <textarea
+                id={`pr-notes-${uid}`}
+                name="notes"
+                className="input"
+                rows={4}
+                defaultValue={protocol?.notes ?? activeTemplate?.notes ?? ""}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="What are you changing, and what will stay constant?"
+              />
+            </div>
+
+            {/* The trailing affordance's panel is a MENU, not an editor: it names the
+                optional facts with nothing to state and hands off to one of them, so
+                opening it still leaves exactly one editor on screen. */}
+            <div hidden={openEditor !== "more"}>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.more.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    data-testid={`protocol-more-${key}`}
+                    onClick={() => openPanel(key)}
+                    className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                  >
+                    {PROTOCOL_FACT_NOUNS[key]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </FactEditorHost>
         </ProtocolFormSection>
 
         <ProtocolFormSection
-          title="Notes"
-          description="Record the dose, routine, or other context you will need later."
+          title="Outcomes"
+          description="Choose the measurements that will show whether it worked."
         >
-          <div>
-            <label className="sr-only" htmlFor={`pr-notes-${uid}`}>
-              Notes
-            </label>
-            <textarea
-              id={`pr-notes-${uid}`}
-              name="notes"
-              className="input"
-              rows={4}
-              defaultValue={protocol?.notes ?? activeTemplate?.notes ?? ""}
-              placeholder="What are you changing, and what will stay constant?"
-            />
-          </div>
+          <ProtocolOutcomePicker
+            options={options}
+            selectedKeys={selectedKeys}
+            onChange={setSelectedKeys}
+            relevantPanels={relevantPanels}
+          />
         </ProtocolFormSection>
 
         {error && (
@@ -573,7 +776,7 @@ export default function ProtocolForm({
         )}
       </div>
       <div
-        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end sm:px-6"
+        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end md:px-6"
         data-testid="protocol-form-actions"
       >
         {onDone && (

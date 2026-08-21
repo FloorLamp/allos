@@ -783,3 +783,90 @@ warning that fires after the last moment it could have helped is not a weaker
 guard than a refusal, it is not a guard. Both of the other retirement guards in
 that file say so in their own comments, and I wrote those comments. The check
 that got this wrong was sitting between them.
+
+## Two greens against two different bases (2026-08-20)
+
+`main` went red on `mobile-clipping.mobile.spec.ts:206` — a dialog body scrollable
+by 5px, on a spec that had been 18/18 green on its own PR that morning.
+
+Both halves were green, and neither green was about the tree that resulted:
+
+|                                                                    | merged     | its CI base        |
+| ------------------------------------------------------------------ | ---------- | ------------------ |
+| #3379 — adds the spec, scopes `FoodLogBar`'s bleed to `md:`        | `bc329883` | main without #3370 |
+| #3370 — `ModalShell` / `DirtyFormRegistry` / the dirty-form marker | `e050a80b` | main without #3379 |
+
+Twenty minutes apart. Both 18/18. I verified each head's `check-runs` myself, which
+is the discipline this file already argues for, and it did not help: the check runs
+were real, complete, and computed against a base that no longer existed by the time
+the second merge landed.
+
+Two different shards then failed at exactly **5**. That number is the useful part of
+the receipt: co-residency and contention give timeouts, or they give different numbers
+each run. The same wrong value from two different neighbour sets is a deterministic
+fact about the tree, and it ruled out the whole contention branch before anyone spent
+a cycle on it.
+
+The gap is that `mergeable_state` does not model this. A branch whose checks predate
+another merge still reports `clean` — `behind` is about the branch's commits, not
+about when its checks ran. So the reassuring field says the reassuring thing, and the
+runbook's existing "a behind-only PR's green can be stale" caution never fires,
+because the PR is not behind.
+
+The rule now in the pipeline is a timestamp comparison: a second merge needs checks
+whose `started_at` is later than the previous merge. It is one REST read, and it is
+the only thing that distinguishes "green" from "green about this tree".
+
+Worth naming the shape, because it is the same one this file keeps recording from new
+angles: **a check that answers a cheaper question than the one being asked.** "Were
+these checks green?" is cheaper than "were these checks green about the tree we are
+about to create", and the first is what every available field reports.
+
+## The merge-base rule, and what it cost to follow literally (2026-08-20)
+
+The rule added earlier the same day — a second merge needs checks that ran on a base
+containing the first — fired **four times within ninety minutes** of being written.
+Three of those were real:
+
+| PR    | stale against | shared surface                                                               |
+| ----- | ------------- | ---------------------------------------------------------------------------- |
+| #3388 | #3386         | `QuickEntryProvider.tsx` — the exact host the other's assertion measured     |
+| #3392 | #3388         | dialog body chrome vs. an assertion on a dialog body's scroll extent         |
+| #3396 | #3392         | **none** — `FoodLogBar` CSS and one mobile spec, against `lib/` data-quality |
+
+The first two justified the cycle. On #3388 the interaction was closer than the file
+list suggested, and only reading the diff found it: I had flagged it as "dialog body
+chrome" while what it actually changed was the host the other PR measured.
+
+The third is the problem. Merges were landing every ten minutes or so, and a rule
+that says "re-run whenever a merge happened during your CI" makes every PR
+perpetually stale in a busy hour — which is not a strict rule, it is a rule that gets
+abandoned. That is worse than a rule with a stated exception, because the abandonment
+is silent and nobody records when it started.
+
+So the step now reads: re-run, **or write down why the two file sets cannot
+interact**. The judgment is allowed and the judgment is written, which is the whole
+difference from where this started. The failure that produced the rule was not a
+missing check — it was "I judged the risk low" as an unstated assumption. A stated
+one can be read back, disagreed with, and found wrong afterwards.
+
+Worth noting what the check costs: one REST read of each PR's file list, compared for
+overlap. On #3396 that was ten filenames against two, with no path by which nutrition
+CSS could change a data-quality finding's existence or a query count.
+
+## The head you read and the head you merge
+
+#3418. CI verified green on `9959c178`. The full-diff review was written against that
+diff and posted. The merge call went out, and GitHub merged `b36a2bc1` — a merge of
+`origin/main` the lane pushed in the ninety seconds between.
+
+Nothing was lost: `b36a2bc1` was `9959c178` plus current main. But the review credited
+an argument the lane had already retracted in its final commit — the no-`FactEditorHost`
+decision was justified by what #3409 would cost, and #3417 had made that cost
+disappear hours earlier. The lane knew. The review, written one commit behind, did not.
+
+"Green CI on the exact head" was followed. Its unwritten second half was not: the exact
+head has to still be the head when the merge call goes out. One request answers it.
+
+The general shape: verifying a fact about a moving object and then acting on the
+verification some time later is not the same as acting on the fact.

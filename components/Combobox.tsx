@@ -1,8 +1,15 @@
 "use client";
 
 import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { IconChevronDown, IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
+import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
+
+// How tall the list WANTS to be — what `max-h-56` used to say as a class. It is a
+// preference now, not a cap: the shared placement shrinks it to the room actually
+// available so the last row is never left off the bottom of the screen.
+const LISTBOX_MAX_HEIGHT = 224; // matches max-h-56
 
 // Shared autocomplete. Two modes via `allowFreeText`:
 //  - false (default): the value must be picked from `options`; an empty match
@@ -127,6 +134,32 @@ export default function Combobox({
     value.trim() !== "" &&
     !options.some((o) => o.toLowerCase() === q);
 
+  // THE LISTBOX IS PORTALED (#3271). Left in flow it was an absolutely-positioned
+  // child, and an absolutely-positioned element is clipped by ANY ancestor
+  // carrying an `overflow` — `z-50` never helped, because z-index does not escape
+  // a clip box. So the list was confined to whichever ancestor scroller it
+  // happened to sit in: a phone sheet bounded at `max-h-[85dvh]`, a `max-h`
+  // editor, a table's scroller. The owner's report was the Add supplement dialog
+  // cut off mid-row with two scrollbars — the ancestor's, and the list's own
+  // `max-h-56`. An `overflow` establishes that clip whether or not it is
+  // currently scrolling, so the bug did not need the ancestor to be scrolled.
+  //
+  // Anchored to the ROOT rather than the input so a field dropdown keeps exactly
+  // the width it had (the root is what `w-full` used to resolve against). The
+  // title appearance sizes itself instead, so it does not match.
+  //
+  // Re-anchored as the list grows and shrinks: the ResizeObserver behind the hook
+  // watches the document, not the panel, and a list that has flipped ABOVE the
+  // field moves its own top edge every time a keystroke changes the row count.
+  const listOpen = open && (filtered.length > 0 || showUse || !allowFreeText);
+  const { pos, attachPanel, panelRef } = useAnchoredPopover({
+    open: listOpen,
+    anchorRef: ref,
+    matchAnchorWidth: !titleAppearance,
+    preferredMaxHeight: LISTBOX_MAX_HEIGHT,
+    remeasureKey: `${filtered.length}:${showUse}`,
+  });
+
   useEffect(() => {
     // Dismiss on pointerdown OUTSIDE the combobox root. pointerdown fires before the
     // click completes, so a click aimed at a control next to the combobox finds the
@@ -134,8 +167,16 @@ export default function Combobox({
     // the click. An option/clear press is INSIDE the root (and preventDefaults), so it
     // still picks. (#1176/#1177 — the native datalist popover auto-closed; this one
     // must too, or its overlay eats the next control's click.)
+    // The list is portaled OUTSIDE `ref` (#3271), so a press on an option is not
+    // "inside the root" any more — without counting it, this would close the
+    // listbox before the option's own mousedown could pick it.
     const onDoc = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
+      const target = e.target as Node;
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        !panelRef.current?.contains(target)
+      )
         setOpen(false);
     };
     // Also dismiss when a control OUTSIDE the combobox commits a value — e.g. the
@@ -145,7 +186,12 @@ export default function Combobox({
     // (a programmatic selectOption dispatches only `change`). The combobox's OWN input
     // change (on blur) is inside the root, so it's skipped.
     const onChange = (e: Event) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
+      const target = e.target as Node;
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        !panelRef.current?.contains(target)
+      )
         setOpen(false);
     };
     document.addEventListener("pointerdown", onDoc);
@@ -154,7 +200,7 @@ export default function Combobox({
       document.removeEventListener("pointerdown", onDoc);
       document.removeEventListener("change", onChange, true);
     };
-  }, []);
+  }, [panelRef]);
 
   function pick(v: string) {
     // Capture what the user typed BEFORE onChange overwrites the input with the chosen
@@ -194,6 +240,24 @@ export default function Combobox({
           <span className="truncate">{value || placeholder}</span>
         </span>
       )}
+      {/*
+        THE VISIBLE FIELD IS BOTH CONTROLLED AND NAMED, which makes every Combobox
+        inside a named `<form>` a subject of the dirty-form registry — and, until
+        #3352, a permanently CLEAN one: React syncs `defaultValue` onto a controlled
+        input to match `value`, so the registry's "current vs what the server
+        rendered" compared a value with a copy of itself. This is a shared component,
+        so that defect was live everywhere one sat in such a form. Fixed in
+        components/DirtyFormRegistry.tsx, which no longer trusts a DOM default that
+        moved onto exactly what the user typed. Nothing is needed here — but if this
+        input ever gains a `defaultValue` or loses its `name`, that is the file to
+        read first.
+
+        The CONTRAST worth keeping in view: ProviderCombobox wraps this and submits
+        through a `type="hidden"` input instead, which the registry excludes outright.
+        That made it immune to #3352 and invisible to the discard guard entirely,
+        which is #3356 — two comboboxes, differing in exactly the one property that
+        decides both.
+      */}
       <input
         ref={(node) => {
           inputRef.current = node;
@@ -319,85 +383,101 @@ export default function Combobox({
           <IconChevronDown className="h-5 w-5" stroke={2} aria-hidden="true" />
         </span>
       )}
-      {open && (filtered.length > 0 || showUse || !allowFreeText) && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          className={`absolute z-50 mt-1 max-h-56 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${
-            titleAppearance ? "w-80 max-w-[calc(100vw-2rem)]" : "w-full"
-          }`}
-        >
-          {filtered.length === 0 && !allowFreeText ? (
-            <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-              {emptyLabel}
-            </li>
-          ) : (
-            filtered.map((o, i) => {
-              const group = showGroups ? groupFor(o) : null;
-              const prev =
-                showGroups && i > 0 ? groupFor(filtered[i - 1]) : null;
-              return (
-                <Fragment key={o}>
-                  {group && group !== prev && (
-                    <li
-                      role="presentation"
-                      data-testid="combobox-group"
-                      className="section-label px-3 pb-1 pt-2"
-                    >
-                      {group}
+      {listOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <ul
+            ref={attachPanel}
+            id={listboxId}
+            role="listbox"
+            style={{
+              position: "fixed",
+              top: pos?.top ?? 0,
+              left: pos?.left ?? 0,
+              width: pos?.width,
+              maxHeight: pos?.maxHeight,
+              // Never paint at 0,0 for a frame: the panel entering the DOM is
+              // what makes measurement possible, so the first render is hidden.
+              visibility: pos ? "visible" : "hidden",
+            }}
+            // Above the sheet/dialog it opens over (`z-60`), the same layer the
+            // portaled date calendar takes for the same reason.
+            className={`z-70 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${
+              titleAppearance ? "w-80 max-w-[calc(100vw-2rem)]" : ""
+            }`}
+          >
+            {filtered.length === 0 && !allowFreeText ? (
+              <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
+                {emptyLabel}
+              </li>
+            ) : (
+              filtered.map((o, i) => {
+                const group = showGroups ? groupFor(o) : null;
+                const prev =
+                  showGroups && i > 0 ? groupFor(filtered[i - 1]) : null;
+                return (
+                  <Fragment key={o}>
+                    {group && group !== prev && (
+                      <li
+                        role="presentation"
+                        data-testid="combobox-group"
+                        className="section-label px-3 pb-1 pt-2"
+                      >
+                        {group}
+                      </li>
+                    )}
+                    <li>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          pick(o);
+                        }}
+                        onMouseEnter={() => setHighlight(i)}
+                        data-testid="combobox-option"
+                        className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
+                          i === highlight
+                            ? highlightCls
+                            : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
+                        }`}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          {iconFor?.(o)}
+                          <span className="truncate">{labelFor?.(o) ?? o}</span>
+                        </span>
+                        {badgeFor?.(o)}
+                      </button>
                     </li>
+                  </Fragment>
+                );
+              })
+            )}
+            {showUse && (
+              <li>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(value.trim());
+                  }}
+                  onMouseEnter={() => setHighlight(filtered.length)}
+                  className={`w-full px-3 py-2 text-left text-sm ${
+                    highlight === filtered.length
+                      ? highlightCls
+                      : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-ink-800"
+                  }`}
+                >
+                  {freeTextLabel ? (
+                    freeTextLabel(value.trim())
+                  ) : (
+                    <>Use “{value.trim()}”</>
                   )}
-                  <li>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        pick(o);
-                      }}
-                      onMouseEnter={() => setHighlight(i)}
-                      data-testid="combobox-option"
-                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
-                        i === highlight
-                          ? highlightCls
-                          : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
-                      }`}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        {iconFor?.(o)}
-                        <span className="truncate">{labelFor?.(o) ?? o}</span>
-                      </span>
-                      {badgeFor?.(o)}
-                    </button>
-                  </li>
-                </Fragment>
-              );
-            })
-          )}
-          {showUse && (
-            <li>
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pick(value.trim());
-                }}
-                onMouseEnter={() => setHighlight(filtered.length)}
-                className={`w-full px-3 py-2 text-left text-sm ${
-                  highlight === filtered.length
-                    ? highlightCls
-                    : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-ink-800"
-                }`}
-              >
-                {freeTextLabel ? (
-                  freeTextLabel(value.trim())
-                ) : (
-                  <>Use “{value.trim()}”</>
-                )}
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
+                </button>
+              </li>
+            )}
+          </ul>,
+          document.body
+        )}
     </div>
   );
 }

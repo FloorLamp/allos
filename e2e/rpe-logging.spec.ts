@@ -1,10 +1,34 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  setRpeColumn,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // Issue #743: the optional per-set RPE selector round-trips through the activity
 // form — log a set with a rating, reload the page, reopen the stored session, and
 // the selector shows the persisted value. Driven end-to-end against the seeded DB.
+// Issue #3335: and the column is not there at all until you ask for it.
+//
+// #3335 made the column OPT-IN, so this spec now owns three claims the round-trip
+// alone never made:
+//
+//   1. The set grid has no effort column for a profile that never opted in, and the
+//      opt-in is one tap inside the editor — no settings trip.
+//   2. Opting back OUT hides the column; it does not delete what was logged. The
+//      proof needs a REAL SAVE while the column is hidden (the reps edit below), or
+//      it passes vacuously — no save, nothing to lose.
+//   3. The set row's tab order is IDENTICAL with the column on and off. That is what
+//      "a conditional column must not strand tab order" means, and it is the reason
+//      both stepper buttons carry tabIndex={-1}.
+//
+// FIXTURE POSITION (#3226's rule): no e2e seed writes exercise_sets.rpe, so every
+// login here starts on the OPTED-OUT side of the new boundary. Each test that turns
+// the column on turns it back off before it leaves, because the opt-in row is
+// profile-scoped and outlives the spec — a leaked row would put an extra control in
+// the set-options band that the phone-geometry specs measure.
 //
 // Fixture ownership (#868, docs/internals/e2e-hygiene.md failure class 1): the probe
 // activity carries a UNIQUE per-run title and the spec keys every lookup/cleanup on
@@ -59,6 +83,24 @@ async function confirmDelete(page: Page): Promise<void> {
     page
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
+  );
+}
+
+// Wait on the DEBOUNCED activity autosave by its OWN payload. Hoisted out of the
+// round-trip test because the opt-out claim needs it too: matching on the
+// `next-action` header alone still matches /training's background toaster poll, and
+// a poller response resolving the wait early is how the #1189 census read a stale
+// value back (see the long note at its original call site below).
+function savePostWith(page: Page, marker: RegExp) {
+  return page.waitForResponse(
+    (r) => {
+      if (r.request().method() !== "POST") return false;
+      if (r.request().headers()["next-action"] == null) return false;
+      if (!r.ok()) return false;
+      const body = r.request().postData();
+      return body != null && marker.test(body);
+    },
+    { timeout: 15_000 }
   );
 }
 
@@ -121,6 +163,18 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
+  // OPTED OUT: there is no effort column at all (#3335). Measured against a PRESENT
+  // peer in the same band — the warm-up toggle — so this is "the options column
+  // rendered and the effort control is not in it", not "nothing has rendered yet".
+  // A bare retrying toHaveCount(0) would be satisfied by a set grid that had not
+  // arrived, which is the failure this assertion exists to distinguish.
+  await setRpeColumn(page, false);
+  await expect(page.getByTestId("set1-warmup")).toBeVisible();
+  await expect(page.getByTestId("set1-rpe")).toHaveCount(0);
+
+  // Opt in, from the editor's own options row — one tap, no settings trip.
+  await setRpeColumn(page, true);
+
   // The RPE selector is BLANK by default (logging RPE is never required).
   const rpe = page.getByTestId("set1-rpe");
   const rpeValue = page.getByTestId("set1-rpe-value");
@@ -137,26 +191,16 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // hard goto ABORTED it — the census read back "8" because the 8.5 save never
   // fired, not because it lost a race (post-#1189 census, run 29925360046). Armed
   // BEFORE the click so the response can't be missed.
-  const savePostWith = (marker: RegExp) =>
-    page.waitForResponse(
-      (r) => {
-        if (r.request().method() !== "POST") return false;
-        if (r.request().headers()["next-action"] == null) return false;
-        if (!r.ok()) return false;
-        const body = r.request().postData();
-        return body != null && marker.test(body);
-      },
-      { timeout: 15_000 }
-    );
+  // (savePostWith is hoisted to module scope — the opt-out claim below needs it too.)
   // "rpe":8 must not also match "rpe":8.5 — anchor the following delimiter.
-  const firstSaved = savePostWith(/"rpe":8[,}]/);
+  const firstSaved = savePostWith(page, /"rpe":8[,}]/);
   await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8");
   await firstSaved;
   // The half-point save, matched by its own payload the same way, so 8.5 is
   // DURABLY persisted (the action response completes server-side) before the
   // Escape + reload below.
-  const halfPointSaved = savePostWith(/"rpe":8\.5[,}]/);
+  const halfPointSaved = savePostWith(page, /"rpe":8\.5[,}]/);
   await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8.5");
   await halfPointSaved;
@@ -176,10 +220,112 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
   }).toPass({ timeout: 20_000 }); // topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event
 
+  // OPTING BACK OUT HIDES THE COLUMN; IT IS NOT A DELETE (#3335). Migrating a
+  // shipped behaviour to opt-in must not take away what people already logged, and
+  // the write boundary is deliberately blind to the opt-in for exactly this reason
+  // (canonicalRpe takes no tracking — lib/rpe.ts).
+  await setRpeColumn(page, false);
+  await expect(page.getByTestId("set1-rpe")).toHaveCount(0);
+
+  // THE SAVE IS THE WHOLE TEST. Turning the column off writes no activity, so
+  // asserting straight after it would pass against a build that nulls RPE on every
+  // save — nothing would have saved. So make a real edit with the column hidden
+  // (5 reps → 6) and wait for the autosave that carries the full sets payload. If
+  // the hidden column meant a dropped rating, this is the POST that drops it.
+  const savedWithoutColumn = savePostWith(page, /"reps":6[,}]/);
+  await settledFill(
+    page,
+    page.getByTestId("set1-reps-stepper").locator("input"),
+    "6"
+  );
+  await savedWithoutColumn;
+
+  // Opt back in: the rating logged before the column went away is still 8.5.
+  await setRpeColumn(page, true);
+  await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
+
+  // Leave the profile on the side of the boundary every seed puts it on, so a
+  // sibling spec measuring the set-options band sees the band it expects.
+  await setRpeColumn(page, false);
+
   // Cleanup: delete the probe row from the still-open editor (dialog-scoped
   // confirm), restoring the seed state for order-independent sibling specs. The
   // start-of-test sweep tolerates the case where a failed run skipped this.
   await confirmDelete(page);
   await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
+});
+
+// #3335's keyboard clause: "a column that appears conditionally must not strand tab
+// order." The check that actually means that is an EQUALITY — walk the set row with
+// the column off, walk it again with the column on, and get the same stops in the
+// same order. An absolute list would pass a build where the column swallowed the
+// reps input, as long as the list was written to match.
+//
+// It holds because both stepper buttons carry tabIndex={-1}: the VALUES are the tab
+// stops and the steppers are pointer sugar, so the column adds nothing to the
+// sequence and removing it takes nothing away. Delete either tabIndex and this test
+// is the one that says so.
+//
+// Nothing is filled: an incomplete set never auto-saves, so this test owns no
+// persisted data and needs no cleanup beyond putting the opt-in back.
+test("the set row's tab order is the same with the effort column on and off (#3335)", async ({
+  page,
+}) => {
+  test.slow(); // local next dev compiles /training on first hit
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/training?tab=log");
+  await page
+    .getByTestId("training-log-actions")
+    .getByRole("button", { name: "New activity" })
+    .click();
+  await pickActivity(page, "Barbell Bench Press");
+
+  // How a focused control names itself: its testid, else its accessible label, else
+  // its tag. Reported rather than compared inside the browser so a mismatch prints
+  // BOTH sequences — a bare "not equal" on a tab walk tells you nothing about where
+  // it diverged, and this is the assertion someone will be reading on a red.
+  const walk = async (steps: number): Promise<string[]> => {
+    await page.getByTestId("set1-weight").focus();
+    const seen: string[] = [];
+    for (let i = 0; i < steps; i += 1) {
+      seen.push(
+        await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          if (!el) return "(none)";
+          return (
+            el.dataset.testid ??
+            el.getAttribute("aria-label") ??
+            el.tagName.toLowerCase()
+          );
+        })
+      );
+      await page.keyboard.press("Tab");
+    }
+    return seen;
+  };
+
+  await setRpeColumn(page, false);
+  await expect(page.getByTestId("set1-rpe")).toHaveCount(0);
+  const withoutColumn = await walk(5);
+  // The walk reached real controls — a sequence of "(none)" would compare equal to
+  // itself and prove nothing (the no-op mutant #3334 shipped and had to withdraw).
+  expect(withoutColumn[0]).toBe("set1-weight");
+  expect(new Set(withoutColumn).size).toBeGreaterThan(1);
+
+  await setRpeColumn(page, true);
+  await expect(page.getByTestId("set1-rpe")).toBeVisible();
+  const withColumn = await walk(5);
+
+  expect(
+    withColumn,
+    `the effort column changed the set row's tab order:\n  off: ${withoutColumn.join(
+      " → "
+    )}\n   on: ${withColumn.join(" → ")}`
+  ).toEqual(withoutColumn);
+
+  // Back to the side of the boundary every seed puts this profile on.
+  await setRpeColumn(page, false);
+  await page.keyboard.press("Escape");
 });

@@ -48,7 +48,10 @@ scripts/orchestrator-checkin.sh
 2. Cluster related, non-overlapping work into branches.
 3. Dispatch through `dispatch-brief.mjs new`.
 4. Review the full diff and verify claims against the repository.
-5. Require green CI on the exact head, then squash merge serially.
+5. Require green CI on the exact head, then squash merge serially. A second
+   merge needs checks that ran on a base containing the first: compare
+   `started_at` to the previous merge; `mergeable_state` reports `clean` either
+   way. Re-run, or write down why the two file sets cannot interact.
 6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
    release notes when appropriate.
 

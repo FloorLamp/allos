@@ -429,6 +429,21 @@ ${MIGRATION_LINES}
   markers FROM THE COMPONENTS — testids AND accessible labels, since a spec using
   getByLabel names no testid — then grep the whole tree. Over-matching costs a
   minute; missing costs a CI round. Recipe in docs/internals/e2e-hygiene.md.
+  A MARKER SWEEP IS NECESSARY AND NOT SUFFICIENT. Both of these were measured on
+  2026-08-20 by lanes that ran a thorough marker sweep and still shipped a red:
+    * A SPEC CAN ADDRESS YOUR ELEMENT WITHOUT NAMING A MARKER. nav-pending.spec.ts
+      locates a row as \`aside nav a[href="/timeline"]\` — no testid, no accessible
+      label, nothing a marker grep can match. Collapsing a nav group removed it from
+      the DOM and the failure read as a PendingNavLink regression. So ALSO grep for
+      the raw shapes: href values, role+attribute selectors, \`locator("...")\` CSS.
+    * A SPEC CAN BREAK WITHOUT ADDRESSING YOUR ELEMENT AT ALL. timeline-chrome
+      asserts GEOMETRY — a pinned element's y within a band — and names no nav
+      marker whatsoever, so no sweep over markers of any kind reaches it. THE RULE:
+      a spec that measures position, size or overflow is affected by ANY change to
+      shared chrome, layout or stacking. If your diff touches a shell, a nav, a
+      wrapper element, or anything portalled, enumerate the geometry-asserting specs
+      SEPARATELY — grep for boundingBox, toBeInViewport, elementFromPoint, scroll
+      offsets and pixel comparisons — and run them whether or not they mention you.
 - VERIFY STATE AT REPORT TIME, BY ASKING RATHER THAN REMEMBERING. A command's output
   is a claim about the moment it ran, and your gates take 20-40 minutes while this
   repo merges roughly every 20. \`git merge-base --is-ancestor origin/main HEAD\`
@@ -439,6 +454,67 @@ ${MIGRATION_LINES}
   AND THE ANSWER MUST MEAN WHAT YOU THINK: \`--is-ancestor\` asks "do these share
   history", which after a SQUASH merge is NOT "is my work in main" — post-merge, ask
   about CONTENT. Same command, opposite verdicts, both correct.
+  AND A CONTENT CHECK CAN LIE IN THE REASSURING DIRECTION. A single-line \`grep\` for a
+  sentence reads a WRAPPED one as absent, and it fails toward "missing" — which is the
+  direction that prompts you to go and add something already there. Measured
+  2026-08-20: a lane reported a doc line missing, went to fix it, and found its
+  \`grep -c\` had only failed on a line break. A verification that manufactures work is
+  worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
+  that cannot wrap, or use \`rg -U\`, and when a content check says something is
+  missing, OPEN THE FILE before believing it.
+- A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
+  ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
+  If you encode THAT shape, your guard is green against a tree that never used it, and
+  blind to the spelling everyone actually reaches for. Measured 2026-08-20 on #3325: a
+  census was written to catch \`LOWER(symptom)\` because the issue said \`LOWER()\`, while
+  this repo overwhelmingly writes \`= ? COLLATE NOCASE\` — the collation attached to the
+  COMPARISON, not adjacent to the column. The scanner would have shipped green and
+  unable to see the most likely way anyone would introduce the bug, which is worse than
+  no guard: it turns "nobody has done this" into "nobody can do this", and only the
+  first is true.
+  So before you encode a pattern, GREP FOR HOW THE CONSTRUCT IS ACTUALLY SPELLED here
+  and enumerate the variants. It is the same order of operations as the premise audit —
+  read what is there before encoding what you expect — and the same cost of skipping it.
+  THEN PROVE THE GUARD CAN SEE: run it over sources authored to BREAK it, in the
+  lib/__tests__/nul-byte-census.test.ts tradition. A green sweep over a COMPLYING tree
+  says nothing about what the sweep can see. And assert the guard's SILENCE on the
+  benign neighbours too — #3325's census had to stay quiet on five shipped
+  \`ORDER BY … COLLATE NOCASE\` sorts, because sorting is not matching and a guard that
+  cried wolf on them would have been deleted within a week, taking the real guard with it.
+- A CONTENT CHECK MUST STATE ITS SCOPE, OR IT REPORTS ON A SCOPE IT NEVER HAD. The
+  brief already says a grep can fail toward "missing" and manufacture work. It fails
+  the OTHER way just as easily, and that way is louder: measured 2026-08-20, a lane
+  swept the whole tree for a retracted sentence, got "STILL PRESENT (bad)" from three
+  files it had never touched, and was one step from "fixing" unrelated code. Scoped to
+  the seven files it actually changed, there was exactly one hit — inside a docstring
+  that QUOTES the retracted rule in order to argue against it, which is correct and
+  must stay.
+  So: scope every content check to the files you changed, and expect a deliberate
+  quotation of the thing you removed. Both directions of this failure are the same
+  bug — a check whose scope is wider or narrower than the question being asked.
+  AND NEVER TRUST A BARE \`grep -c\`. A count is a claim stripped of its context, and
+  two more ways it lies were measured on #3391 within one verification pass:
+  a CASE mismatch (the phrase was there in screaming caps; the grep was lowercase, so
+  it reported "missing" — the reassuring-to-fix direction again), and a count of 1 that
+  was a DIFFERENT, pre-existing, unrelated assertion, which read as "you did not remove
+  the thing you said you removed". Both would have sent a lane to re-edit a correct
+  merged file. Use \`-i\` when case is not part of the claim, print the MATCHES with
+  context (\`-n\`, \`-B\`/\`-A\`) rather than the count, and open the file before believing a
+  zero. A wrong verification is more expensive than none, because the work it invents
+  looks justified.
+  AND THE THIRD DIRECTION IS THE BEST DISGUISED: a check can fail toward A PLAUSIBLE
+  CORRECTION OF WORK THAT WAS ALREADY RIGHT. "Missing, go add it" and "still present,
+  go remove it" both feel like DISCOVERIES; this one feels like DILIGENCE. Measured
+  2026-08-20 on #3404: a lane had a count right, re-censused with a file-level grep,
+  made it wrong, and was about to ship the wrong number into a doc whose entire value
+  is being checkable — because the file it added matched only on a MENTION of the
+  symbol inside a comment.
+  THE DEFENCE IS NOT SKEPTICISM ABOUT THE NUMBER. It is asking WHAT THE CHECK IS
+  MATCHING ON: a filename grep for a symbol matches comments (over-matches) and misses
+  anything that hand-rolls the thing instead of importing it (under-matches), so it is
+  wrong in both directions at once. Match on the IMPORT, or on whatever actually
+  constitutes membership. That same question then found a whole component nobody's
+  census had ever seen (#3405).
 - VERIFY A SQUASH MERGE BY CONTENT, NOT ANCESTRY — the concrete form of the line
   above, because two lanes reached for it independently on the same night and both
   were right to. Your branch collapses into ONE commit on main, so \`--is-ancestor\`
@@ -446,6 +522,28 @@ ${MIGRATION_LINES}
   landed: the symbols you added, the deletions you made, and above all the REVERTS —
   #2774 checked that a \`touch-manipulation\` class it had deliberately reverted was
   still absent THROUGH the merge, which is a thing ancestry could never have told it.
+- A SIGNAL MUST BE DISTINGUISHABLE FROM ITS OWN TEST FIXTURE. When you add
+  instrumentation that announces a rare event, the test you write to exercise it
+  forges that event ON PURPOSE — and if the forged occurrence prints the same thing
+  the real one does, YOUR ONE REAL SIGNAL ARRIVES PRE-BURIED in the output of the
+  test that proves the signal works. Measured 2026-08-20 on #3368: a lost-submit
+  rescue was made to log when it fires, and its regression test forges a lost click on
+  THE VERY CONTROL AND ROUTE the original sighting came from, so three deliberate hits
+  per run sat in the grep output looking exactly like the thing the grep is for.
+  THE FIX IS NOT TO SUPPRESS THE TEST'S COPY — a log line that never executes in CI is
+  untested code that breaks on the day it matters, and the forged lines double as
+  proof the announcement machinery still works. MARK IT INSTEAD: have the page or the
+  fixture declare that this occurrence is forged, and print the two cases as different
+  sentences ("FORGED BY A SPEC on purpose" vs "NOT forged — this is real"). Verify by
+  running the affected specs and counting: the number of marked lines must equal the
+  number of forgeries, and nothing else may print.
+  AND WHEN A HYGIENE GATE BLOCKS THE OBVIOUS ROUTE, THAT IS USUALLY THE GATE BEING
+  RIGHT. That lane tried \`test.info()\` to name the spec, which needs
+  \`@playwright/test\` in helpers.ts — forbidden by lib/__tests__/e2e-hygiene.test.ts —
+  and importing the extended \`test\` from ./fixtures would have been a cycle. It did
+  NOT add an allow-list entry. Widening a hygiene guard to buy a diagnostic nicety is
+  the wrong trade, and the design the guard forced (the page declares its own forgery)
+  is better than the one it blocked.
 - LET INSTRUMENTATION SURVIVE ITS OWN USEFULNESS. A click log or a touch log that
   pins nothing and backs no assertion looks exactly deletable, and a reviewer WILL
   reach for it — write the comment above it addressed to that reviewer specifically.
@@ -466,6 +564,18 @@ ${MIGRATION_LINES}
   script scoping itself to your diff, not a gate you missed. Report its output verbatim.
   Give that Bash call an explicit long timeout; if it cannot fit one tool call
   under contention, run the same gates individually in the same order.
+- WHEN A CONTROL RUN IS SAMPLING A RACE, DO NOT RUN IT MORE TIMES — REMOVE THE RACE
+  AND MEASURE THE QUANTITY UNDERNEATH. Repeats can only ever make a verdict PROBABLE,
+  and on an intermittent failure a green control proves nothing at all: it has just
+  not rolled again. Measured 2026-08-20 on #3384, where a lane was told to run repeats
+  at two commits to decide whether a neighbouring PR had caused a 5px overflow. It did
+  something better — it waited for the content the spec was racing, then read
+  scrollWidth/clientWidth directly at both commits: 363/358 either side, IDENTICAL.
+  One run each, and it exonerated a commit the lane had every incentive to blame.
+  The general form: a flaky comparison is usually a measurement taken at an unstable
+  moment. Find what makes the moment unstable, wait for it, and the comparison becomes
+  a single reading instead of a sample. Run the repeats too if you like — but say
+  plainly which of the two carried your verdict.
 - A FAILURE IN CODE YOU DID NOT TOUCH IS CONTENTION UNTIL PROVEN OTHERWISE. Up to
   five agents share four cores here, and measured load has reached 22 — a starved
   tier fails in specs nobody edited and reads exactly like a regression. Before
@@ -473,9 +583,80 @@ ${MIGRATION_LINES}
   origin/main control worktree and show it failing there too. Report the
   comparison, not the first red. Two agents were saved from a false regression
   report this way on 2026-08-15 only because they thought of it themselves.
+- A RACE THAT RESOLVES TOWARD THE EMPTY DOM FAILS TOWARD GREEN. Measured 2026-08-20
+  on #3384, and it is the purest form of the trap this whole brief circles. A spec
+  measured a dialog body's width WITHOUT FIRST WAITING FOR ANYTHING INSIDE IT. The
+  region renders a loading paragraph while its real content arrives — and a paragraph
+  fits any width. So the check passed by looking at a PLACEHOLDER instead of the form
+  it names, sailed through twelve shards on its own PR and twelve more on the next
+  one, and reported success without ever having examined the thing it claimed to
+  examine. It only ever failed when CI happened to be past the mount.
+  THE TELL, and it is worth learning as a signature: WHETHER you see the failure was a
+  race, but HOW BIG it was never varied. A stable wrong value with an unstable
+  occurrence means something real is being measured SOMETIMES — not that the value is
+  noise. Do not dismiss it as flake, and do not conclude the failure is deterministic
+  either (that was my own error on the same issue, corrected within the hour).
+  SO: before you measure a container, WAIT FOR THE CONTENT YOU MEAN TO MEASURE — a
+  specific child, not the container's own visibility. Any assertion about size,
+  overflow, position or count on a region that loads asynchronously is making a claim
+  about whatever happened to be there, and empty is the state that flatters you.
+- A GENEROUS CEILING IS HONEST ON A *PRESENCE* ASSERTION AND DANGEROUS ON AN
+  *ABSENCE* ONE. This is the rule to reach for before arguing about timeouts at all.
+  Waiting longer cannot make a row that was never created appear — so if the write is
+  genuinely broken, a presence assertion still fails and the budget cost you nothing.
+  Waiting longer CAN let a bug's window close under an absence assertion, which then
+  passes against the very bug it exists to catch: that is why #3287's dedicated spec
+  asserts NOTHING after its discard, and why a retrying toHaveCount(0) is the shape to
+  distrust. A slow write and a swallowed pre-hydration tap read IDENTICALLY as
+  "element(s) not found"; the discriminator is whether a bigger ceiling rescues it, and
+  the answer only means something on a presence. Measured both ways in the tree:
+  activity-equipment.spec.ts (hydratedClick 0/5 -> 0/5, ceiling 0/5 -> 4/5, so latency)
+  and imaging.spec.ts (the opposite verdict, so latency DISPROVEN). If you add a
+  ceiling, NAME it as a constant and put the measurement in the comment — the number
+  alone is indistinguishable from a guess.
+  AND THE DERIVATION IS NOT BOOKKEEPING; IT IS HOW YOU FIND OUT THE CONSTANT IS WRONG.
+  Measured on #3391: a lane was asked to state what a ceiling's headroom was FOR, went
+  to write that sentence, and discovered while writing it that the bound was checked
+  against the wrong quantity and could never fire at all — a defect no amount of
+  staring at the number would have surfaced, because the number was irrelevant. Having
+  to say out loud what a bound is bounding is the check. Demand the stated unit even
+  when the constant looks obviously right.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
+- \`e2e (N)\` IS NOT \`--shard=N/12\`, and reaching for the obvious spelling gives you a
+  FALSE GREEN off the wrong 113 tests. CI builds each shard from a DURATION-BALANCED
+  plan (scripts/e2e-shard-plan.ts over e2e/spec-durations.json); Playwright's own
+  count-based \`--shard\` is only the fallback that script emits when the manifest is
+  MISSING, so the two partitions genuinely differ. Measured 2026-08-20 on PR #3357:
+  the two specs failing in \`e2e (1)\` land in Playwright's shard 12, and shard 12 was
+  GREEN in that same CI run — so \`--shard=1/12\` would have "reproduced" the failure
+  by running neither of them. Reproduce a named CI shard with the plan, exactly as
+  the script's own header shows:
+      mapfile -t ARGS < <(npx tsx scripts/e2e-shard-plan.ts 1 12)
+      npx playwright test "\${ARGS[@]}"
+  And when you argue "my diff did not move shard composition", CHECK it rather than
+  asserting it: diff the plan output between your branch and origin/main. Composition
+  moves when a .spec.ts file is ADDED or REMOVED, or when e2e/spec-durations.json
+  changes — editing an existing spec does not move it.
+  AND IF YOU DID ADD A SPEC FILE, YOU RE-PARTITIONED ALL TWELVE SHARDS. Measured
+  2026-08-20 on #3388: adding ONE spec changed shard 1 by 24 specs in and 23 out. A
+  spec you never touched stayed in shard 1 but ran beside an entirely different
+  NEIGHBOUR SET — and then failed, on a route the diff does not render on. You changed
+  its COMPANY, not its behaviour.
+  So a red in a spec you did not touch, on a PR that adds a spec file, is a THIRD
+  possibility beside "mine" and "contention": a latent co-residency bug your
+  re-partition exposed.
+  AND THE RE-PARTITION IS NOT THE FAILURE — IT ONLY CHANGES THE DICE. Same PR, same
+  commit, same partition: a plain re-run went GREEN. So adding a spec permanently
+  changes WHO a spec's neighbours are, and whether the latent bug then fires is a
+  FURTHER ROLL. The consequence is the one that catches people: a lane that adds a
+  spec, reds once, and re-runs to green HAS NOT DISPROVED ANYTHING — it has only
+  declined to roll again. Report the re-partition you caused either way; a green
+  re-run is not a clean bill for the spec whose company you changed. Diff the plan (\`tsx scripts/e2e-shard-plan.ts N 12\`) between
+  your branch and a control to see whose neighbours you changed, and say so.
+  DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
+  a suite that cannot grow without hiding failures is measuring less every time.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
@@ -492,6 +673,14 @@ ${MIGRATION_LINES}
   (e2e/pinned-timezone.ts), so naive strings parse host-UTC (#1417)
 - NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
   included) — use low-entropy words+digits values
+- AN ARTIFACT THAT SATISFIES AN ACCEPTANCE CRITERION MUST BE COMMITTED, NOT LEFT IN
+  $SCRATCH. Measured 2026-08-20 on #3320: a previous lane's census script — the thing
+  an AC named in the words "the query exists and is recorded" — survived only as a
+  file in the shared scratchpad, one container restart from gone, while its PR was
+  already merged. Scratch is for LOGS and WORKING FILES. If a deliverable is a script,
+  a query, a probe or a measurement someone is meant to re-run, it belongs in the tree
+  with a way to invoke it. Ask of every AC: does satisfying this leave something behind,
+  and is that something in git?
 - Every scratch file you write goes in $SCRATCH ITSELF, never inside your worktree,
   and gets a branch-unique name ($SCRATCH/pr-body-${opts.branch.split("/").pop()}.md,
   never pr-body.md) — $SCRATCH is shared by every concurrent agent, and an untracked
@@ -502,6 +691,25 @@ ${MIGRATION_LINES}
   ($SCRATCH/gates-${opts.branch.split("/").pop()}.log, never gates.log): the logs are
   what collide in practice — two clusters appending to one gates.log interleaved their
   vitest output, and each read the other's failures as its own.
+- NEVER \`git stash\` — NOT \`push\`, NOT \`pop\`, NOT \`-u\`. THE STASH STACK IS SHARED
+  ACROSS EVERY WORKTREE, because they share one .git. A \`pop\` in YOUR tree takes
+  whatever is on top of the stack — which may be another agent's, or the
+  orchestrator's — dumps it into YOUR working copy, and CONSUMES the entry.
+  Measured 2026-08-20 on #3220: a lane stashed to diff a shard plan, popped, and
+  received five files it had never touched, including a DELETION. Nothing was lost
+  only because the lane noticed, restored its tree from HEAD, and re-created the
+  stash by hand with a patch copy — and because its own work was already committed.
+  WORSE, THE ENTRY IT NEARLY DESTROYED WAS A REVERT OF A MERGED FIX. Silently applied,
+  it would have re-broken a shipped safety fix and deleted that fix's test file, in a
+  tree whose owner had no reason to look.
+  AND IT APPLIED CLEANLY — no conflict, nothing to notice. That is the part that
+  defeats "I would spot it": a stash from another lane's base lands silently, and the
+  only signal is a diffstat you had no reason to read. If you ever DO meet an
+  unexpected stash entry, read its diffstat before trusting it; a clean apply is not
+  evidence it belongs to you.
+  If you need a clean tree: COMMIT (your work must be pushed anyway — see the hard
+  gate above), or copy files to $SCRATCH with branch-unique names, or use a second
+  worktree. All three are safe; the stash is the only one that reaches across lanes.
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
   harness name. Sibling clusters run the same binaries in this container, so a pattern
   kill takes their runs down with yours and they have no way to tell that from a real
@@ -757,6 +965,39 @@ function cmdList() {
       );
     }
   }
+  // WORKTREES NOBODY CLAIMS — the blind spot that made the idle number LIE.
+  //
+  // Idle is "newest of branch tip, worktree write", and both are read from the
+  // objects the LEDGER names. A lane that finishes its first issue and starts the
+  // second on a NEW branch in a NEW worktree freezes both of those at the instant it
+  // moved, so a highly productive agent reads as totally still. Measured live
+  // 2026-08-20: the #3270/#3271 lane showed idle=2h10m and "silent on two requests"
+  // while it had a 21-file PR open the whole time, on agent/3271-combobox-portal in
+  // wt-combobox-portal. The stall rule was not wrong; its INPUTS were bound to the
+  // wrong objects, which is the harder failure to see because the number looks fine.
+  //
+  // So print every $SCRATCH worktree no ACTIVE dispatch claims. It costs one line
+  // when the board is clean, and it answers both directions at once: a lane that
+  // moved (branch present, work recent) and a genuinely orphaned tree left by a dead
+  // agent (the "DIRTY AND NO AGENT" case the check-in exists for). Do NOT infer a
+  // stall from a frozen ledger branch without reading this list first.
+  const claimed = new Set(active.map((d) => d.branch));
+  const stray = [...worktreePathsByBranch()]
+    .filter(
+      ([branch, dir]) => !claimed.has(branch) && dir.startsWith(STATE_DIR)
+    )
+    .map(([branch, dir]) => ({ branch, dir, idle: worktreeIdleMs(dir) }));
+  if (stray.length) {
+    console.log("Worktrees no active dispatch claims:");
+    for (const s of stray) {
+      console.log(
+        `  ${s.dir}  branch=${s.branch}  idle=${s.idle === null ? "(no trace)" : fmt(s.idle)}` +
+          "  << a lane that MOVED here reads as stalled above; check this before" +
+          " calling a stall"
+      );
+    }
+  }
+
   const note = discarded
     ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
     : "";

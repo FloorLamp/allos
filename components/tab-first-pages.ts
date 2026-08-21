@@ -2,7 +2,7 @@ import type { AppRoute, NutritionTab } from "@/lib/hrefs";
 import { trainingTabStrip } from "@/lib/training-tabs";
 
 interface TabFirstPageBase {
-  pageId: "nutrition" | "records" | "results" | "training";
+  pageId: "data" | "nutrition" | "records" | "results" | "training";
   title: string;
   subtitle?: string;
   mobileColumns: 2 | 3 | 4;
@@ -27,11 +27,43 @@ export interface RouteTabFirstPageConfig extends TabFirstPageBase {
 export type TabFirstPageConfig =
   QueryTabFirstPageConfig | RouteTabFirstPageConfig;
 
+export const DATA_TAB_FIRST_PAGE = {
+  pageId: "data",
+  kind: "query",
+  pathname: "/data",
+  title: "Data",
+  subtitle:
+    "Bring data in — upload documents, paste logs, or connect a device — then browse, manage, and export everything you've logged.",
+  paramKey: "section",
+  // Five tabs, one of them two words: the equal-width grid tops out at four and
+  // would crush "Manage & export", so this is the scrolling strip Training uses.
+  // `mobileColumns` is inert under `mobileLayout: "scroll"` and only satisfies
+  // the shared base type.
+  mobileColumns: 4,
+  mobileLayout: "scroll",
+  testId: "data-tabs",
+  tabs: [
+    { id: "import", label: "Import" },
+    // Deliberately NO unresolved-item count here (it used to read "Review (3)").
+    // A tab-first config is rendered from the PATH ALONE by ShellChrome's client
+    // strip, which has no server data — so a count could only ever appear on the
+    // desktop copy, and one width silently showing a different label is worse
+    // than neither showing it. The number is not lost: #1801 put it on the Data
+    // nav entry's badge, which is the surface that owns it, and that badge is
+    // visible on both widths including while you are on this page.
+    { id: "review", label: "Review" },
+    { id: "coverage", label: "Coverage" },
+    { id: "manage", label: "Manage & export" },
+    { id: "trash", label: "Trash" },
+  ],
+} as const satisfies TabFirstPageConfig;
+
 export const NUTRITION_TAB_FIRST_PAGE = {
   pageId: "nutrition",
   kind: "query",
   pathname: "/nutrition",
   title: "Nutrition",
+  subtitle: "Log what you eat and manage the supplements you take.",
   paramKey: "tab",
   mobileColumns: 2,
   tabs: [
@@ -63,6 +95,8 @@ export const RESULTS_TAB_FIRST_PAGE = {
   kind: "route",
   pathnamePrefix: "/results",
   title: "Results",
+  subtitle:
+    "Lab results, imaging studies, narrative reports, and genomics in one place.",
   mobileColumns: 4,
   testId: "results-tabs",
   desktopStripClassName: "mb-6",
@@ -91,6 +125,7 @@ export const TRAINING_TAB_FIRST_PAGE = {
 // as the page, so the prominent phone tabs can live in the auto-hiding shell
 // while the compact desktop strip stays below its PageHeader.
 const TAB_FIRST_PAGES: readonly TabFirstPageConfig[] = [
+  DATA_TAB_FIRST_PAGE,
   NUTRITION_TAB_FIRST_PAGE,
   RECORDS_TAB_FIRST_PAGE,
   RESULTS_TAB_FIRST_PAGE,

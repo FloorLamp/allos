@@ -78,6 +78,49 @@ export function bottleSiblingKind(
   return members.length === 0 ? null : poolSurfaceKind(members);
 }
 
+// Which bottles a KIND-LOCKED door may offer (#3270).
+//
+// A locked door does not ask and cannot be corrected — lib/intake-kind.ts puts
+// `locked` first with `correctable: false` — so a bottle it offers is a bottle whose
+// pick WRITES the door's kind, silently. Offering the household's ibuprofen in the Add
+// supplement door therefore does not file a medication under a warning; it files a
+// SUPPLEMENT named Ibuprofen. `kind` picks the dose vocabulary and the suggestion lists
+// (#846) and is what the interaction and PRN-ceiling paths read, so that row is wrong in
+// every one of those places with nothing on screen to say so.
+//
+// THE NO-SIBLING CASE, decided here (#3270). A bottle nobody links yet is OFFERED in
+// every door. A bottle has no kind of its own (#1374) and borrows one from a linked
+// sibling (#3216 decision 3), so with no sibling there is nothing being contradicted:
+// the door's kind is the only reading available and it is an honest one — it says what
+// the person just chose. Withholding it instead would make the shared-bottle front door
+// (#1705) omit household bottles for a reason invisible on the screen, which is the
+// worse failure of the two precisely because nothing on the surface can explain it.
+// This also keeps the browse list in step with the cabinet's own deep link, which sends
+// an unlinked bottle to a door (poolSurfaceKind defaults to supplement) that would
+// otherwise be the only place it could be reached from.
+//
+// Not poolSurfaceKind's question. That one must NAME a kind because it picks a
+// destination for an item created from a bottle; here the door has already named it,
+// and the only question left is whether the bottle contradicts it.
+export function bottleFitsKindDoor(
+  bottle: Pick<SupplyOption, "siblingKind">,
+  lockedKind: IntakeItemKind | null
+): boolean {
+  if (lockedKind == null) return true;
+  const sibling = bottle.siblingKind ?? null;
+  return sibling == null || sibling === lockedKind;
+}
+
+// The same rule over a list — what a door actually offers. Named once so the door's
+// OFFER set and the set it RESOLVES a pick against cannot drift apart: a row nobody
+// was shown must not become linkable by typing its label.
+export function bottlesForKindDoor<T extends Pick<SupplyOption, "siblingKind">>(
+  bottles: readonly T[],
+  lockedKind: IntakeItemKind | null
+): T[] {
+  return bottles.filter((b) => bottleFitsKindDoor(b, lockedKind));
+}
+
 // An item's product identity, as `intake_items` (+ its active doses) stores it.
 export interface ItemProductFacts {
   name: string;

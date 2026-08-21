@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
-import type { OutcomeGoal } from "@/lib/types";
-import type { GoalProgress } from "@/lib/queries";
+import type { BodyMetricKind, OutcomeGoal } from "@/lib/types";
+import type { ExerciseBest, GoalProgress } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import {
   goalBarClass,
@@ -61,6 +61,8 @@ export default function GoalsManager({
   lifts,
   equipment,
   equipmentByExercise,
+  exerciseBests,
+  latestBodyMetrics,
   weightUnit,
   biomarkerOptions,
   strengthTrainingAvailable = true,
@@ -74,6 +76,11 @@ export default function GoalsManager({
   // a profile that owns no equipment — the goal form then renders no picker at all.
   equipment: { id: number; name: string }[];
   equipmentByExercise: Record<string, number[]>;
+  // What the goal form states as a new target's STARTING POINT (#3220): the best
+  // already logged per movement, and the latest value per body metric. Plain objects
+  // so they cross into this client component; both are inert when empty.
+  exerciseBests: Record<string, ExerciseBest>;
+  latestBodyMetrics: Partial<Record<BodyMetricKind, number | null>>;
   weightUnit: WeightUnit;
   biomarkerOptions: GoalBiomarkerOption[];
   strengthTrainingAvailable?: boolean;
@@ -424,6 +431,8 @@ export default function GoalsManager({
             lifts={lifts}
             equipment={equipment}
             equipmentByExercise={equipmentByExercise}
+            exerciseBests={exerciseBests}
+            latestBodyMetrics={latestBodyMetrics}
             weightUnit={weightUnit}
             biomarkerOptions={biomarkerOptions}
             editGoal={modal.goal}

@@ -54,7 +54,11 @@ export type QuickLogIcon =
   | "document"
   // Stool form (#2785). Its own key rather than reusing "droplet": one concept, one
   // glyph, and the sheet renders the two rows side by side under Body.
-  | "toilet";
+  | "toilet"
+  // Substance use (#3327). Deliberately NOT a glass or a cigarette: the row offers
+  // whatever this profile tracks, which since #3323 is anything they can name, so a
+  // glyph naming one curated substance would mislabel every other one.
+  | "flask";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
 // overlay host owns the form→component map; this stays a serializable key so the
@@ -80,6 +84,10 @@ export type QuickEntryForm =
   | "cycle"
   | "mood"
   | "stool"
+  // #3327: the profile's OWN substances, one tap each. The list is gathered on open
+  // like every other body here, which is what lets the row offer a substance named
+  // through #3326 minutes earlier.
+  | "substance"
   | "document";
 
 // What the CALLER's context implies about the form it opens (#2014): the vitals
@@ -125,6 +133,7 @@ export const QUICK_LOG_IDS = [
   "log-mood",
   "log-period",
   "log-stool",
+  "log-substance",
   "add-document",
 ] as const;
 
@@ -147,6 +156,9 @@ export interface QuickLogItem {
   // widget (lib/nav-relevance.cycleTrackingRelevant), so a period row can never leak
   // into the sheet of a profile the whole domain does not apply to.
   cycle?: boolean;
+  // True for the row only a profile that ACTUALLY TRACKS a substance should see
+  // (#3327). Unlike `cycle`, its gate defaults to HIDDEN — see quickLogMenu.
+  substance?: boolean;
 }
 
 export const LOG_ACTIVITY_ID = "log-activity";
@@ -260,6 +272,21 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     target: { kind: "overlay", form: "stool" },
   },
   {
+    id: "log-substance",
+    label: "Log substance",
+    hint: "A use of something you track",
+    icon: "flask",
+    // #3327, and the overturn of this domain's argued exclusion (see the census at
+    // the foot of this file). The old argument was that a sheet row would detach the
+    // tap from the #998 cap verdict that makes it honest. #3279 ruling 1 narrowed it:
+    // a profile with no reduction cap has no verdict to detach from. So the row ships
+    // with BOTH halves of that answered — it is offered only to a profile that tracks
+    // a substance, and the overlay renders the cap line beside the tap for any
+    // substance that has one, so nothing is ever detached from a verdict that exists.
+    target: { kind: "overlay", form: "substance" },
+    substance: true,
+  },
+  {
     id: "add-document",
     label: "Add document",
     hint: "Lab report, visit summary, or a photo of one",
@@ -322,8 +349,22 @@ export function primaryQuickLog(
 //     reason DEFAULT_NAV_RELEVANCE does: a caller that hasn't threaded the bitset must
 //     never over-hide. The overlay re-checks it server-side, so a deep link cannot
 //     reach the offer on a profile the domain does not apply to either.
-export function quickLogMenu(cycleRelevant = true): QuickLogItem[] {
-  return QUICK_LOG_ITEMS.filter((i) => !(i.cycle && !cycleRelevant));
+// `substanceRelevant` is the #3327 bit: this profile has a substance ledger row AND is
+// not a known minor (the #1174 gate the whole surface carries).
+//
+// IT DEFAULTS FALSE, and the asymmetry with `cycleRelevant` is the decision. A caller
+// that has not threaded the cycle bit must never OVER-HIDE, because hiding the period
+// row from someone who needs it costs them a log. A caller that has not threaded the
+// substance bit must never OVER-SHOW, because the defect #3327 exists to fix IS the
+// unconditional offer: a row promising substances to a profile that tracks none is an
+// empty offer, which is worse than no offer. Absent evidence, no row.
+export function quickLogMenu(
+  cycleRelevant = true,
+  substanceRelevant = false
+): QuickLogItem[] {
+  return QUICK_LOG_ITEMS.filter(
+    (i) => !(i.cycle && !cycleRelevant) && !(i.substance && !substanceRelevant)
+  );
 }
 
 // ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────
@@ -354,8 +395,22 @@ export const QUICK_LOG_DOMAIN_CENSUS = {
   symptom: arguedExclusion(
     "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the illness Now cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
   ),
-  substance: arguedExclusion(
-    "Deliberate-access surface by doctrine: substance-use logging lives under Medical → Substance use with its #998 cap verdict rendered beside the tap, and the findings reach policy keeps it off general-purpose quick surfaces. A sheet row would detach the tap from the cap context that makes it honest."
-  ),
+  // OVERTURNED (#3327), and the argument it replaces is worth keeping in view. The
+  // exclusion read: substance logging lives under Medical → Substance use with its
+  // #998 cap verdict rendered beside the tap, and a sheet row would detach the tap
+  // from the context that makes it honest. #3279 ruling 1 narrowed that to its real
+  // premise — it presumes a cap EXISTS, and under neutral observation a profile with
+  // no reduction cap has no verdict to detach from.
+  //
+  // Both halves are now answered rather than assumed, which is what admits the row:
+  //   • the row is offered ONLY to a profile that has a substance ledger row (#3279
+  //     ruling 3, data-presence earns quick access), never for the vocabulary at
+  //     large, and a profile that tracks none gets no row at all;
+  //   • the overlay renders `capProgressLine` beside the tap for any substance whose
+  //     target exists, and NOTHING for one whose target does not — so a tap is never
+  //     detached from a verdict, and reduction framing never appears for somebody who
+  //     opted into none. The absence of a `SubstanceCapStatus` is the mechanism; there
+  //     is no flag re-answering the question (docs/internals/substances.md).
+  substance: "log-substance",
   document: "add-document",
 } as const satisfies Record<LoggableDomain, QuickLogId | ArguedExclusion>;

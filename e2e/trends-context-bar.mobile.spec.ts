@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick, followLink, settledBoxes } from "./helpers";
+import { bandStory, hydratedClick, followLink, settledBoxes } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 
 // The Trends phone chrome: primary tabs stay visible in one scrolling row while
@@ -81,7 +81,18 @@ test.describe("the tab-and-range context bar", () => {
     const viewportWidth = await page.evaluate(() => window.innerWidth);
     expect(tabsBox.x).toBeCloseTo(0, 0);
     expect(toggleBox.x + toggleBox.width).toBeCloseTo(viewportWidth, 0);
-    expect(barBox.y).toBeCloseTo(shellBox.y + shellBox.height, 0);
+    // NAMED, not just measured (#3364). This has gone red on CI three times —
+    // `Expected: 57  Received: 187`, always the same 130px — on three PRs whose
+    // diffs render nothing on this route, and each sighting cost a full diagnosis
+    // because the message says only how far off it was. The band is `-mt-4`'d
+    // against the content container's `pt-4`, so ANY element rendered above
+    // `{children}` (the two banners in app/(app)/layout.tsx) displaces the bar by
+    // its own height. bandStory names it. KEEP THIS: it is what makes the fourth
+    // sighting a diagnosis instead of a fourth investigation.
+    expect(
+      barBox.y,
+      await bandStory(page.getByTestId("shell-chrome"), page.getByTestId(BAR))
+    ).toBeCloseTo(shellBox.y + shellBox.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
     const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile is the subject — "is the window named above the FIRST chart?"
@@ -189,6 +200,87 @@ test.describe("the tab-and-range context bar", () => {
   });
 });
 
+// A device zone the run's pin can never equal: `pinnedTimezone` only ever returns
+// `UTC` or an `Etc/GMT±N`, so any named city zone is guaranteed to differ from the
+// profile's. Set on the browser CONTEXT — the signal the product actually reads —
+// so nothing is written and this file stays read-only over the shared seed.
+const DEVICE_AWAY_ZONE = "Asia/Tokyo";
+
+test.describe("a band above the bar names itself (#3364)", () => {
+  // THIS TEST IS NOT ABOUT THE TRAVEL BANNER — it has its own spec
+  // (e2e/travel-timezone.spec.ts). It exists to prove the DIAGNOSTIC on the
+  // geometry assertion above can actually see an insertion.
+  //
+  // Every run of this file on a healthy tree exercises bandStory's "nothing sits
+  // between them" branch and nothing else, so the branch that matters — the one
+  // that runs on the day CI is 130px out — would be an untested string, and would
+  // stay untested precisely because the failure it describes is rare. The forged
+  // band below is the only place it runs.
+  //
+  // FORGED ON PURPOSE, and distinguishable from a real sighting: this test puts
+  // the banner there itself by moving the DEVICE, in its own context. A real
+  // sighting appears in the first describe's assertion message with nobody having
+  // asked for it.
+  test("a banner between the shell and the bar is named, and the bar moves by exactly its height", async ({
+    browser,
+  }) => {
+    // The state nine `own-zone` fixtures are in by design (e2e/fixture-timezones.ts
+    // says so in its own header), and the state a leaked profile switch or a leaked
+    // `profile_settings` timezone row would put the shared profile in: the device is
+    // somewhere the profile's day is not, so the layout grows a banner above the
+    // page content.
+    const context = await browser.newContext({
+      timezoneId: DEVICE_AWAY_ZONE,
+    });
+    const page = await context.newPage();
+    try {
+      await page.goto("/trends");
+      const banner = page.getByTestId("travel-timezone-banner");
+      // A NAMED CEILING, not a sleep — the banner cannot exist until React has
+      // hydrated and the device-zone effect has run, and on a loaded runner that
+      // chain outlasts the 5 s default (the same 20 s travel-timezone.spec.ts
+      // measured for the same wait). This is a PRESENCE assertion, so the ceiling
+      // costs nothing if the banner genuinely never comes.
+      await expect(banner).toBeVisible({ timeout: 20_000 });
+
+      const [shellBox, barBox] = await settledBoxes([
+        page.getByTestId("shell-chrome"),
+        page.getByTestId(BAR),
+      ]);
+      // What the NEXT red would print. Two claims: it names the element, and it
+      // names it by testid rather than by a bare tag, which is the difference
+      // between "a div" and "the travel banner".
+      const story = await bandStory(
+        page.getByTestId("shell-chrome"),
+        page.getByTestId(BAR)
+      );
+      expect(story, "the band diagnostic must name what it saw").toContain(
+        'data-testid="travel-timezone-banner"'
+      );
+
+      // And the displacement is the banner's own outer height — box plus the
+      // margins it displaces with (`mb-5`), read from the element rather than
+      // hard-coded, so a restyle cannot make this pass for the wrong reason. This
+      // is the arithmetic the failing CI message never got to do: 187 − 57 is a
+      // banner, not a mystery.
+      const displacement = await banner.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return (
+          el.getBoundingClientRect().height +
+          parseFloat(style.marginTop || "0") +
+          parseFloat(style.marginBottom || "0")
+        );
+      });
+      expect(barBox.y - (shellBox.y + shellBox.height), story).toBeCloseTo(
+        displacement,
+        0
+      );
+    } finally {
+      await context.close();
+    }
+  });
+});
+
 test.describe("the bar rides the shell chrome (F + #1416)", () => {
   test("hides on scroll-down with the navbar and returns on scroll-up", async ({
     page,
@@ -258,7 +350,15 @@ test.describe("the heading band is given up below sm (F)", () => {
     const box = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px
     // this wave started from.
-    expect(box!.y, "first chart offset on Trends → Overview").toBeLessThan(430);
+    //
+    // The same #3364 diagnostic as above, for the same reason: this ceiling is the
+    // OTHER assertion a band above the content moves, and 130px of banner would
+    // push a 300px offset to 430 without naming what arrived.
+    expect(
+      box!.y,
+      `first chart offset on Trends → Overview; ` +
+        (await bandStory(page.getByTestId("shell-chrome"), tile))
+    ).toBeLessThan(430);
     await expect(tile).toBeInViewport();
   });
 });

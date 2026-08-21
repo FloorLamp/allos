@@ -36,6 +36,9 @@ import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import IntakeFactRow, {
   type IntakeOpenPanel,
 } from "@/components/intake/IntakeFactRow";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
 import IntakeKindChip from "@/components/intake/IntakeKindChip";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
@@ -43,6 +46,7 @@ import {
   applyProductSeed,
   bottleForOptionLabel,
   bottleOptionLabel,
+  bottlesForKindDoor,
   itemSeedFromPool,
   type SupplyOption,
 } from "@/lib/supply-product";
@@ -196,7 +200,16 @@ export default function IntakeItemForm({
   const formRef = useRef<HTMLFormElement>(null);
   const catalogOptions = useIntakeOptions();
   const [error, setError] = useState<string | null>(null);
-  const [openPanel, setOpenPanel] = useState<IntakeOpenPanel | null>(null);
+  // The one-editor-at-a-time state and its Done/Esc contract come from the shared
+  // facts-with-editors primitive (#3218); this form supplies only its own fact keys.
+  // The form element is the scope the primitive searches to hand focus back to the chip
+  // that opened an editor (#3311).
+  const {
+    openEditor: openPanel,
+    open: setOpenPanel,
+    close: closePanel,
+    onKeyDown: onFormKeyDown,
+  } = useFactEditor<IntakeOpenPanel>({ scopeRef: formRef });
   // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
   // than to correct an existing sentence.
   const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);
@@ -508,7 +521,10 @@ export default function IntakeItemForm({
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
     // supply_id on this item's own save, and lends its members' kind — a bottle has
     // none of its own, so one with nothing linked yet falls through to the ask.
-    const bottle = bottleForOptionLabel(bottles, picked);
+    const bottle = bottleForOptionLabel(
+      bottlesForKindDoor(bottles, lockedKind),
+      picked
+    );
     if (bottle) {
       onPickSupply(bottle);
       return;
@@ -851,24 +867,6 @@ export default function IntakeItemForm({
       }),
   });
 
-  // Esc closes an editor exactly as Done does — the same return to the chips, so the
-  // keyboard path is never the one that traps you inside a fact.
-  //
-  // IT YIELDS THE FIRST ESCAPE TO AN OPEN PICKER. A combobox inside an editor uses
-  // Escape to close its own listbox; swallowing that would make the one key that
-  // dismisses a dropdown throw away the whole editor instead. So an Escape aimed at
-  // an EXPANDED combobox belongs to the combobox, and the next one closes the editor.
-  function onFormKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Escape" || openPanel == null) return;
-    const target = event.target as HTMLElement | null;
-    if (
-      target?.getAttribute("role") === "combobox" &&
-      target.getAttribute("aria-expanded") === "true"
-    )
-      return;
-    setOpenPanel(null);
-  }
-
   async function handle() {
     setError(null);
     if (derivation.kind == null) {
@@ -964,14 +962,20 @@ export default function IntakeItemForm({
     setRules([]);
     setSuggestedFields(new Set());
     setTouched(new Set());
-    setOpenPanel(null);
+    closePanel();
   }
 
   // Bottles lead: a bottle the household already has is a more specific answer than a
   // vocabulary entry with the same name, and it is the one that carries a count.
+  //
+  // BOTH HALVES OF THIS LIST ANSWER TO THE DOOR (#3270). The catalog half always did;
+  // the bottle half did not, so the Add supplement door listed the household's
+  // medications and picking one wrote a supplement named Ibuprofen — a locked door
+  // cannot be corrected, so nothing asked and nothing showed. `bottleFitsKindDoor`
+  // holds the rule and the no-sibling ruling.
   const nameOptions = useMemo(
     () => [
-      ...bottles.map(bottleOptionLabel),
+      ...bottlesForKindDoor(bottles, lockedKind).map(bottleOptionLabel),
       ...(lockedKind === "supplement"
         ? catalogOptions.supplements
         : lockedKind === "medication"
@@ -1115,34 +1119,29 @@ export default function IntakeItemForm({
           <IntakeFactRow
             summary={summary}
             openEditor={openPanel}
-            onOpen={(key) => {
+            onOpen={(key, focusKey) => {
               setRulesStartOnMenu(false);
-              setOpenPanel(key);
+              setOpenPanel(key, focusKey);
             }}
-            onAddRule={() => {
+            onAddRule={(focusKey) => {
               setRulesStartOnMenu(true);
-              setOpenPanel("rules");
+              setOpenPanel("rules", focusKey);
             }}
             onRemoveRule={(id) =>
               setRules((current) => current.filter((r) => r.id !== id))
             }
           />
         ) : (
-          <section
-            data-testid="intake-editor"
-            data-panel={openPanel}
+          <FactEditorHost
+            testId="intake-editor"
+            doneTestId="intake-editor-done"
+            panel={openPanel}
+            onDone={closePanel}
             className="sm:col-span-2"
+            bodyClassName="grid gap-4 sm:grid-cols-2"
           >
-            <div className="grid gap-4 sm:grid-cols-2">{renderPanel()}</div>
-            <button
-              type="button"
-              data-testid="intake-editor-done"
-              onClick={() => setOpenPanel(null)}
-              className="btn-ghost btn-sm mt-4"
-            >
-              Done
-            </button>
-          </section>
+            {renderPanel()}
+          </FactEditorHost>
         ))}
 
       {error && (

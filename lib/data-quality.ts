@@ -38,10 +38,12 @@ import {
   dataSectionHref,
   medicationEditHref,
   medicationsFilterHref,
+  nutritionTabHref,
   MEDICATIONS_HREF,
   type AppRoute,
 } from "./hrefs";
 import { isAdultForClinical } from "./life-stage";
+import type { IntakeItemKind } from "./types/intake";
 
 // The dedupeKey namespace every data-quality finding keys under (registered in
 // lib/rule-finding-prefixes). Kept here so the pure model owns its own identity.
@@ -79,7 +81,8 @@ export type DataQualityGapKey =
   | "prescriber-link"
   | "phenoage-inputs"
   | "failed-extractions"
-  | "risk-attributes";
+  | "risk-attributes"
+  | "dose-amount-unreadable";
 
 // One structural gap. `leverage` is the COUNT of consumers this fix unblocks — it
 // drives ranking (birthdate first, ~6 engines), and it is exactly the number of
@@ -137,6 +140,14 @@ export interface DataQualityInputs {
   failedExtractions: number;
   // Whether the self-declared risk attributes have ever been reviewed.
   riskAttributesReviewed: boolean;
+  // Count of LIVE dose rows on ACTIVE items whose amount states a number the
+  // separator rule refuses to guess at (#3153/#3320) — "2,5 g" is 2.5 g or 25 g and
+  // the row cannot say which. Nothing is stored wrong (a dose keeps only the typed
+  // text), but the amount reads as absent, so every nutrient total skips it.
+  unreadableDoseAmounts: number;
+  // The FIRST item carrying one, so the CTA lands where the amount is retyped.
+  // Null when there are none.
+  unreadableDoseAmountItem: { id: number; kind: IntakeItemKind } | null;
 }
 
 // ── Detectors ─────────────────────────────────────────────────────────────────
@@ -290,6 +301,43 @@ function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
   };
 }
 
+function doseAmountUnreadableGap(i: DataQualityInputs): DataQualityGap | null {
+  // Fires on dose amounts written before #3153 refused them at the write boundary.
+  // The row is not WRONG — a dose stores only the text that was typed, so there is
+  // nothing on disk to correct and nothing here guesses a locale for "2,5 g". What
+  // this gap fixes is the SILENCE: the amount reads as absent, so the upper-limit
+  // total and the RDA share both skip the dose without saying so, which is exactly
+  // the case where a large dose matters most (#3320). Retyping the amount clears it
+  // for good — the structural, one-time shape this module is for.
+  //
+  // THE COUNT IS A CEILING on the safety-relevant rows, not a tally of them: it spans
+  // every live dose on an active item, while only an every-day schedule feeds the
+  // daily UL/RDA totals (#635). The copy below is written to match — it says these
+  // amounts count as nothing in those totals, which is true of each row, and never
+  // claims N doses are missing from a safety number. See getUnreadableDoseAmounts.
+  const item = i.unreadableDoseAmountItem;
+  if (i.unreadableDoseAmounts <= 0 || item === null) return null;
+  const n = i.unreadableDoseAmounts;
+  const noun = n === 1 ? "dose amount" : "dose amounts";
+  return {
+    key: "dose-amount-unreadable",
+    label: `Retype ${n} ${noun}`,
+    whyLine:
+      `${n} ${noun} can't be read as a number (a "2,5 g" could be 2.5 g or 25 g), ` +
+      `so ${n === 1 ? "it counts" : "they count"} as nothing in your upper-limit ` +
+      `warnings and your RDA share.`,
+    // The FIRST affected item's own editor — a medication's edit form (the same
+    // deep link the med-rxcui gap uses, #1146), and for a supplement the tab its
+    // rows are edited inline on, which is the only surface a supplement's doses
+    // have. Fixing that item lowers the count and the CTA follows to the next.
+    ctaHref:
+      item.kind === "medication"
+        ? medicationEditHref(item.id)
+        : nutritionTabHref("supplements"),
+    leverage: 2,
+  };
+}
+
 function failedExtractionsGap(i: DataQualityInputs): DataQualityGap | null {
   if (i.failedExtractions <= 0) return null;
   const n = i.failedExtractions;
@@ -326,6 +374,9 @@ function riskAttributesGap(i: DataQualityInputs): DataQualityGap | null {
 const DETECTORS: ((i: DataQualityInputs) => DataQualityGap | null)[] = [
   birthdateGap,
   medRxcuiGap,
+  // Ahead of the other leverage-2 gaps on purpose: it is the one of them whose
+  // consequence is a SAFETY total that silently omits a dose.
+  doseAmountUnreadableGap,
   prescriberLinkGap,
   sexGap,
   smokingStatusGap,
@@ -390,5 +441,7 @@ function shortGapNoun(key: DataQualityGapKey): string {
       return "failed docs";
     case "risk-attributes":
       return "risk factors";
+    case "dose-amount-unreadable":
+      return "dose amounts";
   }
 }

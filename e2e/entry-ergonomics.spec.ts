@@ -447,10 +447,20 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   await expect(field).toContainText("estimated");
   const input = page.getByTestId("est-calories-input");
   await expect(input).toHaveValue(/^[1-9]\d*$/);
+  // The session equipment <select> moved BEHIND a fact chip (#3334) — same control,
+  // same .input class, one disclosure away — so its editor is opened to compare it.
+  // Dropping it from this set instead would quietly narrow what the assertion covers:
+  // the claim is that every control in this form reads as one surface, and a control
+  // that is one tap away is still in this form. The chip carries the same testid in
+  // both its shapes (a stated gear name, or the "+ equipment" prompt when the recency
+  // default finds nothing), so this does not depend on what profile 1 last rode.
+  await page.getByTestId("activity-fact-equipment").click();
+  const equipmentSelect = page.getByTestId("activity-equipment-select");
+  await expect(equipmentSelect).toBeVisible();
   const comparableControls = [
     page.getByTestId("cardio-duration"),
     input,
-    page.getByTestId("activity-equipment-select"),
+    equipmentSelect,
     page.getByRole("button", { name: "Easy", exact: true }),
   ];
   const comparableStyles = await Promise.all(
@@ -465,6 +475,9 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     1
   );
   expect(new Set(comparableStyles.map((style) => style.height)).size).toBe(1);
+  // Back to the chips, so the rest of this test drives the form's normal shape.
+  await page.getByTestId("activity-fact-editor-done").click();
+  await expect(page.getByTestId("activity-fact-equipment")).toBeVisible();
 
   // It's editable — the user can override the auto value.
   await input.fill("123");
@@ -662,6 +675,13 @@ test("the activity form keeps workout entry primary and context visible across b
   expect(mobileDrawerBox).not.toBeNull();
   expect(mobileDrawerBox!.x).toBe(0);
   expect(mobileDrawerBox!.width).toBe(390);
+  // The seeded Push day's first lift is a uniform run, so since #3336 it opens as the
+  // compact sentence. Expand it, so the first-match locator below still means THE
+  // FIRST PART's schema row rather than whichever later part happens to be varied —
+  // the assertions
+  // would pass either way, and would have quietly stopped describing the card the rest
+  // of this test measures.
+  await hydratedClick(page, page.getByTestId("set-summary").first()); // first-ok: the first part's set summary — this test measures the first card
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(

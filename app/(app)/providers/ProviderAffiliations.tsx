@@ -202,7 +202,7 @@ export default function ProviderAffiliations({
               onClose={() => setAdding(false)}
             >
               <form
-                className="mt-4 space-y-4"
+                className="space-y-4"
                 data-testid="affiliation-add-form"
                 action={async (fd) => {
                   fd.set("id", String(providerId));

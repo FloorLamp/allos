@@ -226,7 +226,7 @@ export default function FoodSuggestionsLayout({
             <div
               id="nutrition-suggestions-panel"
               data-testid="nutrition-suggestions-panel"
-              className="mt-4 min-h-0 overflow-y-auto pr-1"
+              className="min-h-0 overflow-y-auto pr-1"
             >
               {suggestionContent}
             </div>

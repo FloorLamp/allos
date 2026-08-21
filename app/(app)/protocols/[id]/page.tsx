@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { IconArrowLeft, IconBarbell, IconPill } from "@tabler/icons-react";
+import { IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -38,6 +38,7 @@ import PageContainer from "@/components/PageContainer";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import ProtocolLogButton from "../ProtocolLogButton";
+import BackLink from "@/components/BackLink";
 import {
   updateProtocol,
   updateProtocolOutcomes,
@@ -169,13 +170,7 @@ export default async function ProtocolDetailPage(props: {
       className="mx-auto"
       data-testid="protocol-detail-page"
     >
-      <Link
-        href="/longevity#protocols"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
-      >
-        <IconArrowLeft className="h-4 w-4" stroke={1.75} aria-hidden />
-        Back to protocols
-      </Link>
+      <BackLink href="/longevity#protocols" label="Back to protocols" />
 
       <div className="space-y-6">
         {/* The edit form's situation picker reads the SAME merged vocabulary the

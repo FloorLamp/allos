@@ -1245,7 +1245,46 @@ export default function FoodLogBar({
     <div>
       <div
         data-testid="food-log-context"
-        className="-mx-2 mb-3 bg-surface/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
+        // THE FULL BLEED IS PAGE-SCOPED (#3360). `-mx-2 px-2` is the trick that
+        // lets the `md:sticky` frosted header paint over the Nutrition page's
+        // gutter; it is net-zero for the content inside (the negative margin and
+        // the padding cancel) and only widens the BACKGROUND. But this component
+        // is also mounted in the #1468 quick-entry sheet, whose content region
+        // has no gutter to bleed into — there the wrapper was simply 16px wider
+        // than its container, which is the horizontal overflow that let one thumb
+        // drag park the sheet sideways. Scoping the three classes to `md:` — the
+        // width where `md:sticky` actually engages, and which `lg:` already
+        // unwinds — removes the overflow at the source. `overflow-x-hidden` on
+        // the sheet's content region (components/BottomSheet.tsx) is the defense
+        // for the whole class; this is the one instance.
+        //
+        // BELOW `md` NOTHING MOVES, BUT THE BAND DOES GO. Content stays put — the
+        // negative margin and the padding cancelled, so dropping both leaves every
+        // child at the same x. The BACKGROUND is a different answer than the issue
+        // predicted: it expected `bg-surface/95` to be sitting on the same
+        // `bg-surface`, and on the sheet's panel it is, but on the Nutrition page
+        // nothing between this wrapper and `<body>` paints, so it was sitting on
+        // the app canvas — a near-white edge-to-edge strip behind "Today · Midday
+        // · N servings" that no other element on that page wears. It is canvas
+        // now, like its neighbours. Sticky and frost were always `md:`-only, so an
+        // unsticky full-bleed band below `md` was doing nothing on purpose.
+        //
+        // `pr-1.5` BELOW `md` IS THE TAP EXTENSION'S ROOM, and it is here because
+        // scoping the bleed took away the padding that used to hold it (#3384).
+        // `tap-target` extends a compact control's hit area with an
+        // `inset: -6px` pseudo-element under `@media (pointer: coarse)`
+        // (app/globals.css). The preferences button is `sm:hidden`, 40px, and the
+        // LAST thing in this row — flush with the container's right edge — so
+        // that transparent 6px pokes out and counts as horizontal overflow, which
+        // is exactly what the sheet's content region must not be handed. It never
+        // showed before because `px-2` absorbed it while `-mx-2` paid for the
+        // bleed; with both gone below `md` the extension had nowhere to sit.
+        // Measured: `scrollWidth 363 / clientWidth 358` in the quick-entry sheet
+        // at 390px, gone at 0 with this. Six pixels, right side only — the left
+        // side cannot contribute to scrollable width in LTR — and it also lands
+        // the button nearer the `px-3` inset the food rows give their own
+        // controls. From `md` up `md:px-2` is back and owns the problem again.
+        className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -1607,44 +1646,80 @@ export default function FoodLogBar({
               </span>
             </div>
           )}
+          {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
+              section after it. It does the same job as the rows above it —
+              reach a food-group row — so it wears the same card idiom and sits
+              at the list's own `space-y-1.5` rhythm. Living INSIDE the list
+              container is what makes that gap the same with and without the
+              nutrient summary, which renders only on the Nutrition page mount
+              and used to sit between the rows and this control. `min-h-14`
+              lifts it from the 42px `py-2.5` control it was — under the app's
+              own 44px `tap-target` floor — to the food rows' height. */}
           <div className="space-y-1.5">
-            {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
-            {activeDate === today && proteinQuickAdd}
-            {proteinSplit < quickGroups.length &&
-              rows(quickGroups.slice(proteinSplit))}
+            {/* THE QUICK ROWS HAVE A NAME, and the reason is the disclosure below
+                them. Since #3362 the overflow control is a citizen of this same
+                list, so its rows — collapsed, but in the DOM — sit under
+                `food-quick-log` too. Three specs had to spell out an exclusion to
+                keep saying "the quick rows", and only ONE of them failed loudly
+                when it went unsaid: `food-log.spec.ts`'s #2225 head-of-the-ranking
+                test. The other two would have stayed GREEN while measuring
+                something weaker — `nutrition-composition`'s `toHaveCount(6)`
+                becoming "the catalog has N", and `protein-quickadd`'s
+                `rowsAbove < rows` comparing against an inflated ceiling. A fourth
+                spec would not know to exclude either, and would fail the same
+                silent way. So the answer lives here, once, in the DOM that owns
+                it: everything inside this element is a row of the list; the
+                disclosure and everything it reaches is outside it.
+
+                The nested `space-y-1.5` is deliberate and changes no pixel — the
+                gaps between these children and the gap from this element to the
+                disclosure are the same 6px they were when all of them were
+                siblings. */}
+            <div data-testid="food-quick-rows" className="space-y-1.5">
+              {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
+              {activeDate === today && proteinQuickAdd}
+              {proteinSplit < quickGroups.length &&
+                rows(quickGroups.slice(proteinSplit))}
+            </div>
+            {moreGroups.length > 0 && (
+              <details data-testid="food-more-groups" className="group">
+                <summary
+                  data-testid="food-more-groups-summary"
+                  className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
+                >
+                  <span>More food groups ({moreGroups.length})</span>
+                  <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </summary>
+                {/* The expanded tier sections keep their own layout — this
+                    change is about the collapsed control's size and rhythm. */}
+                <div className="mt-4 space-y-5">
+                  {TIER_ORDER.map((tier) => {
+                    const tierGroups = moreGroups.filter(
+                      (g) => g.tier === tier
+                    );
+                    if (tierGroups.length === 0) return null;
+                    return (
+                      <div key={tier}>
+                        <h3 className="mb-2 section-label">
+                          {TIER_LABEL[tier]}
+                        </h3>
+                        {rows(tierGroups)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
           </div>
         </section>
         {nutrientSummary}
-        {moreGroups.length > 0 && (
-          <details data-testid="food-more-groups" className="group">
-            <summary
-              data-testid="food-more-groups-summary"
-              className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
-            >
-              <span>More food groups ({moreGroups.length})</span>
-              <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="mt-4 space-y-5">
-              {TIER_ORDER.map((tier) => {
-                const tierGroups = moreGroups.filter((g) => g.tier === tier);
-                if (tierGroups.length === 0) return null;
-                return (
-                  <div key={tier}>
-                    <h3 className="mb-2 section-label">{TIER_LABEL[tier]}</h3>
-                    {rows(tierGroups)}
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
       </div>
       {preferencesOpen && (
         <ModalShell
           title="Dietary preferences"
           onClose={() => setPreferencesOpen(false)}
         >
-          <div className="mt-4 min-h-0 overflow-y-auto pr-1">
+          <div className="min-h-0 overflow-y-auto pr-1">
             <DietaryPreferencesForm
               excluded={excludedGroups}
               groups={groupsBySlot[FOOD_SLOTS[0]].map((group) => ({
@@ -1676,7 +1751,7 @@ export default function FoodLogBar({
           }}
           size="sm"
         >
-          <div data-testid="food-correct-modal" className="mt-4 space-y-3">
+          <div data-testid="food-correct-modal" className="space-y-3">
             <p
               data-testid="food-correct-provenance"
               className="text-xs text-slate-500 dark:text-slate-400"

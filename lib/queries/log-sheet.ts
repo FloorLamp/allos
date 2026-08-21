@@ -48,6 +48,11 @@ import {
 //   metric_samples — `source = 'manual'`. The column is NOT NULL, so there is no
 //     null half to admit and `OR source IS NULL` here would be dead SQL. Its one
 //     manual writer, `upsertManualSample`, always stamps 'manual'.
+//   substance_daily_totals — `source = 'manual'` (#3327). NOT NULL with a 'manual'
+//     default, exactly like metric_samples, so there is no null half to admit. Only
+//     the NON-food substances are here: alcohol's taps land on food_daily_totals and
+//     are already counted by the Food arm, and counting them again as Care would make
+//     one tap evidence for two segments.
 //   medical_records — `source IS NULL OR source = 'manual'`. Nullable AND written
 //     by hand-entry paths that disagree: `insertVitals`/`recordReading` and the
 //     temperature logger stamp 'manual', while the /results "add a result" form
@@ -124,6 +129,9 @@ const HABIT_DAYS = hoistedStatement(
      UNION ALL
      SELECT 'care' AS segment, date AS d FROM practice_logs
        WHERE profile_id = @profileId AND source IS NULL AND date >= @from
+     UNION ALL
+     SELECT 'care' AS segment, date AS d FROM substance_daily_totals
+       WHERE profile_id = @profileId AND source = 'manual' AND date >= @from
    ) WHERE d IS NOT NULL AND d != ''
    GROUP BY segment`
 );

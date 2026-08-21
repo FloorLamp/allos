@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import {
   getRankedPickerProviders,
@@ -40,6 +39,7 @@ import { isOnDemand } from "@/lib/intake-schedule";
 import EpisodeLinks from "@/components/EpisodeLinks";
 import IntakeWarnings from "@/components/IntakeWarnings";
 import { intakeWarningsForItem } from "@/lib/intake-warning-surface";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -201,22 +201,29 @@ export default async function MedicationDetailPage(props: {
       <ProviderOptionsProvider providers={getRankedPickerProviders(profileId)}>
         <SituationOptionsProvider options={situationOptions}>
           <IntakeOptionsProvider options={getIntakeCatalogOptions(profileId)}>
-            <div className="mb-4">
-              <ProfileIdentityBanner
-                profile={subject}
-                crossProfile={crossProfile}
-                testIdPrefix="medication"
-              />
-            </div>
-            {!crossProfile ? (
-              <Link
+            {/* Exactly one of these, never both (#3237). The identity banner
+                answers "whose medication is this?", which is only a question when
+                you are looking at somebody else's — rendered unconditionally it
+                put a stray avatar + your own name above your own back link, on
+                both widths, and this was its only call site in the app. The back
+                link is the mirror case: it returns to YOUR medication list, which
+                is not where a cross-profile view came from, so it stays gated the
+                way it already was. */}
+            {crossProfile ? (
+              <div className="mb-4">
+                <ProfileIdentityBanner
+                  profile={subject}
+                  crossProfile={crossProfile}
+                  testIdPrefix="medication"
+                />
+              </div>
+            ) : (
+              <BackLink
                 href={MEDICATIONS_HREF}
-                className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-              >
-                <IconArrowLeft className="h-4 w-4" />
-                Back to medications
-              </Link>
-            ) : null}
+                label="Back to medications"
+                className="mb-2"
+              />
+            )}
             <PageHeader
               title={m.med.name}
               subtitle={m.med.brand ?? undefined}

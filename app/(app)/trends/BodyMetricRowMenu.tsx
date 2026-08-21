@@ -183,7 +183,7 @@ function EditMeasureDialog({
       initialFocusRef={inputRef}
       size="sm"
     >
-      <div className="mt-4 space-y-4" data-testid="body-metric-edit-dialog">
+      <div className="space-y-4" data-testid="body-metric-edit-dialog">
         <label className="label block">
           {measure.label}
           {measure.unit ? ` (${measure.unit.trim()})` : ""}

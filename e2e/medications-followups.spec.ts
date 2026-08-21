@@ -41,7 +41,9 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   const nameInput = addCard.getByRole("combobox", { name: "Name" });
   await nameInput.click();
   await nameInput.fill("Ibuprofen");
-  await addCard
+  // The listbox is PORTALED to <body> (#3271) — resolved from the page, not the
+  // panel that owns the field. One list is open at a time, so this is unambiguous.
+  await page
     .locator('ul[role="listbox"] button', { hasText: "Advil" })
     .first() // first-ok: transient combobox list this spec just opened (Advil suggestion); first match is intended
     .click();
@@ -52,10 +54,14 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   const identity = await openFact(page, "identity", addCard);
   const brandInput = identity.getByRole("combobox", { name: "Brand" });
   await brandInput.click();
-  await expect(
-    identity.getByRole("button", { name: "Generic", exact: true })
-  ).toBeVisible();
-  await identity.getByRole("button", { name: "Generic", exact: true }).click();
+  // The option row lives in the PORTALED listbox (#3271), not inside the editor —
+  // addressed through the listbox so it cannot be confused with a same-named
+  // control elsewhere on the page.
+  const brandOption = page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Generic", exact: true });
+  await expect(brandOption).toBeVisible();
+  await brandOption.click();
   await expect(brandInput).toHaveValue("Generic");
   await closeEditor(page, addCard);
 

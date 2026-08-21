@@ -14,6 +14,7 @@ import type { ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import type { RpeTracking } from "@/lib/rpe";
 import type { CompanionMap } from "@/lib/companions";
 import { biasByCompanions } from "@/lib/companions";
 import { muscleFor, baseLiftName, variantOf } from "@/lib/lifts";
@@ -44,11 +45,14 @@ export default function ActivityPartsList({
   parts,
   stickyFooter,
   isEdit,
+  live,
   units,
   history,
   deloadContext,
   recoveringContext,
   plateauHints,
+  rpeTracking,
+  onRpeTrackingChange,
   currentActivityId,
   editedDate,
   equipmentList,
@@ -96,11 +100,18 @@ export default function ActivityPartsList({
   parts: PartEntry[];
   stickyFooter: boolean;
   isEdit: boolean;
+  // Live workout mode (#340), passed straight through: a live part always shows its
+  // full grid with the check-offs, never the compact sentence (#3336).
+  live: boolean;
   units: UnitPrefs;
   history: ExerciseHistoryMap;
   deloadContext: FormDeloadContext;
   recoveringContext: FormRecoveringContext;
   plateauHints: PlateauFormHint[];
+  // The profile's opted-into RPE scale, or null (#3335). Passed straight through:
+  // this list owns no strength state, and the effort column belongs to StrengthSets.
+  rpeTracking: RpeTracking | null;
+  onRpeTrackingChange: (tracking: RpeTracking | null) => void;
   currentActivityId: number | null;
   editedDate: string | null;
   equipmentList: Equipment[];
@@ -341,10 +352,13 @@ export default function ActivityPartsList({
                   fault={issue}
                   units={units}
                   isEdit={isEdit}
+                  live={live}
                   history={history}
                   deloadContext={deloadContext}
                   recoveringContext={recoveringContext}
                   plateauHints={plateauHints}
+                  rpeTracking={rpeTracking}
+                  onRpeTrackingChange={onRpeTrackingChange}
                   currentActivityId={currentActivityId}
                   editedDate={editedDate}
                   equipmentList={equipmentList}

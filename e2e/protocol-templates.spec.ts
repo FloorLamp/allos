@@ -30,13 +30,21 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
   // e2e/dialog-convergence.spec.ts, at a viewport where it is observable.
   await expect(dialog).toHaveAttribute("data-size", "md");
   const form = dialog.getByTestId("protocol-form");
+  // The notes field lives behind the row's `notes` fact since #3219 — mounted at all
+  // times, hidden while its panel is closed (which is what keeps it in the FormData
+  // this form submits). Its shape is still assertable from here: neither
+  // `toHaveAttribute` nor `toHaveValue` asks about visibility.
   await expect(form.getByLabel("Notes")).toHaveAttribute("rows", "4");
   const picker = form.getByTestId("protocol-template-picker");
   await picker.selectOption("sun-exposure");
   await expect(form.locator('input[name="name"]')).toHaveValue(
     "Daily daylight walk"
   );
-  await expect(form.locator('textarea[name="notes"]')).toContainText(
+  // Asked as a VALUE rather than as text content. The field is controlled now, so
+  // what the template seeded lives in the textarea's value — `toContainText` reads
+  // textContent, which is a different question and one a controlled textarea can
+  // answer with an empty string.
+  await expect(form.locator('textarea[name="notes"]')).toHaveValue(
     /observational/i
   );
   await expect(form.getByTestId("protocol-outcome-selected")).toContainText(
@@ -72,12 +80,14 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   await form.getByLabel("Name").fill(uniqueName);
 
   const search = form.getByLabel("Filter outcome metrics");
+  // The option rows are in the PORTALED listbox (#3271), not inside the form.
+  const outcomeOptions = page.getByRole("listbox");
   await search.fill("LDL Cholesterol");
-  await form
+  await outcomeOptions
     .getByRole("button", { name: "LDL Cholesterol", exact: true })
     .click();
   await search.fill("Non-HDL Cholesterol");
-  await form
+  await outcomeOptions
     .getByRole("button", { name: "Non-HDL Cholesterol", exact: true })
     .click();
 

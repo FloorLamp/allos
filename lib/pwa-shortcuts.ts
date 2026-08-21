@@ -94,12 +94,17 @@ export const PWA_SHORTCUTS: readonly PwaShortcut[] = [
 // value so a caller that hasn't threaded a bit never breaks a working shortcut.
 export function shortcutAction(
   value: string | null | undefined,
-  cycleRelevant = true
+  cycleRelevant = true,
+  substanceRelevant = false
 ): ShortcutAction | null {
   if (!value) return null;
   if (value === SEARCH_SHORTCUT_ID) return { kind: "search" };
   const item = QUICK_LOG_ITEMS.find((i) => i.id === value);
   if (!item) return null;
   if (item.cycle && !cycleRelevant) return null;
+  // #3327, and its default is FALSE for the same reason quickLogMenu's is: a caller
+  // that has not threaded the bit must not open a substance offer for a profile that
+  // tracks none.
+  if (item.substance && !substanceRelevant) return null;
   return { kind: "quick-log", item };
 }

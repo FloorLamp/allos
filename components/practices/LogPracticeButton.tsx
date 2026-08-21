@@ -431,7 +431,7 @@ export default function LogPracticeButton({
         >
           <form
             onSubmit={onDetailedSubmit}
-            className="mt-4 grid gap-3 sm:grid-cols-2"
+            className="grid gap-3 sm:grid-cols-2"
             data-testid="practice-log-details"
           >
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">

@@ -25,6 +25,7 @@ import {
   setRiskAttributesReviewed,
 } from "@/lib/settings";
 import { dataQualityDedupeKey } from "@/lib/data-quality";
+import { unretireDose } from "@/lib/queries/intake/dose-lifecycle";
 import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
@@ -231,5 +232,130 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
     expect(buildDataQualityFindings(profileId)).toEqual([]);
     expect(collectDataQualityGaps(profileId)).toEqual([]);
+  });
+});
+
+// The #3320 gather. These rows CANNOT be written through the app — #3153's write
+// boundary refuses them — so they are inserted as SQL, which is exactly the shape a
+// legacy row has: typed before the boundary existed, and still sitting there.
+describe("dose-amount-unreadable — the legacy rows nothing can read (#3320)", () => {
+  function addItem(
+    profileId: number,
+    name: string,
+    kind: "supplement" | "medication",
+    active = 1
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, ?, ?, 'daily', 'should')`
+        )
+        .run(profileId, name, active, kind).lastInsertRowid
+    );
+  }
+
+  function addDose(itemId: number, amount: string, retired = 0): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, retired)
+           VALUES (?, ?, '08:00', 'any', 0, ?)`
+        )
+        .run(itemId, amount, retired).lastInsertRowid
+    );
+  }
+
+  it("fires on a live ambiguous amount and clears when it is retyped", () => {
+    const { profileId } = makeProfile("dq-dose-legacy");
+    const itemId = addItem(profileId, "Magnesium", "supplement");
+    // 2.5 g or 25 g. Nothing in the row says which, and nothing may guess.
+    const doseId = addDose(itemId, "2,5 g");
+
+    const gap = collectDataQualityGaps(profileId).find(
+      (g) => g.key === "dose-amount-unreadable"
+    );
+    expect(gap?.label).toBe("Retype 1 dose amount");
+    expect(gap?.ctaHref).toBe("/nutrition?tab=supplements");
+
+    // Retyped unambiguously → the gap is gone for good (structural, one-time).
+    db.prepare(`UPDATE intake_item_doses SET amount = ? WHERE id = ?`).run(
+      "2500 mg",
+      doseId
+    );
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+  });
+
+  it("counts every affected live row and deep-links a medication's edit form", () => {
+    const { profileId } = makeProfile("dq-dose-many");
+    const medId = addItem(profileId, "Legacy Med", "medication");
+    addDose(medId, "10.000 IU");
+    addDose(medId, "2.500 mg");
+
+    const gap = collectDataQualityGaps(profileId).find(
+      (g) => g.key === "dose-amount-unreadable"
+    );
+    expect(gap?.label).toBe("Retype 2 dose amounts");
+    expect(gap?.ctaHref).toBe(`/medications/${medId}?action=edit`);
+  });
+
+  it("un-retiring a dose surfaces its ambiguous amount — the exclusion is a deferral", () => {
+    // What makes excluding retired rows safe rather than merely convenient: the
+    // restore path puts the row back with its `amount` untouched, so the gap arrives
+    // exactly when a total could reach for the number again.
+    const { profileId } = makeProfile("dq-dose-unretire");
+    const itemId = addItem(profileId, "Restored Supplement", "supplement");
+    const doseId = addDose(itemId, "2,5 g", 1);
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+
+    expect(unretireDose(profileId, doseId).kind).toBe("restored");
+    expect(keysOf(profileId)).toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+  });
+
+  it("stays silent for a RETIRED dose and for an INACTIVE item", () => {
+    const { profileId } = makeProfile("dq-dose-out-of-scope");
+    // Retired: kept for its adherence logs, reached by no nutrient total.
+    addDose(addItem(profileId, "Old Supplement", "supplement"), "2,5 g", 1);
+    // Inactive: out of the safety stack, the same boundary the med-rxcui gap draws.
+    addDose(addItem(profileId, "Stopped Med", "medication", 0), "2,5 g");
+
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+  });
+
+  it("stays silent for amounts that read — including the comma the fix repaired", () => {
+    const { profileId } = makeProfile("dq-dose-readable");
+    const itemId = addItem(profileId, "Niacin", "supplement");
+    // "1,000 mg" read as a confident ZERO before fbd72cf5 and reads 1000 now, with
+    // no correction: a dose stores only the typed text, so nothing was ever wrong
+    // on disk. It is not a gap, and this is the row that proves the gap is about
+    // the AMBIGUOUS remainder rather than about commas.
+    addDose(itemId, "1,000 mg");
+    addDose(itemId, "1 capsule");
+    addDose(itemId, "2.5 mg");
+
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("dose-amount-unreadable")
+    );
+  });
+
+  it("rides the shared bus into the coaching rollup like every other gap", () => {
+    const { profileId } = makeProfile("dq-dose-rollup");
+    addDose(addItem(profileId, "Zinc", "supplement"), "2,5 g");
+    const rolled = collectCoachingFindings(
+      profileId,
+      today(profileId),
+      "kg"
+    ).map((f) => f.dedupeKey);
+    expect(rolled).toContain(dataQualityDedupeKey("dose-amount-unreadable"));
   });
 });

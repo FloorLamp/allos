@@ -23,6 +23,7 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
+import TrackSubstanceControl from "@/app/(app)/medical/substance-use/TrackSubstanceControl";
 import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import {
@@ -134,6 +135,14 @@ export default function SubstanceUseSection({
           />
         );
       })}
+
+      {/* Name your own (#3326). The curated three are the app's offered defaults;
+          anything else a profile tracks starts here, and starts by being LOGGED —
+          a custom substance's identity is its name in the ledger, so there is no
+          create step to put in front of it (#3323). The card it produces is the
+          same ConsumptionSection above, because a custom substance is not a
+          lesser kind of substance. */}
+      <TrackSubstanceControl />
 
       {/* Screening history leads; the questionnaire itself opens only on request. */}
       <section className="space-y-3">

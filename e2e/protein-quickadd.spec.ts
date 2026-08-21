@@ -22,9 +22,12 @@ async function rowsAbove(quickLog: Locator): Promise<number> {
     .boundingBox();
   expect(proteinBox).not.toBeNull();
   const boxes = await Promise.all(
-    (await quickLog.locator('li[data-testid^="food-group-"]').all()).map(
-      (row) => row.boundingBox()
-    )
+    (
+      await quickLog
+        .getByTestId("food-quick-rows")
+        .locator('li[data-testid^="food-group-"]')
+        .all()
+    ).map((row) => row.boundingBox())
   );
   return boxes.filter((b) => b !== null && b.y < proteinBox!.y).length;
 }
@@ -77,7 +80,13 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     // cannot assert it, because an add records the scoop-size preset for good.)
     await page.reload();
     await expect(quickadd).toBeVisible();
+    // The rows LAID OUT beside the control, which is what "ranked, not pinned"
+    // is about. Since #3362 the "More food groups" disclosure is a citizen of
+    // this same list, so its collapsed rows are under `food-quick-log` too;
+    // counting them would inflate the ceiling and make this comparison pass for
+    // a reason it does not mean.
     const rows = await quickLog
+      .getByTestId("food-quick-rows")
       .locator('li[data-testid^="food-group-"]')
       .count();
     expect(await rowsAbove(quickLog)).toBeLessThan(rows);

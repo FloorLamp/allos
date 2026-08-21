@@ -49,6 +49,11 @@ const QuickMoodCheckin = dynamic(
 // Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
 // the seven inline glyphs and the stool action's client reference; loaded on open.
 const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
+// Same rule, sixth body (#3327): the substance list drags in the shared ledger hook
+// and the substance action's client reference; loaded on open.
+const QuickSubstanceList = dynamic(
+  () => import("./quick-entry/QuickSubstanceList")
+);
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -119,7 +124,9 @@ export function useQuickEntry(): QuickEntryApi {
 const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   food: { title: "Log food", ownsHeading: true },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
-  measurements: { title: "Log measurements", ownsHeading: true },
+  // #3361: the form is mounted `presentation="modal"` below, so it renders no
+  // heading of its own and the sheet prints this one.
+  measurements: { title: "Log measurements", ownsHeading: false },
   dose: { title: "Log dose", ownsHeading: false },
   practice: { title: "Log practice", ownsHeading: false },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
@@ -130,6 +137,9 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
   // the question, and a printed one above them would say it twice.
   stool: { title: "Log stool form", ownsHeading: false },
+  // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
+  // question, and each carries its own verb.
+  substance: { title: "Log substance", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -241,6 +251,11 @@ function QuickEntryBody({
     case "measurements":
       return (
         <MeasurementsQuickAdd
+          // A dialog body renders content, never chrome (#3361). Without this the
+          // form falls back to `presentation="card"` and draws its own card
+          // border and `<h2>` inside a panel that already draws both — the same
+          // escape hatch its two ModalShell mounts already pass.
+          presentation="modal"
           weightUnit={data.weightUnit}
           defaultDate={data.defaultDate}
           defaultStatedAt={data.statedAt}
@@ -314,6 +329,11 @@ function QuickEntryBody({
       // corrected by tapping again. The tap revalidates behind the sheet, so "stay
       // where you were" still holds.
       return <QuickStoolForm todayCount={data.todayCount} />;
+    case "substance":
+      // No `onSaved`: like the food bar and the practice list, substance logging has
+      // no single "saved" moment — several uses in an evening is ordinary. The tap
+      // revalidates behind the sheet, so "stay where you were" still holds.
+      return <QuickSubstanceList substances={data.substances} />;
     case "document":
       // The SAME UploadForm Data → File upload renders — same ingest engine, same
       // gates, same per-profile storage and dedup, and the #1423 camera input rides

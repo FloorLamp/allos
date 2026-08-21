@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick, settledFill } from "./helpers";
 
 // #2940 — the Today check-off row must stay identifiable when its dose detail is
 // long. The detail span used to be `shrink-0` while the name was the only shrinkable
@@ -89,7 +89,7 @@ test("a long dose detail never costs the medication its name (#2940)", async ({
   const doseRow = dose.getByTestId("prn-dose-row");
   await expect(doseRow).toBeVisible();
   const amountInput = doseRow.getByRole("combobox", { name: "Amount" });
-  await amountInput.fill(LONG_DETAIL);
+  await settledFill(page, amountInput, LONG_DETAIL);
   await amountInput.press("Escape");
   await closeEditor(page, addCard);
 

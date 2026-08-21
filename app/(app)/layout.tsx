@@ -39,6 +39,8 @@ import {
   getTravelTell,
 } from "@/lib/settings";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isMinor } from "@/lib/life-stage";
+import { hasLoggedSubstance } from "@/lib/queries/substance";
 import { getEquipment } from "@/lib/equipment";
 import {
   isFoodLoggingRelevant,
@@ -66,6 +68,7 @@ import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
+import { getRpeTracking } from "@/lib/rpe-tracking";
 import { today } from "@/lib/db";
 import { requestNowMs } from "@/lib/request-now";
 
@@ -160,6 +163,10 @@ export default async function AppLayout({
   // the injury axis (#221/#1115).
   const recoveringContext = getFormRecoveringContext(profile.id);
   const plateauHints = buildActivePlateauHints(profile.id, now);
+  // The set grid's effort column is opted into (#3335): this is null unless the
+  // profile holds the opt-in row, and null is the whole reason no surface can render
+  // an RPE control for someone who never asked for one.
+  const rpeTracking = getRpeTracking(profile.id);
   // Derived workout presence (#921) for the app-wide minimized dock: on a fresh load
   // (or another device) the dock hydrates from this gather + the persisted #451 draft
   // instead of client memory. Acting-profile-scoped. `liveStartEpochMs` places the elapsed clock off the real
@@ -233,6 +240,20 @@ export default async function AppLayout({
   // gaining a date-leading one, if a heavy profile ever makes it worth measuring —
   // never the desktop waste.
   const logHabitDays = getSegmentLogDays(profile.id, now);
+  // Whether the log sheet offers a SUBSTANCE row (#3327), which is two facts and not
+  // a nav bit — no nav entry reads it, so it deliberately does not join `relevance`.
+  //
+  //   • the #1174 life-stage gate the whole substance surface carries (`isMinor`, the
+  //     same predicate `getRecordsSpecialtyRelevance().substanceUse` applies — spelled
+  //     from `profileAge` here rather than re-running that whole bitset for one bit);
+  //   • data presence. #3279 ruling 3 admits a substance to the quick surfaces on the
+  //     dashboard's data-presence rule, not for the vocabulary at large — and a
+  //     profile that tracks none must get no row at all, because an empty offer is
+  //     worse than no offer. One indexed EXISTS probe per shell render, the cheap half
+  //     of the question; the LIST is gathered later, on open, by the overlay's own read
+  //     action, which is both cheaper and fresher (#1468).
+  const substanceRelevant =
+    !isMinor(profileAge) && hasLoggedSubstance(profile.id);
   // Travel (#3263). The banner is for the login's OWN profile only — a member
   // acting for someone else must see nothing, because this device's location says
   // nothing about where THAT person's day should run. Resolved here so the client
@@ -301,6 +322,7 @@ export default async function AppLayout({
                       deloadContext={deloadContext}
                       recoveringContext={recoveringContext}
                       plateauHints={plateauHints}
+                      rpeTracking={rpeTracking}
                       presence={presence}
                       liveEditData={liveEditData}
                       liveStartEpochMs={liveStartEpochMs}
@@ -367,6 +389,7 @@ export default async function AppLayout({
                                 reviewCount={reviewCount}
                                 readOnly={readOnly}
                                 whatsNewUnseen={whatsNewUnseen}
+                                substanceRelevant={substanceRelevant}
                                 logHabitDays={logHabitDays}
                               />
                             </ShellChrome>
@@ -418,7 +441,10 @@ export default async function AppLayout({
                       overlay / palette the sheet does. Beside CommandPalette so
                       it sits inside both contexts it dispatches into, and
                       viewport-agnostic — the shortcut URL is an ordinary link. */}
-                      <QuickShortcutHandler cycleRelevant={relevance.cycle} />
+                      <QuickShortcutHandler
+                        cycleRelevant={relevance.cycle}
+                        substanceRelevant={substanceRelevant}
+                      />
                       <ExtractionToaster profileId={profile.id} />
                       <ImportJobsToaster profileId={profile.id} />
                       {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and

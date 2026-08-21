@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
 import PrintButton from "@/components/illness/PrintButton";
 import MedicationListView from "@/components/medications/MedicationListView";
 import { getCurrentMedicationList } from "../med-data";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +21,11 @@ export default async function MedicationPrintPage() {
   return (
     <div data-testid="medication-print">
       <div className="mb-3 flex items-center justify-between print:hidden">
-        <Link
+        <BackLink
           href={MEDICATIONS_HREF}
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" />
-          Back to medications
-        </Link>
+          label="Back to medications"
+          className=""
+        />
         <PrintButton label="Print list" />
       </div>
       <div className="card">

@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
-import { hydratedClick, settledClick, followLink } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  followLink,
+} from "./helpers";
 import { medicationsToday, scheduledTodayItem } from "./med-card-helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -157,6 +162,68 @@ test.describe("shared supply pools", () => {
     } finally {
       // Leave the login acting as the profile it started on.
       await switchToProfile(page, SUPPLY_PARENT_PROFILE);
+      await page.context().close();
+    }
+  });
+
+  // #3270 — WHICH BOTTLES A KIND-LOCKED DOOR OFFERS.
+  //
+  // The claim is the PAIRING, not either half. One bottle, one query, two doors,
+  // opposite answers: the medications door offers the household's shared ibuprofen and
+  // the Add supplement door does not. Asserting only the absence would pass on a door
+  // that never opened its listbox or on a filter that emptied it, and asserting only
+  // the presence would pass under the bug — the bug WAS a list that rendered plausibly.
+  //
+  // Read-only: it types into a name field and never submits, so it repeats cleanly and
+  // perturbs no count this file's other cases depend on.
+  test("a kind-locked door offers only bottles of its own kind (#3270)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SUPPLY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // Both members' items on this bottle are MEDICATIONS, so the bottle lends the
+      // medication kind (#1374 — a bottle has none of its own).
+      await page.goto("/medications");
+      await hydratedClick(page, page.getByTestId("medication-add-toggle"));
+      const panel = page.getByTestId("medication-add-panel");
+      await expect(panel).toBeVisible();
+      await settledFill(
+        page,
+        panel.getByRole("combobox", { name: "Name" }),
+        SUPPLY_SHARED_BOTTLE
+      );
+      // The listbox is PORTALED to <body> (#3271), so the rows are not inside the
+      // panel that owns the field. One list is open at a time, so asking the page
+      // is not ambiguous — and the bottle name is spec-owned, so nothing else on
+      // the page can match it.
+      await expect(
+        page
+          .getByTestId("combobox-option")
+          .filter({ hasText: SUPPLY_SHARED_BOTTLE })
+      ).toHaveCount(1);
+
+      // The SAME bottle, the same query, at the door that has already answered
+      // "supplement" and cannot be corrected. Picking it here would have written a
+      // supplement named Ibuprofen, silently.
+      await page.goto("/nutrition?tab=supplements");
+      await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
+      const dialog = page.getByRole("dialog", { name: "Add supplement" });
+      await expect(dialog).toBeVisible();
+      const name = dialog.getByRole("combobox", { name: "Name" });
+      // The assertion below is an ABSENCE, so the typed value must be known to have
+      // landed — otherwise an empty field would satisfy it for the wrong reason.
+      await settledFill(page, name, SUPPLY_SHARED_BOTTLE);
+      // The listbox is genuinely open — otherwise the absence below is vacuous.
+      await expect(name).toHaveAttribute("aria-expanded", "true");
+      await expect(
+        page
+          .getByTestId("combobox-option")
+          .filter({ hasText: SUPPLY_SHARED_BOTTLE })
+      ).toHaveCount(0);
+    } finally {
       await page.context().close();
     }
   });
@@ -338,7 +405,14 @@ test.describe("shared supply pools", () => {
         })
       );
       await expect(page).toHaveURL(/\/medications\/\d+$/);
-      await expect(page.getByTestId("medication-subject-name")).toHaveText(
+      // The switch is the claim, and since #3237 the ACTING identity is where it
+      // shows. /medications/[id] drew a subject banner unconditionally — its only
+      // call site in the app — and now draws one only when the subject is NOT the
+      // acting profile, which after a switch-and-open it no longer is. The shell
+      // identity bar is #1801's designated answer to "whose data am I looking
+      // at", and it is the stronger assertion of the two: it pins the ACTING
+      // profile having moved, where the banner only reported whose row rendered.
+      await expect(page.getByTestId("profile-identity-bar")).toContainText(
         SUPPLY_CHILD_PROFILE,
         { timeout: 15_000 }
       );

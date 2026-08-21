@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { deleteActivityFromForm, hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -10,13 +10,26 @@ import {
   OWN_OTHER_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import {
+  strandedDraftMessage,
+  takeStrandedDrafts,
+  type StrandedDraft,
+} from "./shared-profile-guard";
 
 // Own-profile link + not-self write affordances + login identity (issue #1013).
 // Spec-OWNED fixtures (E2E_LOGIN_OWN granted two adult profiles, own_profile_id →
 // the SELF profile, each with a due dose + a weigh-in — see e2e/seed-events.ts), on a
 // fresh cookie-less context so the switch/weigh-in/workout writes never touch the
-// admin storageState. The spec only READS affordance labels (no confirm/finish
-// writes), so it's repeat-safe without a fixture reset.
+// admin storageState.
+//
+// IT READS LABELS, BUT STARTING THE WORKOUT IS A WRITE (#3290). This comment used to
+// say the spec "only READS affordance labels (no confirm/finish writes)", and that is
+// what let the first test start a live session and close the context on top of it. A
+// started, unended activity is what `getWorkoutPresence` reads as an ACTIVE workout,
+// so the fixture profile stayed haunted for the rest of the worker's run — invisible,
+// because the standing guard (e2e/shared-profile-guard.ts) reads profile 1 only and
+// these are dedicated profiles. The session is now discarded and the absence proved
+// against the DATABASE once the context is gone; see the test.
 //
 // Uses the #1096 switch-to-<id> testid to change the acting profile (NOT the
 // accessible-name lookup, which collides with the view toggles — that was just
@@ -69,14 +82,39 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
 
     // Start a live workout — the fastest-tapping surface. Its Finish button names
     // whose session it is (both fixture profiles are adults → live mode available).
-    await page.goto("/training?tab=log");
-    await page.getByRole("main").getByTestId("start-workout").click();
-    await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-    await expect(page.getByTestId("finish-workout")).toHaveText(
-      `Finish workout — ${OWN_OTHER_PROFILE}`
-    );
+    //
+    // THE SESSION IS A ROW FROM THE MOMENT IT STARTS, so everything below it is in a
+    // try/finally: the discard has to run on the failure path too, which is the exit
+    // path a leak actually takes.
+    let stranded: StrandedDraft[] = [];
+    try {
+      await page.goto("/training?tab=log");
+      await hydratedClick(
+        page,
+        page.getByRole("main").getByTestId("start-workout")
+      );
+      await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+      await expect(page.getByTestId("finish-workout")).toHaveText(
+        `Finish workout — ${OWN_OTHER_PROFILE}`
+      );
 
-    await page.context().close();
+      // Discard it through the settled helper (#3267/#3287): the row is gone when the
+      // "Activity deleted." toast lands, never when the panel stops rendering. This
+      // spec has no shared-profile guard behind it to catch the difference.
+      await deleteActivityFromForm(page);
+    } finally {
+      await page.context().close();
+      // Repair-and-report, on the fixture profile, with the guard's own live-draft
+      // signature — after the context is gone, so an in-flight delete that never left
+      // the browser has NOT happened. Taking the rows here keeps one failure from
+      // cascading into the rest of the worker's run, exactly as the standing guard
+      // does for profile 1.
+      stranded = takeStrandedDrafts(workerDbPath(), otherId);
+    }
+    // Deliberately AFTER the finally, not inside it: a failure in the body must
+    // surface as its own error rather than being replaced by this one, and the
+    // repair above has already run either way.
+    expect(stranded, strandedDraftMessage(stranded, otherId)).toEqual([]);
   });
 
   test("mobile drawer carries the same 'Signed in as' identity", async ({

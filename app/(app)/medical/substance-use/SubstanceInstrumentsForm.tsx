@@ -103,7 +103,10 @@ export default function SubstanceInstrumentsForm({
   return (
     <div
       ref={containerRef}
-      className="space-y-4 rounded-xl border border-black/10 p-4 dark:border-white/10"
+      // Same story as the mental-health picker: the only mount is the "Add
+      // screening" modal in app/(app)/records/SubstanceUseSection.tsx, and the
+      // dialog panel owns the card chrome (#3361).
+      className="space-y-4"
       data-testid="substance-instruments-form"
     >
       {/* Instrument picker */}

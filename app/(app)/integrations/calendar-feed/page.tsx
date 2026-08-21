@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -28,6 +27,7 @@ import { requestNowMs } from "@/lib/request-now";
 // The base an external calendar client must be able to reach — one authority,
 // shared with Health Connect, Strava and Withings (#2959).
 import { externalBaseUrl } from "@/lib/external-url-server";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -107,12 +107,7 @@ export default async function CalendarFeedPage() {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <Link
-        href="/data"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      >
-        <IconArrowLeft className="h-4 w-4" /> Data
-      </Link>
+      <BackLink href="/data" label="Data" />
 
       <PageHeader title={def.name} subtitle={def.blurb} />
 
