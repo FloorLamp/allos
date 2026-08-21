@@ -261,7 +261,7 @@ async function pickMedication(page: Page, scope: Page | Locator, name: string) {
   // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
   const option = page
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: name })
     .first(); // first-ok: the typed medication narrows this transient list
   await expect(option).toBeVisible();

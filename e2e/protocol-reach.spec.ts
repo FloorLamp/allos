@@ -91,7 +91,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     // The option row is in the PORTALED listbox (#3271), not inside the form.
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "LDL Cholesterol", exact: true })
+      .getByRole("option", { name: "LDL Cholesterol", exact: true })
       .click();
     await settledClick(
       page,

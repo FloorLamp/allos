@@ -175,7 +175,7 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await page.getByPlaceholder(/What did you do/).fill("Running");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "Running", exact: true })
+      .getByRole("option", { name: "Running", exact: true })
       .click();
 
     // The door moved INSIDE the fact editor (#3334) — it is still the one bootstrap
@@ -281,7 +281,7 @@ test("the strength picker creates and selects a travel machine without losing th
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
     await page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
@@ -411,7 +411,7 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
     await page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
@@ -510,7 +510,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     await page.getByPlaceholder(/What did you do/).fill("Rowing");
     await page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: "Rowing" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();

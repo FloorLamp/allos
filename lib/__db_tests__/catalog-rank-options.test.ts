@@ -10,6 +10,7 @@ import {
   getIntakeCatalogOptions,
   getRankedMedicationBrandOptions,
   getRankedMedicationOptions,
+  getRankedStackOptions,
   getRankedSupplementOptions,
   getRankedPickerProviders,
   getRankedSpecialtyOptions,
@@ -42,14 +43,15 @@ function addItem(
     kind: "medication" | "supplement";
     active?: number;
     brand?: string;
+    stack?: string;
     providerId?: number;
   }
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, kind, active, brand, provider_id)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO intake_items (profile_id, name, kind, active, brand, stack, provider_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -57,6 +59,7 @@ function addItem(
         fields.kind,
         fields.active ?? 1,
         fields.brand ?? null,
+        fields.stack ?? null,
         fields.providerId ?? null
       ).lastInsertRowid
   );
@@ -200,6 +203,65 @@ describe("getRankedSupplementOptions", () => {
   });
 });
 
+// The stack field's vocabulary (#3100). Stacks cluster by EXACT STRING everywhere
+// they are read, so the picker's whole job is making the string that already exists
+// the easy one to pick.
+describe("getRankedStackOptions", () => {
+  it("is empty for a profile that has never named a stack", () => {
+    expect(getRankedStackOptions(makeProfile())).toEqual([]);
+  });
+
+  it("offers each stack ONCE, active items' stacks first, then most recent", () => {
+    const profileId = makeProfile();
+    // Oldest first, so id order and recency order disagree.
+    addItem(profileId, { name: "Zinc", kind: "supplement", stack: "Evening" });
+    addItem(profileId, {
+      name: "Magnesium",
+      kind: "supplement",
+      active: 0,
+      stack: "Retired blend",
+    });
+    addItem(profileId, { name: "Vitamin D3", kind: "supplement", stack: "AM" });
+    // A second member of an existing stack must not list it twice.
+    addItem(profileId, { name: "Vitamin K2", kind: "supplement", stack: "AM" });
+    expect(getRankedStackOptions(profileId)).toEqual([
+      "AM",
+      "Evening",
+      "Retired blend",
+    ]);
+  });
+
+  it("trims, and ignores a stack that is blank or whitespace", () => {
+    const profileId = makeProfile();
+    addItem(profileId, { name: "Zinc", kind: "supplement", stack: "  AM  " });
+    addItem(profileId, { name: "Iron", kind: "supplement", stack: "   " });
+    addItem(profileId, { name: "Boron", kind: "supplement", stack: "" });
+    addItem(profileId, { name: "Copper", kind: "supplement" });
+    expect(getRankedStackOptions(profileId)).toEqual(["AM"]);
+  });
+
+  it("keeps two spellings that differ only in CASE — both are real clusters today", () => {
+    // The picker exists so a typo stops minting a second cluster, but it must not
+    // hide a cluster that already exists: folding these would leave one of the two
+    // unreachable by name. Merging near-duplicates is deliberately out of scope.
+    const profileId = makeProfile();
+    addItem(profileId, { name: "Zinc", kind: "supplement", stack: "AM stack" });
+    addItem(profileId, { name: "Iron", kind: "supplement", stack: "AM Stack" });
+    expect(getRankedStackOptions(profileId).toSorted()).toEqual([
+      "AM Stack",
+      "AM stack",
+    ]);
+  });
+
+  it("is profile-scoped — another member's stacks never appear", () => {
+    const mine = makeProfile();
+    const theirs = makeProfile();
+    addItem(theirs, { name: "Zinc", kind: "supplement", stack: "Their blend" });
+    addItem(mine, { name: "Iron", kind: "supplement", stack: "My blend" });
+    expect(getRankedStackOptions(mine)).toEqual(["My blend"]);
+  });
+});
+
 describe("getIntakeCatalogOptions", () => {
   it("hands the full-form and quick-add call sites ONE medication order", () => {
     const profileId = makeProfile();
@@ -210,6 +272,14 @@ describe("getIntakeCatalogOptions", () => {
       getRankedMedicationBrandOptions(profileId)
     );
     expect(bundle.supplements).toEqual(getRankedSupplementOptions(profileId));
+  });
+
+  it("carries the stack vocabulary too, so the field needs no second query (#221)", () => {
+    const profileId = makeProfile();
+    addItem(profileId, { name: "Vitamin D3", kind: "supplement", stack: "AM" });
+    expect(getIntakeCatalogOptions(profileId).stacks).toEqual(
+      getRankedStackOptions(profileId)
+    );
   });
 });
 

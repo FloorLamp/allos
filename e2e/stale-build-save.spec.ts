@@ -240,7 +240,7 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
     await page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing
       .click();
@@ -376,7 +376,7 @@ test("a form that can never attempt a save still converges, and is restored with
     await page.getByPlaceholder(/What did you do/).fill("Running");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "Running", exact: true })
+      .getByRole("option", { name: "Running", exact: true })
       .click();
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
     await expect
@@ -411,7 +411,7 @@ test("a deploy that stays broken gets ONE automatic attempt and then the banner 
     await page.getByPlaceholder(/What did you do/).fill("Running");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "Running", exact: true })
+      .getByRole("option", { name: "Running", exact: true })
       .click();
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
 
@@ -461,7 +461,7 @@ test("a never-created session closed under a stale build queues its capture, and
     await page.getByPlaceholder(/What did you do/).fill("Running");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "Running", exact: true })
+      .getByRole("option", { name: "Running", exact: true })
       .click();
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
 

@@ -598,7 +598,7 @@ describe("actual atomic dashboard manifests", () => {
   const QUERY_BASELINE: Record<string, number> = {
     bodybuilder: 243,
     "marathon-runner": 240,
-    household: 267,
+    household: 270,
     pregnant: 237,
     "diabetic-cgm": 248,
     biohacker: 258,

@@ -84,7 +84,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // The option row IS the button, so it is addressed on the listbox, not inside
       // an option. `exact` makes a duplicate label fail loudly (#531).
       await listbox
-        .getByRole("button", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
+        .getByRole("option", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
         .click();
       await expect(field).toHaveValue(BIOMARKER_PICKER_FLAGGED);
       await settledClick(page, picker.getByRole("button", { name: "Star" }));
@@ -136,7 +136,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // A pick writes the series key into cmpA — the param the overlay reads, which
       // #1675 did not touch.
       await listbox
-        .getByRole("button", { name: BIOMARKER_PICKER_OVERDUE, exact: true })
+        .getByRole("option", { name: BIOMARKER_PICKER_OVERDUE, exact: true })
         .click();
       await expect(page).toHaveURL(/cmpA=result%3AHemoglobin\+A1c/);
       await expect(field).toHaveValue(BIOMARKER_PICKER_OVERDUE);
@@ -178,7 +178,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // match, which is what a `<select>` could never offer.
       await settledFill(page, field, "tsh");
       await expect(
-        listbox.getByRole("button", {
+        listbox.getByRole("option", {
           name: "Thyroid-Stimulating Hormone (TSH)",
           exact: true,
         })

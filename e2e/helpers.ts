@@ -2831,7 +2831,7 @@ export async function settledPickOption(
     await settledFill(page, field, label, { timeout: 5_000 });
     const option = page
       .getByRole("listbox")
-      .getByRole("button", { name: label, exact: true });
+      .getByRole("option", { name: label, exact: true });
     await expect(option).toBeVisible({ timeout: 2_000 });
     await option.click();
     await expect(field).toHaveValue(label, { timeout: 2_000 });

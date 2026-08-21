@@ -59,7 +59,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   // control elsewhere on the page.
   const brandOption = page
     .getByRole("listbox")
-    .getByRole("button", { name: "Generic", exact: true });
+    .getByRole("option", { name: "Generic", exact: true });
   await expect(brandOption).toBeVisible();
   await brandOption.click();
   await expect(brandInput).toHaveValue("Generic");

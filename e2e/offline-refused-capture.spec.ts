@@ -311,7 +311,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
     await page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
       .click();

@@ -19,7 +19,7 @@ async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
   await page
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: name })
     .first() // first-ok: the exercise combobox dropdown on this spec's own FORM_INJURY session (mirrors form-fill-paths' pickActivity)
     .click();

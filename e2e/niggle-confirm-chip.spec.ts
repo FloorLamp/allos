@@ -53,7 +53,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   );
   await page
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: "Back Squat" })
     .first() // first-ok: transient combobox list this spec just opened by typing the name
     .click();

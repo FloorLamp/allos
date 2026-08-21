@@ -21,7 +21,7 @@ async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
   await page
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: name })
     .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
@@ -413,7 +413,7 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   await page.getByPlaceholder(/What did you do/).fill("Running");
   await page
     .getByRole("listbox")
-    .getByRole("button", { name: "Running", exact: true })
+    .getByRole("option", { name: "Running", exact: true })
     .click();
 
   // A duration makes the estimate compute (MET dataset × the seeded profile's
@@ -1086,7 +1086,7 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   await page.getByPlaceholder(/What did you do/).fill("Running");
   await page
     .getByRole("listbox")
-    .getByRole("button", { name: "Running", exact: true })
+    .getByRole("option", { name: "Running", exact: true })
     .click();
   // A duration makes the activity savable, so the debounced auto-save fires — and
   // hits the aborted request.
@@ -1173,5 +1173,5 @@ test("typing keeps the lifts you log ahead of a sport you never have (#2384)", a
   await expect(leadOption).toHaveText(/Squat/);
   // De-rank, not hide (#345): the sport is still offered, so a first squash session
   // is exactly as reachable as it was.
-  await expect(listbox.getByRole("button", { name: /^Squash/ })).toBeVisible();
+  await expect(listbox.getByRole("option", { name: /^Squash/ })).toBeVisible();
 });

@@ -188,7 +188,7 @@ test.describe("Entry vocabularies (#1676)", () => {
     await settledFill(page, picker, "nsaid");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: PICKED_ALLERGEN, exact: true })
+      .getByRole("option", { name: PICKED_ALLERGEN, exact: true })
       .click();
     await expect(picker).toHaveValue(PICKED_ALLERGEN);
     await settledFill(
@@ -245,7 +245,7 @@ test.describe("Entry vocabularies (#1676)", () => {
     await settledFill(page, gene, "tpmt");
     await page
       .getByRole("listbox")
-      .getByRole("button", { name: "TPMT", exact: true })
+      .getByRole("option", { name: "TPMT", exact: true })
       .click();
     await expect(gene).toHaveValue("TPMT");
     await settledFill(page, form.getByLabel("Star allele"), "*3A/*3A");

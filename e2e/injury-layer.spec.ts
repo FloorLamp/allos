@@ -173,7 +173,7 @@ test("an over-broad constraint is narrowed in place and gives the region back (#
   await settledFill(page, field, "Overhead Press");
   const option = page
     .getByRole("listbox")
-    .getByRole("button", { name: "Overhead Press", exact: true });
+    .getByRole("option", { name: "Overhead Press", exact: true });
   await expect(option).toBeVisible();
   await option.click();
   await expect(
@@ -233,7 +233,7 @@ test("an exercise-scoped constraint is loggable from the form and names the lift
   await settledFill(page, field, "Curl");
   const option = page
     .getByRole("listbox")
-    .getByRole("button", { name: "Curl", exact: true });
+    .getByRole("option", { name: "Curl", exact: true });
   await expect(option).toBeVisible();
   await option.click();
   await expect(

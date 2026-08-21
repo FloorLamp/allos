@@ -30,7 +30,7 @@ async function pickActivity(page: Page, name: string) {
   await settledFill(page, field, name);
   const option = page
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: name })
     .first(); // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
   await hydratedClick(page, option);

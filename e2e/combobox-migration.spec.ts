@@ -84,7 +84,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await provider.fill("patel");
     const listbox = page.getByRole("listbox");
     const indivOption = listbox
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: /Patel/ })
       .first(); // first-ok: transient list this spec just opened by typing "patel"; the first Patel match is the intended row
     await expect(indivOption).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await expect(
       page
         .getByRole("listbox")
-        .getByRole("button")
+        .getByRole("option")
         .filter({ hasText: /Quest/ })
         .first() // first-ok: transient list opened by typing "quest"; first Quest match is intended
         .getByTestId("provider-icon-organization")
@@ -133,7 +133,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await expect(
       page
         .getByRole("listbox")
-        .getByRole("button")
+        .getByRole("option")
         .filter({ hasText: NEW_PROVIDER })
         .first() // first-ok: transient list opened by typing; first match is the just-created provider
     ).toBeVisible();
@@ -159,7 +159,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await specialty.fill("cardio");
     const match = page
       .getByRole("listbox")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: /cardio/i })
       .first(); // first-ok: transient NUCC list opened by typing "cardio"; first match is the intended pick
     await expect(match).toBeVisible();
@@ -234,7 +234,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       // Portaled listbox (#3271) — resolved from the page, not the form.
       page
         .getByRole("listbox")
-        .getByRole("button")
+        .getByRole("option")
         .filter({ hasText: CUSTOM_SITUATION })
         .first() // first-ok: transient list opened by typing; the created situation is the intended option
     ).toBeVisible();

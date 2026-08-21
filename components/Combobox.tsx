@@ -4,12 +4,22 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconChevronDown, IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
+import {
+  droppedGroupsWarning,
+  groupedRelevanceView,
+} from "@/lib/relevance-view";
 import { useAnchoredPopover } from "@/components/overlay/useAnchoredPopover";
 
 // How tall the list WANTS to be — what `max-h-56` used to say as a class. It is a
 // preference now, not a cap: the shared placement shrinks it to the room actually
 // available so the last row is never left off the bottom of the screen.
 const LISTBOX_MAX_HEIGHT = 224; // matches max-h-56
+
+// How many rows the PRE-TYPING list holds. Deliberately short — nobody wants a
+// 400-row menu before they have typed a letter — and deliberately the same number
+// whether the caller groups its options or not. Where those rows GO when the options
+// carry several groups is lib/relevance-view.ts's question (#3410).
+const RELEVANCE_ROWS = 8;
 
 // Shared autocomplete. Two modes via `allowFreeText`:
 //  - false (default): the value must be picked from `options`; an empty match
@@ -84,6 +94,14 @@ export default function Combobox({
   // bucket here, so "Due or flagged" leads and the header says why. Typing is
   // unchanged: a fuzzy search runs over everything and shows a flat result list,
   // because a header over one match is noise. Return null to leave a row unheaded.
+  //
+  // IF YOU ARE MERGING TWO RANKED VOCABULARIES INTO ONE PICKER, PASS THIS (#3410).
+  // The pre-typing list is capped at RELEVANCE_ROWS, and with `groupFor` those rows
+  // are shared out per group, so every vocabulary is represented instead of the
+  // higher-ranked one spending all of them and the other vanishing without a header
+  // or a "more". WITHOUT `groupFor` the concatenated list has no seam in it, nothing
+  // can detect the loss, and the picker looks complete because it looks short —
+  // which is exactly how #3220 lost its analyte groups.
   groupFor?: (option: string) => string | null;
   allowFreeText?: boolean;
   emptyLabel?: string;
@@ -119,16 +137,33 @@ export default function Combobox({
 
   const filterValue = titleAppearance && showAllOnOpen ? "" : value;
   const q = filterValue.trim().toLowerCase();
-  // Fuzzy subsequence match + ranking (see lib/fuzzy): "bpr" finds "Bench
-  // Press". An empty query keeps the first 8 options in their original order.
-  const filtered = searchTermsFor
-    ? fuzzyFilterWithTerms(options, filterValue, searchTermsFor, {
-        limit: 8,
-        used: usedOptions,
-      })
-    : fuzzyFilter(options, filterValue, { limit: 8, used: usedOptions });
   // Headers only in the relevance view (see `groupFor`).
   const showGroups = groupFor != null && q === "";
+  // The GROUPED pre-typing list shares its rows out per group instead of taking
+  // them all off the front, so a picker fed two ranked vocabularies shows both
+  // (#3410). Ungrouped, and every typed query, are untouched.
+  const relevance = showGroups
+    ? groupedRelevanceView(options, groupFor, RELEVANCE_ROWS)
+    : null;
+  // Fuzzy subsequence match + ranking (see lib/fuzzy): "bpr" finds "Bench
+  // Press". An empty query keeps the first RELEVANCE_ROWS options in their
+  // original order.
+  const filtered =
+    relevance?.rows ??
+    (searchTermsFor
+      ? fuzzyFilterWithTerms(options, filterValue, searchTermsFor, {
+          limit: RELEVANCE_ROWS,
+          used: usedOptions,
+        })
+      : fuzzyFilter(options, filterValue, {
+          limit: RELEVANCE_ROWS,
+          used: usedOptions,
+        }));
+  // THE KEYBOARD MODEL, MADE OBSERVABLE (#3316). Arrowing moves `highlight`; the
+  // input publishes the row it names through `aria-activedescendant`, so a screen
+  // reader announces the active row instead of a highlight nothing describes.
+  const optionId = (index: number) => `${listboxId}-option-${index}`;
+  const freeTextId = `${listboxId}-use`;
   const showUse =
     allowFreeText &&
     value.trim() !== "" &&
@@ -152,6 +187,14 @@ export default function Combobox({
   // watches the document, not the panel, and a list that has flipped ABOVE the
   // field moves its own top edge every time a keystroke changes the row count.
   const listOpen = open && (filtered.length > 0 || showUse || !allowFreeText);
+  // Only while the list is actually rendered: a stale id would point at nothing.
+  const activeDescendantId = !listOpen
+    ? undefined
+    : filtered[highlight]
+      ? optionId(highlight)
+      : showUse && highlight === filtered.length
+        ? freeTextId
+        : undefined;
   const { pos, attachPanel, panelRef } = useAnchoredPopover({
     open: listOpen,
     anchorRef: ref,
@@ -159,6 +202,21 @@ export default function Combobox({
     preferredMaxHeight: LISTBOX_MAX_HEIGHT,
     remeasureKey: `${filtered.length}:${showUse}`,
   });
+
+  // #3410 item (3): the grouped view represents every group it can, and says so in
+  // DEVELOPMENT when it cannot — a picker with more groups than the list has rows.
+  // Deliberately silent for every group count a shipped picker has (see
+  // lib/__tests__/relevance-view.test.ts, which runs it over both): a warning that
+  // fires on ordinary pickers is deleted within a week, taking the real guard with it.
+  // The message IS the effect's dependency, so it prints once per distinct loss
+  // rather than once per render.
+  const droppedWarning = relevance?.droppedGroups.length
+    ? droppedGroupsWarning(relevance.droppedGroups, RELEVANCE_ROWS)
+    : "";
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" || droppedWarning === "") return;
+    console.warn(droppedWarning);
+  }, [droppedWarning]);
 
   useEffect(() => {
     // Dismiss on pointerdown OUTSIDE the combobox root. pointerdown fires before the
@@ -271,6 +329,7 @@ export default function Combobox({
         role="combobox"
         aria-expanded={open}
         aria-controls={listboxId}
+        aria-activedescendant={activeDescendantId}
         aria-autocomplete="list"
         aria-label={ariaLabel}
         autoComplete="off"
@@ -407,7 +466,12 @@ export default function Combobox({
             }`}
           >
             {filtered.length === 0 && !allowFreeText ? (
-              <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
+              // Not an option — a listbox with an `option` reading "No matches" is a
+              // listbox the keyboard model says you can choose (#3316).
+              <li
+                role="presentation"
+                className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400"
+              >
                 {emptyLabel}
               </li>
             ) : (
@@ -426,36 +490,51 @@ export default function Combobox({
                         {group}
                       </li>
                     )}
-                    <li>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          pick(o);
-                        }}
-                        onMouseEnter={() => setHighlight(i)}
-                        data-testid="combobox-option"
-                        className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
-                          i === highlight
-                            ? highlightCls
-                            : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
-                        }`}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          {iconFor?.(o)}
-                          <span className="truncate">{labelFor?.(o) ?? o}</span>
-                        </span>
-                        {badgeFor?.(o)}
-                      </button>
+                    {/* THE ROW IS THE OPTION (#3316). It used to be a plain
+                        `<button>` inside the `li`, which left `role="listbox"` with
+                        no `option` children at all: the a11y tree saw a list with no
+                        items, and arrowing moved a highlight nothing announced.
+                        Focus never leaves the input — this is the
+                        aria-activedescendant pattern — so the row is not a tab stop
+                        and does not need to be one. */}
+                    <li
+                      role="option"
+                      id={optionId(i)}
+                      aria-selected={i === highlight}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pick(o);
+                      }}
+                      onMouseEnter={() => setHighlight(i)}
+                      data-testid="combobox-option"
+                      className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
+                        i === highlight
+                          ? highlightCls
+                          : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {iconFor?.(o)}
+                        <span className="truncate">{labelFor?.(o) ?? o}</span>
+                      </span>
+                      {badgeFor?.(o)}
                     </li>
                   </Fragment>
                 );
               })
             )}
+            {/* THE FREE-TEXT ROW IS A COMMAND, NOT AN OPTION (#3316), and stays a
+                real `<button>`. "Use '<query>'" does not name something the picker
+                offers — it names an action on what the user typed — so exposing it
+                as an `option` would tell a screen-reader user the vocabulary
+                contains their typo. `aria-activedescendant` still names it when it
+                is the active row, which announces it as the button it is; its `li`
+                is `presentation` so the listbox's own children stay options. */}
             {showUse && (
-              <li>
+              <li role="presentation">
                 <button
                   type="button"
+                  id={freeTextId}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     pick(value.trim());

@@ -61,6 +61,42 @@ export function getRankedMedicationBrandOptions(profileId: number): string[] {
   return rankedMedicationBrandOptions(used);
 }
 
+// The profile's own STACK names (#3100). Everything that groups by stack groups by
+// EXACT STRING — `doseSortKey` encodes the raw label, the supplement row renders it
+// verbatim — so the only way into an existing stack used to be retyping its name
+// exactly, and "AM stack" typed as "AM Stack" silently minted a second cluster.
+// Offering the names that already exist makes exact reuse the easy path.
+//
+// Distinctness is EXACT (after trimming), deliberately: if a profile already carries
+// both "AM stack" and "AM Stack", both are real clusters today and both must stay
+// reachable from the picker. Folding them here would hide one of the two behind a
+// name that does not select it. Merging near-duplicates is a separate question
+// (#3100 puts it out of scope) and it is not this list's to decide.
+//
+// Not scoped to `kind = 'supplement'`: the stack FIELD is supplement-only, but
+// `lib/dose-order.ts` clusters whatever carries a stack, so a row that already has
+// one is a cluster the picker must be able to name.
+export function getRankedStackOptions(profileId: number): string[] {
+  const used = db
+    .prepare(
+      `SELECT stack FROM intake_items
+        WHERE profile_id = ?
+          AND stack IS NOT NULL AND TRIM(stack) <> ''
+        ORDER BY active DESC, id DESC`
+    )
+    .all(profileId)
+    .map((r) => (r as { stack: string }).stack);
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const raw of used) {
+    const stack = raw.trim();
+    if (!stack || seen.has(stack)) continue;
+    seen.add(stack);
+    options.push(stack);
+  }
+  return options;
+}
+
 // The profile's supplement shelf as the ranker's stable facts — retired items included
 // (a supplement cycled off is far more likely to be re-added than one never taken).
 function supplementUsage(profileId: number): SupplementUsage[] {
@@ -89,6 +125,9 @@ export interface IntakeCatalogOptions {
   medications: string[];
   medicationBrands: string[];
   supplements: string[];
+  // The profile's own stack names (#3100). No curated tier — a stack is whatever
+  // this profile called one — so a profile with no stacks yields [].
+  stacks: string[];
 }
 
 export function getIntakeCatalogOptions(
@@ -98,5 +137,6 @@ export function getIntakeCatalogOptions(
     medications: getRankedMedicationOptions(profileId),
     medicationBrands: getRankedMedicationBrandOptions(profileId),
     supplements: getRankedSupplementOptions(profileId),
+    stacks: getRankedStackOptions(profileId),
   };
 }

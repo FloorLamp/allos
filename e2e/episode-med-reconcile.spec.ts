@@ -94,7 +94,7 @@ async function pickMedication(
   const root = "page" in scope ? scope.page() : scope;
   const option = root
     .getByRole("listbox")
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: value })
     .first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
   await expect(option).toBeVisible();

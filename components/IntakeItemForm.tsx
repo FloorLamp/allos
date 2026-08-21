@@ -1644,11 +1644,20 @@ export default function IntakeItemForm({
                   <label className="label" htmlFor={`intake-stack-${fid}`}>
                     Stack (optional)
                   </label>
-                  <input
+                  {/* The stack field joins the vocabulary substrate (#3100). Stacks
+                      cluster by EXACT STRING everywhere they are read, so a bare
+                      input meant "AM stack" and "AM Stack" were two clusters and
+                      nothing said so. The list is the profile's OWN stack names,
+                      resolved once by getIntakeCatalogOptions like every other
+                      intake vocabulary (#221) — never a second query from here.
+                      Free text stays on: a new stack is one keystroke away, the
+                      vocabulary suggests and never gates (#1676). */}
+                  <IntakeItemCombobox
                     id={`intake-stack-${fid}`}
+                    ariaLabel="Stack (optional)"
                     value={stack}
-                    onChange={(e) => setStack(e.target.value)}
-                    className="input"
+                    onChange={setStack}
+                    options={catalogOptions.stacks}
                     placeholder="e.g. D3 + K2"
                   />
                 </div>
