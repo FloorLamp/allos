@@ -25,10 +25,23 @@ import type { RecordsGroup } from "./nav";
 //
 // `shrink-0 whitespace-nowrap` IS THE SPECIALTY STRIP'S FIX. `flex-nowrap` stops
 // the CONTAINER wrapping; it does nothing about a flex item being squeezed, and
-// with six panes on a 430px screen every pill shrank until its label broke over
-// two lines — the ~80px two-line pills in the owner's screenshot. A pill that
-// refuses to shrink scrolls out of the row instead, which is what the row's
-// overflow is for. Same two classes FilterPills has always carried.
+// with neither of these two classes — the `origin/main` shape — six panes on a
+// 430px screen squeezed every pill until its label broke over two lines: the
+// 50px pills in the owner's screenshot, against 30px here.
+//
+// THE TWO ARE INDEPENDENTLY SUFFICIENT, which is worth writing down because it
+// means neither is load-bearing ALONE and a guard can only see the pair.
+// Measured by mutation: delete `shrink-0` and the chips stay 30px; delete
+// `whitespace-nowrap` and they stay 30px; delete BOTH and they go to 50. Two
+// different mechanisms happen to forbid the same squeeze — `shrink-0` sets
+// `flex-shrink: 0` outright, and `whitespace-nowrap` makes the item's
+// min-content size the full width of its label, which a flex item's automatic
+// minimum size already refuses to go below. Keep the pair (it is the same pair
+// FilterPills carries, and the two strips should read alike), but do not expect
+// removing one of them to fail anything.
+//
+// A pill that refuses to shrink scrolls out of the row instead, which is what
+// the row's overflow is for.
 //
 // And the row now SAYS it scrolls: `ScrollFade` publishes the masked edge and its
 // `data-fade-*` markers, so the affordance is assertable rather than absent.

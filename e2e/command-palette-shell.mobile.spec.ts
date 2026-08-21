@@ -142,7 +142,14 @@ test.describe("command palette — the phone shell (#3423)", () => {
     // sentence saying whose records this searches — not an instruction about a
     // keyboard, so it renders at every width. Losing it here would be the
     // over-correction this issue's copy decision exists to prevent.
-    await expect(panel).toContainText("Searching");
+    //
+    // READ FROM `innerText`, like every other line in this block. A bare
+    // `toContainText` falls back to `textContent`, which reads BOTH halves of a
+    // `hidden md:*` fork at both widths — the reason the `Tap to save` assertion
+    // six lines up passes `useInnerText`. Written the default way this one was
+    // width-blind: hiding the whole hint below `md` left all seven tests in this
+    // file green.
+    expect(text).toContain("searching");
 
     // The "↵" glyph is a PICTURE OF A KEY, so it draws only where the key is.
     // Addressed by the tabler class the icon renders, since it carries no marker
@@ -241,6 +248,76 @@ test.describe("command palette — the phone shell (#3423)", () => {
     await page.keyboard.press("Escape");
     await expect(input).toBeHidden();
   });
+
+  // ── The two spellings, one at a time ──────────────────────────────────────
+  //
+  // The control is ONE button that reads "Cancel" below `md` and "✕" from `md`
+  // up, forked by `md:hidden` on the word and `hidden md:block` on the glyph.
+  // Nothing asserted that exactly one of them paints: the accessible name is
+  // `aria-label="Cancel"` at BOTH widths (deliberately — WCAG 2.5.3), so
+  // `getByRole("button", { name: "Cancel" })` reads the same at 390 and 1280 and
+  // is blind to the fork. Deleting `md:hidden` paints "Cancel ✕" together at
+  // desktop and every spec in the palette, records and page suites stayed green.
+  //
+  // So this reads the VISIBLE half: `innerText` for the word (which respects
+  // `display: none`, where `textContent` would not) and the glyph's own
+  // visibility for the picture.
+  test("exactly one spelling of the close control paints at each width", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    await openCommandPalette(page);
+    await settledPanel(page);
+
+    const close = page.getByTestId("modal-shell-close");
+    const glyph = close.locator("svg");
+    await expect(close).toBeVisible();
+
+    // Below `md`: the word, and only the word.
+    expect((await close.innerText()).trim()).toBe("Cancel");
+    await expect(glyph).toBeHidden();
+
+    // From `md` up: the glyph, and only the glyph. `innerText` empty rather than
+    // "Cancel" is the whole assertion — the span is still in the DOM.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(glyph).toBeVisible();
+    await expect
+      .poll(async () => (await close.innerText()).trim(), { timeout: 2000 })
+      .toBe("");
+
+    // The accessible name does NOT fork, and that is correct rather than an
+    // oversight: "Cancel" is the accurate word for abandoning a search at either
+    // width, and below `md` it is also the visible label, so the two agree.
+    await expect(close).toHaveAttribute("aria-label", "Cancel");
+  });
+
+  // ── The 640–767px band, which is the only reason the FROM_MD map exists ────
+  //
+  // `OVERLAY_PANEL_MAX_WIDTH_FROM_MD` holds the size buckets off until `md`
+  // instead of `sm`. Mutating it back to the plain `sm:` map left every spec in
+  // the suite green, because nothing visits the width where the two maps differ:
+  // below 640 both are uncapped, from 768 both cap, and only in between does
+  // `sm:max-w-md` cut a full-bleed surface down to a 448px column with the scrim
+  // showing down both sides — neither of the two shapes on offer.
+  //
+  // 700px is inside that band and still below `md`, so the palette must be
+  // exactly as full-bleed here as it is at 390.
+  test("a 700px viewport is still full-bleed, not a 448px column", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 700, height: 844 });
+    await page.goto("/upcoming");
+    await openCommandPalette(page);
+    const panel = await settledPanel(page);
+
+    await expect(page.getByTestId("modal-shell")).toHaveAttribute(
+      "data-full-screen-below-md",
+      ""
+    );
+    const box = (await panel.boundingBox())!;
+    expect(box.x).toBe(0);
+    expect(box.width).toBe(700);
+  });
 });
 
 // ── The close control's DISABLED treatment, both widths (#3455 × #3423) ─────
@@ -333,12 +410,18 @@ test.describe("the disabled close control, both widths (hover-capable context)",
       .poll(async () => (await paint()).color, { timeout: 2000 })
       .toBe(dead.color);
 
-    // AND HERE `pointer-events: none` IS THE ONLY THING HOLDING — the assertion
-    // the comment above the fade is about. At this width `md:hover:text-slate-600`
-    // sorts AFTER `disabled:text-slate-500` at equal specificity, so it would
-    // repaint the refused ✕ under a pointer; drop `disabled:pointer-events-none`
-    // from either branch of the ternary and this line goes red while every
-    // resting-state assertion above stays green.
+    // AND HERE IS WHAT `pointer-events: none` IS FOR. At this width
+    // `md:hover:text-slate-600` sorts AFTER `disabled:text-slate-500` at equal
+    // specificity, so it WOULD repaint the refused ✕ under a pointer — verified
+    // by deleting the class: slate-500 rgb(78,99,84) became slate-600
+    // rgb(64,84,70) on this line.
+    //
+    // TO BE EXACT ABOUT THE ORDER, because an earlier draft of this comment was
+    // not: deleting `disabled:pointer-events-none` trips the resting-state
+    // `expect(dead.pe).toBe("none")` above FIRST, at phone width, and that is the
+    // line a bisect would name. This line is not the one that catches the
+    // deletion — it is the one that shows why the deletion matters. The resting
+    // check says the property is set; this says the property is load-bearing.
     await hoverCancel();
     await expect
       .poll(async () => (await paint()).color, { timeout: 2000 })

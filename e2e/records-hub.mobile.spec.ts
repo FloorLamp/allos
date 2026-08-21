@@ -110,7 +110,16 @@ test("the first data row fits in the first viewport on key record panes (#1497)"
     },
     {
       href: "/records/problems/conditions",
-      row: () => page.getByTestId("records-conditions").getByRole("row").nth(1),
+      // THE SAME `.nth(1)` DEFECT AS THE IMMUNIZATIONS LINE BELOW, fixed for the
+      // same reason. `getByRole("row")` skips hidden elements, and `.table-cards`
+      // hides `thead` below `sm` — so the index that means "skip the header" at
+      // desktop silently means "the SECOND condition" on a phone, and this file
+      // is the phone project. `tbody tr` is a CSS locator over the one authored
+      // table (components/ResponsiveTable.tsx: card mode is pure CSS, no second
+      // markup tree), so it names the first DATA row at both presentations
+      // without counting.
+      row: () =>
+        page.getByTestId("records-conditions").locator("tbody tr").first(), // first-ok: the topmost condition row — which is exactly the "first data row" this test measures
     },
     {
       href: "/records/history/immunizations",

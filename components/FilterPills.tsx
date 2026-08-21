@@ -87,12 +87,17 @@ export default function FilterPills<T extends string>({
   // specs (#3408, item E / item G).
   optionTestId?: (value: T) => string;
 }) {
-  // `min-h-9` (36px) rather than the 44px tap floor: these sit shoulder to
-  // shoulder in a scrolling row, and a 44px-tall strip of seven is a band of
-  // chrome above the list it is meant to narrow. The floor's own wording is
-  // about a control a finger must ACQUIRE; a pill in a horizontal strip is
-  // acquired by its width, which is never the constrained axis here. The nav
-  // chips it must be told apart from keep their own height.
+  // 32px TALL — `py-1.5` around `text-sm`, no explicit min-height — rather than
+  // the 44px tap floor. (An earlier draft of this note argued for a `min-h-9`
+  // that was never in the string; the class list below is what actually renders,
+  // and it measures 32.)
+  //
+  // These sit shoulder to shoulder in a scrolling row, and a 44px-tall strip of
+  // seven is a band of chrome above the list it is meant to narrow. The floor's
+  // own wording is about a control a finger must ACQUIRE; a pill in a horizontal
+  // strip is acquired by its WIDTH, which is never the constrained axis here —
+  // the strip scrolls sideways and each label carries its own hit area along it.
+  // The nav chips it must be told apart from keep their own height.
   const pill = (active: boolean) =>
     `flex shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
       active

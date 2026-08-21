@@ -38,6 +38,11 @@ The vocabulary, in the order to reach for it:
 
 - **Primary — `btn`.** One per pane. The thing the pane is for: `Add visit`,
   `Add immunization`. If a second candidate appears, one of them is not primary.
+  A pane is the ROUTE, not the file: `lib/__tests__/records-action-grammar.test.ts`
+  counts a `page.tsx` together with the `*Section.tsx` bodies it mounts, because
+  a pane that stacks four sections is still one surface to read. The one pane
+  that genuinely stacks — `records/care/overview`, four collapsed `<details>` —
+  is registered there with its reason rather than waved through by a finer unit.
 - **Secondary — `btn-ghost`.** A named alternative that still belongs on the
   surface. Rare on a records pane, because records adds are rare-cadence by
   definition (#1497) and rarer actions belong in the fold below.

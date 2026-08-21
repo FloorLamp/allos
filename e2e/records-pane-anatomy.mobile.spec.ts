@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_HHHIST, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The Records hub's PHONE ANATOMY (issue #3408).
 //
@@ -167,15 +169,50 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
 
     // A pill used to be allowed to SHRINK — `flex-nowrap` stops the container
     // wrapping and says nothing about a squeezed item — so six panes on a phone
-    // broke their labels over two lines into ~80px pills. A pill that refuses to
+    // broke their labels over two lines into ~50px pills. A pill that refuses to
     // shrink scrolls out of the row instead, which is what the overflow is for.
-    // Measured as "no chip is taller than a one-line chip", which is what
-    // "single-line" means and what a class assertion could not tell you.
-    const heights = await strip
-      .locator("a")
-      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
-    expect(heights.length).toBeGreaterThan(1);
-    expect(Math.max(...heights)).toBeLessThan(Math.min(...heights) * 1.6);
+    //
+    // EACH CHIP AGAINST ITS OWN ONE-LINE HEIGHT, NEVER AGAINST ITS SIBLINGS.
+    // This assertion used to read `max(heights) < min(heights) * 1.6`, and that
+    // is a tautology on this strip: the row is `flex` with no `items-*`, so
+    // `align-items: stretch` gives every chip the height of the TALLEST and max
+    // ALWAYS equals min — including in the two-line state this test exists to
+    // catch. It reduced to `h < 1.6h`, true of any positive height, and it read
+    // ratio 1.0 PASS against the broken `origin/main` render (50px chips) and
+    // PASS again with `whitespace-nowrap` deleted from this branch. A guard that
+    // cannot go red.
+    //
+    // So each chip is compared with the height ITS OWN box would take at one
+    // line — padding + borders + one `line-height`, all read from the computed
+    // style so a padding or type-scale change carries the threshold with it.
+    // Measured today: 30px at one line, 50px at two, threshold 40px. The half-
+    // line of slack keeps the assertion off the exact two-line boundary rather
+    // than deciding the case on a sub-pixel.
+    const chips = await strip.locator("a").evaluateAll((els) =>
+      els.map((el) => {
+        const s = getComputedStyle(el);
+        const px = (v: string) => parseFloat(v) || 0;
+        const lineHeight = px(s.lineHeight);
+        return {
+          height: el.getBoundingClientRect().height,
+          lineHeight,
+          oneLine:
+            px(s.paddingTop) +
+            px(s.paddingBottom) +
+            px(s.borderTopWidth) +
+            px(s.borderBottomWidth) +
+            lineHeight,
+        };
+      })
+    );
+    expect(chips.length).toBeGreaterThan(1);
+    for (const chip of chips) {
+      // A `line-height: normal` regression would parse to 0 and quietly turn the
+      // threshold into "padding only", which no chip could clear. Fail loudly
+      // instead of inverting the guard.
+      expect(chip.lineHeight).toBeGreaterThan(0);
+      expect(chip.height).toBeLessThan(chip.oneLine + chip.lineHeight / 2);
+    }
   });
 
   test("Immunizations leads with its records, not with its chrome", async ({
@@ -305,5 +342,97 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // Focus returns to the trigger — the sheet's invariant (#3374), inherited
     // rather than re-implemented here.
     await expect(trigger).toBeFocused();
+  });
+
+  // ── Item B: the Visits pane when there is nothing coming ──────────────────
+  //
+  // THE PANE'S DEFAULT PROFILE CANNOT SHOW THIS. `scripts/seed.ts` always gives
+  // profile 1 appointments, so `upcomingEmpty` is false for every test in this
+  // file and `{upcomingEmpty && pastSection}` is dead code under the whole
+  // suite — the branch shipped with `data-lead` having zero readers anywhere in
+  // the repo, no spec and no CSS. Item B's acceptance criterion ("History →
+  // Visits with no appointments shows the PAST list above a one-line empty
+  // Upcoming") was unheld, not merely untested.
+  //
+  // THE FIXTURE IS BORROWED, NOT BUILT. `e2e_hhhist`'s active profile is the
+  // household-history PARENT (e2e/seed/illness.ts creates it first so it carries
+  // the lower id, which is what the login acts as), and that profile has exactly
+  // the shape this criterion needs: one past encounter, an "Annual physical" 40
+  // days back, and no appointments at all. Adding a profile to the shared seed to
+  // re-create a shape the seed already contains would cost every worker's
+  // template build for nothing. READ-ONLY, like every other test here and like
+  // the care-trail specs that share this fixture — nothing is written, so the
+  // two suites cannot contend.
+  test("with no appointments, Visits leads with Past over a compact empty Upcoming", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_HHHIST,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/records/history/visits");
+
+      // The DECLARED order, so a failure says whether the pane chose this shape
+      // and mis-rendered it or never chose it.
+      await expect(page.getByTestId("visits-body")).toHaveAttribute(
+        "data-lead",
+        "past"
+      );
+
+      // …and the rendered order agrees with the declaration. Both, because the
+      // attribute alone would be satisfied by a component that computes the flag
+      // correctly and then places the sections the old way.
+      expect(await documentOrder(page, "visits-past", "visits-upcoming")).toBe(
+        true
+      );
+
+      // THE PAST LIST IS REAL, not an empty stand-in that happens to sort first.
+      // Without this the test would pass on a profile with no visits at all,
+      // which is not the case the criterion is about.
+      await expect(
+        page.getByTestId("visits-past").getByText("Annual physical").first() // first-ok: this fixture's single seeded encounter
+      ).toBeVisible();
+
+      // COMPACT, NOT A BILLBOARD — and "one-line" in the criterion means the
+      // compact GRAMMAR, not literally one line of text. Measured at 390px the
+      // copy ("No scheduled appointments. Add one to see it here and on
+      // Upcoming.") wraps to two lines whatever the padding is, so a literal
+      // one-line assertion would fail against a correct render. Said plainly
+      // rather than tuned until green.
+      //
+      // The mechanism is `EmptyState`'s two-value padding vocabulary (`compact`
+      // → `p-4`, default → `p-10`), so the computed padding IS the assertion: 16
+      // here, 40 for the billboard this replaced, and nothing in between is
+      // reachable. Measured: 74px tall now against ~142px for the `p-10` render
+      // that used to lead the pane on a 430px screen.
+      //
+      // The height check is the separate claim that the COPY has not grown: two
+      // wrapped lines, never three. It cannot substitute for the padding check —
+      // `chrome` is read from the element, so it moves with a padding regression.
+      const empty = page
+        .getByTestId("visits-upcoming")
+        .locator("[data-empty-state]");
+      await expect(empty).toBeVisible();
+      const box = await empty.evaluate((el) => {
+        const st = getComputedStyle(el);
+        const px = (v: string) => parseFloat(v) || 0;
+        return {
+          padTop: st.paddingTop,
+          height: el.getBoundingClientRect().height,
+          lineHeight: px(st.lineHeight),
+          chrome:
+            px(st.paddingTop) +
+            px(st.paddingBottom) +
+            px(st.borderTopWidth) +
+            px(st.borderBottomWidth),
+        };
+      });
+      expect(box.padTop).toBe("16px");
+      expect(box.lineHeight).toBeGreaterThan(0);
+      expect(box.height).toBeLessThan(box.chrome + box.lineHeight * 2.5);
+    } finally {
+      await page.context().close();
+    }
   });
 });
