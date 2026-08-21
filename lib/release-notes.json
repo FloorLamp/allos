@@ -68,6 +68,12 @@
           "title": "On a phone the command palette fills the screen, and Records leads with your records instead of its own name",
           "kind": "feature",
           "issues": [3423, 3408]
+        },
+        {
+          "pr": 3476,
+          "title": "The dashboard's trend column finally appears, hover labels line up, and Now cards get smaller on a phone",
+          "kind": "fix",
+          "issues": [3459, 3460]
         }
       ]
     },
