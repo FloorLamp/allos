@@ -3,10 +3,16 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import type { AppRoute } from "@/lib/hrefs";
+import type { DashboardCandidateKind } from "@/lib/dashboard-relevance";
+import CandidateKindGlyph from "./CandidateKindGlyph";
 
 export interface DashboardAheadMember {
   candidateId: string;
   factKey: string;
+  // The candidate's kind, for its glyph (#3253 decision 3). Ahead members are cards
+  // in the same sense Now's are — they act, they do not report a reading — so each
+  // carries exactly one.
+  kind: DashboardCandidateKind;
   label: string;
   detail?: string;
   href?: AppRoute;
@@ -28,8 +34,14 @@ function Member({
 }) {
   const content = (
     <>
-      <span className="font-medium text-slate-800 dark:text-slate-100">
-        {member.label}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <CandidateKindGlyph
+          kind={member.kind}
+          className="mt-0 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+        />
+        <span className="truncate font-medium text-slate-800 dark:text-slate-100">
+          {member.label}
+        </span>
       </span>
       {member.detail && (
         <span className="text-sm text-slate-500 dark:text-slate-400">

@@ -130,6 +130,9 @@ export default function DashboardPlacementCanvas({
       return [
         {
           id: "illness-group",
+          // The group is one Now member standing for every open episode, and every
+          // episode's own placement is a `state` — a situation that is running.
+          kind: "state" as const,
           node: (
             <div data-testid="dashboard-illness-group">{illnessGroupNode}</div>
           ),
@@ -139,7 +142,13 @@ export default function DashboardPlacementCanvas({
     const node = nodeFor(placement);
     return node == null
       ? []
-      : [{ id: placement.candidate.candidateId, node } satisfies NowStripCard];
+      : [
+          {
+            id: placement.candidate.candidateId,
+            kind: placement.candidate.kind,
+            node,
+          } satisfies NowStripCard,
+        ];
   });
   const standing = placementsInLane(placements, "standing");
   const ahead = placementsInLane(placements, "ahead");
@@ -170,6 +179,7 @@ export default function DashboardPlacementCanvas({
         return {
           candidateId: placement.candidate.candidateId,
           factKey: placement.candidate.factKey,
+          kind: placement.candidate.kind,
           ...presentation,
         };
       }),

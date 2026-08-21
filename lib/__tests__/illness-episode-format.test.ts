@@ -177,6 +177,9 @@ describe("episodeCollapsedStatus", () => {
       })
     ).toEqual({
       dayLabel: "Illness · Day 4",
+      // The same day WITHOUT the situation, for a host whose header already names it
+      // (#3238). Both are emitted: the full form is still what /encounters shows.
+      dayOnlyLabel: "Day 4",
       temperature: {
         id: 1,
         value: "101.3 °F",
@@ -210,6 +213,9 @@ describe("episodeCollapsedStatus", () => {
       })
     ).toMatchObject({
       dayLabel: "Illness",
+      // No day number to state, so there is nothing left once the situation's name
+      // is taken out — the host renders nothing rather than repeating it.
+      dayOnlyLabel: null,
       temperature: {
         value: "37 °C",
         when: "Yesterday, 8:15 AM",

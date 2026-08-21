@@ -24,6 +24,9 @@ function trend(date: string, value: number, prev?: number): LatestTrend {
     date,
     value,
     previousValue: prev ?? null,
+    // The day before, which is enough for these cases: nothing here asserts on the
+    // previous DATE, it only has to exist when a previous value does (#3252).
+    previousDate: prev == null ? null : shiftDateStr(date, -1),
     direction: prev == null ? null : value > prev ? "up" : "down",
   };
 }
