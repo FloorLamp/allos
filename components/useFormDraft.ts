@@ -351,15 +351,36 @@ export function useFormDraft<E = undefined>({
       // THE REGISTRATION, and it is NOT gated on `ownsUnsavedMarker`: the marker is
       // an attribute for the discard guard, this is the flush contract for the reload
       // gate, and every draft-backed form owes the second one whether or not it
-      // publishes the first. `entryRef` is declared below and read here through the
-      // closure, which is the same indirection `write` already uses — the callback
-      // only ever runs after the component body has finished.
+      // publishes the first. That decision has coverage, just not in the two specs
+      // this round's mutation table names — gate this call on `ownsUnsavedMarker` and
+      // `e2e/stale-build-save.spec.ts` reds 3 of its 4 (measured 2026-08-21), while
+      // update-notice and form-drafts stay green. `entryRef` is declared below and
+      // read here through the closure, which is the same indirection `write` already
+      // uses — the callback only ever runs after the component body has finished.
       //
       // COSTS A `Map.set` PER KEYSTROKE AND NOTHING MORE: `markUnsavedWork` notifies
       // only on a TRANSITION, so re-marking an already-dirty key wakes no subscriber.
-      // Re-marking is not waste either — it is what keeps the entry's `capture`
-      // closure pointing at the CURRENT mount, which is the property the registry's
-      // own comment asks callers for.
+      // Re-marking is not doing any WORK, either — `entryRef` is created once per
+      // mount and never reassigned, so every re-mark stores the identical object. The
+      // entry stays current through `useLatestRef(capture)` inside it, not through
+      // being handed over again. It is passed each time because it is free and
+      // because the call has one shape; nothing depends on the repetition.
+      //
+      // THE `false` BRANCH IS DELIBERATE, and it is the one nothing observes. Typing
+      // back to the mount baseline RELEASES the key, where before the fix round the
+      // key was only ever set. What it buys: `captureUnsavedWork` no longer hands back
+      // a resume pointer for content the user deleted on purpose, so an update reload
+      // stops AUTO-APPLYING (`shouldAutoApplyDraft`) a draft they had just emptied —
+      // they get today's offer banner instead. Restoring the set-only semantics passes
+      // every spec, because `dirtyKeys` gates nothing. The reload gate is
+      // `hasUnrecoverableWork() || pageDeclaresUnrecoverableWork()` and this set is
+      // not in it; outside `captureUnsavedWork` itself the set has exactly two other
+      // consumers, and neither can refuse anything — `ServiceWorkerRegister` picks
+      // between two sentences on `UpdateReadyBar`, and `useAutoUpdateReload`
+      // subscribes only to re-run its evaluation tick. So a cleared key can skip a
+      // flush; it can never open a gate. Left untested rather than pinned to copy
+      // selection — but left in, and recorded here so it does not read as an
+      // unreachable branch to simplify away.
       const k = keyRef.current;
       if (k != null) markUnsavedWork(k, dirty, entryRef.current);
       return dirty;
