@@ -1509,8 +1509,10 @@ which is the wrong way round. The lever is the refusal, not the shape: dropping 
 requirement and leaning on the lookbehind closes both. Measured over 58,769 string
 literals from the tracked tree plus 50 label shapes, dropping it changes **four** strings
 beyond the two it fixes, all one family — a name ending in a standalone digit held by a
-_space_ (`Omega 3 1000 mg`, a spelling this tree never uses), which is structurally
-identical to a mistyped group and cannot be separated from one by any local rule.
+_space_ (`Omega 3 1000 mg`), which is structurally identical to a mistyped group and
+cannot be separated from one by any local rule. That differ could not see the whole
+family — see below: it compares reader answers on single literals, and this shape needs a
+name and a strength adjacent.
 
 **The en dash is in that class for a reason no sweep of this repo could show.** U+2013 is
 not a spelling anybody chooses — it is what a word processor's autocorrect, a PDF exporter

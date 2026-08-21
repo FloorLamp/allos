@@ -316,10 +316,14 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     // Widening the reader to accept the spaced form is the thing that must not happen:
     // it is the same edit as reading "1 0000 mg" as a number.
     //
-    // Measured cost over 58,769 tree string literals plus 50 label shapes: this
-    // spelling and nothing else, and the tree never uses it. The dose becomes a visible
-    // unreadable gap and the name renders as "Omega" — visibly odd, and correctable,
-    // which is precisely what a confident zero is not.
+    // AND IT IS A FAMILY, AND IT IS REACHABLE: "Vitamin B 12 500 mcg",
+    // "PreserVision AREDS 2 500 mg" — that last name is a SHIPPED CATALOG ENTRY
+    // (lib/supplement-catalog.ts). A differ over 58,769 string literals reported this
+    // spelling as absent from the tree, which was wrong: it compares reader answers one
+    // literal at a time, and the defect needs a NAME AND A STRENGTH ADJACENT, which no
+    // single literal contains. The dose becomes a visible unreadable gap and the name
+    // renders as "Omega" — visibly odd and correctable, which is precisely what a
+    // confident zero is not.
     expect(cleanMedicationName("Omega 3 1000 mg")).toBe("Omega");
   });
 

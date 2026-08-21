@@ -765,9 +765,17 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   // rather than a surprise. A name ending in a STANDALONE digit — "Omega 3" written
   // with a space rather than a hyphen — is structurally indistinguishable from a
   // mistyped group: "3 1000" and "1 0000" are the same string shape, and no local rule
-  // can tell them apart. Measured over 58,769 string literals from the tracked tree
-  // plus 50 label shapes, this spelling is the ONLY thing the wider refusal costs, and
-  // it appears nowhere in the tree.
+  // can tell them apart.
+  //
+  // IT IS A FAMILY AND IT IS REACHABLE. "Vitamin B 12 500 mcg", "Coenzyme Q 10 100 mg",
+  // "Sinemet 25 100 mg" — and "PreserVision AREDS 2", which is a SHIPPED CATALOG ENTRY
+  // (lib/supplement-catalog.ts). The bare name is untouched; a strength appended to it
+  // in one string is not. An earlier round of this work said the spelling appeared
+  // nowhere in the tree, on the strength of a differ over 58,769 string literals. That
+  // was wrong, and the way it was wrong is worth keeping: the differ compares reader
+  // answers on ONE LITERAL AT A TIME, and this defect needs a NAME AND A STRENGTH
+  // ADJACENT — a pairing that cannot occur in a single literal, because the catalog
+  // stores names and the seeds store amounts.
   //
   // It is the right side to land on, by the same asymmetry that governs U+0020 itself:
   // reading "1 0000 mg" gives a CONFIDENT ZERO that feeds a limit check and is
