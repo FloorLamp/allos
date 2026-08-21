@@ -74,6 +74,12 @@
           "title": "The dashboard's trend column finally appears, hover labels line up, and Now cards get smaller on a phone",
           "kind": "fix",
           "issues": [3459, 3460]
+        },
+        {
+          "pr": 3464,
+          "title": "A dose written 1 000 mg is read as 1000 or says it cannot be read — never counted as nothing",
+          "kind": "fix",
+          "issues": [3451]
         }
       ]
     },
