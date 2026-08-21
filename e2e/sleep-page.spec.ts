@@ -1194,9 +1194,12 @@ test.describe("Sleep and mood log historical editing", () => {
         "the dialog must publish its own unsaved state — nothing else in this subtree can, and the guard has nothing else to read"
       ).toHaveAttribute("data-unsaved", "true");
 
-      // The gesture, not the Close button: Escape and Close are deliberately
-      // unguarded (a targeted action on a named control), and a scrim tap is one of
-      // the two dismissals a hand produces by accident.
+      // The gesture, not the Close button: a scrim tap is one of the two dismissals a
+      // hand produces by accident. The CLOSE BUTTON is still deliberately unguarded
+      // (a targeted action on the control the person aimed at); Escape stopped being
+      // so in #3420 and now routes through this same confirm when there is something
+      // to lose, which is a second route to the assertion below rather than a
+      // replacement for it.
       const backdrop = page.getByTestId("modal-shell-backdrop");
       await awaitHydrated(backdrop);
       await backdrop.click({ position: { x: 4, y: 4 } });

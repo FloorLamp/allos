@@ -210,3 +210,55 @@ test("build a custom routine, edit it, activate and deactivate (#739)", async ()
   await renamed.getByTestId("routine-deactivate").click();
   await expect(renamed.getByTestId("routine-active-badge")).toHaveCount(0);
 });
+
+test("the builder answers for itself, and Escape asks before discarding it (#3371, #3420)", async () => {
+  // TWO RULINGS IN ONE PLACE, because they are one behaviour from the user's side.
+  // The builder is a `<form>` with ZERO `name=` attributes — a routine is authored
+  // entirely in React state and serialized into one field at submit — so the #1878
+  // dirty-form registry could only ever answer "clean" about it, and every dismissal
+  // threw the whole authored routine away with nothing asking. It now answers for
+  // itself through components/useFormDraft.ts, which already computes exactly that,
+  // and Escape reads that answer (#3420).
+  await gotoRoutines();
+  await page.getByTestId("routine-new").click();
+  const builder = page.getByTestId("routine-builder");
+  await expect(builder).toBeVisible();
+
+  // THE FORM'S OWN ANSWER FIRST: asserted before the dismissal, so a broken marker
+  // reds here rather than as "the Escape ruling regressed" three lines down.
+  await expect(
+    builder,
+    "an untouched builder has nothing to lose and must say so"
+  ).toHaveAttribute("data-unsaved", "false");
+  await builder.getByTestId("routine-name").fill("Escape Guard Split");
+  await expect(
+    builder,
+    "the builder must publish its own unsaved state — it has no named control for the registry to see"
+  ).toHaveAttribute("data-unsaved", "true");
+
+  await page.keyboard.press("Escape");
+  // A PRESENCE assertion: the guard is asked synchronously on the keypress, so no
+  // amount of waiting conjures this confirm if it cannot see the form.
+  const confirm = page.getByTestId("confirm-dialog");
+  await expect(
+    confirm,
+    "Escape over a dialog holding an authored routine must route through the discard confirm (#3420)"
+  ).toBeVisible();
+  await expect(confirm).toContainText("Discard your changes?");
+
+  await confirm.getByRole("button", { name: "Keep editing" }).click();
+  // Keep editing keeps BOTH: the authored routine and the surface it was authored in.
+  await expect(builder).toBeVisible();
+  await expect(builder.getByTestId("routine-name")).toHaveValue(
+    "Escape Guard Split"
+  );
+  await expect(confirm).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole("button", { name: "Discard" }).click();
+  await expect(builder).toHaveCount(0);
+  // Nothing was saved: the confirm is the only thing that stood between the keypress
+  // and losing it, and taking "Discard" means it is gone rather than half-written.
+  await expect(cardByName("Escape Guard Split")).toHaveCount(0);
+});

@@ -1007,6 +1007,12 @@ export default function ActivityForm({
     // reopening the row still offers the edits that never reached the server.
     recordId: editData?.id ?? createdId,
     extra: draftExtra,
+    // THIS FORM PUBLISHES ITS OWN `data-unsaved` (see the <form> below), so the hook
+    // must not (#3371). Two reasons, and both matter: the hook would write the same
+    // attribute on the same element React renders it onto, and its answer would be
+    // the WRONG one here — "has the content moved off the mount snapshot" is not the
+    // question for an autosaving form, where a saved change is clean.
+    ownsUnsavedMarker: true,
     onRestore: (d) => {
       setDate(d.date);
       setStartTime(d.startTime);
