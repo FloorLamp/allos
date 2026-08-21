@@ -7,6 +7,10 @@ import {
 } from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
+import { shouldDeferRowlessSave } from "@/lib/live-workout";
+// Declared in a leaf module so importing it from a spec cannot drag this file's
+// Server Action graph into `playwright --list` — see lib/live-session-race-event.ts.
+import { LIVE_CREATE_RACE_EVENT } from "@/lib/live-session-race-event";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
@@ -67,6 +71,7 @@ export function useActivityAutosave({
   canSave,
   editId,
   adoptRowId = null,
+  adoptPending = false,
   isPrefillCreate,
   buildFormData,
   toast,
@@ -83,6 +88,12 @@ export function useActivityAutosave({
   // it lands in the same created-row channel a create response uses, so every
   // save from here on UPDATEs. Ignored once any row is owned.
   adoptRowId?: number | null;
+  // THE OTHER HALF OF THE ADOPTION CHANNEL (#3441): the create-at-start POST is
+  // STILL IN FLIGHT, so the row this form is going to own exists (or is about to)
+  // and has simply not been named yet. While that is true a rowless mid-session
+  // save must DEFER rather than mint a row of its own — see the gate in `persist`,
+  // which is where the whole defect lived.
+  adoptPending?: boolean;
   // A "Log again"/"Repeat last" prefill create: starts the saved signature DIFFERENT
   // (an empty sentinel) so the seeded, already-complete activity auto-saves on open.
   isPrefillCreate: boolean;
@@ -158,6 +169,12 @@ export function useActivityAutosave({
   // buildFormData closes over live form state; keep the latest for the debounced /
   // unmount persist without re-arming the machine on every keystroke.
   const buildFormDataRef = useLatestRef(buildFormData);
+  // Read synchronously by `persist` (#3441) so the gate answers about the moment the
+  // save is DISPATCHED, not about the render that armed the debounce.
+  const adoptPendingRef = useLatestRef(adoptPending);
+  // The announcement above is once per mount: the debounce can come due several
+  // times inside one slow round trip, and one line per session is the signal.
+  const raceAnnouncedRef = useRef(false);
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
   const onQueueOfflineRef = useLatestRef(onQueueOffline);
@@ -221,6 +238,59 @@ export function useActivityAutosave({
         return; // nothing changed
       }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
+      // ONE LIVE SESSION IS ONE ROW (#3441). The create-at-start POST is in flight,
+      // and this form has no row yet — so a save dispatched now would build its
+      // FormData with a null id and INSERT A SECOND ROW for the same session. That
+      // is not hypothetical and it is not a near-miss: it is the measured defect.
+      // Hold the start POST for 2s and pick an exercise inside the window and the
+      // profile ends with TWO live drafts — the provider adopts the created row and
+      // navigates the tab to it, while the row this save minted keeps the user's
+      // sets and is pointed at by nothing. Every on-screen assertion is green about
+      // whichever one the editor happens to hold.
+      //
+      // WHY DEFERRING IS SAFE, and why it is not a promise this can fail to keep:
+      // the create either lands (`adoptRowId` arrives, and the effect below re-arms
+      // the debounce against the adopted id, so this same edit is saved ~700ms
+      // later as an UPDATE) or it fails (the provider clears the flag, and the
+      // rowless-fallback create that gym dead spots depend on happens exactly as it
+      // did before). Nothing is dropped in either leg — the edit stays in the form,
+      // which is where it already was.
+      //
+      // THE DECISION ITSELF IS `shouldDeferRowlessSave` (lib/live-workout.ts), not
+      // an inline conjunction, because two of its three terms are EXEMPTIONS — and
+      // an exemption is wrong in the direction nothing observes. `queueOnOffline`
+      // is the CLOSE-path discriminator the #1596 comment above already defines;
+      // why a close is exempt is argued at the predicate, and all four corners are
+      // pinned there in both directions.
+      const createPending = adoptPendingRef.current;
+      const hasOwnRow = savableId() != null;
+      // ANNOUNCED OUTSIDE THE DECISION, deliberately: this says the RACE HAPPENED,
+      // which is true whatever the decision below then does about it. A spec can
+      // therefore prove it drove the race without its fuse depending on the fix
+      // being present, so a mutated tree still fails at the row COUNT rather than at
+      // the fuse. See lib/live-session-race-event.ts for what reads it and why the
+      // string lives in a leaf module.
+      //
+      // TO THE REVIEWER WHO WANTS TO DELETE THIS as instrumentation that pins
+      // nothing: it is the only observable this race has. With the fix in place the
+      // window produces no extra request, no extra row and no changed markup, so a
+      // guard without it goes green either because the fix works or because the box
+      // was slow enough that the create landed first — different facts. Measured:
+      // +1200ms of client latency turned the un-fused guard green 4/4 with the
+      // defect in the tree. It is also the line a real sighting would want.
+      if (createPending && !hasOwnRow && !raceAnnouncedRef.current) {
+        raceAnnouncedRef.current = true;
+        console.warn(LIVE_CREATE_RACE_EVENT);
+      }
+      if (
+        shouldDeferRowlessSave({
+          createPending,
+          hasRow: hasOwnRow,
+          closePath: opts?.queueOnOffline === true,
+        })
+      ) {
+        return;
+      }
       inFlightRef.current = true;
       const sigAtSave = formSig;
       let saved = false;
@@ -360,6 +430,7 @@ export function useActivityAutosave({
       }
     },
     [
+      adoptPendingRef,
       buildFormDataRef,
       canSave,
       clearRetryTimer,
@@ -385,13 +456,20 @@ export function useActivityAutosave({
   // save is scheduled with a fresh closure until the latest edit is persisted. (This
   // was the ~1/9-under-load rpe-logging:68 drop: the 8.5 step never reached the
   // server because its persist bailed on the in-flight 8-save and nothing re-armed.)
+  //
+  // `adoptPending` is in the deps for the SAME reason (#3441): a persist that bailed
+  // at the create-at-start gate below left no timer behind, so the moment the flag
+  // clears this must re-arm or the deferred edit waits for the next keystroke. It
+  // re-arms in the commit that also delivers `adoptRowId`, and the adoption effect
+  // is declared ABOVE this one, so by the time the timer fires the row is owned and
+  // the save is an UPDATE.
   useEffect(() => {
     if (formSig === savedSigRef.current) return; // unchanged (incl. first mount)
     if (!canSave) return;
     const h = setTimeout(() => void persistLatest(), 700);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formSig, canSave, savedAt, persistLatest]);
+  }, [formSig, canSave, savedAt, adoptPending, persistLatest]);
 
   // Flush any pending change when the form goes away (e.g. switching cards,
   // dismissing the modal, navigating off the page). A close path, so an offline

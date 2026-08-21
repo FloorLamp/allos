@@ -52,6 +52,31 @@ const LIVE_DRAFT_SQL = `SELECT id, title, date
     ORDER BY id`;
 
 /**
+ * READ the live drafts on `profileId` without touching them — the same four columns
+ * `takeStrandedDrafts` repairs on, asked as a question instead of a repair.
+ *
+ * IT EXISTS FOR THE ASSERTION THAT CANNOT BE MADE IN THE DOM (#3441). A live session
+ * that races its own create ends up with TWO rows, and the editor is looking at
+ * exactly one of them: every on-screen assertion — the panel, the dock, the delete,
+ * the toast — is GREEN about the row it holds while the other stands alone in the
+ * log. So the witness has to count rows, and it has to count them WITHOUT the
+ * repairing side effect, or the count would erase the evidence it just took.
+ */
+export function listLiveDrafts(
+  dbPath: string = workerDbPath(),
+  profileId: number = SHARED_PROFILE_ID
+): StrandedDraft[] {
+  if (!fs.existsSync(dbPath)) return [];
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    return db.prepare(LIVE_DRAFT_SQL).all(profileId) as StrandedDraft[];
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * Find every live draft stranded on `profileId` in `dbPath`, DELETE it, and return
  * what was found. Defaults to the shared profile, which is the standing guard's job.
  *

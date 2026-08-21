@@ -128,6 +128,7 @@ export default function ActivityForm({
   live = false,
   onLiveFinished,
   adoptRowId = null,
+  adoptPending = false,
   onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -171,6 +172,10 @@ export default function ActivityForm({
   // The provider-created session row for a create-at-start live workout (#2870
   // step 3): adopted by the autosave without a re-key, so saves UPDATE it.
   adoptRowId?: number | null;
+  // The create-at-start POST has not answered yet (#3441). Forwarded to the
+  // autosave, which defers a rowless mid-session save while it is true so one live
+  // session can never become two rows.
+  adoptPending?: boolean;
   // Fired once when a rowless form first owns a row (adoption or its own first
   // create) — the provider's one-URL navigation trigger (#2870 step 3).
   onRowOwned?: (id: number) => void;
@@ -888,6 +893,7 @@ export default function ActivityForm({
     canSave,
     editId: editData?.id ?? null,
     adoptRowId,
+    adoptPending,
     onRowOwned,
     isPrefillCreate: !!prefill && !editData,
     buildFormData,

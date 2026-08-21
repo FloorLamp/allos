@@ -51,6 +51,7 @@ export default function ActivityOverlay({
   initialDate,
   live = false,
   adoptRowId = null,
+  adoptPending = false,
   onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -77,6 +78,8 @@ export default function ActivityOverlay({
   // Create-at-start row + first-ownership callback for a live session (#2870
   // step 3), forwarded whole.
   adoptRowId?: number | null;
+  // The create-at-start POST is still in flight (#3441).
+  adoptPending?: boolean;
   onRowOwned?: (id: number) => void;
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
@@ -218,6 +221,7 @@ export default function ActivityOverlay({
             onLiveFinished?.();
           }}
           adoptRowId={adoptRowId}
+          adoptPending={adoptPending}
           onRowOwned={onRowOwned}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
