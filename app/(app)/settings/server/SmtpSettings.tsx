@@ -97,7 +97,7 @@ export default function SmtpSettings({
       {!publicUrl && (
         <p
           data-testid="smtp-needs-public-url"
-          className="rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
+          className="subpanel-inset-sm rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
         >
           Set the public app URL in the card above — invite and reset links are
           built from it, so email can&apos;t be sent without it.

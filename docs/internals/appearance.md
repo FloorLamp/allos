@@ -24,6 +24,48 @@ remain identifiable at 3:1 in light and dark. The dark mode is selected through
 the `dark` class on `<html>`; `lib/theme.ts` owns that decision and its pre-paint
 boot script.
 
+## Phone density: one convention per layer
+
+Three spacing layers stack on a 390px screen, and each is tokenized exactly once
+in `app/globals.css` so a new surface inherits the phone step instead of
+restating it.
+
+1. **The page gutter** — 16px below `sm` (`app/(app)/layout.tsx`, #1416).
+2. **The card gutter** — `.card` / `.card-quiet` pad `p-4` below `sm`, `p-5`
+   above (#1416). Both are at the platform floor and are not tightened further:
+   a text line inside a card is already ~83% of a 390px viewport.
+3. **The sub-panel inset** — a `rounded-* border p-*` box *inside* a card is a
+   second gutter layer, and it steps down one notch below `sm` (#3466). Add one
+   class next to the padding the box already has; desktop is untouched.
+
+   | box's inset today | add | phone |
+   | --- | --- | --- |
+   | `p-4` (16) or `p-4 sm:p-5` | `subpanel-inset` | 12px |
+   | `p-3` (12) | `subpanel-inset-sm` | 10px |
+   | `p-2.5` (10) | `subpanel-inset-xs` | 8px |
+
+Section rhythm — the vertical seam *between* page sections — follows the same
+shape and the same one-notch step (#3466):
+
+| seam today | add | phone |
+| --- | --- | --- |
+| `mb-6` (24) | `section-seam` | 16px |
+| `mb-8` (32) | `section-seam-lg` | 24px |
+| `space-y-10` (40) | `section-stack` | 24px |
+| `space-y-6` (24) | `section-stack-sm` | 16px |
+
+Every one of these utilities is a `max-sm:` override carrying `!`, so at `sm`
+and above it emits nothing at all — a call site keeps the desktop vocabulary it
+already had, and there is no per-site desktop value to get wrong. The `!` is
+load-bearing: Tailwind 4 sorts custom utilities independently of source order, so
+without it a call site's own `p-4` could win the tie.
+
+These are a vocabulary, not an automatic rule. A structural selector would also
+catch badges, chips and fields, none of which are gutters; and a tree-wide guard
+would have to allow-list roughly a hundred boxes that #3466 cleared as list
+rhythm or field chrome. Reach for the table when you add a padded box inside a
+card or a seam between sections.
+
 ## Action grammar: one primary per surface
 
 A pane earns exactly one `btn` — its primary action. Everything else is a

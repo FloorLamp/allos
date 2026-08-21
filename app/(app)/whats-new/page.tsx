@@ -104,7 +104,7 @@ export default async function WhatsNewPage(props: {
           No release notes are bundled with this build yet.
         </div>
       ) : (
-        <div className="space-y-6" data-testid="whats-new-days">
+        <div className="section-stack-sm space-y-6" data-testid="whats-new-days">
           {paged.days.map((day) => (
             <section
               key={day.date}

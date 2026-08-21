@@ -28,7 +28,7 @@ export default function PillarStat({
 }) {
   return (
     <div
-      className="flex flex-col rounded-lg border border-black/10 p-2.5 dark:border-white/10"
+      className="subpanel-inset-xs flex flex-col rounded-lg border border-black/10 p-2.5 dark:border-white/10"
       data-testid={`longevity-pillar-${pillar.key}`}
       data-tone={pillar.tone}
     >

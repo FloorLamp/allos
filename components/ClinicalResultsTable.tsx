@@ -919,7 +919,7 @@ export default function ClinicalResultsTable({
   };
 
   return (
-    <div className="card mb-6 overflow-hidden p-0">
+    <div className="card section-seam mb-6 overflow-hidden p-0">
       {/* Stacked-row mode hides `thead`, so the header's sort links go with it. The
           replacement select (#1426) now lives in the filter block above the table
           (#2316), inside the same disclosure as the facets: on a phone "narrow this

@@ -109,7 +109,7 @@ export default async function BioAgeSection() {
     >
       <section
         data-testid="bio-age-hero"
-        className="card mb-6 border-brand-100 dark:border-brand-950"
+        className="card section-seam mb-6 border-brand-100 dark:border-brand-950"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">

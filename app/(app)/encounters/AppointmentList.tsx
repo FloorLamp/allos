@@ -215,7 +215,7 @@ export default function AppointmentList({
   return (
     <div className="space-y-3">
       {followUpFrom && (
-        <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900 dark:bg-brand-950/30">
+        <div className="subpanel-inset-sm rounded-xl border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900 dark:bg-brand-950/30">
           {/* Close the appointment → encounter loop (issue #288): turn the just-
               completed appointment into a real, linked visit in the Past section —
               prefilled from it — instead of the row just settling to "Completed"
@@ -333,7 +333,7 @@ export default function AppointmentList({
             <div
               key={a.id}
               data-testid="appointment-row"
-              className="flex items-start gap-3 p-3 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+              className="subpanel-inset-sm flex items-start gap-3 p-3 transition hover:bg-slate-50 dark:hover:bg-ink-850"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">

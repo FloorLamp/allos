@@ -217,7 +217,7 @@ export default function ImmunizationsSection({
             ImmunizationRecordActions now hosts (it owns the share modal, so the
             fold belongs with it), and below `md` that ⋯ is an action sheet.
             Print and share keep their #1849 acting-profile scoping untouched. */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="section-seam mb-6 flex flex-wrap items-center gap-2">
           <AddEntryPanel
             testId="add-immunization-panel"
             panelId="add-immunization-panel-body"
@@ -325,7 +325,7 @@ export default function ImmunizationsSection({
           // region inside the page's own, which is the shape #3360 spent a whole
           // issue undoing one layer up. Both start at `sm`, where the table is a
           // table again.
-          <div className="mb-6 sm:card sm:overflow-hidden sm:p-0">
+          <div className="section-seam mb-6 sm:card sm:overflow-hidden sm:p-0">
             <ScrollFade className="sm:max-h-[70vh] sm:overflow-y-auto">
               <ResponsiveTable
                 className="w-full"

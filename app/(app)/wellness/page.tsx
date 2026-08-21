@@ -91,7 +91,7 @@ export default async function WellnessPage(props: {
       {/* Right-sizing suggestions (#1670), above the cards they are about: a weekly
           goal the profile has been under for four completed weeks, offered for the
           cadence they actually keep or for the logs-only state (#1621). */}
-      <div className="mb-6">
+      <div className="section-seam mb-6">
         <RightSizeSuggestions profileId={profile.id} domain="practice" />
       </div>
 
@@ -113,7 +113,7 @@ export default async function WellnessPage(props: {
       ) : null}
 
       {practiceValues.length > 0 && (
-        <section data-testid="practice-history" className="mb-8">
+        <section data-testid="practice-history" className="section-seam-lg mb-8">
           <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
             Practice history
           </h2>

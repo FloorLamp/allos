@@ -40,7 +40,7 @@ export default function HistoricalDoseLauncher({
 
   return (
     <section
-      className="card mb-6"
+      className="card section-seam mb-6"
       data-testid="historical-dose-launcher"
       aria-labelledby="historical-dose-launcher-title"
     >

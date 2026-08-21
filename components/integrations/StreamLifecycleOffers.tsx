@@ -61,7 +61,7 @@ export default async function StreamLifecycleOffers({
 
   return (
     <div
-      className={`card ${className ?? "mb-6"}`}
+      className={`card ${className ?? "section-seam mb-6"}`}
       data-testid="stream-lifecycle-offers"
     >
       <div className="mb-3 flex items-center gap-2">

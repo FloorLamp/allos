@@ -24,7 +24,11 @@ export default function IntegrationSyncHistoryLink({
     <Link
       href="/data?section=review"
       data-testid="sync-history-link"
-      className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
+      // NOT A `.card` (#3466 class B). Its only host — the Fitbit Takeout page's
+      // Status card — mounts it INSIDE a `.card`, so the card chrome drew a second
+      // border and spent a second gutter within the first. It is a SUB-PANEL of its
+      // host: same border language, same hover affordance, the class A inset.
+      className="subpanel-inset flex items-center justify-between gap-3 rounded-lg border border-black/10 p-4 transition hover:border-brand-300 dark:border-white/10 dark:hover:border-brand-800"
     >
       <div>
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">

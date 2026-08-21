@@ -616,7 +616,7 @@ export default async function ClinicalResultDetailPage(props: {
       />
 
       {derivedReading && (
-        <Notice tone="slate" testid="derived-note" className="mb-6">
+        <Notice tone="slate" testid="derived-note" className="section-seam mb-6">
           <span className="font-semibold">Derived index.</span> These values are
           computed from your other lab readings on the same draw date, not
           measured directly.{" "}
@@ -625,7 +625,7 @@ export default async function ClinicalResultDetailPage(props: {
       )}
 
       {stale && (
-        <Notice tone="amber" className="mb-6">
+        <Notice tone="amber" className="section-seam mb-6">
           <span className="font-semibold">These results are stale.</span> The
           most recent result is from {latest.date} ({humanizeAge(ageDays)} ago).
           It may be time to repeat it —{" "}
@@ -657,7 +657,7 @@ export default async function ClinicalResultDetailPage(props: {
       {info && (
         <div
           data-testid="biomarker-explainer"
-          className="card mb-6 border-l-4 border-l-brand-300 dark:border-l-brand-700"
+          className="card section-seam mb-6 border-l-4 border-l-brand-300 dark:border-l-brand-700"
         >
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {info.full_name}
@@ -674,7 +674,7 @@ export default async function ClinicalResultDetailPage(props: {
       )}
 
       {/* Summary header: latest value, ranges, optimal status. */}
-      <div className="card mb-6 flex flex-wrap items-center gap-x-8 gap-y-3">
+      <div className="card section-seam mb-6 flex flex-wrap items-center gap-x-8 gap-y-3">
         <div>
           <div className="label">Latest</div>
           <div
@@ -838,7 +838,7 @@ export default async function ClinicalResultDetailPage(props: {
       {isDurableImmunityTiter(canonical) && (
         <div
           data-testid="immunity-crosslink"
-          className="card mb-6 flex items-center justify-between gap-3 border-l-4 border-l-emerald-300 text-sm dark:border-l-emerald-700"
+          className="card section-seam mb-6 flex items-center justify-between gap-3 border-l-4 border-l-emerald-300 text-sm dark:border-l-emerald-700"
         >
           <span className="text-slate-700 dark:text-slate-200">
             <span className="font-semibold">Immunity marker.</span> This titer
@@ -867,8 +867,8 @@ export default async function ClinicalResultDetailPage(props: {
               data-testid="biomarker-food-suggestions"
               className={
                 onlyReduce
-                  ? "card mb-6 border-l-4 border-l-amber-300 dark:border-l-amber-700"
-                  : "card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
+                  ? "card section-seam mb-6 border-l-4 border-l-amber-300 dark:border-l-amber-700"
+                  : "card section-seam mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
               }
             >
               <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
@@ -885,7 +885,7 @@ export default async function ClinicalResultDetailPage(props: {
       {curatedSupplementSuggestions.length > 0 && (
         <div
           data-testid="biomarker-supplement-suggestions"
-          className="card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
+          className="card section-seam mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
         >
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Supplement options
@@ -901,7 +901,7 @@ export default async function ClinicalResultDetailPage(props: {
       <FitnessPercentileCard ctx={fitnessCtx} />
 
       {/* Chart */}
-      <div className="card mb-6">
+      <div className="card section-seam mb-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Trend

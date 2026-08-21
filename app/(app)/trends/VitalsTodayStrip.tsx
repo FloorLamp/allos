@@ -37,7 +37,7 @@ export default function VitalsTodayStrip({
       className="card overflow-hidden p-0! sm:grid sm:grid-cols-[12rem_minmax(0,1fr)]"
       data-testid="vitals-today-strip"
     >
-      <div className="flex items-center justify-between gap-3 px-4 py-3.5 sm:flex-col sm:items-start sm:justify-center sm:border-r sm:border-black/10 sm:px-5 sm:py-4 dark:sm:border-white/10">
+      <div className="subpanel-inset flex items-center justify-between gap-3 px-4 py-3.5 sm:flex-col sm:items-start sm:justify-center sm:border-r sm:border-black/10 sm:px-5 sm:py-4 dark:sm:border-white/10">
         <div className="min-w-0">
           <h2 className="font-semibold text-slate-900 dark:text-slate-100">
             Today
@@ -63,7 +63,7 @@ export default function VitalsTodayStrip({
           <div
             key={row.key}
             data-testid={`vitals-today-${row.key}`}
-            className={`min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4 ${
+            className={`subpanel-inset min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4 ${
               rows.length % 2 === 1 && index === rows.length - 1
                 ? "col-span-2 sm:col-span-1"
                 : ""

@@ -204,7 +204,7 @@ export default function BackupSettings({
         there — see the backups guide (<code>docs/backups.md</code>).
       </p>
 
-      <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+      <div className="subpanel-inset-sm rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
         {lastBackup ? (
           <>
             Last snapshot file:{" "}
@@ -229,7 +229,7 @@ export default function BackupSettings({
 
       <div
         data-testid="backup-integrity"
-        className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
+        className="subpanel-inset-sm rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
       >
         <span className="font-medium text-slate-600 dark:text-slate-300">
           Live database integrity:
@@ -262,7 +262,7 @@ export default function BackupSettings({
 
       <div
         data-testid="backup-offsite"
-        className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
+        className="subpanel-inset-sm rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
       >
         <span className="font-medium text-slate-600 dark:text-slate-300">
           Off-volume copy:

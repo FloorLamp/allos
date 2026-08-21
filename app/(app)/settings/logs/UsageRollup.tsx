@@ -37,7 +37,7 @@ export default function UsageRollup({
   const week = totalStat(rows, "week");
 
   return (
-    <div className="mb-6" data-testid="ai-usage-rollup">
+    <div className="section-seam mb-6" data-testid="ai-usage-rollup">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Token usage
