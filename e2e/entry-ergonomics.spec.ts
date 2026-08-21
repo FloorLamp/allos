@@ -1174,3 +1174,60 @@ test("typing keeps the lifts you log ahead of a sport you never have (#2384)", a
   // is exactly as reachable as it was.
   await expect(listbox.getByRole("option", { name: /^Squash/ })).toBeVisible();
 });
+
+// THE PLATE BUILDER IS AN ORDINARY DIALOG-HOST CONSUMER (#3405).
+//
+// It used to render its own portal, its own scrim, its own `z-60`, its own
+// scroller and its own `max-w-md`, sharing only `useFocusTrap` — one of the eight
+// hostless dialogs the census found, and the only one of the three that converged
+// with NO e2e coverage at all. So this exists: without it, that convergence is
+// verified by `tsc` and by reading, which is not the same as knowing the surface
+// still opens.
+//
+// Every assertion is about the HOST's anatomy rather than about the builder's
+// contents — the plate maths is already pinned in lib/__tests__/plates.test.ts,
+// and what changed here is which surface draws the panel.
+//
+// Fixture hygiene (#868): the create form is opened and abandoned. Nothing is
+// completed, so no set auto-saves and this test writes nothing.
+test("the plate builder opens on the converged dialog host (#3405)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+  // A barbell lift, so the weight field carries the plate affordance at all
+  // (`showPlate` in StrengthSets is `isBarbell(equipment) || isBarbellLift(name)`).
+  await pickActivity(page, "Barbell Bench Press");
+  const weight = page.getByTestId("set1-weight");
+  await expect(weight).toBeVisible();
+
+  await hydratedClick(
+    page,
+    page.getByRole("button", { name: "Open plate builder" })
+  );
+
+  const builder = page.getByTestId("plate-builder");
+  await expect(builder).toBeVisible();
+  // THE HOST, named by the facts only the host produces: the declared
+  // presentation, and the ONE scroll owner every converged body scrolls inside.
+  // A hand-rolled portal has neither.
+  await expect(builder).toHaveAttribute("data-presentation", "dialog");
+  await expect(builder.locator("[data-sheet-content]")).toBeVisible();
+  // The title is the host's, printed ONCE — the file no longer draws its own
+  // `<h2>` beside it (#3361's rule, inherited rather than re-decided here).
+  const title = builder.getByRole("heading", { name: "Plate builder" });
+  await expect(title).toHaveCount(1);
+  await expect(title).toBeVisible();
+  // …over the builder's own content, so this is the real panel and not an empty
+  // shell that happens to carry the testid.
+  await expect(builder.getByRole("button", { name: "Use this" })).toBeVisible();
+
+  // AND IT INHERITS ESCAPE (#3420). The old implementation answered Escape
+  // through its own `useFocusTrap` call; that call is gone, and the behaviour
+  // has to have survived the move rather than merely looking like it did.
+  await page.keyboard.press("Escape");
+  await expect(builder).toBeHidden();
+});
