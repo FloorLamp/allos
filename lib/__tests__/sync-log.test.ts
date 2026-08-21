@@ -56,15 +56,18 @@ describe("tallyUpsert (dedup split accounting, #14/#944)", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
-  it("never touches the held-out suppressed/edited counters", () => {
+  it("never touches the held-out suppressed/edited/superseded counters", () => {
     const c = emptyCounts();
     c.suppressed = 3;
     c.edited = 2;
+    c.superseded = 4;
     tallyUpsert(c, "updated");
     expect(c.suppressed).toBe(3);
     expect(c.edited).toBe(2);
+    expect(c.superseded).toBe(4);
   });
 });
 
@@ -116,6 +119,7 @@ describe("foldCounts", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -132,6 +136,7 @@ describe("foldCounts", () => {
       unchanged: 9,
       suppressed: 3,
       edited: 3,
+      superseded: 0,
     });
   });
 });
@@ -149,6 +154,7 @@ describe("summarizeSplit", () => {
       unchanged: 5,
       suppressed: 1,
       edited: 2,
+      superseded: 0,
       skipped: 4,
       received: 17,
     });
@@ -166,6 +172,7 @@ describe("summarizeSplit", () => {
       unchanged: 6,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
       skipped: 0,
       received: 6,
     });
@@ -183,6 +190,7 @@ describe("summarizeSplit", () => {
       unchanged: 0,
       suppressed: 2,
       edited: 0,
+      superseded: 0,
       skipped: 0,
       received: 2,
     });
@@ -200,6 +208,7 @@ describe("summarizeSplit", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 3,
+      superseded: 0,
       skipped: 0,
       received: 3,
     });
@@ -214,6 +223,7 @@ describe("summarizeSplit", () => {
           unchanged: 1.6,
           suppressed: -2,
           edited: 1.4,
+          superseded: -1.6,
         },
         -3
       )
@@ -223,6 +233,7 @@ describe("summarizeSplit", () => {
       unchanged: 2,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
       skipped: 0,
       received: 5,
     });

@@ -1,4 +1,5 @@
 import { shiftDateStr } from "./date";
+import { isStaleMetricSnapshot } from "./metric-snapshot";
 
 // THE OVERLAP-SUPERSEDE RULE for `metric_samples` interval rows (issue #3424).
 //
@@ -128,13 +129,21 @@ export function isSupersedingInterval(start: string, end: string): boolean {
 }
 
 /**
- * The stored rows an INCOMING window supersedes, split by what the edit lock allows.
+ * Plan what an INCOMING window does to the stored rows it overlaps.
  *
  * `stored` is the candidate set for one (profile, metric, source, origin) group,
  * already narrowed to the day radius and with the incoming row's own natural-key twin
  * excluded — that row is the upsert's business, not the supersede's.
+ *
+ * THE INCOMING ROW WINS, unconditionally, against everything it overlaps that the #133
+ * lock does not protect. That is #3424's rule verbatim, and it is right because of what
+ * a push IS: the exporter re-aggregates under the device's CURRENT zone, so every row
+ * of one push carries the current anchoring and anything stored that it overlaps
+ * carries an older one. The one case that breaks the assumption — a push that also
+ * re-sends a record cut under the PREVIOUS anchoring — is settled before this function
+ * ever sees it, by `staleBatchOverlaps` below.
  */
-export function partitionSupersede(
+export function planSupersede(
   incoming: { started_at: string; ended_at: string },
   stored: readonly MetricWindow[]
 ): { supersede: MetricWindow[]; locked: MetricWindow[] } {
@@ -161,25 +170,94 @@ export function partitionSupersede(
   return { supersede, locked };
 }
 
+/** The shape `staleBatchOverlaps` needs of an incoming row. */
+export interface BatchWindow {
+  metric: string;
+  origin?: string | null;
+  started_at: string;
+  ended_at: string;
+}
+
+/**
+ * WITHIN ONE PUSH, the rows cut under the PREVIOUS anchoring — the ones that must not
+ * be written at all.
+ *
+ * A push normally carries one anchoring and its windows are pairwise disjoint. A push
+ * taken across a timezone change does not: #3424's rolling ~48h window re-sends the
+ * pre-switch record ALONGSIDE the re-anchored one that re-contains it, and storing
+ * both is the double count itself. Two rows of the same (metric, origin) that overlap
+ * INSIDE ONE BATCH are therefore always a mixed-anchoring pair.
+ *
+ * WHICH ONE IS CURRENT IS A FRESHNESS QUESTION, NOT AN ORDER ONE. Travelling west the
+ * new zone's midnight is EARLIER than the old one's (Tokyo 15:00Z → Honolulu 10:00Z),
+ * so the re-anchored bucket sorts FIRST and "the row later in the batch wins" keeps the
+ * stale record — measured against #3424's repro, which read 3000 steps for 3500 walked
+ * under exactly that rule. These buckets end at the moment they were last pushed, so
+ * the window reaching FURTHEST FORWARD is the one the exporter is still filling. That
+ * is `isStaleMetricSnapshot`, #1101's own freshness test, applied to a pair that does
+ * not share a key — reused rather than re-invented, and it answers correctly from
+ * either travel direction.
+ *
+ * This is deliberately NOT applied between an incoming row and a STORED one: a
+ * completed re-anchored bucket for a past day legitimately ends EARLIER than the
+ * old-anchoring "today so far" row it overlaps, and blocking it there would leave the
+ * profile half-converged with a gap between the two anchorings.
+ */
+export function staleBatchOverlaps<T extends BatchWindow>(
+  rows: readonly T[]
+): Set<T> {
+  const dropped = new Set<T>();
+  const byGroup = new Map<string, T[]>();
+  for (const row of rows) {
+    if (!isSupersedingInterval(row.started_at, row.ended_at)) continue;
+    const key = `${row.metric}\0${row.origin ?? ""}`;
+    const bucket = byGroup.get(key);
+    if (bucket) bucket.push(row);
+    else byGroup.set(key, [row]);
+  }
+  for (const group of byGroup.values()) {
+    // Freshest first, longest first on a tie, so the greedy keep below always retains
+    // the window that reaches furthest forward.
+    const ranked = [...group].sort((a, b) => {
+      // `isStaleMetricSnapshot(x, y)` is "y ends before x". So a ranks first when b is
+      // the staler of the two.
+      if (isStaleMetricSnapshot(a.ended_at, b.ended_at)) return -1;
+      if (isStaleMetricSnapshot(b.ended_at, a.ended_at)) return 1;
+      return compareWindowStarts(a.started_at, b.started_at);
+    });
+    const kept: T[] = [];
+    for (const row of ranked) {
+      const clashes = kept.some((k) =>
+        windowsOverlap(k.started_at, k.ended_at, row.started_at, row.ended_at)
+      );
+      if (clashes) dropped.add(row);
+      else kept.push(row);
+    }
+  }
+  return dropped;
+}
+
 /**
  * Replay the rule over ONE group's stored history and return the ids to delete.
  *
- * `rows` is every stored row of one (profile, metric, source, origin) group. They are
- * walked in ascending `id` — ingest order — so a later-ingested row supersedes the
- * earlier rows it overlaps, which is exactly what ingest would have done had the rule
- * existed when they arrived.
+ * `rows` is every stored row of one (profile, metric, source, origin) group, walked in
+ * ascending `id` — INGEST ORDER — so a later-ingested row deletes the earlier rows it
+ * overlaps, exactly as #3424 prescribes and exactly as ingest would have done had the
+ * rule existed when they arrived.
  *
- * Two asymmetries with ingest, both deliberate:
- *   • An EDIT-LOCKED row is never deleted (same lock discipline), but it may still
- *     supersede earlier rows — it carries a real anchoring, and the lock protects its
- *     own value, not its neighbours'.
- *   • Rows outside the day radius of one another are never compared, so this replays
- *     the same bounded rule ingest applies rather than a wider one.
+ * `id` order is the right proxy for anchoring order here, structurally: the rows cut
+ * under the old zone were inserted BEFORE the switch and the re-anchored ones after,
+ * so the later id is always the newer anchoring. It is also the only ordering available
+ * — a stored row carries no record of which push delivered it.
  *
- * IDEMPOTENT: a second replay over the survivors finds no overlap, because the first
- * pass left the group pairwise disjoint (every survivor either won its overlaps or was
- * edit-locked, and locked rows are left alone by both passes). A group with no
- * overlaps returns [] — the no-op case a healthy profile takes.
+ * One asymmetry with ingest, deliberate: an EDIT-LOCKED row is never deleted, but it
+ * may still supersede earlier rows. The lock protects that row's value, not its
+ * neighbours'.
+ *
+ * IDEMPOTENT. A second replay deletes nothing: every non-locked overlap was resolved in
+ * pass 1, so the survivors of a group are pairwise disjoint except where an edit-locked
+ * row is involved — and neither pass may delete one of those. A group with no overlaps
+ * returns [], which is the no-op a healthy profile takes.
  */
 export function planOverlapSupersede(rows: readonly MetricWindow[]): number[] {
   const ascending = [...rows].sort((a, b) => a.id - b.id);
@@ -189,8 +267,7 @@ export function planOverlapSupersede(rows: readonly MetricWindow[]): number[] {
     if (isSupersedingInterval(row.started_at, row.ended_at)) {
       const { from, to } = supersedeDateRange(row.date);
       const neighbours = kept.filter((k) => k.date >= from && k.date <= to);
-      const { supersede } = partitionSupersede(row, neighbours);
-      for (const victim of supersede) {
+      for (const victim of planSupersede(row, neighbours).supersede) {
         doomed.push(victim.id);
         kept.splice(kept.indexOf(victim), 1);
       }

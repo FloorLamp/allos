@@ -30,7 +30,8 @@ import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
 import {
   compareWindowStarts,
   isSupersedingInterval,
-  partitionSupersede,
+  planSupersede,
+  staleBatchOverlaps,
   supersedeDateRange,
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
@@ -544,15 +545,30 @@ export function upsertMetricSamples(
   // locked row can be overlapped by several incoming rows in one push and `edited` is a
   // count of ROWS held, not of times we looked at them.
   const lockHeld = new Set<number>();
-  // ASCENDING started_at (#3424's trailing-edge instruction). The rule is
-  // order-dependent: "incoming deletes what it overlaps" is lossy at the leading edge
-  // of the row it deletes, so within one push every re-sent leading sliver must land
-  // BEFORE the later bucket that would otherwise swallow it. Sorting here covers every
+  // ASCENDING started_at (#3424's trailing-edge instruction). "Incoming deletes what
+  // it overlaps" is lossy at the LEADING edge of the row it deletes, so within one push
+  // a re-sent leading sliver must land BEFORE the later bucket that would otherwise
+  // swallow it. Phase 1 below makes the final store state independent of this order for
+  // the shapes the bug produces; the sort is what makes the sequence of writes
+  // deterministic and the sliver ordering true regardless. Sorting here covers every
   // caller; ingestHealthConnectPayload sorts before it CHUNKS, because this function
   // only ever sees one chunk and cannot order across the split.
   const ordered = supersedes
     ? [...rows].sort((a, b) => compareWindowStarts(a.started_at, b.started_at))
     : rows;
+  // PHASE 1 — the rows of THIS push that were cut under the PREVIOUS anchoring. A push
+  // normally carries one anchoring and disjoint windows; one taken across a timezone
+  // change re-sends the pre-switch record beside the re-anchored one that re-contains
+  // it, and only the fresher of that pair may be written. Settling it here is what lets
+  // the per-row rule below stay the plain "incoming wins" #3424 specifies.
+  // Batch-scoped, so it sees one CHUNK: a `daily` push carries a handful of interval
+  // rows per type against INGEST_CHUNK_SIZE = 1000, so a mixed-anchoring pair never
+  // straddles the split.
+  const staleInBatch = supersedes
+    ? staleBatchOverlaps(
+        ordered.filter((r) => !BODY_METRIC_SAMPLE_MEASURES.includes(r.metric))
+      )
+    : new Set<NormMetricSample>();
 
   for (const r of ordered) {
     if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
@@ -591,13 +607,25 @@ export function upsertMetricSamples(
       counts.suppressed++;
       continue;
     }
+    if (staleInBatch.has(r)) {
+      // A fresher row in this same push covers this window. Persisting it beside that
+      // row IS the double count, so it is dropped — accounted `unchanged` like the
+      // stale-snapshot retry below, because it was received and deliberately not stored.
+      tallyUpsert(counts, classifyUpsert(true, true));
+      continue;
+    }
     // A delayed retry of an older cumulative snapshot (checked for real below, where
     // its own accounting branch lives). Read here too, because a stale retry must not
     // supersede: its window is a strict prefix of what is already stored, so acting on
     // it would delete against an anchoring the source has already moved past.
     const staleRetry =
       !!found && isStaleMetricSnapshot(found.ended_at, r.ended_at);
-    // ── OVERLAP-SUPERSEDE (#3424) ─────────────────────────────────────────────
+    // ── PHASE 2: OVERLAP-SUPERSEDE (#3424) ────────────────────────────────────
+    // The incoming row deletes the stored rows its window overlaps, then upserts
+    // itself. Unconditional against the store, by design: phase 1 already removed the
+    // only rows in this push that could carry an older anchoring, so anything stored
+    // that this row overlaps is the anchoring the exporter has moved on from.
+    //
     // Runs BEFORE the edit-lock branch on purpose. The lock protects the value of the
     // row it is set on — it does not license a stale old-anchoring row to keep double
     // counting into that row's day. A locked natural-key twin still skips the write
@@ -614,12 +642,12 @@ export function upsertMetricSamples(
           to,
           r.started_at
         ) as MetricWindow[];
-        const { supersede, locked } = partitionSupersede(r, candidates);
-        for (const victim of supersede) {
+        const plan = planSupersede(r, candidates);
+        for (const victim of plan.supersede) {
           dropOverlap.run(victim.id);
           counts.superseded++;
         }
-        for (const held of locked) {
+        for (const held of plan.locked) {
           if (lockHeld.has(held.id)) continue;
           lockHeld.add(held.id);
           counts.edited++;
