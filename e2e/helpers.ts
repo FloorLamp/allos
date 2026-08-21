@@ -379,11 +379,11 @@ export async function chartsSettled(
 
 // Take a toast down before the next round trip, and prove it is gone (#2861).
 //
-// The toast stack is `fixed` at the viewport's bottom-right (components/Toast.tsx —
-// `w-72` cards, auto-dismiss at 6s for a success and 10s for an error). That quadrant
-// is where a table's right-aligned actions cell lives and where an OverflowMenu panel
-// opens, so the very next click after a write that toasted lands UNDER a card that is
-// still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// The toast layer is `fixed` on the viewport's bottom edge (components/Toast.tsx —
+// `w-72` cards at the bottom-RIGHT from `md` up, one full-width bar below it since
+// #3373; auto-dismiss at 6s for a success and 10s for an error). That is where a
+// table's right-aligned actions cell lives and where an OverflowMenu panel opens, so
+// the very next click after a write that toasted lands UNDER a card that is still up. Playwright's actionability then blocks on it — before #2859 the unbounded
 // click simply absorbed the whole auto-dismiss window in silence (the sleep-page
 // delete test was losing ~10s of every run, green CI included), and with the run-wide
 // 15s actionTimeout the same collision fails NAMED:
@@ -394,9 +394,11 @@ export async function chartsSettled(
 // Never wait it out and never widen the budget: a click blocked by
 // `<div class="fixed bottom-…">` is the toast, and the fix is to dismiss it.
 //
-// SCOPED BY TEXT, always. Toasts stack, so "the toast" is not a thing — dismissing by
-// testid alone would take down whichever card happened to be on top, which on an undo
-// path is the one the NEXT assertion is about. The filter also documents at the call
+// SCOPED BY TEXT, always. Toasts stack from `md` up, so "the toast" is not a thing —
+// dismissing by testid alone would take down whichever card happened to be on top,
+// which on an undo path is the one the NEXT assertion is about. Below `md` only the
+// head of the queue is on screen, so the same filter is what tells you whether the
+// toast you meant has had its turn yet. The filter also documents at the call
 // site which write the test just made.
 //
 // The Dismiss button is a pure client control: it posts nothing, so this is

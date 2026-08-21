@@ -46,6 +46,10 @@ export const MOTION_MS = {
   // The mobile profile switcher's top drawer (#1801) — a fourth tenant of the
   // same token, named for what it animates like the other three.
   switcher: OVERLAY_MOTION_MS,
+  // The toast bar (#3373) — the one transient surface that used to pop in and out
+  // with no motion at all. It rides the same token: a notice that arrives over live
+  // content is exactly the case the shared easing pair was chosen for.
+  notice: OVERLAY_MOTION_MS,
   // Height-animated open/close of an inline region (components/Collapse).
   collapse: 200,
   // The shell chrome's hide/reveal slide (MobileNav's sticky bar + view strip).
@@ -92,6 +96,11 @@ export function motionClass(
 //                 width, for the anatomy exceptions that are not flickable at any
 //                 size (the command palette, the camera fallback). Fades, both
 //                 widths, for the same reason "dialog" fades above `md`.
+//   * "notice"  — a bottom-edge NOTICE: the toast bar (#3373). It slides up from
+//                 the edge AND fades, unlike the panels above it, because it is
+//                 not covering anything — it arrives over live content the reader
+//                 is still looking at, and the fade is what stops that arrival
+//                 reading as a jump.
 //   * "scrim"   — the backdrop behind any of them. Fades, never slides.
 //
 // This is the only place that names an `.overlay-*` class. Every overlay surface
@@ -99,7 +108,7 @@ export function motionClass(
 // makes "one duration + easing token pair" enforceable rather than aspirational
 // — see lib/__tests__/overlay-motion-chokepoint.test.ts.
 export type OverlayAnchor =
-  "bottom" | "left" | "top" | "dialog" | "centered" | "scrim";
+  "bottom" | "left" | "top" | "dialog" | "centered" | "notice" | "scrim";
 
 export function overlayMotionClass(
   anchor: OverlayAnchor,
