@@ -445,6 +445,32 @@ describe("dialog census — what it can SEE", () => {
   // defect #3445 filed: the reach suite and the detector were written from the
   // same premise, so a green suite meant only that the detector saw the shape it
   // had been given. NOTHING BELOW THIS LINE MAY SPELL A DIALOG ROLE.
+  //
+  // EVERY CLAUSE BELOW WAS MUTATED, one at a time, and the fixture that caught
+  // each is named. A clause no fixture can kill is untested, and two of these
+  // were: `dismissible`'s Escape arm and its labelled-Close arm both survived
+  // the first pass, because every other modal here offers a second way out. The
+  // two fixtures that isolate them were written in response, not in advance.
+  //
+  //   declaresModalAnatomy, full-viewport clause  → the real near-miss test, and
+  //                                                 the unrecorded-hostless guard
+  //   declaresModalAnatomy, portal/body-lock      → the same two
+  //   declaresModalAnatomy, dismissible           → the blocking curtain
+  //   declaresOwnDialog, native <dialog>          → the native element
+  //   DIALOG_ROLE_RE, the computed-role group     → the runtime role
+  //   dismissible, scrim-tag onClick              → the separate scrim child
+  //   dismissible, layer-tag onClick              → the portalled catcher
+  //   dismissible, labelled Close                 → the Close-only modal
+  //   dismissible, Escape                         → the Escape-only modal
+  //   SCRIM_RE, the OVERLAY_SCRIM token half      → MobileNav, on disk
+  //   SCRIM_RE, the literal-tint half             → the hand-rolled card
+  //   the anatomy route in censusDialogs at all   → MobileNav, and the stale-record guard
+  //
+  // A WARNING FOR WHOEVER RE-RUNS THIS. The first harness reported all twelve
+  // mutants KILLED, and it was reading its own exit code after passing vitest an
+  // invalid `--reporter=basic`, which fails at STARTUP with exit 1 — so every
+  // mutant "died" without one test having run. Take the verdict from the named
+  // failing tests, never from the exit status alone.
 
   it("sees a hand-rolled modal that declares no role and no aria-modal", () => {
     // components/LevelBadge.tsx as it stood on main at 6de40080, its
@@ -530,6 +556,87 @@ describe("dialog census — what it can SEE", () => {
     );
     expect(entry?.kind).toBe("hostless");
     expect(entry?.declaredBy).toBe("anatomy");
+    expect(entry?.handRolled?.ownEscapeHandler).toBe(false);
+    expect(entry?.handRolled?.dismissible).toBe(true);
+  });
+
+  it("sees a modal whose only dismissal is Escape", () => {
+    // A dialog can decline the scrim tap on purpose and still be dismissible.
+    // Nothing else in this file reaches `dismissible` through Escape ALONE — the
+    // real drawer and the hand-rolled card both offer a second route — so
+    // without this fixture the Escape arm is a clause no test can kill.
+    const entry = classifyOne(
+      "components/EscapeOnlyModal.tsx",
+      `import { createPortal } from "react-dom";
+       export default function EscapeOnlyModal({ onClose }) {
+         useEffect(() => {
+           const onKey = (e) => { if (e.key === "Escape") onClose(); };
+           document.addEventListener("keydown", onKey);
+           return () => document.removeEventListener("keydown", onKey);
+         }, [onClose]);
+         return createPortal(
+           <div className="fixed inset-0 z-60 grid place-items-center bg-black/40">
+             <div className="w-full max-w-lg rounded-xl bg-surface p-4">body</div>
+           </div>,
+           document.body
+         );
+       }`
+    );
+    expect(entry?.kind).toBe("hostless");
+    expect(entry?.declaredBy).toBe("anatomy");
+    expect(entry?.handRolled?.ownEscapeHandler).toBe(true);
+    expect(entry?.handRolled?.dismissible).toBe(true);
+  });
+
+  it("sees a modal whose only dismissal is a labelled Close control", () => {
+    // The other arm on its own: no Escape, no click on the layer or the scrim,
+    // just the ✕. Same reason as above — the arm needs a fixture that can kill
+    // it, and every other modal here offers a second route out.
+    const entry = classifyOne(
+      "components/CloseButtonOnlyModal.tsx",
+      `import { createPortal } from "react-dom";
+       export default function CloseButtonOnlyModal({ onClose }) {
+         return createPortal(
+           <div className="fixed inset-0 z-60 grid place-items-center bg-black/40">
+             <div className="w-full max-w-lg rounded-xl bg-surface p-4">
+               <button type="button" aria-label="Close" onClick={onClose}>x</button>
+               body
+             </div>
+           </div>,
+           document.body
+         );
+       }`
+    );
+    expect(entry?.kind).toBe("hostless");
+    expect(entry?.declaredBy).toBe("anatomy");
+    expect(entry?.handRolled?.ownEscapeHandler).toBe(false);
+    expect(entry?.handRolled?.dismissible).toBe(true);
+  });
+
+  it("sees a portalled full-viewport layer whose only dismissal is its own click", () => {
+    // THE BIAS IN ITS LEAST COMFORTABLE FORM, and it is stated here rather than
+    // hidden: a transparent catcher with no scrim, no Escape and no labelled
+    // Close, which portals and takes the whole viewport. It could be a menu's
+    // catcher that somebody moved into a portal to escape a stacking context.
+    // It is REPORTED anyway — the module's stated bias is to report and let a
+    // human decide, and the answer costs one register entry with a reason in it.
+    // Staying silent here would cost the register its meaning, which is the
+    // trade #3445 is about.
+    const entry = classifyOne(
+      "components/PortalledCatcher.tsx",
+      `import { createPortal } from "react-dom";
+       export default function PortalledCatcher({ onClose }) {
+         return createPortal(
+           <div className="fixed inset-0 z-40" onClick={onClose}>
+             <div className="mx-auto mt-24 w-80 rounded-xl bg-surface p-4">panel</div>
+           </div>,
+           document.body
+         );
+       }`
+    );
+    expect(entry?.kind).toBe("hostless");
+    expect(entry?.declaredBy).toBe("anatomy");
+    expect(entry?.handRolled?.scrim).toBe(false);
     expect(entry?.handRolled?.ownEscapeHandler).toBe(false);
     expect(entry?.handRolled?.dismissible).toBe(true);
   });
