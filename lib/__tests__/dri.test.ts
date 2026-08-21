@@ -177,6 +177,42 @@ describe("parseQuantity separators (#3153)", () => {
       why: "four digits after the comma is not a group either",
     },
 
+    // ── a LEADING ZERO before the comma: REFUSED (#3444). No convention on earth
+    // writes a thousands group starting with a zero, so the zero PROVES the comma is
+    // a decimal — the same thing it already proved on the period side, where "0.125"
+    // was refused from the start. Until #3444 these read as thousands groups and
+    // returned a confident number three orders of magnitude out.
+    {
+      amount: "0,125 mg",
+      expected: "unreadable",
+      why: "digoxin's real strength; read as 125 mg — a thousandfold overdose",
+    },
+    {
+      amount: "0,5 mg",
+      expected: "unreadable",
+      why: "one digit after the comma was already refused; pinned as the pair",
+    },
+    {
+      amount: "0,500 mg",
+      expected: "unreadable",
+      why: "half a milligram, read as 500 mg",
+    },
+    {
+      amount: "0,05 mg",
+      expected: "unreadable",
+      why: "levothyroxine 50 mcg written the European way",
+    },
+    {
+      amount: "012,345 mg",
+      expected: "unreadable",
+      why: "a padded leading group is no more a thousands group than a bare 0",
+    },
+    {
+      amount: "0.125 mg",
+      expected: "unreadable",
+      why: "THE SYMMETRY PARTNER — the period side has always refused this",
+    },
+
     // ── period sitting where a thousands group would: REFUSED, same coin flip ──
     {
       amount: "10.000 IU",
