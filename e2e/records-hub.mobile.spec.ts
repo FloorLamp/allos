@@ -93,11 +93,19 @@ test("a Visits focus deep link opens entry without secondary description chrome 
   // left with content under no heading; that is why this asserts the PROSE is
   // hidden rather than that the intro is gone. Its desktop rendering is pinned by
   // e2e/records-pane-anatomy.spec.ts.
+  //
+  // READ AS STRUCTURE, NOT AS COPY. Both assertions here used to name the words:
+  // the visits sentence verbatim, and a "More" disclosure label. Both are
+  // ABSENCE assertions over a text match, so a reword makes the locator match
+  // nothing and the assertion passes on zero elements — green while the pane
+  // paints prose below `md`. Demonstrated: with `PaneIntro`'s `hidden md:block`
+  // deleted this line goes red today, but deleted AND the sentence reworded, it
+  // goes green. `PaneIntro` renders exactly one `<p>` (its prose) and no controls
+  // at all, so the element and the role are the durable questions and the copy is
+  // free to change.
   const intro = page.getByTestId("records-pane-intro");
-  await expect(
-    intro.getByText("Manage upcoming appointments and your visit history.")
-  ).toBeHidden();
-  await expect(intro.getByText("More", { exact: true })).toHaveCount(0);
+  await expect(intro.locator("p")).toBeHidden();
+  await expect(intro.getByRole("button")).toHaveCount(0);
 });
 
 test("the first data row fits in the first viewport on key record panes (#1497)", async ({
