@@ -27,6 +27,14 @@ import {
   metricSampleTombstoneKey,
 } from "./tombstone-keys";
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
+import {
+  compareWindowStarts,
+  isSupersedingInterval,
+  partitionSupersede,
+  supersedeDateRange,
+  type MetricWindow,
+} from "@/lib/metric-window-overlap";
+import { HEALTH_CONNECT_ID } from "./health-connect";
 import { streamKeysPlacedIn } from "@/lib/reading-placement";
 
 // Source-agnostic record shapes. Every integration parses its own payload into
@@ -448,11 +456,46 @@ const BODY_METRIC_COMPARE_COLS: string[] = [
 export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
   streamKeysPlacedIn("body_metrics");
 
+// THE SOURCE WHOSE INTERVAL ROWS SUPERSEDE WHAT THEY OVERLAP (#3424).
+//
+// Health Connect is the ONE source whose day-buckets re-anchor under the app's feet:
+// the exporter follows the DEVICE zone, so a timezone change re-cuts "today" and the
+// re-anchored record arrives with a start the natural key has never seen (see
+// lib/metric-window-overlap.ts for the whole mechanism). Withings, Oura, Strava and
+// the Fitbit takeout attribute each reading on their own clock and re-send the same
+// key, and manual readings are the user's own rows — none of them may ever have a row
+// deleted by this path, which is why the rule is gated on the source id rather than on
+// a shape test that a future source could accidentally match.
+const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
+
+// The stored rows an incoming interval may supersede: same profile / metric / source /
+// origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
+// row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
+// merge all belong to it). The overlap test itself is deliberately NOT in this SQL:
+// `started_at` is a documented `mixed`-shape column, so string comparison would answer
+// a different question than instants do. SQL narrows on the indexed
+// (profile_id, metric, date) prefix; lib/metric-window-overlap.ts decides.
+const SUPERSEDE_CANDIDATES_SQL = `SELECT id, date, started_at, ended_at, edited
+     FROM metric_samples
+    WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
+      AND date >= ? AND date <= ?
+      AND started_at <> ?
+    ORDER BY id`;
+
 // Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
 // (or two origins inside Health Connect) each keep their own row. `ended_at` is
 // deliberately mutable: daily cumulative exporter snapshots keep a stable start
 // while their end advances to the push moment (#1101).
+//
+// AND, FOR HEALTH CONNECT ONLY, an incoming interval row DELETES the stored rows its
+// window overlaps before upserting itself (#3424). That is what the start-keyed
+// idempotency of #1101 cannot do: a moving END overwrites its own key, a moving START
+// mints a new one and leaves the old row summing into the same profile-local day.
+// Edit-locked rows survive it, tombstoned rows stay dead, point readings are untouched,
+// and the deletes are sync-internal — they write no re-import tombstone, exactly like
+// the #608 timezone sweep's deletes, because the source is expected to keep sending the
+// span under its current anchoring.
 //
 // Guard: body fat % and resting HR belong in body_metrics, not
 // here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
@@ -490,7 +533,28 @@ export function upsertMetricSamples(
   // re-inserted by the rolling window. Loaded once for the batch.
   const tombstoned = loadImportTombstones(profileId, "metric_samples");
   const counts = emptyCounts();
-  for (const r of rows) {
+
+  // ── overlap-supersede (#3424), Health Connect only ────────────────────────────
+  const supersedes = source === OVERLAP_SUPERSEDE_SOURCE;
+  const findOverlaps = supersedes ? db.prepare(SUPERSEDE_CANDIDATES_SQL) : null;
+  const dropOverlap = supersedes
+    ? db.prepare("DELETE FROM metric_samples WHERE id = ?")
+    : null;
+  // Distinct edit-locked rows this batch held OUT of a supersede. A Set, because one
+  // locked row can be overlapped by several incoming rows in one push and `edited` is a
+  // count of ROWS held, not of times we looked at them.
+  const lockHeld = new Set<number>();
+  // ASCENDING started_at (#3424's trailing-edge instruction). The rule is
+  // order-dependent: "incoming deletes what it overlaps" is lossy at the leading edge
+  // of the row it deletes, so within one push every re-sent leading sliver must land
+  // BEFORE the later bucket that would otherwise swallow it. Sorting here covers every
+  // caller; ingestHealthConnectPayload sorts before it CHUNKS, because this function
+  // only ever sees one chunk and cannot order across the split.
+  const ordered = supersedes
+    ? [...rows].sort((a, b) => compareWindowStarts(a.started_at, b.started_at))
+    : rows;
+
+  for (const r of ordered) {
     if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
       // These belong in body_metrics (via upsertBodyMetrics); never let them land
       // in metric_samples and re-split the measure across two tables.
@@ -527,6 +591,41 @@ export function upsertMetricSamples(
       counts.suppressed++;
       continue;
     }
+    // A delayed retry of an older cumulative snapshot (checked for real below, where
+    // its own accounting branch lives). Read here too, because a stale retry must not
+    // supersede: its window is a strict prefix of what is already stored, so acting on
+    // it would delete against an anchoring the source has already moved past.
+    const staleRetry =
+      !!found && isStaleMetricSnapshot(found.ended_at, r.ended_at);
+    // ── OVERLAP-SUPERSEDE (#3424) ─────────────────────────────────────────────
+    // Runs BEFORE the edit-lock branch on purpose. The lock protects the value of the
+    // row it is set on — it does not license a stale old-anchoring row to keep double
+    // counting into that row's day. A locked natural-key twin still skips the write
+    // below; its overlaps are still cleared, which is what makes its day total right.
+    if (supersedes && !staleRetry && findOverlaps && dropOverlap) {
+      if (isSupersedingInterval(r.started_at, r.ended_at)) {
+        const { from, to } = supersedeDateRange(r.date);
+        const candidates = findOverlaps.all(
+          profileId,
+          r.metric,
+          source,
+          r.origin ?? null,
+          from,
+          to,
+          r.started_at
+        ) as MetricWindow[];
+        const { supersede, locked } = partitionSupersede(r, candidates);
+        for (const victim of supersede) {
+          dropOverlap.run(victim.id);
+          counts.superseded++;
+        }
+        for (const held of locked) {
+          if (lockHeld.has(held.id)) continue;
+          lockHeld.add(held.id);
+          counts.edited++;
+        }
+      }
+    }
     // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
     // detail-page readings table's per-row Edit. A hand-corrected sample survives
     // every later re-push of the rolling window, counted `unchanged` — the same
@@ -541,7 +640,7 @@ export function upsertMetricSamples(
     // A delayed retry of an older cumulative snapshot must never roll a newer
     // day-so-far value backward. The natural key intentionally omits ended_at, so
     // freshness is an explicit part of the runtime merge rule (#1101 review).
-    if (found && isStaleMetricSnapshot(found.ended_at, r.ended_at)) {
+    if (staleRetry) {
       tallyUpsert(counts, classifyUpsert(true, true));
       continue;
     }

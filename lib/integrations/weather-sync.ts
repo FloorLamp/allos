@@ -4,7 +4,12 @@ import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
 import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
-import { summarizeSplit, type UpsertCounts, emptyCounts } from "./sync-log";
+import {
+  summarizeSplit,
+  type UpsertCounts,
+  emptyCounts,
+  foldCounts,
+} from "./sync-log";
 import { truncatedSyncDetails } from "./sync-details";
 
 // Pulls the hourly UV + irradiance series for a profile's HOME LOCATION from Open-Meteo
@@ -92,14 +97,11 @@ function todayUtc(): string {
 // One run's two upsert halves (hourly UV + daily aggregates) as a single split, so the
 // integration_sync_events row reports ONE honest insert/update/unchanged accounting for
 // the run rather than two partial ones.
+// FIELD-WISE, through the shared fold rather than a hand-written sum: a segment added
+// to UpsertCounts (`superseded`, #3424) must reach every split that reports one, and a
+// literal here would have silently dropped it while still compiling.
 function mergeCounts(a: UpsertCounts, b: UpsertCounts): UpsertCounts {
-  return {
-    inserted: a.inserted + b.inserted,
-    updated: a.updated + b.updated,
-    unchanged: a.unchanged + b.unchanged,
-    suppressed: a.suppressed + b.suppressed,
-    edited: a.edited + b.edited,
-  };
+  return foldCounts([a, b]);
 }
 
 // Sync the profile's home-location UV series. Returns a summary, or { error } for a

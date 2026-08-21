@@ -1,0 +1,210 @@
+import { shiftDateStr } from "./date";
+
+// THE OVERLAP-SUPERSEDE RULE for `metric_samples` interval rows (issue #3424).
+//
+// WHY IT EXISTS. The Health Connect exporter's `daily` setting sends one interval
+// record per DEVICE-LOCAL day: window = local midnight → the push moment. #1101 made
+// `upsertMetricSamples` idempotent on (profile, metric, source, origin, started_at)
+// so a moving END overwrites itself. A TIMEZONE CHANGE moves the START instead: the
+// exporter re-anchors "today" to the new zone's midnight, so the re-anchored record
+// carries a brand-new natural key, never supersedes the old one, and
+// `getMetricDailyTotals` SUMs both into one profile-local day. Measured on prod
+// profile 1: 23330 steps for a day with 11721.
+//
+// THE RULE. Under ONE anchoring, same-(metric, origin) day buckets are pairwise
+// disjoint. So an overlap is always the mixed-anchoring anomaly, and "the newer row
+// wins over whatever it overlaps" converges an affected span to the exporter's
+// current anchoring within one push. Ingest applies it against an incoming row
+// (lib/integrations/normalize.ts); the 20260821-hc-overlap-supersede migration
+// replays the SAME rule over stored history in `id` order.
+//
+// TWO ENCODINGS, ONE RULE, PINNED. Ingest narrows candidates in SQL and decides in
+// JS through `windowsOverlap`; the migration plans entirely in JS through
+// `planOverlapSupersede`. Both call this file's predicate, and
+// lib/__db_tests__/hc-overlap-supersede.test.ts pins the SQL narrowing against it —
+// the `planSyncEventPrune` discipline (a pure rule, pinned against its DB twin).
+//
+// IT FAILS TOWARD KEEPING ROWS. This path DELETES stored health data, so every
+// uncertainty resolves to "no overlap": an instant this module cannot read as an
+// unambiguous UTC instant, a window with no duration, a candidate outside the day
+// radius. A false negative leaves a double count that the next push fixes; a false
+// positive destroys a reading nobody can get back.
+
+/**
+ * One stored or incoming `metric_samples` window, in the columns this rule reads.
+ * Structural, so the pure tier can exercise it without a live schema.
+ */
+export interface MetricWindow {
+  id: number;
+  /** Profile-local day the row is filed under (`YYYY-MM-DD`). */
+  date: string;
+  started_at: string;
+  ended_at: string;
+  /** The #133 user-edit lock. NULL on rows written before migration 115. */
+  edited: number | null;
+}
+
+// HOW FAR EITHER SIDE OF AN INCOMING ROW'S `date` A SUPERSEDABLE ROW CAN SIT, IN
+// PROFILE-LOCAL DAYS. The unit is days of the `date` column, not hours of the window.
+//
+// Derivation: a day bucket spans at most 24 h, and re-anchoring shifts its start by
+// at most the spread of real UTC offsets (−12:00 … +14:00, so 26 h). Two buckets that
+// overlap therefore start within ~26 h of each other, and `date` — computed from
+// `started_at` under the profile zone — can differ by at most 1. The radius is 2 to
+// leave one full day of slack for a stale `date` that a re-send has not yet rewritten.
+//
+// It is a BOUND ON THE SCAN, not part of the rule: a genuine overlap further out than
+// this is simply not superseded (see "fails toward keeping rows" above). Ingest spends
+// it on the (profile_id, metric, date) index instead of walking a metric's history.
+export const SUPERSEDE_DAY_RADIUS = 2;
+
+/** The inclusive `date` range a supersede candidate for `date` may sit in. */
+export function supersedeDateRange(date: string): { from: string; to: string } {
+  return {
+    from: shiftDateStr(date, -SUPERSEDE_DAY_RADIUS),
+    to: shiftDateStr(date, SUPERSEDE_DAY_RADIUS),
+  };
+}
+
+// An instant this rule is willing to compare, in epoch ms — or null when it is not.
+//
+// An explicit UTC designator (`Z`) or a numeric offset is REQUIRED. `metric_samples`
+// instant columns are documented `mixed` (docs/internals/time-columns.md): they hold
+// vendor ISO for an imported sample AND a bare `${date}T00:00:00` — a profile-local
+// day midnight, not an instant — for a reading whose author stated only a day. Those
+// bare strings parse against the HOST's zone, which would make a delete decision
+// depend on where the server runs, so they are refused outright.
+function instantMs(value: string): number | null {
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Do two half-open windows `[start, end)` overlap, as INSTANTS?
+ *
+ * A window with no duration (`end <= start`) is a POINT reading — HRV, skin
+ * temperature, lean mass, height, BMR all store `started_at === ended_at` — and never
+ * overlaps anything, in either role. That is the guard that keeps the interval rule
+ * off the point rows: the textbook half-open test `aStart < bEnd && bStart < aEnd`
+ * answers TRUE for a degenerate window sitting inside a real one, which would let a
+ * daily bucket delete a point reading it merely contains.
+ *
+ * Comparison is on parsed instants, never on the strings: `2026-05-02T00:00:00.000Z`
+ * and `2026-05-02T00:00:00Z` are the same moment and sort the wrong way lexically,
+ * and an offset spelling (`2026-05-02T09:00:00+09:00`) does not sort at all.
+ */
+export function windowsOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string
+): boolean {
+  const as = instantMs(aStart);
+  const ae = instantMs(aEnd);
+  const bs = instantMs(bStart);
+  const be = instantMs(bEnd);
+  if (as === null || ae === null || bs === null || be === null) return false;
+  if (ae <= as || be <= bs) return false; // point reading — not an interval
+  return as < be && bs < ae;
+}
+
+/**
+ * Order two window starts oldest-first, as INSTANTS where both are readable and
+ * lexically otherwise — the `isStaleMetricSnapshot` discipline, for the same reason:
+ * `started_at` holds more than one spelling and a delete order must not depend on
+ * which one a vendor chose.
+ */
+export function compareWindowStarts(a: string, b: string): number {
+  const am = instantMs(a);
+  const bm = instantMs(b);
+  if (am !== null && bm !== null) return am - bm;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Is this window one the rule can act on at all (a readable, non-empty interval)? */
+export function isSupersedingInterval(start: string, end: string): boolean {
+  return windowsOverlap(start, end, start, end);
+}
+
+/**
+ * The stored rows an INCOMING window supersedes, split by what the edit lock allows.
+ *
+ * `stored` is the candidate set for one (profile, metric, source, origin) group,
+ * already narrowed to the day radius and with the incoming row's own natural-key twin
+ * excluded — that row is the upsert's business, not the supersede's.
+ */
+export function partitionSupersede(
+  incoming: { started_at: string; ended_at: string },
+  stored: readonly MetricWindow[]
+): { supersede: MetricWindow[]; locked: MetricWindow[] } {
+  const supersede: MetricWindow[] = [];
+  const locked: MetricWindow[] = [];
+  if (!isSupersedingInterval(incoming.started_at, incoming.ended_at)) {
+    return { supersede, locked };
+  }
+  for (const row of stored) {
+    if (
+      !windowsOverlap(
+        incoming.started_at,
+        incoming.ended_at,
+        row.started_at,
+        row.ended_at
+      )
+    ) {
+      continue;
+    }
+    // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
+    if (row.edited) locked.push(row);
+    else supersede.push(row);
+  }
+  return { supersede, locked };
+}
+
+/**
+ * Replay the rule over ONE group's stored history and return the ids to delete.
+ *
+ * `rows` is every stored row of one (profile, metric, source, origin) group. They are
+ * walked in ascending `id` — ingest order — so a later-ingested row supersedes the
+ * earlier rows it overlaps, which is exactly what ingest would have done had the rule
+ * existed when they arrived.
+ *
+ * Two asymmetries with ingest, both deliberate:
+ *   • An EDIT-LOCKED row is never deleted (same lock discipline), but it may still
+ *     supersede earlier rows — it carries a real anchoring, and the lock protects its
+ *     own value, not its neighbours'.
+ *   • Rows outside the day radius of one another are never compared, so this replays
+ *     the same bounded rule ingest applies rather than a wider one.
+ *
+ * IDEMPOTENT: a second replay over the survivors finds no overlap, because the first
+ * pass left the group pairwise disjoint (every survivor either won its overlaps or was
+ * edit-locked, and locked rows are left alone by both passes). A group with no
+ * overlaps returns [] — the no-op case a healthy profile takes.
+ */
+export function planOverlapSupersede(rows: readonly MetricWindow[]): number[] {
+  const ascending = [...rows].sort((a, b) => a.id - b.id);
+  const kept: MetricWindow[] = [];
+  const doomed: number[] = [];
+  for (const row of ascending) {
+    if (isSupersedingInterval(row.started_at, row.ended_at)) {
+      const { from, to } = supersedeDateRange(row.date);
+      const neighbours = kept.filter((k) => k.date >= from && k.date <= to);
+      const { supersede } = partitionSupersede(row, neighbours);
+      for (const victim of supersede) {
+        doomed.push(victim.id);
+        kept.splice(kept.indexOf(victim), 1);
+      }
+    }
+    kept.push(row);
+  }
+  return doomed.sort((a, b) => a - b);
+}
+
+/** The group a row's supersede neighbourhood is scoped to. NUL-joined, as elsewhere. */
+export function overlapGroupKey(row: {
+  profile_id: number;
+  metric: string;
+  origin: string | null;
+}): string {
+  return `${row.profile_id}\0${row.metric}\0${row.origin ?? ""}`;
+}
