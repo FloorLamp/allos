@@ -17,6 +17,7 @@ import {
   hasUnrecoverableWork,
   subscribeUnsavedWork,
 } from "@/lib/offline/unsaved-work";
+import { pageDeclaresUnrecoverableWork } from "./DirtyFormRegistry";
 import {
   isStaleBuild,
   registerUpdateReload,
@@ -25,6 +26,15 @@ import {
 } from "./update-reload-channel";
 import { useLatestRef } from "./useLatestRef";
 
+// WHAT COUNTS AS UNRECOVERABLE (#3371). Two sources, OR'd, because they see
+// different forms. `hasUnrecoverableWork()` is the #1878 registry's view of every
+// dirty <form> with named controls the browser composes. A form that has none —
+// hand-composed out of React state — is invisible to it and answers for ITSELF with
+// `data-unsaved`, which `pageDeclaresUnrecoverableWork()` reads straight off the DOM
+// at the moment the question is asked. Either one is enough to hold the tab: the
+// resolution is the fail-safe one stated in lib/dirty-forms.ts, and the cost of being
+// wrong is a deploy taken on the next tick rather than this one.
+//
 // The tab that takes the deploy by itself (#2471) — the wiring half. Every decision
 // it makes is `autoReloadPlan` in lib/sw-update.ts; this file owns listeners, the
 // two markers, and the ordering that makes the reload provably lossless.
@@ -155,7 +165,7 @@ export function useAutoUpdateReload({
     }
     // Re-check after the await: a flush is fast but not instant, and a form that
     // started holding unrecoverable input in the gap must still stop this.
-    if (hasUnrecoverableWork()) {
+    if (hasUnrecoverableWork() || pageDeclaresUnrecoverableWork()) {
       takingRef.current = false;
       return false;
     }
@@ -216,7 +226,10 @@ export function useAutoUpdateReload({
         staleBuild: isStaleBuild(),
         pending: pendingRef.current,
         targetSha: targetShaRef.current,
-        unrecoverableWork: hasUnrecoverableWork() || captureRefused,
+        unrecoverableWork:
+          hasUnrecoverableWork() ||
+          pageDeclaresUnrecoverableWork() ||
+          captureRefused,
         hidden:
           typeof document !== "undefined"
             ? document.visibilityState === "hidden"

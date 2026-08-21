@@ -71,12 +71,21 @@ discovered (#2774):
   (`OVERLAY_PANEL_MAX_WIDTH`) replaced thirty per-host `max-w-*` overrides.
   Content stays intrinsic (#2014); this is the container half of that rule.
 
-A dirty form gets one more thing for free: a gesture dismissal — a flick, a
-scrim tap — routes through the app's `ConfirmDialog` when the hosted form holds
-unsaved input. Escape and the Close button do not, because those are targeted
-actions on a named control; a flick and a scrim tap are the two a hand produces
-by accident. A clean form still dismisses in one gesture, which is what keeps
-the confirm from becoming a click-through.
+A dirty form gets one more thing for free: a dismissal — a flick, a scrim tap,
+or **Escape** — routes through the app's `ConfirmDialog` when the hosted form
+holds unsaved input. A clean form still dismisses in one gesture or one
+keypress, which is what keeps the confirm from becoming a click-through.
+
+**Escape was added to that list by an owner ruling (#3420), narrowing #2774.**
+The original rule put Escape and the Close button on the unguarded path because
+both are targeted actions on a named control, where a flick and a scrim tap are
+the two a hand produces by accident. That still governs a dialog holding
+**nothing** unsaved: Escape closes it outright, no prompt. It no longer governs
+a dialog holding unsaved work — there, one keystroke destroyed exactly the
+typing a scrim tap two pixels away would have asked about, and the dirty-form
+registry already knew the difference. **The Close button is untouched** and
+still closes without a prompt: it is the control the person aimed at, and a
+confirm on it would be the ask-before-acting pattern the house grammar declines.
 
 ## What a dialog BODY renders
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  declarationBlocksAutomaticReload,
   EMPTY_DIRTY_FORM_STATE,
   fieldHoldsUnsavedInput,
   formHasUnsavedInput,
@@ -164,6 +165,46 @@ describe("unsavedAnswerForForm (#3356)", () => {
     // believing "clean" costs somebody's typing.
     expect(unsavedAnswerForForm({ declared: true, tracked: false })).toBe(true);
     expect(unsavedAnswerForForm({ declared: false, tracked: true })).toBe(true);
+  });
+});
+
+describe("declarationBlocksAutomaticReload (#3371)", () => {
+  // The reload gate's SECOND axis. `markUnrecoverableWork` only ever hears about
+  // forms the registry can see, and a form that declares `data-unsaved` is by
+  // definition one it cannot — so before this, an automatic update reload could land
+  // on top of a hand-composed dialog someone was mid-way through. The recorded
+  // decision, and where the DOM half asks it, is on `markUnrecoverableWork` in
+  // lib/offline/unsaved-work.ts.
+
+  it("holds the tab for a declaration with no durable copy behind it", () => {
+    // The sleep dialog and the affiliation picker: not a draft anywhere, so a reload
+    // destroys what is on screen. A reload is not a gesture the user chose, which is
+    // what makes refusing it a stronger call than the discard confirm.
+    expect(
+      declarationBlocksAutomaticReload({ declared: true, draftBacked: false })
+    ).toBe(true);
+  });
+
+  it("does NOT hold it for a draft-backed declaration, which the reload flushes", () => {
+    // The supplement form and the routine builder. Their content is in IndexedDB and
+    // the reload's step 2 flushes it before anything else happens (#2471), so
+    // refusing here would refuse a reload that costs the person nothing — and the
+    // editor comes back on the other side.
+    expect(
+      declarationBlocksAutomaticReload({ declared: true, draftBacked: true })
+    ).toBe(false);
+  });
+
+  it("says nothing about a form declaring itself clean", () => {
+    // `data-unsaved="false"` means "I have nothing to add" (see unsavedAnswerForForm),
+    // and it must not mean it anywhere else either — least of all here, where taking
+    // it as licence would be a form disarming the reload gate for the whole page.
+    expect(
+      declarationBlocksAutomaticReload({ declared: false, draftBacked: false })
+    ).toBe(false);
+    expect(
+      declarationBlocksAutomaticReload({ declared: false, draftBacked: true })
+    ).toBe(false);
   });
 });
 

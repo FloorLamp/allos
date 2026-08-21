@@ -15,6 +15,13 @@ import { useLatestRef } from "./useLatestRef";
 // Escape is handled on the CAPTURE phase with stopPropagation so closing the
 // top-most overlay doesn't also trip a background Escape handler (e.g. the
 // mobile drawer's, under a sheet opened from it).
+//
+// ESCAPE HAS ITS OWN SEAM (#3420). It used to be `onClose` and nothing else, on the
+// reading that a keypress on a named key is a targeted action rather than an
+// accidental dismissal (#2774). That still governs a surface with nothing to lose —
+// and no longer governs one holding unsaved work, where Escape now joins the gesture
+// path so the same typing a scrim tap would have protected is protected here too. The
+// hook does not know which case it is in: `onEscape` is where the consumer says.
 
 export function focusablesIn(panel: HTMLElement): HTMLElement[] {
   return Array.from(
@@ -27,21 +34,29 @@ export function focusablesIn(panel: HTMLElement): HTMLElement[] {
 export function useFocusTrap({
   panelRef,
   onClose,
+  onEscape,
   initialFocusRef,
   active = true,
 }: {
   panelRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
+  /**
+   * What the Escape key does, when that is not simply `onClose` (#3420). A host
+   * that guards discards passes the guarded route here, so Escape asks before
+   * throwing unsaved work away and still closes outright when there is none.
+   * Defaults to `onClose`, which is what every unguarded overlay wants.
+   */
+  onEscape?: () => void;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   // Lets a consumer that keeps the panel mounted through an exit animation stop
   // trapping focus (and stop answering Escape) the moment it starts closing.
   active?: boolean;
 }) {
-  // Read onClose through a ref so the focus/keydown effects can run once on
+  // Read the Escape handler through a ref so the keydown effect can run once on
   // mount without depending on its identity. Consumers routinely pass an inline
   // arrow that changes every render; an effect keyed on it would re-run on every
   // keystroke and yank focus back to the first field mid-typing.
-  const onCloseRef = useLatestRef(onClose);
+  const onEscapeRef = useLatestRef(onEscape ?? onClose);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // Capture and restore the invoking control for every active episode. Some
@@ -63,7 +78,7 @@ export function useFocusTrap({
     };
   }, [active, initialFocusRef, panelRef]);
 
-  // Escape-to-close + Tab focus trap. Registered once; reads the latest onClose
+  // Escape + Tab focus trap. Registered once; reads the latest Escape handler
   // through the ref so a consumer re-render (e.g. typing) never re-runs this.
   useEffect(() => {
     if (!active) return;
@@ -93,7 +108,7 @@ export function useFocusTrap({
         }
         e.stopPropagation();
         e.preventDefault();
-        onCloseRef.current();
+        onEscapeRef.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -116,5 +131,5 @@ export function useFocusTrap({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [panelRef, active, onCloseRef]);
+  }, [panelRef, active, onEscapeRef]);
 }

@@ -109,19 +109,30 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
  *
  * SO THIS RESOLVES IT BY CONSEQUENCE RATHER THAN BY EVIDENCE. Reading the
  * ambiguous default as "the server has it" is the old bug: it drops the guard and
- * loses what somebody typed, silently. Reading it as "React is mirroring" costs at
- * most ONE EXTRA CONFIRM on a form that had in fact already saved — a question,
- * answerable with "Discard", that loses nothing. The cheaper mistake wins.
+ * loses what somebody typed, silently. Reading it as "React is mirroring" keeps the
+ * guard — and what THAT costs depends entirely on how the form ever releases:
  *
- * A form that would rather be believed can say so: `data-server-value` on the
- * control states what the server holds, and the DOM half prefers it over all of
- * this. That is the supported way for a controlled autosaving field to release.
+ *   * A FORM THAT SUBMITS, RESETS OR UNMOUNTS pays ONE EXTRA CONFIRM at worst, on a
+ *     form that had in fact already saved — a question, answerable with "Discard",
+ *     that loses nothing. The cheaper mistake wins. This is every form in the tree
+ *     today.
+ *   * A NAMED FIELD INSIDE A `<form>` THAT AUTOSAVES WITHOUT SUBMITTING never
+ *     releases at all. Its write lands, the server revalidates the default onto the
+ *     typed value, this function reads that as the ambiguous case, and the registry
+ *     answers "dirty" INDEFINITELY — holding back every chrome refresh (#1878) and
+ *     blocking the automatic update reload (#2471). An autosave submits nothing,
+ *     resets nothing and unmounts nothing, so nothing ever clears it.
  *
- * AND FOR AN AUTOSAVING FIELD THE COST IS NOT ONE CONFIRM — it is a form that never
- * releases at all, holding back every chrome refresh and the automatic update reload,
- * because an autosave neither submits nor resets. No surface in the tree is shaped
- * that way today, and `lib/__tests__/autosave-registry-census.test.ts` is the tripwire
- * that fires the day one is, rather than a sentence here hoping to be read.
+ * FOR THAT SECOND CASE `data-server-value` ON THE CONTROL IS A REQUIREMENT, not one
+ * option among several. It states what the server now holds, the DOM half prefers it
+ * over all of the above, and it is the only thing that lets such a field release; the
+ * only alternative is to keep the field out of the autosaving `<form>`.
+ *
+ * AND THAT IS ENFORCED RATHER THAN HOPED FOR. `lib/__tests__/autosave-registry-census.test.ts`
+ * fails the day an autosaving surface renders a `<form>` around a control the registry
+ * would track, and its failure message names the same two remedies. Nothing in the tree
+ * is shaped that way today — the census is what keeps that true, because a sentence
+ * here would be accurate when written and unchecked ever after.
  */
 export function resolveServerValue(field: {
   /** The DOM `defaultValue` right now. */
@@ -201,6 +212,37 @@ export function unsavedAnswerForForm(form: {
   readonly tracked: boolean;
 }): boolean {
   return form.declared === true || form.tracked;
+}
+
+/**
+ * WHETHER ONE SELF-DECLARING FORM MUST STOP AN AUTOMATIC UPDATE RELOAD (#3371).
+ *
+ * `markUnrecoverableWork` (#2471) is written by the DOM half for every dirty form the
+ * REGISTRY can see, and a form that answers for itself with `data-unsaved` is by
+ * definition one the registry cannot. So the reload gate was blind to exactly the
+ * surfaces #3356 existed for: a person composing a mood rating or an affiliation could
+ * have the tab reloaded out from under them, destroying what the discard guard two
+ * lines away would have asked about.
+ *
+ * The distinction is the SAME one `#2471` already draws, applied one signal over:
+ *
+ *   * DRAFT-BACKED work is in IndexedDB (`components/useFormDraft.ts` stamps
+ *     `data-draft-backed` on the subtree). The reload flushes it and reopens the
+ *     editor on the other side, so a declaration inside one blocks nothing — the
+ *     recoverable axis already handles it, and blocking here would refuse a reload
+ *     that costs nothing.
+ *   * EVERYTHING ELSE that declares itself unsaved has no durable copy anywhere. A
+ *     reload destroys it, and the reload is not a gesture the user chose — which is
+ *     what makes the argument for refusing stronger here than for the flick the
+ *     discard confirm guards.
+ */
+export function declarationBlocksAutomaticReload(el: {
+  /** The element declares `data-unsaved="true"`. */
+  readonly declared: boolean;
+  /** It sits inside a `data-draft-backed` subtree. */
+  readonly draftBacked: boolean;
+}): boolean {
+  return el.declared && !el.draftBacked;
 }
 
 /**
