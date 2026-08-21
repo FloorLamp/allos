@@ -80,8 +80,33 @@ run_gate "lint" npm run lint
 run_gate "typecheck" npm run typecheck
 run_gate "test (pure)" npm test
 
+# THE DB TIER'S PER-TEST CEILING, RAISED FOR THIS BOX ONLY (#3436).
+#
+# Up to five agents share four cores here. Measured 2026-08-21, the identical
+# tier on the identical tree:
+#
+#   load 0.78-6.03 (tier alone)   161 s wall, worst single test  3 407 ms
+#   load 18.1 (four lanes + tier) 862 s wall, worst single test 16 308 ms
+#
+# 5.35x on wall time, 5.7x at the per-test p99 — the "about six times slower"
+# the environment runbook already states, now with a measurement behind it. Both
+# runs passed 6489/6489 tests when the ceiling was lifted, so contention here
+# costs TIME and never correctness: under the stock ceiling those same runs lose
+# 59 tests to `Test timed out in 5000ms` and not one assertion.
+#
+# 60 000 ms = 3.7x the worst test measured at load 18.1, which covers the load
+# 22 this box has been seen at (16 308 ms x 22/18.1 = ~20 000 ms) with room for
+# a burst this measurement did not sample. It is deliberately NOT a slowdown
+# detector — CI is, at the strict 15 000 ms default in vitest.db.config.ts,
+# where the derivation lives. Read it there before changing either number.
+#
+# A DB timeout at THIS ceiling is not contention any more: 60 s is 3.7x the
+# worst thing a fully loaded box has been measured to do. Treat it as a real
+# hang and diagnose the test.
+export ALLOS_DB_TEST_TIMEOUT_MS="${ALLOS_DB_TEST_TIMEOUT_MS:-60000}"
+
 if paths_changed "${db_tier_paths[@]}"; then
-  run_gate "test:db" npm run test:db
+  run_gate "test:db (per-test ceiling ${ALLOS_DB_TEST_TIMEOUT_MS} ms)" npm run test:db
 else
   echo
   echo "=== GATE test:db: SKIPPED (nothing the DB tier imports changed vs ${base:0:12}) ==="
