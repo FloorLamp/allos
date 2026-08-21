@@ -203,9 +203,21 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     // The repair, which is what #3451 asked for.
     expect(strengthFromName("Metformin 1 000 mg")).toBe("1 000 mg");
     expect(cleanMedicationName("Metformin 1 000 mg")).toBe("Metformin");
-    // And the repair extends by ONE digit run, never far enough to eat a name's own.
+    // The repair extends AS FAR AS THE NUMBER GOES and never one group further. Both
+    // directions matter and a single step gets only the first of them right:
+    //   - a name's own trailing token must survive ("Vitamin B 12"), and
+    //   - a number with more than two groups must be taken whole, or the name keeps a
+    //     digit and the split is still wrong.
     expect(cleanMedicationName("Vitamin B 12 1 000 mcg")).toBe("Vitamin B 12");
     expect(strengthFromName("Vitamin B 12 1 000 mcg")).toBe("1 000 mcg");
+    expect(cleanMedicationName("Metformin 1 000 000 mg")).toBe("Metformin");
+    expect(strengthFromName("Metformin 1 000 000 mg")).toBe("1 000 000 mg");
+    expect(cleanMedicationName("Metformin 1 000 000 000 mg")).toBe("Metformin");
+    // A LEADING GROUP OF MORE THAN THREE DIGITS still extends — the middle groups are
+    // shape-constrained, the leading one is not. Constraining it too was measured to
+    // leave this one unextended, with a "000 mg" strength reading a confident zero.
+    expect(cleanMedicationName("Metformin 1234 000 mg")).toBe("Metformin");
+    expect(strengthFromName("Metformin 1234 000 mg")).toBe("1234 000 mg");
   });
 
   // A COUNT is a number against a dose unit too, and a fabricated count multiplies an
@@ -368,6 +380,22 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
     expect(cleanMedicationName("Humulin 70 30 100 units/mL")).toBe(
       "Humulin 70 30"
     );
+    // THE WRITE PATH'S OWN COPY OF THE BINDER QUESTION (position 12). `strengthFromName`
+    // carries its own lookbehind, a THIRD copy of "what binds a digit to a name" in a
+    // second file — and spelled `(?<![A-Za-z0-9_])` it had no hyphen and no en dash, so
+    // a hyphen-bound name digit regressed the STORED STRENGTH as well as the reading:
+    // "Omega-3<NBSP>500 mg" yielded "3<NBSP>500 mg", which persistDocumentImport stores.
+    // It derives from `NAME_BINDER_CHARS` now, like the other two.
+    const NBSP = "\u00a0";
+    expect(strengthFromName(`Omega-3${NBSP}500 mg`)).toBe("500 mg");
+    expect(strengthFromName(`Vitamin B-12${NBSP}500 mcg`)).toBe("500 mcg");
+    expect(strengthFromName(`Folic Acid B-9${NBSP}400 mcg`)).toBe("400 mcg");
+    expect(strengthFromName(`Omega\u20133${NBSP}500 mg`)).toBe("500 mg");
+    expect(strengthFromName(`Omega_3${NBSP}500 mg`)).toBe("500 mg");
+    // Controls: a plain space is unchanged, and so is a name with no binder at all.
+    expect(strengthFromName("Omega-3 500 mg")).toBe("500 mg");
+    expect(strengthFromName("Metformin 500 mg")).toBe("500 mg");
+
     // THE THREE KEYS THAT MUST STAY APART, which is the property the family merge broke.
     expect(
       new Set(

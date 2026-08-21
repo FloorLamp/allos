@@ -17,6 +17,7 @@
 import {
   WRITTEN_NUMBER_SCAN,
   MID_NUMBER_PREFIX,
+  NAME_BINDER_CHARS,
   readDoseQuantity,
 } from "./dri";
 import { parseDosage, spreadDoseTimes } from "./intake-schedule";
@@ -402,7 +403,7 @@ export function strengthFromName(raw: string): string | null {
   // asks the question that was actually meant, so the naked decimal is matched WHOLE and
   // refused downstream instead of being re-read as a thousandfold larger dose (#3444).
   const m = raw.match(
-    new RegExp(String.raw`(?<![A-Za-z0-9_])${QUANTITY}`, "i")
+    new RegExp(String.raw`(?<![${NAME_BINDER_CHARS}0-9])${QUANTITY}`, "i")
   );
   if (!m) return null;
   const narrow = m[0].replace(/\s{2,}/g, " ").trim();

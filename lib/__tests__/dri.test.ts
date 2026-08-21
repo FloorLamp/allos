@@ -733,12 +733,30 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
   //
   // So this varies BOTH axes and asserts the whole grid.
   it("no name-ending digit welds to a strength, for any separator (the cross-product)", () => {
+    // THE BINDER IS AN AXIS, NOT A CONSTANT. Every entry here used to be LETTER-bound,
+    // so the grid varied the separator and held the binder fixed — a one-dimensional
+    // sweep over a two-dimensional surface. That is why "Omega-3<NBSP>500 mg" read a
+    // confident 3500 mg through three review passes: `NAME_WELDED_NUMBER` named
+    // `[A-Za-z]` while its refusal-side twin named fifteen characters, and no fixture
+    // ever put a hyphen-bound digit in front of anything but a plain space.
+    //
+    // Both are derived from `NAME_BINDER_CHARS` now, so this list exercises the
+    // derivation rather than a remembered set.
     const NAMES: [string, number, DoseUnit][] = [
       ["B12", 500, "mcg"],
       ["B6", 100, "mg"],
       ["CoQ10", 200, "mg"],
       ["Vitamin D3", 5000, "iu"],
       ["Niacin B3", 500, "mg"],
+      // hyphen-bound — the shipped catalog spelling
+      ["Omega-3", 500, "mg"],
+      ["Vitamin B-12", 500, "mcg"],
+      // this one flips stackUlWarnings to a folate exceedance if it welds
+      ["Folic Acid B-9", 400, "mcg"],
+      // en dash: what a document pipeline makes of that hyphen
+      ["Omega\u20133", 500, "mg"],
+      // underscore
+      ["Omega_3", 500, "mg"],
     ];
     const UNIT: Record<string, string> = { mcg: "mcg", mg: "mg", iu: "IU" };
     // Every separator that can sit between two digit runs: the nine read as a group, the
@@ -970,6 +988,59 @@ describe("a non-comma thousands separator never reads as a confident zero (#3451
       );
       expect(unreadableDoseAmountMessage(a)).toContain(a);
     }
+  });
+
+  // POSITION 12 — A SEPARATOR BETWEEN THE NUMBER AND ITS UNIT, which the enumeration in
+  // lib/dri.ts did not originally list. Found by sweeping the positions rather than the
+  // characters, which is the whole point of having the table.
+  //
+  // Here the gap is governed by `\s*`, not by the separator classes at all: a character
+  // `\s` matches is a gap and the number reads; anything else is not a gap, the pattern
+  // fails, and the answer is `none` — no fabrication in either direction. The two halves
+  // differ on the second case (`none` vs `unreadable`) for the anchoring reason above,
+  // and that predates this change.
+  it("reads a number whose unit is held on by any whitespace, and invents nothing when it is not", () => {
+    for (const c of [" ", "\u00a0", "\u2007", "\u2009", "\u202f"]) {
+      expect(readDoseQuantity(`1000${c}mg`)).toEqual({
+        kind: "quantity",
+        value: 1000,
+        unit: "mg",
+      });
+    }
+    // Not whitespace: the unit is not attached, so there is no quantity to state.
+    for (const c of ["\u2019", "'", "\u200b", "-"]) {
+      expect(readDoseQuantity(`1000${c}mg`)).toEqual({ kind: "none" });
+    }
+  });
+
+  // NORMALISATION CHANGES THE ANSWER, and nothing on this path normalises — so this test
+  // pins a LATENT dependency rather than a live defect. It is here because the day
+  // somebody adds an NFKC pass at a write boundary (a reasonable thing to want, and
+  // #3472 proposes something adjacent), these readings move, and this is where they
+  // will find out.
+  //
+  //   NFKC maps NBSP and the other grouping spaces to U+0020, so "1<NBSP>000 mg" stops
+  //   reading 1000 and starts refusing — the SAFE direction.
+  //   NFKC also maps U+FF07 FULLWIDTH APOSTROPHE onto U+0027, which IS in the read set,
+  //   so "1<U+FF07>000 mg" stops refusing and starts reading 1000 — the fabrication
+  //   direction. Measured: it is the ONLY code point in the BMP that does this.
+  it("depends on Unicode normalisation form, which nothing on this path applies", () => {
+    const nbsp = "1\u00a0000 mg";
+    expect(readDoseQuantity(nbsp)).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
+    expect(readDoseQuantity(nbsp.normalize("NFKC"))).toEqual({
+      kind: "unreadable",
+    });
+    const fullwidth = "1\uff07000 mg";
+    expect(readDoseQuantity(fullwidth)).toEqual({ kind: "unreadable" });
+    expect(readDoseQuantity(fullwidth.normalize("NFKC"))).toEqual({
+      kind: "quantity",
+      value: 1000,
+      unit: "mg",
+    });
   });
 
   // THE RESIDUALS, ASSERTED SO THE LIST IS CHECKABLE RATHER THAN RHETORICAL. The rule

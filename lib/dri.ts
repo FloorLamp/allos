@@ -236,9 +236,10 @@ export interface ParsedQuantity {
 // lib/__tests__/prescription-parse.test.ts already pins "B12 500 mcg" with the words
 // "must not become 12", which is the strongest argument in the tree for this whole
 // split: somebody already met this hazard and wrote it down. So the space branch
-// refuses to start after a letter, digit, underscore OR HYPHEN, which is the same
-// assertion `strengthFromName` uses for the same hazard, and those four names read
-// exactly as they did before.
+// refuses to start after any of `NAME_BINDER_CHARS` — letter, underscore, hyphen, en
+// dash — plus a digit and the mid-number characters. `strengthFromName` derives its own
+// lookbehind from that same constant, so the two really are one assertion now; the
+// sentence that used to claim this was false until #3451's fifth round.
 //
 // THE HYPHEN IS IN THAT CLASS ON MEASURED EVIDENCE. This tree spells the fatty acid
 // "Omega-3" — twenty times across lib/biomarker-panels.ts and lib/derived-biomarkers.ts
@@ -384,7 +385,11 @@ const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 // has a second opinion about grouping, leading zeros or decimals.
 // ─────────────────────────────────────────────────────────────────────────────────────
 // EVERY POSITION A SEPARATOR CHARACTER CAN INFLUENCE A READING, AND WHETHER THE
-// "BETWEEN TWO DIGIT RUNS" ARGUMENT ACTUALLY HOLDS THERE.
+// "BETWEEN TWO DIGIT RUNS" ARGUMENT ACTUALLY HOLDS THERE. FOURTEEN.
+// #14 and #15 were found by re-sweeping this table; #12 and the correction to #9 were
+// found by a reviewer WALKING it. That is the case for keeping it current and honest: a
+// position missing from here, or an entry whose claim has quietly gone false, is a defect
+// nobody is looking for.
 //
 // This table exists because three separate defects on this change were the SAME mistake:
 // the rule reached into a position the argument for it did not cover. Enumerating the
@@ -405,13 +410,13 @@ const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 //     the question the position raises is whether the LEFT run belongs to a name
 //     ("B12 500 mcg"). That is what the boundary answers.
 //
-//  5. MID_NUMBER_PREFIX — `\d+RUN$` against the text before a strength
+//  5. MID_NUMBER_PREFIX — `\d+(?:RUN\d{3})*RUN$` against the text before a strength
 //     HOLDS. The right-hand digit run is the strength itself, immediately after.
 //
 //  6. unreadableSeparatorSentence — `\d(RUN)\d`
 //     HOLDS. Spelled with the digits on both sides explicitly.
 //
-//  7. NAME_DIGIT_BOUNDARY — `(?<![A-Za-z0-9_\-–.,SEPS])`
+//  7. NAME_DIGIT_BOUNDARY — `(?<![NAME_BINDER_CHARS 0-9 .,SEPS])`
 //     A DIFFERENT ARGUMENT, AND IT MUST NOT BE CONFUSED WITH THIS ONE. It is not about
 //     what sits between digits; it is about WHAT MAY PRECEDE A NUMBER. The read set is
 //     listed so the refusal branch cannot start in the middle of a number some other
@@ -423,8 +428,45 @@ const AMBIGUOUS_PERIOD_GROUPING = /^\d{1,3}\.\d{3}$/;
 //     lived: widening this class to the read set turned "B12<NBSP>500 mcg" into 12500,
 //     and main has the same defect for "," alone.
 //
-//  9. NAME_WELDED_NUMBER — `[A-Za-z]\d+(?:[.,SEPS]\d+)+`
-//     HOLDS. The read-side twin of entry 7, and the reason entry 8 is safe.
+//  9. NAME_WELDED_NUMBER — `[NAME_BINDER_CHARS]\d+(?:[.,SEPS]\d+)+`
+//     HOLDS NOW; IT DID NOT WHEN THIS ENTRY FIRST SAID SO, and the correction is the
+//     reason this table is worth keeping. It read `[A-Za-z]` while entry 7 named fifteen
+//     characters, so the two were twins by assertion and not by construction: a
+//     HYPHEN-bound name digit walked through ("Omega-3<NBSP>500 mg" -> 3500 mg,
+//     "Vitamin B-12<NBSP>500 mcg" -> 12500 mcg), and entry 8 says in its own words that
+//     it "HOLDS ONLY BECAUSE OF ENTRY 9" — so entry 8 was false too, transitively.
+//     Both are now built from `NAME_BINDER_CHARS`; agreement is structural.
+//     A reviewer walking this table found the false claim before any test did.
+//
+// 12. lib/prescription-parse.ts's OWN lookbehind in `strengthFromName` —
+//     `(?<![NAME_BINDER_CHARS0-9])` before QUANTITY. A THIRD copy of the same question,
+//     in another file, and it was the reason the hyphen-binder defect regressed the
+//     WRITE path as well as the read one: spelled `(?<![A-Za-z0-9_])` it let
+//     "Omega-3<NBSP>500 mg" yield the strength "3<NBSP>500 mg", which persistDocumentImport
+//     then stored. It is now derived from the same constant as entries 7 and 9.
+//     The claim a few screens up that the boundary is "the same assertion
+//     `strengthFromName` uses" was false until this change; it is true now.
+//
+// 13. THE GAP BETWEEN THE NUMBER AND ITS UNIT — `\s*` in DOSE_QUANTITY_RE and in
+//     lib/intake-ingredients.ts's AMOUNT_RE. This position was MISSING from the table
+//     until the table itself was swept, which is the argument for keeping it: the check
+//     that finds a missing position is enumerating positions, not characters.
+//     THE ARGUMENT DOES NOT APPLY AND MUST NOT BE MADE TO. There is no digit on the
+//     right, so nothing here is a thousands separator; `\s*` asks a different question
+//     ("is the unit attached to this number") and answers it for every character in one
+//     go. A gap that `\s` matches reads; anything else fails the pattern and yields
+//     `none`. Neither outcome can fabricate, and no separator class belongs here.
+//
+// 14. NORMALISATION, WHICH IS A POSITION EVEN THOUGH IT IS NOT A CHARACTER CLASS.
+//     Nothing on this path normalises today — measured: the only `.normalize()` calls in
+//     lib/ are in acquirer-identity.ts and raw-data-tree.ts, neither of which reaches a
+//     dose. But the reading DEPENDS on the form: NFKC folds every grouping space onto
+//     U+0020, so a Swiss "1<NBSP>000 mg" would stop reading 1000 and start refusing (the
+//     safe direction) — and it folds U+FF07 FULLWIDTH APOSTROPHE onto U+0027, which is
+//     in the read set, so "1<U+FF07>000 mg" would stop refusing and start reading (the
+//     fabrication direction). U+FF07 is the ONLY code point in the BMP that does that.
+//     Pinned in lib/__tests__/dri.test.ts so a future normalisation pass — #3472
+//     proposes something adjacent — meets this rather than discovering it.
 //
 // AND THE TWO POSITIONS THIS CHANGE REMOVED, because the argument DID NOT hold in them —
 // they are listed so nobody restores them thinking they were an oversight:
@@ -686,7 +728,29 @@ export type DoseQuantityReading =
 // The general form, worth carrying to any guard in this file: BEFORE COPYING A LOOKBEHIND
 // FROM A NEIGHBOUR, ASK WHETHER THE NEIGHBOUR'S BRANCH READS OR REFUSES. Widening a guard
 // is conservative on a read and permissive on a refusal.
-const NAME_DIGIT_BOUNDARY = String.raw`(?<![A-Za-z0-9_\-\u2013.,${THOUSANDS_SEP_CHARS}])`;
+// WHAT BINDS A DIGIT TO A NAME. ONE DEFINITION, and both guards below are DERIVED from
+// it — because an earlier revision asserted the two "say the same thing" and they did not.
+// The refusal side named fifteen characters; the read side named `[A-Za-z]`. So a
+// hyphen-bound name digit walked straight through the read side: "Omega-3<NBSP>500 mg"
+// returned a confident 3500 mg, "Vitamin B-12<NBSP>500 mcg" returned 12500 mcg, and
+// "Folic Acid B-9<NBSP>400 mcg" returned 9400 mcg — which flips stackUlWarnings to a
+// folate exceedance against the 1000 mcg UL. `Omega-3` is a shipped catalog entry.
+//
+// A DERIVATION, NOT A WIDER HAND-LIST. Widening `[A-Za-z]` to a written-out class would
+// be the same mistake in a new position — the separator axis was closed by inverting the
+// classes precisely so no list has to be kept in sync. These two are kept in sync by
+// being the same constant, so "both say the same thing" is true by construction and a
+// character added here reaches both.
+//
+// DIGITS AND THE MID-NUMBER CHARACTERS ARE NOT IN HERE, on purpose. A digit before a
+// digit is just more number, and `.` `,` and the read set mean "we are already inside a
+// number" — a different claim, which only the refusal side needs. The boundary adds them
+// below; the weld must not have them, because a token that captures one of them still
+// RESOLVES ("12,500" reads 12500) and the weld's whole mechanism is capturing a character
+// that makes the token unresolvable.
+export const NAME_BINDER_CHARS = String.raw`A-Za-z_\-\u2013`;
+
+const NAME_DIGIT_BOUNDARY = String.raw`(?<![${NAME_BINDER_CHARS}0-9.,${THOUSANDS_SEP_CHARS}])`;
 const AMBIGUOUS_SPACE_NUMBER = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREADABLE_SEP_RUN}\d+)+(?:[.,]\d+)?`;
 export const WRITTEN_NUMBER = String.raw`\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)*`;
 
@@ -717,13 +781,25 @@ export const WRITTEN_NUMBER_SCAN = String.raw`(?<![\d.,])[.,]?${WRITTEN_NUMBER}`
 // OF A NUMBER rather than a strength: a digit run, then a separator run nobody can read.
 // Anchored at the end, so a caller tests it against the prefix it is about to split off.
 //
-// ONE STEP, NOT A RE-SCAN, and the difference is a safety property. A first cut retried
-// the whole name/strength match with the wider number and let the leftmost match win —
-// which on "Vitamin B 12 1 000 mcg" swallowed the name's own "12" and gave back the name
-// "Vitamin B", reintroducing the family merge this fallback exists to avoid. Extending by
-// exactly one digit-run-plus-separator is the minimum that repairs the split, and the
-// minimum is the only amount that cannot take a name digit with it.
-export const MID_NUMBER_PREFIX = String.raw`${NAME_DIGIT_BOUNDARY}\d+${UNREADABLE_SEP_RUN}$`;
+// AS FAR AS THE NUMBER GOES, AND NOT ONE GROUP FURTHER. A first cut retried the whole
+// name/strength match with the wider number and let the leftmost match win — which on
+// "Vitamin B 12 1 000 mcg" swallowed the name's own "12" and gave back the name
+// "Vitamin B", reintroducing the family merge this fallback exists to avoid.
+//
+// A single step is not enough either: "Metformin 1 000 000 mg" needs TWO, and with one it
+// left the name as "Metformin 1". So the middle groups are shape-constrained to EXACTLY
+// THREE DIGITS while the leading group stays `\d+`. That is what tells the two apart, and
+// it is the one place in this file where the thousands-group shape is the right test —
+// because the question here is not "what does this number mean" but "how far back does it
+// go", and a name's trailing token is not a three-digit group:
+//
+//   "Metformin 1 000 000 mg"  -> "1" + " 000" + " "  -> takes both runs  -> "Metformin"
+//   "Vitamin B 12 1 000 mcg"  -> "1" + (no group) + " " -> takes one run -> "Vitamin B 12"
+//   "Metformin 1234 000 mg"   -> "1234" + " "        -> takes one run    -> "Metformin"
+//
+// The leading group must stay `\d+`: constraining it to `\d{1,3}` was measured to leave
+// "Metformin 1234 000 mg" unextended, and its "000 mg" strength reads a confident zero.
+export const MID_NUMBER_PREFIX = String.raw`${NAME_DIGIT_BOUNDARY}\d+(?:${UNREADABLE_SEP_RUN}\d{3})*${UNREADABLE_SEP_RUN}$`;
 
 // A GROUPED NUMBER WELDED TO THE END OF A NAME — "B12,500 mcg", or the same with any of
 // the nine read separators. The digits before the separator are part of the NAME, so the
@@ -737,10 +813,11 @@ export const MID_NUMBER_PREFIX = String.raw`${NAME_DIGIT_BOUNDARY}\d+${UNREADABL
 // would have extended it to eight more characters, so closing it is part of this change
 // rather than a separate kindness: "B12<NBSP>500 mcg" must not be 12500 either.
 //
-// It is the READ-side twin of NAME_DIGIT_BOUNDARY on the refusal branch. Both say the
-// same thing — a digit welded to a name is not the start of a number — and they have to
-// be said twice because one guards a scan that reads and the other a scan that refuses.
-const NAME_WELDED_NUMBER = String.raw`[A-Za-z]\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)+`;
+// It is the READ-side twin of NAME_DIGIT_BOUNDARY on the refusal branch, and the two are
+// now built from ONE constant (`NAME_BINDER_CHARS`) rather than asserted to agree. They
+// have to exist twice because one guards a scan that reads and the other a scan that
+// refuses; they no longer have to be KEPT in agreement by anyone remembering to.
+const NAME_WELDED_NUMBER = String.raw`[${NAME_BINDER_CHARS}]\d+(?:[.,${THOUSANDS_SEP_CHARS}]\d+)+`;
 export const DOSE_NUMBER_SCAN = String.raw`(?:${NAME_WELDED_NUMBER}|${AMBIGUOUS_SPACE_NUMBER}|${WRITTEN_NUMBER_SCAN})`;
 const DOSE_QUANTITY_RE = new RegExp(
   String.raw`(${DOSE_NUMBER_SCAN})\s*(mcg|µg|ug|mg|g|iu)\b`,
