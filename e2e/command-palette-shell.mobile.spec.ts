@@ -242,3 +242,85 @@ test.describe("command palette — the phone shell (#3423)", () => {
     await expect(input).toBeHidden();
   });
 });
+
+// ── The Cancel's DISABLED treatment, below `md` (#3455 × #3423) ──────────────
+//
+// This is the seam the two changes met at. #3455 gave the shared close control
+// `closeDisabled` and the `disabled:pointer-events-none disabled:opacity-50`
+// pair that makes a refused control LOOK refused; #3423 replaced that same
+// `className` with a ternary on `asFullScreen`. Nothing in either suite reads
+// the full-screen branch's disabled state, so a resolution that kept one side's
+// string and dropped the other's would have been green everywhere.
+//
+// WHAT IS SYNTHETIC HERE, SAID PLAINLY: no consumer wires `closeDisabled` to the
+// palette, so the test sets `disabled` on the element itself. That makes this a
+// test of the CONTROL'S STYLESHEET CONTRACT at this width — "when this button is
+// disabled, does it say so" — and not of any consumer's decision to disable it.
+// That is the half the merge could break; the prop's plumbing is pinned by
+// lib/__tests__/overlay-motion-chokepoint.test.ts and the dialog-convergence
+// specs.
+//
+// `hasTouch: false`, DELIBERATELY, AND IT IS THE POINT OF THE HOVER HALF.
+// Tailwind 4 compiles `hover:` inside `@media (hover: hover)`, so in the
+// `mobile` project — which sets `hasTouch: true` — NO `hover:` class applies at
+// all. A hover assertion there passes against an empty rule and proves nothing.
+// A 390px hover-capable context is the only place a below-`md` class's hover
+// behaviour can actually be observed, so that is what this block uses.
+test.describe("the disabled Cancel below md (hover-capable context)", () => {
+  test.use({ hasTouch: false });
+
+  test("says it is refused, and does not light up under a pointer", async ({
+    page,
+  }) => {
+    await page.goto("/upcoming");
+    await openCommandPalette(page);
+    await settledPanel(page);
+
+    const cancel = page.getByTestId("modal-shell-close");
+    await expect(cancel).toBeVisible();
+    const paint = () =>
+      cancel.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { color: s.color, opacity: s.opacity, pe: s.pointerEvents };
+      });
+
+    const live = await paint();
+    expect(live.opacity).toBe("1");
+    expect(live.pe).not.toBe("none");
+
+    await cancel.evaluate((el) => el.setAttribute("disabled", ""));
+    const dead = await paint();
+
+    // Faded, and unreachable — `pointer-events-none` is load-bearing on its own,
+    // independently of the fade: without it the dead control still answers
+    // `hover:text-brand-800` under the thumb, which a resting-state screenshot
+    // would never show.
+    expect(dead.opacity).toBe("0.5");
+    expect(dead.pe).toBe("none");
+
+    // THE HUE CHANGES, not just the alpha. Fading a saturated brand colour reads
+    // as washed-out brand rather than as disabled — the ruling #1450 already made
+    // for the button family (app/globals.css, `.btn:disabled`), and measurement
+    // agrees here: faded brand-400 on the dark surface clears the ✕'s own
+    // disabled contrast by half again, on a hue that still reads as a live link.
+    expect(dead.color).not.toBe(live.color);
+
+    // Hover it by COORDINATE. `locator.hover()` refuses a `pointer-events: none`
+    // target, so it would skip the very assertion this is here to make.
+    const box = (await cancel.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect
+      .poll(async () => (await paint()).color, { timeout: 2000 })
+      .toBe(dead.color);
+    expect((await paint()).opacity).toBe("0.5");
+
+    // ONE disabled look, not a second one invented for the phone: the colour the
+    // full-screen Cancel takes when refused is the colour the ✕ takes when
+    // refused, read from the same element at desktop width rather than hardcoded
+    // as a hex the palette could drift away from.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect
+      .poll(async () => (await paint()).color, { timeout: 2000 })
+      .toBe(dead.color);
+  });
+});

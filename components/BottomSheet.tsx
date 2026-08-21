@@ -430,15 +430,33 @@ export default function BottomSheet({
                     // protection FROM prose, and this control sits beside a
                     // heading rather than inside one.
                     //
-                    // THE `disabled:` PAIR IS ON BOTH BRANCHES, and #3455 is why
-                    // (`closeDisabled`, above). A branch that drops them renders a
-                    // control that is `disabled` in the DOM, looks completely
-                    // live, and still swallows the tap — the exact lying
-                    // affordance that prop was written to stop. Below `md` the
-                    // grey-out is doing MORE work, not less: this is a named
-                    // "Cancel" at the thumb, beside a surface that is busy, so
-                    // "not right now" has to be visible on the word itself.
-                    "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-50 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 md:dark:text-slate-400 md:dark:hover:text-slate-300"
+                    // THE `disabled:` CLASSES ARE ON BOTH BRANCHES, and #3455 is
+                    // why (`closeDisabled`, above). A branch that drops them
+                    // renders a control that is `disabled` in the DOM, looks
+                    // completely live, and still swallows the tap — the exact
+                    // lying affordance that prop was written to stop.
+                    // `pointer-events-none` is load-bearing on its own: without
+                    // it the dead control still LIGHTS UP under the thumb.
+                    //
+                    // AND THE HUE GOES WITH THEM, which the slate branch never
+                    // had to say because it was already slate. #1450 ruled that
+                    // FADING a saturated brand colour does not read as disabled
+                    // — it reads as washed-out brand, "half-loaded or broken" —
+                    // and replaced the button family's `disabled:opacity-50`
+                    // with a muted surface for exactly that reason
+                    // (app/globals.css, `.btn:disabled`). MEASURED, not assumed
+                    // — composited over the real `--surface`, the ✕'s own
+                    // disabled state is 2.16:1 light and 2.56:1 dark. Faded
+                    // brand-700 lands on that in light (2.03:1), but faded
+                    // brand-400 lands at 3.48:1 in dark — half again the ✕'s
+                    // disabled state, on a saturated hue, which reads as an
+                    // ordinary live link. Fading harder
+                    // is the wrong lever (#1450 again, and 30% would read as
+                    // 1.50:1/2.03:1 — under the baseline, not on it), so the hue
+                    // goes instead and the disabled state lands exactly on
+                    // 2.16/2.56: ONE disabled look for one control, at both
+                    // widths, rather than a second one invented for the phone.
+                    "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:pointer-events-none disabled:text-slate-500 disabled:opacity-50 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 dark:disabled:text-slate-400 md:dark:text-slate-400 md:dark:hover:text-slate-300"
                   : "shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
               }
               // "Cancel" at BOTH widths when full-screen, so the accessible

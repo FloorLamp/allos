@@ -141,7 +141,7 @@ const RAW_FORM_PORTAL_ALLOW = new Map<string, string>([]);
 const CENTERED_PRESENTATION = new Map<string, string>([
   [
     "components/CommandPalette.tsx",
-    "the command palette — a keyboard surface whose body is a search field over a result list; no bottom edge to flick toward, and already scoped out of #1469",
+    "the command palette — a keyboard surface whose body is a search field over a result list: no bottom edge to flick toward at any width, and already scoped out of #1469. But that argument never defended a centred CARD either, and a floating card is what shipped to phones — so below `md` the same host renders it full-screen (#3423, `fullScreenBelowMd`). Still not a sheet; no longer a desktop dialog on a phone",
   ],
   [
     "components/photo/PhotoCapture.tsx",
