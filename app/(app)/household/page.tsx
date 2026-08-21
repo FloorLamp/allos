@@ -257,10 +257,10 @@ export default async function HouseholdPage() {
         // The action gets its OWN LINE on a phone (#3403). Two affordances plus the
         // title do not fit 360px, and the shell clips rather than scrolls, so an
         // un-wrapping row would hide one of them outright. This used to be bought by
-        // letting the group SHRINK and wrap inside itself — which stopped working the
-        // moment `PageHeader` stopped letting prose squeeze an action to min-content,
-        // and was always the weaker version of it: stacking gives the title the full
-        // width too. From `sm` up it is beside the title exactly as before.
+        // letting the group SHRINK beside the title and wrap inside itself; stacking is
+        // the stronger version of the same thing — the title gets the full width too,
+        // and the group still wraps within its own line. From `sm` up it is beside the
+        // title exactly as before.
         stackActionBelowSm
         action={
           // Cross-profile surfaces live here, and the medicine cabinet is one of them

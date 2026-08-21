@@ -82,13 +82,21 @@ export function PageHeader({
           "Year in review" collapsed to 62px over two lines on a phone, purely because
           that page passes a long subtitle. The title block already carries `min-w-0`,
           so it is the side that absorbs.
-          A page whose action genuinely needs the full phone width passes
-          `stackActionBelowSm` instead — that is the escape hatch, and the two headers
-          whose action is a WRAPPING GROUP of several controls (Household, Medications)
-          use it, because a group pinned to max-content cannot wrap. */}
+
+          IT IS NOT APPLIED BELOW `sm` WHEN THE ACTION IS STACKED, and that is the
+          whole reason `stackActionBelowSm` remains the escape hatch rather than being
+          made redundant. `shrink-0` protects an action from PROSE; a stacked action
+          has a line to itself and there is no prose on it. Two headers pass an action
+          that is a WRAPPING GROUP of several controls (Household, Medications), and a
+          group pinned to max-content cannot wrap — measured: with `shrink-0` on its
+          own line the Medications group still ran 60px past a 390px viewport, into an
+          app shell that clips rather than scrolls. Below `sm` it shrinks and wraps
+          exactly as it did before; from `sm` up the protection is back on. */}
       {action ? (
         <div
-          className={`shrink-0 ${stackActionBelowSm ? "ml-auto sm:ml-0" : ""}`}
+          className={
+            stackActionBelowSm ? "ml-auto sm:ml-0 sm:shrink-0" : "shrink-0"
+          }
         >
           {action}
         </div>

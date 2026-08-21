@@ -57,12 +57,12 @@ export default function MedicationAddWorkspace({
         // by #3403). Three affordances do not fit 390px beside "Medications" and its
         // subtitle, and the app shell clips horizontal overflow — an un-wrapping row
         // would push the Add button off-screen entirely rather than scroll to it. The
-        // group used to buy that by SHRINKING and wrapping inside itself, which needed
-        // `PageHeader` to let prose squeeze an action; since #3403 it does not, and a
-        // group pinned to max-content cannot wrap. `stackActionBelowSm` is the header's
-        // own answer to the same need and a better one — the title gets the full width
-        // too. Beside the title from `sm` up, exactly as before. One content tree, both
-        // viewports; the group keeps `flex-wrap` for the narrowest phones.
+        // group used to buy that by SHRINKING and wrapping inside itself while the page
+        // title shrank beside it; `stackActionBelowSm` gives it the whole line instead,
+        // so the title gets the full width too and the group still wraps within it —
+        // `PageHeader` deliberately withholds `shrink-0` from a STACKED action for
+        // exactly this. Beside the title from `sm` up, exactly as before. One content
+        // tree, both viewports.
         stackActionBelowSm
         action={
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
