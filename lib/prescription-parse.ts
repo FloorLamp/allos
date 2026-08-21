@@ -14,7 +14,12 @@
 // the schedule machinery never marks due — no reminders/escalation) rather than
 // a fabricated daily reminder the document never actually prescribed.
 
-import { WRITTEN_NUMBER_SCAN } from "./dri";
+import {
+  WRITTEN_NUMBER_SCAN,
+  MID_NUMBER_PREFIX,
+  NAME_SPLIT_BINDER_CHARS,
+  readDoseQuantity,
+} from "./dri";
 import { parseDosage, spreadDoseTimes } from "./intake-schedule";
 
 // "as needed", "as required", "when needed", "if needed", "prn" — a PRN med is
@@ -130,6 +135,55 @@ const NAME_STRENGTH_RE = new RegExp(
   String.raw`\s+${NUM}\s*${DOSE_UNIT}.*$`,
   "i"
 );
+
+// WHEN A NAME/STRENGTH SPLIT LANDED IN THE MIDDLE OF A NUMBER, and how this file can tell.
+//
+// The defect #3451 was filed for: "Metformin 1 000 mg" split into the name "Metformin 1"
+// and the strength "000 mg", which reads as a confident ZERO — a niacin dose 28x the
+// upper limit contributing nothing to it.
+//
+// The obvious repair is to let this grammar span the space, so "1 000" is taken whole.
+// That repair is WRONG, and measuring the consumers is how we found out: a drug name may
+// legitimately END IN A NUMBER, and spanning moves the split left on every one of them.
+// "Vitamin B 12 1000 mcg" becomes the name "Vitamin B" — as do "Vitamin B 6" and
+// "Vitamin B 1" — so `medicationFamilies` merges three distinct vitamins into one family
+// and a B6 dose arms the B12 redose clock. "Humulin 70 30", "Humalog Mix 75 25",
+// "Sinemet 25 100" and "Carbidopa Levodopa 25 100" lose their strengths the same way, and
+// "Omega 3 1000 mg" stops folding onto the catalog's "Omega-3". Those failures are SILENT:
+// nothing renders a grouping key, so nobody can correct one.
+//
+// THE DISCRIMINATOR IS NOT STRUCTURAL — "12 1000" and "1 000" are the same shape, and no
+// lookbehind separates them. It is that A DOSE OF ZERO IS NOT A DOSE. A split that leaves
+// a strength reading exactly 0 did not find a strength; it found the tail of a number.
+// A split that leaves a readable non-zero strength found a strength, and the digits before
+// it belong to the name.
+//
+// So the narrow split runs first and keeps its answer everywhere main kept it, and the
+// wide one is reached only when the narrow answer is that zero. Measured across the real
+// product names above: every one keeps main's split, and the three that produced a
+// confident zero — "Metformin 1 000 mg", "Vitamin C 1 000 mg", "Niacin 1 000 mg" — are the
+// only ones that move.
+//
+// WHAT THIS DOES NOT REACH, named rather than implied: a NON-zero tail. "Metformin
+// 1 500 mg" still splits to the name "Metformin 1" and the strength "500 mg", exactly as
+// on main. That is the count-then-strength ambiguity — "one 500 mg tablet" is as good a
+// reading as fifteen hundred milligrams — and 500 is the conservative one of the two.
+const MID_NUMBER_PREFIX_RE = new RegExp(MID_NUMBER_PREFIX);
+
+function readsZero(strength: string | null): boolean {
+  if (strength == null) return false;
+  const reading = readDoseQuantity(strength);
+  return reading.kind === "quantity" && reading.value === 0;
+}
+
+// Given the whole string and where a candidate strength starts in it, how far LEFT that
+// strength really starts — the same index when the split is sound, and one digit-run
+// earlier when it landed in the middle of a number.
+function strengthStart(raw: string, narrowStart: number): number {
+  const prefix = raw.slice(0, narrowStart);
+  const m = prefix.match(MID_NUMBER_PREFIX_RE);
+  return m ? narrowStart - m[0].length : narrowStart;
+}
 
 // A PARENTHESIZED strength/concentration segment in a drug name — the common
 // MyChart/e-prescribing rendering: "albuterol (2.5 MG/3ML)", "amoxicillin
@@ -297,7 +351,20 @@ export function cleanMedicationName(raw: string): string {
   // name intact rather than mangle it — the strength is still recovered separately.
   const parenStripped = name.replace(PAREN_STRENGTH_TAIL_RE, " ");
   const base = parensBalanced(parenStripped) ? parenStripped : name;
-  const stripped = base
+  // The narrow split first, and the wide one ONLY when the narrow one landed in the
+  // middle of a number — i.e. left behind a strength reading zero (see splitsMidNumber).
+  // Everything else keeps the split it has always had, names ending in a number included.
+  const narrow = base.match(NAME_STRENGTH_RE);
+  // Cut the strength off where it REALLY starts. Identical to the narrow match unless
+  // that match was the tail of a number, which `readsZero` is how we can tell.
+  const cutAt =
+    narrow && readsZero(narrow[0])
+      ? strengthStart(
+          base,
+          narrow.index! + narrow[0].length - narrow[0].trimStart().length
+        )
+      : -1;
+  const stripped = (cutAt >= 0 ? base.slice(0, cutAt) : base)
     .replace(NAME_STRENGTH_RE, "")
     .replace(NAME_FORM_TAIL_RE, "")
     .replace(/\s{2,}/g, " ")
@@ -336,9 +403,21 @@ export function strengthFromName(raw: string): string | null {
   // asks the question that was actually meant, so the naked decimal is matched WHOLE and
   // refused downstream instead of being re-read as a thousandfold larger dose (#3444).
   const m = raw.match(
-    new RegExp(String.raw`(?<![A-Za-z0-9_])${QUANTITY}`, "i")
+    new RegExp(String.raw`(?<![${NAME_SPLIT_BINDER_CHARS}0-9])${QUANTITY}`, "i")
   );
-  return m ? m[0].replace(/\s{2,}/g, " ").trim() : null;
+  if (!m) return null;
+  const narrow = m[0].replace(/\s{2,}/g, " ").trim();
+  // Same fallback as cleanMedicationName, and it HAS to be the same one or the two halves
+  // disagree about where the name ends: a strength reading ZERO is the tail of a number,
+  // so the strength really began one digit-run earlier (#3451).
+  if (!readsZero(narrow)) return narrow;
+  const start = strengthStart(raw, m.index!);
+  return start === m.index!
+    ? narrow
+    : raw
+        .slice(start, m.index! + m[0].length)
+        .replace(/\s{2,}/g, " ")
+        .trim();
 }
 
 export interface ParsedSig {
