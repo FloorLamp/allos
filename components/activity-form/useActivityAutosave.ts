@@ -8,6 +8,9 @@ import {
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldDeferRowlessSave } from "@/lib/live-workout";
+// Declared in a leaf module so importing it from a spec cannot drag this file's
+// Server Action graph into `playwright --list` — see lib/live-session-race-event.ts.
+import { LIVE_CREATE_RACE_EVENT } from "@/lib/live-session-race-event";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
@@ -36,25 +39,6 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
 // save waiting on a keystroke, the very defect this fixes. The stale-action
 // path is exempt by construction — it is never retriable, only reloadable.
 export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
-
-// THE RACE ANNOUNCES ITSELF (#3441). A rowless save came due while the live
-// session's create-at-start POST was still in flight — the exact window in which
-// one session used to become two activities.
-//
-// TO THE REVIEWER WHO WANTS TO DELETE THIS as instrumentation that pins nothing:
-// it is the only observable that a spec driving this race can use to prove the race
-// RAN. Everything else about the window is invisible from outside — with the fix in
-// place there is no extra request, no extra row and no changed markup, so a guard
-// with no fuse goes green either because the fix works or because the box was slow
-// enough that the create landed first, and those are different facts. This defect's
-// whole history is being silently un-guarded; a guard that quietly stops racing
-// would repeat that by another route. `e2e/workout-discard-settles.spec.ts` waits
-// for this line before it releases the held POST, so the race is DRIVEN rather than
-// sampled and there is no timing constant anywhere in the spec.
-//
-// It is also the diagnostic a real sighting would want: it fires exactly when a
-// user on a slow connection outran their own session create.
-export const LIVE_CREATE_RACE_EVENT = "live-session-create-outran-save";
 
 export interface ActivityAutosave {
   status: SaveStatus;
@@ -283,7 +267,17 @@ export function useActivityAutosave({
       // ANNOUNCED OUTSIDE THE DECISION, deliberately: this says the RACE HAPPENED,
       // which is true whatever the decision below then does about it. A spec can
       // therefore prove it drove the race without its fuse depending on the fix
-      // being present — see LIVE_CREATE_RACE_EVENT above.
+      // being present, so a mutated tree still fails at the row COUNT rather than at
+      // the fuse. See lib/live-session-race-event.ts for what reads it and why the
+      // string lives in a leaf module.
+      //
+      // TO THE REVIEWER WHO WANTS TO DELETE THIS as instrumentation that pins
+      // nothing: it is the only observable this race has. With the fix in place the
+      // window produces no extra request, no extra row and no changed markup, so a
+      // guard without it goes green either because the fix works or because the box
+      // was slow enough that the create landed first — different facts. Measured:
+      // +1200ms of client latency turned the un-fused guard green 4/4 with the
+      // defect in the tree. It is also the line a real sighting would want.
       if (createPending && !hasOwnRow && !raceAnnouncedRef.current) {
         raceAnnouncedRef.current = true;
         console.warn(LIVE_CREATE_RACE_EVENT);

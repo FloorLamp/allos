@@ -626,6 +626,17 @@ the app announce the _condition_ (`LIVE_CREATE_RACE_EVENT`, in
 makes about it, so the announcement fires on both trees and only the row count
 separates them.
 
+**A shared constant between a spec and the app must come from a LEAF module.** The
+marker was first exported from the hook that logs it. `playwright test --list`
+IMPORTS every spec, and `scripts/e2e-shard-plan.ts --verify` parses that listing's
+JSON off stdout — so the spec's import pulled in the Server Action module, and
+through it `lib/db`, which opened the database and printed `INFO [migrate] …` onto
+the stdout being parsed. CI died on `Unexpected non-whitespace character after JSON
+at position 4`, in a job whose name says nothing about specs. `lib/live-workout.ts`
+would have done the same thing (coaching → lifts → units → settings → db). Only a
+module that imports nothing is safe: `lib/live-session-race-event.ts`. Run
+`npx tsx scripts/e2e-shard-plan.ts --verify` after adding any import to a spec.
+
 **Where a race has no network-visible signature, the app has to lend you one.** The
 fixed tree in #3441 issues no extra request, writes no extra row and renders no
 different markup inside the window — the whole difference lives in the form's state

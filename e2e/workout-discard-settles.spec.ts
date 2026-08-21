@@ -5,7 +5,7 @@ import {
   hydratedClick,
   settledFill,
 } from "./helpers";
-import { LIVE_CREATE_RACE_EVENT } from "@/components/activity-form/useActivityAutosave";
+import { LIVE_CREATE_RACE_EVENT } from "@/lib/live-session-race-event";
 import { listLiveDrafts, SHARED_PROFILE_ID } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
