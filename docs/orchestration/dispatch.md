@@ -76,9 +76,7 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   The DB and E2E-hygiene gates run only when the diff touches what they cover.
   A format rewrite re-verifies the directive-reading gates it can invalidate.
-  The DB gate runs at a 60 s per-test ceiling sized for this box's contention;
-  CI keeps 15 s. See `environment.md` for when a DB timeout still means
-  something.
+  The DB gate carries a 60 s per-test ceiling for this box; CI keeps 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.

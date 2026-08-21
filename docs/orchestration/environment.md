@@ -12,26 +12,11 @@
   share inodes because nothing writes to it; a linked build directory would let
   one cluster's build corrupt another's. The harness seeds it — see
   `docs/orchestration/e2e-ci.md`.
-- Concurrent DB gates run about six times slower, now measured rather than
-  estimated: on 2026-08-21 the same tier on the same tree took 161 s alone and
-  862 s at load average 18 on four cores, its slowest single test going 3.4 s to
-  16.3 s. The cost is sharply non-linear: at load 11 the same tier finished in
-  220 s and needed no allowance at all.
-- Contention does not only cost TIME, which is the correction #3436 needed. At
-  load 21.6 the tier lost 92 tests on the stock ceiling: 77 timeouts and one
-  `AssertionError: expected [ 7, 8 ] to deeply equal [ 7 ]`. A timeout aborts a
-  test between its writes and its cleanup, so the next test in that file reads
-  the debris and fails as a WRONG VALUE — in a file the diff never touched, and
-  indistinguishable from a regression by inspection. Treat an isolated
-  assertion failure in an untouched DB file as contention too, not just a
-  timeout.
-- So `agent-gates.sh` runs the DB tier at a 60 s per-test ceiling
-  (`ALLOS_DB_TEST_TIMEOUT_MS`), 3.7x that measured worst case, and ordinary
-  contention no longer shows up as a red. A DB timeout AT THAT CEILING is a real
-  hang: diagnose the test, do not re-run it alone. Running `npm run test:db` by
-  hand gets the strict 15 000 ms CI default instead, so export the variable or
-  run the gate script. `vitest.db.config.ts` carries the derivation of both
-  numbers.
+- Concurrent DB gates run about six times slower (161 s alone, 862 s at load
+  18). `agent-gates.sh` gives the tier a 60 s per-test ceiling, CI keeps 15 s,
+  and `vitest.db.config.ts` derives both. A timeout at 60 s is a real hang.
+- Contention fakes WRONG VALUES too: a timed-out test abandons rows its
+  neighbour reads. Re-run an odd assertion in an untouched DB file alone.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
