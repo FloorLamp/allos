@@ -417,3 +417,113 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     ).toHaveCount(0);
   });
 });
+
+// THE PAGER IS THUMB-SIZED BELOW `md` (#3378).
+//
+// `PaginationControls` was the desktop footer idiom at every width: ~36px
+// `btn-ghost text-sm` steps bunched into the row's right half. It renders on four
+// phone surfaces (/whats-new, the sleep↔mood history, the Trends body history, the
+// dose ledger) plus, since #3378, the two admin log viewers and the Data → Manage
+// dataset card, which had each hand-rolled a copy of it instead.
+//
+// MEASURED ON TWO MOUNTS, ONE PER NAVIGATION MODE — the URL-borne link steps and
+// the in-memory button steps are different elements, and only a measurement can
+// tell whether the 44px is real (the `tap-target` utility's own extension is a
+// coarse-pointer `::after`, which no layout read can see). That every OTHER pager
+// in the app is the same component — so the same measurement covers them — is
+// asserted where it is cheap, in lib/__tests__/pager-idiom.test.ts, rather than by
+// booting five more routes here.
+test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
+  test.use({ viewport: PHONE });
+
+  // The app's own touch floor (app/globals.css, `tap-target`; #644).
+  const TAP_FLOOR = 44;
+
+  // Every number compared here, read in ONE evaluate so they describe a single
+  // layout rather than three independent round-trips (#1538's settledBoxes
+  // lesson, applied to a measurement that has no Locator per value).
+  async function pagerMetrics(pager: Locator) {
+    return pager.evaluate((row) => {
+      const steps = Array.from(row.querySelectorAll("a, button")).filter((el) =>
+        /^(Prev|Next)$/.test((el.textContent ?? "").trim())
+      ) as HTMLElement[];
+      const rowBox = row.getBoundingClientRect();
+      return {
+        labels: steps.map((el) => (el.textContent ?? "").trim()),
+        boxes: steps.map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            width: r.width,
+            height: r.height,
+            left: r.left,
+            right: r.right,
+          };
+        }),
+        rowLeft: rowBox.left,
+        rowRight: rowBox.right,
+        // The page sentence collapses into the extent below `md` — one piece of
+        // text between two thumb targets, not two. Read as innerText, not
+        // textContent: the sentence is still IN the DOM (one set of controls,
+        // re-ordered, never a `md:hidden`/`hidden md:flex` pair), so only a
+        // rendered read can tell whether it is on screen.
+        pageSentence: /Page \d+ of \d+/.test((row as HTMLElement).innerText),
+      };
+    });
+  }
+
+  function expectThumbShape(m: Awaited<ReturnType<typeof pagerMetrics>>) {
+    expect(m.labels).toEqual(["Prev", "Next"]);
+    for (const box of m.boxes) {
+      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR);
+    }
+    // At the row's EDGES, with the extent between them — the thumb shape, not the
+    // desktop huddle. Measured against the row itself, so its padding moves the
+    // expectation with it.
+    const [prev, next] = m.boxes;
+    expect(prev.left - m.rowLeft).toBeLessThanOrEqual(2);
+    expect(m.rowRight - next.right).toBeLessThanOrEqual(2);
+    expect(m.pageSentence).toBe(false);
+  }
+
+  test("link steps: /whats-new", async ({ page }) => {
+    await page.goto("/whats-new");
+    const pager = page.getByTestId("whats-new-pagination");
+    await expect(pager).toBeVisible();
+    // Wait for the CONTENT being measured, not the container: the steps only
+    // exist once the page knows there is more than one page.
+    await expect(pager.getByRole("link", { name: "Next" })).toBeVisible();
+    expectThumbShape(await pagerMetrics(pager));
+    await expectNoClippedContent(page);
+  });
+
+  test("button steps: the Data → Manage dataset card", async ({ page }) => {
+    await page.goto("/data?tab=manage");
+    const pager = page.getByTestId("dataset-medical_records-pagination");
+    await expect(pager).toBeVisible();
+    await expect(pager.getByRole("button", { name: "Next" })).toBeVisible();
+    expectThumbShape(await pagerMetrics(pager));
+  });
+
+  // Page semantics are the thing a shape change must NOT touch: the step still
+  // turns the URL, and the URL still turns the read.
+  test("the URL round-trip is unchanged", async ({ page }) => {
+    await page.goto("/whats-new");
+    const pager = page.getByTestId("whats-new-pagination");
+    await expect(pager).toBeVisible();
+    // hydratedClick, not followLink: a pager's Next is a RELATIVE step, so a
+    // retried click would walk to page 3 instead of re-asserting page 2.
+    await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
+    await page.waitForURL(/\/whats-new\?page=2$/);
+    await expect(page.getByTestId("whats-new-pagination")).toContainText(
+      "Showing"
+    );
+    await hydratedClick(
+      page,
+      page
+        .getByTestId("whats-new-pagination")
+        .getByRole("link", { name: "Prev" })
+    );
+    await page.waitForURL(/\/whats-new\?page=1$/);
+  });
+});
