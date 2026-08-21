@@ -26,6 +26,24 @@ import StrengthStandards from "./StrengthStandards";
 // dialog census for exactly the same reason it was inaccessible: the census asked
 // whether a file spelled `role="dialog"`, and this one did not. Both halves are
 // answered by rendering the host, which is the default (docs/internals/overlays.md).
+//
+// NOTHING RENDERS THIS BADGE TODAY, and that is worth knowing before you change
+// it. There are two call sites. `components/StrengthExplorer.tsx` is reached only
+// from `app/(app)/training/StrengthSection.tsx`, which nothing imports — the
+// Training hub's tab vocabulary (lib/training-tabs.ts) has no `strength` tab, so
+// that section is unmounted. `components/ExerciseDetailPanel.tsx` is mounted from
+// Analyze, which passes `showLevel={false}` on purpose, because Analyze owns the
+// tier presentation in its Benchmarks card. So the standards reference — this
+// dialog and `components/StrengthStandards.tsx`, whose only consumer is this file
+// — cannot currently be opened in the app. THAT is why no e2e spec drives it, and
+// why the size below has arithmetic behind it rather than a measurement.
+//
+// SIZE, stated so the next reader can finish the decision. The hand-rolled card
+// was `max-w-lg` (32rem). `OverlaySize` declares `sm` (28rem) and `md` (42rem)
+// and nothing at 32rem, so this rounds UP: the reference is a six-column table
+// and cutting columns is the worse failure. Nobody has seen it rendered at either
+// size, because nobody can. If this badge gets a live surface again, look at the
+// table at both widths before trusting `md`.
 export default function LevelBadge({
   level,
   exercise,

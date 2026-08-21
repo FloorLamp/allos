@@ -157,15 +157,18 @@ export const HOSTLESS_DIALOGS: Record<string, HostlessRecord> = {
     why: "RECORDED EXCEPTION, and converged onto components/overlay in the same way as ActivityOverlay — shared primitives, focus trap, body lock, contained scroller. Its anatomy is TOP-anchored: the panel drops out of the identity bar and a swipe UP retreats through it, which a centred host has no anchor to express (#1801).",
   },
   "components/MobileNav.tsx": {
-    // RECORDED RATHER THAN SCOPED OUT, and the alternative reading is real
-    // enough to state. docs/internals/overlays.md's host table already routes
-    // MENU or NAVIGATION to this drawer rather than to the dialog host, which
-    // reads as "it is a host, not an exception" — the MobileDetailPage argument.
-    // It sits here instead because its nearest neighbour in this register is
-    // ProfileIdentityBar: an anchored, non-transactional panel that floats over
-    // the page with a scrim and converged onto components/overlay. MobileNav is
-    // that shape. MobileDetailPage is not — it replaces the page and carries no
-    // scrim.
+    // RECORDED RATHER THAN SCOPED OUT, and the argument against is worth
+    // keeping. docs/internals/overlays.md's host table routes MENU or NAVIGATION
+    // to this drawer rather than to the dialog host, which reads as "it is a
+    // host, not an exception" — the MobileDetailPage argument. It loses, and on
+    // a distinction rather than a preference: that table describes what the
+    // drawer HOSTS, not what the drawer IS, and both are true at once. It is the
+    // surface menus live on, AND it is itself a hand-rolled scrimmed modal.
+    // MobileDetailPage is scoped out because it FAILS the anatomy test — it
+    // replaces the page and carries no scrim; the drawer fails neither, and its
+    // nearest neighbour here is ProfileIdentityBar, an anchored non-transactional
+    // panel that floats over the page with a scrim and converged onto
+    // components/overlay. (Owner ruling, #3445.)
     why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (useDragGesture/useOverlayDrag, #1416/#2746), which a centred card has no edge to travel from. Found by ANATOMY rather than by ARIA (#3445) — it carries no role and no aria-modal, which is a real gap and a separate question from where it renders.",
   },
   "components/MobileDetailPage.tsx": {
@@ -519,6 +522,16 @@ export interface HandRolled {
    * A full-viewport layer with NO dismissal is a blocking curtain (a splash, a
    * route transition, a saving guard), not a dialog. This is the clause that
    * keeps `declaresModalAnatomy` from calling one of those a dialog.
+   *
+   * IT EXCLUDES NOTHING IN THIS TREE TODAY, and you should know that before you
+   * decide about it. Every file that covers the viewport and either portals or
+   * locks the body is dismissible — there is no blocking curtain in app/,
+   * components/ or lib/. So this clause is a NARROWING against a shape that has
+   * not appeared yet, its cost today is zero, and its only killer in
+   * lib/__tests__/dialog-census.test.ts is a SYNTHETIC fixture rather than a
+   * real file. Every other clause here is killed by something somebody else
+   * wrote. Written down rather than resolved away: a reader who later deletes
+   * this deserves to know it was never load-bearing, instead of discovering it.
    */
   dismissible: boolean;
 }
