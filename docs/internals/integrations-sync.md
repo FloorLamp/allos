@@ -751,36 +751,74 @@ each `daily` record at DEVICE-local midnight, so a timezone change re-anchors
 old row is never superseded, and `getMetricDailyTotals` sums both into one
 profile-local day. Measured on prod profile 1 after a one-tap New York → Los
 Angeles switch — 23330 steps on a day with 11721, and the same shape on
-`distance_km`, `total_kcal` and `active_kcal`. The rule that fixes it lives in
-`lib/metric-window-overlap.ts` and runs in two phases, both scoped to
-`source = health-connect`, the one source whose buckets re-anchor under the app's
-feet:
+`distance_km`, `total_kcal` and `active_kcal`. The rule lives in
+`lib/metric-window-overlap.ts`, is scoped to `source = health-connect`, and runs in
+two phases:
 
-1. **Inside one push**, two same-`(metric, origin)` windows that overlap are always
-   a mixed-anchoring pair — the rolling ~48h window re-sending the pre-switch record
+1. **Inside one push**, two same-`(metric, origin)` windows that overlap are a
+   mixed-anchoring pair — the rolling ~48h window re-sending the pre-switch record
    beside the re-anchored one that re-contains it. The window reaching FURTHEST
    FORWARD is the anchoring the exporter is still filling, so `isStaleMetricSnapshot`
-   (#1101's own freshness test, reused rather than re-invented) picks the survivor.
-   Batch ORDER cannot: travelling west the new zone's midnight is EARLIER than the
-   old one's, so the re-anchored bucket sorts first and "last writer wins" keeps the
-   stale record.
+   (#1101's own freshness test) picks the survivor. Batch ORDER cannot: travelling
+   west the new zone's midnight is EARLIER than the old one's, so the re-anchored
+   bucket sorts first and "last writer wins" keeps the stale record. This pass runs
+   over the WHOLE payload in `ingestHealthConnectPayload`, never per chunk.
 2. **Against the store**, the surviving incoming row deletes the non-edit-locked rows
-   its `[started_at, ended_at)` window overlaps, then upserts itself. Unconditional,
-   because after phase 1 anything stored that it overlaps carries an anchoring the
-   exporter has moved on from. Freshness deliberately does NOT apply here: a completed
-   re-anchored bucket for a past day legitimately ends earlier than the old-anchoring
-   "today so far" row it overlaps, and blocking it there was measured to leave the
-   profile half-converged with an 11-hour gap between the two anchorings.
+   its `[started_at, ended_at)` window overlaps, then upserts itself. Freshness
+   deliberately does NOT compare the two windows' ENDS here: a completed re-anchored
+   bucket for a past day legitimately ends earlier than the old-anchoring "today so
+   far" row it overlaps, and blocking it there was measured to leave the profile
+   half-converged with an 11-hour gap between the two anchorings.
+
+**THE RULE STATES ITS OWN PRECONDITIONS, because #3424's did not hold.** The issue
+justified "incoming wins" with "under one anchoring, same-`(metric, origin)` day
+buckets are pairwise disjoint, so an overlap is always the mixed-anchoring anomaly".
+An adversarial review deleted real readings with that premise, so three gates now
+carry it explicitly:
+
+- **`DAY_BUCKET_METRICS`** — `steps`, `distance_km`, `active_kcal`, `total_kcal`, and
+  nothing else. `parseHealthConnectPayload` emits one interval row per nutrient per
+  `NutritionRecord` on the record's REAL window, so a snack logged inside a meal from
+  one origin is two legitimately nested `nutrition_kcal` rows; the first cut deleted
+  the 800 kcal meal and kept the 150 kcal snack. `sleep_min` is one row per session.
+  `recommendedSettingForKey` says `daily` for both, but nothing enforces it —
+  `FINE_GRAINED_CHECK` is informational by its own comment, and does not cover
+  nutrition at all.
+- **`isDayBucketWindow`** — the OBSERVED window must be longer than
+  `SUB_DAILY_WINDOW_MAX_MIN`, the constant the at-ingest granularity detector already
+  uses for this judgement. The metric list alone is not enough: the same four metrics
+  arrive as minute buckets at `1m`/`15m`, and `dataOrigin` reads only
+  `metadata.data_origin`, so two devices that set none both parse to `origin = null`
+  and share one supersede group.
+- **`metric_samples.pushed_at`** — see below.
+
+**FRESHNESS COMES FROM THE PAYLOAD, NEVER FROM ARRIVAL ORDER.** Deciding "incoming
+wins" from position was refuted twice, in both directions. A push over
+`INGEST_CHUNK_SIZE` rows splits a mixed-anchoring pair across two chunks, and the
+chunk that met the stale row alone resolved it by arrival — the STALE bucket deleting
+the CURRENT one, which is worse than the repairable double count it was fixing. And a
+byte-identical REPLAY of a pre-switch payload (an exporter retry after a 5xx; the
+route has no idempotency key) deleted the converged row and re-inserted the stale one.
+
+So every Health Connect row carries `metric_samples.pushed_at`: the exporter's own
+`payload.timestamp` when it states one, otherwise the LATEST end instant anywhere in
+the push. Both are derived from the payload, so a replay carries the same stamp as the
+push it replays. A row may supersede a stored row only when its stamp is STRICTLY
+older — and, symmetrically, a row that overlaps a stored row it is NOT newer than is
+**not written at all** (counted `unchanged`), because refusing to delete is only half
+the answer when the alternative is re-inserting the stale row under the key its own
+supersede had cleared. Two rows of one push share a stamp, so no chunk can ever delete
+another chunk's row.
 
 Edit-locked rows survive and are counted in the `edited` split; tombstoned rows stay
 dead; POINT readings (`started_at == ended_at` — HRV, skin temperature, lean mass,
 bone mass, BMR, height) are never interval rows and never touched; disjoint buckets
-from a fine-grained exporter setting have no overlap and are untouched. The deletes
-write no re-import tombstone, matching the #608 sweep: the source is expected to keep
-sending the span under its current anchoring. `integration_sync_events.superseded`
-(migration `20260821-hc-overlap-supersede`) counts them so Review can show a delete
-happened — and it is the ONE count segment deliberately absent from `received`,
-because a superseded row is a stored row we removed, not a row the source sent.
+have no overlap and are untouched. The deletes write no re-import tombstone, matching
+the #608 sweep: the source is expected to keep sending the span under its current
+anchoring. `integration_sync_events.superseded` (migration
+`20260821-hc-overlap-supersede`) counts them so Review can show a delete happened —
+and it is the ONE count segment deliberately absent from `received`, because a
+superseded row is a stored row we removed, not a row the source sent.
 
 **The trailing edge is LOSSY, and that is the accepted trade.** "Incoming deletes
 what it overlaps" is exact in the interior of the rolling window and lossy at its
@@ -791,28 +829,31 @@ bucket, which at the edge of a ~48h window it may not. Westward the sliver is th
 zone's midnight to the new zone's midnight — near-zero steps, a few hours of BMR on
 `total_kcal`. Eastward it is worse: the first Tokyo bucket starts `15:00Z`, so it
 takes the New York row holding that New York MORNING, which lives only in the previous
-day's Tokyo bucket. Inside the window that bucket arrives and the morning is recounted;
-at the trailing edge it does not. There is no third option once the source has
-re-anchored — the alternative to dropping the sliver is double-counting it — so the
-loss is bounded, stated, and visible in Review through the `superseded` count rather
-than discovered later. The same migration replays the rule over stored history in `id`
-order (ingest order is anchoring order: the old zone's rows were inserted before the
-switch), which is what returns an already-corrupted profile's past trips to sane day
-totals with no reader change.
+day's Tokyo bucket. Inside the window that bucket arrives and the morning is
+recounted; at the trailing edge it does not. There is no third option once the source
+has re-anchored — the alternative to dropping the sliver is double-counting it — so
+the loss is bounded, stated, and visible in Review through the `superseded` count
+rather than discovered later.
 
-**No origin legitimately emits an overlapping same-metric window**, which is the
-premise the whole rule rests on and is checked two ways (#3424, mirroring #1101's
-step 4). From the parser: the additive `daily` families arrive as the exporter's
-AGGREGATION buckets, and Health Connect's aggregate-by-period/duration partitions a
-span — its buckets tile rather than nest, at `daily` and at every sub-daily setting;
-sleep stages inside a session are sequential and each stage bucket is its OWN metric
-(`sleep_deep_min`, `sleep_rem_min`, …), so two rows of one metric never nest;
-everything else `parseHealthConnectPayload` routes to `metric_samples` is a POINT
-reading the rule excludes outright. Empirically: `npm run census:hc-overlaps`
-re-parses every captured exporter payload with the shipped parser and reports every
-same-`(metric, origin)` overlap it finds, within one push and across the whole
-capture. Measured 2026-08-21 over 45 captures — 208 samples, 173 of them intervals
-the rule could act on — it found **none**. Re-run it when the parser gains a record
+**INGEST ONLY; the historical repair is #3439.** The migration is two `ADD COLUMN`s
+and touches no row. An earlier cut also replayed the rule over stored history at boot;
+it was measured at 595 s for a single 100k-row group and 2m24s end-to-end on a
+database with 30,000 one-minute buckets, it killed a concurrent boot with
+`SQLITE_BUSY` after 122 s, and it wrote no `integration_sync_events` row, so its
+deletions were invisible in Review. Ingest converges an affected span on the next push
+either way; what #3439 buys is the days the rolling window no longer reaches, and it
+needs a planner that is not quadratic, a bounded lock, and a Review-visible record of
+what it removed.
+
+**No origin legitimately emits an overlapping same-metric window** at the granularity
+the rule acts on, which is the premise the gates above narrow it to (#3424, mirroring
+#1101's step 4). From the parser: the four `DAY_BUCKET_METRICS` arrive as the
+exporter's AGGREGATION buckets, and Health Connect's aggregate-by-period/duration
+partitions a span — its buckets tile rather than nest. Empirically:
+`npm run census:hc-overlaps` re-parses every captured exporter payload with the
+shipped parser and reports every same-`(metric, origin)` overlap it finds, within one
+push and across the whole capture. Measured 2026-08-21 over 45 captures — 208 samples,
+173 of them intervals — it found **none**. Re-run it when the parser gains a record
 type.
 
 **A stored sleep session is an ABSOLUTE INSTANT (#2096).** `started_at` is both

@@ -264,6 +264,44 @@ export function pushIsNewer(
 }
 
 /**
+ * The stamp to record on every row of one push, and to compare a future push against.
+ *
+ * PRIMARY: what the exporter said (`ParsedPayload.pushedAt`, from `payload.timestamp`).
+ *
+ * FALLBACK: the LATEST end instant anywhere in the push. `timestamp` is documented in
+ * the payload shape but nothing validates it, so requiring it would silently switch the
+ * whole fix off for an exporter build that omits it — and nobody would find out. The
+ * fallback is derived from the same payload and has the two properties that matter:
+ * it is IDENTICAL for a byte-identical replay (so a retry is never newer than the push
+ * it replays), and it advances with every real push, because these buckets end at the
+ * moment they were last pushed. It is the same quantity `staleBatchOverlaps` already
+ * trusts to say which anchoring the exporter is still filling, read at push scope
+ * instead of at row scope.
+ *
+ * IT MUST BE COMPUTED OVER THE WHOLE PUSH, never per chunk: a per-chunk maximum grows
+ * chunk by chunk, which would let a later chunk out-rank an earlier one and reopen
+ * exactly the split-pair defect the stamp exists to close.
+ *
+ * Null when the push states nothing readable either way — and then nothing is
+ * superseded at all.
+ */
+export function pushStampFor(
+  stated: string | null | undefined,
+  rows: readonly { ended_at: string }[]
+): string | null {
+  if (instantMs(stated) !== null) return stated as string;
+  let best: string | null = null;
+  let bestMs = -Infinity;
+  for (const row of rows) {
+    const ms = instantMs(row.ended_at);
+    if (ms === null || ms <= bestMs) continue;
+    bestMs = ms;
+    best = row.ended_at;
+  }
+  return best;
+}
+
+/**
  * Plan what an INCOMING window does to the stored rows it overlaps.
  *
  * `stored` is the candidate set for one (profile, metric, source, origin) group,
@@ -277,6 +315,15 @@ export function pushIsNewer(
  *
  * `locked` is every overlapped row the edit lock held out, reported rather than dropped
  * so the caller can count them into the `edited` split.
+ *
+ * `blocked` is the other direction, and it is what makes a REPLAY inert rather than
+ * merely harmless. A stored row that this incoming row overlaps but is NOT newer than
+ * says the incoming row carries an anchoring the store has already moved past. Refusing
+ * to delete it is only half the answer: writing the incoming row anyway re-creates the
+ * double count (measured — a replayed pre-switch push put the day back to 6500 by
+ * INSERTING under a key its own supersede had cleared). So a blocked row is not written
+ * at all, and the caller counts it `unchanged`, exactly as it counts a row a fresher
+ * sibling in the same push covers.
  */
 export function planSupersede(
   incoming: {
@@ -286,9 +333,14 @@ export function planSupersede(
     pushedAt?: string | null;
   },
   stored: readonly MetricWindow[]
-): { supersede: MetricWindow[]; locked: MetricWindow[] } {
+): {
+  supersede: MetricWindow[];
+  locked: MetricWindow[];
+  blocked: MetricWindow[];
+} {
   const supersede: MetricWindow[] = [];
   const locked: MetricWindow[] = [];
+  const blocked: MetricWindow[] = [];
   if (
     !isSupersedingWindow(
       incoming.metric,
@@ -296,7 +348,7 @@ export function planSupersede(
       incoming.ended_at
     )
   ) {
-    return { supersede, locked };
+    return { supersede, locked, blocked };
   }
   for (const row of stored) {
     if (
@@ -313,13 +365,16 @@ export function planSupersede(
     // whatever the incoming row looks like.
     if (!isDayBucketWindow(row.started_at, row.ended_at)) continue;
     // The payload's own account of which push is newer. A replay, or a second chunk of
-    // the SAME push, is not newer and takes nothing.
-    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) continue;
+    // the SAME push, is not newer — it takes nothing AND is not stored.
+    if (!pushIsNewer(incoming.pushedAt, row.pushed_at)) {
+      blocked.push(row);
+      continue;
+    }
     // The #133 lock, spelled as the #608 sweep spells it: NULL is "not locked".
     if (row.edited) locked.push(row);
     else supersede.push(row);
   }
-  return { supersede, locked };
+  return { supersede, locked, blocked };
 }
 
 /** The shape `staleBatchOverlaps` needs of an incoming row. */
@@ -370,7 +425,8 @@ export function staleBatchOverlaps<T extends BatchWindow>(
   const dropped = new Set<T>();
   const byGroup = new Map<string, T[]>();
   for (const row of rows) {
-    if (!isSupersedingWindow(row.metric, row.started_at, row.ended_at)) continue;
+    if (!isSupersedingWindow(row.metric, row.started_at, row.ended_at))
+      continue;
     const key = `${row.metric} ${row.origin ?? ""}`;
     const bucket = byGroup.get(key);
     if (bucket) bucket.push(row);

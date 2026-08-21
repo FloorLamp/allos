@@ -57,6 +57,11 @@ beforeAll(() => {
   setTimezone(profileId, TOKYO);
 });
 
+// THE ORIGIN IS UNDER `metadata`, and that is not cosmetic. `dataOrigin` reads only
+// `metadata.data_origin` (lib/integrations/health-connect.ts), so a fixture that puts it
+// at the record's top level parses every sample to `origin = null` — the widest possible
+// supersede group, and not the one this scenario claims to be about. The original repro
+// had it at the top level and an adversarial review caught it.
 describe("HC daily steps across a westward travel switch", () => {
   it("counts the switch day once, not twice", () => {
     freeze(SWITCH_INSTANT);
@@ -71,7 +76,7 @@ describe("HC daily steps across a westward travel switch", () => {
             start_time: "2026-05-01T15:00:00Z", // Tokyo 2026-05-02 00:00
             end_time: "2026-05-01T23:00:00Z", // Tokyo 2026-05-02 08:00
             count: 3000,
-            data_origin: "com.fitbit.FitbitMobile",
+            metadata: { data_origin: "com.fitbit.FitbitMobile" },
           },
         ],
       },
@@ -99,13 +104,13 @@ describe("HC daily steps across a westward travel switch", () => {
             start_time: "2026-05-01T15:00:00Z",
             end_time: "2026-05-01T23:00:00Z",
             count: 3000,
-            data_origin: "com.fitbit.FitbitMobile",
+            metadata: { data_origin: "com.fitbit.FitbitMobile" },
           },
           {
             start_time: "2026-05-01T10:00:00Z", // Honolulu 2026-05-01 00:00
             end_time: "2026-05-02T01:00:00Z",
             count: 3500,
-            data_origin: "com.fitbit.FitbitMobile",
+            metadata: { data_origin: "com.fitbit.FitbitMobile" },
           },
         ],
       },

@@ -681,7 +681,9 @@ export function parseHealthConnectPayload(
   if (!body || typeof body !== "object") {
     return out;
   }
-  out.pushedAt = payloadPushInstant((body as Record<string, unknown>).timestamp);
+  out.pushedAt = payloadPushInstant(
+    (body as Record<string, unknown>).timestamp
+  );
   const payload = body as Record<string, unknown>;
 
   // Records of a type the parser has no home for are dropped but COUNTED (issue #419)

@@ -436,6 +436,9 @@ describe("what the rule must NEVER delete", () => {
     db.prepare("UPDATE metric_samples SET edited = 1 WHERE profile_id = ?").run(
       p
     );
+    // An explicit push stamp, as the ingest route supplies one: these two buckets end
+    // EARLIER than the row they overlap, so the payload-derived fallback would (rightly)
+    // read this batch as the older push and decline to act at all.
     const counts = upsertMetricSamples(
       p,
       [
@@ -454,7 +457,9 @@ describe("what the rule must NEVER delete", () => {
           200
         ),
       ],
-      HC
+      HC,
+      undefined,
+      { pushedAt: "2026-05-02T00:00:00Z" }
     );
     expect(counts.edited).toBe(1);
   });
@@ -600,21 +605,26 @@ describe("the SQL narrowing agrees with the pure rule", () => {
       "2026-05-18T07:00:00Z",
       5555
     );
+    // The stamp the incoming push carries. Explicit, because these stored buckets were
+    // written as ONE batch whose furthest-forward end is later than the incoming
+    // window's — the payload-derived fallback would read this batch as the older push.
+    const PUSHED_AT = "2026-06-01T00:00:00Z";
+    const withStamp = { ...incoming, pushedAt: PUSHED_AT };
     // What the pure rule says about the WHOLE stored group, unnarrowed.
     const all = db
       .prepare(
-        `SELECT id, date, started_at, ended_at, edited FROM metric_samples
+        `SELECT id, date, started_at, ended_at, edited, pushed_at FROM metric_samples
           WHERE profile_id = ? AND metric = 'steps' AND source = ?
             AND started_at <> ?
           ORDER BY id`
       )
       .all(p, HC, incoming.started_at) as MetricWindow[];
-    const unnarrowed = planSupersede(incoming, all);
+    const unnarrowed = planSupersede(withStamp, all);
 
     // What the SQL narrowing hands the rule.
     const { from, to } = supersedeDateRange(incoming.date);
     const narrowed = all.filter((r) => r.date >= from && r.date <= to);
-    const viaNarrowing = planSupersede(incoming, narrowed);
+    const viaNarrowing = planSupersede(withStamp, narrowed);
 
     expect(viaNarrowing.supersede.map((r) => r.id)).toEqual(
       unnarrowed.supersede.map((r) => r.id)
@@ -624,7 +634,9 @@ describe("the SQL narrowing agrees with the pure rule", () => {
     expect(narrowed.length).toBeLessThan(all.length);
 
     // And the real ingest deletes exactly that set.
-    const counts = upsertMetricSamples(p, [incoming], HC);
+    const counts = upsertMetricSamples(p, [incoming], HC, undefined, {
+      pushedAt: PUSHED_AT,
+    });
     expect(counts.superseded).toBe(unnarrowed.supersede.length);
   });
 });
@@ -781,6 +793,7 @@ describe("each batch is processed in ascending started_at order", () => {
       vitals: [],
       skipped: 0,
       details: { warnings: [], origins: [] },
+      pushedAt: null,
     };
     ingestHealthConnectPayload(p, parsed, HC, 2);
     expect(insertOrder(p)).toEqual(ASCENDING);

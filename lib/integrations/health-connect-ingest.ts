@@ -3,6 +3,7 @@ import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import {
   compareWindowStarts,
+  pushStampFor,
   staleBatchOverlaps,
 } from "@/lib/metric-window-overlap";
 import {
@@ -159,11 +160,15 @@ export function ingestHealthConnectPayload(
     // names are still delivered to the upsert (so they are still counted) — it decides
     // which of them must not be stored, not which are skipped.
     const batchStale = staleBatchOverlaps(orderedSamples);
+    // ONE stamp for the whole push, for the same reason phase 1 is computed here: a
+    // per-chunk value would grow chunk by chunk and let a later chunk out-rank an
+    // earlier one.
+    const pushedAt = pushStampFor(parsed.pushedAt, orderedSamples);
     commitChunks(
       orderedSamples,
       (slice, sink) =>
         upsertMetricSamples(profileId, slice, source, sink, {
-          pushedAt: parsed.pushedAt,
+          pushedAt,
           batchStale,
         }),
       (c) => {
