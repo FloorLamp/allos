@@ -2,13 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  IconPrinter,
-  IconShare,
-  IconCopy,
-  IconCheck,
-} from "@tabler/icons-react";
+import { IconCopy, IconCheck } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
@@ -21,10 +17,44 @@ import { createImmunizationShareLinkAction } from "./actions";
 // the share modal + clipboard; the mutation is a Server Action gated by
 // requireWriteAccess(). Existing links (any kind) are listed with their Revoke
 // button on the passport page, which is the one share-link management surface.
+//
+// ── ONE TOOLBAR GRAMMAR FOR THE PANE (#3408, item C) ────────────────────────
+//
+// These used to be two icon-only squares standing beside a bordered "Import
+// records" secondary and a full-width primary "Add immunization" — four button
+// species in one row, above the list, on every single visit. Records adds are
+// rare-cadence by definition (#1497); print, share and import are rarer still.
+//
+// So the pane gets ONE primary (the add, which stays exactly where it was) and
+// everything else folds behind a ⋯. Below `md` that ⋯ is not a menu but a bottom
+// ACTION SHEET with tap-floor rows (#3374, via
+// components/overlay/AnchoredPanel.tsx) — this file did not have to know that.
+//
+// THIS FILE OWNS THE MENU RATHER THAN THE PANE, because it owns the share MODAL:
+// hoisting the three items into ImmunizationsSection would have left the modal's
+// state stranded a component away from the item that opens it, or forced a second
+// copy of it. The import LINK is passed in (`extraItems`) because it is the
+// PANE's, not the record's — this component stays the record's print/share pair
+// and simply hosts the fold.
+//
+// EVERY ITEM KEEPS ITS TESTID AND ITS ACCESSIBLE NAME. Reaching them is now two
+// taps instead of one; what they are and what they do is unchanged, which is why
+// e2e/immunization-record-share.spec.ts needed a menu-open and nothing else.
 const PRINT_HREF = "/immunizations/print" as AppRoute;
 const MANAGE_HREF = "/profile" as AppRoute;
 
-export default function ImmunizationRecordActions() {
+export default function ImmunizationRecordActions({
+  extraItems,
+}: {
+  // Pane-level items that belong in the same fold — the import door today. A
+  // render prop, so the caller composes its own link and this file does not grow
+  // a second vocabulary of "kinds of menu item".
+  extraItems?: (helpers: {
+    close: () => void;
+    itemClass: string;
+  }) => React.ReactNode;
+} = {}) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,26 +87,43 @@ export default function ImmunizationRecordActions() {
   }
 
   return (
-    <div className="flex items-center gap-1 print:hidden">
-      <Link
-        href={PRINT_HREF}
-        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-        data-testid="immunization-print-link"
-        aria-label="Print immunization record"
-        title="Print immunization record"
+    <div className="print:hidden">
+      <OverflowMenu
+        label="Record actions"
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        panelClassName="w-56"
       >
-        <IconPrinter className="h-4 w-4" stroke={1.75} />
-      </Link>
-      <button
-        type="button"
-        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-        data-testid="immunization-share-open"
-        aria-label="Share immunization record"
-        title="Share immunization record"
-        onClick={() => setOpen(true)}
-      >
-        <IconShare className="h-4 w-4" stroke={1.75} />
-      </button>
+        {({ close }) => (
+          <>
+            {/* A REAL <a>, not a menu item that navigates in JS: it survives the
+                pre-hydration window and it can be opened in a new tab, which is
+                what someone printing a record for a registrar actually does. */}
+            <Link
+              href={PRINT_HREF}
+              className={MENU_ITEM}
+              data-testid="immunization-print-link"
+              role="menuitem"
+              onClick={close}
+            >
+              Print immunization record
+            </Link>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM}
+              data-testid="immunization-share-open"
+              onClick={() => {
+                close();
+                setOpen(true);
+              }}
+            >
+              Share immunization record
+            </button>
+            {extraItems?.({ close, itemClass: MENU_ITEM })}
+          </>
+        )}
+      </OverflowMenu>
 
       {open && (
         <ModalShell
