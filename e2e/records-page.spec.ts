@@ -170,7 +170,14 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
 // filled pills on Problems, a "Show" + <select> on Immunizations, an "All statuses"
 // <select> on Skin and Dental. One affordance now, the outline pill group, and each
 // state is a real URL where the filter rides a query param.
-test("list surfaces share ONE filter affordance — outline pills, no dropdown (#1449)", async ({
+// #3408 gave the filter its OWN shape — an inset `rounded-md` control rather
+// than the family's rounded-full navigation outline — because a filter dressed as
+// a destination is how a phone came to stack three look-alike pill strips with
+// three different meanings. What this test owns is unchanged and is the point:
+// ONE filter affordance across every list surface, and it is never a dropdown.
+// The shape is asserted where the shapes are compared
+// (e2e/records-pane-anatomy.mobile.spec.ts).
+test("list surfaces share ONE filter affordance — pills, never a dropdown (#1449)", async ({
   page,
 }) => {
   await page.goto("/records/problems/conditions");
@@ -428,8 +435,11 @@ test.describe("Records panes — the desktop anatomy is unchanged (#3408)", () =
     // A REAL TABLE WITH REAL SORT HEADERS. `ResponsiveTable` is one `<table>`
     // that re-lays as cards below `sm`; from `sm` up nothing about it moved, so
     // the header row is back and the card-mode sort control is gone.
+    // Addressed by its own marker: the pane holds a SECOND responsive table (the
+    // "All recorded doses" history), so `table.table-cards` is a strict-mode
+    // violation — which is the guard doing its job.
     const section = page.getByTestId("records-immunizations");
-    const table = section.locator("table.table-cards");
+    const table = section.getByTestId("immunization-vaccines-table");
     await expect(table.locator("thead")).toBeVisible();
     await expect(
       table.getByRole("columnheader", { name: /Vaccine/ })
