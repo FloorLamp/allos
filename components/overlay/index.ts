@@ -52,6 +52,7 @@ export {
   BOTTOM_EDGE_NAV_ROW_HEIGHT,
   BOTTOM_EDGE_ABOVE_NAV,
   OVERLAY_PANEL_MAX_WIDTH,
+  OVERLAY_PANEL_MAX_WIDTH_FROM_MD,
   type OverlaySize,
 } from "./tokens";
 export {

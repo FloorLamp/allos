@@ -257,6 +257,13 @@ test.describe("correcting a recorded score (#1396)", () => {
       page.getByTestId(`instrument-reading-band-${id}`)
     ).toContainText("Severe");
 
+    // THE TWO ROW AFFORDANCES NOW FOLD BEHIND THE ⋯ (#3408, item F), so reaching
+    // either one is two taps: open the row's menu, then pick the verb. The verbs
+    // and their testids are unchanged — only where they live moved.
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reading actions" })
+    );
     // "Correct" only flips editingId; the edit form it reveals is the signal.
     await hydratedClick(
       page,
@@ -292,6 +299,11 @@ test.describe("correcting a recorded score (#1396)", () => {
     const row = page.getByTestId(`instrument-reading-${id}`);
     await expect(row).toBeVisible();
 
+    // Two taps since #3408 item F: the ⋯, then Remove.
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reading actions" })
+    );
     // "Remove" does not write: handleDelete awaits the app-wide confirm() first
     // and only posts if the user says yes. The dialog is this click's whole effect.
     await hydratedClick(
@@ -299,8 +311,10 @@ test.describe("correcting a recorded score (#1396)", () => {
       page.getByTestId(`instrument-reading-delete-${id}`)
     );
     await expect(page.getByTestId("confirm-dialog")).toBeVisible();
-    // Every row's own control is also labelled "Remove" — scope the confirm to the
-    // dialog so the click can't land back on the list.
+    // The ⋯ menu item that opened this confirm is also labelled "Remove" — scope
+    // the confirm to the dialog so the click can't land back on the menu. (The
+    // menu closes itself when a decision opens over it, #2599, but the assertion
+    // should not depend on that having happened yet.)
     await settledClick(
       page,
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Remove" })

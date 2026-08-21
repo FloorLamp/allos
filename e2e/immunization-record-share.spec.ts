@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
 import { followLink } from "./helpers";
 
 // The printable immunization record and its revocable share link (#1849). The one
@@ -6,6 +7,21 @@ import { followLink } from "./helpers";
 // the medication list had both. This drives the whole loop on the seeded profile
 // (scripts/seed.ts gives profile 1 an MMR, a 2018-09-01 Tdap booster and an
 // influenza dose): print view → tokenized share → anonymous render → revoke.
+
+// Open the pane's ⋯ (#3408, item C). Visibility-guarded rather than a bare click,
+// for the #730/#500 reason the share-modal loop below already records: the ⋯ is a
+// client-state toggle with no POST and no navigation to settle on, so a tap in the
+// pre-hydration window is swallowed in silence. The guard means an already-open
+// menu is never clicked shut.
+async function openRecordActions(page: Page): Promise<void> {
+  const trigger = page.getByRole("button", { name: "Record actions" });
+  const printLink = page.getByTestId("immunization-print-link");
+  await expect(async () => {
+    if (!(await printLink.isVisible())) await trigger.click();
+    await expect(printLink).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the ⋯ until its panel appears past the hydration swallow — visibility-guarded so a late tap cannot close it
+}
+
 test.describe("Immunization record print + share (#1849)", () => {
   test("prints the grouped record and shares the same content by token", async ({
     page,
@@ -15,6 +31,12 @@ test.describe("Immunization record print + share (#1849)", () => {
     test.slow();
 
     await page.goto("/records/history/immunizations");
+    // PRINT AND SHARE FOLD BEHIND THE PANE'S ⋯ (#3408, item C): one primary per
+    // pane, and print/share/import are rare-cadence. Both keep their testids,
+    // their accessible names and their behaviour — reaching them is one extra
+    // tap. Below `md` this same ⋯ is an action sheet (#3374); this spec runs at
+    // desktop width, where it is the anchored popover.
+    await openRecordActions(page);
     const printLink = page.getByTestId("immunization-print-link");
     await expect(printLink).toBeVisible();
 
@@ -40,9 +62,10 @@ test.describe("Immunization record print + share (#1849)", () => {
     // Ride out the hydration window (#730): retry opening the modal until its
     // Create button (a client-state toggle) actually appears.
     await expect(async () => {
+      await openRecordActions(page);
       await page.getByTestId("immunization-share-open").click();
       await expect(create).toBeVisible({ timeout: 2000 });
-    }).toPass(); // topass-ok: re-open the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
+    }).toPass(); // topass-ok: re-open the ⋯ and the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
     await create.click();
     const urlField = page.getByTestId("immunization-share-url");
     await expect(urlField).toBeVisible();

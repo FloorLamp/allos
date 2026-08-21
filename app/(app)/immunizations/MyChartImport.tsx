@@ -8,9 +8,33 @@ import { IconFileImport, IconChevronRight } from "@tabler/icons-react";
 // delete.
 export default function MyChartImport({
   compact = false,
+  menuItemClass,
+  onNavigate,
 }: {
   compact?: boolean;
+  // MENU MODE (#3408, item C). The immunizations pane folded its rare-cadence
+  // actions behind a ⋯, and the import door goes with them — so this renders as
+  // a `role="menuitem"` link wearing the menu's own row class rather than as a
+  // bordered secondary standing above the list. Still a real <a>: the pre-
+  // hydration window and "open in a new tab" both matter more here than they do
+  // for a button, and it is the same href the card and the compact button use.
+  menuItemClass?: string;
+  onNavigate?: () => void;
 }) {
+  if (menuItemClass) {
+    return (
+      <Link
+        href="/data?section=import"
+        role="menuitem"
+        className={menuItemClass}
+        data-testid="immunization-import-link"
+        onClick={onNavigate}
+      >
+        Import records
+      </Link>
+    );
+  }
+
   if (compact) {
     return (
       <Link href="/data?section=import" className="btn-ghost text-sm">
