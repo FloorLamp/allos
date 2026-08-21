@@ -242,9 +242,13 @@ describe("the direction four rounds kept losing: a NULL row is not losable", () 
       UNSTAMPED_ERA_MAX_ID_KEY
     );
     try {
+      // A stamp in the PAST, deliberately: `pushStampFor` refuses one more than
+      // MAX_PUSH_CLOCK_SKEW_MS ahead of this clock, and a refused stamp declines the
+      // supersede for a different reason — which is how this case survived its first
+      // mutant while asserting nothing about the era.
       const r = push(
         p,
-        stepsBody("2099-01-01T00:00:00Z", [
+        stepsBody("2026-08-21T04:00:05Z", [
           ["2026-08-20T07:00:00Z", "2026-08-20T23:00:00Z", 11721],
         ])
       );
