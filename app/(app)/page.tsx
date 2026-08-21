@@ -23,6 +23,7 @@ import {
   getSleepWaitingState,
   getNapHistory,
   typicalWakeTime,
+  typicalBedTime,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
@@ -39,7 +40,7 @@ import {
 } from "@/lib/queries";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
-import { summarizeStepsToday } from "@/lib/steps-today";
+import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
 import {
   isFoodLoggingRelevant,
   isLongevityRelevant,
@@ -148,6 +149,7 @@ import {
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
 import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
+import PageContainer from "@/components/PageContainer";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
 import type { DashboardAheadPresentation } from "@/components/dashboard/DashboardPlacementCanvas";
 import IllnessNowGroup, {
@@ -690,6 +692,18 @@ async function renderDashboard(
     sleepSummary?.wakeDay ?? null
   );
   const typicalWakeMinutes = sleepWaiting ? typicalWakeTime(profile.id) : null;
+  // The USUAL BAND behind last night's actuals (#3253's rider): the profile's own
+  // typical bed and wake times, read VERBATIM from the pair the notification schedule
+  // already keys on. Zero new derivation — the classifier answers null below its
+  // minimum-nights gate and the row then says nothing at all, which is the whole
+  // contract. Only asked when there is a recorded night for it to sit behind.
+  const usualSleepBand = (() => {
+    if (!sleepSummary) return undefined;
+    const bed = typicalBedTime(profile.id);
+    const wake = typicalWakeTime(profile.id);
+    if (bed == null || wake == null) return undefined;
+    return `Usual ${formatClockMinutes(formatPrefs.timeFormat, bed)} – ${formatClockMinutes(formatPrefs.timeFormat, wake)}`;
+  })();
   const sleepPreviousNightLabel =
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
@@ -1748,6 +1762,22 @@ async function renderDashboard(
           ]
             .filter(Boolean)
             .join(" · ") || undefined,
+        // The desktop column (#3252) draws the window this row's own sentence talks
+        // about: today plus the prior seven days, the same span `summarizeStepsToday`
+        // averages, off the same series it was handed. Steps declare `slot-null`, so a
+        // day nobody measured is a HOLE in the stroke rather than a zero — a total is
+        // not a level and may not be bridged.
+        series: {
+          points: stepsRows.filter(
+            (row) => row.date >= shiftDateStr(on, -STEPS_TRAILING_DAYS)
+          ),
+          seriesKey: "metric:steps",
+          stale: false,
+          name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
+          pointLabel: (point) =>
+            `${point.value.toLocaleString("en-US")} steps · ${formatLongDate(point.date, formatPrefs)}`,
+          loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
+        },
         href: "/trends#body",
         presence: "current",
       }
@@ -1818,7 +1848,7 @@ async function renderDashboard(
                 data-testid="vitals-latest-bp-age"
                 data-stale={age.stale ? "true" : undefined}
                 title={age.title ?? undefined}
-                className={age.className}
+                className={`standing-age ${age.className}`}
               >
                 {age.text}
               </span>
@@ -1879,7 +1909,7 @@ async function renderDashboard(
                 data-testid="vitals-latest-resting-hr-age"
                 data-stale={age.stale ? "true" : undefined}
                 title={age.title ?? undefined}
-                className={age.className}
+                className={`standing-age ${age.className}`}
               >
                 {age.text}
               </span>
@@ -1889,6 +1919,20 @@ async function renderDashboard(
             </span>
           );
         })(),
+        // The desktop column (#3252). These are the points the gather ALREADY pulled
+        // to decide this row's arrow (the bounded trend tail, lib/queries/vitals-latest
+        // — two readings, or one), carried through rather than re-read: the plot draws
+        // exactly the movement the arrow claims. The tone follows this row's own glance
+        // age, so a resting HR past its 180-day floor is amber in both places at once.
+        series: {
+          points: vitalsModel.restingHr.points,
+          seriesKey: "metric:resting_hr",
+          stale: vitalsModel.restingHr.freshness === "due",
+          name: "Resting heart rate, latest readings",
+          pointLabel: (point) =>
+            `${point.value} bpm · ${formatLongDate(point.date, formatPrefs)}`,
+          loneCaption: `Single reading · ${formatLongDate(vitalsModel.restingHr.date, formatPrefs)}`,
+        },
         href: "/trends#body",
         presence: "current",
       }
@@ -1981,7 +2025,7 @@ async function renderDashboard(
             data-testid="recent-lab-date"
             data-stale={age.stale ? "true" : undefined}
             title={age.title ?? undefined}
-            className={age.className}
+            className={`standing-age ${age.className}`}
           >
             {age.text}
           </span>
@@ -2063,7 +2107,28 @@ async function renderDashboard(
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
-          detail: formatLongDate(latestWeight.date, formatPrefs),
+          // The row's AGE text, marked so the hover door can step in for it (#3253).
+          // `standing-age` is the one class the door's CSS pair keys on.
+          detail: (
+            <span className="standing-age">
+              {formatLongDate(latestWeight.date, formatPrefs)}
+            </span>
+          ),
+          // The desktop column (#3252): the SAME trailing-90-day series the weight
+          // domain already derived above for this page — not a second read, and not a
+          // second window. `stale` is false by construction here: this branch is the
+          // one the dormancy verdict left alive, and weight declares no glance floor
+          // between "current" and "dormant" (its dormant row is a different row, with
+          // no plot at all).
+          series: {
+            points: bodyMetrics,
+            seriesKey: "metric:weight",
+            stale: false,
+            name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
+            pointLabel: (point) =>
+              `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
+            loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
+          },
           href: "/trends#body",
           presence: "current",
         }
@@ -2223,6 +2288,9 @@ async function renderDashboard(
         {
           label: title,
           value,
+          // The band sits behind the two rows it is a band FOR. A duration has no
+          // usual bed-and-wake pair to be measured against, so it carries nothing.
+          hoverNote: key === "duration" ? undefined : usualSleepBand,
           href: "/sleep",
           presence: "current",
         }
@@ -2396,24 +2464,36 @@ async function renderDashboard(
     };
   });
 
+  // The placement canvas gets a DECLARED width (#3253). The dashboard rendered bare
+  // into the shell, whose only limit is the 110rem 3xl cap, so on a wide monitor
+  // "Mark taken" sat ~1,400px from its own card's title and Standing's rows were
+  // two-thirds dead space. `wide` is the existing 72rem token — no new width invented
+  // — and `mx-auto` centres it inside the shell exactly the way
+  // app/(app)/records/layout.tsx already does.
   return (
-    <DashboardPlacementCanvas
-      dateLabel={formatLongDate(on, formatPrefs)}
-      placements={dashboardPlacements}
-      candidateNodes={candidateNodes}
-      standingPresentations={standingPresentations}
-      aheadPresentations={aheadPresentations}
-      attentionBadgeCount={attentionBadgeCount}
-      illnessGroupNode={
-        placedIllnessCockpits.length > 0 ? (
-          <IllnessNowGroup
-            cockpits={placedIllnessCockpits}
-            initialCollapsedActive={illnessUi.collapsedActive}
-            initialOpenOtherKey={illnessUi.openOtherKey}
-            saveState={saveIllnessNowState}
-          />
-        ) : undefined
-      }
-    />
+    <PageContainer
+      width="wide"
+      className="mx-auto"
+      data-testid="dashboard-canvas"
+    >
+      <DashboardPlacementCanvas
+        dateLabel={formatLongDate(on, formatPrefs)}
+        placements={dashboardPlacements}
+        candidateNodes={candidateNodes}
+        standingPresentations={standingPresentations}
+        aheadPresentations={aheadPresentations}
+        attentionBadgeCount={attentionBadgeCount}
+        illnessGroupNode={
+          placedIllnessCockpits.length > 0 ? (
+            <IllnessNowGroup
+              cockpits={placedIllnessCockpits}
+              initialCollapsedActive={illnessUi.collapsedActive}
+              initialOpenOtherKey={illnessUi.openOtherKey}
+              saveState={saveIllnessNowState}
+            />
+          ) : undefined
+        }
+      />
+    </PageContainer>
   );
 }

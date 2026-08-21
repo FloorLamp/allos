@@ -136,6 +136,22 @@ export function typicalWakeTime(
   );
 }
 
+// The profile's typical BED time as a clock minute-of-day, or null below the same
+// minimum-nights gate. Exactly `typicalWakeTime`'s twin — same sessions read, same pure
+// classifier, same options — so the "usual band" a surface shows is the SAME pair the
+// notification schedule already keys on (#3253's rider). No new derivation and no new
+// `.prepare`.
+export function typicalBedTime(
+  profileId: number,
+  opts?: SleepRegularityOptions
+): number | null {
+  return computeTypicalBedTime(
+    getSleepSessions(profileId),
+    getTimezone(profileId),
+    opts
+  );
+}
+
 // Whether the profile has ANY recorded sleep session — the data gate for the
 // /sleep nav entry (issue #1066). Cheap: one bounded session read (delegates to
 // the already profile-scoped getSleepSessions, so no new `.prepare`).

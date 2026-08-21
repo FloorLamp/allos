@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import NowCards, { type NowStripCard } from "./NowCards";
+
+export type { NowStripCard };
 
 // The dashboard "Now" strip (issue #1413, section A) — the cards the moment makes
 // most relevant, moved above the user's own grid. Ordinary relevance is capped at
@@ -17,16 +19,11 @@ import type { ReactNode } from "react";
 // Empty remains a real landmark: a quiet sentence, never a filler card or a
 // synthetic candidate. The mobile date stays here because the PageHeader is hidden.
 
-export interface NowStripCard {
-  id: string;
-  node: ReactNode;
-}
-
 export default function NowStrip({
   cards,
   dateLabel,
 }: {
-  cards: NowStripCard[];
+  cards: readonly NowStripCard[];
   // The date, shown only below `md` — the desktop PageHeader still carries it, and
   // below `md` that header is gone entirely (#1413 section C), so this is where the
   // day's orientation survives on a phone. Absent → no line.
@@ -36,9 +33,20 @@ export default function NowStrip({
     <section
       data-testid="now-strip"
       data-count={cards.length}
-      aria-label="Right now"
+      aria-labelledby="dashboard-now-title"
       className="mb-6"
     >
+      {/* Now was the ONLY zone without a visible label (#3238): Standing and Ahead
+          both render an h2, so the strip's cards read as orphaned fragments floating
+          between the page header and "Standing". Same scale as its siblings, and the
+          section's accessible name still says "Right now" — it now comes from the
+          heading rather than from an aria-label repeating it. */}
+      <h2
+        id="dashboard-now-title"
+        className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
+      >
+        Right now
+      </h2>
       {dateLabel && (
         <div
           data-testid="now-strip-date"
@@ -47,26 +55,12 @@ export default function NowStrip({
           {dateLabel}
         </div>
       )}
-      {cards.length === 0 ? (
-        <p
-          data-testid="now-strip-empty"
-          className="text-sm text-slate-600 dark:text-slate-300"
-        >
-          Nothing needs you.
-        </p>
-      ) : (
-        <div className="grid min-w-0 grid-cols-1 items-start gap-3">
-          {cards.map((c) => (
-            <div
-              key={c.id}
-              data-testid={`now-strip-card-${c.id}`}
-              className="min-w-0"
-            >
-              {c.node}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* The cards (and the empty sentence) move one level down into a CLIENT
+          component: whether a card's arrival was witnessed is a question only the
+          client can answer (#3253 decision 4), and the kind glyph rides in the same
+          wrapper. Both stay DIRECT children of this section — the grid and the
+          sentence are addressed positionally by specs. */}
+      <NowCards cards={cards} />
     </section>
   );
 }

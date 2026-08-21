@@ -820,6 +820,54 @@
   }
 }
 
+/* ── SECTION: Dashboard hover doors ── */
+/* The Standing rows' hover doors (#3253 decision 2). A row's whole line is already a
+   link; what it never said was WHERE it goes. On hover — and on keyboard
+   focus-visible, identically, because a door only a mouse can find is not a door — the
+   destination's name slides in at the right edge and the reading's age text steps
+   aside for it.
+
+   Written here rather than as Tailwind variants because the two halves are a PAIR: the
+   age fading and the door arriving are one exchange at one duration, and splitting them
+   across arbitrary descendant variants on the anchor is how they would come to drift.
+
+   Opacity and transform only, so the exchange can never move the row or its neighbours
+   — the age keeps its box while it is invisible, which is what "no layout shift" means
+   here. 120 ms is a hover affordance, deliberately faster than and NOT part of the
+   micro-motion vocabulary (that band times motion carrying information about a change;
+   this reveals something that was true all along).
+
+   Touch is untouched: with no hover the door simply never appears, and the row tap was
+   already the door.
+
+   Under prefers-reduced-motion the exchange still HAPPENS — it is information, not
+   decoration — it just arrives on the frame, with no fade. */
+.standing-row .standing-door {
+  opacity: 0;
+  transform: translateX(0.25rem);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+.standing-row .standing-age {
+  transition: opacity 120ms ease-out;
+}
+.standing-row:hover .standing-door,
+.standing-row:focus-visible .standing-door {
+  opacity: 1;
+  transform: translateX(0);
+}
+.standing-row:hover .standing-age,
+.standing-row:focus-visible .standing-age {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .standing-row .standing-door,
+  .standing-row .standing-age {
+    transition: none;
+  }
+}
+
 /* ── SECTION: Fitness-check tile landing sweep ── */
 /* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
    just-saved tile as its new value lands on the grid — a brief scale/settle that
@@ -883,6 +931,7 @@
   --motion-count: 250ms;
   --motion-slide: 300ms;
   --motion-tick: 180ms;
+  --motion-promote: 300ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -1000,6 +1049,29 @@
   animation: micro-tick var(--motion-tick) var(--motion-ease);
 }
 
+/* A reading being PROMOTED into Now while you watch (#3253 decision 4). The card
+   arrives from below — where its Standing row was — and settles: one lift, one fade,
+   nothing else on the page moving. Transform and opacity only, so the gap it lands in
+   was already closed by the re-render and no neighbour is pushed around by the
+   animation.
+
+   Applied ONLY to a card whose arrival was witnessed. components/dashboard/NowCards.tsx
+   asks lib/dashboard-motion.ts, which withholds the class on the first paint and across
+   a hidden interval — a resume must land quiet. */
+@keyframes micro-promote {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.motion-promote {
+  animation: micro-promote var(--motion-promote) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -1011,6 +1083,7 @@
   .motion-count,
   .motion-slide,
   .motion-tick,
+  .motion-promote,
   .motion-fold {
     animation: none;
   }

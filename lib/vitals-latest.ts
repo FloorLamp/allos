@@ -118,7 +118,23 @@ export interface VitalsLatestRow {
 
 export interface VitalsLatestModel {
   bp: (VitalsLatestRow & { systolic: number; diastolic: number }) | null;
-  restingHr: (VitalsLatestRow & { value: number }) | null;
+  restingHr:
+    | (VitalsLatestRow & {
+        value: number;
+        /**
+         * The tail this row was reduced from, carried rather than re-read (#3252).
+         * The gather already pulls the last two points to decide the arrow, so the
+         * Standing sparkline draws exactly what the arrow claims, with no second
+         * query and no new derivation. One reading gives one point, which is the
+         * single-reading mark's case.
+         *
+         * Deliberately NOT offered for blood pressure: systolic and diastolic are two
+         * quantities, and one plot may not encode two identities by hue side by side
+         * (#3252). A BP row states its pair in text and takes no column.
+         */
+        points: readonly { date: string; value: number }[];
+      })
+    | null;
 }
 
 // Build the card's model from the reduced series. Returns null when neither quantity has
@@ -162,6 +178,16 @@ export function vitalsLatestModel(
         );
         return {
           value: restingHr.value,
+          points:
+            restingHr.previousDate != null && restingHr.previousValue != null
+              ? [
+                  {
+                    date: restingHr.previousDate,
+                    value: restingHr.previousValue,
+                  },
+                  { date: restingHr.date, value: restingHr.value },
+                ]
+              : [{ date: restingHr.date, value: restingHr.value }],
           date: restingHr.date,
           freshness,
           direction: presentedDirection(restingHr.direction, freshness),
