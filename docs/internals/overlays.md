@@ -66,7 +66,12 @@ discovered (#2774):
   RECORDED, not smuggled: it passes `presentation="centered"` and lands in
   `CENTERED_PRESENTATION` in the chokepoint test with its reason. The command
   palette (a search field over a result list) and the camera fallback (a live
-  viewfinder) are the two.
+  viewfinder) are the two. **"Not a sheet" is only half the argument**, and
+  #3423 is the other half: it rules the bottom edge out, it never defended a
+  floating CARD on a phone. So the palette also passes `fullScreenBelowMd`, and
+  the same host fills the viewport below `md` — same portal, scrim, focus trap,
+  scroll lock and Escape seam, same register entry. It is a GEOMETRY flag, not a
+  fourth presentation.
 - **Width is DECLARED, not styled.** `size: "sm" | "md" | "lg"`
   (`OVERLAY_PANEL_MAX_WIDTH`) replaced thirty per-host `max-w-*` overrides.
   Content stays intrinsic (#2014); this is the container half of that rule.
