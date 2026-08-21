@@ -37,7 +37,7 @@
 const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 
 // ORCHESTRATION-BOX ESCAPE HATCH, in milliseconds, set by
-// `scripts/orchestration/agent-gates.sh` and by nothing in CI.
+// `scripts/orchestration/agent-gates.sh` and IGNORED WHEN `CI` IS SET.
 //
 // Up to five agents share four cores on the dispatch box. The DB tier measured
 // there took 862 s instead of 161 s at load average 18.1 — 5.35x on wall time,
@@ -45,9 +45,38 @@ const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 // non-linear: the same tier at load 11 finished in 220 s and needed no allowance
 // at all. One knob covers both tiers because both are vitest on the same four
 // cores; the contention is a property of the box, not of a suite.
-export const testTimeout = Number(
-  process.env.ALLOS_VITEST_TIMEOUT_MS ?? DEFAULT_TEST_TIMEOUT_MS
-);
+//
+// THE `CI` CHECK IS THE WHOLE DESIGN, NOT A PRECAUTION. This split only works as
+// a division of labour: the GATE PERMITS at 60 000 ms so a loaded box stops
+// manufacturing reds, and CI DETECTS at 15 000 ms because it is the quiet
+// environment (100 sampled `test-db` jobs: max/median 1.18x, 99 distinct
+// ephemeral runners). If the variable ever reached a CI runner, the detector
+// would silently become the permitter — every tier still green, nothing anywhere
+// to notice, and the strict half of the design gone. So CI does not get to be
+// overridden, and `vitest-timeouts.test.ts` holds that shut rather than a comment
+// asking nicely.
+const OVERRIDE_ENV = "ALLOS_VITEST_TIMEOUT_MS";
+
+/**
+ * The per-test ceiling this run should use, in milliseconds.
+ *
+ * Takes its environment as an argument so the guard above is testable without
+ * mutating `process.env` — and so the export below cannot drift from the thing
+ * the test checks.
+ */
+export function resolveTestTimeoutMs(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  if (env.CI) return DEFAULT_TEST_TIMEOUT_MS;
+  const raw = env[OVERRIDE_ENV];
+  if (raw === undefined) return DEFAULT_TEST_TIMEOUT_MS;
+  // A typo'd value must not become NaN: vitest reads NaN as "no timeout", which
+  // would remove the ceiling entirely — the failure this whole module prevents.
+  const ms = Number(raw);
+  return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_TEST_TIMEOUT_MS;
+}
+
+export const testTimeout = resolveTestTimeoutMs();
 
 // Vitest ships hookTimeout at 2x testTimeout, and the ratio is load-bearing:
 // 433 of the DB tier's files do their setup in a `beforeAll`/`beforeEach`, so a
@@ -55,3 +84,6 @@ export const testTimeout = Number(
 // simply become the new binding constraint — and it fails with a different
 // sentence ("Hook timed out in 10000ms") that no runbook describes.
 export const hookTimeout = testTimeout * 2;
+
+/** The strict ceiling CI must always get, exported so the guard test can name it. */
+export const CI_TEST_TIMEOUT_MS = DEFAULT_TEST_TIMEOUT_MS;

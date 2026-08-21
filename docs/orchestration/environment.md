@@ -14,9 +14,10 @@
   `docs/orchestration/e2e-ci.md`.
 - Concurrent gates run about six times slower (DB tier: 161 s alone, 862 s at
   load 18). `agent-gates.sh` gives both vitest tiers a 60 s per-test ceiling, CI
-  keeps 15 s, and `vitest.timeouts.ts` derives both. A 60 s timeout is a hang.
-- Contention fakes WRONG VALUES too — a timed-out test abandons rows its
-  neighbour reads. Re-run an odd assertion in an untouched file alone.
+  keeps 15 s (`vitest.timeouts.ts` derives both). A 60 s timeout is a real hang.
+- CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
+  mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
+  `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 

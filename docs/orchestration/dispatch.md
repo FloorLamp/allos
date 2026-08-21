@@ -42,6 +42,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
+- A red in code the diff did not touch is contention until proven otherwise —
+  an ASSERTION failure included, not only a timeout (#3436).
 - `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
   projects both arrivals; it never refuses, because a P0 preempts.
 - A refuted PR re-enters the review queue, so arrival is not one-shot. Count

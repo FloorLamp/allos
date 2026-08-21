@@ -117,6 +117,9 @@ db_tier_paths=(
 # What this canNOT rescue is a test that measures elapsed time and asserts on it:
 # boot-lock-race.test.ts compares two writes against a same-runner baseline and
 # still fails under load. Re-run that file alone — see environment.md.
+# Copying this export into a CI job would do nothing: vitest.timeouts.ts ignores
+# the variable whenever `CI` is set, and lib/__tests__/vitest-timeouts.test.ts
+# holds that shut. The permitter cannot become the detector by accident.
 export ALLOS_VITEST_TIMEOUT_MS="${ALLOS_VITEST_TIMEOUT_MS:-60000}"
 
 run_gate "lint" npm run lint
