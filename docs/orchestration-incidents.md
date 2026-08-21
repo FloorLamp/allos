@@ -870,3 +870,55 @@ head has to still be the head when the merge call goes out. One request answers 
 
 The general shape: verifying a fact about a moving object and then acting on the
 verification some time later is not the same as acting on the fact.
+
+## The flight recorder that had nowhere to land (2026-08-21)
+
+A fresh container's first check-in ran before `$SCRATCH` existed. `STATE_DIR`
+was computed but never created, so every write the recorder makes —
+`.boot_id`, `.session_id`, `.agents_dead` — failed with "No such file or
+directory". Those failures scrolled past as three shell errors among fifty
+lines of normal output. The compare that follows a failed stamp reads
+`MISSING`, and `MISSING` is indistinguishable from "the container restarted".
+
+So the recorder declared a restart that never happened. Sixty-two minutes
+later the follow-up check-in — same boot-id, `up 62m`, four subagents that
+`ListAgents` reported as `running` — printed:
+
+```
+wt-forms-discard forms-discard-confirm  DONE  dirty=1  <<< DIRTY AND NO AGENT: RESCUE NOW
+```
+
+over a **live** agent's worktree. That verdict authorises the preserve-first
+drill: commit whatever is in the tree as a WIP rescue and push it. Performed
+against a running lane, that is two writers on one worktree — the thing the
+runbook forbids everywhere else, reached by following the runbook.
+
+Nothing was lost, because `ListAgents` was checked before anything was
+written. That check is only in the procedure because
+[the restart that killed nobody](#the-restart-that-killed-nobody-2026-08-19)
+put it there: the verdict authorises the rescue, never the relaunch, and it is
+worth confirming even the rescue when the trees belong to agents you started
+yourself and never saw die.
+
+**This is the sticky-verdict defect in the other direction.** That fix stopped
+the recorder soothing over dead agents; this one stopped it screaming over live
+ones. Every earlier fix widened _what counts as a restart_ — none asked whether
+the recorder could write at all. A detector whose alarm is wrong in either
+direction stops being read, and the direction that manufactures destructive
+work is the worse one.
+
+Two changes, both in `scripts/orchestrator-checkin.sh`:
+
+- `mkdir -p "$STATE_DIR"` before the first compare, and a hard non-zero exit
+  with no verdict at all if the directory cannot be created. An inoperative
+  flight recorder must never be mistaken for one reporting bad news.
+- Every stamp write is checked. `mkdir -p` succeeding does not prove the write
+  succeeds — a full disk or a read-only mount fails there and nowhere else —
+  and the cost is paid by the NEXT run, which reads `MISSING` and cries
+  restart at a live fleet. A failed stamp now says so, and says what it will
+  cause.
+
+The general shape, worth carrying to any state-based detector: **a detector
+that cannot persist its state does not fail closed, it fails LOUD AND WRONG.**
+Absent state and changed state are the same reading. Check that you can write
+before you trust what you read.

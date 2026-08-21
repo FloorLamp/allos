@@ -67,6 +67,38 @@ ROSTER="$STATE_DIR/.roster"
 # An orchestrator that forgets to clear it loses nothing but a loud reminder; one
 # that never sees it loses an agent's uncommitted work.
 RESCUE_FILE="$STATE_DIR/.agents_dead"
+
+# THE STATE DIR MUST EXIST BEFORE THE FIRST COMPARE, AND ITS ABSENCE MUST BE
+# LOUD. Every fix above widened WHAT counts as a restart or made the verdict
+# survive being read; none of them noticed that on a FRESH container
+# $STATE_DIR does not exist at all. Then every stamp write fails with "No such
+# file or directory", the next compare reads MISSING, and the recorder declares
+# a restart that never happened — over a fleet that is alive.
+#
+# Measured 2026-08-21T01:46Z: the session's first check-in ran before the
+# scratch directory existed. It printed *** RESTARTED *** for both boot-id and
+# session, and 62 minutes later the follow-up check-in — still the same
+# container, same boot-id, four subagents all `running` — printed
+# "DIRTY AND NO AGENT: RESCUE NOW" over a LIVE agent's worktree. The rescue
+# drill that verdict authorises is "commit whatever is in the tree and push";
+# performed against a live lane it is the two-writers-on-one-worktree failure
+# the runbook forbids everywhere else.
+#
+# This is the same defect shape as the sticky-verdict fix directly above, in
+# the other direction: that one soothed over dead agents, this one screams over
+# live ones. Both teach the same thing — a recorder whose alarm is wrong in
+# EITHER direction stops being read. So: create the directory, and if it cannot
+# be created, say so and exit non-zero rather than reporting a restart that is
+# really a failed write. An inoperative flight recorder must not be mistaken
+# for a flight recorder reporting bad news.
+if ! mkdir -p "$STATE_DIR" 2>/dev/null; then
+  echo "=== ORCHESTRATOR CHECK-IN: CANNOT CREATE STATE DIR ==="
+  echo "  $STATE_DIR is not creatable, so restart detection CANNOT WORK."
+  echo "  Every verdict this script would print is a failed write, not a finding."
+  echo "  Fix the directory before trusting any check-in output."
+  exit 1
+fi
+
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 
 echo "=== ORCHESTRATOR CHECK-IN  $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
@@ -537,11 +569,26 @@ echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 
 # Stamp LAST, so a crash mid-check-in still reports the restart next time.
+#
+# A FAILED STAMP IS A FUTURE FALSE RESTART, so it is announced rather than
+# swallowed. mkdir -p succeeding does not prove these writes succeed — a full
+# disk or a read-only mount fails here and nowhere else — and the cost is paid
+# by the NEXT run, which reads MISSING and cries restart at a live fleet.
+stamp() {
+  local file="$1" value="$2" ok="$3"
+  if echo "$value" > "$file" 2>/dev/null; then
+    echo "$ok"
+  else
+    echo "*** STAMP FAILED: could not write $file ***"
+    echo "    The NEXT check-in will read this as MISSING and report a restart"
+    echo "    that did not happen. Fix the write before trusting that verdict."
+  fi
+}
 if [ "$RESTARTED" = "1" ]; then
-  echo "$CUR" > "$BOOT_FILE"
-  echo "boot-id stamped. Timers and any canary are DEAD - re-arm them now."
+  stamp "$BOOT_FILE" "$CUR" \
+    "boot-id stamped. Timers and any canary are DEAD - re-arm them now."
 fi
 if [ -n "$sid" ] && [ "$SESSION_NEW" = "1" ]; then
-  echo "$sid" > "$SESSION_FILE"
-  echo "session stamped. Every subagent and in-process timer is DEAD - relaunch and re-arm now."
+  stamp "$SESSION_FILE" "$sid" \
+    "session stamped. Every subagent and in-process timer is DEAD - relaunch and re-arm now."
 fi
