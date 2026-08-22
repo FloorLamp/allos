@@ -274,8 +274,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Withings",
     kind: "oauth",
     status: "available",
-    lead:
-      "Pull weight, blood pressure, sleep and more from your Withings devices.",
+    lead: "Pull weight, blood pressure, sleep and more from your Withings devices.",
     detail:
       "The full list is weight and body composition, blood pressure, SpO2, " +
       "temperature, resting heart rate, and sleep, from your Withings scale, " +
@@ -326,8 +325,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Garmin Connect",
     kind: "oauth",
     status: "planned",
-    lead:
-      "Pull activities, daily steps, sleep, and heart rate from Garmin Connect.",
+    lead: "Pull activities, daily steps, sleep, and heart rate from Garmin Connect.",
     detail:
       "Garmin's official Health API requires an approved partner account (the " +
       "developer program is currently paused) and a public webhook, so it's not " +
@@ -342,8 +340,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Fitbit (Google Takeout)",
     kind: "archive",
     status: "available",
-    lead:
-      "Import a Fitbit account export downloaded from Google Takeout.",
+    lead: "Import a Fitbit account export downloaded from Google Takeout.",
     detail:
       "This is the only way to bring in body composition from a scale that syncs to " +
       "Fitbit: Fitbit does not forward weight or body fat to Health Connect, so those " +
@@ -449,10 +446,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // more detail, a few centimetres further down the same page. A six-line wall at the
     // top of a setup page is read by nobody; the mechanics belong where the mechanics are.
     lead:
-      "Bring in visit summaries, labs, medications and immunizations from hospital " +
-      "and clinic patient portals.",
+      "Bring in visit summaries, labs, medications and immunizations from patient " +
+      "portals.",
     detail:
-      "A small companion tool signs in on your own computer and pushes what it " +
+      "Hospital and clinic portals both. A small companion tool signs in on your " +
+      "own computer and pushes what it " +
       "downloads here — your portal password, and even the portal's web address, " +
       "never leave that machine.",
     dataTypes: [
@@ -477,10 +475,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
     kind: "public",
     status: "available",
     lead:
-      "Bring in the actual UV index at your home location, so your outdoor daylight " +
-      "time becomes a two-sided UV dose.",
+      "Bring in the actual UV index at your home location, so outdoor time becomes " +
+      "a two-sided UV dose.",
     detail:
-      "Solar irradiance comes with it: enough sun for vitamin D and circadian light, " +
+      "Daylight time is what it is applied to, and solar irradiance comes with it: " +
+      "enough sun for vitamin D and circadian light, " +
       "but a heads-up before you'd burn. Powered by Open-Meteo: no API key or " +
       "account, and its free historical archive backfills the UV for activities you " +
       "already logged. Needs only your home location (Settings → Profile); works " +
@@ -520,8 +519,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Calendar feed",
     kind: "feed",
     status: "available",
-    lead:
-      "Subscribe to your appointments in Google, Apple, or Outlook Calendar.",
+    lead: "Subscribe to your appointments in Google, Apple, or Outlook Calendar.",
     detail:
       "Enable the feed to get a private link your calendar app checks " +
       "automatically, so upcoming medical visits — with reminders — show up " +
