@@ -628,14 +628,14 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
 // is the detector, and `spendAutoReloadRation` puts the tab in the one state where the
 // deploy degrades to the manual bar instead of reloading itself.
 //
-// THE MECHANISM IT GUARDS. `components/useFormDraft.ts` re-keys a create form onto the
-// row its auto-save produced, and `markUnsavedWork` is KEYED. Every release path in
-// that hook — `clear`, `discard`, the unmount cleanup — releases `keyRef.current`,
-// which after the re-key is the NEW key, so the create key was left with no owner that
-// could ever clear it. `hasUnsavedWork()` then stayed true for the life of the page,
-// and `captureUnsavedWork` collected two pointers from this one editor, suppressing
-// #2471's reopen-after-reload. The re-key effect now releases the old key as part of
-// moving to the new one; delete that one line and this test reds on the bar's copy.
+// WHAT IT PINS, AND WHAT IT DOES NOT. It pins the whole create → auto-save → re-key →
+// discard cycle leaving the registry empty. It does NOT pin the old-key release in
+// `components/useFormDraft.ts`: that line was deleted and the suite rebuilt on
+// 2026-08-22 and this test stayed GREEN, because `ActivityForm`'s
+// `savedAt > 0 && !dirty` → `clear()` effect releases the create key ~1 ms before the
+// re-key effect runs. #3443 describes an ordering the shipped code does not have — see
+// that line's own note for the instrumented sequence. Left saying so out loud, because
+// a test that looks like a guard on a specific line and is not is worse than no test.
 //
 // The registry-level contract — one editor owes exactly one key, and two keys suppress
 // the resume pointer — is stated in lib/__tests__/form-drafts.test.ts. It cannot see

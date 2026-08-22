@@ -279,11 +279,17 @@ describe("unsaved-work registry (#1700 reads what #1699 writes)", () => {
 // old one had no owner left.
 //
 // These two tests state what that costs, at the registry, in the terms the hook has to
-// honour. They are the CONTRACT, not the guard on the hook — `vitest.config.ts`
-// includes `lib/**/*.test.ts` only, so `components/**` has no unit tier at all. The
-// test that fails when the hook stops releasing the old key is
-// `e2e/update-notice.spec.ts`'s "a create form that re-keys onto its saved row leaves
-// the registry empty (#3443)", which reads the consequence off `UpdateReadyBar`.
+// honour. They are the CONTRACT, not a guard on the hook — `vitest.config.ts` includes
+// `lib/**/*.test.ts` only, so `components/**` has no unit tier at all.
+//
+// NOTHING IN THE TREE GUARDS THAT ONE LINE, and it is worth knowing which way round
+// that is. Deleting the hook's `markUnsavedWork(prev, false)` and rebuilding leaves
+// both of these green (they drive the registry directly) AND leaves
+// `e2e/update-notice.spec.ts`'s #3443 case green (measured 2026-08-22): on the shipped
+// activity path `ActivityForm`'s `savedAt > 0 && !dirty` → `clear()` releases the
+// create key ~1 ms before the re-key effect runs, so the two-key state these tests
+// describe is not one the browser reaches. They document what the registry owes a
+// re-keying caller; they are not evidence that a caller strands a key today.
 describe("a re-keyed editor and the unsaved-work registry (#3443)", () => {
   const CREATE_KEY = draftKey({
     profileId: 1,

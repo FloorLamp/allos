@@ -554,17 +554,30 @@ export function useFormDraft<E = undefined>({
   // does this) re-keys onto that row: the "new" draft is handed over rather than
   // left behind, where it would restore into a SECOND, duplicate record.
   //
-  // THE HANDOVER MOVES THE REGISTRY ENTRY TOO (#3443), and forgetting that half was
-  // the defect this line closes. `markUnsavedWork` is keyed, and every other release
-  // in this hook — `clear`, `discard`, the unmount cleanup — releases
-  // `keyRef.current`, which by the time any of them runs is the NEW key. So the old
-  // key had no owner left that could ever clear it: `hasUnsavedWork()` stayed true
-  // for the life of the page (`UpdateReadyBar` then permanently offering "your entry
-  // is kept on this device" with nothing open), and `captureUnsavedWork` collected
-  // TWO pointers from one editor — both from this mount's single `entryRef` — so its
-  // `pointers.length === 1` rule declined to hand one back and #2471's
-  // reopen-after-reload was suppressed. Released here rather than in the clean-up
-  // paths because this is the only place that still knows the old key's name.
+  // THE HANDOVER MOVES THE REGISTRY ENTRY TOO (#3443). `markUnsavedWork` is keyed, and
+  // every other release in this hook — `clear`, `discard`, the unmount cleanup —
+  // releases `keyRef.current`, which by the time any of them runs is the NEW key. This
+  // line is the only place left that still knows the old key's name.
+  //
+  // WHAT IT IS WORTH, MEASURED — read this before trusting #3443's description. That
+  // issue was filed off a hand-replay of an ASSUMED call order, and the shipped order
+  // is not that one. Instrumenting `markUnsavedWork` in a real browser across the
+  // activity create path (2026-08-22, three variants: a plain create, one left idle a
+  // second, and one typed into continuously across the re-key) shows the create key
+  // released ~1 ms BEFORE this effect runs, every time, by `ActivityForm`'s
+  // `savedAt > 0 && !dirty` → `clear()` effect, which still sees `keyRef.current` as
+  // the create key. So on this path the registry never holds two keys, with or without
+  // this line — `hasUnsavedWork()` does not stick true and #2471's reopen is not
+  // suppressed. Nothing in the tree reds when the line is deleted; the e2e case in
+  // `e2e/update-notice.spec.ts` was checked exactly that way, by deleting it and
+  // rebuilding, and stayed green.
+  //
+  // IT STAYS FOR ONE REASON, and not the one #3443 gives: that early release is
+  // ANOTHER COMPONENT'S effect ordering, not a property of this hook. A re-key that is
+  // not preceded by a save-clear — a caller moving `recordId` for its own reasons —
+  // would strand the old key for the life of the page, and this is where that costs a
+  // line to prevent. Do not read it as the repair of an observed browser defect, and
+  // do not delete it expecting a test to object.
   //
   // Released unconditionally rather than only when the form is clean: the key names a
   // form that no longer exists under that name, and `write()` below re-registers
