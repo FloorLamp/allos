@@ -28,6 +28,8 @@ import {
 import { groupContiguous } from "@/lib/table-sort";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
+import { type DisplayFormatPrefs } from "@/lib/format-date";
+import { useFormatPrefs } from "./FormatPrefsProvider";
 import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
@@ -162,9 +164,10 @@ function nameCell(r: {
 function dateCell(
   r: { date: string; category: string | null },
   now: string,
-  showAge: boolean
+  showAge: boolean,
+  prefs: DisplayFormatPrefs
 ) {
-  const line = readingDateLine(r, now, showAge);
+  const line = readingDateLine(r, now, showAge, prefs);
   return (
     <span className="whitespace-nowrap">
       {line.date}
@@ -323,6 +326,7 @@ function ClinicalResultRow({
   filters: FilterCtx;
   multiView?: ClinicalResultsMultiView;
 }) {
+  const prefs = useFormatPrefs();
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
@@ -436,7 +440,7 @@ function ClinicalResultRow({
           {r.category ? <Tag value={r.category} /> : null}
         </Td>
         <Td slot="meta" label="Date">
-          {dateCell(r, now, !!r.is_latest)}
+          {dateCell(r, now, !!r.is_latest, prefs)}
         </Td>
         <Td
           slot="actions"
@@ -507,7 +511,7 @@ function ClinicalResultRow({
         </Link>
       </Td>
       <Td slot="meta" label="Date">
-        {dateCell(r, now, !!r.is_latest)}
+        {dateCell(r, now, !!r.is_latest, prefs)}
       </Td>
       <Td slot="actions">
         {/* The menu renders whenever it has at least one item (#2316). It used to be

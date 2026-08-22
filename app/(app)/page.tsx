@@ -1836,6 +1836,10 @@ async function renderDashboard(
             freshness: vitalsModel.bp.freshness,
             form: "long",
             floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
+            // The day, through the login's own date prefs (#3492). This row used to
+            // take glance-age's ISO fallback and print "2026-07-22" beside the
+            // reading; the fallback is gone and the label is now required.
+            dateLabel: formatLongDate(vitalsModel.bp.date, formatPrefs),
           });
           const direction = vitalsModel.bp.direction;
           return (
@@ -1897,6 +1901,10 @@ async function renderDashboard(
             freshness: vitalsModel.restingHr.freshness,
             form: "long",
             floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+            // Same boundary as the blood-pressure row above (#3492) — and the same
+            // formatter its own sparkline caption already used, so the row and the
+            // plot beneath it state one day in one shape.
+            dateLabel: formatLongDate(vitalsModel.restingHr.date, formatPrefs),
           });
           const direction = vitalsModel.restingHr.direction;
           return (
