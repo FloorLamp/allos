@@ -380,6 +380,15 @@ ${nodeLine}
   is the set a census should be making a claim about anyway, so this is a correctness
   win and not only a speed one. Measured 2026-08-22 on #3457, where a lane lost a
   census run to it. The \`-a\` rule above still applies when you do reach for rg.
+- SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
+  anything that leaves \`next-server\` alive), stop it and confirm it is gone
+  before your final message. A clean \`git status\` does NOT mean the tree is
+  free: the orchestrator's worktree cleanup refuses to delete a directory with
+  live processes in it — correctly, because removing it out from under a running
+  process has caused damage — so an orphaned server strands the whole worktree
+  and its port until the container dies. Two lanes did this on 2026-08-22 and one
+  tree could not be reclaimed at all, because killing the processes was outside
+  the orchestrator's permissions.
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
