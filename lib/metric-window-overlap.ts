@@ -66,14 +66,24 @@ import {
 // AND A NULL STAMP IS *UNKNOWN*, NOT "OLDER THAN EVERYTHING". This is the third state
 // the rule needs, and reading it as the second one was a defect that survived four
 // rounds. `pushed_at` is NULL on every row written before the column existed - which on
-// deploy day is EVERY row in the store, the correct ones included, and stays NULL for
-// any day the exporter's rolling window no longer reaches until #3439 runs. Treating
-// NULL as losable made the exact replay this column was added to kill work again: a
-// byte-identical re-delivery of a pre-switch push deleted the CORRECT re-anchored row
-// and left the day reading 11609 for 11721 walked - LOW, invisible, and no longer
-// repairable by #3439, because the row that held the right number was gone. Pre-PR the
-// same day read 23330: wrong, but visibly wrong and still repairable. A patch that
-// makes a bug quieter and permanent is worse than the bug.
+// deploy day is EVERY row in the store, the correct ones included, and stays NULL - for
+// good - on any day the exporter's rolling window no longer reaches. Treating NULL as
+// losable made the exact replay this column was added to kill work again: a byte-identical
+// re-delivery of a pre-switch push deleted the CORRECT re-anchored row and left the day
+// reading 11609 for 11721 walked - LOW, invisible, and with the row that held the right
+// number gone. Pre-PR the same day read 23330: wrong, but visibly wrong, and the right
+// number still stored beside it. A patch that makes a bug quieter is worse than the bug.
+//
+// AND NOTHING COMES ALONG LATER TO REPAIR EITHER. #3439 would have replayed the rule over
+// stored history; it is CLOSED AS NOT PLANNED (owner ruling, 2026-08-22 - prod was fixed
+// separately). This file used to hang "until #3439 runs" on every wrong day it names,
+// which read as a promise the state was temporary. It is not: a day outside the window
+// keeps whatever it has, indefinitely. That does not weaken the argument below by a word
+// - NULL means UNKNOWN because of when the column landed, and the era markers bound the
+// collapsible subset by this database's own id counter. Neither ever depended on a replay
+// running. What it changes is what VISIBLE buys: not "someone will fix this later", but a
+// day that reads HIGH next to a stored row still holding the right number, which a person
+// can see and correct, instead of a day that reads low with the right reading deleted.
 //
 // So a NULL-stamped row is deleted only on PROOF that it predates the stamped era, and
 // only by a push that PROVABLY postdates it. The migration records both halves once,
@@ -94,7 +104,7 @@ import {
 //     running behind the server reads as older than the era it actually postdates.
 //     What that costs is bounded and self-healing and points the safe way: such a push
 //     collapses NONE of its own pre-era NULLs, so the double count stays visible until
-//     real time passes the offset, or until #3439 replays history. A phone running AHEAD
+//     real time passes the offset. A phone running AHEAD
 //     could in principle claim to postdate an era it predates - but a push that predates
 //     the era predates the column, so it cannot be delivered by an exporter that is
 //     writing stamps, and the skew bound refuses the far-future case outright.
@@ -118,8 +128,8 @@ import {
 //     high-water mark to beat.
 //   * BACKFILLING `pushed_at` in the migration. Same semantics as the era markers, but
 //     it writes the migration instant onto every historical row - a value no exporter
-//     ever sent - so the column stops meaning what its own docstring says, #3439's
-//     "NULL stamps on both sides" replay loses the state it walks, and a boot pays a
+//     ever sent - so the column stops meaning what its own docstring says, the store
+//     loses the only record of which rows predate the column, and a boot pays a
 //     full-table UPDATE instead of two `settings` rows.
 //
 // AND THE STAMP MUST BE A PUSH TIME, NOT A WINDOW QUANTITY. An earlier version fell
@@ -311,9 +321,10 @@ export function windowsOverlap(
  * hour or narrower, so this declines to act on it — in BOTH roles. As the incoming row
  * that is transient: the next push carries the same day grown past the hour and acts.
  * As the STORED row it is PERMANENT: nothing ever widens a row already in the table, so
- * no later push may collapse it and the day reads high until #3439 replays the rule over
- * history. Measured: a 20-minute stored bucket under three later day-bucket pushes left
- * a day reading 9200 for 9000 walked, indefinitely.
+ * no later push may collapse it and no historical replay is coming either (#3439, closed
+ * as not planned). The day reads high for as long as both rows are stored. Measured: a
+ * 20-minute stored bucket under three later day-bucket pushes left a day reading 9200 for
+ * 9000 walked, indefinitely.
  *
  * That is still the safe direction — the alternative is a rule that deletes minute
  * buckets — but it is a residual rather than a delay, so it is counted into the overlaps
@@ -486,7 +497,7 @@ export function pushStampFor(
  *
  * WHICH OVERLAPS ARE COUNTED, AND THE ONE THAT IS NOT. An overlap goes into `left` when
  * EITHER side is a day bucket. That admits the two shapes that are otherwise silent -
- * a stored sub-daily bucket the rule may never collapse (permanent until #3439), and a
+ * a stored sub-daily bucket the rule may never collapse (permanent, full stop), and a
  * fine-grained incoming row landing on a stored day bucket - and excludes the one shape
  * where an overlap is not a double count at all: two devices that set no
  * `metadata.data_origin` both parse to `origin = null` and their MINUTE buckets share a

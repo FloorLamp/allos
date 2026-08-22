@@ -286,12 +286,14 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
-    // THE QUEUED STALE RETRY — B3's shape, and the one that decided #3439's design. The
-    // store is the deploy-day state: BOTH anchorings, BOTH stamps NULL, both pre-era. A
-    // push the phone made BEFORE the column landed drains late and re-delivers the
-    // pre-switch record. It must take nothing — its stamp predates the era — and what it
-    // leaves is the store ASYMMETRICALLY stamped: the STALE row now carries a stamp and
-    // the CORRECT one is still NULL. #3439 walks pure `id` order for that reason.
+    // THE QUEUED STALE RETRY — B3's shape. The store is the deploy-day state: BOTH
+    // anchorings, BOTH stamps NULL, both pre-era. A push the phone made BEFORE the column
+    // landed drains late and re-delivers the pre-switch record. It must take nothing — its
+    // stamp predates the era — and what it leaves is the store ASYMMETRICALLY stamped: the
+    // STALE row now carries a stamp and the CORRECT one is still NULL. That asymmetry is
+    // now PERMANENT: #3439 would have replayed the rule over stored history in `id` order
+    // and is closed as not planned, so nothing walks these rows again. The day keeps
+    // reading high, visibly, which is why the rule declines rather than guesses.
     name: "the queued stale retry against a deploy-day store",
     seed: (p) => {
       seedUnstamped(p, "steps", ...NY_20, 11609);

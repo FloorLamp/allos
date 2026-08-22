@@ -37,10 +37,10 @@ import {
 // comment said the rule reads a NULL stamp as "no stamp, may be superseded once — those
 // are exactly the already-corrupted rows". THAT WAS FALSE, and it was the last defect in
 // this lane: NULL is every row written before this migration, the CORRECT ones included,
-// and it stays NULL for any day the exporter's rolling window no longer reaches until
-// #3439 runs. Read as "old", a byte-identical replay of a pre-switch push deleted the
-// correct re-anchored row — the day went from reading 23330 (wrong, visible, repairable)
-// to 11609 (wrong, invisible, and past #3439's reach because the right row was gone).
+// and it stays NULL, permanently, for any day the exporter's rolling window no longer
+// reaches. Read as "old", a byte-identical replay of a pre-switch push deleted the
+// correct re-anchored row — the day went from reading 23330 (wrong, but visible, with the
+// right number still stored) to 11609 (wrong, invisible, right row gone).
 //
 // NULL means UNKNOWN. So this migration writes down the two facts that make a subset of
 // those NULLs checkable, and the rule will delete no others:
@@ -76,10 +76,16 @@ import {
 //     the "a person can see in Review that a delete happened" argument covered ingest
 //     only — while the migration was where the bulk of the deleting happened.
 //
-// The historical repair is tracked as its own change (#3439) and needs a planner that
-// is not quadratic, a bounded lock, and a Review-visible record of what it removed.
-// Ingest converges an affected span on the next push either way; what #3439 buys is
-// the days the rolling window no longer reaches.
+// THERE IS NO HISTORICAL REPAIR. It was tracked as its own change (#3439) — which would
+// have needed a planner that is not quadratic, a bounded lock, and a Review-visible record
+// of what it removed — and that issue is CLOSED AS NOT PLANNED (owner ruling, 2026-08-22:
+// prod was fixed separately). Ingest converges an affected span on the next push, which is
+// the span that matters; the days the rolling window no longer reaches are the ones a
+// replay would have added, and they keep their overlap indefinitely instead.
+//
+// None of the reasoning above turns on that. NULL means UNKNOWN because of WHEN the column
+// landed, and the two markers below bound the collapsible subset by this database's own id
+// counter. Neither ever depended on a replay running; only the eventual cleanup did.
 
 // NOT SPELLED `{ table, column }`, deliberately. lib/__db_tests__/migration-link-scan.ts
 // reads every `{ table: "…", column: "…" }` literal in a migration source as a CHILD_LINKS

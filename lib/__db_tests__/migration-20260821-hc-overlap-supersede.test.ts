@@ -10,7 +10,9 @@
 // single 100k-row group, 2m24s end-to-end on a database with 30,000 one-minute buckets,
 // and showed it killing a concurrent boot with SQLITE_BUSY after 122 s — while writing
 // no `integration_sync_events` row at all, so the deletions it made were invisible in
-// Review. The historical repair is decoupled to #3439. The tests below therefore assert
+// Review. The historical repair was decoupled to #3439, which is CLOSED AS NOT PLANNED
+// (owner ruling, 2026-08-22: prod was fixed separately) — so nothing replays stored
+// history at all, and this migration is the whole of what lands. The tests below assert
 // what a column-only migration owes: it applies, it re-applies, it touches no row, and
 // it leaves both columns NULLABLE.
 //
@@ -168,8 +170,9 @@ describe("20260821-hc-overlap-supersede", () => {
   });
 
   it("DELETES NOTHING — not even the prod pileup the removed replay targeted", () => {
-    // MUTATION: put the replay back and this goes red. It is the assertion that says
-    // the boot-time deletion is gone, and #3439 owns bringing it back safely.
+    // MUTATION: put the replay back and this goes red. It is the assertion that says the
+    // boot-time deletion is gone — and nothing brings it back: #3439, which would have
+    // done it safely, is closed as not planned.
     const mem = seed();
     up(mem);
     expect(ids(mem)).toEqual([1, 2, 3, 4]);

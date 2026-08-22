@@ -298,8 +298,9 @@ describe("pushOutranks — freshness as the PAYLOAD states it, in THREE states",
   // Reading it as old is the defect that survived four adversarial rounds: on deploy
   // day EVERY row is NULL, the correct ones included, so a byte-identical replay of a
   // pre-switch push deleted the CORRECT re-anchored row and the day went from reading
-  // 23330 (visible, repairable by #3439) to 11609 (invisible, and unrepairable, because
-  // the row holding the right number was gone).
+  // 23330 (wrong, but visible, with the right number still stored beside it) to 11609
+  // (invisible, and with the row holding the right number gone). Nothing repairs either
+  // later — #3439 is closed as not planned — so visible is the whole of what it buys.
   it("supersedes a NULL row ONLY when both era facts are proven", () => {
     // The row was in the table when the column landed, and the push happened after.
     expect(pushOutranks("2026-06-02T00:00:00Z", stamped(null, 100), ERA)).toBe(

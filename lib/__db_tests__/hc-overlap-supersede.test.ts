@@ -668,8 +668,9 @@ describe("what the rule must NEVER delete", () => {
   it("reports a stored SUB-DAILY bucket it may never collapse, instead of nothing", () => {
     // A genuine `daily` bucket pushed 20 minutes after local midnight is itself below
     // the granularity gate, and no later push ever widens a row already in the table —
-    // so this day reads high until #3439 replays the rule over history. It used to do
-    // that with `superseded: 0`, `warnings: []` and no other trace.
+    // so this day reads high for as long as both rows are stored. Nothing repairs it
+    // later either (#3439, closed as not planned), which is exactly why it has to be
+    // SAID: it used to happen with `superseded: 0`, `warnings: []` and no other trace.
     // MUTATION: `continue` past this row without counting it and the day reads 9200 for
     // 9000 walked with nothing said. Verified red as zzr6-attack A3a.
     const p = freshProfile("SHORT-STORED");

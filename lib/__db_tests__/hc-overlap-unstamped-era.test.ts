@@ -2,17 +2,21 @@
 //
 // WHAT IS BEING GUARDED, AND THE DEFECT IT CLOSES. The supersede rule read a NULL
 // `pushed_at` as "older than every stamp". NULL means UNKNOWN — and on deploy day EVERY
-// row in the store is NULL, the correct ones included, and it stays NULL for any day the
-// exporter's rolling window no longer reaches until #3439 runs.
+// row in the store is NULL, the correct ones included, and it stays NULL — permanently —
+// for any day the exporter's rolling window no longer reaches. There is no historical
+// replay coming: #3439 was opened for one and is closed as not planned (owner ruling,
+// 2026-08-22 — prod was fixed separately). NULL-means-UNKNOWN and the era markers never
+// depended on that replay; only the eventual cleanup did.
 //
 // Read as "old", the exact failure `pushed_at` was added to kill came back: a
 // byte-identical replay of a pre-switch push (an ordinary travel case — the ingest route
 // has no idempotency key, #3449, and a phone changing zone is offline in flight, so
 // queued pushes drain late) deleted the CORRECT re-anchored row. Measured against
 // #3424's own prod snapshot: pre-PR the day read 23330 for 11721 walked — wrong, but
-// visibly wrong and repairable by #3439. At that head it read 11609 — LOW, which looks
-// like a day you walked slightly less, and unrepairable, because the row holding the
-// right number had been deleted.
+// visibly wrong, with the row holding the right number still there. At that head it read
+// 11609 — LOW, which looks like a day you walked slightly less, with that row deleted.
+// Neither is repaired later. What VISIBLE buys is a wrong number a person can see next to
+// a stored row that still holds the right one.
 //
 // SO A NULL ROW IS DELETED ONLY ON PROOF OF BOTH HALVES, recorded once by the migration
 // (lib/integrations/unstamped-era.ts):
@@ -304,11 +308,12 @@ describe("the direction four rounds kept losing: a NULL row is not losable", () 
     // A push the phone made BEFORE the deploy, queued while it was offline in flight,
     // delivered now. Its stamp predates the era, so it knows nothing about these rows.
     // MUTATION: drop the `incoming > startedAt` half of `pushOutranks` and the 11721
-    // row is deleted — the day reads 11609, LOW, and #3439 can no longer repair it.
+    // row is deleted — the day reads 11609, LOW, and the right number is gone for good.
     const r = push(p, stepsBody("2026-08-20T20:00:05Z", [NY]));
     expect(r.split.superseded).toBe(0);
     expect(storedValues(p)).toEqual([11609, 11721]);
-    // Still wrong, still VISIBLY wrong, still exactly what #3439 repairs.
+    // Still wrong, and still VISIBLY wrong — which is now the whole of what is bought,
+    // since nothing replays these rows later. The right number is still stored.
     expect(dayTotal(p, "2026-08-20")).toBe(23330);
     // READINGS, not "daily totals": the count is distinct stored ROWS left standing, and
     // two of them can fall in one profile-local day. The line names what it measures.
