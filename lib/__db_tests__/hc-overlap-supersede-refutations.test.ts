@@ -368,15 +368,15 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     // ROUND 6's REFUTATION, AND THE GAP THE SEEDING CORRECTION OPENED. Every case above
     // seeds the store, which is right for pinning the push-key exclusion — but it made
     // the store-holds-NEITHER push the one configuration nothing covered, and that is the
-    // configuration where the Review line was silent. `leftStanding` is stored row IDS,
-    // so it can only ever name rows that were in the table before the push; two rows of
-    // ONE push are never in each other's candidate sets. Both rows are written (right,
+    // configuration where the Review line was silent. The declined-candidate half of the
+    // count names STORED rows this push did not collapse, and two rows of ONE push are
+    // never each other's candidates: they share a stamp. Both rows are written (right,
     // ruling item 3), the day sums 20000 for 11000 walked — and the push reported
     // `superseded: 0`, `overlapsLeft: 0`, `warnings: []`.
     //
-    // MUTATION: drop `inPushDoubleCounts` from the plan (or stop adding it in the ingest)
-    // and this goes back to a silent wrong total, with every other spec in this file and
-    // in hc-overlap-supersede.test.ts still green.
+    // MUTATION: drop the in-push term from `supersedeMetricSampleOverlaps`'s return
+    // (`left.size` alone) and this goes back to a silent wrong total, with every other
+    // spec in this file and in hc-overlap-supersede.test.ts still green.
     const p = freshProfile("BOTH-ANCHORINGS-EMPTY-STORE");
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     expect(only.split.superseded).toBe(0);
