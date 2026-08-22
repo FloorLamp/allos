@@ -781,8 +781,15 @@
   & tr {
     @apply max-sm:px-0! max-sm:py-2!;
   }
+  /* This surface keeps its own DENSITY (a whole line per meta, one step larger than
+     the base's `text-xs`) and takes the shared pair treatment for everything else.
+     It used to restate the base's `text-slate-500`, which stopped being a restatement
+     when #3499 stepped the value's tone up for contrast — leaving a same-specificity
+     tie with `.table-cards td[data-card="meta"]` that Tailwind 4's independent
+     utility sort, not this file, would have decided. Dropping the colour resolves the
+     tie in the only direction that keeps a label distinguishable from its value. */
   & td[data-card="meta"] {
-    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
+    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm;
   }
 }
 

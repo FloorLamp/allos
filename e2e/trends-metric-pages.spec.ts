@@ -4,7 +4,10 @@ import { expandTrendsContext } from "./trends-chrome";
 import {
   expectNoClippedContent,
   followLink,
+  forgeBrokenCardPair,
   hydratedClick,
+  restoreForgedPair,
+  scanCardMetaPairs,
   settledBoxes,
 } from "./helpers";
 import {
@@ -317,43 +320,36 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(
       firstReading.locator('[data-card="value"] .card-cell-label')
     ).toHaveCount(0);
-    const firstReadingMeta = firstReading.locator("td.metric-reading-source");
-    await expect(firstReadingMeta).toHaveCSS("justify-content", "flex-start");
-    await expect(firstReadingMeta).toHaveCSS("text-align", "left");
-    const [sourceLabelBox, sourceValueBox] = await firstReadingMeta
-      .getByText("Source", { exact: true })
-      .evaluate((label) => {
-        const cell = label.closest("td");
-        if (!cell) return [null, null];
-        const text = Array.from(cell.childNodes).find(
-          (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
-        );
-        if (!text) return [null, null];
-        const range = document.createRange();
-        range.selectNode(text);
-        const labelBox = label.getBoundingClientRect();
-        const valueBox = range.getBoundingClientRect();
-        return [
-          {
-            x: labelBox.x,
-            y: labelBox.y,
-            width: labelBox.width,
-            height: labelBox.height,
-          },
-          {
-            x: valueBox.x,
-            y: valueBox.y,
-            width: valueBox.width,
-            height: valueBox.height,
-          },
-        ];
-      });
-    expect(sourceLabelBox).not.toBeNull();
-    expect(sourceValueBox).not.toBeNull();
-    expect(sourceValueBox!.x).toBeGreaterThan(sourceLabelBox!.x);
+    // THE READINGS TAKE THE SHARED PRIMITIVE (#3499). This list used to lay its
+    // meta cells out itself — a full-width row with the label pinned left and the
+    // value pushed right by `justify-between`, plus a `metric-reading-source`
+    // class to undo that for the one cell it did not suit. All of it is gone: the
+    // `table-cards` base now renders every card-mode meta cell as one atomic
+    // label-value pair, and the metric readings adopt it like every other
+    // consumer, so there is no metric-specific meta styling left to assert.
+    //
+    // What is asserted instead is the SHARED guarantee, measured the same way and
+    // with the same discriminator the substrate spec uses
+    // (e2e/responsive-tables.mobile.spec.ts): the value's first line box shares a
+    // line with its own label, over a corpus the scan is required to have seen —
+    // and a break forged on purpose has to be flagged, or the clean sweep proves
+    // nothing.
+    const readingsScan = await scanCardMetaPairs(readingsBody);
     expect(
-      sourceValueBox!.x - (sourceLabelBox!.x + sourceLabelBox!.width)
-    ).toBeLessThan(8);
+      readingsScan.labels,
+      `pairs seen: ${readingsScan.pairs.join(" | ")}`
+    ).toEqual(expect.arrayContaining(["Source"]));
+    expect(
+      readingsScan.breaks,
+      "a metric reading put a meta value on a different line from its own label"
+    ).toEqual([]);
+    const forgedReadingPair = await forgeBrokenCardPair(readingsBody);
+    expect(
+      (await scanCardMetaPairs(readingsBody)).breaks,
+      "the scan did not flag a reading pair broken on purpose"
+    ).toEqual([forgedReadingPair]);
+    await restoreForgedPair(readingsBody);
+    expect((await scanCardMetaPairs(readingsBody)).breaks).toEqual([]);
     // Entry is deliberate and metric-scoped: the combined morning-measurements
     // form must not sit open on a detail page or expose unrelated fields.
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);

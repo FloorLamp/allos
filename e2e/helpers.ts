@@ -3114,3 +3114,160 @@ export async function expectNoEscapingOverflow(
       "than taking it away."
   ).toBeLessThanOrEqual(0);
 }
+
+// ── CARD-MODE LABEL–VALUE PAIRS (#3499) ──────────────────────────────────────
+//
+// Below `sm` a `.table-cards` meta cell renders its column's label beside the
+// value it names (`components/ResponsiveTable.tsx` → the `table-cards` utility in
+// app/globals.css). The two must READ as one pair: wrapping may break between
+// pairs, never between a label and the START of its own value.
+//
+// WHY THIS IS MEASURED AND NOT ASSERTED FROM THE COMPUTED STYLE. "The pair did
+// not break across lines" is a fact about GEOMETRY. `toHaveCSS("display",
+// "inline-flex")` asserts the DECLARATION, which is a different claim and one
+// that has already shipped green over a wrong render in this tree: #3466's
+// stepped 16px seam measured 16 on the exact element it styled while the seam the
+// user saw stayed 24, because it collapsed against an unstepped parent two files
+// away. So this reads rects — the label's box against the FIRST line box of its
+// value — and asks whether they share a line.
+//
+// `getClientRects()[0]` is the load-bearing detail: a range over a wrapping value
+// returns one rect per line box, and the FIRST one is the value's start. That is
+// what "atomic" binds the label to — a long provider name is still free to wrap
+// inside itself (#3499 says so in as many words), so comparing against the
+// value's whole bounding box would fail the very case the ruling allows.
+//
+// THE SCAN REPORTS ITS CORPUS, not just its verdict. "No pair is broken" is an
+// ABSENCE, and an absence over a selector goes green the moment the selector
+// stops matching anything at all (#3509). Callers assert on `labels` — the pairs
+// the scan actually SAW — so a scan that has gone blind fails loudly instead of
+// passing quietly, and `forgeBrokenCardPair` below proves the scan can still see
+// a break by making one on purpose.
+export interface CardPairScan {
+  /** Every label the scan resolved to a rendered pair, in DOM order. */
+  labels: string[];
+  /** One `LABEL → value` line per pair the scan saw. The corpus, for diagnosis. */
+  pairs: string[];
+  /** The pairs whose value's first line box does NOT share a line with its label. */
+  breaks: string[];
+}
+
+// Two independent rect reads can never be compared exactly (#2505), and a label
+// and its value sit on slightly different baselines because the label is a step
+// smaller. 1px of slack absorbs sub-pixel rounding; the defect this guards puts
+// the value on the NEXT line, tens of pixels away.
+const PAIR_LINE_SLACK_PX = 1;
+
+export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
+  return scope.evaluate((root, slack) => {
+    const labels: string[] = [];
+    const pairs: string[] = [];
+    const breaks: string[] = [];
+    const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
+    for (const cell of cells) {
+      const label = cell.querySelector<HTMLElement>(":scope > .card-cell-label");
+      // No label is no pair: an unlabeled meta cell (a subject chip, which IS its
+      // own label — #534) has nothing to be separated from.
+      if (!label) continue;
+      const labelRect = label.getClientRects()[0];
+      // The label is `sm:hidden`, so at desktop width there is no pair on screen.
+      if (!labelRect || labelRect.width === 0) continue;
+
+      // The value's START: the first rendered node after the label, and the first
+      // line box of it. A bare text node is the common case (`{r.date}`), so it
+      // needs a Range — an element child (`NotesText`'s span) has rects directly.
+      let valueRect: DOMRect | undefined;
+      for (let node = label.nextSibling; node; node = node.nextSibling) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!node.textContent?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          valueRect = range.getClientRects()[0];
+          if (valueRect) break;
+          continue;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        valueRect = (node as Element).getClientRects()[0];
+        if (valueRect) break;
+      }
+      const name = label.textContent?.trim() ?? "";
+      // A cell whose value renders nothing has no pair to break — `Td`'s `empty`
+      // is supposed to have dropped it from the card entirely.
+      if (!valueRect) continue;
+
+      const whole = cell.textContent?.trim() ?? "";
+      const pair = `${name} → ${whole.slice(name.length).trim().slice(0, 48)}`;
+      labels.push(name);
+      pairs.push(pair);
+
+      // SAME LINE = the two boxes overlap vertically. Comparing tops would fail on
+      // the baseline offset between two font sizes; overlap is what "on one line"
+      // actually means, and it is font-size agnostic.
+      const overlap =
+        Math.min(labelRect.bottom, valueRect.bottom) -
+        Math.max(labelRect.top, valueRect.top);
+      // …and the value starts AFTER the label, rather than the label having been
+      // pushed onto a line of its own above it.
+      const startsAfter = valueRect.left >= labelRect.right - slack;
+      if (overlap <= 0 || !startsAfter) breaks.push(pair);
+    }
+    return { labels, pairs, breaks };
+  }, PAIR_LINE_SLACK_PX);
+}
+
+/**
+ * Break one pair ON PURPOSE and return its `LABEL → value` id.
+ *
+ * The discriminator for the absence assertion above. A green "no pair is broken"
+ * is also what a scan that matches nothing, or one whose rect reads have silently
+ * degraded to zeroes, would report — so every caller forges an offender and
+ * requires the scan to flag exactly it. The forgery is the pre-#3499 layout
+ * restored on one cell (a block box too narrow to hold the label and the value on
+ * one line), which is the defect this guard exists for rather than an arbitrary
+ * mangling.
+ *
+ * Inline styles beat the utility's `(0,2,1)` selector, and `restoreForgedPair`
+ * puts the cell back so the caller can re-scan and prove the flag came from the
+ * forgery and not from the page having been broken all along.
+ */
+export async function forgeBrokenCardPair(scope: Locator): Promise<string> {
+  const forged = await scope.evaluate((root) => {
+    const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
+    for (const cell of cells) {
+      const label = cell.querySelector<HTMLElement>(":scope > .card-cell-label");
+      const labelRect = label?.getClientRects()[0];
+      if (!label || !labelRect || labelRect.width === 0) continue;
+      if (!cell.textContent?.slice(label.textContent?.length ?? 0).trim())
+        continue;
+      cell.dataset.forgedPairBreak = "true";
+      // A block box exactly as wide as its own (nowrap) label: nothing else can
+      // share that first line, so the value is pushed onto the next one.
+      cell.style.display = "block";
+      cell.style.width = `${Math.ceil(labelRect.width)}px`;
+      const name = label.textContent?.trim() ?? "";
+      const whole = cell.textContent?.trim() ?? "";
+      return `${name} → ${whole.slice(name.length).trim().slice(0, 48)}`;
+    }
+    return "";
+  });
+  expect(
+    forged,
+    "forgeBrokenCardPair found no labeled meta pair to break — the scan below " +
+      "would then be asserting an absence over an empty corpus, which is the " +
+      "failure it exists to rule out."
+  ).not.toBe("");
+  return forged;
+}
+
+/** Undo `forgeBrokenCardPair`, so the caller can run a control AFTER the restore. */
+export async function restoreForgedPair(scope: Locator): Promise<void> {
+  await scope.evaluate((root) => {
+    for (const cell of root.querySelectorAll<HTMLElement>(
+      'td[data-forged-pair-break="true"]'
+    )) {
+      cell.style.removeProperty("display");
+      cell.style.removeProperty("width");
+      delete cell.dataset.forgedPairBreak;
+    }
+  });
+}
