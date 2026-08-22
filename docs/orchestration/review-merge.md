@@ -50,6 +50,16 @@ not at all five by rote.
   (a hand-written violation comes back flagged) proves the matcher recognizes an
   offence. A scan with only the first can hold a matcher that stopped matching;
   with only the second, it can be pointed at a directory that no longer exists.
+
+  **The synthetic offender must be PLANTED IN THE SCANNED CORPUS, not handed to
+  the matcher.** #3539's guard passed its offender list as string literals
+  straight to the regex, so the corpus walker was never exercised by it at all —
+  and the walker was where the holes were: it skipped every file under
+  `lib/migrations/`, and the matcher was literal-only while this tree's
+  prevailing idiom is `DELETE FROM ${table}` (16 such sites outside the test
+  tiers). Both self-checks appeared present. Neither reached the defect. Plant
+  the offender as a real file, run the real scan, and delete it after.
+
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
@@ -147,6 +157,17 @@ These are not review taste; each retired a green that meant nothing.
   is applied in exactly one place, and the five counted were companion utilities
   riding on it. Both would have sized the work wrongly. Instruct every lane to
   re-derive the counts its issue states, and to report the derivation.
+- **"We do strictly less of X" is only safe when X has one consequence.** I
+  scoped a P1 fix on the argument that narrowing a destructive sweep "strictly
+  reduces what is deleted, so it cannot lose a row today's code preserves,
+  therefore it is correct under any later ruling." The premise was true and the
+  conclusion was false: the sweep's deletions were what PREVENTED a different
+  bug (#608's duplicate rows), so narrowing it traded data loss for data
+  duplication — 295 of 552 ordered zone pairs regressed, against 0 before.
+  Before reducing a destructive operation, ask what the destruction was load-
+  bearing FOR. A monotone-safety argument reads as airtight precisely because
+  it only looks at one axis.
+
 - **The dangerous check is the one that fails toward a plausible correction of
   work that was already right.** A check saying "you did not do the thing" gets
   acted on; a check saying "you did something impossible" gets investigated. Four
