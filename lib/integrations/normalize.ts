@@ -569,7 +569,7 @@ export interface MetricSampleSupersedePlan {
   leftStanding: number[];
 }
 
-/** The plan for a push that supersedes nothing — no source gate, no stamp, no rows. */
+/** The plan for a push this rule has nothing to say about — a source other than HC. */
 function emptySupersedePlan(): MetricSampleSupersedePlan {
   return { victims: [], leftStanding: [] };
 }
@@ -595,31 +595,55 @@ export function planMetricSampleSupersede(
   // of the reading and not of the push (see lib/metric-window-overlap.ts). A push with
   // no stamp deletes nothing, which leaves the double count this fix exists to remove —
   // visible, and collapsed by the next stamped push.
+  //
+  // A NULL STAMP DOES NOT SHORT-CIRCUIT THIS FUNCTION, and that is deliberate.
+  // `pushOutranks` refuses a null incoming stamp outright, so `victims` comes back empty
+  // either way — but the overlaps are still THERE, and they are still days reading high.
+  // The Review line is written from what HAPPENED, never from why: a stampless push, a
+  // stamp the clock bound refused, and a phone whose clock went backwards all leave the
+  // same double count, and returning early here would silence exactly the case where the
+  // person most needs telling.
   const pushedAt = options.pushedAt ?? null;
-  if (pushedAt === null) return emptySupersedePlan();
 
   // THE WIDER TWIN EXCLUSION — the part of the ruling that is easiest to under-implement,
   // and the whole reason pass C can trust its own pre-image read. Every natural key this
   // push will upsert, across the WHOLE push. A stored row under one of these keys is that
-  // row's `found`, so it must not be a victim of any OTHER row of the same push.
+  // row's `found`, so it must not be a victim of any OTHER row of the same push. The old
+  // per-row rule excluded only the incoming row's OWN twin, which is why a push carrying
+  // two anchorings could delete the row it was itself re-sending — and which of the two
+  // survived depended on where the chunk boundary fell.
   //
   // Exact string equality on `started_at`, because that is what the ON CONFLICT key uses:
   // the two must agree on which stored row is a twin, and `started_at` is a documented
   // `mixed`-shape column where two spellings of one instant are two different keys.
+  //
+  // IT REMOVES VICTIMHOOD, NOT THE REPORT. A stored row another row of this push is
+  // re-sending, overlapped by a re-anchored bucket of the same push, is a real double
+  // count — ruling item 3's "write both" case. It is not deleted, and it is exactly what
+  // the Review line exists to say out loud, so it moves to `leftStanding` rather than
+  // vanishing from both lists. The one row that belongs in NEITHER list is the incoming
+  // row's OWN twin: that is the same reading being updated in place, not a second copy of
+  // it, and the candidate SELECT below excludes it.
   const pushKeys = new Set<string>();
+  const keyOf = (metric: string, origin: string | null, startedAt: string) =>
+    JSON.stringify([metric, origin, startedAt]);
   for (const r of rows)
-    pushKeys.add(JSON.stringify([r.metric, r.origin ?? null, r.started_at]));
+    pushKeys.add(keyOf(r.metric, r.origin ?? null, r.started_at));
 
   // The stored rows an incoming interval may supersede: same profile / metric / source /
-  // origin, inside the day radius. The overlap test itself is deliberately NOT in this
-  // SQL — `started_at` is a documented `mixed`-shape column, so string comparison would
-  // answer a different question than instants do. SQL narrows on the indexed
-  // (profile_id, metric, date) prefix; lib/metric-window-overlap.ts decides.
+  // origin, inside the day radius, and NOT the incoming row's own natural-key twin (that
+  // row is the ON CONFLICT's business — the lock, the stale-snapshot guard and the value
+  // merge all belong to it, and it is one reading rather than two). The overlap test
+  // itself is deliberately NOT in this SQL — `started_at` is a documented `mixed`-shape
+  // column, so string comparison would answer a different question than instants do. SQL
+  // narrows on the indexed (profile_id, metric, date) prefix;
+  // lib/metric-window-overlap.ts decides.
   const findOverlaps = db.prepare(
     `SELECT id, date, started_at, ended_at, edited, pushed_at
        FROM metric_samples
       WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
         AND date >= ? AND date <= ?
+        AND started_at <> ?
       ORDER BY id`
   );
   // WHEN `pushed_at` STARTED BEING WRITTEN, AND WHAT WAS ALREADY IN THE TABLE. The only
@@ -638,29 +662,33 @@ export function planMetricSampleSupersede(
     // not deliver; the permanent one (a stored sub-daily bucket) is.
     if (!isSupersedingWindow(r.metric, r.started_at, r.ended_at)) continue;
     const { from, to } = supersedeDateRange(r.date);
-    const candidates = (
-      findOverlaps.all(
-        profileId,
-        r.metric,
-        source,
-        r.origin ?? null,
-        from,
-        to
-      ) as MetricWindow[]
-    ).filter(
-      (row) =>
-        !pushKeys.has(
-          JSON.stringify([r.metric, r.origin ?? null, row.started_at])
-        )
-    );
+    const candidates = findOverlaps.all(
+      profileId,
+      r.metric,
+      source,
+      r.origin ?? null,
+      from,
+      to,
+      r.started_at
+    ) as MetricWindow[];
     const plan = planSupersede({ ...r, pushedAt }, candidates, era);
     for (const standing of plan.left) leftStanding.add(standing.id);
-    for (const victim of plan.supersede) victims.add(victim.id);
+    for (const victim of plan.supersede) {
+      // The wider exclusion, applied where it can still be reported: a row this push is
+      // about to upsert is never deleted, and the day it leaves reading high is said out
+      // loud instead of being silently collapsed into nothing.
+      if (pushKeys.has(keyOf(r.metric, r.origin ?? null, victim.started_at)))
+        leftStanding.add(victim.id);
+      else victims.add(victim.id);
+    }
   }
   // Disjoint, so the Review line counts rows still reading wrong and nothing else. Every
-  // reason a row lands in `left` is a fact about that STORED row plus this push's one
-  // stamp, so no row can be collapsed by one incoming bucket and left by another; this
-  // states that rather than leaving it to be re-derived.
+  // reason a row lands in `left` rather than in `supersede` is a fact about that STORED
+  // row plus this push's one stamp — the granularity gate, the #133 lock, `pushOutranks`,
+  // and the push-key exclusion above, which asks only whether some row of this push
+  // carries the stored row's key. None of them varies between the incoming buckets that
+  // overlap it, so no row can be collapsed by one and left by another. Stated here rather
+  // than left to be re-derived, since two rounds were lost to a claim of that shape.
   for (const id of victims) leftStanding.delete(id);
   return { victims: [...victims], leftStanding: [...leftStanding] };
 }

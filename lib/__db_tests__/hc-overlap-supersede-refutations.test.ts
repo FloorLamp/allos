@@ -25,6 +25,7 @@ import {
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
+import { pushMetricSamples } from "./hc-metric-sample-push";
 
 const HC = "health-connect";
 const ORIGIN = "com.fitbit.FitbitMobile";
@@ -83,7 +84,9 @@ function upsert(
   options: Parameters<typeof upsertMetricSamples>[4] = {}
 ) {
   pushSeq += 1;
-  return upsertMetricSamples(profile, rows, source, sink, {
+  // The three passes the ingest runs, not `upsertMetricSamples` alone — the supersede
+  // does not live in the upsert loop any more (#3424, owner ruling option 2).
+  return pushMetricSamples(profile, rows, source, sink, {
     pushedAt:
       new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
     ...options,
@@ -278,10 +281,23 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
   const NY = steps("2026-08-20T04:00:00Z", "2026-08-21T04:00:00Z", 9000);
   const TOKYO = steps("2026-08-20T15:00:00Z", "2026-08-21T06:00:00Z", 11000);
 
+  // SEEDED, NOT FRESH — and that is the correction the owner's ruling made explicit.
+  // Every earlier version of these three cases pushed into an EMPTY store, where ruling
+  // item 3 does no work at all: with nothing stored, "both are written" is what an
+  // ordinary insert does, and five review rounds could each read that green as proof the
+  // rule held. The configuration item 3 actually governs is a mixed-anchoring push
+  // against a store that ALREADY HOLDS ONE OF THE TWO — where the re-sent row is both a
+  // row the push will upsert and a row the push's other bucket outranks and overlaps.
+  const seedNY = (p: number) =>
+    push(p, { steps: [NY] }, "2026-08-21T05:00:05Z");
+
   it("stores both, says so, and deletes nothing", () => {
-    // MUTATION: reinstate any within-push ranking and one of these two disappears —
-    // which one depends on a comparison that cannot be justified.
+    // MUTATION: drop the push-key exclusion from `planMetricSampleSupersede` and the
+    // stored NY row is deleted here — by the TOKYO bucket of the very push that is
+    // re-sending it. Whether it came back then depended on which of the two the loop
+    // reached first, which is rounds 1 and 5 in one fixture.
     const p = freshProfile("BOTH-ANCHORINGS-ONE-PUSH");
+    seedNY(p);
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     expect(only.split.superseded).toBe(0);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
@@ -292,6 +308,7 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     // The half that makes the trade acceptable: it is transient, and it converges
     // WITHOUT anything having to decide between two rows of one push.
     const p = freshProfile("BOTH-ANCHORINGS-CONVERGE");
+    seedNY(p);
     push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     const next = push(
       p,
@@ -307,6 +324,7 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     // the two anchorings. Nothing here depends on which chunk a row landed in, which is
     // the property the first refutation was about.
     const p = freshProfile("BOTH-ANCHORINGS-CHUNKED");
+    seedNY(p);
     const split = push(
       p,
       {

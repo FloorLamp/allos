@@ -20,11 +20,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
-  applyMetricSampleSupersede,
-  planMetricSampleSupersede,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
+import { pushMetricSamples } from "./hc-metric-sample-push";
 import { emptyCounts } from "@/lib/integrations/sync-log";
 import { writeImportTombstone } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
@@ -57,10 +56,7 @@ const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
 let pushSeq = 0;
 // ONE PUSH, THE THREE PASSES THE INGEST RUNS (#3424, owner ruling option 2): plan over
 // the whole push against the pre-push store, apply the deletes once, then upsert. The
-// supersede does not live inside `upsertMetricSamples` any more, so a test that called it
-// alone would exercise a different mechanism than production does. Single-chunk here on
-// purpose — the chunked and reordered cases belong to
-// lib/__db_tests__/hc-overlap-push-property.test.ts, which drives the real ingest.
+// composition lives in ./hc-metric-sample-push so no spec can re-derive it differently.
 function upsert(
   profile: number,
   rows: NormMetricSample[],
@@ -74,14 +70,7 @@ function upsert(
       new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
     ...options,
   };
-  const plan = planMetricSampleSupersede(profile, rows, source, opts);
-  const removed = applyMetricSampleSupersede(profile, plan.victims);
-  const counts = upsertMetricSamples(profile, rows, source, sink, opts);
-  counts.superseded += removed;
-  // The declined-overlap diagnostic the ingest turns into a Review line. It comes off the
-  // PLAN now — it is known before the first write — so it travels beside the counts here
-  // rather than through a side channel keyed on them.
-  return { ...counts, overlapsLeft: plan.leftStanding.length };
+  return pushMetricSamples(profile, rows, source, sink, opts);
 }
 
 /** A fresh profile, so one test's rows can never explain another's survival. */
@@ -174,13 +163,25 @@ describe("the westward switch the prod incident and the repro both describe", ()
       HC
     );
     expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3500, 3000]);
-    // ONE delete DID happen, and it is the legitimate one: the Honolulu row replaced
-    // push 1's STORED Tokyo row, whose stamp is older. What did not happen is a delete
-    // between the two rows of THIS push — they share a stamp, so the re-sent Tokyo
-    // record is simply written back, and counted as an overlap left standing.
-    // MUTATION: any within-push ranking makes one of these two rows disappear on a
-    // basis that cannot be defended.
-    expect(counts.superseded).toBe(1);
+    // NOTHING WAS DELETED, and the count going 1 → 0 here is the owner's ruling on the
+    // shape (#3424, option 2) rather than a weakening of the rule.
+    //
+    // The stored Tokyo row IS a row the Honolulu bucket overlaps and outranks. It is also
+    // a row THIS PUSH is re-sending, and the plan excludes every natural key of the push
+    // from being a victim — so it is not deleted, it is updated in place by its own twin.
+    // The per-row version had no such exclusion, and what it did depended entirely on
+    // arrival order: with the Honolulu row first it deleted the stored Tokyo row and the
+    // re-sent one INSERTED it back (superseded: 1, both rows present); with the Tokyo row
+    // first, the re-send landed and the Honolulu row then deleted it — the same push,
+    // the same store, ONE row fewer. That is the defect rounds 1 and 5 both found.
+    //
+    // MUTATION: drop the push-key exclusion from `planMetricSampleSupersede` and this
+    // goes to 1 — and the property test's 1-row chunk ordering loses the 3000 row.
+    expect(counts.superseded).toBe(0);
+    // The day still reads 6500 for 3500 walked, so Review still says so: a stored row
+    // overlapped and left standing is one reading double counting, whether the reason
+    // was the stamp or the fact that the push is re-sending it.
+    expect(counts.overlapsLeft).toBe(1);
   });
 
   it("collapses to the walked count on the next push", () => {

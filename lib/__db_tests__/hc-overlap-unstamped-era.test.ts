@@ -310,7 +310,9 @@ describe("the direction four rounds kept losing: a NULL row is not losable", () 
     expect(storedValues(p)).toEqual([11609, 11721]);
     // Still wrong, still VISIBLY wrong, still exactly what #3439 repairs.
     expect(dayTotal(p, "2026-08-20")).toBe(23330);
-    expect(r.warnings.join(" ")).toContain("1 daily total");
+    // READINGS, not "daily totals": the count is distinct stored ROWS left standing, and
+    // two of them can fall in one profile-local day. The line names what it measures.
+    expect(r.warnings.join(" ")).toContain("1 reading");
   });
 
   it("a stale push cannot take a NULL row the migration never saw", () => {
@@ -380,12 +382,18 @@ describe("the direction four rounds kept losing: a NULL row is not losable", () 
 });
 
 describe("no row of one push is another row's victim, whatever the era", () => {
-  // The argument that replaced phase 1, and the one the unconditional DELETE now rests
-  // on. It has to hold in the presence of the era path too: a push that WRITES a row
-  // must not then let a later row of the same push read it as unknown-and-pre-existing.
+  // It has to hold in the presence of the era path too: a push that WRITES a row must not
+  // then let a later row of the same push read it as unknown-and-pre-existing.
+  //
+  // BOTH CASES SEED A STORE. They used to push into a fresh profile, where "both rows are
+  // stored" is what two plain inserts do and the rule is never asked anything — the gap
+  // that let five review rounds each believe ruling item 3 was pinned. Seeded, the stored
+  // row is one the push RE-SENDS and the push's other bucket overlaps and outranks, which
+  // is the only configuration where item 3 decides anything.
   it("a push carrying both anchorings stores both, era or no era", () => {
     const p = freshProfile("ERA-BOTH");
     eraAfter("2026-08-21T00:00:00Z", 0);
+    push(p, stepsBody("2026-08-21T20:30:05Z", [NY]));
     const r = push(p, stepsBody("2026-08-21T21:00:05Z", [NY, LA]));
     expect(r.split.superseded).toBe(0);
     expect(storedValues(p)).toEqual([11609, 11721]);
@@ -403,10 +411,13 @@ describe("no row of one push is another row's victim, whatever the era", () => {
   });
 
   it("a STAMPLESS push carrying both anchorings stores both", () => {
-    // Same shape with `pushedAt` null: `pushOutranks` refuses outright, so the era
-    // cannot be reached at all and neither row can take the other.
+    // Same shape with `pushedAt` null, and seeded by a stampless push too — so the stored
+    // NY row carries a NULL stamp with an id ABOVE `lastUnstampedId`, the one NULL state
+    // the era may never act on. `pushOutranks` refuses the null incoming stamp outright,
+    // and the push-key exclusion would hold the row even if it did not.
     const p = freshProfile("ERA-BOTH-STAMPLESS");
     eraAfter("2026-08-21T00:00:00Z", 0);
+    push(p, stepsBody(null, [NY]));
     const r = push(p, stepsBody(null, [NY, LA]));
     expect(r.split.superseded).toBe(0);
     expect(storedValues(p)).toEqual([11609, 11721]);
