@@ -751,9 +751,10 @@ each `daily` record at DEVICE-local midnight, so a timezone change re-anchors
 old row is never superseded, and `getMetricDailyTotals` sums both into one
 profile-local day. Measured on prod profile 1 after a one-tap New York → Los
 Angeles switch — 23330 steps on a day with 11721, and the same shape on
-`distance_km`, `total_kcal` and `active_kcal`. The rule lives in
-`lib/metric-window-overlap.ts`, is scoped to `source = health-connect`, and runs in
-two phases:
+`distance_km`, `total_kcal` and `active_kcal`. WHAT may supersede WHAT is decided in
+`lib/metric-window-overlap.ts` and is scoped to `source = health-connect`; the deletes
+are planned and applied in `lib/integrations/normalize.ts`, driven from
+`lib/integrations/health-connect-ingest.ts`, and run in three passes (below).
 
 **A PUSH CARRIES ONE ANCHORING**, which is why the rule is one rule. The owner settled
 this from the exporter's retained bodies (the ruling on #3424): across all 50 pushes
@@ -772,28 +773,92 @@ of one push. Every defect three adversarial passes found lived in it — ranking
 `ended_at` made a completed re-anchored bucket look staler than the still-filling row it
 corrects (3000 stored for 3500 walked, and an already-correct store regressed), and its
 withheld write dropped a reading while reporting "nothing new". It is gone. If a push
-ever does carry both anchorings, **both are written**: a visible double count, collapsed
-by the next push.
+ever does carry both anchorings, **both are written**: a visible double count, counted
+into the overlaps left standing so Review says so, and collapsed by the next push. Two
+counts feed that one line, because a stored row id cannot name a row that arrived in the
+same push as the row it double counts — see "said out loud" below.
 
 **The rule, once.** An incoming Health Connect day-bucket row deletes the stored
 day-bucket rows of the same `(profile, metric, source, origin)` whose window it overlaps
-and whose push it **outranks**, then upserts itself. Rows of one push share a
-stamp and are never each other's victims, so a chunk split is harmless **by
-construction** rather than by a whole-payload pre-pass; a retry carries an equal-or-older
+and whose push it **outranks**, then upserts itself. A retry carries an equal-or-older
 stamp and supersedes nothing; a stampless push supersedes nothing. Freshness deliberately
 does not compare the two windows' ENDS: a completed re-anchored bucket for a past day
 legitimately ends earlier than the old-anchoring "today so far" row it overlaps.
 
+**IT RUNS IN THREE PASSES, AND NOT INSIDE THE WRITE LOOP.** The rule used to run per row
+inside the upsert loop: find the overlaps, delete them, upsert. The owner's ruling (#3424,
+option 2) splits it:
+
+- **A — `planMetricSampleSupersede`** (`lib/integrations/normalize.ts`). Read-only, over
+  the PRE-PUSH store, over the WHOLE push, and **before `chunk()`**. Returns the stored
+  row ids the push collapses and the overlaps it leaves standing.
+- **B — `applyMetricSampleSupersede`**. The deletes, once, inside the first chunk's
+  transaction.
+- **C — `upsertMetricSamples`**. The upsert loop, with no supersede logic in it at all.
+
+The invariant that split buys is one line:
+
+```
+final store = (pre-store − victims) ⊕ upserts
+```
+
+where `victims` is a pure function of (pre-push store, push), computed before anything is
+written. Order- and chunk-independence follow from THAT, not from an enumeration of the
+channels that could break them — which is the point, because the enumeration was wrong
+twice. `lib/__db_tests__/hc-overlap-push-property.test.ts` is that line as a test: the
+same push, several orderings and chunk sizes including a one-row chunk, against a
+NON-EMPTY store, must leave byte-identical rows every time.
+
+**IT IS THE PRE-PASS, NOT THE SHARED STAMP, THAT MAKES A CHUNK SPLIT HARMLESS**, and this
+paragraph replaces the opposite claim. Rows of one push do share a stamp, so neither can
+out-rank the other — but that says only that a row of the push cannot be another row's
+VICTIM. It says nothing about what a row of the push READS, and the read is where two
+refutations landed: the same push stored 11609 or 22609 depending only on where the chunk
+boundary fell, because a delete for one row changed the natural-key twin a later row
+looked up. The shared stamp was cited for several review rounds as the reason a split is
+harmless "by construction"; it does not carry that claim, and the pre-pass is what does.
+
+**The push-key exclusion** is what pass A buys the invariant with, and it is WIDER than
+the per-row rule's was. The old code excluded an incoming row's OWN natural-key twin from
+its candidates. The plan excludes every stored row whose `started_at` is the natural key
+of ANY row in the push: a row this push is about to upsert must never also be a victim,
+whichever row of the push would have collapsed it. So pass C reads its own pre-image —
+the #133 lock, the #1101 stale-retry guard, the value merge — against a store whose only
+difference from the pre-push store is rows that are, by construction, no incoming row's
+twin. It removes victimhood and not the report: such a row is a real double count, so it
+moves to the overlaps left standing rather than vanishing from both lists.
+
+**One call is ONE profile and ONE source.** Pass A takes both as parameters, the candidate
+`SELECT` is scoped by both, and the function returns an empty plan unless the source is
+`health-connect` — so the push-key exclusion can be keyed on `(metric, origin,
+started_at)` alone. That premise is enforced by the signature rather than re-derived per
+row, and it is stated here because nothing else stated it: a caller that batched two
+profiles or two sources into one call would break the exclusion.
+
 **A NULL `pushed_at` is UNKNOWN, not "older than everything".** This is the third state,
 and reading it as the second one was a defect that survived four adversarial rounds. The
 column is NULL on every row written before its migration — which on deploy day is _every_
-row in the store, the correct ones included — and stays NULL for any day the exporter's
-rolling window no longer reaches until #3439 runs. Read as "old", the exact failure
+row in the store, the correct ones included — and stays NULL, PERMANENTLY, for any day
+the exporter's rolling window no longer reaches. Read as "old", the exact failure
 `pushed_at` was added to kill worked again: a byte-identical replay of a pre-switch push
 deleted the **correct** re-anchored row. Measured on #3424's own prod snapshot, the day
-went from reading **23330** for 11721 walked (wrong, but visible and repairable by #3439)
-to **11609** — low, which looks like a day you walked slightly less, and unrepairable,
-because the row holding the right number was gone.
+went from reading **23330** for 11721 walked (wrong, but visibly wrong, and the row
+holding the right number still there) to **11609** — low, which looks like a day you
+walked slightly less, with the right number gone and nothing left to notice.
+
+**THERE IS NO HISTORICAL REPAIR, AND THAT IS A DECISION RATHER THAN A GAP.** #3439 was
+opened to replay the rule over stored history and is **closed as not planned** (owner
+ruling, 2026-08-22: prod was fixed separately). Every "until #3439 runs" this section
+used to carry was a promise that the state was transitional. It is not. A day the
+exporter's rolling window no longer reaches keeps its overlap indefinitely, and what a
+visible double count now buys is that the day reads HIGH — a number a person can see is
+wrong, next to a stored row that still holds the right one — rather than reading low
+with the right reading deleted.
+
+None of the reasoning below depended on that replay ever running. NULL means UNKNOWN
+because the column is NULL on every row written before it existed, and the era markers
+bound the subset it is safe to collapse. Both are facts about this database's own
+history; only the eventual cleanup was #3439's.
 
 So a NULL-stamped row is deleted only on proof of **both** halves, which
 `20260821-hc-overlap-supersede` records once as two `settings` values and never moves:
@@ -809,8 +874,10 @@ the migration itself saw, and this push is newer than all of them. That still co
 the four prod pairs on the first stamped push after deploy, which is what #3424 asks the
 ingest half for. Every other NULL (a row a stampless push wrote afterwards, a row with no
 era recorded at all) is simply not superseded: the double count stays visible, counted,
-and repairable. The path closes on its own once #3439 has replayed history — there are
-then no unstamped Health Connect day buckets left for it to act on.
+and counted. The path does not close: with no historical replay, a NULL-stamped row
+outside the era markers stays NULL for as long as it is stored, and the day it double
+counts stays double counted. What the era markers still buy is the four prod pairs on the
+first stamped push after deploy — bounded, and the reason they were recorded.
 
 Two closures were weighed and lost. A **per-group high-water mark** needs no migration
 state, but its value moves as the push writes, so what survives depends on row order and
@@ -818,8 +885,8 @@ on where the chunk split falls — the class of defect round 1 died on — and i
 on the first stamped push after deploy at all. **Backfilling `pushed_at`** has the same
 semantics as the era markers but writes the migration instant onto every historical row,
 a value no exporter ever sent: the column stops meaning what its own docstring says,
-#3439's "NULL stamps on both sides" replay loses the state it walks, and a boot pays a
-full-table UPDATE instead of two `settings` rows.
+a boot pays a full-table UPDATE instead of two `settings` rows, and the store loses the
+only record of which rows predate the column.
 
 **THE RULE STATES ITS OWN PRECONDITIONS, because #3424's did not hold.** The issue
 justified "incoming wins" with "under one anchoring, same-`(metric, origin)` day
@@ -845,7 +912,8 @@ carry it explicitly:
   with no `data_origin` can put a run record in one group with a background step
   total), and below it a genuine day bucket cut within an hour of the old zone's
   midnight can NEVER be superseded — a small residual on that day is PERMANENT until
-  #3439's repair reaches it, not "collapsed on the next push". Measured: a 20-minute
+  PERMANENT, not "collapsed on the next push" — nothing widens a row already in the
+  table, and no historical replay is coming. Measured: a 20-minute
   stored bucket under three later day-bucket pushes left a day reading 9200 for 9000
   walked, indefinitely. That residual is now counted into the overlaps left standing and
   said out loud; it used to happen with `superseded: 0`, `warnings: []` and no other
@@ -920,17 +988,39 @@ superseded row is a stored row we removed, not a row the source sent.
 returns every stored day bucket the incoming row overlapped and did not collapse, for
 any reason — no stamp on this push, a stamp the clock bound refused, a phone whose clock
 went backwards, a NULL stored stamp with no proof it predates the column, a stored bucket
-below the granularity gate, or the #133 lock — and the ingest unions them across the
-whole push and turns the count into `overlapsLeftWarning`. It counts **distinct stored
-rows**, not (incoming, stored) pairs: two incoming buckets declining over one stored row
-is one day reading wrong, and the line says "daily totals". The line no longer promises
-the next push will fix it, because one of those causes is permanent (the sub-daily stored
-bucket above) and telling someone a total will fix itself when it will not is worse than
-not mentioning it. An overlap where NEITHER side is a day bucket is not reported at all —
-two origin-less devices at `1m` overlap constantly and are being legitimately summed. The
-one shape `upsertMetricSamples` does not deliver is a fine-grained incoming row landing
-on a stored day bucket: asking for it would mean one indexed range query per minute
-bucket, ~11.5k queries for a single `1m` push, so that lookup is not made.
+below the granularity gate, or the #133 lock — and pass A unions them across the whole
+push. It counts **distinct stored rows**, not (incoming, stored) pairs: two incoming
+buckets declining over one stored row is one reading left double counting, and the pair
+count said two.
+
+**AND THE PUSH'S OWN SECOND ROW COUNTS TOO**, which is a separate number because it has
+to be. `leftStanding` is stored row IDS, so it can only ever name rows that were in the
+table BEFORE the push — and two rows of one push are never in each other's candidate
+sets. A push carrying both anchorings of a day the store held NEITHER row of writes both
+(ruling item 3, the right outcome) and leaves the day double counting with no stored row
+for the report to point at: it reported `superseded: 0` and no warning at all. So pass A
+also counts the EXCESS day buckets the push carries against itself —
+`inPushDoubleCounts`, one per overlapping bucket beyond the first — and the ingest adds
+the two before calling `overlapsLeftWarning`. A pair either of whose members is a row
+`leftStanding` already names is not counted twice: a re-sent row and its stored twin are
+one reading updated in place, and which of the pair is the re-sent one flips with the
+direction of travel.
+
+The line names READINGS, not daily totals: two stale buckets can fall in one
+profile-local day, so the earlier wording could report two days wrong when one is. It
+does not name a CAUSE either — "from before a timezone change" was true of the shape
+that prompted the rule and false of the others, since a `daily` device and a `1m` device
+that both set no `data_origin` share a supersede group and overlap with no timezone
+change anywhere. And it no longer promises the next push will fix it, because one cause
+is permanent (the sub-daily stored bucket above) and telling someone a total will fix
+itself when it will not is worse than not mentioning it.
+
+An overlap where NEITHER side is a day bucket is not reported at all — two origin-less
+devices at `1m` overlap constantly and are being legitimately summed. The one shape
+neither count delivers is a fine-grained row landing on a day bucket: against the store
+that would mean one indexed range query per minute bucket, ~11.5k for a single `1m` push,
+and within the push it would mean comparing every minute bucket against every other. That
+lookup is not made in either direction.
 
 **The trailing edge is LOSSY, and that is the accepted trade.** "Incoming deletes
 what it overlaps" is exact in the interior of the rolling window and lossy at its
@@ -947,16 +1037,17 @@ has re-anchored — the alternative to dropping the sliver is double-counting it
 the loss is bounded, stated, and visible in Review through the `superseded` count
 rather than discovered later.
 
-**INGEST ONLY; the historical repair is #3439.** The migration is two `ADD COLUMN`s and
+**INGEST ONLY, AND THERE IS NO HISTORICAL REPAIR.** The migration is two `ADD COLUMN`s and
 two `settings` writes, and touches no row (`MAX(id)` on an INTEGER PRIMARY KEY is a seek,
 not a scan). An earlier cut also replayed the rule over stored history at boot;
 it was measured at 595 s for a single 100k-row group and 2m24s end-to-end on a
 database with 30,000 one-minute buckets, it killed a concurrent boot with
 `SQLITE_BUSY` after 122 s, and it wrote no `integration_sync_events` row, so its
 deletions were invisible in Review. Ingest converges an affected span on the next push
-either way; what #3439 buys is the days the rolling window no longer reaches, and it
-needs a planner that is not quadratic, a bounded lock, and a Review-visible record of
-what it removed.
+either way, which is the span that matters; the days the rolling window no longer reaches
+were what a replay would have added, and #3439 is closed as not planned — prod was fixed
+separately, and a correct replay would have needed a planner that is not quadratic, a
+bounded lock, and a Review-visible record of what it removed.
 
 **No origin legitimately emits an overlapping same-metric window** at the granularity
 the rule acts on, which is the premise the gates above narrow it to (#3424, mirroring
