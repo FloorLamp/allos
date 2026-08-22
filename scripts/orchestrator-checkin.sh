@@ -458,7 +458,26 @@ while read -r d; do
   fi
   # An unpushed commit under a live agent is the near miss, not the accident:
   # worth saying, not worth shouting.
-  [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  #
+  # CLASSIFY it, do not just compare strings. This test used to be
+  # `[ "${h:0:7}" != "$r" ]` printing "(local ahead of remote)", which fires on
+  # ANY difference — so a worktree merely BEHIND its remote (harmless, the agent
+  # just has not pulled) got the same words as one carrying unpushed work. The
+  # alarm that matters is AHEAD, and a label that also fires on the harmless case
+  # is a label you learn to skim. That is the same failure as an alarm that fires
+  # two times in three, one level down.
+  #
+  # Measured on 2026-08-22: wt-hc-overlap read "local ahead of remote" while its
+  # HEAD was an ANCESTOR of the remote tip — nothing unpushed at all.
+  if [ -n "$r" ] && [ "${h:0:7}" != "$r" ]; then
+    if git -C "$d" merge-base --is-ancestor "$h" "origin/$b" 2>/dev/null; then
+      flag="$flag  (local BEHIND remote — stale checkout, nothing to rescue)"
+    elif git -C "$d" merge-base --is-ancestor "origin/$b" "$h" 2>/dev/null; then
+      flag="$flag  (local AHEAD of remote — UNPUSHED COMMITS HERE)"
+    else
+      flag="$flag  (local DIVERGED from remote — unpushed commits AND remote moved)"
+    fi
+  fi
   # A tree outside $STATE_DIR is findable HERE (git enumerates it) but not by
   # anything that globs the documented path — say where it actually is.
   case "$d" in "$STATE_DIR"/*) ;; *) flag="$flag  (outside \$SCRATCH: $d)" ;; esac
