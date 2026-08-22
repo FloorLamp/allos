@@ -202,6 +202,46 @@ else
   SESSION_NEW=1
 fi
 
+# ROLLBACK DETECTION, AND WHY THE BOOT-ID CANNOT DO IT.
+#
+# The boot-id and the session-id answer "did my process die". They cannot answer
+# "is this the tree I left", and on 2026-08-22T17:25Z that gap cost a
+# misdiagnosis: boot-id UNCHANGED + session RESTARTED printed as a RESTART with a
+# CURRENT tree, while the checkout had actually been rolled back several hours —
+# every commit of that session unreachable, a file set the orchestrator did not
+# recognise, and `docs/orchestration/review-merge.md` reverted to a two-day-old
+# copy. The tell that worked was reading `git log` and not recognising it, which
+# is a human step this recorder exists to remove.
+#
+# So ask the ONE question the boot-id cannot: is the local branch behind its own
+# remote? A rollback restores an old working copy while the remote keeps every
+# pushed commit — that is the documented shape of all four so far — so
+# local-behind-remote is the signature, and it is cheap to test.
+#
+# `git ls-remote` on purpose, NOT the remote-tracking ref: a rollback rewinds
+# `.git/` too, so `origin/<branch>` is rolled back with everything else and
+# comparing against it says the tree agrees with itself. That is exactly the
+# reassuring answer the 17:25Z run gave.
+BRANCH_NOW=$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+if [ -n "$BRANCH_NOW" ]; then
+  head_local=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo "")
+  head_remote=$(git -C "$REPO" ls-remote origin "refs/heads/$BRANCH_NOW" 2>/dev/null | awk '{print $1}')
+  if [ -n "$head_remote" ] && [ -n "$head_local" ] && [ "$head_local" != "$head_remote" ]; then
+    if git -C "$REPO" cat-file -e "$head_remote" 2>/dev/null &&
+       git -C "$REPO" merge-base --is-ancestor "$head_local" "$head_remote" 2>/dev/null; then
+      echo "checkout: *** LOCAL IS BEHIND THE REMOTE — THIS IS A ROLLBACK, NOT A RESTART ***"
+      echo "  >>> local  $head_local"
+      echo "  >>> remote $head_remote  (has commits this checkout has lost)"
+      echo "  >>> git fetch --prune origin && git merge --ff-only origin/$BRANCH_NOW"
+    else
+      echo "checkout: local and remote DIVERGED, or the remote head is not local yet."
+      echo "  >>> local  $head_local"
+      echo "  >>> remote $head_remote"
+      echo "  >>> git fetch --prune origin, then decide — do NOT assume the tree is current."
+    fi
+  fi
+fi
+
 # WHICH WAY THIS VERDICT IS SAFE, AND WHICH WAY IT IS NOT.
 #
 # Both detectors above are PROXIES: they compare the identity of the machine and

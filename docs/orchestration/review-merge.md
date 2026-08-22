@@ -63,6 +63,16 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **The boot-id answers "did my process die", never "is this the tree I left".**
+  A rollback restores an old working copy while the remote keeps every pushed
+  commit — so it can present as boot-id UNCHANGED with a session restart, which
+  reads as the reassuring case. On 2026-08-22 that misdiagnosis stood until
+  `git log` was read by hand and not recognised. The signature is
+  LOCAL BEHIND REMOTE, and it must be tested with `git ls-remote`, not the
+  remote-tracking ref: a rollback rewinds `.git/` too, so `origin/<branch>` is
+  rolled back alongside everything else and comparing against it reports that the
+  tree agrees with itself. `scripts/orchestrator-checkin.sh` now asks this.
+
 - **Copy that explains a mechanism can be falsified by the action it explains.**
   #3537 put _"Any warnings on this med follow its name — a new name can change
   them"_ above a button whose entire effect is to write an authoritative
