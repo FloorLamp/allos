@@ -22,6 +22,8 @@ import {
 } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import {
+  applyMetricSampleSupersede,
+  planMetricSampleSupersede,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
@@ -960,5 +962,203 @@ describe("the superseded count equals the rows actually removed", () => {
     // Three removed, one inserted.
     expect(counts.superseded).toBe(3);
     expect(before - after).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D1 — WHERE PASS B COMMITS, which is the one thing the owner reversed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("D1 — the deletes commit with the LAST chunk", () => {
+  // THE DEFECT, AND IT SHIPPED IN THREE ROUNDS OF THIS PR. Pass B ran inside the FIRST
+  // chunk's transaction, justified by a sentence that is still true — "a crash between
+  // the deletes and the writes must not leave a day reading LOW with nothing in flight
+  // to restore it". First-chunk placement satisfies that only when the push is ONE
+  // chunk. Split it and the sentence is inverted: the deletes commit with chunk 1,
+  // chunk 2 fails, and the day reads NOTHING where `main` still reads the old row —
+  // measured at 8000 → nothing. The owner corrected the placement (#3424, the ruling of
+  // 2026-08-22) and pinned the invariant instead:
+  //
+  //     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+  //     NEVER NEITHER. A day may read HIGH between commits; it must never read LOWER
+  //     than `main` would.
+  //
+  // MUTATION for both tests below: move `applyMetricSampleSupersede` back to the first
+  // chunk (`remaining === orderedSamples.length - slice.length`, or the `pending` flag
+  // the earlier rounds used) in `ingestHealthConnectPayload`. The crash test then finds
+  // the seeded 8000 gone.
+
+  const LA = "2026-05-01T07:00:00Z";
+
+  /** The pre-push store: one NY-anchored day bucket, stamped by an earlier push. */
+  function seedNyDay(p: number): void {
+    push(
+      p,
+      {
+        app_version: "1.9.14",
+        steps: [
+          {
+            start_time: "2026-05-01T04:00:00Z",
+            end_time: "2026-05-02T04:00:00Z",
+            count: 8000,
+            metadata: { data_origin: ORIGIN },
+          },
+        ],
+      },
+      "2026-05-02T05:00:00Z"
+    );
+  }
+
+  /** Three LA-anchored day buckets — one chunk each at chunkSize 1, in start order. */
+  const LA_PUSH = {
+    app_version: "1.9.14",
+    steps: [
+      {
+        start_time: "2026-04-30T07:00:00Z",
+        end_time: "2026-05-01T07:00:00Z",
+        count: 7000,
+        metadata: { data_origin: ORIGIN },
+      },
+      {
+        start_time: LA,
+        end_time: "2026-05-02T07:00:00Z",
+        count: 8100,
+        metadata: { data_origin: ORIGIN },
+      },
+      {
+        start_time: "2026-05-02T07:00:00Z",
+        end_time: "2026-05-03T07:00:00Z",
+        count: 900,
+        metadata: { data_origin: ORIGIN },
+      },
+    ],
+  };
+
+  /**
+   * Make one statement of the real write path fail, the way a disk error or a constraint
+   * would: a trigger scoped to ONE profile that ABORTs. It fails INSIDE the chunk's
+   * transaction, which is the only way to observe where a transaction boundary actually
+   * falls — a spy on the module would test the mock's boundaries instead of SQLite's.
+   */
+  function abortOn(sql: string): () => void {
+    db.exec(`CREATE TEMP TRIGGER d1_abort ${sql}`);
+    return () => db.exec("DROP TRIGGER d1_abort");
+  }
+
+  function pushChunked(
+    p: number,
+    body: Record<string, unknown>,
+    timestamp: string,
+    chunkSize: number
+  ) {
+    const parsed = parseHealthConnectPayload({ ...body, timestamp }, "UTC");
+    return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+  }
+
+  it("leaves the OLD row plus the committed chunks when chunk 2 of 3 fails", () => {
+    const p = freshProfile("D1-CHUNK-2-FAILS");
+    seedNyDay(p);
+    // THE SEED IS REALLY THERE. Every assertion below is about what SURVIVED, and a
+    // survival assertion over an empty table passes for the wrong reason.
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+
+    const undo = abortOn(
+      `BEFORE INSERT ON metric_samples WHEN NEW.profile_id = ${p}
+         AND NEW.started_at = '${LA}'
+       BEGIN SELECT RAISE(ABORT, 'chunk 2 fails'); END`
+    );
+    try {
+      expect(() =>
+        pushChunked(p, LA_PUSH, "2026-05-02T06:00:00Z", 1)
+      ).toThrow();
+    } finally {
+      undo();
+    }
+
+    // NOT NOTHING. The seeded 8000 is still there — chunk 3 never committed, so pass B
+    // never ran — beside chunk 1's row, which did commit. That is "old + chunks<k": a
+    // day reading HIGH, which is visible and repairable, and never a hole.
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([7000, 8000]);
+
+    // AND IT CONVERGES. The exporter re-carries the unacked rows on its next push; pass
+    // A re-plans over the store the failure left, and that push collapses the double
+    // count. Nothing else has to notice the failed push happened.
+    const again = pushChunked(p, LA_PUSH, "2026-05-02T07:30:00Z", 1);
+    expect(again.split.superseded).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([7000, 8100, 900]);
+  });
+
+  it("rolls the deletes back with the rows when the push is ONE chunk", () => {
+    // THE ONE-CHUNK CASE: the deletes and the rows are in the SAME transaction, so
+    // neither can land without the other. Asserted from the rollback direction, because
+    // that is the direction that can distinguish it — failing the DELETE (which runs
+    // after the chunk's upserts) must take the chunk's INSERTS down with it.
+    const p = freshProfile("D1-ONE-CHUNK-ATOMIC");
+    seedNyDay(p);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+
+    const undo = abortOn(
+      `BEFORE DELETE ON metric_samples WHEN OLD.profile_id = ${p}
+       BEGIN SELECT RAISE(ABORT, 'the delete fails'); END`
+    );
+    try {
+      expect(() =>
+        pushChunked(p, LA_PUSH, "2026-05-02T06:00:00Z", 500)
+      ).toThrow();
+    } finally {
+      undo();
+    }
+    // EXACTLY the pre-push store: the three rows that were upserted in that transaction
+    // went with the failed delete. If they had committed separately, they would be here.
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+
+    // The same push, unpoisoned, in one chunk: the deletes and the rows land together.
+    const ok = pushChunked(p, LA_PUSH, "2026-05-02T07:30:00Z", 500);
+    expect(ok.split.superseded).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([7000, 8100, 900]);
+  });
+
+  it("declines a victim another push re-stamped between the plan and the delete", () => {
+    // WHAT THE `pushed_at IS ?` CLAUSE DEFENDS AGAINST, and it is not this process.
+    // Three processes share one DB file (`lib/db.ts`), so pass A's read and pass B's
+    // DELETE can be separated by another push's COMMITTED writes — a window that widens
+    // with every extra chunk now that pass B waits for the last one. The clause re-states
+    // the stamp pass A actually read, so a row some other push has since claimed as
+    // current is not deleted on evidence that has expired.
+    //
+    // Driven through the passes directly rather than through `ingestHealthConnectPayload`,
+    // because the interleaving is BETWEEN two passes and no single-process call can sit
+    // there. MUTATION: drop the clause (or write `pushed_at = ?`, which never matches a
+    // NULL and so also fails the era tests) and the re-stamped row is deleted.
+    const p = freshProfile("D1-GUARD-RESTAMPED");
+    seedNyDay(p);
+    const rows = parseHealthConnectPayload(
+      { ...LA_PUSH, timestamp: "2026-05-02T06:00:00Z" },
+      "UTC"
+    ).samples;
+    const plan = planMetricSampleSupersede(p, rows, HC, {
+      pushedAt: "2026-05-02T06:00:00Z",
+    });
+    // It planned something: the seeded NY day is the victim of the LA re-anchoring.
+    expect(plan.victims.length).toBe(1);
+    expect(plan.victims[0].pushedAt).toBe("2026-05-02T05:00:00Z");
+
+    // The concurrent push, committed between the two passes: it re-stamps the row this
+    // plan is about to delete.
+    db.prepare("UPDATE metric_samples SET pushed_at = ? WHERE id = ?").run(
+      "2026-05-02T06:30:00Z",
+      plan.victims[0].id
+    );
+    expect(applyMetricSampleSupersede(p, plan.victims)).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+
+    // AND THE PLAN IS OTHERWISE LIVE — the same call deletes the row when the stamp is
+    // still the one it read, so the assertion above is the guard and not a no-op.
+    db.prepare("UPDATE metric_samples SET pushed_at = ? WHERE id = ?").run(
+      plan.victims[0].pushedAt,
+      plan.victims[0].id
+    );
+    expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
+    expect(stored(p, "steps")).toEqual([]);
   });
 });
