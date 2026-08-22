@@ -57,6 +57,10 @@ export interface TrashEntry {
   // Identifying content read out of the payload. PHI; may be absent for a kind whose
   // root row has no human title (a body metric is a date and some numbers).
   title: string | null;
+  // The capture's own CALENDAR DAY, as storage `YYYY-MM-DD` — never a display
+  // string, and never a timestamp. `DATE_COLUMNS` falls through to `recorded_at`
+  // and `created_at`, which SQLite stores as "YYYY-MM-DD HH:MM:SS", so the day is
+  // taken off the front rather than passed on whole: see `calendarDay` below.
   date: string | null;
   notes: string | null;
   // Captured rows BESIDE the root — the sets of an activity, the doses and adherence
@@ -102,6 +106,26 @@ const DATE_COLUMNS = [
   "recorded_at",
   "created_at",
 ] as const;
+
+// THE CALENDAR DAY OF A CAPTURED DATE COLUMN, and why this is not cosmetic.
+//
+// `DATE_COLUMNS` leads with clinical dates (plain `YYYY-MM-DD`) and falls through to
+// `recorded_at` / `created_at`, which SQLite writes as "YYYY-MM-DD HH:MM:SS" — and
+// `intake_items` has no date column at all, so a supplement capture reaches that last
+// fallback every time. The field is documented as a DAY, and `formatDateWithYear`
+// returns a value it cannot parse UNCHANGED, so the Trash row printed
+// "E2E Restore Fish Oil · 2026-08-22 14:03:55": a machine date in rendered copy,
+// which is what #3492 forbids. Trimming here rather than at the surface keeps the
+// boundary #3491 item 3 drew — `entry.date` is a STORAGE day, and nothing downstream
+// should have to know which column it came from.
+//
+// Anything that is not a leading `YYYY-MM-DD` followed by a separator is returned
+// untouched: it is not a date this function can make a claim about, and inventing one
+// would be worse than passing it on.
+function calendarDay(value: string | null): string | null {
+  if (value === null) return null;
+  return /^\d{4}-\d{2}-\d{2}[T ]/.test(value) ? value.slice(0, 10) : value;
+}
 
 function firstString(row: Row, columns: readonly string[]): string | null {
   for (const c of columns) {
@@ -176,7 +200,7 @@ export function trashEntry(
     kind: capture.kind,
     label: capture.label?.trim() || capture.kind,
     title: root ? firstString(root, TITLE_COLUMNS) : null,
-    date: root ? firstString(root, DATE_COLUMNS) : null,
+    date: root ? calendarDay(firstString(root, DATE_COLUMNS)) : null,
     notes: root ? firstString(root, ["notes"]) : null,
     // The root is one of the captured rows; everything else is cascade.
     childCount: Math.max(0, captured - 1),

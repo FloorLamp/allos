@@ -336,6 +336,55 @@ describe("trashEntryCopy — the headline and subtitle derived together", () => 
     ).toEqual([]);
   });
 
+  // THE HOLE THE CENSUS FOUND, and it was found by a SHARD RE-PARTITION rather
+  // than by anyone reading this file (#3495's PR, which added a spec and moved
+  // e2e/intake-lifecycle.spec.ts into e2e/machine-date-census.spec.ts's shard).
+  //
+  // `DATE_COLUMNS` falls through to `recorded_at` / `created_at`, and SQLite writes
+  // those as "YYYY-MM-DD HH:MM:SS". A capture whose root carries only one of them
+  // handed a TIMESTAMP to `TrashEntry.date`, which is documented as a day — and
+  // `formatDateWithYear` returns a value it cannot parse UNCHANGED, so the row read
+  // "E2E Restore Fish Oil · 2026-08-22 14:03:55" on the real page. The assertion
+  // above could not see it: its fixture's root carries a plain `date` column, so the
+  // fall-through was never exercised.
+  it("takes the calendar DAY off a captured timestamp column (#3492)", () => {
+    const entry = trashEntry(
+      capture({
+        // The real shape, not an invented one: `intake_items` has no date column at
+        // all, so DATE_COLUMNS reaches its LAST fallback — `created_at`, declared
+        // `DEFAULT (datetime('now'))` in migration 124.
+        kind: "intake-item",
+        label: "supplement",
+        payload: serializePayload("intake-item", {
+          item: [
+            {
+              id: 77,
+              profile_id: 1,
+              name: "Fish Oil",
+              created_at: "2026-08-22 14:03:55",
+            },
+          ],
+        }),
+      }),
+      30,
+      NOW
+    );
+    expect(
+      entry.date,
+      "TrashEntry.date is a storage DAY; a timestamp reaching it is a machine " +
+        "date one `formatDateWithYear` away from the screen"
+    ).toBe("2026-08-22");
+    const { headline } = trashEntryCopy(entry, {
+      date: formatDateWithYear(entry.date ?? "", DEFAULT_FORMAT_PREFS),
+      deletedOn: formatDateWithYear(
+        entry.deletedAt.slice(0, 10),
+        DEFAULT_FORMAT_PREFS
+      ),
+    });
+    expect(headline).toBe("Fish Oil · Aug 22, 2026");
+    expect(machineDateHits(headline)).toEqual([]);
+  });
+
   it("passes a machine date straight through when one is handed in", () => {
     // The counter-proof: this module does not sanitize, it REFUSES to source. The
     // assertion above would be worth nothing if the pair scrubbed dates on its own
