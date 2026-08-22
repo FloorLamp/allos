@@ -158,6 +158,12 @@
           "title": "Sleep naps and vaccine doses stop running off the edge of a phone card, and a check now covers every such list",
           "kind": "fix",
           "issues": [3517]
+        },
+        {
+          "pr": 3535,
+          "title": "Integration and import pages open with one sentence and fold the rest, instead of a wall of text on a phone",
+          "kind": "fix",
+          "issues": [3488, 3490]
         }
       ]
     },
