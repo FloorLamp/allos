@@ -253,6 +253,11 @@ assertions. Two recorders, three artifacts next to the contact sheet:
   first-data offset (first chart / table row / list item, px from top),
   table/form/overflow-menu counts, h1-scale headings (computed ≥ 20px), and a
   findings-flood heuristic (≥4 sibling cards sharing a 24-char text prefix).
+  Plus the **geometry probes** (#3489): `clipped` — every element inside
+  `<main>` whose RENDERED box exits the viewport horizontally with no designed
+  scroller that reaches it — and `heightRows` — every rendered row whose
+  interactive controls differ in height by more than 2px. Both carry the count
+  they were truncated from, so a capped list is never silent.
 - **`taps.json`** (written by `workflows`, `dose`, `dismiss`, `profiles`): tap
   costs per action. A tap = one pointer gesture; typing one field = one
   "input", counted separately. Reach costs (dashboard → each hub, driven
@@ -262,8 +267,20 @@ assertions. Two recorders, three artifacts next to the contact sheet:
   a guess. Not every #1510-pinned action has a driving journey yet (household
   confirm, star) — gaps are visible in the table, add journeys to close them.
 - **`audit.md`**: the ranked report — render faults and unreached dynamic routes
-  first, then worst first-data offsets, tallest pages, most standing forms,
-  flood/multi-h1 detections, the tap table.
+  first, then the two geometry tables, then worst first-data offsets, tallest
+  pages, most standing forms, flood/multi-h1 detections, the tap table.
+
+**Geometry (#3489)**: the geometry tables rank ABOVE the page-level ones because
+they name a specific broken element instead of a page-level number, and they
+cover BOTH viewports — a control can run off a 1280px desktop too. They exist
+because a contact sheet cannot show a 4px height difference or a chevron one
+pixel off-screen: the 2026-08-21 phone review found three such defects by eye
+(#3478, #3481, #3486) that every prior census run had photographed and missed.
+Read them as leads, not verdicts — a `clipped` span may be a truncation the
+design intends. The rule is `scripts/ux-geometry-census.mjs`; that it can SEE a
+planted offender and stays QUIET on a designed horizontal scroller and on a 1px
+difference is asserted in `e2e/ux-geometry-probe.mobile.spec.ts`, which is the
+only part of this that runs in CI — the census itself stays a seeing tool.
 
 **Render health (#1544)**: the probe also records `renderFault` —
 `not-found` when the page rendered `app/(app)/not-found.tsx`, `error-boundary`
