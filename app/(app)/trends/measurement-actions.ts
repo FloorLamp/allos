@@ -11,6 +11,7 @@ import {
   insertVitals,
 } from "@/lib/offline/writes";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 
 // The combined "Log measurements" write path (issue #1486).
 //
@@ -69,6 +70,14 @@ export async function addMeasurements(
   let wrote = false;
   let statedTimeRefused: StatedTimeRefusal | undefined;
 
+  // ONE SUBMISSION, ONE SURFACE (#3087). This form is mounted on the Trends
+  // measurements panel, on a metric detail page and in the quick-log sheet, so the
+  // surface is the client's to declare and `page` is this action's own home. Read
+  // ONCE and handed to both write cores below: the body half and the vitals half are
+  // two cores serving one form, and they used to disagree — the body half stamped
+  // `page` while the vitals half spelled `offline-replay` twenty-seven lines later.
+  const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
+
   // 1. Body composition (body_metrics). Each nullable measurement can be recorded
   //    independently; this matters on a metric detail page whose form contains
   //    exactly one field rather than the whole body-composition trio.
@@ -93,8 +102,8 @@ export async function addMeasurements(
         occurredAtRaw === null
           ? undefined
           : String(occurredAtRaw).trim() || null,
-      // The measurements page's own sitting form.
-      loggedVia: "page",
+      // The surface the sitting was entered on, declared by the mounting.
+      loggedVia,
     });
     wrote = body.wrote || wrote;
     // The gate's verdict, threaded out rather than re-derived (#2311): the core
@@ -150,6 +159,7 @@ export async function addMeasurements(
         // medical_records vitals rows under the same canonical names — only the
         // entry surface moved, so nothing here needs to know about them.
       },
+      loggedVia,
       occurredAtRaw === null ? undefined : String(occurredAtRaw).trim() || null
     );
     wrote = vitals.wrote || wrote;

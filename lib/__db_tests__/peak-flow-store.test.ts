@@ -98,7 +98,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
   it("lands in metric_samples under the registered stream key, not a new table", () => {
     const profileId = makeProfile("peak-flow-quick-add");
     expect(
-      insertVitals(profileId, "2026-04-02", { peakFlow: "540" }).wrote
+      insertVitals(profileId, "2026-04-02", { peakFlow: "540" }, "page").wrote
     ).toBe(true);
 
     const rows = peakFlowRows(profileId);
@@ -121,14 +121,24 @@ describe("the home half — a blow through the measurements quick-add", () => {
 
   it("keeps a morning and an evening blow as TWO readings on one flare day", () => {
     const profileId = makeProfile("peak-flow-twice-daily");
-    insertVitals(profileId, "2026-04-03", {
-      peakFlow: "520",
-      peakFlowTime: "07:30",
-    });
-    insertVitals(profileId, "2026-04-03", {
-      peakFlow: "430",
-      peakFlowTime: "20:00",
-    });
+    insertVitals(
+      profileId,
+      "2026-04-03",
+      {
+        peakFlow: "520",
+        peakFlowTime: "07:30",
+      },
+      "page"
+    );
+    insertVitals(
+      profileId,
+      "2026-04-03",
+      {
+        peakFlow: "430",
+        peakFlowTime: "20:00",
+      },
+      "page"
+    );
 
     const rows = peakFlowRows(profileId);
     expect(rows.map((r) => r.value)).toEqual([520, 430]);
@@ -140,8 +150,8 @@ describe("the home half — a blow through the measurements quick-add", () => {
 
   it("CORRECTS the day when no time is stated (the untimed re-entry)", () => {
     const profileId = makeProfile("peak-flow-untimed");
-    insertVitals(profileId, "2026-04-04", { peakFlow: "500" });
-    insertVitals(profileId, "2026-04-04", { peakFlow: "515" });
+    insertVitals(profileId, "2026-04-04", { peakFlow: "500" }, "page");
+    insertVitals(profileId, "2026-04-04", { peakFlow: "515" }, "page");
 
     const rows = peakFlowRows(profileId);
     expect(rows).toHaveLength(1);
@@ -153,21 +163,31 @@ describe("the home half — a blow through the measurements quick-add", () => {
     // The core runs the same `peakFlowRangeError` the client form pre-validates
     // with, so a crafted or replayed request can never store a 5000.
     expect(
-      insertVitals(profileId, "2026-04-05", { peakFlow: "5000" }).wrote
+      insertVitals(profileId, "2026-04-05", { peakFlow: "5000" }, "page").wrote
     ).toBe(false);
     expect(peakFlowRows(profileId)).toHaveLength(0);
   });
 
   it("reaches the metric page's readings table and its chart", () => {
     const profileId = makeProfile("peak-flow-surface");
-    insertVitals(profileId, "2026-04-06", {
-      peakFlow: "600",
-      peakFlowTime: "07:00",
-    });
-    insertVitals(profileId, "2026-04-07", {
-      peakFlow: "450",
-      peakFlowTime: "07:00",
-    });
+    insertVitals(
+      profileId,
+      "2026-04-06",
+      {
+        peakFlow: "600",
+        peakFlowTime: "07:00",
+      },
+      "page"
+    );
+    insertVitals(
+      profileId,
+      "2026-04-07",
+      {
+        peakFlow: "450",
+        peakFlowTime: "07:00",
+      },
+      "page"
+    );
 
     const readings = getMetricReadings(profileId, PEAK_FLOW_SLUG);
     expect(readings).toHaveLength(2);
@@ -324,7 +344,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
     const profileId = makeProfile("spirometry-fold");
     const docId = makeDocument(profileId, "pft-fold.pdf");
     importSpirometry(profileId, docId, spirometryInput());
-    insertVitals(profileId, "2026-02-12", { peakFlow: "590" });
+    insertVitals(profileId, "2026-02-12", { peakFlow: "590" }, "page");
 
     const { points, observations } = trendMetricSeriesFold(
       PEAK_FLOW_SLUG,
@@ -340,7 +360,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
 describe("the verdict — computed from the declared personal best", () => {
   it("has NO verdict until a personal best is declared", () => {
     const profileId = makeProfile("peak-flow-no-best");
-    insertVitals(profileId, "2026-05-01", { peakFlow: "430" });
+    insertVitals(profileId, "2026-05-01", { peakFlow: "430" }, "page");
 
     expect(getPeakFlowPersonalBest(profileId)).toBeNull();
     expect(peakFlowZone(430, getPeakFlowPersonalBest(profileId))).toBeNull();
@@ -353,7 +373,7 @@ describe("the verdict — computed from the declared personal best", () => {
 
   it("bands the reading once the best is declared, and re-bands when it moves", () => {
     const profileId = makeProfile("peak-flow-best");
-    insertVitals(profileId, "2026-05-02", { peakFlow: "430" });
+    insertVitals(profileId, "2026-05-02", { peakFlow: "430" }, "page");
     setPeakFlowPersonalBest(profileId, 620);
 
     expect(getPeakFlowPersonalBest(profileId)).toBe(620);
@@ -381,8 +401,8 @@ describe("the verdict — computed from the declared personal best", () => {
 
   it("suggests the highest reading on file without ever writing it", () => {
     const profileId = makeProfile("peak-flow-suggest");
-    insertVitals(profileId, "2026-05-03", { peakFlow: "560" });
-    insertVitals(profileId, "2026-05-04", { peakFlow: "610" });
+    insertVitals(profileId, "2026-05-03", { peakFlow: "560" }, "page");
+    insertVitals(profileId, "2026-05-04", { peakFlow: "610" }, "page");
 
     const { points } = trendMetricSeriesFold(
       PEAK_FLOW_SLUG,

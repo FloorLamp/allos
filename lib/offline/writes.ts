@@ -340,6 +340,15 @@ export function insertVitals(
   profileId: number,
   date: string,
   raw: VitalsRawInput,
+  // WHICH SURFACE TOOK THESE READINGS (#3087). Required and positional, ahead of the
+  // optional `occurredAt`, for the reason every write core in this tranche takes one:
+  // a default would let a new call site land in the wrong bucket in silence. This
+  // module lives under lib/offline/, but two of its three callers are ONLINE Server
+  // Actions — the Sleep form and the Trends measurements form — and only the replay
+  // at the bottom of this file is a replay. Spelling `offline-replay` here once
+  // stamped every online blood-pressure, glucose, SpO2 and temperature entry as a
+  // queued write replayed after reconnect.
+  loggedVia: LoggedVia,
   occurredAt?: string | null
 ): VitalsWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
@@ -391,7 +400,7 @@ export function insertVitals(
       unit: m.unit,
       date,
       source: "manual",
-      loggedVia: OFFLINE_REPLAY,
+      loggedVia,
       category: m.category,
       occurredAt:
         m.canonical === VITAL_CANONICAL.temperature.canonical &&
@@ -416,7 +425,7 @@ export function insertVitals(
       unit: r.unit,
       date,
       source: "manual",
-      loggedVia: OFFLINE_REPLAY,
+      loggedVia,
       measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
@@ -1147,6 +1156,8 @@ export function applyIntent(
           temperatureTime: p.temperatureTime,
           peakFlowTime: p.peakFlowTime,
         },
+        // THE ONE call of this core that really is a replay (#3087).
+        OFFLINE_REPLAY,
         // The sitting's stated time (#2154), carried through the queue exactly as
         // the body-metric flow carries its own. An intent queued before the fold
         // has `undefined` here — no statement, and the legacy fields above apply.

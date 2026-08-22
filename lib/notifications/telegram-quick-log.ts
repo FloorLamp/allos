@@ -153,8 +153,22 @@ export async function handlePrnLogTap(
   const outcome = logAdministration(
     profileId,
     token.itemId,
-    // The on-demand `/dose` list, not a proactive send (#3087).
-    "telegram-command",
+    // WHICH KEYBOARD MINTED THIS BUTTON (#3087). `prn:` is deliberately SHARED — the
+    // on-demand `/dose` list and the digest / dose-reminder "+ Doses" expansion both
+    // mint it, so there is one administration-logging path on Telegram rather than two
+    // that could drift. That sharing is exactly why the handler cannot spell a literal:
+    // the `/dose` list is a reply to something the user typed, the offer tail rides a
+    // message this app sent unbidden, and those are the two ends of the axis #3087
+    // exists to measure.
+    //
+    // The discriminator is the KEYBOARD, and it is the same one `rebuildOfferListWithChips`
+    // has always used thirty lines below — an expanded offer list is the only keyboard
+    // that carries a collapse token. Asked through ONE predicate so the stamp and the
+    // rebuild can never answer differently, and it works on keyboards minted before this
+    // change, which a token marker could not.
+    isExpandedOfferKeyboard(cq.message?.reply_markup?.inline_keyboard)
+      ? "telegram-nudge"
+      : "telegram-command",
     undefined,
     notifyMessageId
   );
@@ -184,6 +198,29 @@ export async function handlePrnLogTap(
   }
 }
 
+// IS THIS KEYBOARD THE DIGEST'S EXPANDED OFFER LIST, rather than the `/dose` command's?
+//
+// `prn:` tokens are minted by both, on purpose (one administration path on Telegram), so
+// the button cannot say which it is. The KEYBOARD can: an expanded offer list is the only
+// keyboard that carries a collapse token — `expandedOfferActions` appends "Collapse" to
+// every list it renders, and `/dose` has never had one to collapse.
+//
+// TWO CALLERS ASK THIS ONE QUESTION: the provenance stamp (#3087), and the chip rebuild
+// (#2443) that must not borrow a `/dose` message's keyboard. They were one inline `.some()`
+// in the rebuild; naming it is what stops a second, subtly different spelling appearing
+// beside it — the same reasoning as `messageKindIsPracticeNudge` above.
+export function isExpandedOfferKeyboard(
+  rows: readonly (readonly { callback_data?: string }[])[] | undefined
+): boolean {
+  return (rows ?? []).some((row) =>
+    row.some(
+      (btn) =>
+        typeof btn.callback_data === "string" &&
+        btn.callback_data.startsWith(`${OFFER_COLLAPSE_PREFIX}:`)
+    )
+  );
+}
+
 // Redraw the digest's EXPANDED offer list after one of its items was logged, carrying
 // the correction chips for the tap that just landed.
 //
@@ -198,15 +235,9 @@ async function rebuildOfferListWithChips(
   messageId: number,
   cq: TelegramCallbackQuery
 ): Promise<void> {
-  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  const isOfferList = rows.some((row) =>
-    row.some(
-      (btn) =>
-        typeof btn.callback_data === "string" &&
-        btn.callback_data.startsWith(`${OFFER_COLLAPSE_PREFIX}:`)
-    )
-  );
-  if (!isOfferList) return;
+  if (!isExpandedOfferKeyboard(cq.message?.reply_markup?.inline_keyboard)) {
+    return;
+  }
   const date = today(profileId);
   const now = clockNow();
   const tz = getTimezone(profileId);
@@ -277,7 +308,12 @@ export async function handleRedoseLogTap(
     profileId,
     token.itemId,
     token.administrationId,
-    "telegram-command"
+    // A PROACTIVE SEND (#3087). `redose:` is minted in exactly one place —
+    // lib/notifications/redose.ts, the safety-tier dispatch that tells someone their
+    // redose window has opened — and nothing the user typed asked for it. It is a tap
+    // on a button this app sent, which is what `telegram-nudge` means; the `/dose`
+    // command's reusable list is the `prn:` token above, not this one.
+    "telegram-nudge"
   );
   if (outcome.kind === "stale-window") {
     const text =

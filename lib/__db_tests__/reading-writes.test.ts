@@ -296,11 +296,16 @@ describe("the shared upsert accounting", () => {
 describe("the migrated writers produce the rows they produced before", () => {
   it("insertVitals writes the same medical_records row through the core", () => {
     expect(
-      insertVitals(p.profileId, "2026-03-01", {
-        spo2: "97",
-        systolic: "",
-        diastolic: "",
-      }).wrote
+      insertVitals(
+        p.profileId,
+        "2026-03-01",
+        {
+          spo2: "97",
+          systolic: "",
+          diastolic: "",
+        },
+        "page"
+      ).wrote
     ).toBe(true);
     const row = db
       .prepare(

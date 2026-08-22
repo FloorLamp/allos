@@ -85,7 +85,7 @@ describe("the manual vitals core (insertVitals)", () => {
         profileId,
         "2026-03-02",
         { systolic: "118", diastolic: "76" },
-        // Millisecond ISO in — the shape a client's toISOString() posts.
+        "page", // Millisecond ISO in — the shape a client's toISOString() posts.
         "2026-03-02T07:12:00.000Z"
       ).wrote
     ).toBe(true);
@@ -112,7 +112,7 @@ describe("the manual vitals core (insertVitals)", () => {
 
   it("stores NULL for an untimed sitting, which reads back day-grain", () => {
     expect(
-      insertVitals(profileId, "2026-03-03", { spo2: "97" }, null).wrote
+      insertVitals(profileId, "2026-03-03", { spo2: "97" }, "page", null).wrote
     ).toBe(true);
     const rows = medRows("Oxygen Saturation", "2026-03-03");
     expect(rows).toHaveLength(1);
@@ -131,6 +131,7 @@ describe("the manual vitals core (insertVitals)", () => {
         profileId,
         "2026-03-04",
         { glucose: "94", glucoseUnit: "mg/dL" },
+        "page",
         "2026-03-05T01:30:00Z" // the NEXT UTC day — off the row's own day
       )
       // …and SAYS SO now (#2363): the reading lands, and the sitting's verdict
@@ -148,6 +149,7 @@ describe("the manual vitals core (insertVitals)", () => {
         profileId,
         "2026-03-05",
         { peakFlow: "410" },
+        "page",
         "2026-03-05T07:30:00Z"
       ).wrote
     ).toBe(true);
@@ -166,6 +168,7 @@ describe("the manual vitals core (insertVitals)", () => {
         profileId,
         "2026-03-05",
         { peakFlow: "380" },
+        "page",
         "2026-03-05T20:10:00Z"
       ).wrote
     ).toBe(true);
@@ -182,13 +185,18 @@ describe("the manual vitals core (insertVitals)", () => {
   it("replays a pre-fold intent's temperatureTime onto the temperature row alone, note-free", () => {
     // occurredAt undefined = the legacy shape: an intent queued before the fold.
     expect(
-      insertVitals(profileId, "2026-03-06", {
-        systolic: "121",
-        diastolic: "79",
-        temperature: "100.4",
-        tempUnit: "F",
-        temperatureTime: "19:40",
-      }).wrote
+      insertVitals(
+        profileId,
+        "2026-03-06",
+        {
+          systolic: "121",
+          diastolic: "79",
+          temperature: "100.4",
+          tempUnit: "F",
+          temperatureTime: "19:40",
+        },
+        "page"
+      ).wrote
     ).toBe(true);
     const temp = medRows("Body Temperature", "2026-03-06");
     expect(temp).toHaveLength(1);
