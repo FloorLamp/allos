@@ -305,6 +305,13 @@ export default function ScheduleGrid({
                       onMouseEnter={() => setHoverCode(entry.code)}
                     >
                       <td
+                        // Named for the census hover pass (#3489 d4). The grid's
+                        // group-label rows are <td>s too, and they carry no
+                        // handler — a registry selector of `tbody td` hovers one
+                        // of those, reports an honest no-op, and the surface with
+                        // the tree's clearest hover-only content silently stops
+                        // being captured. Measured 2026-08-22, on the first run.
+                        data-testid="schedule-grid-vaccine-cell"
                         className={`sticky left-0 z-10 cursor-help px-3 py-1.5 ${
                           rowHover
                             ? "bg-slate-50 dark:bg-ink-850"

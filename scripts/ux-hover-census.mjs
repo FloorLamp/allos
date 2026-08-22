@@ -199,9 +199,24 @@ export function hoverSnapshot(opts) {
     );
   };
 
+  // THE CANDIDATE SET, and each third of it earns its place:
+  //   controls — a hover affordance often IS a control, and a control that only
+  //     appears under the pointer is the sharpest form of this blind spot;
+  //   text leaves — the payload itself. Leaves and not every element, because a
+  //     wrapper would report the same single reveal once per level of the tree
+  //     above the thing that actually appeared;
+  //   testid'd elements — the ones this repo NAMES. Two reasons, and the second
+  //     was measured rather than reasoned: a row that says
+  //     `td[data-testid="schedule-grid-vaccine-cell"]` is one a reviewer can act
+  //     on, where an anonymous `span "Tdap"` is not; and without them the probe
+  //     did not examine its own registered hover target on
+  //     /records/history/immunizations (a <td> wrapping a <div> is neither a
+  //     control nor a leaf), which the guard's named-subject check caught on the
+  //     first run. A probe that cannot see the element it was pointed at is the
+  //     failure that reads exactly like a clean sweep.
   const candidates = new Set();
   for (const el of root.querySelectorAll(
-    'a[href],button,input:not([type=hidden]),select,textarea,summary,[role="button"],[role="link"],[role="tooltip"]'
+    'a[href],button,input:not([type=hidden]),select,textarea,summary,[role="button"],[role="link"],[role="tooltip"],[data-testid]'
   ))
     candidates.add(el);
   for (const el of root.querySelectorAll("*"))

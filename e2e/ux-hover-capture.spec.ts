@@ -73,13 +73,13 @@ const SURFACES: Surface[] = [
   {
     route: "/",
     why: "The dashboard's Standing cluster: #3459 item 2's door labels, the named miss this deliverable exists for.",
-    // measured 1163
-    minExamined: 400,
+    // measured 2647, 2647, 2647 across --repeat-each=3 on 2026-08-22
+    minExamined: 900,
   },
   {
     route: "/records/history/immunizations",
     why: "The CDC schedule grid: #3375's load-bearing case, where the mouse panel is the ONLY path to the content.",
-    // measured 1571 (with the schedule disclosure open)
+    // measured 1465, 1465, 1465 (schedule disclosure open) across --repeat-each=3
     minExamined: 500,
   },
 ];
@@ -268,13 +268,18 @@ async function expectHoverProbeSees(
   // state would leave every `-hover.png` showing the resting state while the table
   // beside it swore something was revealed — the worst available outcome, because
   // the shot would be read as evidence.
+  const payloadPainted = () =>
+    page
+      .locator(".forged-payload")
+      .evaluate((el: Element) => el.checkVisibility({ opacityProperty: true }));
   await page.locator(`#${FORGED_REVEAL}`).hover();
-  await page.waitForTimeout(HOVER_THRESHOLDS.settleMs);
+  // Wait for the REVEAL, not for a clock. The opacity transition finishing is the
+  // signal, and polling it is both faster than the settle budget and immune to a
+  // box slow enough to blow through it.
+  await expect.poll(payloadPainted).toBe(true);
   await page.screenshot({ fullPage: true });
   expect(
-    await page
-      .locator(".forged-payload")
-      .evaluate((el: Element) => el.checkVisibility({ opacityProperty: true })),
+    await payloadPainted(),
     "the hover state did not survive a full-page screenshot, so every `-hover.png` " +
       "the census writes is a picture of the resting state."
   ).toBe(true);
@@ -310,13 +315,17 @@ test.describe("the census hover pass can see what only hover shows (#3489)", () 
       await page.goto(surface.route);
       await expect(page.getByRole("main")).toBeVisible();
       if (entry.openFirst) {
-        await page.locator(entry.openFirst).first().click();
+        await page.locator(entry.openFirst).click();
       }
       // WAIT FOR THE CONTENT, NOT THE CONTAINER. A snapshot taken between the
       // shell and its content examines an empty page and reports a small number
       // that looks like a small page — and a floor is exactly the assertion that
       // direction defeats.
-      await expect(page.locator(entry.target).first()).toBeVisible();
+      // The probe hovers `document.querySelector(target)` — the first match in
+      // document order — so the first match is precisely the element this wait is
+      // about; waiting on any other one would prove the wrong thing.
+      const hoverTarget = page.locator(entry.target).first(); // first-ok: the exact element the probe will hover
+      await expect(hoverTarget).toBeVisible();
 
       await expectHoverProbeSees(page, surface, entry);
     });

@@ -228,7 +228,11 @@ export const HOVER_CAPTURES = [
     // closed <details>, which is what `openFirst` is for.
     route: "/records/history/immunizations",
     label: "CDC schedule grid vaccine tooltip",
-    target: '[data-testid="cdc-schedule-grid"] tbody td',
+    // The vaccine NAME cell specifically. `tbody td` also matches the grid's
+    // group-label rows, which carry no handler: registered that way the entry
+    // reported an honest no-op and the surface stopped being captured (measured
+    // on this pass's first run).
+    target: '[data-testid="schedule-grid-vaccine-cell"]',
     reveals: '[data-testid="schedule-grid-tip"]',
     openFirst: '[data-testid="immunization-schedule-disclosure"]',
     ruling: "#3375 — the tooltip is the sole path to this content",
