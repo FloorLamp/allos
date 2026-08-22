@@ -63,6 +63,24 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **Is the invariant pinned against the RIGHT event?** A proof that a change is
+  safe "across operation X" is worthless if X is not the only operation that
+  touches the state. #3537's fix made a nutrient matcher read
+  `source_name ?? name`, and the proof was exact: the whole reading — keys,
+  amounts, compound, UL, RDA — is byte-identical before and after ADOPTION.
+  True, and the wrong event. `updateIntakeItem` writes `name` and never writes
+  `source_name`, so an adopted row's evidence froze at the document label and
+  every later rename went unseen: a firing upper-limit warning went silent at
+  12.5x the limit, and a calcium warning fired naming `Lisinopril 10 mg`, which
+  contains none. Enumerate every writer of BOTH fields before accepting an
+  equality argument, and ask which other events can move either side.
+
+  The sibling shape: **a field written once and never overwritten becomes a
+  stale CLAIM the moment anything else moves.** `source_name`'s `COALESCE` was
+  presented as a virtue — "the document's label is recorded once and never
+  overwritten" — and it is, as a record of what the document said. It stops
+  being true as a description of the row.
+
 - **What KEYS on the field you are rewriting?** A stored string is rarely only
   display. #3537 standardised imported medication names — an offer the person
   accepts — and silenced three FIRING upper-limit warnings: vitamin D at 250
@@ -172,6 +190,15 @@ These are not review taste; each retired a green that meant nothing.
   is applied in exactly one place, and the five counted were companion utilities
   riding on it. Both would have sized the work wrongly. Instruct every lane to
   re-derive the counts its issue states, and to report the derivation.
+- **YOUR proposed fix is a hypothesis, not a specification.** A lane implements
+  an orchestrator's suggestion faithfully and without the scepticism it applies
+  to its own ideas — so a fix named in a review comment arrives with LESS
+  scrutiny than one the lane invented, not more. I proposed the one-line
+  `COALESCE(source_name, name)` that produced the defect above, and the lane
+  built exactly it, correctly, with a mutation-pinned guard. Put a proposed fix
+  in front of the same lens as everything else, and say in the brief that it is
+  a starting point to be attacked rather than an instruction.
+
 - **"We do strictly less of X" is only safe when X has one consequence.** I
   scoped a P1 fix on the argument that narrowing a destructive sweep "strictly
   reduces what is deleted, so it cannot lose a row today's code preserves,
