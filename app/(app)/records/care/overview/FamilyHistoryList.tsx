@@ -31,7 +31,15 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
     cell: (f) => {
       const implication = familyHistoryScreeningImplication(f);
       return (
-        <>
+        // ONE node for the value, not a fragment of five. Below `sm` this cell is
+        // a non-wrapping flex line (#3499), so each top-level node would be an
+        // ITEM on it — the screening implication below would sit BESIDE the
+        // condition rather than under it, and a row carrying code, death label,
+        // notes and implication runs past its own right edge. That is the
+        // sleep-history naps regression exactly (#3517); wrapped, this stacks
+        // inside itself. Desktop is a block flow either way. Guarded by
+        // lib/__tests__/card-meta-value-census.test.ts.
+        <span className="block">
           {f.condition}
           {f.code ? (
             <span className="ml-1.5 text-xs text-slate-400">{f.code}</span>
@@ -60,7 +68,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
               {implication.site} screening cadence
             </span>
           ) : null}
-        </>
+        </span>
       );
     },
   },
