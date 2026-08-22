@@ -63,6 +63,27 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **Two individually-correct changes can combine into a regression, and a
+  change-by-change review cannot see it.** #3550 cut an over-long intro (the
+  issue asked for exactly that) and hid a column heading for a column that no
+  longer existed (true, and commented as such). Together they removed every
+  visible cue from a destructive bulk control: at phone width four sweep boxes
+  ended up at the same left edge, size, font and colour as the ordinary routing
+  chips below them, and one tap turned off twelve message kinds with no label,
+  no confirm and no undo. Each half was right. Review the RESULTING SURFACE, not
+  the diff — and when a change removes explanatory copy, ask what else on that
+  screen was carrying the explanation.
+
+- **A guard that lists a union's members does not track the union.** In
+  TypeScript, `const inks: CellInk[] = ["live", "ghost", "off"]` accepts a
+  SUBSET, so widening `CellInk` leaves the array, the guard and `typecheck` all
+  green — while the comment above it claimed a new member could not be added to
+  one function and forgotten in another. That is precisely what a fourth member
+  did, on a file in the mandatory tier. Make a new member a TYPE ERROR:
+  `as const satisfies readonly T[]` with an exhaustiveness assertion, or drive
+  the cases from a `Record<T, …>`. Then add a member locally and watch it fail,
+  because the annotation is exactly the thing that reads as proof and is not.
+
 - **Is the invariant pinned against the RIGHT event?** A proof that a change is
   safe "across operation X" is worthless if X is not the only operation that
   touches the state. #3537's fix made a nutrient matcher read
