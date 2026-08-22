@@ -222,16 +222,18 @@ export function ingestHealthConnectPayload(
     //
     // It used to be summed from the PLAN, before `commitChunks` ran, while the comment at
     // the emit site claimed it covered "every reason a supersede was declined". It did
-    // not cover the last one: pass B's `pushed_at IS ?` guard, which declines a victim a
-    // concurrent push has re-stamped between pass A's read and the DELETE. That row stays
-    // in the table, the day reads high, and the plan-side number had already said zero.
+    // not cover the last one: pass B's concurrency guards, which decline a victim whose
+    // evidence expired between pass A's read and the DELETE — a row another push has
+    // re-stamped (`pushed_at IS ?`), or one whose replacement is no longer standing under
+    // its natural key (`EXISTS`, #3438). That row stays in the table, the day reads high,
+    // and the plan-side number had already said zero.
     //
     // THREE TERMS, all of them days reading high, which is the only thing the line
     // claims. `leftStanding` is stored rows the push overlapped and did not collapse.
     // `inPushDoubleCounts` is the excess the push carries against ITSELF — ruling item
     // 3's "a push carrying both anchorings writes both", which leaves a day double
     // counting with no STORED row for `leftStanding` to name. And `victims.length -
-    // superseded` is the planned deletes the guard refused: rows still standing, for a
+    // superseded` is the planned deletes the guards refused: rows still standing, for a
     // reason the plan could not see because it had not happened yet.
     //
     // The three are disjoint by construction: `leftStanding` and `victims` are disjoint

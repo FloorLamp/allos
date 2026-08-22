@@ -1154,20 +1154,25 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
     //
     // Driven through the passes directly rather than through `ingestHealthConnectPayload`,
     // because the interleaving is BETWEEN two passes and no single-process call can sit
-    // there. MUTATION: drop the clause (or write `pushed_at = ?`, which never matches a
+    // there. PASS C IS RUN TOO, in the order the last chunk runs it, and that is not
+    // decoration: pass B's second guard asks whether the replacement is standing under
+    // its natural key, so a plan applied over a store the push was never written to is a
+    // plan every victim of which is correctly declined (the case below it).
+    // MUTATION: drop the clause (or write `pushed_at = ?`, which never matches a
     // NULL and so also fails the era tests) and the re-stamped row is deleted.
     const p = freshProfile("D1-GUARD-RESTAMPED");
     seedNyDay(p);
+    const stamp = "2026-05-02T06:00:00Z";
     const rows = parseHealthConnectPayload(
-      { ...LA_PUSH, timestamp: "2026-05-02T06:00:00Z" },
+      { ...LA_PUSH, timestamp: stamp },
       "UTC"
     ).samples;
-    const plan = planMetricSampleSupersede(p, rows, HC, {
-      pushedAt: "2026-05-02T06:00:00Z",
-    });
+    const plan = planMetricSampleSupersede(p, rows, HC, { pushedAt: stamp });
     // It planned something: the seeded NY day is the victim of the LA re-anchoring.
     expect(plan.victims.length).toBe(1);
     expect(plan.victims[0].pushedAt).toBe("2026-05-02T05:00:00Z");
+    // PASS C — the LA rows land, so the replacement this delete is licensed by is there.
+    upsertMetricSamples(p, rows, HC, undefined, { pushedAt: stamp });
 
     // The concurrent push, committed between the two passes: it re-stamps the row this
     // plan is about to delete.
@@ -1176,7 +1181,9 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
       plan.victims[0].id
     );
     expect(applyMetricSampleSupersede(p, plan.victims)).toBe(0);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([
+      7000, 8000, 8100, 900,
+    ]);
 
     // AND THE PLAN IS OTHERWISE LIVE — the same call deletes the row when the stamp is
     // still the one it read, so the assertion above is the guard and not a no-op.
@@ -1185,7 +1192,7 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
       plan.victims[0].id
     );
     expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
-    expect(stored(p, "steps")).toEqual([]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([7000, 8100, 900]);
   });
 
   it("counts a guard-declined victim as a day still reading high", () => {
@@ -1459,6 +1466,259 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     expect(result.split.superseded).toBe(1);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([8100]);
     expect(warningsOf(result)).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R8 — the evidence pass A read expired between the passes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R8 — pass B re-states the licensing row, not just the victim", () => {
+  // THE REFUTATION. Round 7's outcome, reached through the race the file's own comment
+  // already said was open. Pass A consults pass C's vetoes, but it consults them at PASS A
+  // TIME, and three processes share one DB file: a user hitting Data → Manage between the
+  // passes deletes the re-anchored row and writes the #508 tombstone for it, and pass C
+  // then refuses to write the push's re-send of that exact row. Pass B deleted the
+  // old-anchoring victim anyway. The day went to ZERO — committed, silent, and LOWER than
+  // `main`, which has no production `DELETE FROM metric_samples` on this path at all.
+  //
+  // The PR modelled a concurrent writer in exactly this window and guarded ONE of the two
+  // things pass A read — the victim's provenance (`pushed_at IS ?`) — and not the other,
+  // the evidence that licensed the delete. So the DELETE now re-states the natural key of
+  // the row that replaces the victim and asks whether anything stands there.
+  //
+  // MUTATION for every case below: drop the `AND EXISTS (…)` clause from
+  // `applyMetricSampleSupersede` and the first case's day reads nothing.
+  //
+  // Driven through the passes by hand, because the interleaving is BETWEEN pass A and
+  // pass C and no single-process call can sit there — the same reason the `pushed_at`
+  // guard's own case is driven this way.
+
+  const KEY = "2026-05-01T15:00:00Z";
+  const RE_ANCHORED = { started_at: KEY, ended_at: "2026-05-02T01:00:00Z" };
+
+  /** A store holding BOTH anchorings of one day, written by one earlier push. */
+  function seedBothAnchorings(p: number): void {
+    pushBoth(p);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 8500]);
+  }
+  function pushBoth(p: number) {
+    const parsed = parseHealthConnectPayload(
+      {
+        app_version: "1.9.14",
+        steps: [
+          steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
+          steps(KEY, RE_ANCHORED.ended_at, 8500),
+        ],
+        timestamp: "2026-05-02T00:00:00Z",
+      },
+      "UTC"
+    );
+    lastParsedDetails = parsed.details;
+    return ingestHealthConnectPayload(p, parsed, HC, 2);
+  }
+
+  /** The rolling window re-sending the re-anchored row, as pass A/C receive it. */
+  const RESEND_STAMP = "2026-05-02T03:00:00Z";
+  function resendRows() {
+    return parseHealthConnectPayload(
+      {
+        app_version: "1.9.14",
+        steps: [steps(KEY, RE_ANCHORED.ended_at, 8500)],
+        timestamp: RESEND_STAMP,
+      },
+      "UTC"
+    ).samples;
+  }
+
+  /** Data → Manage: the row goes, and a tombstone on its exact natural key stays. */
+  function userDeletes(p: number, startedAt: string): void {
+    db.prepare(
+      "DELETE FROM metric_samples WHERE profile_id = ? AND started_at = ?"
+    ).run(p, startedAt);
+    writeImportTombstone(
+      p,
+      "metric_samples",
+      metricSampleTombstoneKey("steps", HC, ORIGIN, startedAt)
+    );
+  }
+
+  it("keeps the victim when the user deletes the replacing row between the passes", () => {
+    const p = freshProfile("R8-DELETED-BETWEEN");
+    seedBothAnchorings(p);
+    const rows = resendRows();
+
+    // PASS A — over the store as it stands, which still holds the row this push re-sends.
+    const plan = planMetricSampleSupersede(p, rows, HC, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(plan.victims.length).toBe(1);
+    expect(plan.victims[0].replacedBy.startedAt).toBe(KEY);
+
+    // ← THE CONCURRENT WRITER. The user is on Data → Manage *because* they saw the
+    // duplicated day this PR exists to fix, and deletes the re-anchored one of the pair.
+    userDeletes(p, KEY);
+
+    // PASS C — the tombstone refuses the re-send outright, so nothing lands.
+    const counts = upsertMetricSamples(p, rows, HC, undefined, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(counts.suppressed).toBe(1);
+
+    // PASS B — no replacement stands under the licensing key, so the DELETE matches
+    // nothing and the 8000 row survives. `main` reads 8000 here; so does this.
+    const removed = applyMetricSampleSupersede(p, plan.victims);
+    expect(removed).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+
+    // AND IT IS SAID OUT LOUD rather than reported as a replacement that happened. This
+    // is the term `ingestHealthConnectPayload` adds to the Review line for exactly the
+    // reasons the plan could not see, and it counts this one.
+    expect(plan.victims.length - removed).toBe(1);
+  });
+
+  it("still deletes the victim when nothing raced the plan — the control", () => {
+    // THE SAME SETUP AND THE SAME CALL, with the concurrent writer removed. Without this
+    // the case above passes for a guard that never matches anything.
+    const p = freshProfile("R8-CONTROL");
+    seedBothAnchorings(p);
+    const rows = resendRows();
+    const plan = planMetricSampleSupersede(p, rows, HC, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(plan.victims.length).toBe(1);
+    const counts = upsertMetricSamples(p, rows, HC, undefined, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(counts.suppressed).toBe(0);
+    expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8500]);
+  });
+
+  it("deletes the victim when a CONCURRENT row stands under the licensing key", () => {
+    // THE GUARD IS NOT A VETO DETECTOR, and this is the case that says so. Two of the four
+    // vetoes REQUIRE a stored twin, so when one of them newly fires between the passes a
+    // row is standing under the licensing key by definition — the `EXISTS` is true and the
+    // delete goes ahead. That is the invariant behaving, not a hole in it: what the day
+    // holds afterwards is the hand-corrected reading, never nothing.
+    //
+    // MUTATION: make the guard test the victim instead of the replacement (e.g. re-state
+    // `id`), and this case stops distinguishing itself from the one above.
+    const p = freshProfile("R8-LOCKED-TWIN-APPEARS");
+    // The store holds ONLY the old anchoring, so pass A finds no twin for the re-send.
+    const seed = parseHealthConnectPayload(
+      {
+        app_version: "1.9.14",
+        steps: [steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000)],
+        timestamp: "2026-05-02T00:00:00Z",
+      },
+      "UTC"
+    );
+    lastParsedDetails = seed.details;
+    ingestHealthConnectPayload(p, seed, HC, 2);
+    const rows = resendRows();
+    const plan = planMetricSampleSupersede(p, rows, HC, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(plan.victims.length).toBe(1);
+
+    // ← THE CONCURRENT WRITER: a row appears under the licensing key, hand-corrected.
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value, edited,
+          pushed_at)
+       VALUES (?, ?, ?, 'steps', '2026-05-01', ?, ?, 9100, 1, ?)`
+    ).run(p, HC, ORIGIN, KEY, RE_ANCHORED.ended_at, "2026-05-02T02:00:00Z");
+
+    // PASS C — the #133 lock holds, so the push's row lands nowhere.
+    const counts = upsertMetricSamples(p, rows, HC, undefined, {
+      pushedAt: RESEND_STAMP,
+    });
+    expect(counts.edited).toBe(1);
+    // PASS B — a row IS standing under the licensing key, so the collapse happens.
+    expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
+    // The day holds the hand-corrected reading. OLD, or OLD + NEW, or NEW — never NEITHER.
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9100]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R8b — one record sent twice is one reading.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R8b — a push carrying one natural key twice", () => {
+  // THE REFUTATION. `countInPushDoubleCounts` groups by (metric, origin) and counts
+  // "overlaps a row of this push that starts earlier". Two copies of ONE record share a
+  // `started_at`, so they overlap totally — and the ON CONFLICT merges them into ONE
+  // stored row. The store was right every time; the warning was false and scaled with the
+  // number of copies: two copies said "1 reading", three said "2 readings", over a store
+  // holding one row.
+  //
+  // The principle was already written one paragraph up in the same docstring, for the
+  // stored side only — "the stored row and the incoming row are ONE reading updated in
+  // place, not two" — and `scripts/hc-origin-overlap-census.ts` already collapses on
+  // (metric, origin, started_at) "so a re-sent moving-end snapshot is not reported as an
+  // overlap with itself". The dedupe of `dayBuckets` is that same collapse, applied to the
+  // incoming side.
+  //
+  // MUTATION for the first three cases: drop the `dayBucketKeys` guard in
+  // `planMetricSampleSupersede` and each reports a double count over a single stored row.
+
+  function pushSteps(p: number, records: unknown[], timestamp: string) {
+    const parsed = parseHealthConnectPayload(
+      { app_version: "1.9.14", steps: records, timestamp },
+      "UTC"
+    );
+    lastParsedDetails = parsed.details;
+    return ingestHealthConnectPayload(p, parsed, HC, 2);
+  }
+  const A = steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9000);
+
+  it("says nothing when one record arrives twice", () => {
+    const p = freshProfile("R8B-TWICE");
+    pushSteps(p, [A, A], "2026-05-02T02:00:00Z");
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000]);
+    expect(warningsOf(null)).toEqual([]);
+  });
+
+  it("says nothing when it arrives three times", () => {
+    // The count SCALED with the copies, which is what made it obviously a phantom rather
+    // than a debatable unit.
+    const p = freshProfile("R8B-THRICE");
+    pushSteps(p, [A, A, A], "2026-05-02T02:00:00Z");
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000]);
+    expect(warningsOf(null)).toEqual([]);
+  });
+
+  it("says nothing when the second copy is the one pass C vetoes", () => {
+    // AND THIS IS THE `dayBuckets` COMMENT'S OWN CLAIM, falsified. It said the list holds
+    // "the ones that pass C will actually write … counts nothing that never lands". Pass A
+    // reads the PRE-PUSH store for both rows of a duplicated key and sees no veto on
+    // either; pass C reads the first row's write when it reaches the second and
+    // stale-retry vetoes it. The row never landed and was counted anyway. The dedupe is
+    // what makes that harmless — not the veto gate.
+    const p = freshProfile("R8B-STALE-COPY");
+    pushSteps(
+      p,
+      [A, steps("2026-05-01T15:00:00Z", "2026-05-01T20:00:00Z", 6000)],
+      "2026-05-02T02:00:00Z"
+    );
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000]);
+    expect(warningsOf(null)).toEqual([]);
+  });
+
+  it("still counts two genuine anchorings — the control", () => {
+    // THE TRUE POSITIVE THE DEDUPE MUST NOT TAKE WITH IT. Two DIFFERENT natural keys
+    // overlapping is ruling item 3's "write both", and it really is two readings summing
+    // into one day.
+    const p = freshProfile("R8B-CONTROL");
+    pushSteps(
+      p,
+      [steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000), A],
+      "2026-05-02T02:00:00Z"
+    );
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 9000]);
+    expect(warningsOf(null)).toContain(overlapsLeftWarning(1));
   });
 });
 
