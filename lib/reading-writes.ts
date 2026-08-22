@@ -23,6 +23,7 @@
 // decision.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import {
   classifyUpsert,
   isEditLocked,
@@ -104,15 +105,15 @@ function bodyMetricInsert(column: BodyMetricColumn) {
   switch (column) {
     case "weight_kg":
       return db.prepare(
-        `INSERT INTO body_metrics (date, weight_kg, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, weight_kg, source, occurred_at, profile_id, logged_via) VALUES (?, ?, ?, ?, ?, ?)`
       );
     case "body_fat_pct":
       return db.prepare(
-        `INSERT INTO body_metrics (date, body_fat_pct, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, body_fat_pct, source, occurred_at, profile_id, logged_via) VALUES (?, ?, ?, ?, ?, ?)`
       );
     case "resting_hr":
       return db.prepare(
-        `INSERT INTO body_metrics (date, resting_hr, source, occurred_at, profile_id) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO body_metrics (date, resting_hr, source, occurred_at, profile_id, logged_via) VALUES (?, ?, ?, ?, ?, ?)`
       );
   }
 }
@@ -307,6 +308,18 @@ export interface ReadingWriteInput<U extends string = string> {
   category?: MedicalCategory;
   /** Clinical provenance. Its PRESENCE forces the observation store (clause 2). */
   provenance?: ReadingProvenance;
+  /**
+   * WHICH SURFACE RECORDED THIS READING (#3087) — required, with no default, on the
+   * ONE core that writes both `body_metrics` and `medical_records`. Required on the
+   * INPUT type rather than as a positional argument because that is how this core
+   * already takes everything, and a missing required property is the same compile
+   * error a missing argument is.
+   *
+   * The `metric_samples` arm ignores it: that store is outside #3087's first tranche
+   * and carries no column for it yet, so nothing is silently dropped that the schema
+   * could have held.
+   */
+  loggedVia: LoggedVia;
 }
 
 // What recording one reading did. `statedTimeRefused` (#2363, completing #2311 and
@@ -444,7 +457,8 @@ export function recordReading<U extends string>(
           input.value,
           sourceKey,
           stated ?? null,
-          profileId
+          profileId,
+          input.loggedVia
         );
         return {
           ok: true,
@@ -541,8 +555,8 @@ export function recordReading<U extends string>(
           .prepare(
             `INSERT INTO medical_records
                (profile_id, date, occurred_at, category, name, value, value_num, unit, canonical_name,
-                source, external_id, notes, reference_range, encounter_id, provider_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+                source, external_id, notes, reference_range, encounter_id, provider_id, logged_via)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`
           )
           .run(
             profileId,
@@ -559,7 +573,8 @@ export function recordReading<U extends string>(
             input.notes ?? null,
             p?.reportedRange ?? null,
             p?.encounterId ?? null,
-            p?.providerId ?? null
+            p?.providerId ?? null,
+            input.loggedVia
           );
         const rowId = Number(info.lastInsertRowid);
         addCanonicalNames([placement.canonical]);

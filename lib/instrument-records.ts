@@ -9,6 +9,7 @@
 // by construction, pinned by lib/__db_tests__/mental-health-milestone-exemption.test.ts.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { captureDelete } from "./undo-delete-db";
 import { reconcileFlags } from "./queries/medical";
 import { isMinor } from "./life-stage";
@@ -112,7 +113,8 @@ export interface RecordInstrumentInput {
 // "there is nothing here for this profile" answer the row-resolving cores give.
 export function recordInstrumentScore(
   profileId: number,
-  input: RecordInstrumentInput
+  input: RecordInstrumentInput,
+  loggedVia: LoggedVia
 ): number | null {
   if (adultOnlyRefusal(profileId, input.instrument)) return null;
   const canonicalName = canonicalNameFor(input.instrument);
@@ -123,8 +125,8 @@ export function recordInstrumentScore(
     const info = db
       .prepare(
         `INSERT INTO medical_records
-           (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id)
-         VALUES (?, 'instrument', ?, ?, ?, NULL, NULL, ?, ?, ?)`
+           (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id, logged_via)
+         VALUES (?, 'instrument', ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`
       )
       .run(
         input.date,
@@ -133,7 +135,8 @@ export function recordInstrumentScore(
         input.total,
         input.notes?.trim() || null,
         canonicalName,
-        profileId
+        profileId,
+        loggedVia
       );
     const recordId = Number(info.lastInsertRowid);
     const answers = input.answers ?? [];

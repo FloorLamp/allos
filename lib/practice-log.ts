@@ -7,6 +7,7 @@
 
 import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { daysBetweenDateStr, isRealIsoDate, zonedDateParts } from "./date";
 import { sqlNow } from "./clock";
 import {
@@ -101,6 +102,10 @@ export function logPracticeSession(
   profileId: number,
   practice: string,
   date: string,
+  // WHICH SURFACE LOGGED THIS SESSION (#3087) — required, no default. The one-tap
+  // button is mounted on the Wellness page, the dashboard practice card and the
+  // quick-log sheet, so this is the only thing that tells the three apart afterwards.
+  loggedVia: LoggedVia,
   opts: {
     time?: string | null;
     durationMin?: number | null;
@@ -130,8 +135,8 @@ export function logPracticeSession(
     db.prepare(
       `INSERT INTO practice_logs
          (profile_id, practice, date, time, duration_min, notes,
-          created_at, notify_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          created_at, notify_message_id, logged_via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       name,
@@ -147,7 +152,8 @@ export function logPracticeSession(
       // freeze SQL's real clock and the seam are hours apart, and every practice burst
       // would read as long expired. In production the two are identical.
       sqlNow(),
-      opts.notifyMessageId ?? null
+      opts.notifyMessageId ?? null,
+      loggedVia
     );
     const count = getPracticeDayCount(profileId, name, date);
     return { kind: "logged", count, date };
@@ -184,6 +190,7 @@ export function logPracticeSessionForDay(
   profileId: number,
   practice: string,
   date: string,
+  loggedVia: LoggedVia,
   opts: { time?: string | null; durationMin?: number | null } = {}
 ): PracticeDayLogOutcome {
   const name = normalizePracticeName(practice);
@@ -193,7 +200,7 @@ export function logPracticeSessionForDay(
   return writeTx((): PracticeDayLogOutcome => {
     const existing = getPracticeDayCount(profileId, name, date);
     if (existing > 0) return { kind: "already-logged", count: existing, date };
-    const logged = logPracticeSession(profileId, name, date, opts);
+    const logged = logPracticeSession(profileId, name, date, loggedVia, opts);
     return logged.kind === "logged"
       ? logged
       : // Unreachable — the name and the date window are both checked above — but the
@@ -249,6 +256,7 @@ export function updatePracticeSession(
 export function logPracticeByTargetId(
   profileId: number,
   targetId: number,
+  loggedVia: LoggedVia,
   // The message this tap came from (#2264/#2875), stamped onto the row so the burst it
   // creates renders on THIS message and never on a sibling.
   notifyMessageId?: number | null
@@ -260,9 +268,13 @@ export function logPracticeByTargetId(
     )
     .get(targetId, profileId) as { scope_value: string } | undefined;
   if (!row) return { kind: "stale-target" };
-  return logPracticeSession(profileId, row.scope_value, today(profileId), {
-    notifyMessageId: notifyMessageId ?? null,
-  });
+  return logPracticeSession(
+    profileId,
+    row.scope_value,
+    today(profileId),
+    loggedVia,
+    { notifyMessageId: notifyMessageId ?? null }
+  );
 }
 
 // Delete one logged session by id (a correction). Profile-scoped so a leaked id no-ops.

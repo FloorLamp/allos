@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { IMPORTED } from "../logged-via";
 import { sqlNow } from "@/lib/clock";
 import type { ActivityType, ActivityComponent, MedicalFlag } from "@/lib/types";
 import {
@@ -148,8 +149,9 @@ export function upsertPracticeLogs(
   );
   const insert = db.prepare(
     `INSERT INTO practice_logs
-       (profile_id, practice, date, time, duration_min, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+       (profile_id, practice, date, time, duration_min, source, external_id,
+        logged_via)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE practice_logs
@@ -233,7 +235,8 @@ export function upsertPracticeLogs(
         row.time,
         row.duration_min,
         source,
-        row.external_id
+        row.external_id,
+        IMPORTED
       );
       const disposition = classifyUpsert(false, false);
       tallyUpsert(counts, disposition);
@@ -347,8 +350,8 @@ export function upsertBodyMetrics(
   // (incoming for a fresh row, mergeBodyMetric(mine, incoming) for an existing one),
   // so `excluded.*` already carries the merged triple and DO UPDATE writes it.
   const upsert = db.prepare(
-    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source, logged_via)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, date, source) DO UPDATE SET
        weight_kg = excluded.weight_kg,
        body_fat_pct = excluded.body_fat_pct,
@@ -415,7 +418,8 @@ export function upsertBodyMetrics(
       post.weight_kg,
       post.body_fat_pct,
       post.resting_hr,
-      source
+      source,
+      IMPORTED
     );
     tallyUpsert(counts, disposition);
     // Per-row provenance (#1333): the affected row id is the pre-image row's id on an
@@ -673,8 +677,8 @@ export function upsertVitals(
   );
   const insert = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, occurred_at, category, name, value, value_num, unit, canonical_name, source, external_id, result_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (profile_id, date, occurred_at, category, name, value, value_num, unit, canonical_name, source, external_id, result_status, logged_via)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE medical_records
@@ -798,7 +802,8 @@ export function upsertVitals(
         r.canonical,
         source,
         r.external_id,
-        normalizeResultStatus(r.result_status)
+        normalizeResultStatus(r.result_status),
+        IMPORTED
       );
       const newId = Number(info.lastInsertRowid);
       ids.push(newId);
@@ -857,8 +862,8 @@ export function upsertActivities(
   // SQLite's own value in production, where the seam is the real clock.
   const insert = db.prepare(
     `INSERT INTO activities
-       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?, ?)`
+       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id, created_at, logged_via)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?, ?, ?)`
   );
   // NOTE (#342): equipment_id is deliberately absent from BOTH this UPDATE's column
   // set and the compareCols above, so a re-sync never clobbers a hand-set session
@@ -958,7 +963,8 @@ export function upsertActivities(
         componentsJson,
         source,
         r.external_id,
-        sqlNow()
+        sqlNow(),
+        IMPORTED
       );
       tallyUpsert(counts, classifyUpsert(false, false));
       sink?.push({

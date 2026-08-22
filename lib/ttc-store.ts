@@ -17,6 +17,7 @@
 //     (ttcObservationKey).
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { isRealIsoDate, shiftDateStr } from "./date";
 import { getCycleForecast, listCyclePeriods } from "./cycle-store";
 import { getRiskAttributes, getTtcStart } from "./settings/profile-attrs";
@@ -107,6 +108,7 @@ export function logLhTestCore(
   profileId: number,
   date: string,
   result: LhResult,
+  loggedVia: LoggedVia,
   intensity: number | null = null
 ): TtcWriteOutcome {
   if (!isRealIsoDate(date))
@@ -149,15 +151,17 @@ export function logLhTestCore(
     } else {
       db.prepare(
         `INSERT INTO medical_records
-           (profile_id, date, category, name, value, value_num, source, external_id)
-         VALUES (?, ?, 'lab', ?, ?, ?, ?, NULL)`
+           (profile_id, date, category, name, value, value_num, source, external_id,
+            logged_via)
+         VALUES (?, ?, 'lab', ?, ?, ?, ?, NULL, ?)`
       ).run(
         profileId,
         date,
         LH_TEST_RECORD_NAME,
         result,
         intensity,
-        MANUAL_SOURCE
+        MANUAL_SOURCE,
+        loggedVia
       );
     }
     const counts = emptyCounts();

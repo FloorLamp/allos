@@ -7,6 +7,7 @@
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, hoistedStatement, today, writeTx } from "../../db";
 import { readAllForUpdate } from "../../tx";
+import type { LoggedVia } from "../../logged-via";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -258,6 +259,12 @@ function applyDoseStatusCore(
   doseId: number,
   date: string,
   target: DoseStatusTarget,
+  // WHICH SURFACE THIS WRITE CAME FROM (#3087). Required, with no default, so a new
+  // call site cannot silently land in the wrong bucket — the property the whole
+  // column rests on. Stamped at CREATION only: a `clear` DELETES the row and stores
+  // nothing, and the UPDATE arm below leaves the original stamp exactly where it is,
+  // because an edit is not a new tap.
+  loggedVia: LoggedVia,
   opts: DoseResolveOptions = {}
 ): DoseStatusOutcome {
   // A far-off (forged) date can't land a misdated row (#614); a legitimate late tap
@@ -366,8 +373,8 @@ function applyDoseStatusCore(
       db.prepare(
         `INSERT INTO intake_item_logs
            (dose_id, item_id, date, amount, status, recorded_at, occurred_at,
-            notify_message_id)
-         VALUES (?,?,?,?,?,?,?,?)`
+            notify_message_id, logged_via)
+         VALUES (?,?,?,?,?,?,?,?,?)`
       ).run(
         doseId,
         owned.item_id,
@@ -376,7 +383,8 @@ function applyDoseStatusCore(
         target,
         utcInstant(capturedAt),
         target === "taken" ? utcInstant(stamp ?? capturedAt) : null,
-        opts.notifyMessageId ?? null
+        opts.notifyMessageId ?? null,
+        loggedVia
       );
     } else {
       // The immutable record stamp stays put. The explicit target owns whether this row
@@ -435,13 +443,17 @@ export function markDoseTaken(
   doseId: number,
   itemId: number | null,
   date: string,
+  // Which surface this tap came from (#3087). Required and positional, BEFORE the
+  // optional tail, so omitting it is a compile error rather than an undefined that
+  // reads as "unknown surface".
+  loggedVia: LoggedVia,
   takenAt?: Date,
   // Which message's tap this is (#2264) — Telegram reminder handlers only; see
   // DoseResolveOptions.notifyMessageId.
   notifyMessageId?: number | null
 ): DoseTakenOutcome {
   return resolvedOutcome(
-    applyDoseStatusCore(profileId, doseId, date, "taken", {
+    applyDoseStatusCore(profileId, doseId, date, "taken", loggedVia, {
       resolveOnly: true,
       itemId,
       takenAt,
@@ -461,10 +473,11 @@ export function markDoseSkipped(
   profileId: number,
   doseId: number,
   itemId: number | null,
-  date: string
+  date: string,
+  loggedVia: LoggedVia
 ): DoseTakenOutcome {
   return resolvedOutcome(
-    applyDoseStatusCore(profileId, doseId, date, "skipped", {
+    applyDoseStatusCore(profileId, doseId, date, "skipped", loggedVia, {
       resolveOnly: true,
       itemId,
     })
@@ -479,9 +492,10 @@ export function setDoseStatusCore(
   profileId: number,
   doseId: number,
   date: string,
-  target: DoseStatusTarget
+  target: DoseStatusTarget,
+  loggedVia: LoggedVia
 ): DoseStatusOutcome {
-  return applyDoseStatusCore(profileId, doseId, date, target);
+  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia);
 }
 
 // Take BACK the dose confirm a tap just made (#2642) — the inverse behind the act→undo
@@ -507,7 +521,11 @@ export function setDoseStatusCore(
 export function undoDoseConfirm(
   profileId: number,
   doseId: number,
-  date: string
+  date: string,
+  // The surface taking the confirm back. The clear DELETES the row, so nothing is
+  // stamped — the argument is required anyway because the shared core requires it,
+  // and a surface that cannot name itself has no business writing this ledger.
+  loggedVia: LoggedVia
 ): DoseUndoOutcome {
   return writeTx((tx): DoseUndoOutcome => {
     // Profile-scoped through the parent item (the child-table rule), and that join IS the
@@ -529,7 +547,13 @@ export function undoDoseConfirm(
     if (standing.length === 0) return "not-taken";
     if (standing.length > 1) return "changed";
     if (standing[0].status !== "taken") return "changed";
-    const outcome = applyDoseStatusCore(profileId, doseId, date, "clear");
+    const outcome = applyDoseStatusCore(
+      profileId,
+      doseId,
+      date,
+      "clear",
+      loggedVia
+    );
     // `cleared` is the only success available once a single taken row is proven to stand;
     // anything else is the shared core's own refusal (dose retired, item paused between
     // the probe and the write's re-check) and is passed through rather than dressed up as
@@ -557,6 +581,7 @@ function logAdministrationTx(
   recordedAtStr: string,
   occurredAtStr: string,
   expectedRedoseAdministrationId: null,
+  loggedVia: LoggedVia,
   notifyMessageId?: number | null
 ): AdministrationOutcome;
 function logAdministrationTx(
@@ -566,6 +591,7 @@ function logAdministrationTx(
   recordedAtStr: string,
   occurredAtStr: string,
   expectedRedoseAdministrationId: number,
+  loggedVia: LoggedVia,
   notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome;
 function logAdministrationTx(
@@ -575,6 +601,7 @@ function logAdministrationTx(
   recordedAtStr: string,
   occurredAtStr: string,
   expectedRedoseAdministrationId: number | null,
+  loggedVia: LoggedVia,
   notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
@@ -627,8 +654,8 @@ function logAdministrationTx(
     db.prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, amount, recorded_at, occurred_at,
-          notify_message_id)
-       VALUES (?,?,?,?,?,?,?)`
+          notify_message_id, logged_via)
+       VALUES (?,?,?,?,?,?,?,?)`
     ).run(
       dose.dose_id,
       itemId,
@@ -636,7 +663,8 @@ function logAdministrationTx(
       dose.amount,
       recordedAtStr,
       occurredAtStr,
-      notifyMessageId ?? null
+      notifyMessageId ?? null,
+      loggedVia
     );
     decrementSupply(profileId, itemId);
   }
@@ -670,6 +698,8 @@ function logAdministrationTx(
 export function logAdministration(
   profileId: number,
   itemId: number,
+  // Which surface this administration was logged from (#3087) — required, no default.
+  loggedVia: LoggedVia,
   occurredAt?: Date,
   // Which message's tap this is (#2264) — Telegram handlers only, exactly as
   // markDoseTaken takes it. Without it a chat-logged administration produces an
@@ -697,6 +727,7 @@ export function logAdministration(
       recordedAtStr,
       occurredAtStr,
       null,
+      loggedVia,
       notifyMessageId
     )
   );
@@ -708,7 +739,8 @@ export function logAdministration(
 export function logRedoseWindowAdministration(
   profileId: number,
   itemId: number,
-  armingAdministrationId: number
+  armingAdministrationId: number,
+  loggedVia: LoggedVia
 ): RedoseWindowAdministrationOutcome {
   const tz = getTimezone(profileId);
   const when = clockNow();
@@ -722,7 +754,8 @@ export function logRedoseWindowAdministration(
       date,
       recordedAtStr,
       occurredAtStr,
-      armingAdministrationId
+      armingAdministrationId,
+      loggedVia
     )
   );
 }
@@ -780,7 +813,8 @@ export function logHistoricalDose(
   doseId: number,
   occurredAt: Date,
   amountOverride: string | null,
-  adjustSupply: boolean
+  adjustSupply: boolean,
+  loggedVia: LoggedVia
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
@@ -882,8 +916,8 @@ export function logHistoricalDose(
     db.prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, amount, recorded_at, occurred_at,
-          supply_adjusted)
-       VALUES (?,?,?,?,?,?,?)`
+          supply_adjusted, logged_via)
+       VALUES (?,?,?,?,?,?,?,?)`
     ).run(
       doseId,
       itemId,
@@ -891,7 +925,8 @@ export function logHistoricalDose(
       amount,
       instantNow(),
       occurredAtStr,
-      adjustSupply ? 1 : 0
+      adjustSupply ? 1 : 0,
+      loggedVia
     );
     if (adjustSupply) decrementSupply(profileId, itemId);
     return { kind: "logged", date };

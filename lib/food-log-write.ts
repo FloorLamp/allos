@@ -19,6 +19,7 @@
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
 import { judgeEatenAt } from "./food-eating-time";
@@ -121,6 +122,11 @@ export function logFoodServingCore(
   profileId: number,
   group: string,
   date: string,
+  // WHICH SURFACE THIS SERVING WAS LOGGED FROM (#3087). Required, no default, and
+  // positioned before the optional tail so a new call site cannot inherit a bucket by
+  // omission. Stamped on the per-tap `food_log_events` row at creation and never
+  // rewritten — a correction moves the time, not the provenance.
+  loggedVia: LoggedVia,
   // The tap instant (an ISO-8601 UTC string), appended to the food_log_events ledger
   // (#950). Defaults to NOW and always remains the audit/tap time. The instant
   // remains injectable so tests can seed a specific legacy slot.
@@ -167,8 +173,8 @@ export function logFoodServingCore(
     db.prepare(
       `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       slug,
@@ -177,7 +183,8 @@ export function logFoodServingCore(
       storedSlot,
       time?.eatenAt ?? null,
       time?.source ?? null,
-      origin?.notifyMessageId ?? null
+      origin?.notifyMessageId ?? null,
+      loggedVia
     );
     return {
       kind: "logged",
