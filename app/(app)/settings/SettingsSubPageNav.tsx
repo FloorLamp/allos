@@ -29,11 +29,11 @@ export default function SettingsSubPageNav({
             key={p.href}
             href={p.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-full px-3 py-1 text-sm font-medium ${
-              active
-                ? "bg-(--accent-soft) text-brand-800 dark:text-brand-400"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-750 dark:text-slate-300 dark:hover:bg-ink-700"
-            }`}
+            // Settings' sub-pages are destinations, so this strip is the chip
+            // primitive's nav role (#3475) — one shape and one selected shade
+            // with the Records pane strip, instead of a fourth pairing of
+            // accent-soft and slate.
+            className="chip chip-nav"
           >
             {p.label}
           </Link>

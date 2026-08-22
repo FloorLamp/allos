@@ -3,9 +3,18 @@ import { goalBarClass } from "@/lib/outcome-goals";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A labelled stat box used in the Cardio/Sport/Exercise detail panels: an
-// uppercase label over a bold value, with optional sub-text, link, label badge,
-// and a goal-style progress bar.
+// A labelled stat box: an uppercase label over a bold value, with optional
+// sub-text, link, label badge, and a goal-style progress bar.
+//
+// THE BLESSED STAT TILE (#3475). "Uppercase label over a bold value" had grown
+// three treatments — this box's borderless literal tint, a page-local BORDERED
+// `rounded-lg border bg-surface` tile on /medical/cycles, and the longevity
+// pillar boxes. This component is the tier the others fold into, and the box it
+// draws is the `stat-tile` utility in app/globals.css: tokened fill (`--ghost`,
+// so dark mode comes for free instead of being maintained by hand as
+// `bg-slate-50 dark:bg-ink-900`) and the SURFACE radius, because a tile holds
+// content and is not a control. A new stat grid renders this rather than
+// re-deciding either.
 export function StatBox({
   label,
   value,
@@ -44,9 +53,7 @@ export function StatBox({
     <div
       data-testid={testId}
       className={`${
-        variant === "plain"
-          ? "min-w-0"
-          : "rounded-lg bg-slate-50 px-3 py-2 dark:bg-ink-900"
+        variant === "plain" ? "min-w-0" : "stat-tile"
       } ${className ?? ""}`}
     >
       <dt className="flex items-center gap-1.5 section-label">

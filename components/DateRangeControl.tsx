@@ -51,19 +51,20 @@ const DefaultLink: LinkLike = ({
   </Link>
 );
 
-// Shared pill styling for the quick-range chips — identical on the Timeline and
-// the Trends hub so the one control looks the same on both. The active pill also
-// carries `aria-current="page"` (see LinkComponent call sites): the lit state was
-// previously conveyed by colour ALONE, which neither AT nor a test can read — and
-// with Trends' 90D default (#1485 G) "which window am I in?" is answered by the
-// pill, so it needs a non-visual answer.
-function rangePillClass(active: boolean): string {
-  return `rounded-full px-3 py-1 text-sm font-medium transition ${
-    active
-      ? "bg-ink-900 text-white dark:bg-white dark:text-ink-950"
-      : "bg-surface/70 text-slate-600 hover:bg-surface dark:text-slate-300 dark:hover:bg-ink-850"
-  }`;
-}
+// The quick-range chips are FILTERS (#3475): they narrow the window of the chart
+// or feed already on screen, in place, and they are not destinations. So they
+// wear the chip primitive's filter role rather than the third selected-state
+// language they used to hand-roll — a full-round pill whose active state was an
+// INK fill, stacked in the dose ledger directly above `components/FilterPills.tsx`
+// and its brand fill, which is two answers to "which one is on?" on adjacent
+// rows of one filter block.
+//
+// The active pill carries `aria-current="page"` at every call site below (the
+// lit state was once conveyed by colour ALONE, which neither AT nor a test can
+// read — and with Trends' 90D default (#1485 G) "which window am I in?" is
+// answered by the pill, so it needs a non-visual answer). The primitive now
+// paints the lit state FROM that attribute, so the two can no longer disagree.
+const RANGE_PILL = "chip chip-filter";
 
 // The shared from/to + quick-range control. The Timeline and the Trends hub both
 // drive their charts from this one control: a GET form that submits
@@ -183,7 +184,7 @@ export default function DateRangeControl({
                   key={qr.label}
                   href={buildHref({ from: qr.from, to: qr.to })}
                   testId={`${idPrefix}-pill-${qr.label}`}
-                  className={rangePillClass(isQuickRangeActive(range, qr))}
+                  className={RANGE_PILL}
                   aria-current={
                     isQuickRangeActive(range, qr) ? "page" : undefined
                   }
@@ -194,13 +195,14 @@ export default function DateRangeControl({
               <LinkComponent
                 href={buildHref({})}
                 testId={`${idPrefix}-pill-all-time`}
-                className={rangePillClass(isAllTimeRange(range))}
+                className={RANGE_PILL}
                 aria-current={isAllTimeRange(range) ? "page" : undefined}
               >
                 All time
               </LinkComponent>
               <CustomRangeToggle
-                className={`shrink-0 sm:hidden ${rangePillClass(customActive)}`}
+                active={customActive}
+                className={`sm:hidden ${RANGE_PILL}`}
               />
               {trailingChips}
             </div>

@@ -552,6 +552,111 @@
     var(--badge-bd, color-mix(in srgb, currentColor 30%, transparent));
 }
 
+/* ── THE CHIP PRIMITIVE (issue #3475) ───────────────────────────────────────
+
+   A chip is a SMALL, SELECTABLE, SHOULDER-TO-SHOULDER control: a pane tab, a
+   filter option, a quick-access link, a time-window pick. Before this the app
+   had no such primitive, so every strip hand-rolled one — `app/(app)/training/
+   AnalyzeSection.tsx` alone drew TWO, with different padding and different
+   selected brand shades, on one screen. `.btn` is the wrong home (a chip is not
+   a button-family member and takes no 40px floor, see below) and `.badge` is
+   the wrong home too: a badge is a STATUS LABEL nobody can press. This is the
+   third thing, and it is one class plus a role.
+
+   TWO ROLES, ALREADY SHIPPED AND ALREADY RULED (#3408). This does not invent a
+   vocabulary; it registers the one the app already speaks:
+
+     .chip .chip-nav     — a DESTINATION. Outline pill, `rounded-full`, selected
+                           = brand outline + brand tint. Records' pane strip.
+     .chip .chip-filter  — a CONTROL that narrows a list in place. Inset well,
+                           `rounded-md`, no border, selected = brand FILL.
+                           `components/FilterPills.tsx` is the app's one filter
+                           affordance and renders through this.
+
+   The pair is deliberately unmistakable at a glance, because #3408 was filed
+   about a phone stacking three look-alike strips with three different meanings.
+   A NEW chip strip picks the role by what it DOES and inherits both states; it
+   does not pick colours.
+
+   ONE PADDING, BOTH ROLES. `px-3 py-1.5` over `text-sm` renders 32px tall, which
+   is what FilterPills already measured and documented. The nav role was `py-1`
+   (30px) and the two Analyze strips were `py-1.5` and `py-1`; three heights for
+   one idea is the drift this closes, and 32 is the value the app's own filter
+   affordance had already settled on.
+
+   THE SELECTED STATE IS PAINTED FROM THE ARIA, NOT FROM A TERNARY. Both roles
+   key their lit state on `[aria-current]` (excluding the literal "false") or
+   `[aria-pressed="true"]` — the two attributes the shipped chip strips already
+   carry, because #1485/#2869 ruled that "which one am I on?" must have a
+   non-visual answer. Reading the paint off the same attribute makes that
+   structural: a chip CANNOT look selected without announcing that it is, and a
+   call site cannot spell the selected shade differently because it no longer
+   spells it at all.
+
+   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 40px floor
+   (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
+   not reach here — chips are acquired by their WIDTH along a scrolling row, and
+   a 44px-tall strip of seven is a band of chrome above the list it narrows
+   (FilterPills' own measured note). #3514 is open on whether the registry's tap
+   floor is 40 or 44 and is UNRULED; this primitive declares neither, so nothing
+   here depends on that answer. A strip that genuinely needs a bigger target
+   still says so at its call site and wins — `@utility` sorts into the utilities
+   layer, so it cannot lower a call site's `min-h-*`. */
+@utility chip {
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+}
+
+@utility chip-nav {
+  @apply rounded-full text-slate-600 dark:text-slate-300;
+  /* The structural-grey border pair, not a literal (#794). */
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  &:hover {
+    background-color: var(--ghost-hover);
+  }
+  /* Specificity 0,3,0 (class + attribute + the :not()'s attribute) beats the
+     base and the hover above, so the lit state survives a pointer resting on
+     it. `[aria-current="false"]` is excluded because React renders that string
+     when a call site passes the literal false rather than undefined. */
+  &[aria-current]:not([aria-current="false"]),
+  &[aria-pressed="true"] {
+    @apply border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300;
+  }
+}
+
+@utility chip-filter {
+  @apply rounded-md bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300;
+  &:hover {
+    @apply bg-slate-200 dark:bg-ink-700;
+  }
+  &[aria-current]:not([aria-current="false"]),
+  &[aria-pressed="true"] {
+    @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
+  }
+}
+
+/* ── THE STAT TILE (issue #3475) ────────────────────────────────────────────
+
+   An uppercase label over a bold value, in a small box, repeated across a grid.
+   `components/StatBox.tsx` is the blessed tier and this is the treatment it
+   wears; page-local copies fold into it rather than re-deciding.
+
+   TOKENS, NOT LITERALS. It used to be `bg-slate-50 dark:bg-ink-900` — a literal
+   pair outside #2701's token system, so it drifted from every other tinted
+   inset in the app and needed its dark twin maintained by hand. `--ghost` is
+   the token for exactly this (`.btn-ghost` reads it), and it carries its own
+   dark value.
+
+   THE CARD RADIUS, ON PURPOSE. #2701 ruled two radii: `--radius-card` for
+   SURFACES and `--radius-control` for CONTROLS. A stat tile is a surface — it
+   holds content and nothing presses it — and it was wearing `rounded-lg`, the
+   control radius, which is the specific mismatch #3475 names. */
+@utility stat-tile {
+  @apply px-3 py-2;
+  border-radius: var(--radius-card);
+  background-color: var(--ghost);
+}
+
 @utility th {
   /* Slightly tighter cell padding on phones so wide tables fit more columns. */
   @apply px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:px-3 dark:text-slate-400;

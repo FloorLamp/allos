@@ -23,6 +23,15 @@ import type { RecordsGroup } from "./nav";
 // are visually distinct" is one attribute comparison rather than a spec
 // hard-coding two lists of Tailwind classes.
 //
+// AND THE OUTLINE PILL IS NOW THE PRIMITIVE'S NAV ROLE (#3475). The class list
+// this file used to hand-write moved verbatim into `chip chip-nav` in
+// app/globals.css — one padding (`py-1` -> the primitive's `py-1.5`, 30px -> the
+// 32px the filter role already measured, so the two strips are the same height
+// and differ only where they are meant to: shape and fill) and one selected
+// shade, inherited by every future strip instead of copied into it. The lit
+// state is painted from the `aria-current` this file already set, so a pane chip
+// cannot light up without announcing that it is the current page.
+//
 // `shrink-0 whitespace-nowrap` IS THE SPECIALTY STRIP'S FIX. `flex-nowrap` stops
 // the CONTAINER wrapping; it does nothing about a flex item being squeezed, and
 // with neither of these two classes — the `origin/main` shape — six panes on a
@@ -66,11 +75,7 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
               key={p.id}
               href={p.href}
               aria-current={active ? "page" : undefined}
-              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium ${
-                active
-                  ? "border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300"
-                  : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-              }`}
+              className="chip chip-nav"
             >
               {p.label}
             </Link>
