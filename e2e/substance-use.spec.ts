@@ -460,7 +460,9 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await page.goto("/records/specialty/substance-use");
 
     const alcoholCard = page.getByTestId("substance-card-alcohol");
-    await alcoholCard.getByRole("button", { name: "Alcohol options" }).click();
+    await alcoholCard
+      .getByRole("button", { name: "Actions for Alcohol" })
+      .click();
     await page.getByTestId("substance-cap-open-alcohol").click();
     await page.getByTestId("substance-cap-input-alcohol").fill("7");
     await settledClick(page, page.getByTestId("substance-cap-save-alcohol"));
@@ -469,7 +471,9 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(progress).toContainText(/of 7 this week|7-drink weekly cap/);
     await expect(progress).not.toContainText("streak");
 
-    await alcoholCard.getByRole("button", { name: "Alcohol options" }).click();
+    await alcoholCard
+      .getByRole("button", { name: "Actions for Alcohol" })
+      .click();
     await page.getByTestId("substance-cap-clear-alcohol").click();
     await settledClick(page, page.getByRole("button", { name: "Remove cap" }));
     await expect(progress).toHaveCount(0, { timeout: 15_000 });
@@ -479,7 +483,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await page.goto("/records/specialty/substance-use");
     const count = await weekCount(page, "alcohol");
     const card = page.getByTestId("substance-card-alcohol");
-    await card.getByRole("button", { name: "Alcohol options" }).click();
+    await card.getByRole("button", { name: "Actions for Alcohol" }).click();
     await page.getByTestId("substance-cap-open-alcohol").click();
     await page.getByTestId("substance-cap-input-alcohol").fill(String(count));
     await settledClick(page, page.getByTestId("substance-cap-save-alcohol"));
@@ -487,7 +491,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(progress).toContainText("at your");
     await expect(progress).not.toContainText(/met|on pace/i);
 
-    await card.getByRole("button", { name: "Alcohol options" }).click();
+    await card.getByRole("button", { name: "Actions for Alcohol" }).click();
     await page.getByTestId("substance-cap-clear-alcohol").click();
     await settledClick(page, page.getByRole("button", { name: "Remove cap" }));
   });
@@ -497,7 +501,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
 
     const nicotineCard = page.getByTestId("substance-card-nicotine");
     await nicotineCard
-      .getByRole("button", { name: "Nicotine options" })
+      .getByRole("button", { name: "Actions for Nicotine" })
       .click();
     await page.getByTestId("substance-cap-open-nicotine").click();
     await page.getByTestId("substance-cap-input-nicotine").fill("7");
@@ -508,7 +512,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(progress).not.toContainText("streak");
 
     await nicotineCard
-      .getByRole("button", { name: "Nicotine options" })
+      .getByRole("button", { name: "Actions for Nicotine" })
       .click();
     await page.getByTestId("substance-cap-clear-nicotine").click();
     await settledClick(page, page.getByRole("button", { name: "Remove cap" }));

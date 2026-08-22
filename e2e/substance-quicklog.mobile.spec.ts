@@ -159,7 +159,7 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
 
     const card = page.getByTestId(`substance-card-${NAME}`);
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await card.getByRole("button", { name: `${NAME} options` }).click();
+    await card.getByRole("button", { name: `Actions for ${NAME}` }).click();
     await page.getByTestId(`substance-cap-open-${NAME}`).click();
     await page.getByTestId(`substance-cap-input-${NAME}`).fill("7");
     await settledClick(page, page.getByTestId(`substance-cap-save-${NAME}`));

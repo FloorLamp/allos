@@ -1514,29 +1514,42 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    evidence, not the fix: the ninth icon-only composition added next month would
    have inherited nothing.
 
-   So the floor lives with the family, at the 40px tap floor #644/#3377 already
-   set for this app, and only below `sm` — desktop density keeps its compact
-   `btn-sm` rows, where a mouse is doing the pointing. `btn-sm` composes as
-   `btn btn-sm`, so it inherits this from `.btn` rather than needing its own rule.
-   Width too, not just height: an icon-only button is the one shape that can be
-   narrower than the floor, and a labeled button is already wider than 40px, so
-   the width half is a no-op everywhere it is not needed.
+   So the floor lives with the family, at the 40px floor #3377 named for this and
+   that the two hand-fixed call sites had already reached for independently, and
+   only below `sm` — desktop density keeps its compact `btn-sm` rows, where a
+   mouse is doing the pointing. `btn-sm` composes as `btn btn-sm`, so it inherits
+   this from `.btn` rather than needing its own rule. Width too, not just height:
+   an icon-only button is the one shape that can be narrower than the floor, and a
+   labeled button is already wider than 40px, so the width half is a no-op
+   everywhere it is not needed.
 
-   A bare rule rather than an `@apply` inside each `@utility`: four utilities
-   repeating one number is the drift this rule exists to end, and an unlayered
-   rule also outranks a call site's own `min-h-*`, which is what makes it a FLOOR
-   instead of a default. A control that genuinely must be shorter on a phone is
-   not a member of this family.
+   IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
+   CEILING. The first cut of this rule was unlayered, on the reasoning that
+   outranking a call site's own `min-h-*` is what stops one drifting below the
+   number. It does the opposite: `min-block-size` does not compose, it REPLACES, so
+   the winning declaration is simply the last word — and an unlayered 40px beat the
+   pager's deliberate `min-h-11`, shrinking a 44px thumb step to 40 and taking
+   e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
+   floor. Tailwind orders `components` before `utilities`, so this loses to any
+   call-site `min-h-*` and the two numbers resolve the way a reader expects them
+   to: the family sets 40 for everything that asks for nothing, and a surface that
+   needs MORE — the pager's 44px tap step — says so and gets it. A surface that
+   wants LESS is not asking for a smaller floor; it is telling us it is not a
+   member of this family.
 
    The guard is e2e/button-height-floor.mobile.spec.ts, which measures RENDERED
    bounding boxes at 390px — a class-string assertion would have passed against
-   the very tree this defect shipped in. */
-@media (max-width: 639.98px) {
-  .btn,
-  .btn-ghost,
-  .btn-danger {
-    min-block-size: 2.5rem;
-    min-inline-size: 2.5rem;
+   the very tree this defect shipped in. The other direction, that this rule never
+   pulls a taller target DOWN, is the pager's own rendered-box measurement in
+   e2e/mobile-ui-polish.spec.ts, which is the test that caught it. */
+@layer components {
+  @media (max-width: 639.98px) {
+    .btn,
+    .btn-ghost,
+    .btn-danger {
+      min-block-size: 2.5rem;
+      min-inline-size: 2.5rem;
+    }
   }
 }
 
