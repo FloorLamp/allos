@@ -165,6 +165,53 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
     });
   }
 
+  // ── THE FORGERIES ─────────────────────────────────────────────────────────────
+  //
+  // Given in PIXELS, never in class names. This is a test of the probe, and
+  // borrowing the app's own `input` / `btn btn-sm` utilities would make it fail the
+  // day somebody changes them for an unrelated reason — and would put a DECLARATION
+  // back in the middle of a measurement.
+  //
+  // They are handed to the probe rather than planted by a separate `page.evaluate`,
+  // and that is a fix rather than a convenience: measured 2026-08-22, a node planted
+  // in a separate call was gone from `<main>` by probe time on 1 run in 5 of
+  // /wellness (`connected: false`, while every surviving run read an identical
+  // rect). Planting inside the measurement makes the two one synchronous turn, so
+  // there is no window for a re-render to land in. See `forgeries` in
+  // scripts/ux-geometry-census.mjs.
+
+  // #3478's shape: a control whose right edge is past the viewport with nothing
+  // that scrolls to it. 160px wide, starting 40px before the edge → 120px of it is
+  // unreachable.
+  const CLIPPED_CONTROL =
+    '<button data-testid="forged-clipped-control" ' +
+    'style="position:fixed;top:120px;left:calc(100vw - 40px);width:160px;height:40px">' +
+    "off the edge</button>";
+
+  // The benign twin: a link parked 820px into a 200px-wide `overflow-x:auto`
+  // scroller. Its box is far outside a 390px viewport and the user reaches it by
+  // swiping, which is the layout working — a wide table in its wrapper is the
+  // commonest shape in this app.
+  const REACHABLE_CONTROL =
+    '<div data-testid="forged-benign-scroller" style="overflow-x:auto;width:200px">' +
+    '<div style="width:900px;display:flex;justify-content:flex-end">' +
+    '<a href="#" data-testid="forged-reachable-link" style="width:80px">reachable</a>' +
+    "</div></div>";
+
+  // #3481's shape: one `items-end` row, a 40px control beside a 32px one.
+  const MIXED_ROW =
+    '<div data-testid="forged-mixed-row" style="display:flex;align-items:flex-end;gap:8px">' +
+    '<select style="height:40px"><option>x</option></select>' +
+    '<button style="height:32px">Add this bottle</button></div>';
+
+  // Its benign twin: 40px beside 41px. Sub-pixel layout and a 1px border are not
+  // what anybody means by "one row, two control heights", and a probe that says
+  // they are is noise a reader learns to skip past — including past the real rows.
+  const EVEN_ROW =
+    '<div data-testid="forged-even-row" style="display:flex;align-items:flex-end;gap:8px">' +
+    '<button style="height:40px">a</button>' +
+    '<button style="height:41px">b</button></div>';
+
   test("catches a control forged off the right edge, and stays quiet on one a scroller can reach", async ({
     page,
   }) => {
@@ -175,51 +222,28 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
     const clean = await runProbe(page, UNCAPPED);
     expect(clean.clipCandidates).toBeGreaterThan(0);
 
-    // ── THE BENIGN NEIGHBOUR, FIRST ────────────────────────────────────────────
-    // A link parked 820px into a 200px-wide `overflow-x:auto` scroller. Its box is
-    // far outside the 390px viewport and the user reaches it by swiping, which is
-    // the layout working — a wide table in its wrapper is the commonest shape in
-    // this app. Planted BEFORE the offender so a probe that flags it cannot hide
-    // inside the offender's own delta.
-    await page.evaluate(() => {
-      const main = document.querySelector("main");
-      const scroller = document.createElement("div");
-      // FORGED BY A SPEC on purpose — never a real render.
-      scroller.setAttribute("data-testid", "forged-benign-scroller");
-      scroller.style.cssText = "overflow-x:auto;width:200px";
-      scroller.innerHTML =
-        '<div style="width:900px;display:flex;justify-content:flex-end">' +
-        '<a href="#" data-testid="forged-reachable-link" style="width:80px">reachable</a>' +
-        "</div>";
-      main?.appendChild(scroller);
+    // ── THE BENIGN NEIGHBOUR, ON ITS OWN FIRST ─────────────────────────────────
+    // Measured alone, so a probe that flags it cannot hide inside the offender's
+    // own delta.
+    const benign = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [REACHABLE_CONTROL],
     });
-
-    const withBenign = await runProbe(page, UNCAPPED);
     expect(
-      withBenign.clipped.filter((c) => c.el.includes("forged-reachable-link")),
+      benign.clipped.filter((c) => c.el.includes("forged-reachable-link")),
       "the probe flagged a control that a designed horizontal scroller reaches — " +
         "a probe that cries wolf on every wide table gets deleted"
     ).toEqual([]);
-    expect(withBenign.clippedTotal).toBe(clean.clippedTotal);
-    // …and it was genuinely measured rather than skipped for some other reason.
-    expect(withBenign.clipCandidates).toBeGreaterThan(clean.clipCandidates);
+    expect(benign.clippedTotal).toBe(clean.clippedTotal);
+    // …and it was genuinely measured rather than skipped for some other reason,
+    // which is the difference between "not an offender" and "never looked at".
+    expect(benign.clipCandidates).toBeGreaterThan(clean.clipCandidates);
 
-    // ── THE OFFENDER ───────────────────────────────────────────────────────────
-    // #3478's shape: a control whose right edge is past the viewport with nothing
-    // that scrolls to it. Positioned in pixels, so what the probe reads back is a
-    // rendered box and not a class name.
-    await page.evaluate(() => {
-      const main = document.querySelector("main");
-      const b = document.createElement("button");
-      // FORGED BY A SPEC on purpose — never a real render.
-      b.setAttribute("data-testid", "forged-clipped-control");
-      b.textContent = "off the edge";
-      b.style.cssText =
-        "position:fixed;top:120px;left:calc(100vw - 40px);width:160px;height:40px";
-      main?.appendChild(b);
+    // ── THE OFFENDER, BESIDE IT ────────────────────────────────────────────────
+    const dirty = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [REACHABLE_CONTROL, CLIPPED_CONTROL],
     });
-
-    const dirty = await runProbe(page, UNCAPPED);
     const caught = dirty.clipped.filter((c) =>
       c.el.includes("forged-clipped-control")
     );
@@ -230,11 +254,11 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
         "including buttons"
     ).toHaveLength(1);
     expect(caught[0].side).toBe("right");
-    // 160px wide, starting 40px before the edge: 120px of it is unreachable.
     expect(caught[0].overflowPx).toBe(120);
-    // Partially visible — the edge is cut off, which is exactly #3478 and reads
-    // differently from a box parked entirely off-screen.
+    // Partially visible — the edge is cut off, which is exactly #3478's shape and
+    // reads differently from a box parked entirely off-screen.
     expect(caught[0].visiblePart).toBe("partial");
+    // Exactly one new finding: the offender, and not the scroller beside it.
     expect(dirty.clippedTotal).toBe(clean.clippedTotal + 1);
   });
 
@@ -248,47 +272,18 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
     const clean = await runProbe(page, UNCAPPED);
     expect(clean.controlRowsExamined).toBeGreaterThan(0);
 
-    // ── THE BENIGN NEIGHBOUR ───────────────────────────────────────────────────
-    // 40px beside 41px. Sub-pixel layout and a 1px border are not what anybody
-    // means by "one row, two control heights", and a probe that says they are is
-    // noise the reader learns to skip.
-    await page.evaluate(() => {
-      const main = document.querySelector("main");
-      const row = document.createElement("div");
-      // FORGED BY A SPEC on purpose — never a real render.
-      row.setAttribute("data-testid", "forged-even-row");
-      row.style.cssText = "display:flex;align-items:flex-end;gap:8px";
-      row.innerHTML =
-        '<button style="height:40px">a</button><button style="height:41px">b</button>';
-      main?.appendChild(row);
-    });
-
-    const withBenign = await runProbe(page, UNCAPPED);
+    const benign = await runProbe(page, { ...UNCAPPED, forgeries: [EVEN_ROW] });
     expect(
-      withBenign.heightRows.filter((h) => h.row.includes("forged-even-row")),
+      benign.heightRows.filter((h) => h.row.includes("forged-even-row")),
       "the probe flagged a 1px difference as two control heights"
     ).toEqual([]);
-    expect(withBenign.heightRowsTotal).toBe(clean.heightRowsTotal);
-    expect(withBenign.controlRowsExamined).toBe(clean.controlRowsExamined + 1);
+    expect(benign.heightRowsTotal).toBe(clean.heightRowsTotal);
+    expect(benign.controlRowsExamined).toBe(clean.controlRowsExamined + 1);
 
-    // ── THE OFFENDER ───────────────────────────────────────────────────────────
-    // #3481's shape: one `items-end` row, a 40px control beside a 32px one. The
-    // heights are given in pixels rather than by composing `input` and `btn btn-sm`
-    // — this is a test of the probe, and borrowing the app's utilities would make
-    // it fail the day someone changes them for an unrelated reason.
-    await page.evaluate(() => {
-      const main = document.querySelector("main");
-      const row = document.createElement("div");
-      // FORGED BY A SPEC on purpose — never a real render.
-      row.setAttribute("data-testid", "forged-mixed-row");
-      row.style.cssText = "display:flex;align-items:flex-end;gap:8px";
-      row.innerHTML =
-        '<select style="height:40px"><option>x</option></select>' +
-        '<button style="height:32px">Add this bottle</button>';
-      main?.appendChild(row);
+    const dirty = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [EVEN_ROW, MIXED_ROW],
     });
-
-    const dirty = await runProbe(page, UNCAPPED);
     const caught = dirty.heightRows.filter((h) =>
       h.row.includes("forged-mixed-row")
     );

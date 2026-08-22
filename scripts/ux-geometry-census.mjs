@@ -110,7 +110,21 @@ export const GEOMETRY_THRESHOLDS = {
  * candidate COUNT says "something was here", the subject says "the thing you are
  * making a claim about was here". The harness does not pass one; the guard does.
  *
- * @param {{controlHeightTolerancePx: number, clipEpsilonPx: number, maxRowsPerVisit: number, subjectSelector?: string}} opts
+ * `forgeries` is a GUARD-ONLY affordance and the census never passes it: HTML
+ * fragments appended to `<main>` for the duration of ONE measurement and removed
+ * before this returns.
+ *
+ * It exists because the guard cannot plant in one call and measure in another.
+ * Measured 2026-08-22: on a live App Router page a re-render between the two
+ * removes the planted node — 1 run in 5 on `/wellness`, with the node reading
+ * `connected: false` at probe time while the surviving runs read an identical rect
+ * every time. A stable value with an unstable occurrence is something real
+ * happening sometimes, not noise. The available answers were to re-plant until it
+ * stuck (a retry, which masks which step raced) or to make the plant and the
+ * measurement THE SAME SYNCHRONOUS TURN, after which there is nothing left to race.
+ * This is the second.
+ *
+ * @param {{controlHeightTolerancePx: number, clipEpsilonPx: number, maxRowsPerVisit: number, subjectSelector?: string, forgeries?: string[]}} opts
  */
 export function geometryProbe(opts) {
   const { controlHeightTolerancePx, clipEpsilonPx, maxRowsPerVisit } = opts;
@@ -142,214 +156,243 @@ export function geometryProbe(opts) {
   // overhang on a desktop run.
   const viewportWidth = document.documentElement.clientWidth;
 
-  const CONTROL_SELECTOR = [
-    "a[href]",
-    "button",
-    "input:not([type=hidden])",
-    "select",
-    "textarea",
-    "summary",
-    '[role="button"]',
-    '[role="link"]',
-    '[role="tab"]',
-    '[role="menuitem"]',
-    '[role="switch"]',
-    '[role="combobox"]',
-  ].join(",");
-
-  /** Rendered, non-degenerate, and actually painted. */
-  const shown = (el) => {
-    if (el.getClientRects().length === 0) return false;
-    const cs = getComputedStyle(el);
-    if (cs.visibility === "hidden" || cs.display === "none") return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
+  // Guard-only forgeries, planted here so the plant and the measurement are one
+  // synchronous turn. `getBoundingClientRect()` below forces layout, so the boxes
+  // read are the boxes these produce.
+  const planted = [];
+  for (const html of opts.forgeries ?? []) {
+    const holder = document.createElement("div");
+    holder.innerHTML = html;
+    for (const child of [...holder.children]) {
+      root.appendChild(child);
+      planted.push(child);
+    }
+  }
+  const unplant = () => {
+    for (const el of planted) el.remove();
   };
+  try {
+    return measure();
+  } finally {
+    unplant();
+  }
 
-  /** A human-readable name for an element, so a row NAMES what it found. */
-  const describe = (el) => {
-    const tag = el.tagName.toLowerCase();
-    const testId = el.getAttribute("data-testid");
-    const id = el.getAttribute("id");
-    const text = (el.textContent ?? "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 48);
-    const label =
-      el.getAttribute("aria-label") ||
-      (el.tagName === "SELECT"
-        ? `select of ${el.querySelectorAll("option").length} options`
-        : "");
-    return (
-      tag +
-      (testId ? `[data-testid="${testId}"]` : id ? `#${id}` : "") +
-      (label ? ` (${label})` : text ? ` "${text}"` : "")
-    );
-  };
+  function measure() {
+    const CONTROL_SELECTOR = [
+      "a[href]",
+      "button",
+      "input:not([type=hidden])",
+      "select",
+      "textarea",
+      "summary",
+      '[role="button"]',
+      '[role="link"]',
+      '[role="tab"]',
+      '[role="menuitem"]',
+      '[role="switch"]',
+      '[role="combobox"]',
+    ].join(",");
 
-  // Document-relative coordinates, so a reading does not depend on where the page
-  // happens to be scrolled when the probe runs. The census takes a full-page
-  // screenshot immediately before this, and a full-page screenshot scrolls.
-  const docLeft = (r) => r.left + window.scrollX;
+    /** Rendered, non-degenerate, and actually painted. */
+    const shown = (el) => {
+      if (el.getClientRects().length === 0) return false;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
 
-  // ── PROBE (a): boxes that exit the viewport horizontally ──────────────────────
-  //
-  // The user-visible consequence has two shapes and this looks for both: a CONTROL
-  // you cannot reach, and COPY you cannot read. So the candidate set is interactive
-  // controls plus text leaves (an element with text and no element children) —
-  // never every element, because a wrapper that overhangs reports the same single
-  // defect once for each level of the tree above the thing that actually overhangs.
-  const clipCandidateEls = new Set();
-  for (const el of root.querySelectorAll(CONTROL_SELECTOR))
-    clipCandidateEls.add(el);
-  for (const el of root.querySelectorAll("*")) {
-    if (el.children.length === 0 && (el.textContent ?? "").trim())
+    /** A human-readable name for an element, so a row NAMES what it found. */
+    const describe = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const testId = el.getAttribute("data-testid");
+      const id = el.getAttribute("id");
+      const text = (el.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 48);
+      const label =
+        el.getAttribute("aria-label") ||
+        (el.tagName === "SELECT"
+          ? `select of ${el.querySelectorAll("option").length} options`
+          : "");
+      return (
+        tag +
+        (testId ? `[data-testid="${testId}"]` : id ? `#${id}` : "") +
+        (label ? ` (${label})` : text ? ` "${text}"` : "")
+      );
+    };
+
+    // Document-relative coordinates, so a reading does not depend on where the page
+    // happens to be scrolled when the probe runs. The census takes a full-page
+    // screenshot immediately before this, and a full-page screenshot scrolls.
+    const docLeft = (r) => r.left + window.scrollX;
+
+    // ── PROBE (a): boxes that exit the viewport horizontally ──────────────────────
+    //
+    // The user-visible consequence has two shapes and this looks for both: a CONTROL
+    // you cannot reach, and COPY you cannot read. So the candidate set is interactive
+    // controls plus text leaves (an element with text and no element children) —
+    // never every element, because a wrapper that overhangs reports the same single
+    // defect once for each level of the tree above the thing that actually overhangs.
+    const clipCandidateEls = new Set();
+    for (const el of root.querySelectorAll(CONTROL_SELECTOR))
       clipCandidateEls.add(el);
-  }
-
-  /**
-   * Is this element reachable by scrolling a scroller that was DESIGNED to scroll?
-   * A wide table inside an `overflow-x:auto` wrapper is the layout working: the
-   * user swipes and reads the rest. An `overflow-x:hidden` ancestor is the opposite
-   * and is exactly #3478 — the app shell clips horizontal overflow, so the select's
-   * cut-off right edge has no scroll that reaches it. Hidden therefore does NOT
-   * exempt; only a scroller with something to scroll does.
-   */
-  const insideHorizontalScroller = (el) => {
-    for (
-      let p = el.parentElement;
-      p && p !== document.body;
-      p = p.parentElement
-    ) {
-      const ox = getComputedStyle(p).overflowX;
-      if (
-        (ox === "auto" || ox === "scroll") &&
-        p.scrollWidth > p.clientWidth + 1
-      )
-        return true;
+    for (const el of root.querySelectorAll("*")) {
+      if (el.children.length === 0 && (el.textContent ?? "").trim())
+        clipCandidateEls.add(el);
     }
-    return false;
-  };
 
-  const clipped = [];
-  let clipCandidates = 0;
-  for (const el of clipCandidateEls) {
-    if (!shown(el)) continue;
-    clipCandidates += 1;
-    if (subjectSelector && el.matches(subjectSelector)) subjectExamined = true;
-    const r = el.getBoundingClientRect();
-    const left = docLeft(r);
-    const right = left + r.width;
-    const overRight = right - viewportWidth;
-    const overLeft = -left;
-    const overflowPx = Math.round(Math.max(overRight, overLeft, 0));
-    if (overflowPx <= clipEpsilonPx) continue;
-    if (insideHorizontalScroller(el)) continue;
-    clipped.push({
-      el: describe(el),
-      side: overRight > overLeft ? "right" : "left",
-      overflowPx,
-      // A box entirely outside the viewport reads differently from one whose edge
-      // is cut off, so say which — the second is #3478's shape.
-      visiblePart: left >= viewportWidth || right <= 0 ? "none" : "partial",
-      width: Math.round(r.width),
-      viewportWidth,
-    });
-  }
-  clipped.sort((a, b) => b.overflowPx - a.overflowPx);
-
-  // ── PROBE (b): control heights within one rendered row ────────────────────────
-  //
-  // A "row" is not a class name. `flex-wrap` means the declared row and the RENDERED
-  // rows are different things, so rows are recovered from geometry: controls whose
-  // vertical extents overlap are on one row. Ownership is by NEAREST flex/grid
-  // ancestor, so a control is compared once, against the siblings it visually sits
-  // beside, and a nested flex does not report its parent's row a second time.
-  const isRowContainer = (el) => {
-    const d = getComputedStyle(el).display;
-    return (
-      d === "flex" || d === "inline-flex" || d === "grid" || d === "inline-grid"
-    );
-  };
-
-  const byContainer = new Map();
-  const allControls = [...root.querySelectorAll(CONTROL_SELECTOR)].filter(
-    shown
-  );
-  const controlSet = new Set(allControls);
-  if (subjectSelector && !subjectExamined)
-    subjectExamined = allControls.some((el) => el.matches(subjectSelector));
-  for (const el of allControls) {
-    // A control that CONTAINS another control is a container wearing a control's
-    // tag — a card-sized `<a>` wrapping a row of buttons. Comparing its height to
-    // the buttons inside it is a category error and would flag every such card.
-    if (
-      [...el.querySelectorAll(CONTROL_SELECTOR)].some((c) => controlSet.has(c))
-    )
-      continue;
-    let owner = null;
-    for (
-      let p = el.parentElement;
-      p && p !== document.body;
-      p = p.parentElement
-    ) {
-      if (isRowContainer(p)) {
-        owner = p;
-        break;
+    /**
+     * Is this element reachable by scrolling a scroller that was DESIGNED to scroll?
+     * A wide table inside an `overflow-x:auto` wrapper is the layout working: the
+     * user swipes and reads the rest. An `overflow-x:hidden` ancestor is the opposite
+     * and is exactly #3478 — the app shell clips horizontal overflow, so the select's
+     * cut-off right edge has no scroll that reaches it. Hidden therefore does NOT
+     * exempt; only a scroller with something to scroll does.
+     */
+    const insideHorizontalScroller = (el) => {
+      for (
+        let p = el.parentElement;
+        p && p !== document.body;
+        p = p.parentElement
+      ) {
+        const ox = getComputedStyle(p).overflowX;
+        if (
+          (ox === "auto" || ox === "scroll") &&
+          p.scrollWidth > p.clientWidth + 1
+        )
+          return true;
       }
-    }
-    if (!owner) continue;
-    if (!byContainer.has(owner)) byContainer.set(owner, []);
-    const r = el.getBoundingClientRect();
-    byContainer.get(owner).push({
-      el: describe(el),
-      height: Math.round(r.height * 10) / 10,
-      top: r.top + window.scrollY,
-      bottom: r.top + window.scrollY + r.height,
-    });
-  }
+      return false;
+    };
 
-  const heightRows = [];
-  let controlRowsExamined = 0;
-  for (const [container, controls] of byContainer) {
-    if (controls.length < 2) continue;
-    // Cluster into rendered rows: sorted by top, a control joins the open row when
-    // its vertical extent overlaps that row's.
-    controls.sort((a, b) => a.top - b.top);
-    const rows = [];
-    for (const c of controls) {
-      const row = rows[rows.length - 1];
-      if (row && c.top < row.bottom && c.bottom > row.top) {
-        row.items.push(c);
-        row.top = Math.min(row.top, c.top);
-        row.bottom = Math.max(row.bottom, c.bottom);
-      } else rows.push({ top: c.top, bottom: c.bottom, items: [c] });
-    }
-    for (const row of rows) {
-      if (row.items.length < 2) continue;
-      controlRowsExamined += 1;
-      const heights = row.items.map((i) => i.height);
-      const spread =
-        Math.round((Math.max(...heights) - Math.min(...heights)) * 10) / 10;
-      if (spread <= controlHeightTolerancePx) continue;
-      heightRows.push({
-        row: describe(container),
-        spread,
-        controls: row.items.map((i) => `${i.el} ${i.height}px`),
+    const clipped = [];
+    let clipCandidates = 0;
+    for (const el of clipCandidateEls) {
+      if (!shown(el)) continue;
+      clipCandidates += 1;
+      if (subjectSelector && el.matches(subjectSelector))
+        subjectExamined = true;
+      const r = el.getBoundingClientRect();
+      const left = docLeft(r);
+      const right = left + r.width;
+      const overRight = right - viewportWidth;
+      const overLeft = -left;
+      const overflowPx = Math.round(Math.max(overRight, overLeft, 0));
+      if (overflowPx <= clipEpsilonPx) continue;
+      if (insideHorizontalScroller(el)) continue;
+      clipped.push({
+        el: describe(el),
+        side: overRight > overLeft ? "right" : "left",
+        overflowPx,
+        // A box entirely outside the viewport reads differently from one whose edge
+        // is cut off, so say which — the second is #3478's shape.
+        visiblePart: left >= viewportWidth || right <= 0 ? "none" : "partial",
+        width: Math.round(r.width),
+        viewportWidth,
       });
     }
-  }
-  heightRows.sort((a, b) => b.spread - a.spread);
+    clipped.sort((a, b) => b.overflowPx - a.overflowPx);
 
-  return {
-    clipCandidates,
-    clippedTotal: clipped.length,
-    clipped: clipped.slice(0, maxRowsPerVisit),
-    controlRowsExamined,
-    heightRowsTotal: heightRows.length,
-    heightRows: heightRows.slice(0, maxRowsPerVisit),
-    ...(subjectSelector ? { subjectExamined } : {}),
-  };
+    // ── PROBE (b): control heights within one rendered row ────────────────────────
+    //
+    // A "row" is not a class name. `flex-wrap` means the declared row and the RENDERED
+    // rows are different things, so rows are recovered from geometry: controls whose
+    // vertical extents overlap are on one row. Ownership is by NEAREST flex/grid
+    // ancestor, so a control is compared once, against the siblings it visually sits
+    // beside, and a nested flex does not report its parent's row a second time.
+    const isRowContainer = (el) => {
+      const d = getComputedStyle(el).display;
+      return (
+        d === "flex" ||
+        d === "inline-flex" ||
+        d === "grid" ||
+        d === "inline-grid"
+      );
+    };
+
+    const byContainer = new Map();
+    const allControls = [...root.querySelectorAll(CONTROL_SELECTOR)].filter(
+      shown
+    );
+    const controlSet = new Set(allControls);
+    if (subjectSelector && !subjectExamined)
+      subjectExamined = allControls.some((el) => el.matches(subjectSelector));
+    for (const el of allControls) {
+      // A control that CONTAINS another control is a container wearing a control's
+      // tag — a card-sized `<a>` wrapping a row of buttons. Comparing its height to
+      // the buttons inside it is a category error and would flag every such card.
+      if (
+        [...el.querySelectorAll(CONTROL_SELECTOR)].some((c) =>
+          controlSet.has(c)
+        )
+      )
+        continue;
+      let owner = null;
+      for (
+        let p = el.parentElement;
+        p && p !== document.body;
+        p = p.parentElement
+      ) {
+        if (isRowContainer(p)) {
+          owner = p;
+          break;
+        }
+      }
+      if (!owner) continue;
+      if (!byContainer.has(owner)) byContainer.set(owner, []);
+      const r = el.getBoundingClientRect();
+      byContainer.get(owner).push({
+        el: describe(el),
+        height: Math.round(r.height * 10) / 10,
+        top: r.top + window.scrollY,
+        bottom: r.top + window.scrollY + r.height,
+      });
+    }
+
+    const heightRows = [];
+    let controlRowsExamined = 0;
+    for (const [container, controls] of byContainer) {
+      if (controls.length < 2) continue;
+      // Cluster into rendered rows: sorted by top, a control joins the open row when
+      // its vertical extent overlaps that row's.
+      controls.sort((a, b) => a.top - b.top);
+      const rows = [];
+      for (const c of controls) {
+        const row = rows[rows.length - 1];
+        if (row && c.top < row.bottom && c.bottom > row.top) {
+          row.items.push(c);
+          row.top = Math.min(row.top, c.top);
+          row.bottom = Math.max(row.bottom, c.bottom);
+        } else rows.push({ top: c.top, bottom: c.bottom, items: [c] });
+      }
+      for (const row of rows) {
+        if (row.items.length < 2) continue;
+        controlRowsExamined += 1;
+        const heights = row.items.map((i) => i.height);
+        const spread =
+          Math.round((Math.max(...heights) - Math.min(...heights)) * 10) / 10;
+        if (spread <= controlHeightTolerancePx) continue;
+        heightRows.push({
+          row: describe(container),
+          spread,
+          controls: row.items.map((i) => `${i.el} ${i.height}px`),
+        });
+      }
+    }
+    heightRows.sort((a, b) => b.spread - a.spread);
+
+    return {
+      clipCandidates,
+      clippedTotal: clipped.length,
+      clipped: clipped.slice(0, maxRowsPerVisit),
+      controlRowsExamined,
+      heightRowsTotal: heightRows.length,
+      heightRows: heightRows.slice(0, maxRowsPerVisit),
+      ...(subjectSelector ? { subjectExamined } : {}),
+    };
+  }
 }
 
 /**
