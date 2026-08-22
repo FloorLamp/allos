@@ -10,6 +10,7 @@
 // table.
 
 import { db } from "../db";
+import { isImportedDocumentName } from "../imported-name";
 import { documentSource, undeferredBodyMetrics } from "../body-metric-extract";
 import type {
   GenomicResultType,
@@ -767,11 +768,42 @@ export function getDocumentAppointments(profileId: number, docId: number) {
 export function getDocumentMedications(profileId: number, docId: number) {
   return db
     .prepare(
-      `SELECT id, name, kind FROM intake_items
+      `SELECT id, name, kind, rxcui, source_name FROM intake_items
         WHERE profile_id = ? AND document_id = ? AND source = 'extracted'
         ORDER BY name COLLATE NOCASE, id`
     )
-    .all(profileId, docId) as { id: number; name: string; kind: string }[];
+    .all(profileId, docId) as {
+    id: number;
+    name: string;
+    kind: string;
+    rxcui: string | null;
+    source_name: string | null;
+  }[];
+}
+
+// THE SCOPE GATE for the imported-name offer (#3480). `isImportedDocumentName` is a
+// predicate about a STRING; the rule that it may only ever be asked about a row the
+// IMPORT wrote lives here, in the `source = 'extracted'` predicate above that this
+// read inherits. A name somebody typed is never examined and so can never be
+// second-guessed — which is the structural reason the offer cannot become the
+// display pass the doctrine rejects.
+//
+// Returns this document's extracted medications whose name is still the document's
+// own label, PLUS the ones whose name was already replaced from here (`source_name`
+// is set). The second set is why this is a review card and not a nag: after somebody
+// accepts a name the row stays listed, showing what the document said beside what
+// the medication is now called. Without it the row would vanish at the moment of the
+// change and there would be nowhere on this page that records what happened.
+//
+// The underlying read's name order is kept, so the card lists in the same order as
+// the medications listing beside it.
+export function getDocumentImportedNameOffers(
+  profileId: number,
+  docId: number
+) {
+  return getDocumentMedications(profileId, docId).filter(
+    (m) => m.source_name != null || isImportedDocumentName(m.name)
+  );
 }
 
 // The three body-sample reads behind the merged "Body metrics" tab.

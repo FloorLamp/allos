@@ -22,6 +22,7 @@ import {
   getDocumentDentalProcedures,
   getDocumentAppointments,
   getDocumentMedications,
+  getDocumentImportedNameOffers,
   getDocumentBodyRows,
   getDocumentProviders,
   getDocumentTriageRows,
@@ -50,6 +51,7 @@ import ImportTabStrip from "@/components/ImportTabStrip";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
 import TriageFocusScroll from "@/components/TriageFocus";
 import ProducedListing from "@/components/ProducedListing";
+import ImportedNamesCard from "@/components/import/ImportedNamesCard";
 import ProducedProviders from "@/components/ProducedProviders";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
@@ -341,6 +343,16 @@ export default async function ImportDetailPage(props: {
           getUnitPrefs(login.id).weightUnit
         )
       : [];
+  // The imported-name review rows (#3480), on the Medications tab only: this
+  // document's extracted medications still carrying the DOCUMENT's own label
+  // ("Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)"), plus the ones already
+  // renamed from here. The read is what gates the offer to imported rows — a name
+  // somebody typed is never examined (lib/queries/imports.ts).
+  const importedNameRows =
+    activeTab?.key === "medications"
+      ? getDocumentImportedNameOffers(profile.id, id)
+      : [];
+
   // The Providers tab (#1182): the distinct global-registry providers this
   // document's rows reference, disambiguated for display. Excluded from
   // extracted_count (#212) — a separate provider-scoped read.
@@ -584,6 +596,10 @@ export default async function ImportDetailPage(props: {
                   </>
                 )}
               </Notice>
+            )}
+
+            {importedNameRows.length > 0 && (
+              <ImportedNamesCard documentId={id} rows={importedNameRows} />
             )}
 
             {activeTab &&

@@ -387,6 +387,17 @@ export default function MedicationCard({
                 )}
               </div>
             )}
+            {/* What the SOURCE DOCUMENT called this, kept when the person accepted
+                a standardized name at import review (#3480). Source detail, never
+                the heading — the heading is the name they chose. */}
+            {s.source_name && (
+              <div
+                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="medication-source-name"
+              >
+                Imported as “{s.source_name}”
+              </div>
+            )}
             {s.indication_condition_name && (
               <div
                 className="mt-1 text-xs text-slate-500 dark:text-slate-400"
