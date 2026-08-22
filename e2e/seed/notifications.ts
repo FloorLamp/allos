@@ -148,10 +148,26 @@ export function seedMatrixPhone(): void {
   // The spec toggles one routing chip to prove the phone control edits the same
   // stored preference the desktop checkbox does, so it owns a login nothing else
   // reads. No health data needed — the matrix reads only notification settings, and
-  // the spec WANTS every channel unconfigured: that is what renders the "waiting"
-  // chip the phone shape exists to make legible.
+  // the spec WANTS every channel unconfigured: that is what renders the "kept" chip
+  // the phone shape exists to make legible.
   const id = fixtureProfileId(MATRIX_PHONE_PROFILE);
   seedMemberLogin(E2E_LOGIN_MATRIX_PHONE, id, "write");
+  // …AND EXACTLY ONE ROUTING PREFERENCE TURNED OFF, because otherwise the corpus is
+  // one ink. Every channel here is unconfigured and routing is enabled-unless-disabled,
+  // so without this row all 52 rendered cells are `ghost` and the chip's OTHER spelling
+  // — the bare channel label, with no state word — is rendered by nothing. The spec's
+  // WCAG 2.5.3 verdict then covers one of the two branches it reads as covering both:
+  // measured 2026-08-22, reverting that branch to the column's 2-letter short form
+  // left the whole spec green. `workout` on the PROFILE-scoped Home Assistant column,
+  // because HA is the one channel this profile owns end to end and "HA" is the one
+  // short form that is NOT a substring of its label — so the shortened spelling is a
+  // 2.5.3 failure the spec can actually see. Idempotent, and the spec's own chip-edit
+  // case writes the full set for this column, so it carries this row through.
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'ha_notify_disabled_kinds', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(id, JSON.stringify(["workout"]));
   console.log(
     `e2e: seeded matrix phone-shape fixture — profile ${id} (${MATRIX_PHONE_PROFILE})`
   );

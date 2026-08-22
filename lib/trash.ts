@@ -136,6 +136,24 @@ export const DATE_COLUMNS = [
 // which every caller already handles (TrashList passes `null`, and the headline drops
 // to the title or the kind label). Held by the UNDO_KINDS × DATE_COLUMNS census in
 // lib/__tests__/trash.test.ts, in both directions.
+//
+// AND THERE IS A FOURTH OPTION, which this function does not take — say so here rather
+// than leave the next reader to infer that three were all of them. The refusal is
+// applied AFTER `firstString` has already picked a column, so a LEADING column holding
+// a shape this cannot vouch for blanks the date instead of deferring to the sibling
+// that would reduce:
+//
+//     root { date: "2026-08", created_at: "2026-08-22 14:03:55" }
+//       this head:          null
+//       pass-through:       "2026-08"      (the first cut — a machine date on screen)
+//       fall-through:       "2026-08-22"
+//
+// Latent, not live: no column in this schema can hold a refused shape today, over every
+// (root table × `DATE_COLUMNS`) pair the census in lib/__tests__/trash.test.ts walks —
+// and that census sets one column at a time, so it cannot see this ordering either.
+// Moving to fall-through is a behaviour change, not a tightening: it belongs to
+// whoever adds the first column that needs it, with the census extended to two columns
+// at once so the choice is asserted rather than assumed.
 const STORAGE_DAY = /^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/;
 
 function calendarDay(value: string | null): string | null {

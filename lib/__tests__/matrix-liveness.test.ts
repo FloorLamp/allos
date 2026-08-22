@@ -144,9 +144,25 @@ describe("matrixCellInk", () => {
   // 0 (measured on this branch before the fix). A guard over a mandatory-review file
   // that cannot see the case its own comment names is worse than no comment.
   //
-  // A `Record<CellInk, …>` cannot be satisfied by a subset. A fourth ink is a TYPE
-  // error right here — "Property 'blocked' is missing" — before a single test runs,
-  // which is the only form of this guard that cannot go quietly green.
+  // A `Record<CellInk, …>` cannot be satisfied by a subset. Adding a fourth LITERAL
+  // member is a TYPE error right here — TS2741, "Property 'blocked' is missing" —
+  // before a single test runs.
+  //
+  // THAT, AND ONLY THAT, IS WHAT THIS TABLE CLOSES. `Record` sees literal widening; it
+  // does not see a union that ABSORBS `string`. Write `CellInk` as `"live" | "ghost" |
+  // "off" | (string & {})` and the `Record` degrades to an index signature, which a
+  // three-key object satisfies — so this table goes quietly green, and so does
+  // `INK_CLASS: Record<CellInk, string>` in NotificationPrefs.tsx, which degrades
+  // identically. Measured with this repo's own tsc: `Record<Lit4, string>` over four
+  // literals is TS2741, `Record<Wide, string>` over the `(string & {})` union is no
+  // error at all, and on this branch the widened union plus a `"blocked"` branch in
+  // `cellInkNote` left `npm run typecheck` at exit 0 and the whole pure tier green.
+  //
+  // Nothing here guards against that, deliberately: `(string & {})` is an idiom this
+  // tree uses on purpose (lib/__tests__/revalidate-route.test.ts documents Next's own
+  // `Route` collapsing to it), so a guard against it would be a guard against a
+  // legitimate move. The claim to hold this table to is the narrow one — a fourth
+  // literal ink cannot be added without this file failing to compile.
   const INK_EXPECTATIONS: Record<
     CellInk,
     { note: string | null; chip: string | null }

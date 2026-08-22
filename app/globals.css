@@ -944,9 +944,19 @@
 
      THE SHAPE, owner-ruled 2026-08-21. Below the boundary each kind becomes its
      own block — title, description, then its channels as LABELED chips ("Telegram
-     · Push — waiting · HA — waiting") — and the four column sweeps become one
+     · Web Push · Home Assistant — kept") — and the four column sweeps become one
      compact summary row above the list. At `sm`+ nothing here applies and the
      matrix renders exactly as it did.
+
+     THE CHIP'S WORDS ARE NOT THIS FILE'S TO PICK, and the vocabulary above is the
+     rendered one for a reason. A chip is a VISIBLE label on a checkbox whose
+     accessible name already reads "<kind> to <channel> — <note>", and WCAG 2.5.3
+     (Label in Name, Level A) requires the name to CONTAIN the visible text. So the
+     chip spells the channel's FULL label (not the column's 2-letter short form) and
+     takes its state word as a leading substring of that note — "kept", never
+     "waiting". Composed in NotificationPrefs.tsx from `cellInkChipNote`
+     (lib/notifications/matrix-liveness.ts); do not restyle it into a shorter
+     spelling without reading that.
 
      ONE DOM, CSS DECIDES — the #1426 contract `table-cards` keeps, in the one
      place it can be kept for a non-table: every cell declares its testid, its ink

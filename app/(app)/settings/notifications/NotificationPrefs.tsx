@@ -853,7 +853,15 @@ export default function NotificationPrefs({
               boxes write, in the same slot "Kind" occupies at desktop. The row's
               other half of the answer is visual: below the boundary the strip is a
               framed, tinted panel (app/globals.css), so it reads as a panel of controls rather
-              than as a fifth kind row. */}
+              than as a fifth kind row.
+              ONE LABEL, FOUR DIFFERENT REACHES, and that is deliberate. The safety
+              carve-out is the only one the label names, but `columnSweep` also drops
+              the kinds a channel cannot carry: on today's registry Telegram and Home
+              Assistant sweep 12 kinds and Push and Email sweep 10, because `food` and
+              `mood` have no control there at all (they render "can't carry this").
+              The label stays true — a kind with no control is not a kind the sweep
+              skips — but a reader comparing two columns will count different boxes,
+              so the difference is stated here rather than left to be discovered. */}
           <span
             className="hidden"
             data-matrix-sweep-label

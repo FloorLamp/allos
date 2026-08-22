@@ -74,6 +74,13 @@ const TOGGLEABLE_KIND = "preventive";
 // reason e2e/matrix-column-liveness.spec.ts owns only this column end to end.
 const GHOST_CHANNEL = "ha";
 const GHOST_KIND = "refill";
+// The one kind `seedMatrixPhone` leaves TURNED OFF on that column, and the corpus is
+// one ink without it. Every channel on this profile is unconfigured and routing is
+// enabled-unless-disabled, so every other cell here is a ghost — and a chip's other
+// spelling (the bare channel label, no state word) would be rendered by nothing, which
+// is a 2.5.3 verdict over half the branches it reads as covering. Named here rather
+// than discovered, so a seed that stops writing it fails loudly below.
+const OFF_KIND = "workout";
 
 interface Chip {
   id: string;
@@ -301,6 +308,9 @@ async function readLabelInName(page: Page) {
             ? (chip.textContent ?? "").trim()
             : "",
         name: input.getAttribute("aria-label") ?? "",
+        // The cell's ink, so the corpus can be held to spanning more than one. A
+        // single-ink corpus reads a "both spellings agree" verdict off one spelling.
+        ink: input.getAttribute("data-ink") ?? "",
       };
     })
   );
@@ -514,6 +524,26 @@ test.describe("Message kinds at phone width (#3495)", () => {
         "no routing checkbox rendered a visible chip label, so the 2.5.3 verdict " +
           "below is an absence over an empty corpus"
       ).toBeGreaterThanOrEqual(12);
+      // AND THE CORPUS CARRIES BOTH SPELLINGS. The chip is `<label> — <state>` for a
+      // ghost and a BARE `<label>` otherwise, and on this fixture every channel is
+      // unconfigured — so with nothing turned off, all 52 cells are ghosts and the
+      // bare-label branch is rendered by nothing. `seedMatrixPhone` turns
+      // `OFF_KIND` off on this column for exactly that reason; without it, shortening
+      // the bare branch to the column's 2-letter short form passes this whole spec.
+      expect(
+        [...new Set(cells.map((c) => c.ink))].sort(),
+        "every routing cell in this corpus renders the same ink, so the 2.5.3 " +
+          "verdict below covers only one of the chip's two spellings"
+      ).toEqual(["ghost", "off"]);
+      const offCell = member.getByTestId(
+        `matrix-cell-${GHOST_CHANNEL}-${OFF_KIND}`
+      );
+      await expect(offCell).toHaveAttribute("data-ink", "off");
+      // The bare branch, spelled out — the SAME channel label the accessible name
+      // uses, and no state word, because an off cell's `cellInkNote` is null.
+      await expect(
+        member.getByTestId(`matrix-chip-${GHOST_CHANNEL}-${OFF_KIND}`)
+      ).toHaveText("Home Assistant");
       expect(
         cells
           .filter((c) => c.visible !== "" && !c.name.includes(c.visible))
