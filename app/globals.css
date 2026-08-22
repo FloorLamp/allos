@@ -929,6 +929,130 @@
   }
 }
 
+@utility notification-kind-matrix {
+  /* Settings → Notifications, the Message-kinds card (#3495) — the card-mode
+     boundary applied to a surface that is not a table.
+
+     WHAT WAS WRONG. The kind × channel matrix gave its four channel columns a
+     fixed `w-40` below `sm`: 160px for four columns, ~37px each once the `gap-1`
+     is paid. "Telegram" cannot fit 37px, so the header ran into the next cell and
+     read "TelegramPush"; the amber "not set up" state wrapped to three lines; and
+     because each header stack then ended at a different height, the four sweep
+     boxes sat on four different baselines, detached from the columns they sweep.
+     A 4 × 14 checkbox grid at 37px a column is desktop anatomy at phone width
+     (#3373/#3374/#3378/#3408).
+
+     THE SHAPE, owner-ruled 2026-08-21. Below the boundary each kind becomes its
+     own block — title, description, then its channels as LABELED chips ("Telegram
+     · Web Push · Home Assistant — kept") — and the four column sweeps become one
+     compact summary row above the list. At `sm`+ nothing here applies and the
+     matrix renders exactly as it did.
+
+     THE CHIP'S WORDS ARE NOT THIS FILE'S TO PICK, and the vocabulary above is the
+     rendered one for a reason. A chip is a VISIBLE label on a checkbox whose
+     accessible name already reads "<kind> to <channel> — <note>", and WCAG 2.5.3
+     (Label in Name, Level A) requires the name to CONTAIN the visible text. So the
+     chip spells the channel's FULL label (not the column's 2-letter short form) and
+     takes its state word as a leading substring of that note — "kept", never
+     "waiting". Composed in NotificationPrefs.tsx from `cellInkChipNote`
+     (lib/notifications/matrix-liveness.ts); do not restyle it into a shorter
+     spelling without reading that.
+
+     ONE DOM, CSS DECIDES — the #1426 contract `table-cards` keeps, in the one
+     place it can be kept for a non-table: every cell declares its testid, its ink
+     and its accessible name ONCE, and the chip label it grows below the boundary
+     is markup that is simply `hidden` above it. There is no second matrix and no
+     second row model.
+
+     THE BOUNDARY IS INHERITED, NOT RESTATED. Every rule below is `max-sm:`, which
+     is CARD_MODE_BREAKPOINT_PX in lib/card-row.ts; this utility is in the FAMILY
+     that lib/__tests__/card-mode-boundary.test.ts scans, so a rule scoped to any
+     other breakpoint fails there. Declaring it here rather than at the call site
+     is also what keeps NotificationPrefs.tsx from spelling a variant of its own
+     (#3457) — its only remaining `sm:` is the desktop WIDTH the phone shape
+     replaces, which is the "addition beside the desktop vocabulary" pattern
+     #3466 asks for.
+
+     `!` throughout for #3466's reason: these rules override utilities the call
+     site writes on the very same element (`grid`, `contents`, `block`, `hidden`,
+     `mx-auto`), and Tailwind 4 sorts custom utilities independently of source
+     order. The selectors already outrank a bare utility, so the `!` is belt to
+     that braces — cheap, and it makes the intent readable. */
+
+  /* The header strip and each kind's row both stop being a two-column grid: the
+     kind claims the whole line and its channels take the line below. */
+  & [data-matrix-head],
+  & [data-matrix-row] {
+    @apply max-sm:block!;
+  }
+  /* "Kind" is a column heading for a column that no longer exists. */
+  & [data-matrix-head-label] {
+    @apply max-sm:hidden!;
+  }
+
+  /* THE SWEEP ROW IS A PANEL OF CONTROLS, NOT A FIFTH KIND ROW (#3550's review).
+     Hiding "Kind" and shortening the intro were each right and together left four
+     16px boxes at the SAME left edge, size, font and colour as the routing chips
+     below them, with nothing visible saying that one tap turns off every non-safety
+     kind on that channel. Two halves of one answer, and neither works alone:
+     the strip becomes a framed, tinted block so it cannot be mistaken for a kind's
+     own line of chips, and it carries a visible label saying what its boxes write.
+     The desktop strip is a header rule under a two-column grid and is untouched. */
+  & [data-matrix-head] {
+    @apply max-sm:rounded-md! max-sm:border! max-sm:border-black/10! max-sm:bg-slate-50! max-sm:p-3! max-sm:dark:border-white/10! max-sm:dark:bg-slate-900/40!;
+  }
+  & [data-matrix-sweep-label] {
+    @apply max-sm:block! max-sm:text-slate-600! max-sm:dark:text-slate-300!;
+  }
+
+  /* The channel strip — the header's four sweeps, and each row's four cells.
+     A wrapping line of chips instead of a 160px four-column grid, so a chip is
+     as wide as its own label and nothing is asked to fit 37px. */
+  & [data-matrix-channels] {
+    @apply max-sm:flex! max-sm:w-auto! max-sm:flex-wrap! max-sm:justify-start! max-sm:gap-x-4! max-sm:gap-y-1! max-sm:pt-2! max-sm:text-left!;
+  }
+
+  /* A CHIP. `display: contents` above the boundary is what keeps the desktop
+     arrangement byte-identical — the wrapper generates no box, so the checkbox
+     stays the grid item it was — and `inline-flex` below it is what makes the
+     control and its label ONE unwrappable unit. Without the wrapper the flex
+     line could break between a box and the name of the channel it belongs to. */
+  & [data-matrix-cell] {
+    @apply max-sm:inline-flex! max-sm:items-center! max-sm:gap-1.5!;
+  }
+  & [data-matrix-chip-label] {
+    @apply max-sm:inline!;
+  }
+  /* The em-dash placeholder is the DESKTOP spelling of "this channel can't carry
+     this kind" — a mark in a column under a header. The chip says it in words
+     instead, so the dash would be saying it twice. */
+  & [data-matrix-dash] {
+    @apply max-sm:hidden!;
+  }
+
+  /* The slot a kind with no master toggle reserves, so every kind's title starts
+     at one x. Safety kinds cannot be turned off and the always-on kinds have
+     nothing to turn off, and a block-per-kind layout has no header row to make a
+     missing leading control read as a column rather than as raggedness. */
+  & [data-matrix-toggle-slot] {
+    @apply max-sm:block!;
+  }
+
+  /* The header chips: box first, then the channel and its setup state on one
+     line. This is the "four different baselines" defect at its root — every
+     sweep box now sits on the same line as every other, beside the name of the
+     channel it sweeps rather than under a stack of unpredictable height. */
+  & [data-matrix-head-cell] {
+    @apply max-sm:inline-flex! max-sm:items-center! max-sm:gap-1.5!;
+  }
+  & [data-matrix-head-cell] > span {
+    @apply max-sm:inline!;
+  }
+  & [data-matrix-head-cell] > input {
+    @apply max-sm:order-first! max-sm:m-0!;
+  }
+}
+
 @utility card-cell-label {
   /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
   /* The passing muted pairing (#794): the label is set apart from its value by

@@ -125,6 +125,7 @@ import {
   seedEmailNotify,
   seedHaConfig,
   seedMatrixInk,
+  seedMatrixPhone,
   seedNotifSweep,
   seedNotifyScope,
   seedNotifyTickLog,
@@ -208,6 +209,7 @@ seedDigestTune();
 seedNotifSweep();
 seedEmailNotify();
 seedMatrixInk();
+seedMatrixPhone();
 seedDataQualityGaps();
 seedVisitLinking();
 seedToasterIsolation();
