@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
@@ -11,6 +11,7 @@ import {
   belowSmHeightPx,
   findFlooredControls,
   floorMiss,
+  usesTapTarget,
   withoutComments,
   type FlooredControl,
 } from "../tap-floor-reach";
@@ -36,31 +37,61 @@ import {
 //   2. A NAMED SUBJECT — the four steppers this change actually moved, asserted
 //      by file and line, so the sweep is provably looking at the thing the PR
 //      claims to have fixed rather than at a corpus that merely averages out.
-//   3. A SYNTHETIC OFFENDER PLANTED IN THE SCANNED CORPUS, not handed to the
+//   3. A SYNTHETIC OFFENDER PLANTED IN A SCANNED CORPUS, not handed to the
 //      matcher. Handing a bad source to `findFlooredControls` proves the MATCHER
 //      can see it; it proves nothing about the WALK that feeds it. A rename, a
 //      directory the walk does not enter, an extension filter — every one of
 //      those breaks the census while leaving the matcher's own tests green. So
-//      the offender is written into `components/` on disk and the whole census
-//      is re-run over it.
+//      the offender is written to disk and the whole census is re-run over it —
+//      into a temp corpus of this file's own, NOT into the live source tree that
+//      forty other concurrent guards are reading (see `Corpus` below).
 //   4. QUIET ON THE BENIGN NEIGHBOURS. #3325's census had to stay silent on five
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
 //      works, and `.chip` — which app/globals.css declares floor-free ON PURPOSE.
-//   5. A RATCHET over what already misses. 108 controls miss today and this PR
+//   5. A RATCHET over what already misses. 104 controls miss today — 59 once the
+//      45 native boxes with a `<label>` taking the tap are licensed — and this PR
 //      does not pretend otherwise; what it does is stop the number growing, and
 //      record what each group is waiting on.
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 19 `.tap-target`
+//      controls pin no height in source, so `floorMiss` returns null at its first
+//      line and they are neither findings nor cleared. Counting them is what
+//      turns a silent blind spot into a number that can go up (#3557 review).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components"];
+
+/**
+ * ONE CORPUS THIS CENSUS CAN BE POINTED AT: a base directory, and the roots to
+ * walk beneath it. In production there is exactly one — the tree.
+ *
+ * The parameter exists for the planted-offender case at the bottom of this file,
+ * and it is worth saying why, because "make it configurable" is usually the
+ * wrong answer. That case must find its offender BY WALKING (see the comment
+ * there); its first draft did so by writing the file into the live, git-tracked
+ * `components/` directory. Vitest runs test files CONCURRENTLY and roughly forty
+ * other guards in this suite walk `components/`, collect a file list, and read
+ * those files a moment later — so they collected the plant and then read
+ * nothing, and the whole unit suite went intermittently red in tests that have
+ * nothing to do with the tap floor (#3557 review, blocker 1: `ENOENT … open
+ * components/__tap_floor_planted_1804.tsx`, reproduced 5/6 on one trio).
+ *
+ * So the discipline is unchanged and the LOCATION moved: the same `sourceFiles`
+ * and the same `census` below are pointed at a corpus only that test can see.
+ */
+type Corpus = { base: string; roots: string[] };
+
+/** The tree itself — what every assertion about this app is made against. */
+const TREE: Corpus = { base: REPO, roots: ROOTS };
 
 // THE FLOOR THE CENSUS MUST CLEAR. Not the exact count — controls arrive with
 // every feature — but a number well above zero, so a sweep that has stopped
 // seeing them fails LOUDLY instead of passing over an empty list. Measured
 // 2026-08-22: 1456 interactive controls with a readable class list, of which 342
-// are `.btn`-family members and 38 carry `.tap-target`. It only ever moves up,
-// and only when someone has looked.
+// are `.btn`-family members and 39 carry `.tap-target` (38 of those take it as
+// their mechanism; the odd one out also names `btn-ghost`, which is checked
+// first). It only ever moves up, and only when someone has looked.
 const CENSUS_FLOOR = 1200;
 
 /**
@@ -208,7 +239,21 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     controls: 3,
     why: TYPED_FIELD,
   },
-  { file: "components/video/VideoClipGrid.tsx", controls: 2, why: TYPED_FIELD },
+  {
+    file: "components/video/VideoClipGrid.tsx",
+    controls: 2,
+    // NAMED, because this entry was read as covering the whole file and it does
+    // not. The two controls here are the CAPTION TEXT INPUTS —
+    // `video-clip-caption-input-*` (`input h-8`) and the new-clip `Caption
+    // (optional)` field (`input h-9`). The file's two icon buttons at the
+    // figcaption are a different population entirely: they pin no height, this
+    // census renders no verdict on them, and they are recorded in
+    // MEASURED_UNDER_FLOOR below at 24px and 22px rendered. A count of 2 with a
+    // `why` about typed fields silently covered them, which is worse than
+    // leaving them out — the ratchet was green and the sentence was false
+    // (#3557 review, blocker 3).
+    why: `${TYPED_FIELD}. This entry is the two caption text inputs ONLY; the file's two icon buttons pin no height and are recorded in MEASURED_UNDER_FLOOR`,
+  },
   {
     file: "components/medications/PediatricDoseBandPicker.tsx",
     controls: 1,
@@ -218,7 +263,10 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   // ── bare native boxes ────────────────────────────────────────────────────
   {
     file: "app/(app)/settings/notifications/NotificationPrefs.tsx",
-    controls: 3,
+    controls: 2,
+    // Two, not three: #3558 gave one of the three boxes a `<label>` and the
+    // licence took it out of the finding. The entry is the number the tree
+    // holds today, not the number it held when the census was first taken.
     why: `${BARE_BOX} — the #1868 kind x channel matrix, whose phone idiom is #3495/#3550`,
   },
   { file: "components/DataTableManager.tsx", controls: 2, why: BARE_BOX },
@@ -234,14 +282,123 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   },
 ];
 
-function read(rel: string): string {
-  return fs.readFileSync(path.join(REPO, rel), "utf8");
+/**
+ * THE `.tap-target` CONTROLS THIS CENSUS CANNOT JUDGE, ENUMERATED.
+ *
+ * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
+ * see the module header on what a class-list scan can see. That is a stated
+ * bound and it is honest, but until now it was also SILENT: nineteen controls
+ * wearing the token that says "the floor was reached by hit area" were neither
+ * findings nor cleared, and nothing counted them. A blind spot with no number
+ * cannot grow visibly, which is the #3206 shape one level down.
+ *
+ * So they are rostered here, by file and count, and the census asserts the
+ * roster is EXACTLY what it finds. A new unpinned `.tap-target` is red until
+ * someone records it; one that gains a height is red until someone removes it.
+ * This is not a register of exemptions — nothing here is licensed. It is the
+ * size of the question this scan cannot answer.
+ *
+ * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
+ * control's compliance depends entirely on a rendered height none of these
+ * declare. Three of the nineteen have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other sixteen are UNMEASURED — nobody
+ * has looked, and this file says so rather than implying they are fine.
+ */
+type UnjudgedTapTarget = { file: string; controls: number };
+
+const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
+  { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
+  { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
+  { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
+  { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
+  { file: "components/IntakeItemForm.tsx", controls: 2 },
+  { file: "components/ProfileIdentityBar.tsx", controls: 1 },
+  { file: "components/QuickLogSheet.tsx", controls: 2 },
+  { file: "components/encounters/VisitFactRow.tsx", controls: 1 },
+  { file: "components/facts/FactChipRow.tsx", controls: 2 },
+  { file: "components/intake/CadenceEditor.tsx", controls: 1 },
+  { file: "components/intake/IntakeKindChip.tsx", controls: 1 },
+  { file: "components/intake/IntakeRulesEditor.tsx", controls: 1 },
+  { file: "components/video/VideoClipGrid.tsx", controls: 2 },
+];
+
+/**
+ * THE THREE OF THOSE NINETEEN THAT HAVE BEEN MEASURED, and all three are short.
+ *
+ * Measured against the app's own compiled CSS at a 390px viewport with a coarse
+ * pointer (#3557 review). These are the same defect this module is named for —
+ * a control wearing `.tap-target`, which says the floor was reached by hit area,
+ * while its rendered box is under the 32px the overlay's fixed 12px needs. They
+ * were invisible to the source census because their height is their content's.
+ *
+ * RECORDED, NOT FIXED. Raising these is a phone-idiom decision in a dense row —
+ * the weekday cadence toggles are seven across a phone, the clip glyphs ride a
+ * figcaption line — and that is #3562's call, on the #3536 precedent this file
+ * already follows for `FactChipRow`. What is fixed here is the RECORD: two of
+ * the three were standing behind a register entry about `<select>` boxes.
+ *
+ * `testid` is what pins each entry to its control. A line number drifts with any
+ * edit above it; a testid is the thing the control is addressed by, and the
+ * census asserts it is still in the file.
+ */
+type MeasuredUnderFloor = {
+  file: string;
+  /** 1-based line of the opening tag when this was measured, for the reader. */
+  line: number;
+  /** A fragment of the control's `data-testid`, asserted to still be present. */
+  testid: string;
+  /** The measured rendered height in CSS pixels at 390px, coarse pointer. */
+  renderedPx: number;
+  what: string;
+};
+
+const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
+  {
+    file: "components/intake/CadenceEditor.tsx",
+    line: 56,
+    testid: "-weekday-",
+    renderedPx: 24,
+    what:
+      "the cadence editor's weekday toggles (`px-2 py-1 text-xs`, seven across a phone). " +
+      "Raising them to 32 rendered re-lays the row, which is the #3374/#3378 phone-idiom " +
+      "question and not a class edit",
+  },
+  {
+    file: "components/video/VideoClipGrid.tsx",
+    line: 217,
+    testid: "video-clip-edit-",
+    renderedPx: 24,
+    what:
+      "the clip caption's edit glyph (`p-1` around a text-sized character), riding the " +
+      "figcaption line. The INLINE_GLYPH shape: its box is the line's, so the floor needs " +
+      "a layout answer",
+  },
+  {
+    file: "components/video/VideoClipGrid.tsx",
+    line: 231,
+    testid: "video-clip-delete-",
+    renderedPx: 22,
+    what:
+      "the clip's delete glyph (`p-1` around a 14px icon), beside the edit glyph above and " +
+      "2px shorter because the icon is smaller than the line box",
+  },
+];
+
+/**
+ * The sixteen nobody has measured. Stated as a number rather than left as
+ * subtraction, because "we have not looked" is the fact worth being able to
+ * read off this file.
+ */
+const UNMEASURED_TAP_TARGETS = 16;
+
+function read(rel: string, base: string = REPO): string {
+  return fs.readFileSync(path.join(base, rel), "utf8");
 }
 
-function sourceFiles(root: string): string[] {
+function sourceFiles(root: string, base: string = REPO): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(path.join(REPO, dir), {
+    for (const entry of fs.readdirSync(path.join(base, dir), {
       withFileTypes: true,
     })) {
       const rel = `${dir}/${entry.name}`;
@@ -260,13 +417,15 @@ function sourceFiles(root: string): string[] {
 
 type Found = FlooredControl & { file: string };
 
-function census(): Found[] {
+function census(corpus: Corpus = TREE): Found[] {
   const out: Found[] = [];
-  for (const root of ROOTS)
-    for (const file of sourceFiles(root)) {
+  for (const root of corpus.roots)
+    for (const file of sourceFiles(root, corpus.base)) {
       let controls: FlooredControl[];
       try {
-        controls = findFlooredControls(withoutComments(read(file)));
+        controls = findFlooredControls(
+          withoutComments(read(file, corpus.base))
+        );
       } catch (error) {
         if (error instanceof UnreadableControlError)
           throw new UnreadableControlError(`${file}: ${error.message}`);
@@ -291,10 +450,11 @@ function misses(found: Found[]): { control: Found; why: string }[] {
   return out;
 }
 
-describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
-  const found = census();
-  const missed = misses(found);
+// The tree's own census, taken once and shared by every describe below.
+const found = census();
+const missed = misses(found);
 
+describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
   // THE CENSUS ITSELF, ASSERTED BEFORE ANYTHING IS JUDGED.
   it("finds the controls it is about to judge", () => {
     expect(
@@ -453,6 +613,83 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       "The `.btn` family's below-`sm` floor in app/globals.css is no longer " +
         `${TAP_FLOOR_PX / 16}rem (${TAP_FLOOR_PX}px). The census and the stylesheet must hold one number.`
     ).toContain(`min-block-size: ${TAP_FLOOR_PX / 16}rem`);
+  });
+});
+
+describe("the `.tap-target` controls this census cannot judge", () => {
+  const unjudged = found.filter(
+    (c) => usesTapTarget(c.className) && c.belowSmPx === null
+  );
+
+  it("rosters every one of them, exactly", () => {
+    const byFile = new Map<string, number>();
+    for (const c of unjudged) byFile.set(c.file, (byFile.get(c.file) ?? 0) + 1);
+    const actual = [...byFile]
+      .map(([file, controls]) => ({ file, controls }))
+      .sort((a, b) => a.file.localeCompare(b.file));
+    const rostered = [...UNJUDGED_TAP_TARGETS].sort((a, b) =>
+      a.file.localeCompare(b.file)
+    );
+    expect(
+      actual,
+      "A `.tap-target` control that pins NO height is one this source census renders no " +
+        "verdict on: `floorMiss` returns null at its first line, so it is neither a " +
+        "finding nor cleared. That is a stated bound (see the module header) and it must " +
+        "not be a silent one — the roster is how the blind spot has a size that can go " +
+        "up. If this list grew, record the new control in UNJUDGED_TAP_TARGETS and say " +
+        "whether anyone has measured it; if it shrank, a control gained a height and the " +
+        "entry should go."
+    ).toEqual(rostered);
+  });
+
+  it("says how many have been measured and how many nobody has looked at", () => {
+    const total = unjudged.length;
+    const measuredFiles = new Set(MEASURED_UNDER_FLOOR.map((m) => m.file));
+    for (const file of measuredFiles)
+      expect(
+        UNJUDGED_TAP_TARGETS.some((entry) => entry.file === file),
+        `${file} holds a measured under-floor \`.tap-target\` control but is not in the ` +
+          "unjudged roster. The two lists describe one population and cannot disagree."
+      ).toBe(true);
+    expect(
+      UNMEASURED_TAP_TARGETS,
+      `${total} \`.tap-target\` controls pin no height and ${MEASURED_UNDER_FLOOR.length} of them ` +
+        "have been measured, so the number nobody has looked at is the difference. Saying " +
+        "it out loud is the point: an unmeasured control is not a compliant one."
+    ).toBe(total - MEASURED_UNDER_FLOOR.length);
+  });
+
+  it("holds the three measured ones to the arithmetic, not to a memory of it", () => {
+    for (const m of MEASURED_UNDER_FLOOR) {
+      // It really is the control described — the testid is how it is addressed,
+      // and a line number would only tell you the file has been edited since.
+      expect(
+        read(m.file),
+        `${m.file} no longer contains \`${m.testid}\`, so this entry is about a control ` +
+          `that has moved or gone. It was measured at ${m.renderedPx}px on line ${m.line}.`
+      ).toContain(m.testid);
+      // …and it is still a `.tap-target` this census cannot judge. A control
+      // that gained a height belongs in the census's verdicts, not in a
+      // hand-recorded measurement that nothing re-checks.
+      expect(
+        unjudged.some((c) => c.file === m.file),
+        `${m.file} no longer holds an unpinned \`.tap-target\` control. If it gained a ` +
+          "height, the source census judges it now and this entry should go."
+      ).toBe(true);
+      // The recorded number is a FINDING, and the finding is arithmetic: the
+      // overlay adds a fixed 2x6px, so anything under 32 rendered lands short.
+      expect(
+        m.renderedPx,
+        `${m.file}:${m.line} is recorded at ${m.renderedPx}px rendered, which reaches ` +
+          `${m.renderedPx + 2 * TAP_TARGET_INSET_PX}px effective — at or above the ` +
+          `${TAP_FLOOR_PX}px floor. A control that MEETS the floor does not belong in a list ` +
+          "of measured misses; delete the entry rather than leaving a false finding."
+      ).toBeLessThan(TAP_TARGET_MIN_RENDERED_PX);
+    }
+    // And no file is registered twice under one roster, which would make the
+    // counts above read from whichever entry `Map` kept last.
+    const files = UNJUDGED_TAP_TARGETS.map((e) => e.file);
+    expect(new Set(files).size).toBe(files.length);
   });
 });
 
@@ -643,32 +880,74 @@ describe("the sweep is quiet on the benign neighbours", () => {
   });
 });
 
-// ── THE OFFENDER IS PLANTED IN THE CORPUS, NOT HANDED TO THE MATCHER ────────
+// ── THE OFFENDER IS PLANTED IN A CORPUS, NOT HANDED TO THE MATCHER ─────────
 //
 // Everything above proves the MATCHER can see a bad control. None of it proves
 // the WALK can: a census whose `sourceFiles()` stopped entering `components/`,
-// or stopped matching `.tsx`, would keep every test above green while reporting a
-// clean sweep it never took. So one offender is written to disk inside the
-// scanned roots and the WHOLE census is re-run over it.
+// or stopped matching `.tsx`, or stopped recursing, would keep every test above
+// green while reporting a clean sweep it never took. So one offender is written
+// to disk inside a scanned root and the WHOLE census is re-run over it.
 //
 // A lens caught exactly this failure on a different PR this session, which is why
 // it is here rather than left implied.
+//
+// WHERE IT IS PLANTED, AND WHY NOT IN `components/`. The first draft wrote the
+// offender into the live, git-tracked `components/` directory. The reasoning was
+// right and the address was wrong: vitest runs test files CONCURRENTLY, ~40 other
+// guards walk `components/`, collect a file list, and read those files a moment
+// later — and the `afterAll` unlink here lands in that window. They collected a
+// file that no longer existed and died with `ENOENT`, in tests with nothing to do
+// with the tap floor and a rotating victim. Reproduced 5/6 on one trio and 2/7 on
+// the full suite (#3557 review, blocker 1).
+//
+// The fix is NOT to stop planting — a plant handed straight to the matcher tests
+// the matcher, which is the thing that needed no help. It is to give the walk a
+// corpus of its own: `census(corpus)` runs the same `sourceFiles` over a
+// `mkdtemp` tree only this process can see, and the offender is still something
+// the walk had to GO AND FIND.
 
 describe("the census walk reaches a planted offender", () => {
-  const planted = path.join(
-    REPO,
-    "components",
-    // Named so a stray copy is obviously test scaffolding, and placed inside the
-    // scanned root because that is the entire point.
-    `__tap_floor_planted_${process.pid}.tsx`
-  );
+  // A corpus with a shape, so the readings below are not two zeroes agreeing:
+  // both roots the tree uses, one already-missing control, one compliant one,
+  // and the plant in a SUBDIRECTORY so finding it also proves the walk recurses
+  // rather than reading one directory's entries.
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "tap-floor-corpus-"));
+  const corpus: Corpus = { base, roots: ROOTS };
+  const plantedRel = "components/planted/__tap_floor_planted.tsx";
+  const planted = path.join(base, plantedRel);
+
+  beforeAll(() => {
+    fs.mkdirSync(path.join(base, "app"), { recursive: true });
+    fs.mkdirSync(path.join(base, "components", "planted"), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, "app", "SeedCompliant.tsx"),
+      "export default function SeedCompliant() {\n" +
+        '  return <button type="button" className="btn">Add goal</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(base, "components", "SeedOffender.tsx"),
+      "export default function SeedOffender() {\n" +
+        '  return <button type="button" className="h-8 w-8 rounded-lg border">y</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+  });
 
   afterAll(() => {
     if (fs.existsSync(planted)) fs.unlinkSync(planted);
+    fs.rmSync(base, { recursive: true, force: true });
   });
 
   it("flags a control the walk had to find on disk", () => {
-    const before = misses(census());
+    const before = misses(census(corpus));
+    expect(
+      before.length,
+      "The seeded corpus holds one control under the floor and the walk found none of " +
+        "it. Both readings below would then be empty and would agree, which is the " +
+        "shape of a walk that has stopped walking — not of a passing test."
+    ).toBe(1);
     fs.writeFileSync(
       planted,
       "export default function PlantedOffender() {\n" +
@@ -676,13 +955,14 @@ describe("the census walk reaches a planted offender", () => {
         "}\n",
       "utf8"
     );
-    const after = misses(census());
-    const rel = path.relative(REPO, planted).split(path.sep).join("/");
-    const caught = after.filter((m) => m.control.file === rel);
+    const after = misses(census(corpus));
+    const caught = after.filter((m) => m.control.file === plantedRel);
     expect(
       caught,
-      "The census did not see a file written into `components/` on disk. The matcher's " +
-        "own tests cannot tell you this: it is the WALK that failed."
+      `The census did not see a file written to disk at \`${plantedRel}\` inside a ` +
+        "scanned root. The matcher's own tests cannot tell you this: it is the WALK " +
+        "that failed — a root it does not enter, a directory it does not recurse into, " +
+        "or an extension it no longer matches."
     ).toHaveLength(1);
     expect(caught[0].control.belowSmPx).toBe(36);
     expect(caught[0].why).toContain("neither registered mechanism");
@@ -691,7 +971,7 @@ describe("the census walk reaches a planted offender", () => {
     expect(after.length).toBe(before.length + 1);
     // The planted file is unregistered, so the real verdict fires too.
     const registered = new Set(UNDER_FLOOR_REGISTER.map((e) => e.file));
-    expect(registered.has(rel)).toBe(false);
+    expect(registered.has(plantedRel)).toBe(false);
   });
 
   it("stays quiet on a planted control that meets the floor", () => {
@@ -700,7 +980,7 @@ describe("the census walk reaches a planted offender", () => {
     // toward "the compliant plant removed a finding", which is the reassuring
     // direction and the one that gets believed.
     if (fs.existsSync(planted)) fs.unlinkSync(planted);
-    const before = misses(census());
+    const before = misses(census(corpus));
     fs.writeFileSync(
       planted,
       "export default function PlantedNeighbour() {\n" +
@@ -708,7 +988,7 @@ describe("the census walk reaches a planted offender", () => {
         "}\n",
       "utf8"
     );
-    const after = misses(census());
+    const after = misses(census(corpus));
     expect(
       after.length,
       "The census flagged a planted control that meets the floor by `.tap-target` at " +
@@ -716,8 +996,24 @@ describe("the census walk reaches a planted offender", () => {
         "is deleted, and the rule goes with it."
     ).toBe(before.length);
     // …and it really was scanned, rather than silently skipped.
-    const rel = path.relative(REPO, planted).split(path.sep).join("/");
-    expect(census().some((c) => c.file === rel)).toBe(true);
+    expect(census(corpus).some((c) => c.file === plantedRel)).toBe(true);
+  });
+
+  // AND THE CORPUS PARAMETER IS NOT A SEPARATE CODE PATH. The two tests above
+  // are only worth something if the walk they exercise is the walk the tree
+  // gets: same function, same filters, same recursion, one argument different.
+  it("is the same walk the tree itself is swept with", () => {
+    expect(sourceFiles("components")).toContain(
+      "components/facts/FactChipRow.tsx"
+    );
+    expect(sourceFiles("components", base)).toContain(
+      "components/SeedOffender.tsx"
+    );
+    // The tree's walk cannot see the temp corpus and the temp corpus's walk
+    // cannot see the tree — which is the whole point of the move.
+    expect(sourceFiles("components", base)).not.toContain(
+      "components/facts/FactChipRow.tsx"
+    );
   });
 });
 
