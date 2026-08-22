@@ -173,15 +173,15 @@ export function useAutoUpdateReload({
     // Re-check after the await: a flush is fast but not instant, and a form that
     // started holding unrecoverable input in the gap must still stop this.
     //
-    // TO THE READER WHO NOTICES NO TEST REDS WHEN THIS LINE GOES: correct, and it is
-    // not because the gate is unobservable. The OR in `evaluate` below IS pinned —
-    // delete it and e2e/update-notice.spec.ts's "a hand-composed dialog holds the tab
-    // against an automatic reload" goes red, mutation-measured 2026-08-21. THIS copy
-    // guards a strictly narrower window: work that appears between the await above
-    // resolving and the navigation being dispatched, which no surface in the tree can
-    // open on purpose and a spec could only fake. It is defence in depth on the same
-    // question, kept for the same reason `captured.ok` is re-read rather than assumed,
-    // and it is NOT evidence that the gate has no coverage.
+    // PINNED as of #3446, and this note used to say the opposite. It was right while
+    // the only tier that could see this line was a browser: the window it guards opens
+    // between the await above resolving and the navigation being dispatched, and no
+    // surface in the tree opens that window on purpose, so a browser spec could only
+    // fake it. components/__tests__/auto-update-reload.test.ts supplies the awaited
+    // flush callback, which opens it exactly. Both operands are pinned separately, so
+    // neither half of the OR can be lost on its own — mutation-measured 2026-08-22.
+    // The OR in `evaluate` below is pinned too, by e2e/update-notice.spec.ts's "a
+    // hand-composed dialog holds the tab against an automatic reload".
     if (hasUnrecoverableWork() || pageDeclaresUnrecoverableWork()) {
       takingRef.current = false;
       return false;
