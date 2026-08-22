@@ -155,12 +155,28 @@ const FORGE_CARDS = `
   [data-testid="${TABLE}"] tbody td[data-card="meta"] { display: inline-flex !important; width: auto !important; }
   [data-testid="${TABLE}"] tbody .card-cell-label { display: inline !important; }
 `;
+// THE TABLE DISPLAY VALUES ARE ASSEMBLED, NOT WRITTEN, AND THAT IS DELIBERATE.
+//
+// Tailwind's content scanner reads every tracked source file as TEXT, so a token
+// that looks like a class name compiles to a real rule wherever it appears —
+// #3523 found a min-height utility shipped into production CSS from an English
+// sentence in a comment. Written out, the four values below each add a real
+// display utility to the app's stylesheet OUTSIDE the phone media query, where
+// this change is supposed to contribute nothing. Measured on this PR's own
+// compiled-sheet diff against `origin/main`, which is how they were found — and
+// then found a SECOND time, because the first draft of this very comment spelled
+// the four class names out in order to explain them and put them straight back.
+// So neither the code nor its explanation writes one: `table` on its own is
+// already a shipped utility and a bare suffix is not a candidate, so the
+// composition below emits nothing and this paragraph names nothing.
+const tableDisplay = (part: string) => `table${part}`;
+
 const FORGE_TABLE = `
-  [data-testid="${TABLE}"] { display: table !important; }
-  [data-testid="${TABLE}"] thead { display: table-header-group !important; }
-  [data-testid="${TABLE}"] tbody { display: table-row-group !important; }
-  [data-testid="${TABLE}"] tbody tr { display: table-row !important; }
-  [data-testid="${TABLE}"] tbody td { display: table-cell !important; }
+  [data-testid="${TABLE}"] { display: ${tableDisplay("")} !important; }
+  [data-testid="${TABLE}"] thead { display: ${tableDisplay("-header-group")} !important; }
+  [data-testid="${TABLE}"] tbody { display: ${tableDisplay("-row-group")} !important; }
+  [data-testid="${TABLE}"] tbody tr { display: ${tableDisplay("-row")} !important; }
+  [data-testid="${TABLE}"] tbody td { display: ${tableDisplay("-cell")} !important; }
   [data-testid="${TABLE}"] tbody .card-cell-label { display: none !important; }
 `;
 
