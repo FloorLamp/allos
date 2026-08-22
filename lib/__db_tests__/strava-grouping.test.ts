@@ -70,6 +70,7 @@ describe("Strava activities group by canonical-sport component (issue #15)", () 
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const cardio = getCardioByActivity(profileId, "km");
@@ -108,6 +109,7 @@ describe("Strava activities group by canonical-sport component (issue #15)", () 
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // The components JSON is persisted verbatim and reparses to the component.
@@ -128,6 +130,7 @@ describe("Strava activities group by canonical-sport component (issue #15)", () 
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // A components-only change → updated (nothing else about the row differs).
@@ -148,6 +151,7 @@ describe("Strava activities group by canonical-sport component (issue #15)", () 
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 });

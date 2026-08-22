@@ -1,6 +1,7 @@
 import { writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
+import { compareWindowStarts, pushStampFor } from "@/lib/metric-window-overlap";
 import {
   emptyCounts,
   foldCounts,
@@ -8,6 +9,7 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
+  supersedeMetricSampleOverlaps,
   upsertActivities,
   upsertBodyMetrics,
   upsertHrMinutes,
@@ -15,7 +17,11 @@ import {
   upsertVitals,
   type IngestCounts,
 } from "./normalize";
-import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
+import {
+  HEALTH_CONNECT_ID,
+  overlapsLeftWarning,
+  type ParsedPayload,
+} from "./health-connect";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -84,6 +90,10 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
+  // Day buckets left double counting once this push has FINISHED. Read from the store
+  // in the last chunk's transaction, by the same query that decides the deletes, so it
+  // reports what HAPPENED rather than a forecast. See where it is set below.
+  let overlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
   // inserted/updated rows they persist; the id captured is committed by the chunk's
@@ -130,9 +140,77 @@ export function ingestHealthConnectPayload(
         bodyMetrics = foldCounts([bodyMetrics, c]);
       }
     );
+    // ASCENDING started_at BEFORE THE CHUNK SPLIT — deterministic write order only.
+    // `upsertMetricSamples` orders what it is GIVEN and only ever sees one chunk, so
+    // sorting here is what makes the per-chunk order a global one. Correctness does not
+    // rest on it, and no longer rests on the stamp either: the deletes are planned over
+    // the whole push below, before any of it is written, so neither row order nor the
+    // chunk split can reach them (owner ruling on #3424, option 2).
+    const orderedSamples = [...parsed.samples].sort((a, b) =>
+      compareWindowStarts(a.started_at, b.started_at)
+    );
+    // ONE stamp for the whole push — what the exporter stated, bounded against a
+    // device clock that claims the future. Null when the push states nothing readable,
+    // and then this push supersedes nothing at all.
+    const pushedAt = pushStampFor(parsed.pushedAt);
+    // ── THE SUPERSEDE (#3424) ── DERIVED FROM THE STORE, IN THE LAST CHUNK.
+    //
+    // There is no plan over the payload any more, and its absence is the fix (the owner's
+    // ruling of 2026-08-22T13:46Z). A read-only pass over the push, however carefully
+    // written, reads its facts at one moment and acts on them at another — and rounds 7,
+    // 8 and 9 all walked through that gap, whether the fact was one the plan never asked
+    // (a #508 tombstone refusing the replacement) or one a concurrent writer moved (a
+    // Data → Manage delete, a per-row Edit arming `edited` on the victim).
+    //
+    // So the victim set is derived from THE STORE, inside the LAST chunk's `IMMEDIATE`
+    // transaction and AFTER that chunk's upserts have run: a stored day bucket is a
+    // victim exactly when a row of its own group carrying THIS PUSH'S STAMP overlaps it
+    // and outranks it, unlocked. A row a veto stopped never got the stamp, so it
+    // justifies nothing — every veto is honoured without being named, and a fifth one
+    // costs no edit here. `supersedeMetricSampleOverlaps` carries the argument.
+    //
+    // THE PLACEMENT IS THE OTHER RULING (#3424, 2026-08-22T05:46Z), and it is the LAST
+    // chunk rather than the first:
+    //
+    //     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+    //     NEVER NEITHER. A day may read HIGH between commits; it must never read
+    //     LOWER than `main` would.
+    //
+    // One chunk: the deletes and the rows are in the same transaction. Many: chunks
+    // 1…n−1 commit upserts only and the store transiently double counts, then the last
+    // chunk commits its upserts AND the victim set together. A failure in chunk k leaves
+    // old + chunks<k — visible, never a hole — and the exporter re-carries the unacked
+    // rows on its next push, which re-derives over that store and collapses it. Rows
+    // landed by chunks 1…n−1 carry the stamp and are committed, so the final transaction
+    // sees the whole push.
+    //
+    // `remaining` is what makes this the last chunk: the slices partition
+    // `orderedSamples`, so it reaches 0 exactly once, in the final one.
+    let remaining = orderedSamples.length;
     commitChunks(
-      parsed.samples,
-      (slice, sink) => upsertMetricSamples(profileId, slice, source, sink),
+      orderedSamples,
+      (slice, sink) => {
+        remaining -= slice.length;
+        // The upsert loop, with no supersede logic in it at all — it only stamps.
+        const part = upsertMetricSamples(profileId, slice, source, sink, {
+          pushedAt,
+        });
+        if (remaining === 0) {
+          const outcome = supersedeMetricSampleOverlaps(
+            profileId,
+            source,
+            pushedAt
+          );
+          part.superseded += outcome.removed;
+          // WHAT THIS PUSH LEFT DOUBLE COUNTING, from the same query that did the
+          // deleting: the candidates the predicate declined (locked, not outranked,
+          // cut at sub-daily granularity) plus the excess the push carries against
+          // ITSELF. Read inside the transaction that acted, so it describes what
+          // happened rather than what was forecast.
+          overlapsLeft = outcome.overlapsLeft;
+        }
+        return part;
+      },
       (c) => {
         samples = foldCounts([samples, c]);
       }
@@ -227,6 +305,13 @@ export function ingestHealthConnectPayload(
     );
   }
 
+  // The Review line, appended to the details this push already carries. Read above from
+  // the store, inside the transaction that did the deleting, so it names the days that
+  // are still reading high once this push is on disk — whatever the reason, and with no
+  // reason enumerated anywhere.
+  if (overlapsLeft > 0) {
+    parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
+  }
   return {
     counts: {
       bodyMetrics: total(bodyMetrics),

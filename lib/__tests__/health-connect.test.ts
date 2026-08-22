@@ -23,6 +23,7 @@ describe("parseHealthConnectPayload — guards", () => {
       vitals: [],
       skipped: 0,
       details: { warnings: [], origins: [] },
+      pushedAt: null,
     };
     expect(parse(null)).toEqual(empty);
     expect(parse("nope")).toEqual(empty);

@@ -56,15 +56,18 @@ describe("tallyUpsert (dedup split accounting, #14/#944)", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
-  it("never touches the held-out suppressed/edited counters", () => {
+  it("never touches the held-out suppressed/edited/superseded counters", () => {
     const c = emptyCounts();
     c.suppressed = 3;
     c.edited = 2;
+    c.superseded = 4;
     tallyUpsert(c, "updated");
     expect(c.suppressed).toBe(3);
     expect(c.edited).toBe(2);
+    expect(c.superseded).toBe(4);
   });
 });
 
@@ -116,15 +119,37 @@ describe("foldCounts", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
   it("sums each field across parts", () => {
     expect(
       foldCounts([
-        { inserted: 3, updated: 1, unchanged: 5, suppressed: 1, edited: 2 },
-        { inserted: 0, updated: 2, unchanged: 4, suppressed: 0, edited: 0 },
-        { inserted: 1, updated: 0, unchanged: 0, suppressed: 2, edited: 1 },
+        {
+          inserted: 3,
+          updated: 1,
+          unchanged: 5,
+          suppressed: 1,
+          edited: 2,
+          superseded: 0,
+        },
+        {
+          inserted: 0,
+          updated: 2,
+          unchanged: 4,
+          suppressed: 0,
+          edited: 0,
+          superseded: 0,
+        },
+        {
+          inserted: 1,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 2,
+          edited: 1,
+          superseded: 0,
+        },
       ])
     ).toEqual({
       inserted: 4,
@@ -132,6 +157,7 @@ describe("foldCounts", () => {
       unchanged: 9,
       suppressed: 3,
       edited: 3,
+      superseded: 0,
     });
   });
 });
@@ -140,7 +166,14 @@ describe("summarizeSplit", () => {
   it("derives received as inserted + updated + unchanged + suppressed + edited + skipped", () => {
     expect(
       summarizeSplit(
-        { inserted: 3, updated: 2, unchanged: 5, suppressed: 1, edited: 2 },
+        {
+          inserted: 3,
+          updated: 2,
+          unchanged: 5,
+          suppressed: 1,
+          edited: 2,
+          superseded: 0,
+        },
         4
       )
     ).toEqual({
@@ -149,15 +182,43 @@ describe("summarizeSplit", () => {
       unchanged: 5,
       suppressed: 1,
       edited: 2,
+      superseded: 0,
       skipped: 4,
       received: 17,
     });
   });
 
+  it("leaves `superseded` OUT of received — it is a stored row we deleted (#3424)", () => {
+    // Every other segment classifies a row THE SOURCE HANDED US; a superseded row is
+    // one we removed from our own store, so folding it in would report a payload
+    // bigger than the sender can count. This is the one case with superseded > 0 —
+    // with it at 0 the sum is the same either way and nothing here can tell.
+    const split = summarizeSplit(
+      {
+        inserted: 1,
+        updated: 0,
+        unchanged: 0,
+        suppressed: 0,
+        edited: 0,
+        superseded: 4,
+      },
+      0
+    );
+    expect(split.superseded).toBe(4);
+    expect(split.received).toBe(1);
+  });
+
   it("handles an all-unchanged batch (received still counts the unchanged rows)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 6, suppressed: 0, edited: 0 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 6,
+          suppressed: 0,
+          edited: 0,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({
@@ -166,6 +227,7 @@ describe("summarizeSplit", () => {
       unchanged: 6,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
       skipped: 0,
       received: 6,
     });
@@ -174,7 +236,14 @@ describe("summarizeSplit", () => {
   it("counts tombstone-suppressed rows in received (no silent cap)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 0, suppressed: 2, edited: 0 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 2,
+          edited: 0,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({
@@ -183,6 +252,7 @@ describe("summarizeSplit", () => {
       unchanged: 0,
       suppressed: 2,
       edited: 0,
+      superseded: 0,
       skipped: 0,
       received: 2,
     });
@@ -191,7 +261,14 @@ describe("summarizeSplit", () => {
   it("counts edit-locked skips in received (no silent cap, #659)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 3 },
+        {
+          inserted: 0,
+          updated: 0,
+          unchanged: 0,
+          suppressed: 0,
+          edited: 3,
+          superseded: 0,
+        },
         0
       )
     ).toEqual({
@@ -200,6 +277,7 @@ describe("summarizeSplit", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 3,
+      superseded: 0,
       skipped: 0,
       received: 3,
     });
@@ -214,6 +292,7 @@ describe("summarizeSplit", () => {
           unchanged: 1.6,
           suppressed: -2,
           edited: 1.4,
+          superseded: -1.6,
         },
         -3
       )
@@ -223,6 +302,7 @@ describe("summarizeSplit", () => {
       unchanged: 2,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
       skipped: 0,
       received: 5,
     });

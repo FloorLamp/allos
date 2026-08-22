@@ -34,6 +34,8 @@ export interface SyncEventFacts {
   written: number | null;
   suppressed?: number | null;
   edited?: number | null;
+  // Stored rows a Health Connect push superseded (#3424).
+  superseded?: number | null;
   skipped?: number | null;
   window_start?: string | null;
   window_end?: string | null;

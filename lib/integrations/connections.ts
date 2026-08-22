@@ -187,6 +187,9 @@ export interface SyncEventInput {
   // Rows the source re-sent that the user-edit lock held out (#133/#659). Null on a
   // failure event or a legacy caller.
   edited?: number | null;
+  // Stored rows an incoming Health Connect interval DELETED as overlapped (#3424).
+  // Null on a failure event or a legacy caller.
+  superseded?: number | null;
   skipped?: number | null;
   // Structured, non-secret diagnostics surfaced with a successful sync in Data →
   // Review (exporter-shape warnings and origin reconciliation for Health Connect).
@@ -225,9 +228,10 @@ export function recordSyncEvent(
       .prepare(
         `INSERT INTO integration_sync_events
          (profile_id, source_id, at, ok, window_start, window_end,
-          received, written, inserted, updated, unchanged, suppressed, edited, skipped,
+          received, written, inserted, updated, unchanged, suppressed, edited,
+          superseded, skipped,
           details, raw_ref, error, portal_id, account_id, patient_label)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -246,6 +250,7 @@ export function recordSyncEvent(
         ev.unchanged ?? null,
         ev.suppressed ?? null,
         ev.edited ?? null,
+        ev.superseded ?? null,
         ev.skipped ?? null,
         boundSyncDetailsJson(ev.details),
         ev.raw_ref ?? null,
