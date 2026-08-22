@@ -341,7 +341,7 @@ test.describe("shared supply pools", () => {
       await hydratedClick(
         page,
         editable.getByRole("button", {
-          name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
+          name: `Bottle actions for ${SUPPLY_EDIT_BOTTLE}`,
         })
       );
       await hydratedClick(page, page.getByTestId("shared-supply-edit"));
@@ -363,7 +363,7 @@ test.describe("shared supply pools", () => {
       await hydratedClick(
         page,
         editable.getByRole("button", {
-          name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
+          name: `Bottle actions for ${SUPPLY_EDIT_BOTTLE}`,
         })
       );
       // Delete only opens the confirm sheet (a promise, not a write) — the

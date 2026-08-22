@@ -121,7 +121,7 @@ export default function PracticeCard({
         action={
           <div data-testid="wellness-practice-actions">
             <OverflowMenu
-              label={`${practice.name} actions`}
+              itemName={practice.name}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

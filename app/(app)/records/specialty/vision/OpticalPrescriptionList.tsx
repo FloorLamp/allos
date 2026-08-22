@@ -143,6 +143,7 @@ export default function OpticalPrescriptionList({
       <RecordTable
         items={items}
         columns={columns}
+        itemName={(rx) => prescriptionDisplayLabel(rx)}
         emptyMessage="No prescriptions yet. Add one, or upload an Rx slip to import it."
         multiView={
           multiView

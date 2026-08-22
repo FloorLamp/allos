@@ -46,7 +46,21 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     await expect(menu).toHaveAttribute("data-anchored-panel", "sheet");
     // The sheet is NAMED by the trigger it came from — the row is behind a scrim
     // now, so the heading is the only thing saying whose actions these are.
-    await expect(sheet.getByRole("heading")).toHaveText("Medication actions");
+    //
+    // That sentence is #3501's whole argument, and until #3501 this line asserted
+    // the one heading that could not satisfy it: "Medication actions" names a KIND,
+    // and every medication row on the page produced the same one, so the heading
+    // said nothing about whose actions were on screen. The name now carries the row.
+    //
+    // Compared against the TRIGGER's own accessible name rather than a literal,
+    // because "named by the trigger it came from" is the actual claim — and the
+    // trigger above is reached by POSITION, so a literal would have to hard-code
+    // whichever medication the fixture happens to sort first.
+    const triggerName = await trigger.getAttribute("aria-label");
+    expect(triggerName, "the ⋯ trigger must carry an accessible name").toMatch(
+      /^Medication actions for .+/
+    );
+    await expect(sheet.getByRole("heading")).toHaveText(triggerName!);
 
     // The items are the same items, addressed the same way.
     const items = menu.getByRole("menuitem");

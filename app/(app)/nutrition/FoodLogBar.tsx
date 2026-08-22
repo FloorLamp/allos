@@ -1462,12 +1462,12 @@ export default function FoodLogBar({
                     {event.mealSlot} · {event.eatenAt ?? event.loggedTime}
                   </span>
                   <OverflowMenu
-                    label={
-                      // The accessible name says which time it names: "logged at" over
-                      // an EATING time was a wrong claim (#2227).
+                    itemName={
+                      // The name says which time it names: "logged at" over an
+                      // EATING time was a wrong claim (#2227).
                       event.eatenAt
-                        ? `Actions for the ${event.name} serving eaten at ${event.eatenAt}`
-                        : `Actions for the ${event.name} serving logged at ${event.loggedTime}`
+                        ? `the ${event.name} serving eaten at ${event.eatenAt}`
+                        : `the ${event.name} serving logged at ${event.loggedTime}`
                     }
                     open={openMenuId === event.id}
                     onOpenChange={(next) =>

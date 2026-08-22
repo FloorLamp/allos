@@ -242,7 +242,8 @@ export default function EquipmentManager({
           now blocks). Same three actions, same handlers. */}
       <div className="flex shrink-0 items-center">
         <OverflowMenu
-          label="Equipment actions"
+          kind="Equipment"
+          itemName={e.name}
           open={menuOpenId === e.id}
           onOpenChange={(open) => setMenuOpenId(open ? e.id : null)}
         >

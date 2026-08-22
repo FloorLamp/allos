@@ -286,7 +286,8 @@ function ReadingRow({
         ) : (
           <div className="flex items-center justify-end">
             <OverflowMenu
-              label="Reading actions"
+              kind="Reading"
+              itemName={row.date}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

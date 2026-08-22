@@ -69,15 +69,19 @@ export default function BodyMetricRowMenu({
     }
   }
 
-  // The row's own date is in hand, so the accessible name says WHICH entry (#2530):
-  // a table of N controls all named "Row actions" tells a screen-reader user nothing
-  // about which record they are about to change.
-  const name = `Actions for entry from ${label}`;
-
   return (
     <div className="flex items-center justify-end">
       <OverflowMenu
-        label={name}
+        // The row's own date says WHICH entry (#2530): a table of N controls all
+        // named "Row actions" tells a screen-reader user nothing about which
+        // record they are about to change. This file used to compose that whole
+        // sentence itself (`Actions for entry from ${label}`); since #3501 it
+        // hands over the PARTS and lib/overflow-menu-label.ts writes it, so the
+        // phrasing here cannot drift from the phrasing everywhere else. "Entry"
+        // is the noun the rest of this menu already uses — delete is a whole-row
+        // delete, and its label says "entry" for the same reason.
+        kind="Entry"
+        itemName={label}
         open={menuOpen}
         onOpenChange={(open) => setMenuOpen(busy ? false : open)}
       >

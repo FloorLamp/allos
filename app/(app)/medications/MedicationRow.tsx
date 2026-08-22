@@ -264,7 +264,8 @@ export default function MedicationRow({
               />
             )}
             <OverflowMenu
-              label="Medication actions"
+              kind="Medication"
+              itemName={med.name}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

@@ -62,7 +62,7 @@ export default function TrendTileMenu({
     reorder?.move(itemKey, direction);
   };
   return (
-    <OverflowMenu label={`${label} actions`} open={open} onOpenChange={setOpen}>
+    <OverflowMenu itemName={label} open={open} onOpenChange={setOpen}>
       {({ runAction }) => (
         <div data-testid="trend-tile-menu">
           <button

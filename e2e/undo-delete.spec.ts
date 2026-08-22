@@ -134,7 +134,15 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
 
   // Undo restores it (under a NEW id, so we match by title, not id): a "Restored."
   // toast, and the probe row is back on the feed.
-  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  //
+  // Scoped to the TOAST, which is the button this has always meant. The probe is
+  // titled "Undo delete probe …", and since #3501 its row kebab is named for the
+  // row it acts on ("Activity actions for Undo delete probe …") — so a page-wide
+  // `name: "Undo"` now answers with the kebab too.
+  await settledClick(
+    page,
+    page.getByTestId("toast").getByRole("button", { name: "Undo" })
+  );
   await expect(page.getByText("Restored.")).toBeVisible();
   await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(1);
@@ -229,7 +237,10 @@ test.describe("a metric_samples reading is undoable too (#2123)", () => {
     ).toHaveCount(0);
     await expect(page.getByText("Reading deleted.")).toBeVisible();
 
-    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await settledClick(
+      page,
+      page.getByTestId("toast").getByRole("button", { name: "Undo" })
+    );
     await expect(page.getByText("Restored.")).toBeVisible();
     await expect(
       page

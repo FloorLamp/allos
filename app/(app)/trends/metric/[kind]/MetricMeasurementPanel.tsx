@@ -50,7 +50,7 @@ export default function MetricMeasurementPanel({
                 aria-label={`Log ${label.toLowerCase()} manually`}
                 aria-haspopup="dialog"
                 aria-expanded={open}
-                className="btn btn-sm min-h-10 min-w-10 px-2 sm:min-h-0 sm:min-w-0 sm:px-3"
+                className="btn btn-sm px-2 sm:px-3"
                 data-testid="metric-measurement-toggle"
               >
                 <IconPlus className="h-4 w-4" stroke={1.75} aria-hidden />

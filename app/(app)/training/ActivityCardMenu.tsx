@@ -296,7 +296,8 @@ export default function ActivityCardMenu({
   return (
     <>
       <OverflowMenu
-        label="Activity actions"
+        kind="Activity"
+        itemName={activity.title}
         open={open}
         panelClassName={picking ? "w-72 max-w-[calc(100vw-1rem)]" : undefined}
         onOpenChange={(o) => {

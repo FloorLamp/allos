@@ -146,6 +146,7 @@ export default function ConditionList({
     <RecordTable
       items={items}
       columns={columns}
+      itemName={(c) => conditionDisplayLabel(c)}
       emptyMessage="No conditions match this filter."
       multiView={
         multiView
