@@ -237,7 +237,6 @@ function ReadingRow({
         slot="meta"
         label="Source"
         empty={!row.source && !row.observed}
-        className="metric-reading-source"
       >
         {row.source ?? "—"}
         {/* Where this reading was actually taken, said out loud: a clinic-measured

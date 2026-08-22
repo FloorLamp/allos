@@ -649,8 +649,39 @@
   & td[data-card="value"] {
     @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
   }
+  /* ATOMIC LABEL–VALUE PAIRS (#3499). A meta cell IS a pair — the column's label
+     plus the value it names — and it used to be a plain block box, so the two ran
+     together in one inline flow and the line could break BETWEEN the label and its
+     own value. Three of them side by side then read as one undifferentiated strip
+     ("MODALITY Ultrasound DATE Oct 10, 2024 SOURCE Document"), which is what the
+     owner's phone review of the imaging study list called unreadable.
+
+     MAKING THE CELL ITS OWN FLEX CONTAINER IS WHAT BINDS THE PAIR, and it binds it
+     BY CONSTRUCTION rather than by tuning: the label span and the value are the
+     container's flex items, and a flex container that does not wrap keeps its items
+     on ONE flex line whatever their text lengths are. So no label can be separated
+     from the START of its value, and the only wrapping left is the ROW's
+     `flex-wrap`, which breaks between whole cells — between pairs, never inside one.
+     `whitespace-nowrap`/`shrink-0` on the label is the same promise for the label's
+     own text.
+
+     `min-w-0` is what keeps that affordable. Without it a pair's `min-width: auto`
+     floors the cell at its own min-content and a long value pushes the card
+     sideways; with it, a pair too long for the line shrinks and its VALUE wraps
+     inside itself — a wrapping provider name is allowed, because "atomic" binds the
+     label to the value's start, not to all of it (#3499's own wording).
+
+     CONTRAST NOW CARRIES THE PAIRING the line break used to. The label keeps the
+     uppercase micro style and the muted tone from `card-cell-label` — a colour
+     declared ON the span, which beats this rule by being direct rather than
+     inherited, whatever the specificity — while the value steps up to the same tone
+     the desktop column already uses (`@utility td`). Label and value were the same
+     slate-500 before, which is why the strip had nothing to read it by. */
   & td[data-card="meta"] {
-    @apply max-sm:order-4 max-sm:text-xs max-sm:text-slate-500 max-sm:dark:text-slate-400;
+    @apply max-sm:order-4 max-sm:inline-flex max-sm:min-w-0 max-sm:items-baseline max-sm:text-xs max-sm:text-slate-700 max-sm:dark:text-slate-300;
+  }
+  & td[data-card="meta"] .card-cell-label {
+    @apply max-sm:shrink-0 max-sm:whitespace-nowrap;
   }
   & td[data-card="full"] {
     @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
@@ -684,23 +715,27 @@
 }
 
 @utility metric-readings-list {
-  /* A metric detail page already gives its readings one containing card. Flatten
-     those phone rows into compact divider-separated records so they do not read
-     as padded cards nested inside another card. Desktop keeps the table grid. */
-  /* Tailwind 4 sorts custom utilities independently of source order. These
-     intentional overrides must beat the generic `table-cards` rules regardless
-     of that generated order. */
+  /* A metric detail page already gives its readings one containing card. `table-cards`
+     already renders every phone row as a flat divider-separated record (#1616), so
+     what is left here is the INSET: a row inside an existing card does not also pay
+     the card’s own `p-3` gutter. Nothing else about the flattening is restated —
+     `mb-0`, `rounded-none`, `border-x-0`, `border-t-0`, `bg-transparent` and the
+     last-child divider were byte-identical restatements of the base and came off in
+     #3499, where an override kept without a reason is the drift the registry exists
+     to stop. Desktop keeps the table grid.
+     Tailwind 4 sorts custom utilities independently of source order, so the overrides
+     that are genuinely intentional carry `!` and beat the generic `table-cards` rules
+     regardless of that generated order. */
   & tr {
-    @apply max-sm:mb-0 max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
-  }
-  & tr:last-child {
-    @apply max-sm:border-b-0;
+    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
   }
   /* This list keeps its VALUE on the head line (below), so the title must NOT
      reserve the whole line the way the generic #2588 rule does — it goes back to a
      zero basis and grows, which is what pins the value and the ⋯ to the right of
-     the date. Its metas already claim `basis-full`, so they were never at risk of
-     packing onto the head line in the first place. */
+     the date. The #2588 basis is what keeps the metas off that head line here: the
+     title still grows to fill it, so a meta pair only ever lands on the line below.
+     (Its metas used to claim `basis-full` from a bespoke stacked override; #3499
+     deleted that and the readings adopted the shared atomic-pair treatment.) */
   & td[data-card="title"] {
     @apply max-sm:basis-0!;
   }
@@ -709,6 +744,20 @@
   }
   & td[data-card="actions"] {
     @apply max-sm:order-3! max-sm:ml-0!;
+  }
+  /* THE ONE META DECLARATION THIS LIST STILL OWNS, and it is a WRAP rule rather than
+     pair styling — #3499 deleted the bespoke stacked shape (`justify-between`,
+     `text-right`, `gap-3`, the label's `mr-0`) so the readings render the same atomic
+     pairs as every other card. It cannot go with them: the #2588 head-line basis is
+     what keeps a meta off the identity line, and the `basis-0!` title above
+     deliberately opts OUT of it so the value and the ⋯ pin to the date's right. With
+     no basis of its own a meta's base size is its content, which fits — so SOURCE and
+     NOTES would pack onto the date/value line and shove the `ml-auto` value into the
+     middle of the row. Reinstating the base's own rule for this one list is what buys
+     that back. (`w-full` came off with the rest: a flex item's `flex-basis` already
+     decides its main size, so the width was never read.) */
+  & td[data-card="meta"] {
+    @apply max-sm:basis-full!;
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element
@@ -722,15 +771,6 @@
       position: absolute;
       inset: -4px;
     }
-  }
-  & td[data-card="meta"] {
-    @apply max-sm:flex max-sm:w-full! max-sm:basis-full! max-sm:justify-between max-sm:gap-3 max-sm:text-right;
-  }
-  & td[data-card="meta"] .card-cell-label {
-    @apply max-sm:mr-0 max-sm:shrink-0;
-  }
-  & td.metric-reading-source {
-    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
   }
 }
 
@@ -747,19 +787,10 @@
 }
 
 @utility card-cell-label {
-  .metric-readings-list td[data-card="meta"] & {
-    @apply max-sm:mr-0 max-sm:shrink-0;
-  }
   /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
   /* The passing muted pairing (#794): the label is set apart from its value by
      case and size, never by dropping below the contrast floor. */
   @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
-}
-
-@utility metric-reading-source {
-  .metric-readings-list &:is(td) {
-    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
-  }
 }
 
 @utility tap-target {
