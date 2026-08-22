@@ -160,6 +160,104 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     ).toBe(true);
   });
 
+  // ── THE CHIP PRIMITIVE, MEASURED RATHER THAN DECLARED (#3475) ─────────────
+  //
+  // The test above asks whether the two roles are DIFFERENT. This one asks
+  // whether they are the SAME where they are meant to be — one size — and it has
+  // to be a rendered measurement rather than a class-string check for the reason
+  // this project keeps relearning: a computed-style assertion measures a
+  // DECLARATION and the reader sees a RENDERED result. #3466 shipped a stepped
+  // 16px seam whose rendered gap stayed 24px, with its guard reading 16 off that
+  // exact element.
+  //
+  // What it would have caught: the defect #3475 was filed on is three heights
+  // for one idea — the nav chip at `py-1` (30px), one Analyze strip at `py-1.5`
+  // (32px) and a second Analyze strip at `py-1` — which the source scan in
+  // lib/__tests__/chip-primitive-census.test.ts can only see while everyone
+  // spells the size in `app/globals.css`. A call site that re-overrides padding
+  // is invisible there and visible here.
+  test("the two chip roles render at ONE size, and differ only where they mean to", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+    const nav = page.getByTestId("records-sub-tabs").getByRole("link").first();
+    const filter = page
+      .getByTestId("immunization-status-filter")
+      .getByRole("link")
+      .first();
+    // WAIT FOR THE CHIPS THEMSELVES, not for their strips: a container is
+    // measurable while it is still empty, and an empty box flatters any
+    // assertion about the boxes inside it.
+    await expect(nav).toBeVisible();
+    await expect(filter).toBeVisible();
+
+    const navBox = (await nav.boundingBox())!;
+    const filterBox = (await filter.boundingBox())!;
+
+    // 34px is the primitive's one size: `px-3 py-1.5` over `text-sm` (32px of
+    // content box) PLUS the 1px border the base reserves for both roles.
+    //
+    // THAT NUMBER IS WHY THIS TEST IS RENDERED. Its first cut asserted 32 — the
+    // height FilterPills had measured and written down — and the nav chip came
+    // back 34, because the nav role draws a border and the filter role did not,
+    // so one padding scale was still producing two heights. The primitive now
+    // reserves the border on its BASE and a role only changes its colour. No
+    // class-string check could have found that; this one found it on first run.
+    const CHIP_HEIGHT = 34;
+    expect(Math.round(navBox.height)).toBe(CHIP_HEIGHT);
+    expect(Math.round(filterBox.height)).toBe(CHIP_HEIGHT);
+
+    // …and they are still the two different shapes #3408 separated them into.
+    const radii = await page.evaluate(() => {
+      const read = (sel: string) =>
+        getComputedStyle(document.querySelector(`${sel} a`)!)
+          .borderTopLeftRadius;
+      return {
+        nav: read('[data-testid="records-sub-tabs"]'),
+        filter: read('[data-testid="immunization-status-filter"]'),
+      };
+    });
+    expect(radii.nav).not.toBe(radii.filter);
+  });
+
+  // THE LIT STATE IS PAINTED FROM THE ARIA (#3475). Both roles key their selected
+  // rule on `[aria-current]` / `[aria-pressed="true"]`, which makes "a chip cannot
+  // look selected without announcing that it is" a structural fact rather than a
+  // convention. Rendered, because the claim is about what the cascade produced:
+  // the attribute selector could be present in the sheet and still lose.
+  test("a chip's selected paint follows the attribute that announces it", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/immunizations");
+    const strip = page.getByTestId("immunization-status-filter");
+    const current = strip.locator("[aria-current]:not([aria-current='false'])");
+    const other = strip.locator(
+      "a:not([aria-current]), a[aria-current='false']"
+    );
+    await expect(current).toHaveCount(1);
+    await expect(other.first()).toBeVisible();
+
+    const [lit, unlit] = await Promise.all([
+      current.evaluate((el) => getComputedStyle(el).backgroundColor),
+      other.first().evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    expect(lit).not.toBe(unlit);
+
+    // And the nav strip's current pane says the same thing the same way.
+    const navCurrent = page
+      .getByTestId("records-sub-tabs")
+      .locator("[aria-current='page']");
+    await expect(navCurrent).toHaveCount(1);
+    const navOther = page
+      .getByTestId("records-sub-tabs")
+      .locator("a:not([aria-current])");
+    const [navLit, navUnlit] = await Promise.all([
+      navCurrent.evaluate((el) => getComputedStyle(el).backgroundColor),
+      navOther.first().evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    expect(navLit).not.toBe(navUnlit);
+  });
+
   test("the Specialty pane strip renders single-line chips", async ({
     page,
   }) => {

@@ -578,11 +578,17 @@
    A NEW chip strip picks the role by what it DOES and inherits both states; it
    does not pick colours.
 
-   ONE PADDING, BOTH ROLES. `px-3 py-1.5` over `text-sm` renders 32px tall, which
-   is what FilterPills already measured and documented. The nav role was `py-1`
-   (30px) and the two Analyze strips were `py-1.5` and `py-1`; three heights for
-   one idea is the drift this closes, and 32 is the value the app's own filter
-   affordance had already settled on.
+   ONE PADDING, BOTH ROLES — AND THE BORDER IS PART OF THE SIZE. `px-3 py-1.5`
+   over `text-sm` is 32px of content box; the nav role's 1px border makes it 34
+   and the borderless filter role 32, so "one padding scale" does NOT give one
+   height on its own. That was measured, not reasoned: the first cut of this
+   primitive asserted 32 for both and the rendered box came back 34 for the nav
+   chip. So the BASE reserves the border — `1px solid transparent` — and a role
+   only ever changes its COLOUR. Both roles render 34px, by construction rather
+   than by two call sites agreeing.
+   (Before this: the nav role was `py-1` + border = 30px, one Analyze strip was
+   `py-1.5` + border = 34 and the second `py-1` + border = 30, and FilterPills
+   was 32. Four heights for one idea is the drift this closes.)
 
    THE SELECTED STATE IS PAINTED FROM THE ARIA, NOT FROM A TERNARY. Both roles
    key their lit state on `[aria-current]` (excluding the literal "false") or
@@ -604,6 +610,10 @@
    layer, so it cannot lower a call site's `min-h-*`. */
 @utility chip {
   @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  /* Reserved so a bordered role and a borderless one occupy the same box. The
+     fill paints under it (`background-clip` is `border-box` by default), so a
+     transparent border is invisible rather than a 1px light seam. */
+  border: 1px solid transparent;
 }
 
 @utility chip-nav {

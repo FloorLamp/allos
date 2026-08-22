@@ -94,8 +94,11 @@ export default function FilterPills<T extends string>({
   // changed shape, padding or colour; what changed is that the next filter-ish
   // strip inherits this instead of copying it.
   //
-  // 32px TALL — `px-3 py-1.5` around `text-sm`, no explicit min-height — rather
-  // than the 44px tap floor. These sit shoulder to shoulder in a scrolling row,
+  // 34px TALL — `px-3 py-1.5` around `text-sm` plus the primitive's reserved 1px
+  // border, no explicit min-height — rather than the 44px tap floor. (It was 32
+  // here before the primitive; the two extra pixels are the border the nav role
+  // has always drawn, now reserved by BOTH roles so the two strips occupy the
+  // same box. Measured, in e2e/records-pane-anatomy.mobile.spec.ts.) These sit shoulder to shoulder in a scrolling row,
   // and a 44px-tall strip of seven is a band of chrome above the list it is
   // meant to narrow. The floor's own wording is about a control a finger must
   // ACQUIRE; a pill in a horizontal strip is acquired by its WIDTH, which is
