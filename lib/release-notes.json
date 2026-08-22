@@ -134,6 +134,12 @@
           "title": "Filter and tab chips look the same everywhere, and one can no longer look selected without saying so to a screen reader",
           "kind": "fix",
           "issues": [3475]
+        },
+        {
+          "pr": 3522,
+          "title": "Dates read the way you set them everywhere, instead of surfacing as 2026-05-24 on imports, results and the dashboard",
+          "kind": "fix",
+          "issues": [3492]
         }
       ]
     },
