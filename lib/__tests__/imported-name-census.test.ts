@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CENSUS_ROOTS,
   blankComments,
+  casedNameBindings,
   cssCasingClassSites,
   cssCasingOverNameHits,
   nameCasingHits,
@@ -14,6 +15,16 @@ import {
 // The no-display-casing-pass census (#3480). Half of the imported-name doctrine is
 // "the cleaning happens at the import boundary"; the other half is "and NOT at the
 // display boundary", and this is what keeps the second half true.
+//
+// WHAT IT MEASURES, stated before anything else because an earlier version of this
+// claim over-reached and a two-line mutant refuted it. The census reads one file's
+// text at a time and sees a casing pass expressed FOUR ways: a casing call inside a
+// render interpolation; a casing call BOUND TO A LOCAL that a render interpolation
+// then renders; a Tailwind casing class; an inline `textTransform` style. It does
+// NOT see a casing pass that lives inside another COMPONENT — `<Shout>{med.name}</Shout>`
+// — because the transform is in `Shout`'s own definition and the call site is
+// textually identical to correct code. Closing that would take a real parser and a
+// cross-file component graph. Say "these four mechanisms", never "any mechanism".
 //
 // IT IS AN ABSENCE ASSERTION, so it fails OPEN — the sweep goes green the moment it
 // stops finding anything to examine, and that is the failure #3509 is standing on.
@@ -62,7 +73,7 @@ function censusFiles(): string[] {
   return CENSUS_ROOTS.flatMap((root) => walk(path.join(REPO, root)));
 }
 
-describe("no display surface casings a stored name", () => {
+describe("no display surface casings a stored name, in the four mechanisms this rule can see", () => {
   const files = censusFiles();
 
   it("read enough of the tree for the sweep to mean anything", () => {
@@ -161,6 +172,26 @@ describe("the census rule can see an offender", () => {
       "a cased name behind an optional chain",
       `<span>{med?.name?.toUpperCase()}</span>`,
     ],
+    // HOISTED OUT OF THE INTERPOLATION — two lines, and the most natural way to
+    // write it. Every one of these was MISSED before the binding scan, while the
+    // claim above them said no display surface cases a name in ANY of its
+    // mechanisms.
+    [
+      "a name upper-cased into a local, then rendered",
+      `const shown = med.name.toUpperCase();\nreturn <h3>{shown}</h3>;`,
+    ],
+    [
+      "a name title-cased into a local, then rendered",
+      `const shown = titleCase(med.name);\nreturn <h3>{shown}</h3>;`,
+    ],
+    [
+      "a hoisted cased name rendered in an accessible label",
+      `const shown = item.source_name.toUpperCase();\nreturn <button aria-label={shown}>x</button>;`,
+    ],
+    [
+      "a hoisted cased name whose binding wraps onto the next line",
+      `const shown =\n  med.provider_name.toLocaleUpperCase();\nreturn <h3>{shown}</h3>;`,
+    ],
   ];
 
   for (const [what, source] of OFFENDERS) {
@@ -254,6 +285,18 @@ describe("the census rule stays quiet on the benign neighbours", () => {
       // would be deleted for crying wolf.
       `<span className="uppercase">Dose</span><span>{med.name}</span>`,
     ],
+    [
+      // The binding scan's own benign neighbour, and the tree really has six of
+      // these (a lower-cased filename, a title-cased activity type, a Map key).
+      // Casing a name into a local is ordinary; RENDERING that local is the offence.
+      "a cased name bound to a local that is never rendered",
+      `const lower = doc.filename.toLowerCase();\nreturn <span>{doc.filename}</span>;`,
+    ],
+    [
+      // Word-boundary, so a binding called `shown` does not condemn `shownAt`.
+      "a different identifier that merely starts the same way",
+      `const shown = med.name.toUpperCase();\nreturn <span>{shownAt}</span>;`,
+    ],
   ];
 
   for (const [what, source] of QUIET) {
@@ -265,6 +308,28 @@ describe("the census rule stays quiet on the benign neighbours", () => {
       ).toEqual([]);
     });
   }
+});
+
+describe("the binding scan reports what it bound", () => {
+  it("names the local, not only the verdict", () => {
+    // A rule that reached the right answer off the wrong binding would agree with
+    // the offender list above and disagree with reality.
+    expect(
+      casedNameBindings(
+        `const shown = med.name.toUpperCase();\nconst n = other.count + 1;`
+      )
+    ).toEqual(["shown"]);
+  });
+
+  it("does not bind past the end of the statement", () => {
+    // `[^;{}]` stops at the statement end, so a `{` opening a block body cannot drag
+    // the following statements into the right-hand side and bind an innocent local.
+    expect(
+      casedNameBindings(
+        `const label = plain;\nfunction f() { return x.name.toUpperCase(); }`
+      )
+    ).toEqual([]);
+  });
 });
 
 describe("comments are blanked before the scan", () => {

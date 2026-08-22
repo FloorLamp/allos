@@ -16,7 +16,7 @@
 // on a name" — it is "a casing transform inside a JSX interpolation that RENDERS a
 // name", which is the only shape that reaches a reader's eyes.
 //
-// THE FLOOR IS PART OF THE RULE. "No display surface casings a name" is an ABSENCE
+// THE FLOOR IS PART OF THE RULE. The claim is an ABSENCE
 // assertion, so it goes green the moment the scan stops finding name renders at all
 // — a renamed directory, a changed JSX spelling, a regex that quietly stops
 // matching. `censusFiles` therefore reports how many files it read and how many name
@@ -116,6 +116,52 @@ const CASING_ON_NAME = new RegExp(
   `${NAME_EXPR}\\s*${CASING}|${CASING}\\s*${NAME_EXPR}`
 );
 
+// ── HOISTING THE CALL OUT OF THE INTERPOLATION ───────────────────────────────
+//
+// `{med.name.toUpperCase()}` is the shape the rule above matches. It is not the only
+// shape, and it is arguably not even the most natural one to write:
+//
+//     const shown = med.name.toUpperCase();
+//     return <h3>{shown}</h3>;
+//
+// The transform and the render are now two statements, so an interpolation-shaped
+// rule sees `{shown}` — an identifier that mentions no name and applies no casing —
+// and reports a clean sweep. Two lines defeated it.
+//
+// So the scan first collects the LOCAL NAMES a casing transform of a name was bound
+// to in this file, and then treats an interpolation that renders one of them as
+// exactly what it is: a cased name reaching the DOM. `const`, `let` and `var`, and
+// the right-hand side may wrap onto the next line — `[^;{}]` spans newlines and
+// stops at the statement end, so a `{` opening a block body can never drag the
+// following statements in.
+//
+// WHAT IS STILL OUT OF REACH, said plainly rather than left for the next reviewer to
+// find: a COMPONENT that cases its own children — `<Shout>{med.name}</Shout>` — is
+// invisible to any rule that reads one file's text, because the casing lives in
+// `Shout`'s definition and the call site is indistinguishable from correct code.
+// Deciding it would take a real parser and a cross-file component graph. The census
+// claims what it measures (see the test's own wording) and no more.
+const CASED_NAME_BINDING_RE =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;{}]{0,240})/g;
+
+// The local identifiers this source binds a cased name to. Exported so the guard can
+// assert on WHICH binding it found rather than only on the verdict.
+export function casedNameBindings(source: string): string[] {
+  const clean = blankComments(source);
+  const found = new Set<string>();
+  for (const m of clean.matchAll(CASED_NAME_BINDING_RE))
+    if (CASING_ON_NAME.test(m[2] ?? "")) found.add(m[1]);
+  return [...found];
+}
+
+// Does this interpolation render one of those bindings? A word-boundary match, so
+// `shown` does not match `shownAt` or `x.shown`.
+function rendersBinding(body: string, bindings: string[]): boolean {
+  return bindings.some((v) =>
+    new RegExp(`(?<![\\w$.])${v.replace(/\$/g, "\\$")}(?![\\w$])`).test(body)
+  );
+}
+
 export interface CensusHit {
   // The interpolation's text, for the failure message.
   text: string;
@@ -133,10 +179,11 @@ function lineOf(source: string, index: number): number {
 // count of these: the rule can only speak about sites it can see.
 export function nameRenderSites(source: string): CensusHit[] {
   const clean = blankComments(source);
+  const bindings = casedNameBindings(source);
   const hits: CensusHit[] = [];
   for (const m of clean.matchAll(RENDER_RE)) {
     const body = m[1] ?? "";
-    if (!NAME_IN_INTERP.test(body)) continue;
+    if (!NAME_IN_INTERP.test(body) && !rendersBinding(body, bindings)) continue;
     hits.push({ text: body.trim(), line: lineOf(clean, m.index) });
   }
   return hits;
@@ -146,7 +193,10 @@ export function nameRenderSites(source: string): CensusHit[] {
 // offending shape. A subset of nameRenderSites by construction, so a green sweep is
 // only meaningful beside that count.
 export function nameCasingHits(source: string): CensusHit[] {
-  return nameRenderSites(source).filter((h) => CASING_ON_NAME.test(h.text));
+  const bindings = casedNameBindings(source);
+  return nameRenderSites(source).filter(
+    (h) => CASING_ON_NAME.test(h.text) || rendersBinding(h.text, bindings)
+  );
 }
 
 // ── The MARKUP half, because a class or a style can casing-pass a name too ───

@@ -1,5 +1,5 @@
 import { db, writeTx } from "./db";
-import { isCleanerName } from "./imported-name";
+import { isCleanerName, isImportedDocumentName } from "./imported-name";
 import { serializeRxcuiIngredients } from "./rxnorm";
 
 // The WRITE half of the imported-name boundary (issue #3480) — the only path in the
@@ -30,12 +30,43 @@ import { serializeRxcuiIngredients } from "./rxnorm";
 // dropping the clause widens the reachable set by nothing except the rows somebody
 // deliberately reclassified — which are the rows the card was already offering.
 //
-// A BLANK STORED NAME is refused here rather than one layer up. `COALESCE` preserves
-// what the document said forever, so adopting over an empty name would write an empty
-// `source_name` that nothing can ever correct; and there is no document label to
-// preserve, which is the whole reason the write exists. Migration
+// A BLANK STORED NAME is refused here rather than one layer up. There is no document
+// label to preserve, which is the whole reason the write exists. Note what actually
+// closes that path: `cleanMedicationName` (lib/prescription-parse.ts) runs a JS
+// `trim()` on every extracted name before it is stored, so an all-whitespace name
+// cannot reach the table. The `TRIM(name) <> ''` clause below is the SAME question
+// asked at the boundary that does the writing, so the refusal does not depend on a
+// caller two modules away keeping its trim; it is not a normaliser and does not claim
+// to be one — SQL `TRIM` strips spaces only, and a name made of invisible characters
+// (U+200B, U+2060, U+00AD, U+180E) passes both it and the JS trim. Per-field
+// normalisation at the write boundary is #3472's, and closing it there closes it for
+// every name column at once rather than growing a second normaliser here. Migration
 // 101-recover-blank-name-prescriptions is this tree's own record that blank extracted
 // names have existed.
+//
+// AND IT MUST BE A ROW THE CARD COULD HAVE SHOWN. `source = 'extracted'` is
+// PROVENANCE; it does not say the row's name still reads as the document's label.
+// Without the predicate re-check below, a valid `item_id` for any extracted row in
+// the document renamed it — offered or not — so a stale tab, a replayed payload or
+// any client posting an id reached rows nobody was ever shown. That is not an
+// authorization hole (it is the same person's own document), but "no stored name
+// changes without a person seeing both versions and choosing" is exactly the sentence
+// it falsified. The re-check asks the SAME question the card's read asks
+// (lib/queries/imports.ts `getDocumentImportedNameOffers`), including its second
+// clause: a row whose `source_name` is set is by definition no longer carrying a
+// document label — it was renamed from here already — and it stays reachable, because
+// the card deliberately keeps offering it in case a better concept exists.
+
+// Is this row one the offer card could have listed? The read half of the boundary
+// (`getDocumentImportedNameOffers`) filters on exactly this expression, so the two
+// cannot drift into offering what the write refuses or writing what the card never
+// showed.
+function wasOffered(row: {
+  name: string;
+  source_name: string | null;
+}): boolean {
+  return row.source_name != null || isImportedDocumentName(row.name);
+}
 
 // The stored name of one imported medication, under exactly the scoping the write
 // below uses — the term an offer is built from. Returns null when the row is not
@@ -48,16 +79,19 @@ export function importedMedicationName(
 ): string | null {
   const row = db
     .prepare(
-      `SELECT name FROM intake_items
+      `SELECT name, source_name FROM intake_items
         WHERE id = ? AND profile_id = ? AND document_id = ?
           AND source = 'extracted' AND TRIM(name) <> ''`
     )
-    .get(itemId, profileId, documentId) as { name: string } | undefined;
-  return row?.name ?? null;
+    .get(itemId, profileId, documentId) as
+    { name: string; source_name: string | null } | undefined;
+  if (!row || !wasOffered(row)) return null;
+  return row.name;
 }
 
 export type AdoptResult =
-  { ok: true } | { ok: false; reason: "not-found" | "not-cleaner" };
+  | { ok: true }
+  | { ok: false; reason: "not-found" | "not-offered" | "not-cleaner" };
 
 // Adopt `chosen` as this imported medication's name, preserving what the document
 // called it.
@@ -76,13 +110,15 @@ export function adoptImportedName(
 ): AdoptResult {
   const row = db
     .prepare(
-      `SELECT id, name FROM intake_items
+      `SELECT id, name, source_name FROM intake_items
         WHERE id = ? AND profile_id = ? AND document_id = ?
           AND source = 'extracted' AND TRIM(name) <> ''`
     )
     .get(itemId, profileId, documentId) as
-    { id: number; name: string } | undefined;
+    { id: number; name: string; source_name: string | null } | undefined;
   if (!row) return { ok: false, reason: "not-found" };
+  // The card's own predicate, re-asked at the write — see the header.
+  if (!wasOffered(row)) return { ok: false, reason: "not-offered" };
   // Somebody may have renamed this already, in another tab or on another device;
   // then there is nothing to offer and nothing to do.
   if (!isCleanerName(row.name, chosen))

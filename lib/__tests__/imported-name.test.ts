@@ -36,6 +36,13 @@ describe("isImportedDocumentName — the shapes portals actually export", () => 
     "HCTZ 25 MG TAB",
     "ASA 81 MG TAB",
     "VIT D 1000 IU CAP",
+    // AN ALL-CAPS SUPPLEMENT, pinned as a DECISION rather than left to drift. These
+    // fire, and that is right: the scope gate means the predicate is only ever asked
+    // about a row an IMPORT wrote, and in a portal document an all-caps rendering is
+    // the document's own register. Nobody's typed supplement shelf reaches here.
+    "FISH OIL",
+    "MELATONIN",
+    "CREATINE",
   ];
 
   for (const name of DOCUMENT_STRINGS) {
@@ -63,12 +70,22 @@ describe("isImportedDocumentName — Tall Man lettering", () => {
   // lettering is the ISMP look-alike convention and standard Epic/Cerner
   // medication-list output, so these are not an exotic corner — they are the
   // commonest thing a portal sends.
+  //
+  // AND IT COMES IN BOTH ORDERS. ISMP capitalises the DISTINGUISHING part of the
+  // name, which is as often the stem as the tail — "DOPamine", "DOBUTamine",
+  // "OXYcodone" are the canonical published renderings, and every one of them was
+  // FALSE under a rule that demanded lower-case letters before the run. Half the
+  // convention, and arguably the more important half, was invisible.
   const TALL_MAN: [string, string][] = [
     ["amLODIPine Besylate 5 MG tablet", "amLODIPine"],
     ["predniSONE 10 mg tablet", "predniSONE"],
     ["traMADol HCl 50 mg", "traMADol"],
     ["glipiZIDE 5 mg", "glipiZIDE"],
     ["hydrOXYzine 25 mg", "hydrOXYzine"],
+    // The upper-case-STEM half of the convention.
+    ["DOPamine 400 MG", "DOPamine"],
+    ["DOBUTamine 250 MG", "DOBUTamine"],
+    ["OXYcodone HCl 5 mg", "OXYcodone"],
   ];
 
   for (const [name, token] of TALL_MAN) {
@@ -83,9 +100,21 @@ describe("isImportedDocumentName — Tall Man lettering", () => {
 
   it("does not read ordinary product spelling as Tall Man", () => {
     // One interior capital is a spelling ("CoQ10", "EpiPen"); one preceding
-    // lower-case letter is the "mRNA"/"GoLYTELY" shape. Both floors are why the
-    // benign list below stays quiet.
-    for (const name of ["CoQ10", "EpiPen", "NaCl", "mRNA vaccine", "GoLYTELY"])
+    // lower-case letter is the "mRNA"/"GoLYTELY" shape; a two-letter opening run is
+    // "NaCl" and every other element symbol; a one-letter lower-case tail is an
+    // abbreviation wearing a plural ("NSAIDs", "MCTs", "IUs") or a salt suffix
+    // ("HCl"). Every floor is why the benign list below stays quiet.
+    for (const name of [
+      "CoQ10",
+      "EpiPen",
+      "NaCl",
+      "mRNA vaccine",
+      "GoLYTELY",
+      "NSAIDs",
+      "MCTs",
+      "IUs",
+      "Metformin HCl ER",
+    ])
       expect(tallManWords(name), name).toEqual([]);
   });
 });
@@ -132,6 +161,14 @@ describe("isImportedDocumentName — the names a person writes", () => {
     "CBD oil",
     "Omega-3 EPA DHA",
     "Fish oil EPA DHA",
+    // THREE SHOUTED TOKENS AND NO STRENGTH — a front-of-bottle listing of actives,
+    // which is one token from the shelf "EPA/DHA" sits on. "EPA/DHA" was quiet
+    // because it has TWO shouted tokens, not because of the separator, so all three
+    // of these fired under a bare three-token floor. What separates them from
+    // "ASA 81 MG TAB" is that a dispensing label states a STRENGTH.
+    "EPA DHA CLA",
+    "MSM MCT ALA",
+    "EPA/DHA/DPA",
     // The same abbreviations wearing a strength, which is how somebody writing one
     // down actually writes it.
     "DHEA 50 mg",
@@ -148,6 +185,11 @@ describe("isImportedDocumentName — the names a person writes", () => {
     // What RxNorm answers with, which `isCleanerName` must be able to accept.
     "hydrochlorothiazide 25 MG oral tablet",
     "amlodipine besylate 5 MG oral tablet",
+    // AN ACCENTED LOWER-CASE LETTER IS A LETTER. The shout scan was `[A-Za-z]`-only
+    // and the edge-punctuation trim was `[^A-Za-z0-9]`-only, so the leading "ü" was
+    // stripped as though it were a bracket and "BERALL" read as a six-letter shout.
+    "üBERALL",
+    "ärztliche Verordnung",
     // Empty / whitespace: nothing to offer.
     "",
     "   ",

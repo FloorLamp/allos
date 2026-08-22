@@ -175,6 +175,11 @@ function stackDriContext(
     .filter((item) => contributesToDailyLimit(item))
     .map((item) => ({
       name: item.name,
+      // The document's own label for an imported row whose name was replaced at
+      // import review (#3480). NULL for everything else, so this is a no-op for
+      // every row that was never renamed; lib/dri.ts itemNutrientAmounts carries
+      // why nutrient recognition must read it and the warning copy must not.
+      sourceName: item.source_name,
       active: !!item.active,
       doseAmounts: dosesByItem.get(item.id) ?? [],
       optional: isOnDemand(item),

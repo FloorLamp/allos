@@ -40,7 +40,14 @@ const WORD_SPLIT_RE = /[\s\-/]+/;
 
 // Trim the punctuation a portal string wraps its words in — parentheses, commas,
 // plus signs, periods — so "(CALCIUM" is scanned as "CALCIUM".
-const EDGE_PUNCT_RE = /^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g;
+//
+// UNICODE LETTER CLASSES, not `[A-Za-z0-9]`, and the difference is not decorative:
+// an ASCII class treats every accented letter as punctuation, so "üBERALL" had its
+// leading "ü" TRIMMED OFF as though it were a bracket and the remaining "BERALL"
+// read as a six-letter shout. The token is scanned whole now, and a name that
+// starts with a lower-case letter of any alphabet is a name starting with a
+// lower-case letter.
+const EDGE_PUNCT_RE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 
 // A word must carry at least this many letters before its casing means anything. A
 // one-letter token is a vitamin letter ("Vitamin D"), a strength suffix, or an
@@ -65,14 +72,32 @@ const MIN_SHOUT_LETTERS = 2;
 const SHOUTED_WORD_LETTERS = 6;
 
 // RULE 2 — A DISPENSING LABEL. Two or more shouted tokens, at least one of them four
-// letters or longer ("HCTZ 25 MG TAB"), or three or more of any length ("ASA 81 MG
-// TAB", "VIT D 1000 IU CAP"). A name plus a strength unit plus a dose form is a
-// pharmacy label; two SHORT abbreviations on their own are where the supplement shelf
-// lives ("EPA/DHA", "Omega-3 EPA DHA"), so two is not enough unless one of them is
-// long enough to be a word rather than an initialism.
+// letters or longer ("HCTZ 25 MG TAB"), or three or more of any length CARRYING A
+// STRENGTH ("ASA 81 MG TAB", "VIT D 1000 IU CAP"). A name plus a strength unit plus a
+// dose form is a pharmacy label; two SHORT abbreviations on their own are where the
+// supplement shelf lives ("EPA/DHA", "Omega-3 EPA DHA"), so two is not enough unless
+// one of them is long enough to be a word rather than an initialism.
+//
+// AND THE THREE-TOKEN FLOOR WAS ONE TOKEN FROM THE SHELF IT PROTECTS. "EPA/DHA" is
+// quiet because it has TWO shouted tokens, not because of the slash — so "EPA DHA
+// CLA", "MSM MCT ALA" and "EPA/DHA/DPA" all fired, and those are front-of-bottle
+// listings of actives, the exact register this rule exists to leave alone. What
+// separates them from "ASA 81 MG TAB" is not the count and not the separator: it is
+// that a dispensing label STATES A STRENGTH and a list of actives does not. Every
+// positive this branch was written for carries a number — 81, 1000, 25 — and none of
+// the shelf shapes does, so the number is the evidence and the count alone is not.
+//
+// It is a structural test, not a vocabulary: no unit list, no dose-form list, nothing
+// to keep in step with a catalog. The under-match it accepts is a bare-abbreviation
+// label with no strength at all ("ASA EC TAB"), which stays quiet — the same
+// direction of error rule 1's six-letter floor already chooses, and the same reason:
+// a missed offer costs a person nothing, a fired one costs them every future offer.
 const SHOUTED_ABBREVIATION_LETTERS = 4;
 const MIN_SHOUTING_WORDS = 2;
 const MIN_SHOUTING_ABBREVIATIONS = 3;
+
+// A digit run anywhere in the name — the strength a dispensing label always states.
+const STRENGTH_DIGITS_RE = /\p{Nd}/u;
 
 // RULE 3 — TALL MAN LETTERING, and this is the one the first version was INVERTED
 // against. "amLODIPine", "predniSONE", "traMADol", "glipiZIDE", "hydrOXYzine": an
@@ -81,24 +106,50 @@ const MIN_SHOUTING_ABBREVIATIONS = 3;
 // single commonest register this feature exists for, and every one of those names was
 // QUIET under the old share rule because most of their letters are lower case.
 //
-// The shape is an upper-case run of two or more letters preceded by two or more
-// lower-case letters IN THE SAME TOKEN. Both floors are load-bearing: one upper-case
-// letter is ordinary product spelling ("CoQ10", "EpiPen", "NaCl"), and one PRECEDING
-// lower-case letter is the "mRNA"/"GoLYTELY" shape, which is a spelling rather than a
-// warning.
+// IT COMES IN BOTH ORDERS, and the first version of this line only saw one of them.
+// ISMP renders the DISTINGUISHING part of the name in capitals, and that part is as
+// often the STEM as the tail: "DOPamine", "DOBUTamine", "OXYcodone", "CISplatin",
+// "PARoxetine", "NIFEdipine" are the canonical published renderings — arguably the
+// most important ones — and every single one of them was FALSE under a pattern that
+// required lower-case letters BEFORE the run. So the rule is two alternatives:
+//
+//   * an upper-case run of two or more letters PRECEDED by two or more lower-case
+//     letters in the same token — "amLODIPine", "predniSONE", "traMADol";
+//   * a token that OPENS with an upper-case run of three or more and then turns
+//     lower-case for two or more — "DOPamine", "OXYcodone".
+//
+// Every floor is load-bearing, and each one names a shape it exists to exclude:
+//   * one upper-case letter is ordinary product spelling — "CoQ10", "EpiPen";
+//   * one PRECEDING lower-case letter is the "mRNA"/"GoLYTELY" shape, a spelling
+//     rather than a warning;
+//   * the leading run needs THREE, because two is "NaCl" and every other two-letter
+//     element or unit symbol, and the shortest name on the ISMP list is three
+//     ("CISplatin", "DOPamine", "OXYcodone");
+//   * the trailing lower-case run needs TWO, because one is "NSAIDs", "MCTs", "IUs" —
+//     an abbreviation wearing a plural, not a name wearing a warning. It is also what
+//     keeps "Metformin HCl ER" quiet.
+//
+// The classes are Unicode (`\p{Lu}`/`\p{Ll}`) for the same reason EDGE_PUNCT_RE is:
+// a cased alphabet is not only ASCII, and an ASCII class silently reads a non-ASCII
+// lower-case letter as no letter at all.
 //
 // KNOWN CLOSE CALL: trademark styling of the same shape fires — "MiraLAX", "HumaLOG".
 // That is the direction to be wrong in. A true answer buys an OFFER the person can
 // ignore, never a rewrite, and RxNorm's answer for those really is the plainer name.
-const TALL_MAN_RE = /[a-z]{2}[A-Z]{2,}/;
+const TALL_MAN_RE = /\p{Ll}{2}\p{Lu}{2,}|^\p{Lu}{3,}\p{Ll}{2,}/u;
 
 // How many letters does this token shout? 0 when it does not shout at all. Digits and
 // punctuation inside the token are ignored, so "10MG" shouts on its "MG" and "B12"
 // shouts not at all (one letter).
 function shoutedLetters(word: string): number {
-  const letters = word.match(/[A-Za-z]/g) ?? [];
+  const letters = word.match(/\p{L}/gu) ?? [];
   if (letters.length < MIN_SHOUT_LETTERS) return 0;
-  return letters.every((c) => c === c.toUpperCase()) ? letters.length : 0;
+  // `c === c.toUpperCase()` alone answers TRUE for a letter with no case at all, so
+  // a token in a caseless script would read as shouting every time. The second half
+  // asks that the letter be CASED, which is the thing shouting is a property of.
+  return letters.every((c) => c === c.toUpperCase() && c !== c.toLowerCase())
+    ? letters.length
+    : 0;
 }
 
 function tokens(name: string): string[] {
@@ -128,8 +179,14 @@ export function tallManWords(name: string): string[] {
 // label, or Tall Man lettering (see the rules above).
 //
 // False on every shape a person writes, INCLUDING the ones that are an abbreviation
-// all the way through: "NAC", "DHEA", "TUDCA", "5-HTP", "EPA/DHA", "MCT oil",
-// "Vitamin D3 5000 IU", "Metformin HCl ER", "CoQ10".
+// all the way through: "NAC", "DHEA", "TUDCA", "5-HTP", "EPA/DHA", "EPA DHA CLA",
+// "MCT oil", "Vitamin D3 5000 IU", "Metformin HCl ER", "CoQ10".
+//
+// TRUE on an ALL-CAPS SUPPLEMENT — "FISH OIL", "MELATONIN", "CREATINE" — and that is
+// the intended answer, not a leak. This predicate is only ever consulted for rows an
+// IMPORT wrote (the scope gate in lib/queries/imports.ts), and in a portal document
+// an all-caps rendering IS the document's register. Nobody's own typed supplement
+// shelf reaches this function.
 //
 // THE DELIBERATE UNDER-MATCH: a short brand shouted on its own — "ASA 81 mg",
 // "HCTZ 25 mg", "LASIX 40 mg" — stays quiet, because it is the same SHAPE as "DHEA
@@ -147,10 +204,14 @@ export function isImportedDocumentName(name: string): boolean {
     .map(shoutedLetters)
     .filter((n) => n > 0);
   if (shouted.some((n) => n >= SHOUTED_WORD_LETTERS)) return true;
-  if (shouted.length >= MIN_SHOUTING_ABBREVIATIONS) return true;
-  return (
+  if (
     shouted.length >= MIN_SHOUTING_WORDS &&
     shouted.some((n) => n >= SHOUTED_ABBREVIATION_LETTERS)
+  )
+    return true;
+  return (
+    shouted.length >= MIN_SHOUTING_ABBREVIATIONS &&
+    STRENGTH_DIGITS_RE.test(trimmed)
   );
 }
 
