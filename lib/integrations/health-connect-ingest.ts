@@ -226,7 +226,7 @@ export function ingestHealthConnectPayload(
     // concurrent push has re-stamped between pass A's read and the DELETE. That row stays
     // in the table, the day reads high, and the plan-side number had already said zero.
     //
-    // THREE HALVES, all of them days reading high, which is the only thing the line
+    // THREE TERMS, all of them days reading high, which is the only thing the line
     // claims. `leftStanding` is stored rows the push overlapped and did not collapse.
     // `inPushDoubleCounts` is the excess the push carries against ITSELF — ruling item
     // 3's "a push carrying both anchorings writes both", which leaves a day double
@@ -331,8 +331,10 @@ export function ingestHealthConnectPayload(
     );
   }
 
-  // The Review line, appended to the details this push already carries. Emitted from
-  // what HAPPENED, so it covers every reason a supersede was declined.
+  // The Review line, appended to the details this push already carries. Summed above
+  // from what HAPPENED — the plan's two halves plus the victims pass B's guard declined —
+  // so it covers every reason a supersede was declined, including the one the plan cannot
+  // know because it has not happened yet.
   if (overlapsLeft > 0) {
     parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
   }
