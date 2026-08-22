@@ -278,7 +278,11 @@ test("the grid pitches what you don't own and reports on what you do, attention 
   // Connect is never set up on profile 1.
   const hc = main.getByTestId("integration-card-health-connect");
   await expect(hc).toHaveAttribute("data-card-state", "available");
-  await expect(hc.getByText(/Sync weight, body fat/)).toBeVisible();
+  // The card shows the registry LEAD and only the lead (#3490/#1880): the
+  // 72-word blurb that used to sit here is now the folded `detail`, which no
+  // grid card renders at all.
+  await expect(hc.getByText(/Sync weight, heart rate, steps/)).toBeVisible();
+  await expect(hc.getByText(/MyFitnessPal/)).toHaveCount(0);
   await expect(hc.getByText("Set up")).toBeVisible();
 
   // The planned Garmin dims at the end of the Available group.

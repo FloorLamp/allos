@@ -143,11 +143,17 @@ export default function HealthConnectSetup({
           </p>
         </div>
       ) : (
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          The endpoint is active. For security the bearer token is only shown at
-          the moment it&apos;s created, so it can&apos;t be displayed again. If
-          you need the token, <strong>Rotate</strong> it (this replaces the old
-          token — update your phone exporter afterward).
+        // ONE LINE, AND THE CONSEQUENCE MOVES TO THE CONTROL (#3490 item 2). This
+        // was five lines of show-once semantics with a bolded verb mid-sentence,
+        // above the fold of the connected card — and the half of it that mattered
+        // ("rotating replaces the old token, so update your exporter") described a
+        // button eighty pixels below that said nothing. Same facts, placed where
+        // they are acted on: the state here, the consequence beside "Rotate token".
+        <p
+          className="text-sm text-slate-600 dark:text-slate-300"
+          data-testid="health-connect-token-note"
+        >
+          The token is shown only when it’s created.
         </p>
       )}
 
@@ -157,6 +163,9 @@ export default function HealthConnectSetup({
           createdAt={createdAt}
           lastUsedAt={lastUsedAt}
           expiresAt={expiresAt}
+          // The EXPIRY select sits directly below this list, so "Never expires"
+          // was being stated twice on one card (#3490 item 3).
+          expiryStatedByControl
         />
       )}
 
@@ -168,15 +177,25 @@ export default function HealthConnectSetup({
         <div className="w-40">
           <ExpirySelect value={expiry} onChange={setExpiry} disabled={busy} />
         </div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onGenerateOrRotate}
-          className="rounded-lg border border-black/10 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
-          data-testid="health-connect-rotate"
-        >
-          {busy ? "Rotating…" : "Rotate token"}
-        </button>
+        <div className="space-y-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onGenerateOrRotate}
+            className="rounded-lg border border-black/10 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
+            data-testid="health-connect-rotate"
+          >
+            {busy ? "Rotating…" : "Rotate token"}
+          </button>
+          {isConnected && (
+            <p
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="health-connect-rotate-note"
+            >
+              Replaces the old one — update your phone exporter.
+            </p>
+          )}
+        </div>
         <button
           type="button"
           disabled={busy}

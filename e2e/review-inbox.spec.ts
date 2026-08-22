@@ -407,9 +407,22 @@ test.describe("Data → Review import inbox", () => {
       page.locator("aside nav").getByRole("link", { name: /^Data/ }),
       /\/data/
     );
+    // THE TAB, NAMED AS THE TAB. This used to read
+    // `page.getByRole("link", { name: /^Review/ })`, which never matched the strip
+    // at all: `DATA_TAB_FIRST_PAGE` is a `kind: "query"` config, so its tabs render
+    // as `role="tab"` BUTTONS that push `?section=`, not links. The one thing that
+    // matched was the upload form's inline "Review" link inside its
+    // background-read sentence — so a test called "the tab is reachable" was
+    // exercising a sentence in a card. #3488 put that sentence behind a file
+    // selection (the empty card shows two doors and nothing below them) and the
+    // test went red, which is how the mismatch surfaced. Pointed at the strip, it
+    // now asserts what its name says.
     await followLink(
       page,
-      page.getByRole("link", { name: /^Review/ }),
+      page
+        .getByTestId("data-tabs")
+        .filter({ visible: true })
+        .getByRole("tab", { name: /^Review/ }),
       /\/data\?section=review/
     );
     await expect(
