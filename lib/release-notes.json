@@ -128,6 +128,12 @@
           "title": "Database tests stop rebuilding the schema for every single test, so the suite stops getting slower each release",
           "kind": "fix",
           "issues": [3470, 3471]
+        },
+        {
+          "pr": 3523,
+          "title": "Filter and tab chips look the same everywhere, and one can no longer look selected without saying so to a screen reader",
+          "kind": "fix",
+          "issues": [3475]
         }
       ]
     },
