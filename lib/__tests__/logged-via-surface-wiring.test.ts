@@ -151,6 +151,36 @@ export function unwiredPosters(root: string): string[] {
   return [...new Set(out)].sort();
 }
 
+/**
+ * Which client files DECLARE a region, and which surface each declares.
+ *
+ * Accepts both spellings the tree uses: the literal (`<LoggedViaSurface value="…">`)
+ * and a file-local constant (`const X: WebLoggedVia = "…"`, which the command palette
+ * needs because a component is not inside the provider it renders and so has to name
+ * its own surface once for both uses).
+ */
+export function regionRoots(root: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  // EVERY file, not just the client ones: a region root is often a SERVER component
+  // that renders the client provider around server children — the dashboard is exactly
+  // that. Scoping this to `"use client"` files would have reported the dashboard's own
+  // declaration as missing, which is the "fails toward a plausible correction" shape.
+  for (const sub of ["app", "components"]) {
+    for (const file of walk(root, sub)) {
+      const rel = path.relative(root, file).split(path.sep).join("/");
+      const src = fs.readFileSync(file, "utf8");
+      if (!src.includes("<LoggedViaSurface")) continue;
+      const values = new Set<string>();
+      for (const m of src.matchAll(/<LoggedViaSurface\s+value="([a-z-]+)"/g))
+        values.add(m[1]);
+      for (const m of src.matchAll(/:\s*WebLoggedVia\s*=\s*"([a-z-]+)"/g))
+        values.add(m[1]);
+      for (const v of values) out.set(v, [...(out.get(v) ?? []), rel]);
+    }
+  }
+  return out;
+}
+
 describe("every surface-reading action has a mounting that declares itself", () => {
   it("has a corpus to make a claim about", () => {
     // AN ABSENCE ASSERTION FAILS OPEN, so the floors come first: a broken walker
@@ -163,6 +193,44 @@ describe("every surface-reading action has a mounting that declares itself", () 
     // The named subject: the action #3087's own illustration turns on.
     expect([...actions.keys()]).toContain("logFoodServing");
     expect(clientFiles(REPO).length).toBeGreaterThanOrEqual(50);
+  });
+
+  it("has a REGION ROOT producing every non-default web surface", () => {
+    // THE OTHER DIRECTION OF THE UNION, and the one the poster check cannot see. Every
+    // control inside the quick-log sheet declares itself correctly through the hook —
+    // and reports `page` for ever if the SHEET stops declaring the region, because the
+    // context then answers its default and every child agrees with it. Nothing about
+    // the children changes, so nothing about them can go red.
+    //
+    // So the vocabulary is asked to be REACHABLE: a value a browser may claim, that no
+    // mounting in the whole app produces, is a value the column will never hold and a
+    // sentence in `LOGGED_VIA_MEANING` that describes nothing. Deleting a value is a
+    // deliberate act; losing one by deleting a wrapper is not.
+    //
+    // `page` is deliberately absent: it is the context's default, so it is produced by
+    // every mounting that declares nothing and cannot go missing.
+    //
+    // WHAT THIS DOES NOT CATCH, stated so nobody reads it as more than it is: the
+    // question is REACHABILITY, not per-region survival. `quick-log` is declared by
+    // both the quick-log sheet and the command palette, so deleting ONE of those two
+    // wrappers leaves this green while every control in that region silently reverts
+    // to `page`. Measured deliberately, by deleting each in turn. Closing it needs a
+    // per-region assertion, and a list of regions is the shape this file exists to
+    // avoid — so the gap is named rather than papered over.
+    const roots = regionRoots(REPO);
+    for (const surface of ["quick-log", "dashboard-widget"] as const) {
+      expect(
+        roots.get(surface) ?? [],
+        `No mounting in the app declares \`${surface}\` (#3087), so no web write can ` +
+          "ever record it. Either a region root lost its `<LoggedViaSurface>` wrapper, " +
+          "or the value should come out of the vocabulary — but a vocabulary member " +
+          "nothing produces describes nothing."
+      ).not.toEqual([]);
+    }
+    // `dashboard-hero` is the attention card, whose actions are single-surface and name
+    // it themselves (app/(app)/actions.ts) rather than reading a post — so it has no
+    // region root by design, and asserting one here would be asserting a fiction.
+    expect(roots.get("dashboard-hero")).toBeUndefined();
   });
 
   it("leaves no client posting a surface-reading action with no way to say where it is", () => {
