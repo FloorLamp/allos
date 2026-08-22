@@ -15,17 +15,16 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
+import { migratedDb } from "./migrated-db";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
 // A fresh current-schema DB with two profiles, so cross-profile behavior can be
 // exercised.
 function newDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 10000");
-  migrate(db); // fresh boot → current schema, bootstraps profile 1
+  // The current schema without replaying the chain for it — ./migrated-db.ts
+  // (#3471). This file asks only about the end state's indexes.
+  const db = migratedDb(); // bootstraps profile 1, same as a fresh boot
   db.prepare(
     `INSERT INTO profiles (id, name, created_at) VALUES (2, 'Test Profile Two', datetime('now'))`
   ).run();

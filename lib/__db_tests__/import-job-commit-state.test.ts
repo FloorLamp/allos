@@ -14,7 +14,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
+import { migratedDb } from "./migrated-db";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { bootTasks } from "@/lib/migrations/boot-tasks";
 
@@ -38,8 +38,8 @@ function checkSql(db: Database.Database): string {
 
 describe("import_jobs 'committing' state — migration 015", () => {
   it("admits 'committing' after the full schema apply", () => {
-    const db = newDb();
-    migrate(db); // baseline + all numbered migrations + boot tasks (profile 1 exists)
+    // The migrated end state without a per-test replay — ./migrated-db.ts (#3471).
+    const db = migratedDb(); // profile 1 exists, same as a fresh boot
 
     expect(checkSql(db)).toContain("'committing'");
 
@@ -70,8 +70,7 @@ describe("import_jobs 'committing' state — migration 015", () => {
   });
 
   it("still rejects an unknown status (the CHECK is grown, not dropped)", () => {
-    const db = newDb();
-    migrate(db);
+    const db = migratedDb(); // the end state, not a replay — ./migrated-db.ts
     db.prepare(
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (7, 1, 'clinical-results', 'ready')"
     ).run();
@@ -120,8 +119,7 @@ describe("import_jobs 'committing' state — migration 015", () => {
 
 describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #461)", () => {
   it("reclaims STRANDED 'committing'/'processing' jobs but spares FRESH ones and 'ready'", () => {
-    const db = newDb();
-    migrate(db);
+    const db = migratedDb(); // the end state, not a replay — ./migrated-db.ts
     // The boot reset is age-gated on the extraction lease (#461): boot runs in EVERY
     // process, including the hourly notify tick, so an unconditional reset would fail a
     // job the web process is committing right now. Only jobs stranded past the lease

@@ -17,7 +17,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
+import { migratedDb } from "./migrated-db";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import {
@@ -37,13 +37,11 @@ import {
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
-function newDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 10000");
-  migrate(db); // baseline + every numbered migration + boot tasks
-  return db;
-}
+// A fresh database at the CURRENT schema, without replaying the migration chain
+// for it — see ./migrated-db.ts (#3471). Every test here asks about the end
+// state, and a replay per test made this file the tier's most expensive (11.0 s
+// of a 91 s tier, 2026-08-22).
+const newDb = migratedDb;
 
 function tableSql(db: Database.Database, table: string): string {
   const row = db

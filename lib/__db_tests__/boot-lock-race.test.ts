@@ -32,6 +32,19 @@
 // concurrent OS threads (a worker_thread holding the write lock), the shape of the
 // parallel build workers — plus source guards on the pragma ordering and the
 // boot-lock placement that fail on the pre-fix code paths. Runs via `npm run test:db`.
+//
+// WHAT IT ASSERTS, AND WHAT IT NO LONGER ASSERTS (#3470). The property is
+// SERIALIZATION — that a booting connection reaches the main database only after
+// a peer's entire boot has let go of it — never speed. It used to be checked with
+// a CEILING on elapsed wall time, which fails on a busy machine for a reason that
+// has nothing to do with the lock: at load average ~16 on 4 cores it produced
+// "expected 554 to be less than 500", a wrong-number-against-an-expected-number
+// that reads exactly like a real regression and cost a diagnosis every time.
+// Serialization is now read off the DATA instead — a peer's row is visible only
+// after that peer commits — and freedom from contention off a busy_timeout of
+// ZERO, which turns "did it have to wait?" into an instant yes/no. The only clock
+// readings left are FLOORS, derived from the hold window, and a floor cannot be
+// broken by a slow box: load can only make a wait longer.
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
@@ -108,14 +121,26 @@ function withHeldLock<T>(
 }
 
 // A boot-style write in the sanctioned shape: BEGIN IMMEDIATE + write, the runBootTx
-// discipline. Returns how long it blocked so we can prove it WAITED rather than
-// raced through.
-function bootWrite(db: Database.Database): number {
-  const t0 = Date.now();
+// discipline.
+function bootWrite(db: Database.Database): void {
   db.transaction(() => {
     db.prepare("INSERT INTO t (n) VALUES (99)").run();
   }).immediate();
-  return Date.now() - t0;
+}
+
+// HOW MANY OF THE PEER'S ROWS THIS CONNECTION CAN SEE — the ordering fact these
+// tests used to approximate with a stopwatch (#3470).
+//
+// The peer worker writes `n = 1` inside a transaction it holds open for the whole
+// hold window, and a transaction's rows are invisible to every other connection
+// until it COMMITs. So a 1 here is not a duration and not a guess: this connection
+// observed the peer's write lock ALREADY RELEASED. A 0 means the probe ran while
+// the peer was still mid-transaction, which is precisely the serialization failure
+// these tests exist to catch. Neither answer moves when the box is busy.
+function peerWrites(db: Database.Database): number {
+  return (
+    db.prepare("SELECT COUNT(*) AS n FROM t WHERE n = 1").get() as { n: number }
+  ).n;
 }
 
 describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
@@ -123,24 +148,55 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
     try {
-      // A generous hold: the floor below proves "it WAITED (real contention)", and the
-      // one flake surface is worker→main message latency eating the overlap before the
-      // probe starts. A 1000ms hold leaves ~880ms of slack over the 120ms floor even on
-      // a starved CI runner, where a 400ms hold once did not.
+      // A generous hold: the before/after reads below prove the contention was real,
+      // and the one flake surface is worker→main message latency eating the overlap
+      // before the probe starts. A 1000ms hold leaves most of the window in hand
+      // even on a starved runner, where a 400ms hold once did not.
       const HOLD = 1000;
-      const { result: waited, err } = await withHeldLock(file, HOLD, () => {
+      const { result, err } = await withHeldLock(file, HOLD, () => {
         // Mirror the FIXED createDb pragma order: busy_timeout BEFORE journal_mode.
         const b = new Database(file);
         b.pragma("busy_timeout = 5000");
         b.pragma("journal_mode = WAL");
-        const ms = bootWrite(b);
+        // Read BEFORE and AFTER the write, which is what makes this a test of
+        // OVERLAP rather than of duration (#3470).
+        const before = peerWrites(b);
+        bootWrite(b);
+        const after = peerWrites(b);
         b.close();
-        return ms;
+        return { before, after };
       });
       expect(err).toBeUndefined();
-      // It blocked on the peer's lock rather than failing, so it took most of the
-      // hold window (floor well under HOLD to stay CI-robust).
-      expect(waited).toBeGreaterThanOrEqual(120);
+      // THE CONTENTION WAS REAL, proven without a stopwatch. The peer is mid
+      // transaction at this moment, so its row is written but NOT committed and this
+      // connection cannot see it. If worker→main message latency ever ate the whole
+      // hold window — the one flake surface this test has — the peer would already
+      // have committed and this would be 1.
+      //
+      // THIS ASSERTION IS LOAD-SENSITIVE, AND SAYS SO WHEN IT FIRES. It reads a
+      // discrete state rather than a duration, which is why it is allowed to stay
+      // where the elapsed-time CEILING this file used to carry had to go (#3470) —
+      // but a starved box can still delay the probe past the peer's commit. What
+      // makes that acceptable is the DIRECTION of the failure: a red here means the
+      // test proved nothing, never that the boot lock is broken. The message says
+      // that out loud, because this file has already cost one lane a diagnosis by
+      // presenting a wrong-number-against-an-expected-number, and its replacement
+      // must not do the same thing in a new spelling.
+      expect(
+        result.before,
+        "VACUOUS RUN, NOT A PRODUCT DEFECT: the peer's row was already visible " +
+          "when the probe started, so this test ran against no contention and " +
+          "proved nothing. The boot lock is not implicated — nothing here " +
+          "examined it. The likely cause is worker→main message latency on a " +
+          "loaded box eating the hold window before the probe began; re-run this " +
+          "file alone. If it persists on a QUIET box, the hold window (HOLD) is " +
+          "genuinely too short and belongs in the fix, not the assertion."
+      ).toBe(0);
+      // AND IT WAITED rather than failing: the peer's row is committed and visible
+      // once this write returns, so the peer's write lock was gone before this write
+      // took one. Two yes/no readings of the data, no elapsed time anywhere, and
+      // nothing a busy machine can move.
+      expect(result.after).toBe(1);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -200,8 +256,8 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   // The round-2 fix: with boot serialized on the advisory boot lock, the same
   // hold-longer-than-timeout scenario succeeds — the booting connection first waits
   // on the SIDECAR lock (60s-class window) until the peer's ENTIRE boot is done,
-  // and only then touches the main DB, where there is no contention left, so even
-  // the short 150ms busy_timeout never comes into play.
+  // and only then touches the main DB, where there is no contention left, so a
+  // busy_timeout of ZERO never comes into play.
   it("the advisory boot lock rescues the hold-longer-than-timeout case", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
@@ -218,15 +274,25 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
           const waitedForLock = Date.now() - t0;
           expect(bl).not.toBeNull();
           const b = new Database(file);
-          b.pragma("busy_timeout = 150"); // same short timeout as the failing case
+          // ZERO TOLERANCE, where the failing case above used 150 ms (#3470).
+          // busy_timeout = 0 makes SQLite throw SQLITE_BUSY the INSTANT a lock is
+          // held rather than waiting for it, so this write succeeding is a direct
+          // statement that there was nothing to wait for. That is the same claim
+          // the deleted duration bound was making, asked as a yes/no the machine's
+          // load cannot influence — and it is strictly stronger than 150 ms, which
+          // it subsumes.
+          b.pragma("busy_timeout = 0");
           b.pragma("journal_mode = WAL");
           try {
-            // The write under test — uncontended by construction (the peer's whole boot,
-            // write lock included, is done before acquireBootLock returned) — plus a
-            // second identical write as this runner's disk-speed BASELINE.
-            const writeMs = bootWrite(b);
-            const baselineMs = bootWrite(b);
-            return { waitedForLock, writeMs, baselineMs };
+            // The write under test — uncontended by construction, because the peer's
+            // whole boot (write lock included) is done before acquireBootLock returned.
+            // BEFORE the write, so this says something the write's own success does
+            // not: the peer's transaction was already committed at the moment
+            // acquireBootLock returned. A boot lock that let go before the peer's
+            // write lock puts this at 0 whatever the busy_timeout is.
+            const peers = peerWrites(b);
+            bootWrite(b);
+            return { waitedForLock, peers };
           } finally {
             b.close();
             bl!.release();
@@ -234,18 +300,28 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
         },
         /* peer takes the boot lock too */ true
       );
+      // THE PROPERTY, stated three ways and not one of them a stopwatch reading
+      // (#3470). What this test protects is that acquireBootLock SERIALIZES: it
+      // does not return until the peer's entire boot — write lock included — is
+      // released. The regression it guards against is a boot lock released before
+      // the write lock, and each of these goes red on it.
+      //
+      // 1. The write did not fail, at a busy_timeout of ZERO. If the peer still
+      //    held the write lock, SQLite would refuse instantly.
       expect(err).toBeUndefined();
-      // It serialized on the sidecar (blocked most of the peer's hold window)…
-      expect(result.waitedForLock).toBeGreaterThanOrEqual(300);
-      // …and then wrote with no meaningful contention on the main DB. The bound
-      // distinguishes "uncontended" from "burned a lock wait": a write that raced a
-      // still-held lock waits a HOLD-class (1000ms) window, an uncontended one is
-      // disk-speed. An ABSOLUTE ceiling was the wrong tool — a loaded runner inflates
-      // even an uncontended write (150→156ms lost #1192, then 400), so this compares to
-      // a same-runner baseline instead: the guarded write must land within HOLD/2 of a
-      // plain uncontended write, which scales with runner speed while a HOLD-class
-      // regression (boot lock released before the write lock) still blows past it.
-      expect(result.writeMs).toBeLessThan(result.baselineMs + HOLD / 2);
+      // 2. The peer's transaction was already COMMITTED when acquireBootLock
+      //    returned — read before this connection wrote anything, so it is a
+      //    statement about the LOCK's timing, not about the write's. This is the
+      //    assertion that catches the regression the deleted ceiling was for:
+      //    demonstrated red ("expected +0 to be 1") with the peer's boot lock
+      //    removed and a generous busy_timeout, where the write still succeeds.
+      expect(result.peers).toBe(1);
+      // 3. And the serialization was real rather than a peer that finished early:
+      //    a FLOOR on the sidecar wait, derived from HOLD. Floors are safe on a
+      //    loaded box in the way the deleted ceiling was not — contention can only
+      //    make a wait longer. This was the assertion that fired at load ~16
+      //    ("expected 554 to be less than 500"); nothing above it can now.
+      expect(result.waitedForLock).toBeGreaterThanOrEqual(HOLD / 3);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
