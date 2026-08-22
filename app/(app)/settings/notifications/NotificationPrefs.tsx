@@ -29,6 +29,7 @@ import {
   sweepableKinds,
 } from "@/lib/notifications/matrix-bulk";
 import {
+  cellInkChipNote,
   cellInkNote,
   columnLiveness,
   columnStateLabel,
@@ -777,17 +778,29 @@ export default function NotificationPrefs({
       </div>
 
       {/* ---- Message kinds: ONE row per kind — enable, config, routing. ---- */}
-      <div className="card space-y-4" data-testid="notification-kinds">
+      <div
+        className="card notification-kind-matrix space-y-4"
+        data-testid="notification-kinds"
+      >
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Message kinds
           </h3>
           <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Turn a kind off, or keep it and choose which channels carry it. The
-          box under a channel name edits that whole column at once — it turns
-          off everything except safety reminders, which keep their own boxes.
+        {/* ONE SENTENCE (#3495). The second one described where a control SITS
+            ("the box under a channel name"), which stopped being true below the
+            card-mode boundary — and it was describing a control that already
+            names itself: every column box carries `columnBulkLabel` as its
+            title and accessible name ("Telegram: turn off everything except
+            safety reminders"). Prose that repeats a label is meta the reader
+            pays for twice, and at 390px it cost three of the ~9 lines standing
+            between the page and its first control. */}
+        <p
+          className="text-xs text-slate-500 dark:text-slate-400"
+          data-testid="kinds-intro"
+        >
+          Choose which channels carry each kind, or turn a kind off.
         </p>
 
         {/* #2565 part B. The legend is the contract this grid now keeps: three inks,
@@ -799,10 +812,12 @@ export default function NotificationPrefs({
             className="rounded-md border border-black/10 bg-slate-50 p-3 text-xs text-slate-600 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300"
             data-testid="matrix-setup-notes"
           >
-            <p>
-              A faded tick is a kept preference waiting on that channel&rsquo;s
-              setup — nothing is turned off, and it goes out as soon as the
-              channel is set up.
+            {/* ONE LINE (#3495). The semantics are unchanged and deliberate; what
+                shrank is the sentence. Below the card-mode boundary each chip
+                prints "waiting" beside its own control, so the meaning no longer
+                has to survive the trip from a legend box to a 40px column. */}
+            <p data-testid="matrix-ink-legend">
+              A faded tick is kept &mdash; it sends once that channel is set up.
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-4">
               {setupNotes.map((n) => (
@@ -812,15 +827,58 @@ export default function NotificationPrefs({
           </div>
         )}
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-          <span>Kind</span>
-          <span className="grid w-40 grid-cols-4 gap-1 text-center sm:w-52">
+        {/* THE CHANNEL HEADER STRIP, which below the card-mode boundary stops being
+            a header and becomes the per-channel SUMMARY ROW the phone shape reads
+            (#3495): the same four sweep boxes, laid out as horizontal chips above
+            the list instead of as four stacked columns of 40px each. The `w-40`
+            that used to sit here is gone — it was the phone value, and the phone
+            no longer uses a fixed width. The arrangement itself is declared once,
+            in `@utility notification-kind-matrix` (app/globals.css), so this file
+            names no breakpoint of its own for it (#3457/#3538). */}
+        <div
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400"
+          data-matrix-head
+        >
+          <span data-matrix-head-label>Kind</span>
+          {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
+              #3550's review: cutting the intro to one sentence and hiding "Kind"
+              were each right and together left four 16px boxes with the same left
+              edge, size, font and colour as the routing chips 133px below, and
+              nothing visible saying that ONE TAP turns off every non-safety kind on
+              that channel. `columnBulkLabel` is the boxes' `title` and accessible
+              name, and neither reaches a sighted phone user: `title` needs a hover a
+              touch device does not have.
+              So the disclosure is a LABEL AT THE CONTROL rather than a paragraph
+              above the card — the fewest words that are true about what the four
+              boxes write, in the same slot "Kind" occupies at desktop. The row's
+              other half of the answer is visual: below the boundary the strip is a
+              framed, tinted panel (app/globals.css), so it reads as a panel of controls rather
+              than as a fifth kind row.
+              ONE LABEL, FOUR DIFFERENT REACHES, and that is deliberate. The safety
+              carve-out is the only one the label names, but `columnSweep` also drops
+              the kinds a channel cannot carry: on today's registry Telegram and Home
+              Assistant sweep 12 kinds and Push and Email sweep 10, because `food` and
+              `mood` have no control there at all (they render "can't carry this").
+              The label stays true — a kind with no control is not a kind the sweep
+              skips — but a reader comparing two columns will count different boxes,
+              so the difference is stated here rather than left to be discovered. */}
+          <span
+            className="hidden"
+            data-matrix-sweep-label
+            data-testid="matrix-sweep-label"
+          >
+            All kinds at once &mdash; except safety reminders
+          </span>
+          <span
+            className="grid grid-cols-4 gap-1 text-center sm:w-52"
+            data-matrix-channels
+          >
             {columns.map((c) => {
               const sweep = columnSweep(c.id);
               const state = columnBulkState(sweep, disabled[c.id]);
               const label = columnBulkLabel(c.label, state);
               return (
-                <span key={c.id} className="block">
+                <span key={c.id} className="block" data-matrix-head-cell={c.id}>
                   <span title={`${c.label} — follows ${c.owner}`}>
                     {c.short}
                   </span>
@@ -870,9 +928,25 @@ export default function NotificationPrefs({
                 key={e.kind}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 py-3"
                 data-testid={`kind-row-${e.kind}`}
+                data-matrix-row
               >
-                <div className="min-w-0">
+                <div className="min-w-0" data-matrix-kind>
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* THE MISSING MASTER TOGGLE RESERVES ITS SLOT — below the
+                        card-mode boundary only (#3495). Safety kinds carry no
+                        enable by design (they cannot be turned off) and neither
+                        do the always-on kinds, so their titles started 24px left
+                        of every toggleable kind's. On a desktop grid, under a
+                        header row, that reads as a column; on a phone, where each
+                        kind is its own block, it reads as ragged. The spacer is
+                        `hidden` at `sm`+, so the desktop rows are untouched. */}
+                    {e.control.type !== "toggle" && (
+                      <span
+                        className="hidden h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                        data-matrix-toggle-slot
+                      />
+                    )}
                     {e.control.type === "toggle" && (
                       <input
                         type="checkbox"
@@ -888,7 +962,10 @@ export default function NotificationPrefs({
                         data-testid={e.controlTestId ?? `kind-enable-${e.kind}`}
                       />
                     )}
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <span
+                      className="text-sm font-medium text-slate-800 dark:text-slate-100"
+                      data-matrix-kind-title
+                    >
                       {e.label}
                     </span>
                     {e.safety && (
@@ -1075,7 +1152,16 @@ export default function NotificationPrefs({
                   )}
                 </div>
 
-                <div className="grid w-40 shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52">
+                {/* Below the card-mode boundary this stops being four 40px columns
+                    and becomes this kind's own line of LABELED chips — see the
+                    utility in app/globals.css. One DOM either way (#1426's rule):
+                    a cell declares its testid, its ink and its accessible name
+                    ONCE, and CSS decides whether it sits under a header or beside
+                    its own name. */}
+                <div
+                  className="grid shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52"
+                  data-matrix-channels
+                >
                   {columns.map((c) => {
                     const available = cellAvailable(c.id, e.kind);
                     // #2565 part B. Ink is the only thing that changes: the box stays
@@ -1089,30 +1175,54 @@ export default function NotificationPrefs({
                       routes(c.id, e.kind)
                     );
                     const note = cellInkNote(ink);
+                    // The chip's own label, rendered in the SAME DOM as the
+                    // desktop cell and hidden above the card-mode boundary. The
+                    // wrapper is `display: contents`, so at `sm`+ it generates no
+                    // box at all and the checkbox remains the grid item it has
+                    // always been — the desktop arrangement is unchanged by
+                    // construction rather than by re-measurement.
+                    const chip = cellInkChipNote(ink);
                     return available ? (
-                      <input
-                        key={c.id}
-                        type="checkbox"
-                        className={`mx-auto h-4 w-4 ${INK_CLASS[ink]}`}
-                        checked={routes(c.id, e.kind)}
-                        disabled={routing}
-                        onChange={() => toggleRoute(c.id, e.kind)}
-                        data-testid={`matrix-cell-${c.id}-${e.kind}`}
-                        data-ink={ink}
-                        aria-label={
-                          note
-                            ? `${e.label} to ${c.label} — ${note}`
-                            : `${e.label} to ${c.label}`
-                        }
-                      />
+                      <label key={c.id} className="contents" data-matrix-cell>
+                        <input
+                          type="checkbox"
+                          className={`mx-auto h-4 w-4 ${INK_CLASS[ink]}`}
+                          checked={routes(c.id, e.kind)}
+                          disabled={routing}
+                          onChange={() => toggleRoute(c.id, e.kind)}
+                          data-testid={`matrix-cell-${c.id}-${e.kind}`}
+                          data-ink={ink}
+                          aria-label={
+                            note
+                              ? `${e.label} to ${c.label} — ${note}`
+                              : `${e.label} to ${c.label}`
+                          }
+                        />
+                        <span
+                          className="hidden text-xs font-normal text-slate-500 dark:text-slate-400"
+                          data-matrix-chip-label
+                          data-testid={`matrix-chip-${c.id}-${e.kind}`}
+                        >
+                          {chip ? `${c.label} — ${chip}` : c.label}
+                        </span>
+                      </label>
                     ) : (
-                      <span
-                        key={c.id}
-                        className="text-slate-300 dark:text-slate-600"
-                        title={`${c.label} can’t deliver this button-only reminder.`}
-                        data-testid={`matrix-unavailable-${c.id}-${e.kind}`}
-                      >
-                        &mdash;
+                      <span key={c.id} className="contents" data-matrix-cell>
+                        <span
+                          className="text-slate-300 dark:text-slate-600"
+                          title={`${c.label} can’t deliver this button-only reminder.`}
+                          data-testid={`matrix-unavailable-${c.id}-${e.kind}`}
+                          data-matrix-dash
+                        >
+                          &mdash;
+                        </span>
+                        <span
+                          className="hidden text-xs font-normal text-slate-500 dark:text-slate-400"
+                          data-matrix-chip-label
+                          data-testid={`matrix-chip-${c.id}-${e.kind}`}
+                        >
+                          {`${c.label} — can’t carry this`}
+                        </span>
                       </span>
                     );
                   })}
