@@ -104,6 +104,18 @@
           "title": "Deleting an entry from its form waits for the server, so a discard can no longer leave a stray draft behind",
           "kind": "fix",
           "issues": [3454]
+        },
+        {
+          "pr": 3513,
+          "title": "A logout tapped the instant a page loads is no longer silently ignored by the test that guards it",
+          "kind": "fix",
+          "issues": [3400]
+        },
+        {
+          "pr": 3510,
+          "title": "Every row's action menu names the row it acts on, and add buttons all reach the same tappable size",
+          "kind": "fix",
+          "issues": [3501]
         }
       ]
     },

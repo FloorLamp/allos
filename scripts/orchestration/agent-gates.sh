@@ -213,8 +213,11 @@ echo "  - the blast radius — specs you did not edit: DO NOT run them locally. 
 echo "    and read CI. It runs all 438 across 12 shards in 4-5 min; a local batch"
 echo "    sweep is ~30 min on four contended cores for less coverage."
 echo "  Repeating a blast-radius spec locally re-rolls a die CI does not throw: the"
-echo "  failures it would catch are co-residency effects, and a local run does not"
-echo "  reproduce shard composition at all."
+echo "  failures it would catch are co-residency effects, and an ordinary local run"
+echo "  does not reproduce shard composition."
+echo "  To DIAGNOSE a specific red you can reproduce it: e2e-shard-plan.ts <n> 12 is"
+echo "  deterministic but balanced from RECORDED durations, so recompute it AT THE"
+echo "  HEAD THAT RAN. On main it names the wrong neighbours (#3400)."
 echo
 echo "OPEN THE PR EARLY. CI triggers on pull_request only, never on a branch push,"
 echo "so until it exists you have no CI. cancel-in-progress is keyed per ref, so a"

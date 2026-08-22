@@ -641,9 +641,20 @@ ${MIGRATION_LINES}
   that makes this a correctness argument and not only a speed one. The failures a
   repeat would catch in a spec you did NOT author are co-residency effects — a spec
   behaving differently because of WHO IT RAN BESIDE. Those depend on shard
-  composition, and a local run does not reproduce shard composition at all. So
-  repeating a blast-radius spec locally re-rolls a die that is not the die CI throws.
+  composition, and an ORDINARY local run does not reproduce it. So repeating a
+  blast-radius spec locally re-rolls a die that is not the die CI throws.
   Repeat what you wrote; let CI run what you did not.
+
+  BUT THE SHARD *IS* REPRODUCIBLE WHEN YOU NEED IT, and an earlier version of this
+  brief said flatly that it was not. That was wrong and it cost a diagnosis:
+  \`scripts/e2e-shard-plan.ts <n> 12\` is deterministic, but it is balanced from
+  RECORDED DURATIONS, so it must be recomputed AT THE HEAD THAT RAN — not on main,
+  and not at your current head if the failure was two pushes ago. Running it on main
+  points at the wrong neighbours: in the #3400 diagnosis main's shard 11 was the
+  37-file set that PASSED, while both failing runs held a 38-file set. The job log
+  lists what actually ran, so use it as ground truth and use the recomputed plan to
+  confirm you matched it. This is for DIAGNOSING a specific red, not for routine
+  verification — the policy above is unchanged.
 
 - THE PR IS AN INSTRUMENT, NOT A FINISH LINE. CI triggers on \`pull_request\` only —
   never on a branch push — so until the PR exists you have no CI, and the policy
