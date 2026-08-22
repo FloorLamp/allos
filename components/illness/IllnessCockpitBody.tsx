@@ -63,7 +63,8 @@ export default function IllnessCockpitBody({
   // `mb-3` becomes `mb-2`; from `sm` up the rhythm is unchanged. NOTHING is removed
   // — every symptom, med, reading, temperature and footer control is still here,
   // which is the safety ruling this spacing pass is explicitly not allowed to touch
-  // — and no row loses its 40px tap floor (`min-h-10` is untouched everywhere).
+  // — and no row loses its tap floor (the declared `min-h-*` is untouched
+  // everywhere; it reads `min-h-11` since #3514 ruled the floor at 44).
   return (
     <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
       <EpisodeLatestReadings

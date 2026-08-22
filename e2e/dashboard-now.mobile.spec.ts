@@ -486,7 +486,7 @@ test("the Now gutter glyph is not shown at 390px, and Ahead keeps its inline one
   }
 });
 
-test("no Now-card control gives up its 40px floor at 390px", async ({
+test("no Now-card control gives up its declared tap floor at 390px", async ({
   page,
 }) => {
   await page.goto("/");
@@ -505,9 +505,14 @@ test("no Now-card control gives up its 40px floor at 390px", async ({
       )) {
         const box = el.getBoundingClientRect();
         if (box.width === 0 || box.height === 0) continue;
-        // A DECLARED floor must SURVIVE. "min-h-10 stays 40px everywhere" is the
-        // ruling; an ancestor that squeezes one, or a lost declaration, is the
-        // regression a density pass could plausibly introduce.
+        // A DECLARED floor must SURVIVE: an ancestor that squeezes one, or a lost
+        // declaration, is the regression a density pass could plausibly introduce.
+        // The two cockpit controls named below now declare `min-h-11` (44px) —
+        // #3514 ruled one tap floor at 44 effective and they took the RENDERED
+        // mechanism. This threshold stays at 40 on purpose: it is the "does this
+        // element declare a floor at all" filter, not the floor itself, and
+        // lowering the bar for MEMBERSHIP is what keeps it seeing a control that
+        // has drifted DOWN to 40 rather than quietly dropping it from the census.
         const floor = parseFloat(getComputedStyle(el).minHeight);
         if (floor >= 40) {
           floored.push(name(el));

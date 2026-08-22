@@ -175,7 +175,11 @@ export default function IllnessNowGroup({
                     ? toggleActive(c.episodeKey)
                     : toggleOther(c.episodeKey)
                 }
-                className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-left transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-ink-850 dark:disabled:hover:bg-transparent"
+                // `min-h-11`, not `min-h-10`: the tap floor is 44 effective (#3514),
+                // and this row takes the RENDERED mechanism because it is a
+                // full-width row whose neighbours set the card's rhythm — a
+                // `.tap-target` overlay on a flush row extends into the row above.
+                className="group flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-left transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-ink-850 dark:disabled:hover:bg-transparent"
               >
                 <IconVirus
                   className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400"
@@ -314,7 +318,9 @@ export default function IllnessNowGroup({
                   href={c.episodeHref}
                   aria-label={`More details about ${c.displayName}'s ${episodeLabel}`}
                   data-testid="illness-cockpit-full-episode"
-                  className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
+                  // 44 rendered, per #3514 — the sibling of the toggle above and
+                  // measured by the same dashboard-now sweep.
+                  className="inline-flex min-h-11 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
                 >
                   More details
                 </Link>

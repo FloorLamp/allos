@@ -13,18 +13,29 @@ import { test, expect } from "./fixtures";
 // WHY THIS SPEC MEASURES A BOX AND NOT A CLASS STRING. A computed-style or
 // class-name assertion checks a DECLARATION; a user sees a RENDERED RESULT, and the
 // gap between the two is exactly how this regression escaped notice for as long as
-// it did. `min-h-10` appearing in a class string is not evidence the button is
-// 40px tall, and a `min-block-size` in a stylesheet is not evidence it reached this
+// it did. `min-h-11` appearing in a class string is not evidence the button is
+// 44px tall, and a `min-block-size` in a stylesheet is not evidence it reached this
 // element. So every assertion below reads `boundingBox()` off a real button in a
 // real phone viewport, and the reference it compares against is another real
 // button rendered at the same moment.
 const PHONE = { width: 390, height: 844 };
 
-// The floor itself, named rather than spelled inline. 40px is #644/#3377's tap
-// floor for this app — the same number the two hand-fixed call sites had already
-// reached for independently, which is what made it the family's number rather
-// than a new one.
-const TAP_FLOOR_PX = 40;
+// The floor itself, named rather than spelled inline.
+//
+// 44px, and the quantity is a RENDERED height. That is the owner ruling on #3514
+// (2026-08-21): the tap floor is 44px EFFECTIVE everywhere, met by either of two
+// registered mechanisms — a RENDERED size (the `.btn` family's rule below `sm`, or
+// a call site's own `min-h-11`) or a deliberately smaller rendered control extended
+// to >=44 effective by `.tap-target`'s `inset: -6px` hit-area overlay. Rendered
+// height and hit area are different guarantees, and a rule has to say which one it
+// means or its number is not citable.
+//
+// THIS SPEC MEASURES THE RENDERED ONE. That makes it the right threshold for a
+// `.btn`-family member and the WRONG check to point at a `.tap-target` control,
+// whose box is legitimately smaller than its target — a sweep that swept both would
+// fail honest code. The family shipped at 40 because #3486's text said 40; #3514
+// found that #644, the issue §5 cited for that number, never produced 40 at all.
+const TAP_FLOOR_PX = 44;
 
 test.describe("the button family has one height at phone width (#3486)", () => {
   test.use({ viewport: PHONE });
@@ -71,7 +82,7 @@ test.describe("the button family has one height at phone width (#3486)", () => {
   // These are the highest-risk buttons in the whole change and the only two that
   // got measurably LESS source: each carried its own `min-h-10 min-w-10 …
   // sm:min-h-0 sm:min-w-0`, and collapsing them into the family is what the issue
-  // asked for — but it means their 40px now comes from a rule declared in another
+  // asked for — but it means their floor now comes from a rule declared in another
   // file, under a media query, in a layer. Nothing about the deletion proves the
   // replacement reached them. So each is opened at 390px, in its icon-only state,
   // and its RENDERED box is read.
@@ -120,10 +131,14 @@ test.describe("the button family has one height at phone width (#3486)", () => {
       ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
       expect(box!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
-      // …and the hand fix really is gone, so 40 is written once and not three
-      // times. Safe to ask only because the element above is proven present.
+      // …and the hand fix really is gone, so the number is written once and not
+      // three times. Safe to ask only because the element above is proven present.
+      // Both spellings are refused: `min-h-10` is the hand fix #3510 deleted, and
+      // `min-h-11` would be the same mistake made again at #3514's new number —
+      // re-declaring the family's floor at a call site is the defect, not the
+      // value it re-declares.
       const className = await trigger.getAttribute("class");
-      expect(className).not.toMatch(/\bmin-[hw]-10\b/);
+      expect(className).not.toMatch(/\bmin-[hw]-1[01]\b/);
     });
   }
 
