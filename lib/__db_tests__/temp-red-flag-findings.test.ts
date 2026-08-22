@@ -63,7 +63,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     makeSick(p, 1);
     setProfileBirthdate(p, shiftDateStr(today(p), -60)); // ~2 months old
     // A single low-grade fever reading — crosses the infant band (>= 100.4°F).
-    logTemperatureCore(p, 100.6, "F", today(p), "09:00");
+    logTemperatureCore(p, 100.6, "F", today(p), "page", "09:00");
 
     const findings = buildTempRedFlagFindings(p, today(p));
     expect(findings).toHaveLength(1);
@@ -97,7 +97,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
   it("a very high fever fires at any age (no age set)", () => {
     const p = newProfile("hyperpyrexia");
     makeSick(p, 0);
-    logTemperatureCore(p, 104.5, "F", today(p), "10:00");
+    logTemperatureCore(p, 104.5, "F", today(p), "page", "10:00");
 
     const findings = buildTempRedFlagFindings(p, today(p));
     expect(findings).toHaveLength(1);
@@ -108,7 +108,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     const p = newProfile("adult-low-fever");
     makeSick(p, 0);
     setProfileBirthdate(p, shiftDateStr(today(p), -30 * 365));
-    logTemperatureCore(p, 100.8, "F", today(p), "10:00");
+    logTemperatureCore(p, 100.8, "F", today(p), "page", "10:00");
 
     expect(buildTempRedFlagFindings(p, today(p))).toHaveLength(0);
     expect(tempRedFlagItems(p, today(p))).toHaveLength(0);
@@ -117,7 +117,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
   it("a dismissed red flag drops out of collectUpcoming (dismiss once, silence everywhere)", () => {
     const p = newProfile("red-flag-dismiss");
     makeSick(p, 0);
-    logTemperatureCore(p, 104.2, "F", today(p), "11:00");
+    logTemperatureCore(p, 104.2, "F", today(p), "page", "11:00");
     const findings = buildTempRedFlagFindings(p, today(p));
     const key = findings[0].dedupeKey;
     expect(collectUpcoming(p, today(p)).some((i) => i.key === key)).toBe(true);

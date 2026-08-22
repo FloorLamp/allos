@@ -20,7 +20,16 @@ import {
 } from "../lib/trend-annotations";
 import { getTimezone, setGlobalCrisisResources } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
-import { saveFitnessEntry } from "../lib/fitness-assessment";
+import { saveFitnessEntry as saveFitnessEntryCore } from "../lib/fitness-assessment";
+
+// Seeded demo data stands in for somebody logging on the domain page, so every seeded
+// battery entry carries `page` provenance (#3087). Wrapped once here rather than at
+// each call site: the demo seed is one surface, and the core keeps its no-default rule.
+const saveFitnessEntry: (
+  profileId: number,
+  entry: Parameters<typeof saveFitnessEntryCore>[1]
+) => ReturnType<typeof saveFitnessEntryCore> = (profileId, entry) =>
+  saveFitnessEntryCore(profileId, entry, "page");
 import { recordGlucoseTrace } from "../lib/glucose-trace-db";
 import { mobilityMoveName } from "../lib/mobility-moves";
 import {

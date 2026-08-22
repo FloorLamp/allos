@@ -125,7 +125,11 @@ describe("#996 — the crisis finding reads the configured resources", () => {
   function severeProfile(name: string): { p: number; td: string } {
     const p = newProfile(name);
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 24 });
+    recordInstrumentScore(
+      p,
+      { instrument: "PHQ-9", date: td, total: 24 },
+      "page"
+    );
     return { p, td };
   }
 
@@ -174,7 +178,11 @@ describe("#996 — the crisis signal stays with the profile (privacy pin)", () =
   it("is NEVER part of the cross-profile household rollup — only doses/refills/appointments are", () => {
     const p = newProfile("crisis private");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 25 });
+    recordInstrumentScore(
+      p,
+      { instrument: "PHQ-9", date: td, total: 25 },
+      "page"
+    );
 
     // The crisis finding is on the profile's OWN Upcoming...
     expect(

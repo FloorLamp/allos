@@ -273,6 +273,7 @@ describe("the temperature quick-log core (the notes-hack, retired)", () => {
       100.2,
       "F",
       "2026-03-12",
+      "page",
       "08:05"
     );
     expect(logged.kind).toBe("logged");
@@ -296,9 +297,9 @@ describe("the temperature quick-log core (the notes-hack, retired)", () => {
   });
 
   it("an untimed reading stores NULL — absence, not a midnight anchor", () => {
-    expect(logTemperatureCore(profileId, 98.9, "F", "2026-03-13").kind).toBe(
-      "logged"
-    );
+    expect(
+      logTemperatureCore(profileId, 98.9, "F", "2026-03-13", "page").kind
+    ).toBe("logged");
     expect(medRows("Body Temperature", "2026-03-13")[0].occurred_at).toBeNull();
   });
 });

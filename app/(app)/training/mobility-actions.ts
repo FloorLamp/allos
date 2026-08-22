@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import {
@@ -41,7 +42,12 @@ export async function logMobilityMove(
     return { ok: false, error: "Workout logging is unavailable." };
   const slug = String(formData.get("move") ?? "").trim();
   const date = resolveDate(formData, profile.id);
-  const outcome = logMobilityMoveCore(profile.id, slug, date);
+  const outcome = logMobilityMoveCore(
+    profile.id,
+    slug,
+    date,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "unknown-move")
     return { ok: false, error: "Unknown mobility move." };
   revalidate();
@@ -74,7 +80,12 @@ export async function setMobilityDuration(
   const minutes = raw === "" ? null : Math.round(Number(raw));
   if (minutes != null && !Number.isFinite(minutes))
     return { ok: false, error: "Invalid duration." };
-  const session = setMobilityDurationCore(profile.id, date, minutes);
+  const session = setMobilityDurationCore(
+    profile.id,
+    date,
+    minutes,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   revalidate();
   return { ok: true, session };
 }

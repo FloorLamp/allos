@@ -61,11 +61,11 @@ describe("Macros & fiber protein selection (#2414)", () => {
     for (const d of [D1, D2, D3]) seedTracked(p, "carbs_g", d, 210);
 
     // The Food-tab quick-add's own write core, not a hand-built row.
-    expect(addProteinGramsCore(p, D2, 30)).toEqual({
+    expect(addProteinGramsCore(p, D2, 30, "page")).toEqual({
       kind: "logged",
       grams: 30,
     });
-    expect(addProteinGramsCore(p, D3, 55)).toEqual({
+    expect(addProteinGramsCore(p, D3, 55, "page")).toEqual({
       kind: "logged",
       grams: 55,
     });
@@ -83,8 +83,8 @@ describe("Macros & fiber protein selection (#2414)", () => {
 
   it("renders a chart at all for a profile whose only protein is hand-logged", () => {
     const p = newProfile("macro-logged-only");
-    addProteinGramsCore(p, D1, 40);
-    addProteinGramsCore(p, D3, 45);
+    addProteinGramsCore(p, D1, 40, "page");
+    addProteinGramsCore(p, D3, 45, "page");
 
     const series = getMacroFiberDays(p, RANGE);
     // Previously empty — the empty state where months of logging live.
@@ -107,9 +107,9 @@ describe("Macros & fiber protein selection (#2414)", () => {
 
   it("windows the logged source to the selected range like every other series", () => {
     const p = newProfile("macro-window");
-    addProteinGramsCore(p, "2026-02-10", 60); // before the range
-    addProteinGramsCore(p, D2, 70);
-    addProteinGramsCore(p, "2026-04-10", 80); // after the range
+    addProteinGramsCore(p, "2026-02-10", 60, "page"); // before the range
+    addProteinGramsCore(p, D2, 70, "page");
+    addProteinGramsCore(p, "2026-04-10", 80, "page"); // after the range
 
     expect(getMacroFiberDays(p, RANGE).map((r) => r.date)).toEqual([D2]);
     // An all-time range (no bounds) keeps every day.

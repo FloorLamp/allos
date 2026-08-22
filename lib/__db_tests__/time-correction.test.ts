@@ -204,7 +204,14 @@ describe("a Telegram food tap records WHEN it was eaten (#2019)", () => {
     const pid = newProfile("Backfill Bea");
     // The web bar's backfill shape: a day, no stated time. Defaulting to now would
     // reintroduce the guess under a more authoritative name.
-    logFoodServingCore(pid, "berries", "2026-08-01", NOW_ISO, "Morning");
+    logFoodServingCore(
+      pid,
+      "berries",
+      "2026-08-01",
+      "page",
+      NOW_ISO,
+      "Morning"
+    );
     const [row] = foodEvents(pid);
     expect(row.occurred_at).toBeNull();
     expect(row.time_source).toBeNull();
@@ -654,7 +661,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     const pid = newProfile("Ride Rae");
     const { itemId, doseId } = seedDose(pid, "Ride Ibuprofen");
     seedLoginTelegram(pid, "5552030");
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
     const built = buildIntakeReminderForSlots(pid, ["Evening"]);
@@ -675,7 +682,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     const pid = newProfile("Echo Elke");
     const { itemId, doseId } = seedDose(pid, "Echo Ibuprofen");
     seedLoginTelegram(pid, "5552034");
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     const anchor = doseLogs(pid)[0].id;
     stampTap(anchor, "2026-08-05 19:20:00");
 
@@ -714,7 +721,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     const pid = newProfile("Closed Cleo");
     const { itemId, doseId } = seedDose(pid, "Closed Ibuprofen");
     seedLoginTelegram(pid, "5552036");
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     const anchor = doseLogs(pid)[0].id;
     stampTap(anchor, "2026-08-05 19:20:00");
 
@@ -759,7 +766,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     // The failure the issue describes: confirmed hours after it was actually taken.
     setNow("2026-08-06T05:00:00Z"); // 07:00 local on the 6th
     const date = today(pid);
-    markDoseTaken(pid, doseId, itemId, date);
+    markDoseTaken(pid, doseId, itemId, date, "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-06 05:00:00");
     const before = doseLogs(pid)[0];
     expect(before.date).toBe("2026-08-06");
@@ -786,7 +793,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     const { itemId, doseId } = seedDose(pid, "Redose Paracetamol");
     seedLoginTelegram(pid, "5552032");
     setNow(NOW_ISO);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
     const armedBefore = getMedicationFamilyStates(pid, today(pid)).get(
@@ -878,12 +885,14 @@ describe("a correction anchored on another profile's row writes nothing (#2059)"
       owner,
       "leafy_greens",
       today(owner),
+      "page",
       "2026-08-05T19:02:00Z"
     );
     logFoodServingCore(
       stranger,
       "nuts_seeds",
       today(stranger),
+      "page",
       "2026-08-05T19:04:00Z"
     );
     const ownerBefore = foodEvents(owner);
@@ -904,13 +913,20 @@ describe("a correction anchored on another profile's row writes nothing (#2059)"
     const ownerDose = seedDose(owner, "Owner's Amlodipine");
     const strangerDose = seedDose(stranger, "Stranger's Amlodipine");
     setNow(NOW_ISO);
-    markDoseTaken(owner, ownerDose.doseId, ownerDose.itemId, today(owner));
+    markDoseTaken(
+      owner,
+      ownerDose.doseId,
+      ownerDose.itemId,
+      today(owner),
+      "page"
+    );
     stampTap(doseLogs(owner)[0].id, "2026-08-05 19:02:00");
     markDoseTaken(
       stranger,
       strangerDose.doseId,
       strangerDose.itemId,
-      today(stranger)
+      today(stranger),
+      "page"
     );
     stampTap(doseLogs(stranger)[0].id, "2026-08-05 19:04:00");
     const ownerBefore = doseLogs(owner);
@@ -1023,7 +1039,7 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     const { itemId, doseId } = seedDose(pid, "Morning Ibuprofen");
     seedLoginTelegram(pid, "5553011");
     setNow(MORNING);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     const anchor = doseLogs(pid)[0].id;
     stampTap(anchor, "2026-08-06 06:00:00");
 

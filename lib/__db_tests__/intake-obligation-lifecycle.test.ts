@@ -612,7 +612,9 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     // The web tri-state's own core — the write the Supplements row now offers on
     // every active item. It refuses only a retired dose or a paused item, never
     // dueness, and it ANSWERS with the off-day outcome rather than a bare ✓.
-    expect(setDoseStatusCore(p, doseId, day, "taken")).toBe("logged-off-day");
+    expect(setDoseStatusCore(p, doseId, day, "taken", "page")).toBe(
+      "logged-off-day"
+    );
 
     // Invariant 1: expectations come from dueness, so a taken row on a non-due day
     // satisfies nothing and creates nothing. No miss disappeared, no rate moved.
@@ -670,7 +672,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     // "logged-off-day": the off-day qualifier is a CALENDAR statement (#1602 — which
     // days the row was meant for), and this item's calendar is every day. What makes
     // it not due today is its condition, and that is not something a log claims.
-    expect(markDoseTaken(p, doseId, null, day)).toBe("logged");
+    expect(markDoseTaken(p, doseId, null, day, "page")).toBe("logged");
 
     // Invariant 2: this is not a lifecycle write. Not one situation row, and not one
     // dated transition, moved.

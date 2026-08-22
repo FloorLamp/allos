@@ -42,15 +42,19 @@ function makeProfile(name: string): number {
 describe("audiogram store — canonical medical_records rows (#1600)", () => {
   it("writes each threshold as a canonical vitals reading that flags like an imported one", () => {
     const profileId = makeProfile("audiogram-store");
-    const outcome = recordAudiogram(profileId, {
-      date: "2026-03-04",
-      thresholds: [
-        { ear: "right", hz: 1000, dbHl: 15 },
-        { ear: "right", hz: 4000, dbHl: 40 },
-        { ear: "left", hz: 4000, dbHl: 20 },
-      ],
-      notes: "annual monitoring audiogram",
-    });
+    const outcome = recordAudiogram(
+      profileId,
+      {
+        date: "2026-03-04",
+        thresholds: [
+          { ear: "right", hz: 1000, dbHl: 15 },
+          { ear: "right", hz: 4000, dbHl: 40 },
+          { ear: "left", hz: 4000, dbHl: 20 },
+        ],
+        notes: "annual monitoring audiogram",
+      },
+      "page"
+    );
     expect(outcome.kind).toBe("saved");
 
     // THE STORE ASSERTION: medical_records, category vitals, canonical name, dB HL.
@@ -105,27 +109,35 @@ describe("audiogram store — canonical medical_records rows (#1600)", () => {
 
   it("re-saving a date corrects it in place, with an honest inserted/updated/unchanged split", () => {
     const profileId = makeProfile("audiogram-upsert");
-    const first = recordAudiogram(profileId, {
-      date: "2026-05-05",
-      thresholds: [
-        { ear: "right", hz: 2000, dbHl: 20 },
-        { ear: "right", hz: 4000, dbHl: 30 },
-      ],
-    });
+    const first = recordAudiogram(
+      profileId,
+      {
+        date: "2026-05-05",
+        thresholds: [
+          { ear: "right", hz: 2000, dbHl: 20 },
+          { ear: "right", hz: 4000, dbHl: 30 },
+        ],
+      },
+      "page"
+    );
     expect(first).toMatchObject({
       kind: "saved",
       counts: { inserted: 2, updated: 0, unchanged: 0 },
     });
 
     // Same date again: one value corrected, one identical, one new frequency.
-    const second = recordAudiogram(profileId, {
-      date: "2026-05-05",
-      thresholds: [
-        { ear: "right", hz: 2000, dbHl: 20 }, // unchanged
-        { ear: "right", hz: 4000, dbHl: 35 }, // updated
-        { ear: "right", hz: 8000, dbHl: 50 }, // inserted
-      ],
-    });
+    const second = recordAudiogram(
+      profileId,
+      {
+        date: "2026-05-05",
+        thresholds: [
+          { ear: "right", hz: 2000, dbHl: 20 }, // unchanged
+          { ear: "right", hz: 4000, dbHl: 35 }, // updated
+          { ear: "right", hz: 8000, dbHl: 50 }, // inserted
+        ],
+      },
+      "page"
+    );
     expect(second).toMatchObject({
       kind: "saved",
       counts: { inserted: 1, updated: 1, unchanged: 1 },
@@ -142,17 +154,21 @@ describe("audiogram store — canonical medical_records rows (#1600)", () => {
   it("an all-blank submit stores nothing and says so, instead of inventing readings", () => {
     const profileId = makeProfile("audiogram-empty");
     expect(
-      recordAudiogram(profileId, { date: "2026-01-01", thresholds: [] })
+      recordAudiogram(profileId, { date: "2026-01-01", thresholds: [] }, "page")
     ).toEqual({ kind: "no-thresholds" });
     expect(hasAudiogramRows(profileId)).toBe(false);
   });
 
   it("a SYNC never overwrites a hand-corrected threshold (the isEditLocked contract)", () => {
     const profileId = makeProfile("audiogram-edit-lock");
-    recordAudiogram(profileId, {
-      date: "2026-02-02",
-      thresholds: [{ ear: "left", hz: 4000, dbHl: 30 }],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-02-02",
+        thresholds: [{ ear: "left", hz: 4000, dbHl: 30 }],
+      },
+      "page"
+    );
     // Make the row look integration-owned and hand-corrected, exactly as an imported
     // row edited in the biomarker editor would be.
     db.prepare(
@@ -163,6 +179,7 @@ describe("audiogram store — canonical medical_records rows (#1600)", () => {
     const synced = recordAudiogram(
       profileId,
       { date: "2026-02-02", thresholds: [{ ear: "left", hz: 4000, dbHl: 99 }] },
+      "page",
       "sync"
     );
     expect(synced).toMatchObject({
@@ -172,26 +189,38 @@ describe("audiogram store — canonical medical_records rows (#1600)", () => {
     expect(getAudiogramReadings(profileId)[0].dbHl).toBe(30);
 
     // The same write from the MANUAL surface is the person themself, so it lands.
-    recordAudiogram(profileId, {
-      date: "2026-02-02",
-      thresholds: [{ ear: "left", hz: 4000, dbHl: 45 }],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-02-02",
+        thresholds: [{ ear: "left", hz: 4000, dbHl: 45 }],
+      },
+      "page"
+    );
     expect(getAudiogramReadings(profileId)[0].dbHl).toBe(45);
   });
 
   it("deleting an audiogram removes exactly that date's thresholds", () => {
     const profileId = makeProfile("audiogram-delete");
-    recordAudiogram(profileId, {
-      date: "2024-01-01",
-      thresholds: [{ ear: "right", hz: 1000, dbHl: 10 }],
-    });
-    recordAudiogram(profileId, {
-      date: "2026-01-01",
-      thresholds: [
-        { ear: "right", hz: 1000, dbHl: 20 },
-        { ear: "left", hz: 1000, dbHl: 25 },
-      ],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2024-01-01",
+        thresholds: [{ ear: "right", hz: 1000, dbHl: 10 }],
+      },
+      "page"
+    );
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-01-01",
+        thresholds: [
+          { ear: "right", hz: 1000, dbHl: 20 },
+          { ear: "left", hz: 1000, dbHl: 25 },
+        ],
+      },
+      "page"
+    );
     expect(deleteAudiogram(profileId, "2026-01-01")).toEqual({
       kind: "deleted",
       removed: 2,
@@ -205,10 +234,14 @@ describe("audiogram store — canonical medical_records rows (#1600)", () => {
   it("scopes every read to the profile", () => {
     const mine = makeProfile("audiogram-mine");
     const theirs = makeProfile("audiogram-theirs");
-    recordAudiogram(theirs, {
-      date: "2026-07-07",
-      thresholds: [{ ear: "right", hz: 4000, dbHl: 70 }],
-    });
+    recordAudiogram(
+      theirs,
+      {
+        date: "2026-07-07",
+        thresholds: [{ ear: "right", hz: 4000, dbHl: 70 }],
+      },
+      "page"
+    );
     expect(getAudiogramReadings(mine)).toEqual([]);
     expect(getHearingBaseline(mine)).toBeNull();
     expect(hasAudiogramRows(mine)).toBe(false);
@@ -242,13 +275,17 @@ describe("the ototoxic crosscheck cites the hearing baseline (#1600)", () => {
   it("cites the newest audiogram when one exists", () => {
     const profileId = makeProfile("ototoxic-baseline");
     addOtotoxicMed(profileId);
-    recordAudiogram(profileId, {
-      date: "2026-04-01",
-      thresholds: [
-        { ear: "right", hz: 4000, dbHl: 35 },
-        { ear: "left", hz: 4000, dbHl: 20 },
-      ],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-04-01",
+        thresholds: [
+          { ear: "right", hz: 4000, dbHl: 35 },
+          { ear: "left", hz: 4000, dbHl: 20 },
+        ],
+      },
+      "page"
+    );
     const [hit] = getOtotoxicWarnings(profileId);
     expect(hit.baseline).toMatchObject({
       latestDate: "2026-04-01",
@@ -266,20 +303,28 @@ describe("the ototoxic crosscheck cites the hearing baseline (#1600)", () => {
   it("names the DOCUMENTED THRESHOLD SHIFT — the conjunction the crosscheck could not see", () => {
     const profileId = makeProfile("ototoxic-shift");
     addOtotoxicMed(profileId);
-    recordAudiogram(profileId, {
-      date: "2024-01-01",
-      thresholds: [
-        { ear: "right", hz: 4000, dbHl: 25 },
-        { ear: "right", hz: 8000, dbHl: 30 },
-      ],
-    });
-    recordAudiogram(profileId, {
-      date: "2026-01-01",
-      thresholds: [
-        { ear: "right", hz: 4000, dbHl: 40 },
-        { ear: "right", hz: 8000, dbHl: 45 },
-      ],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2024-01-01",
+        thresholds: [
+          { ear: "right", hz: 4000, dbHl: 25 },
+          { ear: "right", hz: 8000, dbHl: 30 },
+        ],
+      },
+      "page"
+    );
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-01-01",
+        thresholds: [
+          { ear: "right", hz: 4000, dbHl: 40 },
+          { ear: "right", hz: 8000, dbHl: 45 },
+        ],
+      },
+      "page"
+    );
     const [hit] = getOtotoxicWarnings(profileId);
     expect(ototoxicHasShift(hit)).toBe(true);
     const detail = ototoxicDetail(hit);
@@ -343,19 +388,23 @@ describe("reported pure-tone averages (#2322)", () => {
 
   it("lets the reported average win over the derived one, per (ear, conduction)", () => {
     const profileId = makeProfile("pta-precedence");
-    recordAudiogram(profileId, {
-      date: "2026-05-01",
-      thresholds: [
-        { ear: "right", hz: 500, dbHl: 10 },
-        { ear: "right", hz: 1000, dbHl: 10 },
-        { ear: "right", hz: 2000, dbHl: 10 },
-        { ear: "right", hz: 4000, dbHl: 10 },
-        { ear: "left", hz: 500, dbHl: 20 },
-        { ear: "left", hz: 1000, dbHl: 20 },
-        { ear: "left", hz: 2000, dbHl: 20 },
-        { ear: "left", hz: 4000, dbHl: 20 },
-      ],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-05-01",
+        thresholds: [
+          { ear: "right", hz: 500, dbHl: 10 },
+          { ear: "right", hz: 1000, dbHl: 10 },
+          { ear: "right", hz: 2000, dbHl: 10 },
+          { ear: "right", hz: 4000, dbHl: 10 },
+          { ear: "left", hz: 500, dbHl: 20 },
+          { ear: "left", hz: 1000, dbHl: 20 },
+          { ear: "left", hz: 2000, dbHl: 20 },
+          { ear: "left", hz: 4000, dbHl: 20 },
+        ],
+      },
+      "page"
+    );
     insertReportedPta(profileId, "2026-05-01", "right", "air", 18);
     const [audiogram] = getAudiograms(profileId);
     const resolved = resolvePureToneAverages(
@@ -382,10 +431,14 @@ describe("reported pure-tone averages (#2322)", () => {
 
   it("deletes the reported averages along with the thresholds of that date", () => {
     const profileId = makeProfile("pta-delete");
-    recordAudiogram(profileId, {
-      date: "2026-05-01",
-      thresholds: [{ ear: "right", hz: 4000, dbHl: 30 }],
-    });
+    recordAudiogram(
+      profileId,
+      {
+        date: "2026-05-01",
+        thresholds: [{ ear: "right", hz: 4000, dbHl: 30 }],
+      },
+      "page"
+    );
     insertReportedPta(profileId, "2026-05-01", "right", "air", 22);
     expect(deleteAudiogram(profileId, "2026-05-01")).toEqual({
       kind: "deleted",

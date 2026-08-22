@@ -56,9 +56,9 @@ describe("profileVocabulary — the profile's own spellings, first-seen first", 
   it("orders symptom spellings by the OLDEST row that carries them, not by date", () => {
     const p = newProfile("first-seen-symptom");
     // Logged first, but describing a LATER day…
-    logSymptomCore(p, "Kratom head", 2, "2026-07-20");
+    logSymptomCore(p, "Kratom head", 2, "2026-07-20", "page");
     // …and this row describes an EARLIER day while being typed second.
-    logSymptomCore(p, "Kava jitters", 2, "2026-07-01");
+    logSymptomCore(p, "Kava jitters", 2, "2026-07-01", "page");
     expect(profileVocabulary("symptom", p)).toEqual([
       "Kratom head",
       "Kava jitters",
@@ -67,19 +67,34 @@ describe("profileVocabulary — the profile's own spellings, first-seen first", 
 
   it("orders substance spellings the same way, from the substance ledger", () => {
     const p = newProfile("first-seen-substance");
-    addSubstanceDailyTotalCore(p, "Kratom", { date: "2026-07-20", amount: 1 });
-    addSubstanceDailyTotalCore(p, "Kava", { date: "2026-07-01", amount: 1 });
+    addSubstanceDailyTotalCore(
+      p,
+      "Kratom",
+      { date: "2026-07-20", amount: 1 },
+      "page"
+    );
+    addSubstanceDailyTotalCore(
+      p,
+      "Kava",
+      { date: "2026-07-01", amount: 1 },
+      "page"
+    );
     expect(profileVocabulary("substance", p)).toEqual(["Kratom", "Kava"]);
   });
 
   it("is scoped to the profile — another profile's spelling never leaks in", () => {
     const mine = newProfile("mine");
     const theirs = newProfile("theirs");
-    logSymptomCore(theirs, "Kratom", 2, "2026-07-01");
-    addSubstanceDailyTotalCore(theirs, "Kratom", {
-      date: "2026-07-01",
-      amount: 1,
-    });
+    logSymptomCore(theirs, "Kratom", 2, "2026-07-01", "page");
+    addSubstanceDailyTotalCore(
+      theirs,
+      "Kratom",
+      {
+        date: "2026-07-01",
+        amount: 1,
+      },
+      "page"
+    );
     expect(profileVocabulary("symptom", mine)).toEqual([]);
     expect(profileVocabulary("substance", mine)).toEqual([]);
     // …so a same-cased name typed here mints MY OWN key, not a share of theirs.
@@ -96,13 +111,13 @@ describe("symptom vocabulary — three casings, one key, one label (#3325)", () 
   it("logs one symptom-day under the first-seen spelling", () => {
     const p = newProfile("symptom-fold");
     // The AC's shape: the same word typed three ways across three days.
-    expect(logSymptomCore(p, "Kratom head", 2, "2026-07-01").kind).toBe(
+    expect(logSymptomCore(p, "Kratom head", 2, "2026-07-01", "page").kind).toBe(
       "logged"
     );
-    expect(logSymptomCore(p, "kratom head", 3, "2026-07-02").kind).toBe(
+    expect(logSymptomCore(p, "kratom head", 3, "2026-07-02", "page").kind).toBe(
       "logged"
     );
-    expect(logSymptomCore(p, "KRATOM HEAD", 1, "2026-07-03").kind).toBe(
+    expect(logSymptomCore(p, "KRATOM HEAD", 1, "2026-07-03", "page").kind).toBe(
       "logged"
     );
 
@@ -122,32 +137,32 @@ describe("symptom vocabulary — three casings, one key, one label (#3325)", () 
     // Before the fold this minted a second row at severity 2 beside the first at 4;
     // now it is the same symptom-day, so #799's worst-severity rule owns the answer.
     const p = newProfile("symptom-fold-day");
-    logSymptomCore(p, "Kratom head", 4, "2026-07-01");
-    logSymptomCore(p, "kratom head", 2, "2026-07-01");
+    logSymptomCore(p, "Kratom head", 4, "2026-07-01", "page");
+    logSymptomCore(p, "kratom head", 2, "2026-07-01", "page");
     expect(getSymptomsOnDate(p, "2026-07-01")).toHaveLength(1);
     expect(getSymptomSeveritiesOnDate(p, "2026-07-01")["Kratom head"]).toBe(4);
   });
 
   it("answers with the key it actually wrote, so a caller names what landed", () => {
     const p = newProfile("symptom-fold-outcome");
-    logSymptomCore(p, "MDMA", 2, "2026-07-01");
-    const out = logSymptomCore(p, "mdma", 2, "2026-07-02");
+    logSymptomCore(p, "MDMA", 2, "2026-07-01", "page");
+    const out = logSymptomCore(p, "mdma", 2, "2026-07-02", "page");
     expect(out).toMatchObject({ kind: "logged", symptom: "MDMA" });
   });
 
   it("keeps an all-caps custom symptom in capitals", () => {
     const p = newProfile("symptom-mdma");
-    logSymptomCore(p, "MDMA", 2, "2026-07-01");
-    logSymptomCore(p, "mdma", 2, "2026-07-02");
-    logSymptomCore(p, "Mdma", 2, "2026-07-03");
+    logSymptomCore(p, "MDMA", 2, "2026-07-01", "page");
+    logSymptomCore(p, "mdma", 2, "2026-07-02", "page");
+    logSymptomCore(p, "Mdma", 2, "2026-07-03", "page");
     expect(getCustomSymptomNames(p)).toEqual(["MDMA"]);
     expect(symptomLabel("MDMA")).toBe("MDMA");
   });
 
   it("still keeps genuinely different symptoms apart", () => {
     const p = newProfile("symptom-exclusion");
-    logSymptomCore(p, "Kratom head", 2, "2026-07-01");
-    logSymptomCore(p, "Kava jitters", 2, "2026-07-01");
+    logSymptomCore(p, "Kratom head", 2, "2026-07-01", "page");
+    logSymptomCore(p, "Kava jitters", 2, "2026-07-01", "page");
     expect(getSymptomsOnDate(p, "2026-07-01")).toHaveLength(2);
   });
 });
@@ -156,7 +171,12 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
   it("resolves a typed name onto the first-seen spelling", () => {
     const p = newProfile("substance-fold");
     expect(trackTypedSubstance(p, "Kratom")).toBe("Kratom");
-    addSubstanceDailyTotalCore(p, "Kratom", { date: "2026-07-01", amount: 2 });
+    addSubstanceDailyTotalCore(
+      p,
+      "Kratom",
+      { date: "2026-07-01", amount: 2 },
+      "page"
+    );
 
     const keys = ["Kratom", "kratom", "KRATOM"].map((typed) =>
       trackTypedSubstance(p, typed)
@@ -169,18 +189,33 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
 
   it("puts every casing's day on ONE ledger, not two half-ledgers", () => {
     const p = newProfile("substance-ledger");
-    addSubstanceDailyTotalCore(p, trackTypedSubstance(p, "Kratom"), {
-      date: "2026-07-01",
-      amount: 2,
-    });
-    addSubstanceDailyTotalCore(p, trackTypedSubstance(p, "kratom"), {
-      date: "2026-07-02",
-      amount: 1,
-    });
-    addSubstanceDailyTotalCore(p, trackTypedSubstance(p, "KRATOM"), {
-      date: "2026-07-03",
-      amount: 3,
-    });
+    addSubstanceDailyTotalCore(
+      p,
+      trackTypedSubstance(p, "Kratom"),
+      {
+        date: "2026-07-01",
+        amount: 2,
+      },
+      "page"
+    );
+    addSubstanceDailyTotalCore(
+      p,
+      trackTypedSubstance(p, "kratom"),
+      {
+        date: "2026-07-02",
+        amount: 1,
+      },
+      "page"
+    );
+    addSubstanceDailyTotalCore(
+      p,
+      trackTypedSubstance(p, "KRATOM"),
+      {
+        date: "2026-07-03",
+        amount: 3,
+      },
+      "page"
+    );
 
     expect(profileVocabulary("substance", p)).toEqual(["Kratom"]);
     const rows = getSubstanceDailyTotals(p, "Kratom");
@@ -196,10 +231,15 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
 
   it("keeps an all-caps custom substance in capitals", () => {
     const p = newProfile("substance-mdma");
-    addSubstanceDailyTotalCore(p, trackTypedSubstance(p, "MDMA"), {
-      date: "2026-07-01",
-      amount: 1,
-    });
+    addSubstanceDailyTotalCore(
+      p,
+      trackTypedSubstance(p, "MDMA"),
+      {
+        date: "2026-07-01",
+        amount: 1,
+      },
+      "page"
+    );
     for (const typed of ["mdma", "Mdma", "MDMA"]) {
       expect(trackTypedSubstance(p, typed)).toBe("MDMA");
       expect(substanceLabel(trackTypedSubstance(p, typed))).toBe("MDMA");
@@ -209,10 +249,15 @@ describe("substance vocabulary — three casings, one key, one label (#3325)", (
 
   it("still collapses a typed curated label onto its curated key", () => {
     const p = newProfile("substance-curated");
-    addSubstanceDailyTotalCore(p, trackTypedSubstance(p, "Kratom"), {
-      date: "2026-07-01",
-      amount: 1,
-    });
+    addSubstanceDailyTotalCore(
+      p,
+      trackTypedSubstance(p, "Kratom"),
+      {
+        date: "2026-07-01",
+        amount: 1,
+      },
+      "page"
+    );
     expect(trackTypedSubstance(p, "Alcohol")).toBe("alcohol");
     expect(trackTypedSubstance(p, "NICOTINE")).toBe("nicotine");
   });
@@ -238,7 +283,7 @@ describe("rows that predate the fold", () => {
     insert.run(p, "2026-07-02", "kratom", 3);
 
     // New logs join the FIRST-SEEN one…
-    logSymptomCore(p, "KRATOM", 1, "2026-07-03");
+    logSymptomCore(p, "KRATOM", 1, "2026-07-03", "page");
     expect(getSymptomsOnDate(p, "2026-07-03").map((r) => r.symptom)).toEqual([
       "Kratom",
     ]);

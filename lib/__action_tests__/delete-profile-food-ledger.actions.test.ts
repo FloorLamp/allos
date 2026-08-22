@@ -27,9 +27,9 @@ describe("deleteProfile clears food_log_events (#950)", () => {
     const bystander = createProfile("Ada Lovelace");
     actAs(admin, acting);
 
-    logFoodServingCore(victim.id, "fatty_fish", "2026-07-08");
-    logFoodServingCore(victim.id, "berries", "2026-07-08");
-    logFoodServingCore(bystander.id, "fatty_fish", "2026-07-08");
+    logFoodServingCore(victim.id, "fatty_fish", "2026-07-08", "page");
+    logFoodServingCore(victim.id, "berries", "2026-07-08", "page");
+    logFoodServingCore(bystander.id, "fatty_fish", "2026-07-08", "page");
     expect(ledgerCount(victim.id)).toBe(2);
 
     const res = await deleteProfile(fd({ id: victim.id }));

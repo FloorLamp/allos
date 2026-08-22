@@ -52,7 +52,9 @@ function seedTrackedProtein(profileId: number, date: string, grams: number) {
 // to mask it. Every seeded add in this file goes through here, so a refused write
 // fails loudly at the fixture instead of days later at an unrelated assertion.
 function addProtein(profileId: number, date: string, grams: number) {
-  expect(addProteinGramsCore(profileId, date, grams).kind).toBe("logged");
+  expect(addProteinGramsCore(profileId, date, grams, "page").kind).toBe(
+    "logged"
+  );
 }
 
 describe("getProteinToday (#974)", () => {

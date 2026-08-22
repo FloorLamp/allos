@@ -49,7 +49,14 @@ beforeEach(() => {
 // ---- Food servings ----
 
 function seedServing(profileId: number, date: string, group = "berries") {
-  logFoodServingCore(profileId, group, date, `${date}T08:00:00Z`, "Morning");
+  logFoodServingCore(
+    profileId,
+    group,
+    date,
+    "page",
+    `${date}T08:00:00Z`,
+    "Morning"
+  );
   const row = db
     .prepare(
       `SELECT id FROM food_log_events WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
@@ -307,7 +314,7 @@ describe("deleteFoodLogEvent (#1963)", () => {
 
     // `__protein__` never renders as a serving row (getFoodMealDays skips it), so this id
     // can only arrive forged or stale — and its truth is the protein grams total.
-    addProteinGramsCore(profile.id, date, 25, `${date}T18:00:00Z`);
+    addProteinGramsCore(profile.id, date, 25, "page", `${date}T18:00:00Z`);
     const proteinId = (
       db
         .prepare(

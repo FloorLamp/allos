@@ -186,17 +186,21 @@ export async function saveFitnessTest(
     prefixes,
     (pid, todayISO) => closureFindingSnapshot(pid, prefixes, todayISO),
     (): FitnessEntryOutcome =>
-      saveFitnessEntry(profile.id, {
-        date,
-        testKey,
-        value,
-        rawInput,
-        note,
-        liftName,
-        reps,
-        weightKg,
-        durationSec,
-      })
+      saveFitnessEntry(
+        profile.id,
+        {
+          date,
+          testKey,
+          value,
+          rawInput,
+          note,
+          liftName,
+          reps,
+          weightKg,
+          durationSec,
+        },
+        "page"
+      )
   );
   if (!outcome.ok) return { ok: false, error: outcome.error };
 

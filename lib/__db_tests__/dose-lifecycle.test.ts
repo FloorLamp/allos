@@ -146,12 +146,14 @@ describe("markDoseTaken outcomes", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
+      "logged"
+    );
     expect(logRow(doseId, DATE)?.amount).toBe("500 mg");
     expect(onHand(itemId)).toBe(9);
 
     // Idempotent repeat: reported as already-taken, supply untouched.
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe(
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
       "already-taken"
     );
     expect(onHand(itemId)).toBe(9);
@@ -162,19 +164,23 @@ describe("markDoseTaken outcomes", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg", 1);
 
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("stale-dose");
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
+      "stale-dose"
+    );
     expect(logRow(doseId, DATE)).toBeUndefined();
     expect(onHand(itemId)).toBe(10);
   });
 
   it("refuses a deleted / cross-profile dose as stale", () => {
     const profileId = seedProfileRow();
-    expect(markDoseTaken(profileId, 999_999, null, DATE)).toBe("stale-dose");
+    expect(markDoseTaken(profileId, 999_999, null, DATE, "page")).toBe(
+      "stale-dose"
+    );
 
     // Another profile's dose id is indistinguishable from a deleted one.
     const other = seedProfileRow();
     const foreignDose = seedDose(seedItem(other), "5 mg");
-    expect(markDoseTaken(profileId, foreignDose, null, DATE)).toBe(
+    expect(markDoseTaken(profileId, foreignDose, null, DATE, "page")).toBe(
       "stale-dose"
     );
     expect(logRow(foreignDose, DATE)).toBeUndefined();
@@ -185,7 +191,9 @@ describe("markDoseTaken outcomes", () => {
     const itemId = seedItem(profileId, { active: 0, quantityOnHand: 5 });
     const doseId = seedDose(itemId, "500 mg");
 
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("inactive");
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
+      "inactive"
+    );
     expect(logRow(doseId, DATE)).toBeUndefined();
     expect(onHand(itemId)).toBe(5);
   });
@@ -194,7 +202,7 @@ describe("markDoseTaken outcomes", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId);
     const doseId = seedDose(itemId, "500 mg");
-    markDoseTaken(profileId, doseId, itemId, DATE);
+    markDoseTaken(profileId, doseId, itemId, DATE, "page");
 
     // Brand switch: the dose row's amount changes after the confirmation.
     db.prepare(
@@ -220,7 +228,7 @@ describe("retired doses and the current-schedule read", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId);
     const doseId = seedDose(itemId, "500 mg");
-    markDoseTaken(profileId, doseId, itemId, DATE);
+    markDoseTaken(profileId, doseId, itemId, DATE, "page");
 
     db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
       doseId
@@ -235,7 +243,9 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
-    expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe("skipped");
+    expect(markDoseSkipped(profileId, doseId, itemId, DATE, "page")).toBe(
+      "skipped"
+    );
     const row = logRow(doseId, DATE);
     expect(row?.status).toBe("skipped");
     expect(row?.amount).toBeNull();
@@ -252,18 +262,22 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const doseId = seedDose(itemId, "500 mg");
 
     // First skip logs; a repeat reports the standing skip.
-    expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe("skipped");
-    expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe(
+    expect(markDoseSkipped(profileId, doseId, itemId, DATE, "page")).toBe(
+      "skipped"
+    );
+    expect(markDoseSkipped(profileId, doseId, itemId, DATE, "page")).toBe(
       "already-skipped"
     );
 
     // A stale ⏭️ tap must NOT flip an already-TAKEN dose to skipped: taken first…
     const doseB = seedDose(itemId, "250 mg");
-    expect(markDoseTaken(profileId, doseB, itemId, DATE)).toBe("logged");
+    expect(markDoseTaken(profileId, doseB, itemId, DATE, "page")).toBe(
+      "logged"
+    );
     expect(onHand(itemId)).toBe(9);
     // …then a skip tap is refused, reporting the TAKEN log that stands (#280);
     // the taken row and the supply decrement both survive.
-    expect(markDoseSkipped(profileId, doseB, itemId, DATE)).toBe(
+    expect(markDoseSkipped(profileId, doseB, itemId, DATE, "page")).toBe(
       "already-taken"
     );
     expect(logRow(doseB, DATE)?.status).toBe("taken");
@@ -279,10 +293,12 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const doseId = seedDose(itemId, "500 mg");
 
     // Dose marked taken out-of-band (web UI / another device)…
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
+      "logged"
+    );
     // …then the stale Telegram ⏭️ button is tapped.
     const answer = tapSkipAnswerText(
-      markDoseSkipped(profileId, doseId, itemId, DATE)
+      markDoseSkipped(profileId, doseId, itemId, DATE, "page")
     );
     expect(answer).toMatch(/^Not skipped/);
     expect(answer).toMatch(/taken/i);
@@ -295,9 +311,11 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
-    expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe("skipped");
+    expect(markDoseSkipped(profileId, doseId, itemId, DATE, "page")).toBe(
+      "skipped"
+    );
     const answer = tapAnswerText(
-      markDoseTaken(profileId, doseId, itemId, DATE)
+      markDoseTaken(profileId, doseId, itemId, DATE, "page")
     );
     expect(answer).toMatch(/^Not logged/);
     expect(answer).toMatch(/skipped/i);
@@ -311,15 +329,15 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const profileId = seedProfileRow();
     const retiredItem = seedItem(profileId, { quantityOnHand: 5 });
     const retired = seedDose(retiredItem, "500 mg", 1);
-    expect(markDoseSkipped(profileId, retired, retiredItem, DATE)).toBe(
+    expect(markDoseSkipped(profileId, retired, retiredItem, DATE, "page")).toBe(
       "stale-dose"
     );
 
     const pausedItem = seedItem(profileId, { active: 0, quantityOnHand: 5 });
     const pausedDose = seedDose(pausedItem, "500 mg");
-    expect(markDoseSkipped(profileId, pausedDose, pausedItem, DATE)).toBe(
-      "inactive"
-    );
+    expect(
+      markDoseSkipped(profileId, pausedDose, pausedItem, DATE, "page")
+    ).toBe("inactive");
     expect(logRow(pausedDose, DATE)).toBeUndefined();
   });
 });
@@ -339,7 +357,7 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
     const victimItem = seedItem(victim, { quantityOnHand: 10 });
 
     // Forged token: this profile's dose, but the victim's item id.
-    expect(markDoseTaken(profileId, doseId, victimItem, DATE)).toBe(
+    expect(markDoseTaken(profileId, doseId, victimItem, DATE, "page")).toBe(
       "stale-dose"
     );
     // Nothing written for the dose, and the victim profile's taken set is clean.
@@ -354,7 +372,7 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
-    expect(markDoseTaken(profileId, doseId, null, DATE)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, DATE, "page")).toBe("logged");
     const row = db
       .prepare(
         "SELECT item_id FROM intake_item_logs WHERE dose_id = ? AND date = ?"
@@ -370,10 +388,10 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
 
     const farFuture = shiftDateStr(DATE, 400);
     const farPast = shiftDateStr(DATE, -400);
-    expect(markDoseTaken(profileId, doseId, itemId, farFuture)).toBe(
+    expect(markDoseTaken(profileId, doseId, itemId, farFuture, "page")).toBe(
       "stale-dose"
     );
-    expect(markDoseSkipped(profileId, doseId, itemId, farPast)).toBe(
+    expect(markDoseSkipped(profileId, doseId, itemId, farPast, "page")).toBe(
       "stale-dose"
     );
     expect(logRow(doseId, farFuture)).toBeUndefined();
@@ -381,7 +399,9 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
     // Supply never moved and today's slot is still open.
     expect(onHand(itemId)).toBe(10);
     // A same-day tap still works.
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
+      "logged"
+    );
   });
 
   it("markDoseSkipped also ignores a forged item id", () => {
@@ -391,7 +411,7 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
     const victim = seedProfileRow();
     const victimItem = seedItem(victim);
 
-    expect(markDoseSkipped(profileId, doseId, victimItem, DATE)).toBe(
+    expect(markDoseSkipped(profileId, doseId, victimItem, DATE, "page")).toBe(
       "stale-dose"
     );
     expect(logRow(doseId, DATE)).toBeUndefined();
@@ -409,8 +429,10 @@ describe("dose write-path hardening (#613/#614/#616)", () => {
 
     // The Telegram path must NOT throw on the duplicate — it reports already-taken
     // and leaves supply alone.
-    expect(() => markDoseTaken(profileId, doseId, itemId, DATE)).not.toThrow();
-    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe(
+    expect(() =>
+      markDoseTaken(profileId, doseId, itemId, DATE, "page")
+    ).not.toThrow();
+    expect(markDoseTaken(profileId, doseId, itemId, DATE, "page")).toBe(
       "already-taken"
     );
     expect(onHand(itemId)).toBe(10);
@@ -448,13 +470,13 @@ describe("escalationAckState status-awareness (#280)", () => {
     const itemId = seedItem(profileId);
 
     const takenDose = seedDose(itemId, "5 mg");
-    markDoseTaken(profileId, takenDose, itemId, DATE);
+    markDoseTaken(profileId, takenDose, itemId, DATE, "page");
     expect(escalationAckState(profileId, takenDose, DATE)).toBe(
       "already-taken"
     );
 
     const skippedDose = seedDose(itemId, "5 mg");
-    markDoseSkipped(profileId, skippedDose, itemId, DATE);
+    markDoseSkipped(profileId, skippedDose, itemId, DATE, "page");
     expect(escalationAckState(profileId, skippedDose, DATE)).toBe(
       "already-skipped"
     );
@@ -577,7 +599,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId, { quantityOnHand: 5 });
     const skippedDose = seedDose(itemId, "1 cap");
-    markDoseSkipped(profileId, skippedDose, itemId, DATE);
+    markDoseSkipped(profileId, skippedDose, itemId, DATE, "page");
 
     const confirm = applyIntent(profileId, doseIntent("dose", skippedDose));
     expect(confirm.status).toBe("rejected");
@@ -586,7 +608,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
     expect(onHand(itemId)).toBe(5);
 
     const takenDose = seedDose(itemId, "1 cap");
-    markDoseTaken(profileId, takenDose, itemId, DATE);
+    markDoseTaken(profileId, takenDose, itemId, DATE, "page");
     const skip = applyIntent(profileId, doseIntent("skip-dose", takenDose));
     expect(skip.status).toBe("rejected");
     expect(skip.reason).toMatch(/already recorded as taken/i);

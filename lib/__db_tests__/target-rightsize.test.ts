@@ -133,10 +133,10 @@ describe("frequency-target right-sizing (#1670)", () => {
     // not appear anywhere in the history (a partial week is under its floor by
     // construction, so counting it would make almost every target look chronic).
     for (const back of [30, 24, 17, 10]) {
-      logPracticeSession(pid, "Meditation", dayBack(pid, back));
+      logPracticeSession(pid, "Meditation", dayBack(pid, back), "page");
     }
-    logPracticeSession(pid, "Meditation", dayBack(pid, 1));
-    logPracticeSession(pid, "Meditation", today(pid));
+    logPracticeSession(pid, "Meditation", dayBack(pid, 1), "page");
+    logPracticeSession(pid, "Meditation", today(pid), "page");
 
     const [history] = getFrequencyTargetWeeklyHistory(pid, RIGHTSIZE_WEEKS);
     expect(history.weeks.map((w) => w.count)).toEqual([1, 1, 1, 1]);
@@ -177,7 +177,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     const tid = makeTarget(pid, "practice", "Sauna", 4);
     // One session a week for four completed weeks against a 4×/week goal.
     for (const back of [30, 24, 17, 10])
-      logPracticeSession(pid, "Sauna", dayBack(pid, back));
+      logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
 
     const finding = soleFinding(pid);
     expect(finding.dedupeKey).toBe(rightSizeSignalKey(tid, "2026"));
@@ -207,7 +207,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     const tid = makeTarget(pid, "practice", "Cold plunge", 5);
     // Best completed week is two sessions.
     for (const back of [30, 24, 23, 17, 10])
-      logPracticeSession(pid, "Cold plunge", dayBack(pid, back));
+      logPracticeSession(pid, "Cold plunge", dayBack(pid, back), "page");
 
     const [candidate] = collectRightSizeCandidates(pid, today(pid));
     expect(candidate.suggestedFloor).toBe(2);
@@ -310,11 +310,11 @@ describe("frequency-target right-sizing (#1670)", () => {
     const pid = makeProfile("rs-recovery");
     makeTarget(pid, "practice", "Meditation", 2);
     for (const back of [30, 24, 17, 10])
-      logPracticeSession(pid, "Meditation", dayBack(pid, back));
+      logPracticeSession(pid, "Meditation", dayBack(pid, back), "page");
     expect(buildTargetRightSizeFindings(pid, today(pid))).toHaveLength(1);
 
     // A second session in the most recent completed week takes it to the floor.
-    logPracticeSession(pid, "Meditation", dayBack(pid, 9));
+    logPracticeSession(pid, "Meditation", dayBack(pid, 9), "page");
     expect(buildTargetRightSizeFindings(pid, today(pid))).toEqual([]);
   });
 
@@ -329,7 +329,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     const theirs = makeProfile("rs-theirs");
     const tid = makeTarget(theirs, "practice", "Sauna", 4);
     for (const back of [30, 24, 17, 10])
-      logPracticeSession(theirs, "Sauna", dayBack(theirs, back));
+      logPracticeSession(theirs, "Sauna", dayBack(theirs, back), "page");
 
     expect(lowerFrequencyTargetFloor(mine, tid, 1)).toBe("not-found");
     expect(stopTrackingFrequencyTarget(mine, tid)).toBe("not-found");
@@ -354,7 +354,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     const pid = makeProfile("rs-dismiss");
     const tid = makeTarget(pid, "practice", "Sauna", 4);
     for (const back of [30, 24, 17, 10])
-      logPracticeSession(pid, "Sauna", dayBack(pid, back));
+      logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
 
     const finding = soleFinding(pid);
     dismissFinding(pid, finding.dedupeKey);
@@ -384,7 +384,7 @@ describe("frequency-target right-sizing (#1670)", () => {
       // fires — but the most recent completed week met the floor, so there is no
       // chronic shortfall and nothing to right-size.
       for (const back of [10, 9])
-        logPracticeSession(pid, "Sauna", dayBack(pid, back));
+        logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
 
       const msg = buildPracticeReminder(pid, "nonce");
       expect(msg).not.toBeNull();
@@ -399,9 +399,9 @@ describe("frequency-target right-sizing (#1670)", () => {
       const pid = makeProfile("rs-nudge-ride");
       const tid = makeTarget(pid, "practice", "Sauna", 4);
       for (const back of [30, 24, 17, 10])
-        logPracticeSession(pid, "Sauna", dayBack(pid, back));
+        logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
       // One session this week keeps the practice behind, so the pace nudge fires.
-      logPracticeSession(pid, "Sauna", today(pid));
+      logPracticeSession(pid, "Sauna", today(pid), "page");
 
       const msg = buildPracticeReminder(pid, "nonce");
       const ride = (msg?.actions ?? []).find(
@@ -423,8 +423,8 @@ describe("frequency-target right-sizing (#1670)", () => {
       const pid = makeProfile("rs-nudge-dismissed");
       const tid = makeTarget(pid, "practice", "Sauna", 4);
       for (const back of [30, 24, 17, 10])
-        logPracticeSession(pid, "Sauna", dayBack(pid, back));
-      logPracticeSession(pid, "Sauna", today(pid));
+        logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
+      logPracticeSession(pid, "Sauna", today(pid), "page");
 
       dismissFinding(pid, rightSizeSignalKey(tid, "2026"));
       expect(

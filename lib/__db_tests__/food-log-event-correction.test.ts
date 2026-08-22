@@ -115,6 +115,7 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
       profileId,
       "leafy_greens",
       anchor,
+      "page",
       `${anchor}T08:00:00Z`,
       "Morning"
     );
@@ -175,7 +176,7 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
   it("keeps recorded_at as the audit instant across a slot correction", () => {
     const { profileId, anchor } = makeProfile("food-correct-audit-instant");
     const tapped = `${anchor}T08:15:00Z`;
-    logFoodServingCore(profileId, "berries", anchor, tapped, "Morning");
+    logFoodServingCore(profileId, "berries", anchor, "page", tapped, "Morning");
     const eventId = onlyEventId(profileId);
 
     updateFoodLogEventCore(profileId, eventId, { mealSlot: "Evening" });
@@ -190,7 +191,13 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
   it("leaves a legacy NULL meal_slot deriving from recorded_at when only the group moves", () => {
     const { profileId, anchor } = makeProfile("food-correct-legacy-null");
     // A pre-#1704 tap: no explicit window, so its slot derives from the instant.
-    logFoodServingCore(profileId, "berries", anchor, `${anchor}T08:00:00Z`);
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "page",
+      `${anchor}T08:00:00Z`
+    );
     const eventId = onlyEventId(profileId);
 
     updateFoodLogEventCore(profileId, eventId, { groupKey: "fruit" });
@@ -211,6 +218,7 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
       profileId,
       "berries",
       anchor,
+      "page",
       `${anchor}T09:00:00Z`,
       "Morning"
     );
@@ -254,6 +262,7 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
       profileId,
       "berries",
       anchor,
+      "page",
       `${anchor}T09:00:00Z`,
       "Morning"
     );
@@ -261,6 +270,7 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
       profileId,
       "fruit",
       anchor,
+      "page",
       `${anchor}T09:05:00Z`,
       "Morning"
     );
@@ -268,6 +278,7 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
       profileId,
       "fruit",
       anchor,
+      "page",
       `${anchor}T09:10:00Z`,
       "Morning"
     );
@@ -302,6 +313,7 @@ describe("updateFoodLogEventCore — date correction (#1934)", () => {
       profileId,
       "fatty_fish",
       anchor,
+      "page",
       `${anchor}T07:40:00Z`,
       "Morning"
     );
@@ -349,7 +361,14 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     const { profileId, anchor } = makeProfile("food-correct-time-only");
     const yesterday = shiftDateStr(anchor, -1);
     const tapped = `${yesterday}T09:00:00Z`;
-    logFoodServingCore(profileId, "berries", yesterday, tapped, "Morning");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      yesterday,
+      "page",
+      tapped,
+      "Morning"
+    );
     const eventId = onlyEventId(profileId);
 
     const outcome = updateFoodLogEventCore(profileId, eventId, {
@@ -381,6 +400,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
       profileId,
       "berries",
       yesterday,
+      "page",
       `${yesterday}T09:00:00Z`,
       "Morning",
       { eatenAt: `${yesterday}T09:30:00Z`, source: "stated" }
@@ -412,7 +432,14 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     const yesterday = shiftDateStr(anchor, -1);
     const twoDaysAgo = shiftDateStr(anchor, -2);
     const tapped = `${yesterday}T09:00:00Z`;
-    logFoodServingCore(profileId, "berries", yesterday, tapped, "Morning");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      yesterday,
+      "page",
+      tapped,
+      "Morning"
+    );
     const eventId = onlyEventId(profileId);
 
     // Off the row's own day. The refusal carries the gate's own REASON since #2296,
@@ -464,7 +491,13 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     // `to` placement is where a stale derivation would show — deriving from the
     // REPLACED instant would hand the bar a Morning window for a serving the write
     // just moved to the evening.
-    logFoodServingCore(profileId, "fruit", yesterday, `${yesterday}T08:00:00Z`);
+    logFoodServingCore(
+      profileId,
+      "fruit",
+      yesterday,
+      "page",
+      `${yesterday}T08:00:00Z`
+    );
     const eventId = onlyEventId(profileId);
 
     const outcome = updateFoodLogEventCore(profileId, eventId, {
@@ -500,6 +533,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
       profileId,
       "fatty_fish",
       yesterday,
+      "page",
       `${yesterday}T23:40:00Z`,
       "Evening"
     );
@@ -507,6 +541,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
       profileId,
       "berries",
       yesterday,
+      "page",
       `${yesterday}T20:00:00Z`,
       "Evening"
     );
@@ -544,6 +579,7 @@ describe("updateFoodLogEventCore — typed refusals (#1934)", () => {
       profileId,
       "berries",
       anchor,
+      "page",
       `${anchor}T09:00:00Z`,
       "Morning"
     );
@@ -566,7 +602,7 @@ describe("updateFoodLogEventCore — typed refusals (#1934)", () => {
 
   it("refuses the reserved protein ranking event", () => {
     const { profileId, anchor } = makeProfile("food-correct-protein");
-    addProteinGramsCore(profileId, anchor, 25, `${anchor}T18:00:00Z`);
+    addProteinGramsCore(profileId, anchor, 25, "page", `${anchor}T18:00:00Z`);
     const eventId = onlyEventId(profileId);
 
     const outcome = updateFoodLogEventCore(profileId, eventId, {
@@ -587,6 +623,7 @@ describe("updateFoodLogEventCore — typed refusals (#1934)", () => {
       profileId,
       "berries",
       anchor,
+      "page",
       `${anchor}T09:00:00Z`,
       "Morning"
     );

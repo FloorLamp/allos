@@ -74,6 +74,7 @@ describe("the placement policy against the registry it replaces", () => {
 describe("a reading submitted by identity lands where the policy says", () => {
   it("streams a plain resting heart rate into body_metrics", () => {
     const outcome = recordReading(p.profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 54,
       unit: "bpm",
@@ -105,6 +106,7 @@ describe("a reading submitted by identity lands where the policy says", () => {
     // Clause 2: a clinic-measured resting heart rate keeps its provenance, so it goes to
     // the observation store even though the identity has a registered stream.
     const outcome = recordReading(p.profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 61,
       unit: "bpm",
@@ -134,6 +136,7 @@ describe("a reading submitted by identity lands where the policy says", () => {
     // see it. The core refuses rather than dropping the link.
     expect(
       recordReading(p.profileId, {
+        loggedVia: "page",
         name: "Oxygen Saturation",
         value: 96,
         unit: "%",
@@ -158,6 +161,7 @@ describe("a reading submitted by identity lands where the policy says", () => {
   it("refuses a quantity with no reading identity rather than guessing", () => {
     expect(
       recordReading(p.profileId, {
+        loggedVia: "page",
         name: "",
         value: 1,
         unit: "",
@@ -166,6 +170,7 @@ describe("a reading submitted by identity lands where the policy says", () => {
     ).toEqual({ ok: false, error: "unplaceable" });
     expect(
       recordReading(p.profileId, {
+        loggedVia: "page",
         name: "Resting Heart Rate",
         value: Number.NaN,
         unit: "bpm",
@@ -176,6 +181,7 @@ describe("a reading submitted by identity lands where the policy says", () => {
 
   it("folds a second measure of the same day onto one row", () => {
     recordReading(p.profileId, {
+      loggedVia: "page",
       name: "Body Fat Percentage",
       value: 21.5,
       unit: "%",
@@ -203,6 +209,7 @@ describe("the shared upsert accounting", () => {
       unit: "bpm",
       date: "2026-02-01",
       source: "oura",
+      loggedVia: "page" as const,
     };
     recordReadings(p.profileId, [one], counts);
     recordReadings(p.profileId, [one], counts); // same value again → unchanged
@@ -232,6 +239,7 @@ describe("the shared upsert accounting", () => {
       p.profileId,
       [
         {
+          loggedVia: "page",
           name: "Resting Heart Rate",
           value: 44,
           unit: "bpm",
@@ -260,6 +268,7 @@ describe("the shared upsert accounting", () => {
     // The lock is about a SOURCE re-push. A person re-entering a value they previously
     // fixed is not a sync, and refusing there would strand them.
     const outcome = recordReading(p.profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 57,
       unit: "bpm",
@@ -273,6 +282,7 @@ describe("the shared upsert accounting", () => {
     ).run(p.profileId);
     expect(
       recordReading(p.profileId, {
+        loggedVia: "page",
         name: "Resting Heart Rate",
         value: 56,
         unit: "bpm",
@@ -322,11 +332,15 @@ describe("the migrated writers produce the rows they produced before", () => {
 
   it("a fitness `vital` test still writes its canonical observation", () => {
     expect(
-      saveFitnessEntry(p.profileId, {
-        date: "2026-03-02",
-        testKey: "grip",
-        value: 41,
-      })
+      saveFitnessEntry(
+        p.profileId,
+        {
+          date: "2026-03-02",
+          testKey: "grip",
+          value: 41,
+        },
+        "page"
+      )
     ).toMatchObject({ ok: true });
     const row = db
       .prepare(
@@ -351,18 +365,26 @@ describe("the migrated writers produce the rows they produced before", () => {
     // resting HR entered in one session share the day's row, and neither blanks the
     // other.
     expect(
-      saveFitnessEntry(p.profileId, {
-        date: "2026-03-03",
-        testKey: "bodyfat",
-        value: 19,
-      })
+      saveFitnessEntry(
+        p.profileId,
+        {
+          date: "2026-03-03",
+          testKey: "bodyfat",
+          value: 19,
+        },
+        "page"
+      )
     ).toMatchObject({ ok: true });
     expect(
-      saveFitnessEntry(p.profileId, {
-        date: "2026-03-03",
-        testKey: "restinghr",
-        value: 52,
-      })
+      saveFitnessEntry(
+        p.profileId,
+        {
+          date: "2026-03-03",
+          testKey: "restinghr",
+          value: 52,
+        },
+        "page"
+      )
     ).toMatchObject({ ok: true });
     expect(
       db

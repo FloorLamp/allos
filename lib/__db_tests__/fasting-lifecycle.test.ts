@@ -969,13 +969,13 @@ describe("the annotation reads real food rows and offers no verdict", () => {
     startFast(adult, start);
 
     // Inside the interval, with a stated eating time.
-    logFoodServingCore(adult, "legumes", day, undefined, undefined, {
+    logFoodServingCore(adult, "legumes", day, "page", undefined, undefined, {
       eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
       source: "stated",
     });
     // Inside the interval, but no stated eating time — proves nothing about WHEN, so it
     // is not counted. Silence here is honest.
-    logFoodServingCore(adult, "legumes", day);
+    logFoodServingCore(adult, "legumes", day, "page");
 
     const ended = endFast(adult);
     expect(ended.kind).toBe("ended");
@@ -989,10 +989,18 @@ describe("the annotation reads real food rows and offers no verdict", () => {
     const other = makeProfile("other-food", 30);
     const start = new Date(Date.now() - 6 * 3_600_000);
     startFast(adult, start);
-    logFoodServingCore(other, "legumes", today(other), undefined, undefined, {
-      eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
-      source: "stated",
-    });
+    logFoodServingCore(
+      other,
+      "legumes",
+      today(other),
+      "page",
+      undefined,
+      undefined,
+      {
+        eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
+        source: "stated",
+      }
+    );
     endFast(adult);
     expect(getServingsDuringFast(adult, listFasts(adult)[0])).toBe(0);
   });
@@ -1057,7 +1065,7 @@ describe("the stand-down over real state (#2757)", () => {
     expect(getUsualRoutineOffer(adult, "Morning", day)).toBeNull();
     // … and every food row is exactly as loggable. The stand-down withdraws the OFFER,
     // never the ability to record what you ate.
-    const outcome = logFoodServingCore(adult, "legumes", day);
+    const outcome = logFoodServingCore(adult, "legumes", day, "page");
     expect(outcome.kind).toBe("logged");
   });
 });

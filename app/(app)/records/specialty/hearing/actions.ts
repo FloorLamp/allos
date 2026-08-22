@@ -63,11 +63,11 @@ export async function addAudiogram(formData: FormData): Promise<FormResult> {
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date)) return formError("Enter the date of the test.");
   const thresholds = parseThresholds(formData);
-  const outcome = recordAudiogram(profile.id, {
-    date,
-    thresholds,
-    notes: String(formData.get("notes") ?? ""),
-  });
+  const outcome = recordAudiogram(
+    profile.id,
+    { date, thresholds, notes: String(formData.get("notes") ?? "") },
+    "page"
+  );
   // Typed outcome, rendered rather than assumed: an all-blank submit stored nothing,
   // and saying "saved" would be a lie the list would immediately contradict.
   if (outcome.kind === "no-thresholds")

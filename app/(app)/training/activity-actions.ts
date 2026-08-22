@@ -1,5 +1,6 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -79,7 +80,10 @@ export async function saveActivity(
   const outcome = saveActivityCore(
     targetProfileId,
     formData,
-    getUnitPrefs(login.id)
+    getUnitPrefs(login.id),
+    // The shared activity editor opens from the Training page, from the dock's
+    // quick-log sheet and from the command palette; each mounting declares itself.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   if (!outcome.ok) return outcome;
 
@@ -106,7 +110,11 @@ export async function startWorkout(
     return { ok: false };
   }
   const title = String(formData.get("title") ?? "").slice(0, 200);
-  const res = startWorkoutSession(profile.id, { type, title });
+  const res = startWorkoutSession(
+    profile.id,
+    { type, title },
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   revalidateActivitySurfaces();
   return { ok: true, ...res };
 }

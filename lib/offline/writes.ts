@@ -12,6 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
+import { OFFLINE_REPLAY } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
@@ -105,9 +106,10 @@ function applyDoseIntent(
           doseId,
           null,
           date,
+          OFFLINE_REPLAY,
           payload.clientTakenAt ? new Date(payload.clientTakenAt) : undefined
         )
-      : markDoseSkipped(profileId, doseId, null, date);
+      : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);
 }
 
@@ -382,6 +384,7 @@ export function insertVitals(
       unit: m.unit,
       date,
       source: "manual",
+      loggedVia: OFFLINE_REPLAY,
       category: m.category,
       occurredAt:
         m.canonical === VITAL_CANONICAL.temperature.canonical &&
@@ -406,6 +409,7 @@ export function insertVitals(
       unit: r.unit,
       date,
       source: "manual",
+      loggedVia: OFFLINE_REPLAY,
       measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
@@ -765,10 +769,12 @@ function applySetIntent(
   // Canonical-unit fallbacks only: the capture always stamps the units each value
   // was entered in (buildFormData sets both), so these are unreachable for a real
   // intent and merely keep the core total for a hand-crafted one.
-  const outcome = saveActivityCore(profileId, fd, {
-    weightUnit: "kg",
-    distanceUnit: "km",
-  });
+  const outcome = saveActivityCore(
+    profileId,
+    fd,
+    { weightUnit: "kg", distanceUnit: "km" },
+    OFFLINE_REPLAY
+  );
   return classifySetReplay(outcome);
 }
 
@@ -845,6 +851,7 @@ function applyFoodIntent(
       profileId,
       group,
       date,
+      OFFLINE_REPLAY,
       loggedAt,
       mealSlot,
       verdict.kind === "accepted"
@@ -866,7 +873,13 @@ function applyFoodIntent(
   if (payload.entry === "protein") {
     const grams = payload.grams;
     if (typeof grams !== "number") return { status: "rejected" };
-    const outcome = addProteinGramsCore(profileId, date, grams, loggedAt);
+    const outcome = addProteinGramsCore(
+      profileId,
+      date,
+      grams,
+      OFFLINE_REPLAY,
+      loggedAt
+    );
     if (outcome.kind === "invalid") {
       return {
         status: "rejected",
@@ -1047,7 +1060,12 @@ export function applyIntent(
         outcome = { status: "rejected" };
         return;
       }
-      const applied = logMobilityMoveCore(profileId, slug, intent.date);
+      const applied = logMobilityMoveCore(
+        profileId,
+        slug,
+        intent.date,
+        OFFLINE_REPLAY
+      );
       if (applied.kind === "unknown-move") {
         outcome = {
           status: "rejected",
@@ -1075,14 +1093,20 @@ export function applyIntent(
         outcome = { status: "rejected" };
         return;
       }
-      const applied = logPracticeSessionForDay(profileId, name, intent.date, {
-        durationMin: p.durationMin ?? null,
-        // No stated time: the capture happened offline on a device clock, and the write
-        // core's own tap stamp is the profile's clock (#450). A replay landing the next
-        // morning must not stamp the session with the reconnect minute, so this path
-        // states nothing rather than stating something false.
-        time: null,
-      });
+      const applied = logPracticeSessionForDay(
+        profileId,
+        name,
+        intent.date,
+        OFFLINE_REPLAY,
+        {
+          durationMin: p.durationMin ?? null,
+          // No stated time: the capture happened offline on a device clock, and the write
+          // core's own tap stamp is the profile's clock (#450). A replay landing the next
+          // morning must not stamp the session with the reconnect minute, so this path
+          // states nothing rather than stating something false.
+          time: null,
+        }
+      );
       if (applied.kind === "invalid-date") {
         outcome = {
           status: "rejected",

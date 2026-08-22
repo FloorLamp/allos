@@ -53,7 +53,7 @@ describe("rankFoodGroups is the ONE ranking (#1980)", () => {
       logServing(profileId, "berries", shiftDateStr(anchor, -i));
     }
     // Make the profile a protein tracker so __protein__ joins the curated list.
-    addProteinGramsCore(profileId, anchor, 30);
+    addProteinGramsCore(profileId, anchor, 30, "page");
 
     const keys = rankFoodGroups(profileId, "Morning");
     const { groups, proteinRank } = getFoodBarOrder(profileId, "Morning");
@@ -126,11 +126,23 @@ describe("a never-eaten-here staple sinks in that window (#2369)", () => {
     // ledger, so both halves of the blend see this history.
     for (let i = 0; i < 10; i++) {
       const date = shiftDateStr(anchor, -i);
-      logFoodServingCore(profileId, "alcohol", date, `${date}T20:30:00Z`);
+      logFoodServingCore(
+        profileId,
+        "alcohol",
+        date,
+        "page",
+        `${date}T20:30:00Z`
+      );
     }
     for (let i = 0; i < 4; i++) {
       const date = shiftDateStr(anchor, -i);
-      logFoodServingCore(profileId, "leafy_greens", date, `${date}T08:00:00Z`);
+      logFoodServingCore(
+        profileId,
+        "leafy_greens",
+        date,
+        "page",
+        `${date}T08:00:00Z`
+      );
     }
   });
 

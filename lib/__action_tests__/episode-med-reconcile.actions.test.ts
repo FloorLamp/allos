@@ -36,7 +36,7 @@ function makeSick(profileId: number, daysAgo = 2): number {
     `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profileId, shiftDateStr(today(profileId), -daysAgo));
-  logSymptomCore(profileId, "cough", 2, today(profileId));
+  logSymptomCore(profileId, "cough", 2, today(profileId), "page");
   return getOpenEpisodeRow(profileId, "Illness")!.id;
 }
 

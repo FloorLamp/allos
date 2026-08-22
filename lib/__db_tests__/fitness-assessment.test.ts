@@ -39,12 +39,16 @@ describe("fitness check improves healthspan-pillar coverage", () => {
     expect(before.some((p) => p.key === "vo2max")).toBe(false);
 
     // A check records VO2 Max through its natural store (medical_records biomarker).
-    const r = saveFitnessEntry(profileId, {
-      date: anchor,
-      testKey: "vo2max",
-      value: 44,
-      rawInput: { method: "watch", watchValue: 44 },
-    });
+    const r = saveFitnessEntry(
+      profileId,
+      {
+        date: anchor,
+        testKey: "vo2max",
+        value: 44,
+        rawInput: { method: "watch", watchValue: 44 },
+      },
+      "page"
+    );
     expect(r.ok).toBe(true);
 
     // After: the SAME healthspan query — unchanged — now surfaces the VO2 pillar.
@@ -56,22 +60,34 @@ describe("fitness check improves healthspan-pillar coverage", () => {
 describe("fitness-assessment session model", () => {
   it("groups a date's tests into one session with a coverage ledger", () => {
     const { profileId, anchor } = makeAdult("session-model");
-    saveFitnessEntry(profileId, { date: anchor, testKey: "grip", value: 48 });
-    saveFitnessEntry(profileId, {
-      date: anchor,
-      testKey: "pushups",
-      value: 30,
-      reps: 30,
-    });
-    saveFitnessEntry(profileId, {
-      date: anchor,
-      testKey: "biglift",
-      value: 150,
-      liftName: "Back Squat",
-      weightKg: 120,
-      reps: 3,
-      rawInput: { lift: "Back Squat", weightKg: 120, reps: 3 },
-    });
+    saveFitnessEntry(
+      profileId,
+      { date: anchor, testKey: "grip", value: 48 },
+      "page"
+    );
+    saveFitnessEntry(
+      profileId,
+      {
+        date: anchor,
+        testKey: "pushups",
+        value: 30,
+        reps: 30,
+      },
+      "page"
+    );
+    saveFitnessEntry(
+      profileId,
+      {
+        date: anchor,
+        testKey: "biglift",
+        value: 150,
+        liftName: "Back Squat",
+        weightKg: 120,
+        reps: 3,
+        rawInput: { lift: "Back Squat", weightKg: 120, reps: 3 },
+      },
+      "page"
+    );
 
     const sessions = getFitnessAssessments(profileId);
     expect(sessions).toHaveLength(1);
@@ -92,8 +108,16 @@ describe("fitness-assessment session model", () => {
     const { profileId, anchor } = makeAdult("delta-order");
     // An older and a newer session (distinct dates → distinct sessions).
     const older = "2026-01-01";
-    saveFitnessEntry(profileId, { date: older, testKey: "grip", value: 44 });
-    saveFitnessEntry(profileId, { date: anchor, testKey: "grip", value: 48 });
+    saveFitnessEntry(
+      profileId,
+      { date: older, testKey: "grip", value: 44 },
+      "page"
+    );
+    saveFitnessEntry(
+      profileId,
+      { date: anchor, testKey: "grip", value: 48 },
+      "page"
+    );
     const sessions = getFitnessAssessments(profileId);
     expect(sessions).toHaveLength(2);
     expect(sessions[0].date).toBe(anchor); // newest first
@@ -103,11 +127,15 @@ describe("fitness-assessment session model", () => {
   it("is profile-scoped — one profile's sessions never leak into another's", () => {
     const a = makeAdult("scope-a");
     const b = makeAdult("scope-b");
-    saveFitnessEntry(a.profileId, {
-      date: a.anchor,
-      testKey: "grip",
-      value: 48,
-    });
+    saveFitnessEntry(
+      a.profileId,
+      {
+        date: a.anchor,
+        testKey: "grip",
+        value: 48,
+      },
+      "page"
+    );
     expect(getFitnessAssessments(b.profileId)).toHaveLength(0);
     expect(getLatestFitnessAssessmentDate(b.profileId)).toBeNull();
   });
@@ -263,12 +291,16 @@ describe("#1129 ambient auto-count from the natural stores", () => {
     const old = shiftDateStr(anchor, -30);
     seedVital(profileId, "VO2 Max", 42, old, "oura");
     // A check today writes a NEWER VO2 through to the same store.
-    saveFitnessEntry(profileId, {
-      date: anchor,
-      testKey: "vo2max",
-      value: 50,
-      rawInput: { method: "watch", watchValue: 50 },
-    });
+    saveFitnessEntry(
+      profileId,
+      {
+        date: anchor,
+        testKey: "vo2max",
+        value: 50,
+        rawInput: { method: "watch", watchValue: 50 },
+      },
+      "page"
+    );
 
     const m = ambientModel(profileId, anchor);
     const vo2 = m.results.find((r) => r.key === "vo2max")!;

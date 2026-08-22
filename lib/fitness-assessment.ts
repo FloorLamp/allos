@@ -159,6 +159,7 @@ export function saveFitnessEntry(
         unit: def.unit,
         date: input.date,
         source: "manual",
+        loggedVia,
         ...(store.kind === "vital" ? { category: store.category } : {}),
       });
       if (!outcome.ok) return { ok: false, error: "unknown test" };

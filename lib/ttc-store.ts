@@ -265,7 +265,8 @@ export function listBbtReadings(
 export function logMucusCore(
   profileId: number,
   date: string,
-  quality: MucusQuality
+  quality: MucusQuality,
+  loggedVia: LoggedVia
 ): TtcWriteOutcome {
   if (!isRealIsoDate(date))
     return { kind: "invalid", error: "Enter a valid date." };
@@ -287,7 +288,8 @@ export function logMucusCore(
     profileId,
     CERVICAL_MUCUS_SYMPTOM,
     ordinal,
-    date
+    date,
+    loggedVia
   );
   if (outcome.kind !== "logged") {
     return { kind: "invalid", error: "Couldn't record that observation." };

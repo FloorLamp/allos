@@ -117,8 +117,11 @@ describe("per-test freshness policy over the real gather (#2025)", () => {
     const { profileId, anchor } = makeAdult("freshness-policy-mixed");
     // A performed check today, and a synced resting HR from 45 days back.
     expect(
-      saveFitnessEntry(profileId, { date: anchor, testKey: "grip", value: 48 })
-        .ok
+      saveFitnessEntry(
+        profileId,
+        { date: anchor, testKey: "grip", value: 48 },
+        "page"
+      ).ok
     ).toBe(true);
     seedBody(profileId, shiftDateStr(anchor, -45), "withings", {
       resting_hr: 55,
@@ -147,8 +150,11 @@ describe("per-test freshness policy over the real gather (#2025)", () => {
   it("the shared assembler carries the same coverage both surfaces render", () => {
     const { profileId, anchor } = makeAdult("freshness-policy-assemble");
     expect(
-      saveFitnessEntry(profileId, { date: anchor, testKey: "grip", value: 48 })
-        .ok
+      saveFitnessEntry(
+        profileId,
+        { date: anchor, testKey: "grip", value: 48 },
+        "page"
+      ).ok
     ).toBe(true);
     seedBody(profileId, shiftDateStr(anchor, -400), "withings", {
       body_fat_pct: 18,

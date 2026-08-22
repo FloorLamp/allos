@@ -56,7 +56,14 @@ export async function confirmDoseAction(
   if (!profileId || !doseId)
     return { ok: false, error: "Couldn't find that dose." };
   await requireProfileWriteAccess(profileId);
-  const outcome = markDoseTaken(profileId, doseId, null, today(profileId));
+  const outcome = markDoseTaken(
+    profileId,
+    doseId,
+    null,
+    today(profileId),
+    // The Household page's own per-member card.
+    "page"
+  );
   revalidateRoute("/household");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
@@ -81,7 +88,7 @@ export async function undoConfirmDoseAction(
   if (!profileId || !doseId)
     return { ok: false, error: "Couldn't find that dose." };
   await requireProfileWriteAccess(profileId);
-  const outcome = undoDoseConfirm(profileId, doseId, today(profileId));
+  const outcome = undoDoseConfirm(profileId, doseId, today(profileId), "page");
   revalidateRoute("/household");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");

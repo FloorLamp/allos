@@ -45,6 +45,7 @@ describe("startWorkoutSession (#2870 step 3)", () => {
     const res = startWorkoutSession(
       profileId,
       { type: "strength", title: "" },
+      "page",
       now
     );
     expect(res.id).toBeGreaterThan(0);
@@ -72,10 +73,14 @@ describe("startWorkoutSession (#2870 step 3)", () => {
   });
 
   it("an untouched start is a draft: finish refuses it, discard removes it", () => {
-    const res = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "",
-    });
+    const res = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "",
+      },
+      "page"
+    );
     expect(finishWorkoutSession(profileId, res.id).kind).toBe("empty-draft");
     expect(discardWorkoutSession(profileId, res.id).kind).toBe("discarded");
     expect(
@@ -87,28 +92,40 @@ describe("startWorkoutSession (#2870 step 3)", () => {
 
   it("the if-empty discard takes the husk and keeps anything with content", () => {
     // The close-path abandonment (#2870 step 3): an untouched start goes...
-    const husk = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "",
-    });
+    const husk = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "",
+      },
+      "page"
+    );
     expect(discardWorkoutSessionIfEmpty(profileId, husk.id).kind).toBe(
       "discarded"
     );
     // …one set keeps the row…
-    const kept = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "",
-    });
+    const kept = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "",
+      },
+      "page"
+    );
     db.prepare(
       `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
        VALUES (?, 'Back Squat', 1, 100, 5)`
     ).run(kept.id);
     expect(discardWorkoutSessionIfEmpty(profileId, kept.id).kind).toBe("kept");
     // …a note alone is also content ("zero sets/VALUES" is the draft bar)…
-    const noted = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "",
-    });
+    const noted = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "",
+      },
+      "page"
+    );
     db.prepare("UPDATE activities SET notes = 'tweaked knee' WHERE id = ?").run(
       noted.id
     );
@@ -123,10 +140,14 @@ describe("startWorkoutSession (#2870 step 3)", () => {
   });
 
   it("a draft renders nowhere but its own page: the feed hides it, the detail resolves it", () => {
-    const res = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "",
-    });
+    const res = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "",
+      },
+      "page"
+    );
     const feed = buildTrainingLogFeedPage(profileId, null, UNITS);
     const feedIds = feed.groups.flatMap((g) =>
       g.cards.map((c) => c.activity.id)
@@ -153,11 +174,13 @@ describe("startWorkoutSession (#2870 step 3)", () => {
     const husk = startWorkoutSession(
       profileId,
       { type: "strength", title: "" },
+      "page",
       old
     );
     const worked = startWorkoutSession(
       profileId,
       { type: "strength", title: "" },
+      "page",
       old
     );
     db.prepare(
@@ -167,6 +190,7 @@ describe("startWorkoutSession (#2870 step 3)", () => {
     const fresh = startWorkoutSession(
       profileId,
       { type: "strength", title: "" },
+      "page",
       now
     );
     // Age the two old rows' touch stamps (start writes updated_at = now).
@@ -188,10 +212,14 @@ describe("startWorkoutSession (#2870 step 3)", () => {
   });
 
   it("one logged set flips the start from draft to finishable", () => {
-    const res = startWorkoutSession(profileId, {
-      type: "strength",
-      title: "Legs",
-    });
+    const res = startWorkoutSession(
+      profileId,
+      {
+        type: "strength",
+        title: "Legs",
+      },
+      "page"
+    );
     db.prepare(
       `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
        VALUES (?, 'Back Squat', 1, 100, 5)`

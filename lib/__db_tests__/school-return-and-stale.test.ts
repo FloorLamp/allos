@@ -99,7 +99,7 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     makeSick(p, 2);
     const td = today(p);
     // Fever reading at 09:00 UTC today; ibuprofen at 06:00 UTC today.
-    logTemperatureCore(p, 101.5, "F", td, "09:00");
+    logTemperatureCore(p, 101.5, "F", td, "page", "09:00");
     addAntipyretic(p, "Ibuprofen", td, `${td} 06:00:00`);
 
     const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
@@ -123,7 +123,7 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     setProfileSetting(p, "timezone", "UTC");
     makeSick(p, 1);
     const td = today(p);
-    logTemperatureCore(p, 101.5, "F", td, "09:00");
+    logTemperatureCore(p, 101.5, "F", td, "page", "09:00");
     addAntipyretic(p, "Ibuprofen", td, `${td} 07:15:00`);
     // The caregiver stated when it was actually given; the filing stamp stays put.
     db.prepare(
@@ -145,7 +145,7 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     // Everything on YESTERDAY so no stated wall time can read as future whatever
     // real hour the tier runs at; the countdown's `now` is injected anyway.
     const yd = shiftDateStr(td, -1);
-    logTemperatureCore(p, 101.5, "F", yd, "09:00");
+    logTemperatureCore(p, 101.5, "F", yd, "page", "09:00");
     const { itemId, logId } = addAntipyretic(
       p,
       "Ibuprofen",
@@ -192,7 +192,7 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     setProfileSetting(p, "timezone", "UTC");
     makeSick(p, 1);
     const td = today(p);
-    logTemperatureCore(p, 101.5, "F", td, "09:00");
+    logTemperatureCore(p, 101.5, "F", td, "page", "09:00");
     addAntipyretic(p, "Benadryl", td, `${td} 06:00:00`); // antihistamine
 
     const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
@@ -207,7 +207,7 @@ describe("staleEpisodeNudgeFor — gather (#859 item 1)", () => {
   it("a quiet open episode yields a nudge; an active one does not", () => {
     const quiet = newProfile("stale-quiet");
     makeSick(quiet, 7);
-    logSymptomCore(quiet, "cough", 2, shiftDateStr(today(quiet), -5));
+    logSymptomCore(quiet, "cough", 2, shiftDateStr(today(quiet), -5), "page");
     const nudge = staleEpisodeNudgeFor(quiet);
     expect(nudge).not.toBeNull();
     expect(nudge!.lastActivityDate).toBe(shiftDateStr(today(quiet), -5));
@@ -215,14 +215,14 @@ describe("staleEpisodeNudgeFor — gather (#859 item 1)", () => {
 
     const active = newProfile("stale-active");
     makeSick(active, 7);
-    logSymptomCore(active, "cough", 2, today(active)); // logged today
+    logSymptomCore(active, "cough", 2, today(active), "page"); // logged today
     expect(staleEpisodeNudgeFor(active)).toBeNull();
   });
 
   it("a dismissed nudge stays silenced for that episode", () => {
     const p = newProfile("stale-ack");
     makeSick(p, 7);
-    logSymptomCore(p, "cough", 2, shiftDateStr(today(p), -5));
+    logSymptomCore(p, "cough", 2, shiftDateStr(today(p), -5), "page");
     const nudge = staleEpisodeNudgeFor(p);
     expect(nudge).not.toBeNull();
     ackStaleNudge(p, nudge!.episodeId);
@@ -232,7 +232,7 @@ describe("staleEpisodeNudgeFor — gather (#859 item 1)", () => {
   it("respects a custom quiet threshold", () => {
     const p = newProfile("stale-threshold");
     makeSick(p, 7);
-    logSymptomCore(p, "cough", 2, shiftDateStr(today(p), -2)); // 2 quiet days
+    logSymptomCore(p, "cough", 2, shiftDateStr(today(p), -2), "page"); // 2 quiet days
     expect(staleEpisodeNudgeFor(p, 2)).not.toBeNull();
     expect(staleEpisodeNudgeFor(p, 3)).toBeNull();
   });

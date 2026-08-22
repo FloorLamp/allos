@@ -117,7 +117,7 @@ describe("symptom photo attach / delete", () => {
     const profile = createProfile("Photo Actor", login.id);
     actAs(login, profile);
     makeSick(profile.id);
-    logSymptomCore(profile.id, "rash", 2, today(profile.id));
+    logSymptomCore(profile.id, "rash", 2, today(profile.id), "page");
 
     const form = new FormData();
     form.set("photo", await photoFile());

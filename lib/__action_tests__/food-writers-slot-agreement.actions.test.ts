@@ -90,7 +90,7 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
 
     // ---- writer 2: the Telegram nudge, through the call handleFoodLog now makes ----
     // The token's window is passed as the explicit slot; loggedAt stays the tap instant.
-    logFoodServingCore(tg.id, "berries", DATE, LATE_TAP, ASSERTED);
+    logFoodServingCore(tg.id, "berries", DATE, "page", LATE_TAP, ASSERTED);
 
     // Identical stored slot — the property that makes the two surfaces one computation.
     expect(slotsFor(web.id, "berries")).toEqual([ASSERTED]);
@@ -110,7 +110,7 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
     actAs(login, actor);
 
     // The Telegram protein button's write: grams + the token's asserted window.
-    addProteinGramsCore(actor.id, DATE, 30, LATE_TAP, ASSERTED);
+    addProteinGramsCore(actor.id, DATE, 30, "page", LATE_TAP, ASSERTED);
     expect(slotsFor(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED]);
     expect(derivedWindows(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED]);
 
@@ -118,7 +118,7 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
     // which is the honest answer for that surface and must NOT be broken into a slot:
     // the second event's window comes from its tap instant (Midday), not the first
     // event's assertion.
-    addProteinGramsCore(actor.id, DATE, 30, LATE_TAP);
+    addProteinGramsCore(actor.id, DATE, 30, "page", LATE_TAP);
     expect(slotsFor(actor.id, PROTEIN_NUDGE_KEY)).toEqual([ASSERTED, null]);
     expect(derivedWindows(actor.id, PROTEIN_NUDGE_KEY)).toEqual([
       ASSERTED,

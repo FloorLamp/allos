@@ -49,8 +49,20 @@ function counter(profileId: number, group: string, date: string): number {
 describe("food_log_events ledger atomicity (#950)", () => {
   it("appends one event per serving tap, in the same tx as the counter", () => {
     const { profileId, anchor } = makeProfile("food-events-append");
-    logFoodServingCore(profileId, "fatty_fish", anchor, `${anchor}T12:30:00Z`);
-    logFoodServingCore(profileId, "fatty_fish", anchor, `${anchor}T18:00:00Z`);
+    logFoodServingCore(
+      profileId,
+      "fatty_fish",
+      anchor,
+      "page",
+      `${anchor}T12:30:00Z`
+    );
+    logFoodServingCore(
+      profileId,
+      "fatty_fish",
+      anchor,
+      "page",
+      `${anchor}T18:00:00Z`
+    );
 
     expect(counter(profileId, "fatty_fish", anchor)).toBe(2);
     const evs = events(profileId);
@@ -61,8 +73,20 @@ describe("food_log_events ledger atomicity (#950)", () => {
 
   it("undo pops the NEWEST event alongside the counter decrement", () => {
     const { profileId, anchor } = makeProfile("food-events-undo");
-    logFoodServingCore(profileId, "berries", anchor, `${anchor}T08:00:00Z`);
-    logFoodServingCore(profileId, "berries", anchor, `${anchor}T20:00:00Z`);
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "page",
+      `${anchor}T08:00:00Z`
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "page",
+      `${anchor}T20:00:00Z`
+    );
 
     undoFoodServingCore(profileId, "berries", anchor);
     expect(counter(profileId, "berries", anchor)).toBe(1);
@@ -91,7 +115,14 @@ describe("food_log_events ledger atomicity (#950)", () => {
     const backfillDate = shiftDateStr(anchor, -3);
     const tapTime = `${anchor}T20:00:00Z`;
 
-    logFoodServingCore(profileId, "berries", backfillDate, tapTime, "Morning");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      backfillDate,
+      "page",
+      tapTime,
+      "Morning"
+    );
 
     expect(events(profileId)[0]).toMatchObject({
       date: backfillDate,
@@ -114,6 +145,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
       profileId,
       "legumes",
       anchor,
+      "page",
       `${anchor}T20:00:00Z`,
       "Evening"
     );
@@ -145,10 +177,22 @@ describe("getFoodBarOrder slot-aware blend (#950)", () => {
     for (let i = 0; i < 6; i++) {
       const d = shiftDateStr(anchor, -i);
       // whole_grains ×2 at breakfast each day.
-      logFoodServingCore(profileId, "whole_grains", d, `${d}T08:00:00Z`);
-      logFoodServingCore(profileId, "whole_grains", d, `${d}T08:05:00Z`);
+      logFoodServingCore(
+        profileId,
+        "whole_grains",
+        d,
+        "page",
+        `${d}T08:00:00Z`
+      );
+      logFoodServingCore(
+        profileId,
+        "whole_grains",
+        d,
+        "page",
+        `${d}T08:05:00Z`
+      );
       // fatty_fish ×1 at lunch each day.
-      logFoodServingCore(profileId, "fatty_fish", d, `${d}T12:30:00Z`);
+      logFoodServingCore(profileId, "fatty_fish", d, "page", `${d}T12:30:00Z`);
     }
     return profileId;
   }
@@ -206,12 +250,13 @@ describe("getFoodMealDays event times (#2227 decision 7)", () => {
 
     // A serving nobody timed: only the tap instant exists, so eatenAt is NULL —
     // never the tap time wearing the eating time's name.
-    logFoodServingCore(profileId, "berries", anchor, utcInstant(tap));
+    logFoodServingCore(profileId, "berries", anchor, "page", utcInstant(tap));
     // A serving with a stated eating time carries BOTH facts.
     logFoodServingCore(
       profileId,
       "fatty_fish",
       anchor,
+      "page",
       utcInstant(tap),
       undefined,
       {

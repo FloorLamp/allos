@@ -266,7 +266,13 @@ export async function logMedicationAdministration(
     strOrNull(formData.get("time"))
   );
   if (given === "invalid") return formError("Enter a valid time.");
-  const outcome = logAdministration(profileId, id, given);
+  const outcome = logAdministration(
+    profileId,
+    id,
+    // The medications page's own "log a dose" form.
+    "page",
+    given
+  );
   revalidateRoute("/medications");
   revalidateRoute("/nutrition");
   revalidateRoute("/");

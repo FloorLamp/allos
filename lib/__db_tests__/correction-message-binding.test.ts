@@ -414,7 +414,7 @@ describe("a dose correction row renders only on the message that produced it (#2
     // tap sits 18 minutes after Beta's. That spacing stopped being load-bearing with
     // #3092: an unattributed tap now partitions away from an attributed one BEFORE
     // the gap rule runs, so these are two bursts at any spacing.
-    markDoseTaken(pid, c.doseId, c.itemId, date);
+    markDoseTaken(pid, c.doseId, c.itemId, date, "page");
     const gammaLog = doseLogs(pid)[2];
     expect(gammaLog.messageRef).toBeNull();
     stampTap(gammaLog.id, "2026-08-05 11:00:00");
@@ -621,7 +621,15 @@ describe("a message binds only bursts of its own domain (#3108)", () => {
       (ptr) => ptr.messageId === 9955
     )!;
     const d = seedDose(pid, "Digest Tab");
-    markDoseTaken(pid, d.doseId, d.itemId, date, undefined, digestPtr.id);
+    markDoseTaken(
+      pid,
+      d.doseId,
+      d.itemId,
+      date,
+      "page",
+      undefined,
+      digestPtr.id
+    );
     const logRow = doseLogs(pid)[0];
     stampTap(logRow.id, "2026-08-05 05:31:00");
     setNow("2026-08-05T05:40:00Z");

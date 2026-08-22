@@ -72,7 +72,13 @@ function makeSick(p: number, startDaysAgo: number) {
 function logConsecutive(p: number, symptom: string, severities: number[]) {
   const n = severities.length;
   severities.forEach((sev, i) =>
-    logSymptomCore(p, symptom, sev, shiftDateStr(today(p), -(n - 1 - i)))
+    logSymptomCore(
+      p,
+      symptom,
+      sev,
+      shiftDateStr(today(p), -(n - 1 - i)),
+      "page"
+    )
   );
 }
 
