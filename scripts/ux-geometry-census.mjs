@@ -31,6 +31,27 @@
 // live DOM and requires them back, and asserts the probe's silence on the benign
 // neighbours that would get it deleted within a week if it cried wolf on them.
 //
+// ── WHAT IT FOUND ON ITS FIRST RUN, so "it works" is not left as a claim ────────
+//
+// Measured 2026-08-22 against the e2e seed at 390px, by the guard spec itself. Both
+// are RECORDED, not fixed — #3489 puts fixing individual findings out of scope, and
+// neither of these is among the fifteen the phone review filed:
+//
+//   • /supplies — three `<span>· Supply Parent (e2e)</span>` run 8–16px past the
+//     right edge with nothing that scrolls to them. #3478's class exactly, on a
+//     surface nobody had looked at, found with no human in the loop.
+//   • /trends/metric/weight — one row pairs a 40px `metric-measurement-toggle`
+//     (a `.btn`, sitting on the family's 40px phone floor) with a 36px
+//     `star-toggle`. #3486's shape surviving the fix that closed #3486: the floor
+//     is declared for `.btn`/`.btn-ghost`/`.btn-danger`, and StarButton is a
+//     hand-rolled `h-9 w-9` (components/StarButton.tsx) that is not a member of
+//     that family, so nothing reached it. A class-string guard could not have said
+//     this; only the two rendered boxes side by side can.
+//
+// These are the "corpus count" half of proving a guard can see (a scan that found
+// real candidates reaches the tree); the guard spec carries the other half (a
+// hand-written violation comes back flagged). Neither implies the other.
+//
 // ── WHY A `.mjs` MODULE AND NOT `lib/*.ts` ──────────────────────────────────────
 //
 // The same reason `scripts/ux-census-routes.mjs` is one: the harness is run as

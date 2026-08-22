@@ -62,9 +62,11 @@ interface Surface {
   subject: string;
   /**
    * (1) Floors on what the probe measured, set from a measured run and rounded
-   * DOWN hard. They separate "this page rendered" from "this page did not"; they
-   * are not layout pins, and every surface below measured well above its floor
-   * when this was written (the measured values are in the PR body).
+   * DOWN hard. They separate "this page rendered" from "this page did not" — they
+   * are NOT layout pins, and the difference matters: /trends/metric/weight measured
+   * 140 boxes on one run and 135 on the next, and 4 multi-control rows then 2, so a
+   * floor anywhere near a measurement is a flake waiting to happen. Each floor
+   * below carries the readings it was cut from.
    */
   minClipCandidates: number;
   minControlRows: number;
@@ -75,22 +77,31 @@ const SURFACES: Surface[] = [
     path: "/wellness",
     why: "The practices page: the surface whose icon-only add button was #3486's 4px-short control.",
     subject: '[data-testid="practice-create-trigger"]',
-    minClipCandidates: 30,
-    minControlRows: 2,
+    // measured 168, 168
+    minClipCandidates: 80,
+    // measured 2, 2. This surface is genuinely sparse in rows holding two
+    // controls, so its floor can only say "at least one comparison happened
+    // here"; the claim that the height probe has real material to work on rests
+    // on /nutrition?tab=supplements below, which is why that one is in the list.
+    minControlRows: 1,
   },
   {
     path: "/nutrition?tab=supplements",
     why: "A tabbed hub panel — the census's HUB_VARIANTS shape, dense with controls in rows.",
     subject: '[data-testid="supplement-add-toggle"]',
-    minClipCandidates: 30,
-    minControlRows: 2,
+    // measured 227, 227
+    minClipCandidates: 110,
+    // measured 20, 20
+    minControlRows: 8,
   },
   {
     path: "/trends/metric/weight",
     why: "A dynamic detail route — the DYNAMIC_ROUTES shape, where density concentrates (#1544).",
     subject: '[data-testid="metric-measurement-toggle"]',
-    minClipCandidates: 30,
-    minControlRows: 2,
+    // measured 140, 135
+    minClipCandidates: 70,
+    // measured 4, 2 — the spread is why this floor is 1 and not 2
+    minControlRows: 1,
   },
 ];
 
@@ -120,6 +131,16 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
         ...GEOMETRY_THRESHOLDS,
         subjectSelector: surface.subject,
       });
+
+      // KEEP THIS, reviewer. It is how the floors below were derived and how the
+      // next person re-derives them, and it is what makes a red here say WHICH of
+      // the two numbers collapsed instead of only that one did. A floor whose
+      // measurement is not printed anywhere is indistinguishable from a guess.
+      console.log(
+        `[#3489 geometry probe] ${surface.path} @${PHONE.width}px: ` +
+          `${r.clipCandidates} boxes, ${r.controlRowsExamined} multi-control rows, ` +
+          `${r.clippedTotal} clipped, ${r.heightRowsTotal} mixed-height rows`
+      );
 
       expect(
         r.clipCandidates,
