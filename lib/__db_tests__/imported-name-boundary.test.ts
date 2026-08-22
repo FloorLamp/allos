@@ -37,7 +37,12 @@ import { db } from "@/lib/db";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
-import { getDocumentImportedNameOffers } from "@/lib/queries";
+import {
+  getDietaryAdequacy,
+  getDietaryLimitWarnings,
+  getDocumentImportedNameOffers,
+} from "@/lib/queries";
+import { resolveNutrientKey } from "@/lib/dri";
 import {
   adoptImportedName,
   importedMedicationName,
@@ -458,5 +463,242 @@ describe("a row somebody re-saved as a supplement", () => {
         }
       ).kind
     ).toBe("supplement");
+  });
+});
+
+// ── THE SAFETY BELT ON THE OTHER SIDE OF THE RENAME ──────────────────────────
+//
+// THE DEFECT THIS PINS, because it is the one that matters most here. lib/dri.ts
+// resolves a nutrient by NAME SUBSTRING — `NAME_MATCHERS`, a vocabulary of nutrient
+// words with no code path in it, and none of the RxNorm concept names a person is
+// offered contains one: "VITAMIN D3" → "Cholecalciferol", "NIACIN ER" →
+// "Nicotinamide", "IRON SULFATE" → "Ferrous Sulfate". So accepting the offer used to
+// SILENCE a firing upper-limit warning while the person went on taking exactly the
+// same dose — measured at 2.5×, 28× and 7× the limit on the three nutrients below.
+//
+// This PR is what created the pathway: before it nothing renamed an imported name, so
+// the document's word stayed in the row forever and the matchers went on matching.
+// A feature that breaks a safety signal ships with the repair or it does not ship.
+//
+// THE ASSERTION IS EQUALITY, NOT PRESENCE, and that is deliberate. "A warning still
+// fires" would pass a fix that changed the total, and lib/dri.ts is a declared
+// high-stakes path in BOTH directions — a false upper-limit warning is its own harm,
+// and the same stack feeds the RDA reassurance note, where inflation reads as
+// "you're covered". Asserting the whole reading is unchanged says the only thing
+// worth saying about a display-only change: adopting a name moves no safety number.
+//
+// It runs the REAL pipeline, the REAL offer read and the REAL write, because the bug
+// lived in the join between them and a unit test on either side saw nothing wrong.
+
+// A CCD carrying one medication, dosed. `strength` rides in the name the way a portal
+// writes it, and the dose row is set after import because the CCD's own dose plumbing
+// is not what is under test here.
+function importedDosedMedication(
+  label: string,
+  documentName: string,
+  amount: string
+): { profileId: number; documentId: number; itemId: number } {
+  const profileId = newProfile(label);
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value)
+     VALUES (?, 'sex', 'female'), (?, 'birthdate', '1985-01-01')`
+  ).run(profileId, profileId);
+  const documentId = newDocument(profileId);
+  importCcd(profileId, documentId, medsCcd(documentName));
+  const itemId = medRows(profileId)[0].id;
+  db.prepare("UPDATE intake_item_doses SET amount = ? WHERE item_id = ?").run(
+    amount,
+    itemId
+  );
+  return { profileId, documentId, itemId };
+}
+
+function ulReading(profileId: number): string[] {
+  return getDietaryLimitWarnings(profileId).map(
+    (w) => `${w.key} ${w.total}${w.unit} of ${w.ul}${w.unit}`
+  );
+}
+
+function rdaReading(profileId: number): string[] {
+  return getDietaryAdequacy(profileId).map((r) => `${r.key} ${r.total}`);
+}
+
+describe("accepting an offer does not move a safety number", () => {
+  // [what the document said, the dose, the RxNorm name offered, its code]
+  const OVER_LIMIT: [string, string, string, string, string][] = [
+    [
+      "vitamin D",
+      "VITAMIN D3 10000 UNIT CAP",
+      "10000 IU",
+      "Cholecalciferol",
+      "2418",
+    ],
+    ["niacin", "NIACIN ER 1000 MG TAB", "1000 mg", "Nicotinamide", "1588647"],
+    ["iron", "IRON SULFATE 325 MG TAB", "325 mg", "Ferrous Sulfate", "4832"],
+  ];
+
+  for (const [nutrient, documentName, amount, chosen, rxcui] of OVER_LIMIT) {
+    it(`keeps the ${nutrient} upper-limit warning after the rename`, () => {
+      const { profileId, documentId, itemId } = importedDosedMedication(
+        `ul survives ${nutrient}`,
+        documentName,
+        amount
+      );
+
+      // The row is over the limit, it is on the offer card, and the name it is
+      // offered is one the nutrient vocabulary cannot see. All three have to be
+      // true or this test is asserting nothing.
+      const before = ulReading(profileId);
+      expect(before).toHaveLength(1);
+      const rdaBefore = rdaReading(profileId);
+      expect(
+        getDocumentImportedNameOffers(profileId, documentId).map((o) => o.id)
+      ).toEqual([itemId]);
+      expect(resolveNutrientKey(chosen)).toBeNull();
+
+      expect(
+        adoptImportedName(profileId, documentId, itemId, chosen, rxcui, [rxcui])
+      ).toEqual({ ok: true });
+      expect(medRows(profileId)[0].name).toBe(chosen);
+
+      expect(
+        ulReading(profileId),
+        `the ${nutrient} stack is unchanged — same row, same dose — so the ` +
+          `warning must read exactly as it did before the rename. It went SILENT ` +
+          `when nutrient recognition read only the stored name`
+      ).toEqual(before);
+      expect(rdaReading(profileId)).toEqual(rdaBefore);
+    });
+  }
+
+  it("does not start a warning that was not already firing", () => {
+    // The other direction, and it is the one a repair like this can get wrong. The
+    // document said nothing about a nutrient; the RxNorm name does. Recognition
+    // reads the DOCUMENT's label, so the reading is the one the row already had —
+    // a rename cannot switch a warning on any more than it can switch one off.
+    const { profileId, documentId, itemId } = importedDosedMedication(
+      "no new warning",
+      "PREDNISONE 10 MG TAB",
+      "60000 mg"
+    );
+    expect(ulReading(profileId)).toEqual([]);
+
+    expect(
+      adoptImportedName(
+        profileId,
+        documentId,
+        itemId,
+        "Calcium Prednisolone Phosphate",
+        "1234",
+        []
+      )
+    ).toEqual({ ok: true });
+    expect(resolveNutrientKey("Calcium Prednisolone Phosphate")).toBe(
+      "calcium"
+    );
+    expect(
+      ulReading(profileId),
+      "the rename is a display change; it must not conjure a calcium stack out " +
+        "of a steroid the document never called calcium"
+    ).toEqual([]);
+  });
+
+  it("leaves an un-renamed row reading off its own name", () => {
+    // The control for the whole mechanism: `source_name` is NULL on every row
+    // nobody renamed, so the evidence is the name, exactly as it always was. If
+    // this ever reds, the repair has stopped being a no-op for the rest of the tree.
+    const { profileId } = importedDosedMedication(
+      "unrenamed control",
+      "NIACIN ER 1000 MG TAB",
+      "1000 mg"
+    );
+    expect(medRows(profileId)[0].source_name).toBeNull();
+    expect(ulReading(profileId)).toEqual(["niacin 1000mg of 35mg"]);
+  });
+});
+
+// ── THE WRITE REACHES ONLY WHAT THE CARD COULD HAVE SHOWN ────────────────────
+//
+// `source = 'extracted'` is PROVENANCE and says nothing about whether a row's name
+// still reads as the document's label. Without the predicate re-check in
+// lib/imported-name-write.ts, any valid `item_id` for an extracted row in the
+// document was renamable — offered or not — so a stale tab, a replayed payload or
+// any client posting an id reached rows nobody was ever shown. Not an authorization
+// hole (same person, same document), but it is precisely how "no stored name changes
+// without a person seeing both versions and choosing" fails.
+//
+// The attack row is IDENTICAL on every other predicate — same profile, same
+// document, `source = 'extracted'`, non-blank name — so the re-check is the only
+// thing left that can reject it.
+describe("a row the card never offered", () => {
+  // "IRON" is the real case, not a contrivance: the import stores it after
+  // `cleanMedicationName` strips the strength, and one four-letter shouted token is
+  // below every rule in lib/imported-name.ts.
+  const QUIET_IMPORT = "IRON 325 MG TAB";
+  const QUIET_STORED = "IRON";
+
+  it("is not offered, and cannot be renamed", () => {
+    const p = newProfile("never offered");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(QUIET_IMPORT));
+    const row = medRows(p)[0];
+    expect(row.name).toBe(QUIET_STORED);
+    expect(row.source).toBe("extracted");
+    expect(getDocumentImportedNameOffers(p, doc)).toEqual([]);
+
+    expect(
+      adoptImportedName(p, doc, row.id, "Ferrous Sulfate", "4832", ["4832"]),
+      "the write reached every extracted row in the document, offered or not — " +
+        "so a payload naming this id renamed a medication nobody was shown"
+    ).toEqual({ ok: false, reason: "not-offered" });
+    expect(medRows(p)[0]).toMatchObject({
+      name: QUIET_STORED,
+      source_name: null,
+      rxcui: null,
+    });
+  });
+
+  it("cannot even have its name read back", () => {
+    // `importedMedicationName` is what the Server Action re-derives the offer term
+    // from, so it carries the same scope — a caller must not be able to look up a
+    // name it could not then change.
+    const p = newProfile("never offered lookup");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(QUIET_IMPORT));
+    expect(importedMedicationName(p, doc, medRows(p)[0].id)).toBeNull();
+  });
+
+  it("stays renamable once it HAS been offered and accepted", () => {
+    // The re-check's second clause, and the case that would break it if the rule
+    // were only `isImportedDocumentName(name)`: an already-adopted row's name is by
+    // definition no longer a document label, and the card deliberately keeps
+    // offering it in case a better concept turns up.
+    const p = newProfile("second adoption");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(PORTAL_NAME));
+    const itemId = medRows(p)[0].id;
+
+    expect(
+      adoptImportedName(
+        p,
+        doc,
+        itemId,
+        CLEAN_NAME,
+        CLEAN_RXCUI,
+        CLEAN_INGREDIENTS
+      )
+    ).toEqual({ ok: true });
+    expect(isImportedDocumentName(CLEAN_NAME)).toBe(false);
+    expect(getDocumentImportedNameOffers(p, doc).map((o) => o.id)).toEqual([
+      itemId,
+    ]);
+
+    expect(
+      adoptImportedName(p, doc, itemId, "Calcium Carbonate", "1897", ["1897"])
+    ).toEqual({ ok: true });
+    const row = medRows(p)[0];
+    expect(row.name).toBe("Calcium Carbonate");
+    // Still what the DOCUMENT said, not the first standardized name.
+    expect(row.source_name).toBe(PORTAL_NAME);
   });
 });
