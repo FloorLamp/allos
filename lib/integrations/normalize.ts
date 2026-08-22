@@ -878,11 +878,7 @@ export function supersedeMetricSampleOverlaps(
       to,
       pushedAt
     ) as MetricWindow[];
-    const plan = planSupersede(
-      { ...bucket, pushedAt },
-      candidates,
-      era
-    );
+    const plan = planSupersede({ ...bucket, pushedAt }, candidates, era);
     for (const row of plan.left) left.add(row.id);
     for (const row of plan.supersede) victims.add(row.id);
   }

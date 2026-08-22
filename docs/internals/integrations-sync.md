@@ -801,12 +801,12 @@ in turn. What ships is:
 the payload reads its facts at one moment and acts on them at another, and every refutation
 after the split walked through that gap:
 
-| round | what moved between the read and the DELETE |
-| --- | --- |
-| 7 | a fact the plan never asked — the #508 tombstone refused the row whose landing licensed the delete, and the day went to **zero** |
-| 8 | a fact a concurrent writer moved — the user deleted the replacement through Data → Manage, and the tombstone that delete writes vetoed the push's re-send |
-| 9a | `updateReadingAt` armed the #133 lock on the VICTIM, from the trends detail page's per-row Edit, between the passes |
-| 9b | round 8's own `EXISTS` clause was insufficient: "a row stands under that key" does not imply "that row covers what the victim covered", and a fifteen-minute locked twin licensed collapsing a whole day bucket — 8060 → 60 |
+| round | what moved between the read and the DELETE                                                                                                                                                                                  |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7     | a fact the plan never asked — the #508 tombstone refused the row whose landing licensed the delete, and the day went to **zero**                                                                                            |
+| 8     | a fact a concurrent writer moved — the user deleted the replacement through Data → Manage, and the tombstone that delete writes vetoed the push's re-send                                                                   |
+| 9a    | `updateReadingAt` armed the #133 lock on the VICTIM, from the trends detail page's per-row Edit, between the passes                                                                                                         |
+| 9b    | round 8's own `EXISTS` clause was insufficient: "a row stands under that key" does not imply "that row covers what the victim covered", and a fifteen-minute locked twin licensed collapsing a whole day bucket — 8060 → 60 |
 
 Each fix was another re-statement clause in the DELETE, and the argument for "this is the
 last one" had become a ten-row table rather than a construction. That is option 1 at the

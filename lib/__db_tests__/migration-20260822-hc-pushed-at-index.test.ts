@@ -92,9 +92,9 @@ describe("20260822-hc-pushed-at-index", () => {
       .prepare("SELECT * FROM metric_samples ORDER BY id")
       .all();
     up(mem);
-    expect(mem.prepare("SELECT * FROM metric_samples ORDER BY id").all()).toEqual(
-      before
-    );
+    expect(
+      mem.prepare("SELECT * FROM metric_samples ORDER BY id").all()
+    ).toEqual(before);
     mem.close();
   });
 

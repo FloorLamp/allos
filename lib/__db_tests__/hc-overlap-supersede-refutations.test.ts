@@ -1176,7 +1176,6 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
     expect(ok.split.superseded).toBe(1);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([7000, 8100, 900]);
   });
-
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1618,9 +1617,15 @@ describe("R8/R9 — the victim set is derived from the store, under the lock", (
     // the app actually arms the lock. The trigger below is the same UPDATE, staged where
     // no JS can run: inside chunk 2's transaction.
     expect(
-      updateReadingAt(p, { store: "metric_samples", id: victimId, metric: "steps" }, 12000)
+      updateReadingAt(
+        p,
+        { store: "metric_samples", id: victimId, metric: "steps" },
+        12000
+      )
     ).toEqual({ ok: true });
-    db.prepare("UPDATE metric_samples SET edited = 0 WHERE id = ?").run(victimId);
+    db.prepare("UPDATE metric_samples SET edited = 0 WHERE id = ?").run(
+      victimId
+    );
 
     const undo = raceOn(
       p,

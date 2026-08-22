@@ -365,7 +365,10 @@ const SCENARIOS: Scenario[] = [
         distRec(...LA_20, 9300),
       ],
     },
-    survivors: ["distance_km@2026-08-20T07:00:00Z", "steps@2026-08-20T07:00:00Z"],
+    survivors: [
+      "distance_km@2026-08-20T07:00:00Z",
+      "steps@2026-08-20T07:00:00Z",
+    ],
   },
   {
     // A TOMBSTONE IN THE PUSH'S PATH — round 7's refutation, as a property rather than an
@@ -559,7 +562,9 @@ describe("the same push leaves the same store, whatever the order and the chunki
       "UTC"
     ).samples;
     expect(rows.length).toBe(3);
-    writeTx(() => upsertMetricSamples(p, rows, HC, undefined, { pushedAt: stamp }));
+    writeTx(() =>
+      upsertMetricSamples(p, rows, HC, undefined, { pushedAt: stamp })
+    );
     expect(
       db
         .prepare(
@@ -587,6 +592,8 @@ describe("the same push leaves the same store, whatever the order and the chunki
 
     // AND IT IS IDEMPOTENT UNDER THE SAME STAMP, which is the same claim from the other
     // side: everything the predicate can justify has already been done.
-    expect(writeTx(() => supersedeMetricSampleOverlaps(p, HC, stamp)).removed).toBe(0);
+    expect(
+      writeTx(() => supersedeMetricSampleOverlaps(p, HC, stamp)).removed
+    ).toBe(0);
   });
 });
