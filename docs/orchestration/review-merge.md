@@ -211,6 +211,16 @@ These are not review taste; each retired a green that meant nothing.
   is applied in exactly one place, and the five counted were companion utilities
   riding on it. Both would have sized the work wrongly. Instruct every lane to
   re-derive the counts its issue states, and to report the derivation.
+- **When a brief relays TWO rulings, the later one's deletions apply to what you
+  quote from the earlier.** Restating an old instruction inside a brief for a new
+  ruling silently resurrects it, and the lane cannot tell a deliberate carry-over
+  from an oversight. On #3438 round 10 I handed a lane two items marked "take
+  these as given" — a `pushed_at IS ?` guard and a plan-validity argument — both
+  quoted from a ruling the NEXT ruling had explicitly deleted ("no longer needed
+  and should go; the lock is the guard"). The lane noticed and followed the later
+  one, on a PR whose entire problem was accumulated dead clauses. Before quoting
+  an earlier ruling, diff it against the later one and say which survives.
+
 - **YOUR proposed fix is a hypothesis, not a specification.** A lane implements
   an orchestrator's suggestion faithfully and without the scepticism it applies
   to its own ideas — so a fix named in a review comment arrives with LESS
