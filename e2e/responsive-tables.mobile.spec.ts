@@ -203,9 +203,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
       });
     const light = await tones();
     expect(light.value).not.toBe(light.label);
-    await page.evaluate(() =>
-      document.documentElement.classList.add("dark")
-    );
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
     const dark = await tones();
     expect(dark.value).not.toBe(dark.label);
     // …and the theme switch really took, so the second check is not the first one

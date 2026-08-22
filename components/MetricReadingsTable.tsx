@@ -233,11 +233,7 @@ function ReadingRow({
           </span>
         )}
       </Td>
-      <Td
-        slot="meta"
-        label="Source"
-        empty={!row.source && !row.observed}
-      >
+      <Td slot="meta" label="Source" empty={!row.source && !row.observed}>
         {row.source ?? "—"}
         {/* Where this reading was actually taken, said out loud: a clinic-measured
             value is not a wearable one. It is corrected in place all the same — the

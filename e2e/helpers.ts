@@ -3165,7 +3165,9 @@ export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
     const breaks: string[] = [];
     const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
     for (const cell of cells) {
-      const label = cell.querySelector<HTMLElement>(":scope > .card-cell-label");
+      const label = cell.querySelector<HTMLElement>(
+        ":scope > .card-cell-label"
+      );
       // No label is no pair: an unlabeled meta cell (a subject chip, which IS its
       // own label — #534) has nothing to be separated from.
       if (!label) continue;
@@ -3234,7 +3236,9 @@ export async function forgeBrokenCardPair(scope: Locator): Promise<string> {
   const forged = await scope.evaluate((root) => {
     const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
     for (const cell of cells) {
-      const label = cell.querySelector<HTMLElement>(":scope > .card-cell-label");
+      const label = cell.querySelector<HTMLElement>(
+        ":scope > .card-cell-label"
+      );
       const labelRect = label?.getClientRects()[0];
       if (!label || !labelRect || labelRect.width === 0) continue;
       if (!cell.textContent?.slice(label.textContent?.length ?? 0).trim())
