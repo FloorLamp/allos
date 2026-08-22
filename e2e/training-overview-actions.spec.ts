@@ -247,6 +247,13 @@ function arrangement(p: RailProbe): Arrangement {
 // not have it, by turning whichever element groups the ghosts back into a row.
 // If a later restructure leaves no such element, FORGE_PAIR forges nothing and
 // the desktop test goes RED rather than passing on an unproven probe.
+//
+// FORGE_PAIR TAKES ALL THREE DECLARATIONS, MEASURED. The direction alone was not
+// enough: at `md`+ the rail is sized to fit beside the card text, so a row that
+// still wrapped simply put the two ghosts on two lines again and the probe read
+// the arrangement it was supposed to be forged away from. The forgery has to give
+// the pair a line it fits on — overflowing the rail is fine, the reading is which
+// band each control lands in.
 const SCOPE = '[data-testid="next-workout-card"]';
 const FORGE_COLUMN = `
   ${SCOPE} button, ${SCOPE} a { width: 100% !important; }
@@ -254,6 +261,8 @@ const FORGE_COLUMN = `
 const FORGE_PAIR = `
   ${SCOPE} [data-testid="training-overview-actions"] > div {
     flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    width: max-content !important;
   }
 `;
 
