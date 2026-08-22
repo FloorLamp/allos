@@ -87,12 +87,28 @@ export function TokenLifecycleNote({
   createdAt,
   lastUsedAt,
   expiresAt,
+  expiryStatedByControl = false,
 }: {
   status: TokenLifecycleStatus;
   createdAt: string | null;
   lastUsedAt: string | null;
   expiresAt: string | null;
+  /**
+   * ONE STATEMENT OF ONE FACT (#3490 item 3). Set by a surface that renders
+   * `ExpirySelect` on the same card: "Never expires" was appearing in this facts
+   * list AND as the select's value a few centimetres below, which reads as the
+   * card disagreeing with itself about which one is the setting.
+   *
+   * It suppresses the line ONLY when there is no expiry date to state. When
+   * `expiresAt` is set, this line carries a fact the control does not have — the
+   * date — and dropping it would be losing information rather than de-duplicating
+   * it. The control describes the token you are ABOUT to mint; this line describes
+   * the one you have. They coincide only in the "never" case, which is the case
+   * the owner saw stated twice.
+   */
+  expiryStatedByControl?: boolean;
 }) {
+  const showExpiryLine = expiresAt !== null || !expiryStatedByControl;
   return (
     <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
       <p data-testid="token-last-used">
@@ -108,16 +124,18 @@ export function TokenLifecycleNote({
           Created: <RelativeTime value={createdAt} className="font-medium" />
         </p>
       )}
-      <p data-testid="token-expiry">
-        {expiresAt ? (
-          <>
-            {status === "expired" ? "Expired on" : "Expires on"}{" "}
-            <span className="font-medium">{expiresAt.slice(0, 10)}</span>
-          </>
-        ) : (
-          <span>Never expires</span>
-        )}
-      </p>
+      {showExpiryLine && (
+        <p data-testid="token-expiry">
+          {expiresAt ? (
+            <>
+              {status === "expired" ? "Expired on" : "Expires on"}{" "}
+              <span className="font-medium">{expiresAt.slice(0, 10)}</span>
+            </>
+          ) : (
+            <span>Never expires</span>
+          )}
+        </p>
+      )}
 
       {status === "expired" && (
         <p
