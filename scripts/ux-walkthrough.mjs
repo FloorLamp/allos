@@ -88,10 +88,7 @@ import {
 import {
   HOVER_THRESHOLDS,
   hoverAuditSections,
-  hoverClip,
-  hoverRegionProbe,
-  hoverSnapshot,
-  summarizeHover,
+  measureHover,
 } from "./ux-hover-census.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
@@ -830,7 +827,6 @@ async function expandDisclosures(page, exp) {
   return opened;
 }
 
-
 // #3489 deliverable 4: HOVER CAPTURES.
 //
 // Runs ONCE, at the END of the desktop pass, after every route has had its default
@@ -853,7 +849,11 @@ async function expandDisclosures(page, exp) {
 // and its metrics row untouched — the same contract the expansion pass keeps.
 async function captureHoverStates(page, tag) {
   for (const entry of HOVER_CAPTURES) {
-    const row = { route: entry.route, label: entry.label, ruling: entry.ruling };
+    const row = {
+      route: entry.route,
+      label: entry.label,
+      ruling: entry.ruling,
+    };
     try {
       await page.goto(`${BASE}${entry.route}`);
       await page.waitForTimeout(1200);
@@ -867,7 +867,11 @@ async function captureHoverStates(page, tag) {
         log(
           `BLIND SPOT hover ${entry.route} (${tag}): redirected to ${landedOn} — no hover capture taken`
         );
-        hoverRows.push({ ...row, found: false, why: `redirected to ${landedOn}` });
+        hoverRows.push({
+          ...row,
+          found: false,
+          why: `redirected to ${landedOn}`,
+        });
         continue;
       }
       if (entry.openFirst) {
@@ -886,42 +890,14 @@ async function captureHoverStates(page, tag) {
         log(
           `BLIND SPOT hover ${entry.route} (${tag}): \`${entry.target}\` matched nothing — ${entry.label} NOT captured`
         );
-        hoverRows.push({ ...row, found: false, why: "hover target not on this route" });
+        hoverRows.push({
+          ...row,
+          found: false,
+          why: "hover target not on this route",
+        });
         continue;
       }
-      await target.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(300);
-
-      const region = await page.evaluate(hoverRegionProbe, {
-        targetSelector: entry.target,
-        revealsSelector: entry.reveals ?? null,
-      });
-      const pageSize = await page.evaluate(() => ({
-        width: document.documentElement.scrollWidth,
-        height: document.documentElement.scrollHeight,
-      }));
-      // Document coordinates, so `fullPage: true` + `clip` cuts the same region
-      // before and after even if the hover scrolls the page.
-      const clip = hoverClip([region.target, region.reveals], {
-        pad: HOVER_THRESHOLDS.regionPadPx,
-        pageWidth: pageSize.width,
-        pageHeight: pageSize.height,
-      });
-      const shotOpts = { fullPage: true, clip };
-      const before = await page.evaluate(hoverSnapshot, HOVER_THRESHOLDS);
-      const beforePixels = clip ? await page.screenshot(shotOpts) : null;
-
-      await target.hover();
-      await page.waitForTimeout(HOVER_THRESHOLDS.settleMs);
-
-      const after = await page.evaluate(hoverSnapshot, HOVER_THRESHOLDS);
-      const afterPixels = clip ? await page.screenshot(shotOpts) : null;
-      const summary = summarizeHover(
-        before,
-        after,
-        HOVER_THRESHOLDS,
-        !!(beforePixels && afterPixels && !beforePixels.equals(afterPixels))
-      );
+      const summary = await measureHover(page, entry, HOVER_THRESHOLDS);
 
       if (!summary.changed) {
         // A NO-OP IS REPORTED AND NOT PHOTOGRAPHED. The shot would be a

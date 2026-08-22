@@ -218,7 +218,10 @@ export function hoverSnapshot(opts) {
     elements.push({
       key,
       name: describe(el),
-      text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, maxTextChars),
+      text: (el.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, maxTextChars),
       visible: visible(el),
       // Document-relative, so a reading does not depend on where the page happens
       // to be scrolled: `scrollIntoViewIfNeeded` before the hover and the hover
@@ -340,9 +343,7 @@ export function summarizeHover(before, after, opts, pixelsChanged) {
       continue;
     }
     if (a.visible && b && b.visible) {
-      const d = Math.max(
-        ...a.rect.map((v, i) => Math.abs(v - b.rect[i]))
-      );
+      const d = Math.max(...a.rect.map((v, i) => Math.abs(v - b.rect[i])));
       if (d > opts.movedEpsilonPx)
         moved.push({ el: a.name, byPx: Math.round(d) });
     }
@@ -380,6 +381,78 @@ export function summarizeHover(before, after, opts, pixelsChanged) {
     // should be able to skip it and spend their attention on the rows that carry
     // text nothing else shows.
     revealsInformation: revealed.length > 0,
+  };
+}
+
+/**
+ * ONE HOVER MEASUREMENT, shared by the census harness and its guard spec.
+ *
+ * This lives here rather than in scripts/ux-walkthrough.mjs for the reason the
+ * module header gives: a probe in the harness and a second copy in the guard is
+ * the arrangement that lets a guard go quietly green while the thing it guards
+ * drifts. The harness owns navigation, the alias check, opening a disclosure and
+ * writing the shot; everything between "the target is on screen" and "here is the
+ * rendered difference" is this function, and both callers run the same one.
+ *
+ * THE ORDER MATTERS AND IS NOT NEGOTIABLE:
+ *   scroll → read the region → snapshot → PNG → hover → settle → snapshot → PNG.
+ * The region is computed BEFORE the pointer lands so both PNGs cut the same
+ * rectangle; scrolling first means the hover cannot scroll the page out from under
+ * the region it was cut for; and the settle sits between the hover and every
+ * reading, so nothing is measured mid-transition.
+ *
+ * `page` is duck-typed rather than imported: this module is loaded by plain `node`
+ * in the harness, and importing `@playwright/test` here would break that.
+ *
+ * @param {any} page Playwright Page
+ * @param {{target: string, reveals?: string}} entry
+ * @param {typeof HOVER_THRESHOLDS & {subjectSelector?: string}} opts
+ */
+export async function measureHover(page, entry, opts) {
+  const target = page.locator(entry.target).first();
+  await target.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+
+  const region = await page.evaluate(hoverRegionProbe, {
+    targetSelector: entry.target,
+    revealsSelector: entry.reveals ?? null,
+  });
+  const pageSize = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }));
+  // Document coordinates: `fullPage: true` trims `clip` against the FULL page
+  // (playwright-core screenshotter), so the same rectangle is cut before and after
+  // however the page is scrolled. Without `fullPage` the same numbers would be read
+  // as viewport-relative and the two shots would silently frame different content.
+  const clip = hoverClip([region.target, region.reveals], {
+    pad: opts.regionPadPx,
+    pageWidth: pageSize.width,
+    pageHeight: pageSize.height,
+  });
+  const shotOpts = { fullPage: true, clip };
+
+  const before = await page.evaluate(hoverSnapshot, opts);
+  const beforePixels = clip ? await page.screenshot(shotOpts) : null;
+
+  await target.hover();
+  await page.waitForTimeout(opts.settleMs);
+
+  const after = await page.evaluate(hoverSnapshot, opts);
+  const afterPixels = clip ? await page.screenshot(shotOpts) : null;
+
+  return {
+    ...summarizeHover(
+      before,
+      after,
+      opts,
+      !!(beforePixels && afterPixels && !beforePixels.equals(afterPixels))
+    ),
+    // Carried out so a caller can say WHICH of the two regions was missing when a
+    // measurement comes back empty: no clip at all reads identically to "the hover
+    // changed nothing", and those are different failures.
+    regionMeasured: !!clip,
+    subjectExamined: after.subjectExamined,
   };
 }
 
