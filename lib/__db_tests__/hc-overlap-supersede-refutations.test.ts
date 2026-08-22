@@ -235,6 +235,55 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
       expect(rowCount(p, metric)).toBe(300);
     }
   });
+
+  it("says nothing when a `1m` push lands on a stored day bucket", () => {
+    // THE GRANULARITY GATE ON THE JUSTIFIER SIDE IS A COST BOUND, AND THIS IS WHAT MAKES
+    // IT OBSERVABLE. `supersedeMetricSampleOverlaps` only issues a candidate query for a
+    // stamped row that clears `isSupersedingWindow`, so an 11.5k-row `1m` push does one
+    // indexed lookup and stops instead of ~11.5k range queries. Safety does not depend on
+    // it — `planSupersede` routes a fine-grained incoming window to `left` rather than
+    // `supersede` either way — so nothing is deleted with or without it. What the filter
+    // costs is the REPORT: a minute bucket landing on a stored day bucket IS a day
+    // reading high, and it is deliberately not named, because naming it means one range
+    // query per minute bucket.
+    //
+    // MUTATION: relax the filter to `isDayBucketMetric(row.metric)` and this warns.
+    const p = freshProfile("R1-FINE-GRAINED-ON-DAY-BUCKET");
+    push(
+      p,
+      {
+        app_version: "1.9.14",
+        steps: [steps("2026-05-01T00:00:00Z", "2026-05-02T00:00:00Z", 8000)],
+      },
+      "2026-05-02T01:00:00Z"
+    );
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+    const minutes = [];
+    for (let i = 0; i < 5; i++)
+      minutes.push(
+        steps(
+          new Date(Date.UTC(2026, 4, 1, 10, i)).toISOString().slice(0, 19) +
+            "Z",
+          new Date(Date.UTC(2026, 4, 1, 10, i + 1)).toISOString().slice(0, 19) +
+            "Z",
+          3
+        )
+      );
+    const result = push(
+      p,
+      { app_version: "1.9.14", steps: minutes },
+      "2026-05-02T02:00:00Z"
+    );
+    // The day bucket is untouched — a minute bucket may never collapse one.
+    expect(result.split.superseded).toBe(0);
+    expect(rowCount(p, "steps")).toBe(6);
+    // The parser's own fine-grained-setting advice is a different line and is expected
+    // here; the OVERLAP line is the one that must not fire.
+    expect(warningsOf(result)).toEqual([
+      expect.stringContaining("fine-grained setting"),
+    ]);
+    expect(warningsOf(result)).not.toContain(overlapsLeftWarning(1));
+  });
 });
 
 /** One Health Connect steps record, origin-tagged the way `dataOrigin` actually reads. */
@@ -1341,19 +1390,23 @@ describe("R7 — a row pass C will not write plans no delete", () => {
   });
 
   it("prunes a row a vetoed bucket left standing and a landing bucket collapsed", () => {
-    // THE VETO IS A FACT ABOUT THE INCOMING ROW, NOT ABOUT THE STORED ONE, so one stored
-    // row can be left standing by a vetoed bucket of a push and collapsed by a bucket of
-    // the same push that lands. Every other reason a row lands in `leftStanding` is a
-    // fact about the stored row plus the push's one stamp and cannot vary that way — the
-    // prune of `leftStanding` by `victims` was a no-op before this, and its comment
-    // claimed to be the arbiter of a case that could not arise. Now it can.
+    // A VETOED BUCKET DOES NOT STOP A LANDING ONE. The push carries two rows: one the
+    // #133 lock refuses, one that lands, overlaps the same stored row and outranks it.
+    // The stored row is collapsed on the strength of the row that LANDED, and the locked
+    // twin — which is a real day reading high — is the one the Review line names.
     //
-    // The collapse is the truth: a row that lands does replace the stored one, so the
-    // Review line must not also report it as standing.
+    // THE PRUNE THIS CASE ONCE PINNED IS NOW STRUCTURALLY UNREACHABLE, and saying so is
+    // the point of keeping the case. Under the payload-side plan the veto was a fact
+    // about the INCOMING row, so one stored row could be left standing by a vetoed bucket
+    // and collapsed by a landing one, and `leftStanding.delete(victim)` was the arbiter.
+    // The store-derived predicate never sees an incoming row: every reason a candidate is
+    // declined is a fact about that stored row plus this push's one stamp, so no two
+    // stamped buckets can disagree. The prune stays as the thing that MAKES the sets
+    // disjoint (see `supersedeMetricSampleOverlaps`), but no mutation of it goes red here
+    // any more — what this case discriminates now is the lock and the collapse.
     //
-    // MUTATION: drop `for (const id of victims.keys()) leftStanding.delete(id)` from
-    // `planMetricSampleSupersede` and the line reports 2 days reading high over a store
-    // holding exactly one excess reading.
+    // MUTATION: drop the `if (row.edited)` branch in `planSupersede` and the
+    // hand-corrected 8500 goes with the 8000.
     const p = freshProfile("R7-PRUNE");
     pushAt(
       p,

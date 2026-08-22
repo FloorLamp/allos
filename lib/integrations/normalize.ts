@@ -841,7 +841,16 @@ export function supersedeMetricSampleOverlaps(
     )
     .all(profileId, source, pushedAt) as StampedDayBucket[];
   // Only the ones the rule may act on at all: a tiling metric, cut at day-bucket
-  // granularity. The gate is what makes a `1m` push cost one query and nothing else.
+  // granularity.
+  //
+  // THIS FILTER IS A COST BOUND, AND `planSupersede` IS THE SAFETY ONE. Dropping it
+  // deletes nothing extra — `planSupersede` asks `isSupersedingWindow` of the incoming
+  // window itself and routes anything below the gate to `left` rather than `supersede`.
+  // What it buys is the candidate query: an 11.5k-row `1m` push clears the gate NOWHERE,
+  // so it issues one indexed lookup and stops, instead of ~11.5k range queries. The one
+  // thing it costs is a report — a fine-grained incoming row landing on a stored day
+  // bucket is a day reading high and is deliberately not named, for exactly that cost.
+  // Pinned by "says nothing when a `1m` push lands on a stored day bucket".
   const buckets = stamped.filter((row) =>
     isSupersedingWindow(row.metric, row.started_at, row.ended_at)
   );
@@ -882,8 +891,14 @@ export function supersedeMetricSampleOverlaps(
     for (const row of plan.left) left.add(row.id);
     for (const row of plan.supersede) victims.add(row.id);
   }
-  // A row one stamped bucket declined and another collapsed is COLLAPSED: a row that
-  // lands does replace it, so the Review line must not also report it as standing.
+  // THE TWO SETS ARE DISJOINT, AND THIS LINE IS WHAT MAKES THEM SO rather than an
+  // argument that they already are. Under the store-derived predicate every reason a
+  // candidate lands in `left` — sub-daily granularity, `pushOutranks`, the #133 lock — is
+  // a fact about THAT STORED ROW plus this push's one stamp, so two stamped buckets
+  // cannot disagree about it and this loop currently deletes nothing. It stays because
+  // the claim "the case cannot arise" is the one this PR got wrong twice: a reason that
+  // is a fact about the JUSTIFIER would reopen it, and a `Set.delete` over a handful of
+  // ids costs nothing next to being wrong about that a third time.
   for (const id of victims) left.delete(id);
 
   // THE EXCESS THIS PUSH CARRIES AGAINST ITSELF. "Overlaps a row of this push that starts
