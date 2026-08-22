@@ -63,6 +63,17 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **A fixture carrying ONE item cannot see a defect that needs two.** When a
+  mechanism operates on a SET, a test with a single member proves nothing about
+  how members interact. #3438's round-7 guard pushed one day-bucket and passed
+  through ten rounds; the real rolling window carries the previous day's bucket
+  too, and THAT one — carrying the same push stamp and overlapping by the zone
+  offset — destroyed a stored reading whose own replacement a veto had refused.
+  The predicate honoured the veto for the vetoed row and not for the row it was
+  replacing, which is the same sentence as: **a per-item veto does not compose
+  into a per-set veto.** When a diff vetoes, suppresses or excludes an item, ask
+  what the REST of the batch can still justify on its own.
+
 - **Two individually-correct changes can combine into a regression, and a
   change-by-change review cannot see it.** #3550 cut an over-long intro (the
   issue asked for exactly that) and hid a column heading for a column that no
@@ -285,6 +296,12 @@ These are not review taste; each retired a green that meant nothing.
   #3486 — explicitly unfinished, with three open parts — was closed by the merge
   one minute before the owner commented listing what was still open on it. The
   failure direction is why it earned a file: a missed keyword reads as safe.
+- **A stale PR body aims the next lens at deleted code.**
+  `adversarial-review-brief.mjs` serves the PR body verbatim as "the claims to
+  attack", so a body describing a construction a later round removed sends the
+  reviewer hunting constructs that no longer exist. #3438 reached round 10 with
+  round 9's body naming four deleted symbols. Require the body rewritten in the
+  same push as the rewrite, not after review.
 - Verify linked issues closed, then clean the worktree and local branch.
 
 ## Merge queue
