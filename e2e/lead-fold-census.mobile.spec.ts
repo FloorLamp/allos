@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { settledClick } from "./helpers";
 import { LEAD_MAX_CHARS } from "@/lib/lead-fold-census";
 
 // THE LEAD + FOLD CENSUS, OVER RENDERED BOXES AT 390px (#3488, #3490).
@@ -205,10 +204,10 @@ test("(1)(2) every intro leads in at most two rendered lines at 390px", async ({
       // …and opening it reveals the detail. This is the half that makes "folded,
       // not deleted" a checked claim rather than a hope: #3490's fourth acceptance
       // criterion is that no factual claim was lost.
-      await settledClick(
-        page,
-        page.getByTestId(`${route.testId}-fold-summary`)
-      );
+      // A plain click, not `settledClick`: a native <details> toggles in the
+      // browser and posts nothing, so a helper that waits for an action POST would
+      // wait for a request this design deliberately does not make.
+      await page.getByTestId(`${route.testId}-fold-summary`).click();
       const detail = page.getByTestId(`${route.testId}-detail`);
       await expect(detail).toBeVisible();
       expect(
@@ -268,63 +267,150 @@ test("(3) the census catches a synthetic wall planted in the live DOM", async ({
   expect(forged.lines).toBeGreaterThanOrEqual(6);
 });
 
-test("a card tab strip scrolls without painting a scrollbar (#3488 fix 3)", async ({
+/**
+ * The tab strips this census must find. A floor AND a ceiling per route, for the
+ * same reason every other count here has one: "no strip paints a scrollbar" is
+ * true of a page with no strips.
+ */
+const STRIP_ROUTES: { path: string; strips: number; why: string }[] = [
+  {
+    path: "/data?section=import",
+    strips: 2,
+    why: "#3488's own surface: the Data page's NavTabs section strip, and the upload card's `Tabs` strip (File upload / Paste CSV) that painted the sliver.",
+  },
+  {
+    path: "/records",
+    strips: 1,
+    why: "A NavTabs strip in the `grid` arm — the branch that never carried the suppression at all.",
+  },
+];
+
+/** Every tab strip on the page: `Tabs`' own, and every NavTabs `role=tablist`. */
+const STRIP_SELECTOR = '[data-testid="tab-strip"], [role="tablist"]';
+
+test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)", async ({
   page,
 }) => {
   test.slow();
-  await page.goto("/data?section=import");
-  const strip = page.getByTestId("tab-strip");
-  await expect(strip).toBeVisible();
-  await expect(strip).toContainText("Paste CSV");
 
-  // THE OVERFLOW IS FORCED, NOT HOPED FOR. Whether two tabs happen to overflow a
-  // 390px card depends on font metrics, and a scrollbar assertion on a strip that
-  // does not scroll is an absence assertion with nothing to be absent — it would
-  // pass on a strip that never suppressed anything. So the probe widens the
-  // content itself and then measures.
+  // ── WHY THIS IS A CASCADE READING AND NOT A GEOMETRIC ONE, MEASURED ────────────
   //
-  // The reading is `offsetHeight - clientHeight`: the gutter a classic horizontal
-  // scrollbar takes out of the box. It is a RENDERED quantity — a
-  // `scrollbar-width: none` in a stylesheet is not evidence the rule reached this
-  // element (#3529).
-  const measure = await page.evaluate(() => {
-    const el = document.querySelector<HTMLElement>('[data-testid="tab-strip"]');
-    if (!el) throw new Error("no tab strip");
-    const spacer = document.createElement("span");
-    spacer.style.cssText = "display:inline-block;width:2000px;flex:none";
-    // FORGED BY A SPEC on purpose: a spacer that guarantees the row overflows.
-    el.appendChild(spacer);
+  // The honest version of #3529's rule. Geometry is the right instrument when the
+  // rendered box can express the defect — and for a scrollbar, in THIS browser, it
+  // cannot: headless Chromium draws OVERLAY scrollbars, which float above the
+  // content and consume no layout space. Measured 2026-08-22, twice: an
+  // unsuppressed control scroller built beside the strip read `offsetHeight -
+  // clientHeight === 0`, at 390px with touch and again with `hasTouch: false`. A
+  // gutter assertion would therefore have passed on a strip with no suppression at
+  // all — the exact fail-open shape this census exists to avoid — so it is not the
+  // assertion.
+  //
+  // What IS measured is the computed value ON THE LIVE ELEMENT, which answers the
+  // question a class-string grep cannot: did the rule reach THIS element. And it is
+  // measured against a CONTROL in the same document, so the reading is a
+  // discriminator rather than a constant: the control must come back "auto" and the
+  // strip "none". If a future Chromium restores classic scrollbars, the control's
+  // gutter becomes non-zero and the geometric assertion below starts doing real
+  // work; until then it records what it saw.
+  const found: string[] = [];
+  for (const route of STRIP_ROUTES) {
+    await page.goto(route.path);
+    await expect(page.getByRole("main")).toBeVisible();
+    const readings = await page.evaluate((selector) => {
+      // VISIBLE strips only. `NavTabs` renders a second, `hidden md:flex` copy of
+      // its strip for the desktop layout; a display:none box has zero scrollWidth
+      // and zero clientWidth, so it can neither overflow nor paint anything, and
+      // including it would make "the forced overflow did not take" the first
+      // failure on a correct tree. The hidden count is returned too, so a strip
+      // that DISAPPEARS is not silently reclassified as compliant.
+      const all = [...document.querySelectorAll<HTMLElement>(selector)];
+      const els = all.filter((n) => n.clientWidth > 0);
 
-    // The CONTROL: the same box, same content, with the suppression removed. If
-    // this platform draws overlay scrollbars, the control reads 0 too and the
-    // whole check is meaningless — which is why it is measured rather than assumed.
-    const control = el.cloneNode(true) as HTMLElement;
-    control.style.scrollbarWidth = "auto";
-    control.removeAttribute("data-testid");
-    el.parentElement?.appendChild(control);
+      // THE CONTROL: an unsuppressed horizontal scroller of the same width, built
+      // from scratch. NOT a clone — a clone carries the strip's own
+      // `[&::-webkit-scrollbar]:hidden`, so it would read "suppressed" for the same
+      // reason the strip does and prove nothing.
+      const control = document.createElement("div");
+      control.style.cssText = "overflow-x:auto;width:200px";
+      const wide = document.createElement("span");
+      wide.style.cssText = "display:inline-block;width:2000px;height:20px";
+      control.appendChild(wide);
+      document.body.appendChild(control);
 
-    const read = (n: HTMLElement) => ({
-      gutter: n.offsetHeight - n.clientHeight,
-      scrolls: n.scrollWidth > n.clientWidth,
-    });
-    return { strip: read(el), control: read(control) };
-  });
+      const read = (n: HTMLElement) => {
+        const cs = getComputedStyle(n);
+        const borders =
+          parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+        return {
+          scrollbarWidth: cs.scrollbarWidth,
+          webkit: getComputedStyle(n, "::-webkit-scrollbar").display,
+          gutter: n.offsetHeight - n.clientHeight - borders,
+          overflows: n.scrollWidth > n.clientWidth,
+          canScroll: cs.overflowX === "auto" || cs.overflowX === "scroll",
+        };
+      };
 
-  expect(
-    measure.strip.scrolls,
-    "the forced overflow did not take — the strip is not a horizontal scroller"
-  ).toBe(true);
-  expect(
-    measure.control.gutter,
-    "the CONTROL box painted no scrollbar either, so this measurement cannot tell " +
-      "a suppressed scrollbar from an absent one (overlay scrollbars?) — the " +
-      "assertion below would pass for the wrong reason"
-  ).toBeGreaterThan(0);
-  expect(
-    measure.strip.gutter,
-    "the tab strip paints a scrollbar sliver — design-system.md §3, 'tab strips " +
-      "scroll without painting scrollbars'"
-  ).toBe(0);
+      // Force each strip to overflow, so "it still scrolls" is a claim about a row
+      // that is actually scrolling rather than one that happens to fit — and so a
+      // suppressed scrollbar is being asserted about a scroller rather than about a
+      // row with nothing to scroll.
+      //
+      // The forcing NARROWS THE BOX rather than widening the content, and that is
+      // not a stylistic choice: `NavTabs`' phone arm is a `grid`, where an appended
+      // 2000px child lands in a NEW ROW and grows the strip's height instead of its
+      // scroll width. Measured 2026-08-22 — the spacer version reported "the forced
+      // overflow did not take" on /records, correctly. Clamping the width overflows
+      // the tabs that are already there, in every arm.
+      const strips = els.map((el) => {
+        // FORGED BY A SPEC on purpose: a clamp that guarantees the row overflows.
+        el.style.width = "40px";
+        return read(el);
+      });
+      return {
+        strips,
+        hidden: all.length - els.length,
+        control: read(control),
+      };
+    }, STRIP_SELECTOR);
+
+    expect(
+      readings.strips.length,
+      `${route.path}: expected ${route.strips} visible tab strip(s) ` +
+        `(${readings.hidden} hidden) — ${route.why}`
+    ).toBe(route.strips);
+
+    // The control proves the reading DISCRIMINATES. Without this the assertion
+    // below is "none === none" on a browser that reports it for everything.
+    expect(
+      readings.control.scrollbarWidth,
+      "an unsuppressed scroller no longer reports scrollbar-width:auto, so this " +
+        "reading cannot tell a suppressed strip from an unsuppressed one"
+    ).toBe("auto");
+
+    for (const [i, r] of readings.strips.entries()) {
+      const at = `${route.path} strip ${i + 1}`;
+      expect(r.overflows, `${at}: the forced overflow did not take`).toBe(true);
+      expect(
+        r.canScroll,
+        `${at}: suppressing the scrollbar must not stop the row scrolling`
+      ).toBe(true);
+      expect(
+        r.scrollbarWidth,
+        `${at}: paints a scrollbar — design-system.md §3, "tab strips scroll ` +
+          `without painting scrollbars"`
+      ).toBe("none");
+      expect(
+        r.webkit,
+        `${at}: the ::-webkit-scrollbar half of the suppression did not reach it`
+      ).toBe("none");
+      // The geometric half, recorded: 0 on both the strip and the control today,
+      // and a real signal the day this browser paints classic scrollbars again.
+      expect(r.gutter).toBeLessThanOrEqual(readings.control.gutter);
+    }
+    found.push(`${route.path}:${readings.strips.length}`);
+  }
+
+  expect(found).toEqual(STRIP_ROUTES.map((r) => `${r.path}:${r.strips}`));
 });
 
 test("the empty upload card shows two doors and nothing below them (#3488 fix 2)", async ({
@@ -344,8 +430,12 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
 
   // Nothing below them: no permanently disabled twin, and no promise to read
   // something in the background before there is a something.
+  // Asserted on the ROW, not on its sentence: `Tabs` keeps every panel mounted and
+  // merely hidden, so a bare `getByText("in the background")` also reads the Paste
+  // CSV panel's own copy and fails for a reason that has nothing to do with this
+  // card.
+  await expect(page.getByTestId("medical-upload-submit-row")).toHaveCount(0);
   await expect(page.getByTestId("medical-upload-submit")).toHaveCount(0);
-  await expect(page.getByText("in the background")).toHaveCount(0);
 
   // Choosing a file reveals the file list, the submit, and the sentence — the
   // explainer arrives when it has a subject.
@@ -363,5 +453,7 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
   await expect(submit).toBeVisible();
   await expect(submit).toBeEnabled();
   await expect(submit).toHaveText("Upload");
-  await expect(page.getByText("in the background")).toBeVisible();
+  await expect(page.getByTestId("medical-upload-submit-row")).toContainText(
+    "in the background"
+  );
 });

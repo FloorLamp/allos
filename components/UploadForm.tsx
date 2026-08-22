@@ -344,7 +344,10 @@ export default function UploadForm({
           the input are both disabled), so the row simply never appears and the
           `upload-disabled-hint` above is the whole explanation. */}
       {selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div
+          data-testid="medical-upload-submit-row"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2"
+        >
           <SubmitButton
             disabled={demo || selected.length === 0}
             pendingLabel="Uploading…"
