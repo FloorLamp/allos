@@ -308,6 +308,39 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // ROUND 5'S SHAPE, AND THE ONE THAT MAKES THE CONTENT ASSERTION BITE. A stale retry
+    // of a NULL-stamped pre-era row arrives in the same push as the re-anchored bucket
+    // that overlaps it.
+    //
+    // Under the three passes the stored row is a natural key of this push, so it is never
+    // a victim: the retry finds its twin, `isStaleMetricSnapshot` holds the converged
+    // value, and the re-anchored bucket is written beside it. Under the per-row rule the
+    // outcome depended entirely on which row the loop reached first — the re-anchored
+    // bucket first DELETED the twin, so the retry's `found` came back undefined,
+    // `staleRetry` flipped to false and THE STALE VALUE WAS WRITTEN; the retry first and
+    // the row was held, then deleted, and the reading vanished. Three orders, three
+    // different stores, all with `warnings: []`.
+    name: "a stale retry beside the re-anchored bucket that overlaps it",
+    seed: (p) => {
+      seedUnstamped(p, "steps", ...NY_20, 11609);
+      seedUnstamped(p, "distance_km", ...NY_20, 9.2);
+      eraAfterEverything("2026-08-21T00:00:00Z");
+    },
+    body: {
+      timestamp: "2026-08-21T03:05:00Z",
+      app_version: "1.9.14",
+      // The retry: same natural key, an END that stopped EARLIER, a smaller value.
+      steps: [
+        stepsRec("2026-08-20T04:00:00Z", "2026-08-20T20:00:00Z", 9000),
+        stepsRec(...LA_20, 11721),
+      ],
+      distance: [
+        distRec("2026-08-20T04:00:00Z", "2026-08-20T20:00:00Z", 7300),
+        distRec(...LA_20, 9300),
+      ],
+    },
+  },
+  {
     // A MIXED-ANCHORING PUSH AGAINST A STORE THAT ALREADY HOLDS ONE OF THE TWO — the
     // configuration ruling item 3 governs, and the one none of the five `freshProfile`
     // tests ever reached. The stored NY row is BOTH a row this push re-sends AND a row
