@@ -89,8 +89,8 @@ export async function addResult(formData: FormData): Promise<FormResult> {
       .prepare(
         `INSERT INTO medical_records
            (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id,
-            result_status, fasting, specimen)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            result_status, fasting, specimen, logged_via)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         date,
@@ -109,7 +109,9 @@ export async function addResult(formData: FormData): Promise<FormResult> {
         // #385/#323 class — a state writable in TS but forbidden by the CHECK).
         normalizeResultStatus(formData.get("result_status") as string | null),
         parseFasting(formData.get("fasting")),
-        sanitizeSpecimen(formData.get("specimen") as string | null)
+        sanitizeSpecimen(formData.get("specimen") as string | null),
+        // The Results page's own manual-entry form (#3087).
+        "page"
       );
     // Auto-flag the new reading non-optimal if it falls outside the optimal band.
     reconcileFlags(profile.id, [Number(info.lastInsertRowid)]);

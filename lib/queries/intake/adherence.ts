@@ -1489,6 +1489,13 @@ interface CapturedAdministration {
   product: string | null;
   status: string;
   supply_adjusted: number;
+  /**
+   * The surface the row was ORIGINALLY logged from (#3087), carried through the undo
+   * holding store so a restore puts back the row that existed rather than minting a
+   * new provenance for it. `null` for a row created before the column existed, and
+   * for a token captured by an older build — both of which are honestly unknown.
+   */
+  logged_via: string | null;
 }
 
 // Delete one taken administration (an intake_item_logs row) with capture-for-undo, and
@@ -1521,7 +1528,7 @@ export function deleteAdministrationLog(
     const row = db
       .prepare(
         `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
-                l.amount, l.product, l.status, l.supply_adjusted
+                l.amount, l.product, l.status, l.supply_adjusted, l.logged_via
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE l.id = ? AND s.profile_id = ?
@@ -1541,6 +1548,7 @@ export function deleteAdministrationLog(
       product: row.product,
       status: row.status,
       supply_adjusted: row.supply_adjusted,
+      logged_via: row.logged_via,
     };
     const info = db
       .prepare(
@@ -1617,8 +1625,8 @@ export function restoreAdministrationLog(
     db.prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, occurred_at, recorded_at, amount, product, status,
-          supply_adjusted)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+          supply_adjusted, logged_via)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
     ).run(
       captured.dose_id,
       captured.item_id,
@@ -1628,7 +1636,11 @@ export function restoreAdministrationLog(
       captured.amount,
       captured.product ?? null,
       captured.status,
-      supplyAdjusted
+      supplyAdjusted,
+      // RESTORED, not re-created: an undo puts back the row that was deleted, so it
+      // carries the provenance it was born with. A pre-column token has `undefined`
+      // here and restores NULL, which is the honest answer rather than a guess.
+      captured.logged_via ?? null
     );
     if (captured.status === "taken" && supplyAdjusted === 1) {
       decrementSupply(profileId, captured.item_id);

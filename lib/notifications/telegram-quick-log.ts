@@ -1073,6 +1073,8 @@ export async function handleWeightReply(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    // A free-text REPLY to the `/weight` prompt — typed, not tapped.
+    loggedVia: "telegram-text",
   });
   await sendTelegramMessage(
     chatId,

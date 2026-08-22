@@ -57,6 +57,8 @@ export async function paletteQuickLog(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    // The command palette IS the quick-log surface (#3087).
+    loggedVia: "quick-log",
   });
   if (!wrote) return { ok: false, message: "Couldn't log that weight." };
 

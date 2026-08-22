@@ -12,7 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { OFFLINE_REPLAY } from "../logged-via";
+import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
@@ -130,6 +130,12 @@ export interface BodyMetricWrite {
   // statement, never the reading — and since #2311 never in silence either: the
   // refusal rides back out on the outcome below.
   occurredAt?: string | null;
+  /**
+   * WHICH SURFACE MADE THIS SUBMISSION (#3087) — required, no default. Stamped on the
+   * INSERT arm only: the per-column UPDATEs below correct a day row that already
+   * exists, and a correction is not a new weigh-in.
+   */
+  loggedVia: LoggedVia;
 }
 
 // What one manual body-metrics submission did (#2311). It used to be a bare
@@ -205,8 +211,8 @@ export function insertBodyMetric(
       .get(profileId, w.date) as { id: number } | undefined;
     if (!found) {
       db.prepare(
-        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, occurred_at, profile_id)
-         VALUES (?,?,?,?,?,?,?)`
+        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, occurred_at, profile_id, logged_via)
+         VALUES (?,?,?,?,?,?,?,?)`
       ).run(
         w.date,
         weightKg,
@@ -215,7 +221,8 @@ export function insertBodyMetric(
         notes,
         // Bound, never defaulted (#2205): the stated instant or honest NULL.
         stated ?? null,
-        profileId
+        profileId,
+        w.loggedVia
       );
       return;
     }
@@ -1005,6 +1012,7 @@ export function applyIntent(
         // weigh-in keeps its statement. An intent queued before the field existed
         // has `undefined` here — no statement, never a clear.
         occurredAt: p.occurredAt,
+        loggedVia: OFFLINE_REPLAY,
       });
       ok = applied.wrote;
       // The queued capture is where a fast device clock actually bites a weigh-in

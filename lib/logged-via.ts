@@ -101,9 +101,15 @@ const WEB_ORIGINS: Record<WebLoggedVia, true> = {
 /** The form field a client posts its surface in. */
 export const LOGGED_VIA_FIELD = "logged_via";
 
-/** Whether an arbitrary value is one of the vocabulary's members. */
+/**
+ * Whether an arbitrary value is one of the vocabulary's members.
+ *
+ * `Object.hasOwn`, never `in`: `in` walks the prototype chain, so `"toString"` and
+ * `"constructor"` would both read as members of the closed set and a posted
+ * `logged_via=constructor` would sail through. Caught by this module's own test.
+ */
 export function isLoggedVia(value: unknown): value is LoggedVia {
-  return typeof value === "string" && value in LOGGED_VIA_MEANING;
+  return typeof value === "string" && Object.hasOwn(LOGGED_VIA_MEANING, value);
 }
 
 /**
@@ -119,7 +125,9 @@ export function parseWebOrigin(
   raw: unknown,
   fallback: WebLoggedVia
 ): WebLoggedVia {
-  return typeof raw === "string" && raw in WEB_ORIGINS
+  // `Object.hasOwn` for the same reason isLoggedVia uses it: `in` would accept every
+  // Object.prototype key as a web surface.
+  return typeof raw === "string" && Object.hasOwn(WEB_ORIGINS, raw)
     ? (raw as WebLoggedVia)
     : fallback;
 }
@@ -143,3 +151,24 @@ export const IMPORTED: LoggedVia = "import";
  * guess. `offline-replay` is the true answer to "how did this row get here".
  */
 export const OFFLINE_REPLAY: LoggedVia = "offline-replay";
+
+/**
+ * The ledgers that carry `logged_via` — #3087's first tranche, shipped by
+ * `lib/migrations/versions/20260822-logged-via-provenance.ts`.
+ *
+ * The migration keeps its OWN copy of this list on purpose: a migration must describe
+ * the schema IT shipped, and it must not start meaning something different when a
+ * later tranche extends this one. `lib/__db_tests__/logged-via-provenance.test.ts`
+ * asserts that this list, that one, and the actual columns all agree.
+ */
+export const LEDGERS_WITH_LOGGED_VIA = [
+  "intake_item_logs",
+  "food_log_events",
+  "practice_logs",
+  "activities",
+  "body_metrics",
+  "symptom_logs",
+  "medical_records",
+] as const;
+
+export type LedgerWithLoggedVia = (typeof LEDGERS_WITH_LOGGED_VIA)[number];

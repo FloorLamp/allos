@@ -70,6 +70,7 @@ export default function QuickPracticeList({
               today={today}
               defaultDurationMin={practice.previousDurationMin}
               inlineDuration
+              loggedVia="quick-log"
             />
           </div>
         </li>

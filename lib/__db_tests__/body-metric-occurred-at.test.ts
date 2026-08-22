@@ -92,6 +92,7 @@ function submit(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    loggedVia: "page",
     ...over,
   });
 }

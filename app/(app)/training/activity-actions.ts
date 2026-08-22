@@ -178,8 +178,15 @@ export async function logBodyweight(
     getUnitPrefs(login.id).weightUnit
   );
   db.prepare(
-    `INSERT INTO body_metrics (date, weight_kg, source, profile_id) VALUES (?,?,?,?)`
-  ).run(d, toKg(weight, unit), "manual", profile.id);
+    `INSERT INTO body_metrics (date, weight_kg, source, profile_id, logged_via) VALUES (?,?,?,?,?)`
+  ).run(
+    d,
+    toKg(weight, unit),
+    "manual",
+    profile.id,
+    // The training page's own bodyweight field (#3087).
+    "page"
+  );
   // A bodyweight entry feeds bodyweight-lift volume/strength, so it refreshes the
   // same fitness surfaces an activity write does (plus /trends body charts).
   revalidateActivitySurfaces();
