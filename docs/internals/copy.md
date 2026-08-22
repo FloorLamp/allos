@@ -220,6 +220,70 @@ An intro is one sentence; formats, mechanisms, vendor lists, and source
 citations sit behind a disclosure ("What can I import?", "Why this works").
 Provenance stays findable, never leading. (#3488, #3490, #3497.)
 
+**As shipped (#3488 + #3490, one change).** The two issues were filed
+separately — one lands on a page, the other in the integrations registry — and
+built together, because a convention expressed twice is two conventions by the
+following month. There is ONE primitive:
+
+`components/LeadFold.tsx` takes `lead`, `detail`, and the `summary` question the
+closed disclosure answers, and owns everything else: a native `<details>` (no
+client boundary, works pre-hydration, correct keyboard/AT semantics for free —
+the same reasoning `app/(app)/upcoming/page.tsx`'s AggregateDisclosure recorded),
+one type scale, one tone for both halves, one chevron. A caller brings copy and a
+`testId`; it brings no styling decisions, so nine adopters cannot drift into nine
+intros.
+
+A THIRD SURFACE INHERITS IT by rendering `<LeadFold>` with its own summary label
+and a `testId`, and by adding that route to `e2e/lead-fold-census.mobile.spec.ts`'s
+`ROUTES` — which is also how the census's floor stays honest. Nothing else is a
+decision. #3497's provenance blocks are the next queued adopter.
+
+Where the split is STORED depends on where the copy lives. Page copy stays in the
+page (`components/UploadForm.tsx`'s intro is JSX, because half its detail is
+markup). Registry copy splits in the registry: `IntegrationDef` carries
+`lead: string` and `detail?: string` instead of one `blurb`, so the #1880
+connect-card grid can render the lead ALONE — which is the "short blurb" that
+ruling asked for and a single 146-word field could not give it.
+
+Nothing is deleted in a split. A claim that was in the old text is in the lead or
+in the detail, and the census asserts the fold opens and holds real content.
+
+**Guards.** Two, over one rule (`lib/lead-fold-census.ts`), because a character
+budget is a proxy and a rendered box is the thing the reader meets:
+
+- `lib/__tests__/lead-fold-census.test.ts` — the rule can SEE (it is run over the
+  four walls this pair was filed about, verbatim as shipped, plus the subtler
+  one-sentence-but-too-long and short-but-three-sentences cases) and stays QUIET
+  on the benign neighbours (the period inside "Lose It!", a fragment with no
+  terminator, a lead exactly on the budget). It carries a CENSUS FLOOR — the
+  registry's size, asserted against a recorded number — because "no lead exceeds
+  N" passes trivially over a list that quietly emptied.
+- `e2e/lead-fold-census.mobile.spec.ts` — the same rule over RENDERED BOXES at
+  390px, on all nine intros. It measures `boxHeight / lineHeight` from the live
+  element (lines, not pixels: lines is the unit both acceptance criteria are
+  written in), waits for the lead's own text before measuring anything, and
+  plants the 72-word health-connect blurb back into the live DOM as a synthetic
+  offender it must flag at six lines or more.
+
+### 10a. A tab strip scrolls without painting a scrollbar
+
+Registered in `design-system.md` §3 and closed by the same change: the
+suppression pair (`scrollbar-none` + `[&::-webkit-scrollbar]:hidden`) lives on
+the shared strips — `components/Tabs.tsx` and every arm of
+`components/NavTabs.tsx` — never at a call site.
+
+Its guard is in the same census spec, and it is a CASCADE reading rather than a
+geometric one, for a measured reason: headless Chromium draws overlay
+scrollbars, so an unsuppressed control scroller built beside the strip reports
+`offsetHeight − clientHeight === 0` too (measured 2026-08-22, with and without
+touch emulation). A gutter assertion would therefore have passed on a strip with
+no suppression at all. The probe reads the computed value ON THE LIVE ELEMENT —
+which answers what a class-string grep cannot, namely whether the rule reached
+THIS element — against a control in the same document that must come back
+`auto`, so the reading is a discriminator rather than a constant. It clamps each
+strip's width first, so "it still scrolls" is a claim about a row that is
+actually scrolling.
+
 ### 11. State honesty at low n
 
 A stat block never asserts more structure than its n supports: below its

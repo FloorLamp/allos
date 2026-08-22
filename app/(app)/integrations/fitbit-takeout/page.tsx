@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
+import LeadFold from "@/components/LeadFold";
 import { requireSession } from "@/lib/auth";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
@@ -47,9 +48,14 @@ export default async function FitbitTakeoutPage() {
       </div>
 
       <div className="card">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {def.blurb}
-        </p>
+        {/* One sentence, then the mechanics behind a fold (copy.md rule 10 /
+            #3490) — this blurb was the registry's longest at 146 words. */}
+        <LeadFold
+          lead={def.lead}
+          detail={def.detail}
+          summary="How it works"
+          testId="integration-intro"
+        />
       </div>
 
       <div className="card">

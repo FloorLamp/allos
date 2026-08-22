@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
+import LeadFold from "@/components/LeadFold";
 import PageContainer from "@/components/PageContainer";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -57,7 +58,18 @@ export default async function WeatherPage(props: {
     >
       <BackLink href="/data?section=import" label="Import" />
 
-      <PageHeader title={def.name} subtitle={def.blurb} />
+      <PageHeader title={def.name} />
+
+      {/* One sentence, then the mechanics behind a fold (copy.md rule 10 /
+          #3490). The registry carries the split; every integration page renders
+          it the same way, so the intro cannot drift per source. */}
+      <LeadFold
+        lead={def.lead}
+        detail={def.detail}
+        summary="How it works"
+        testId="integration-intro"
+        className="mb-6"
+      />
 
       {error && (
         <Notice tone="rose" testid="weather-error" className="mb-4 max-w-3xl">

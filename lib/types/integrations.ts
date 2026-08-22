@@ -316,7 +316,19 @@ export interface IntegrationDef {
   name: string;
   kind: IntegrationKind;
   status: IntegrationStatus;
-  blurb: string;
+  // THE LEAD + FOLD SPLIT (#3490, copy.md rule 10). `lead` is the ONE sentence a
+  // reader is handed; `detail` is everything the old single `blurb` also carried —
+  // mechanisms, vendor lists, caveats, nav paths — which the surfaces render behind
+  // a disclosure instead of in front of the first control. Nothing was deleted in
+  // the split: a claim that was in a blurb is in one of these two fields.
+  //
+  // The grid card (#1880's "short blurb" ruling) renders the lead ALONE, which is
+  // what that ruling asked for and the single field could not give it.
+  lead: string;
+  // Optional because a source may genuinely have nothing behind the fold; the
+  // registry-completeness guard enforces the lead's shape, not the detail's
+  // presence.
+  detail?: string;
   dataTypes: string[];
   docsUrl?: string;
   // How many MINUTES a CONNECTED source may go without a successful run before it

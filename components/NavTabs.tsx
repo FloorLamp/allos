@@ -27,10 +27,15 @@ function stripClassName({
   className?: string;
   flush: boolean;
 }) {
-  return `overflow-x-auto overflow-y-hidden border-b border-black/10 dark:border-white/10 ${
+  // Scrollbar suppression is on the BASE, not on one branch (#3488). It used to
+  // sit only in the prominent+scroll arm, so the `grid` arm and the plain
+  // `flex gap-0.5` arm — the ordinary strips on records, medications and the rest
+  // — still painted a sliver whenever their tabs overflowed. Every arm is an
+  // `overflow-x-auto` row of tabs, so every arm owed the same suppression.
+  return `overflow-x-auto overflow-y-hidden border-b border-black/10 scrollbar-none [&::-webkit-scrollbar]:hidden dark:border-white/10 ${
     prominentOnMobile
       ? mobileLayout === "scroll"
-        ? "flex gap-0 pr-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-1 md:pr-0"
+        ? "flex gap-0 pr-px md:gap-1 md:pr-0"
         : `grid ${MOBILE_GRID_COLUMNS[mobileColumns]} md:flex md:gap-1`
       : "flex gap-0.5 sm:gap-1"
   } ${className ?? (flush ? "mb-0" : "mb-4")}`;

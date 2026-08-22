@@ -84,9 +84,18 @@ test.describe("Health Connect integration (#391)", () => {
       // endpoint URL remains); the panel points the user at Rotate instead.
       await member.goto("/integrations/health-connect");
       await expect(member.getByTestId("health-connect-status")).toBeVisible();
-      await expect(
-        member.getByText("only shown at the moment it", { exact: false })
-      ).toBeVisible();
+      // #3490 item 2 compressed the five-line show-once paragraph to one line, and
+      // moved the rotate consequence next to the Rotate button it describes.
+      await expect(member.getByTestId("health-connect-token-note")).toHaveText(
+        "The token is shown only when it’s created."
+      );
+      await expect(member.getByTestId("health-connect-rotate-note")).toHaveText(
+        "Replaces the old one — update your phone exporter."
+      );
+      // #3490 item 3: the facts list no longer restates an expiry the EXPIRY
+      // select below it already carries.
+      await expect(member.getByTestId("token-expiry")).toHaveCount(0);
+      await expect(member.getByTestId("token-expiry-select")).toBeVisible();
       await expect(member.getByTestId("health-connect-token")).toHaveCount(0);
 
       // The sync history table lives here now (#1772). This fixture profile has no

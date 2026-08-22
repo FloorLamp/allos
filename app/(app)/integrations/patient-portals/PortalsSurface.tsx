@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LeadFold from "@/components/LeadFold";
 import { useState, useTransition, type ReactNode } from "react";
 import type {
   PortalChecklistItem,
@@ -289,7 +290,8 @@ function SoftwareChips({
 export default function PortalsSurface({
   stage,
   checklist,
-  blurb,
+  lead,
+  detail,
   portals,
   accounts,
   identities,
@@ -301,7 +303,8 @@ export default function PortalsSurface({
 }: {
   stage: PortalSetupStage;
   checklist: PortalChecklistItem[] | null;
-  blurb: string;
+  lead: string;
+  detail?: string;
   portals: PortalView[];
   accounts: AccountView[];
   identities: IdentityView[];
@@ -1509,9 +1512,13 @@ export default function PortalsSurface({
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Bring in records from a portal
           </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {blurb}
-          </p>
+          <LeadFold
+            lead={lead}
+            detail={detail}
+            summary="How it works"
+            testId="integration-intro"
+            className="mt-1"
+          />
         </div>
         <ol className="space-y-4">
           {guideStep(
