@@ -8,6 +8,7 @@ import {
   machineDateHits,
 } from "@/lib/machine-date-census";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
+import { plantTrashCaptures, sweepTrashProbes } from "./trash-probe";
 
 // THE MACHINE-DATE CENSUS (#3492) — no storage-format date reaches user copy.
 //
@@ -70,6 +71,14 @@ interface CensusRoute {
   subject: string;
   /** Extra work needed before the subject is on screen. */
   reveal?: (page: Page) => Promise<void>;
+  /**
+   * A route whose subject the shared seed does not supply, so this census plants
+   * it and sweeps it (#3491). Kept as a declared property rather than a special
+   * case in the loop, because a route the census cannot render is a route whose
+   * silence means nothing — which is the failure this whole file is built around.
+   */
+  plant?: () => void;
+  sweep?: () => void;
 }
 
 // Document 908 is the e2e seed's multi-tab import (e2e/seed-events.ts): labs,
@@ -118,6 +127,38 @@ const ROUTES: CensusRoute[] = [
     why: "Import review: the READ-ONLY row presentation's DATE cell (#1182).",
     minTextNodes: 18,
     subject: "td[data-card='meta']",
+  },
+  {
+    // #3491 item 3: the Trash row printed `entry.date` in its headline and
+    // `deletedAt.slice(0, 10)` in its subtitle — TWO machine dates per row, on a
+    // surface where the date is the only thing distinguishing one untitled
+    // capture from another. Both now cross the display boundary at the surface.
+    //
+    // IT PLANTS ITS OWN SUBJECT, and that is not a shortcut. The shared seed puts
+    // nothing in `deleted_rows`, so this route renders an empty state — and an
+    // empty page is precisely the state an absence assertion is flattered by. The
+    // alternative, seeding the trash, cannot work while e2e/trash.spec.ts empties
+    // the whole trash: the route would then be censused or not by shard
+    // composition (#3388). See e2e/trash-probe.ts.
+    path: "/data?section=trash",
+    why: "Data → Trash: the row headline's capture date and its 'Deleted …' subtitle (#3491).",
+    // The floor is LOW because this route is one card and two planted rows, not a
+    // table: measured 2026-08-22 at 40 rendered text nodes, floored at a third.
+    // It still separates "the list rendered" from "the empty state rendered",
+    // which is the distinction that matters here (the empty state is one
+    // paragraph inside the page shell).
+    minTextNodes: 14,
+    subject: '[data-testid="trash-row-headline"]',
+    plant: () =>
+      plantTrashCaptures([
+        { labelSuffix: "census untitled", title: null, date: "2019-03-11" },
+        {
+          labelSuffix: "census titled",
+          title: "Morning ride along the river",
+          date: "2019-04-02",
+        },
+      ]),
+    sweep: sweepTrashProbes,
   },
 ];
 
@@ -237,47 +278,54 @@ test("no rendered copy states a machine date, on any censused surface (#3492)", 
   const stillOffending = new Set<string>();
 
   for (const route of ROUTES) {
-    await page.goto(route.path);
-    await expect(page.getByRole("main")).toBeVisible();
-    if (route.reveal) await route.reveal(page);
+    // A planted subject is swept in a `finally` below, so a failed assertion
+    // cannot leave a capture behind for the next spec in this worker to count.
+    route.plant?.();
+    try {
+      await page.goto(route.path);
+      await expect(page.getByRole("main")).toBeVisible();
+      if (route.reveal) await route.reveal(page);
 
-    // (2) THE NAMED SUBJECT, before anything is believed about silence. WAIT FOR
-    // THE CONTENT, NOT THE CONTAINER: a route that renders its shell and then its
-    // table would otherwise be censused between the two, and empty is the state
-    // that flatters an absence assertion.
-    const subject = page
-      .locator(route.subject)
-      .filter({ hasText: DISPLAY_DATE });
-    await expect(
-      subject.first(), // first-ok: read-only census — one instance is all that proves the surface rendered
-      `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
-        `the display shape, so this route's silence about machine dates means ` +
-        `nothing — ${route.why}`
-    ).toBeVisible();
+      // (2) THE NAMED SUBJECT, before anything is believed about silence. WAIT FOR
+      // THE CONTENT, NOT THE CONTAINER: a route that renders its shell and then its
+      // table would otherwise be censused between the two, and empty is the state
+      // that flatters an absence assertion.
+      const subject = page
+        .locator(route.subject)
+        .filter({ hasText: DISPLAY_DATE });
+      await expect(
+        subject.first(), // first-ok: read-only census — one instance is all that proves the surface rendered
+        `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
+          `the display shape, so this route's silence about machine dates means ` +
+          `nothing — ${route.why}`
+      ).toBeVisible();
 
-    const { examined, offenders } = await census(page, BROWSER_PATTERN);
+      const { examined, offenders } = await census(page, BROWSER_PATTERN);
 
-    // (1) THE CENSUS FLOOR.
-    expect(
-      examined,
-      `${route.path}: only ${examined} rendered text nodes — under the floor of ` +
-        `${route.minTextNodes}. This route did not render what it is in the census ` +
-        `for, so its silence about machine dates means nothing.`
-    ).toBeGreaterThanOrEqual(route.minTextNodes);
+      // (1) THE CENSUS FLOOR.
+      expect(
+        examined,
+        `${route.path}: only ${examined} rendered text nodes — under the floor of ` +
+          `${route.minTextNodes}. This route did not render what it is in the census ` +
+          `for, so its silence about machine dates means nothing.`
+      ).toBeGreaterThanOrEqual(route.minTextNodes);
 
-    totalExamined += examined;
-    seen.push(route.path);
-    for (const o of offenders) {
-      // A KNOWN offender is recorded, not hidden: it stays out of `problems` so the
-      // census can be green today, and it is required to still be here below.
-      const known = CENSUS_KNOWN_OFFENDERS.find(
-        (k) => k.route === route.path && k.testId === o.testId
-      );
-      if (known) {
-        stillOffending.add(`${known.route} ${known.testId}`);
-        continue;
+      totalExamined += examined;
+      seen.push(route.path);
+      for (const o of offenders) {
+        // A KNOWN offender is recorded, not hidden: it stays out of `problems` so the
+        // census can be green today, and it is required to still be here below.
+        const known = CENSUS_KNOWN_OFFENDERS.find(
+          (k) => k.route === route.path && k.testId === o.testId
+        );
+        if (known) {
+          stillOffending.add(`${known.route} ${known.testId}`);
+          continue;
+        }
+        problems.push(`${route.path}: ${o.where}`);
       }
-      problems.push(`${route.path}: ${o.where}`);
+    } finally {
+      route.sweep?.();
     }
   }
 
