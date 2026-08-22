@@ -1,47 +1,43 @@
-// ONE HEALTH CONNECT PUSH, THROUGH THE THREE PASSES THE INGEST RUNS (#3424).
+// ONE HEALTH CONNECT PUSH, THROUGH THE PATH THE INGEST RUNS (#3424).
 //
-// The overlap-supersede is not inside `upsertMetricSamples` any more. The owner's ruling
-// (option 2 on #3424) splits it in three, because the version that ran per row inside the
-// upsert loop deleted rows that a LATER row of the same push then read as its own
-// pre-image — a defect two adversarial rounds reached through two different doors:
+// The overlap-supersede is not inside `upsertMetricSamples`, and it is no longer a plan
+// over the payload either. The owner's ruling of 2026-08-22 derives the victim set from
+// the STORE, inside the last chunk's `IMMEDIATE` transaction and AFTER that chunk's
+// upserts have run:
 //
-//   A  planMetricSampleSupersede   read-only, over the PRE-PUSH store, over the WHOLE push
-//   B  applyMetricSampleSupersede  the deletes, once
-//   C  upsertMetricSamples         the upsert loop, with no supersede logic in it
+//   C  upsertMetricSamples            the upsert loop — it only stamps
+//   B  supersedeMetricSampleOverlaps  the victims, read from the store and deleted
 //
 // So a test that called `upsertMetricSamples` alone would exercise a mechanism production
 // does not have, and would go green on a store the real path would never produce. This
 // helper is the composition, in ONE place, shared by every spec that drives a push
 // directly.
 //
-// IT MIRRORS `ingestHealthConnectPayload`, AND A REVIEW ROUND PAID FOR SAYING SO OUT LOUD
-// RATHER THAN CLAIMING IT (#3438). The header used to promise "a spec cannot drift from
-// the ingest by re-deriving the order itself" while this file ran plan → DELETE → UPSERT
-// and production had moved to plan → UPSERT → DELETE — drift in exactly the direction the
-// owner's 2026-08-22 correction went, and the one that decides whether pass C can observe
-// pass B. The claim is now written as the three things this file must copy, each beside
-// the line that copies it:
+// THE ORDER DRIFT IS NOW STRUCTURALLY IMPOSSIBLE, AND A REVIEW ROUND PAID FOR THAT (#3438).
+// This file once ran plan → DELETE → UPSERT while production ran plan → UPSERT → DELETE,
+// and its header promised "a spec cannot drift from the ingest" while it did. The fix is
+// not a stricter promise: with the plan INSIDE the deleting transaction there is only one
+// call to place, and a helper that ran it before the upserts would be reading a store the
+// upserts had not touched — which every stamped-row assertion catches immediately. The
+// two things this file still has to copy from `ingestHealthConnectPayload` are named
+// beside the lines that copy them:
 //
 //   1. the stamp goes through `pushStampFor`, so a spec cannot mint a stamp production
 //      would refuse (it bypassed it, and both spec files were dating their pushes ten
 //      days into the future, past the 12h clock bound — every one of those stamps would
 //      have been NULL in production, and a NULL stamp supersedes nothing);
-//   2. pass B runs AFTER pass C, in the same call, as it does in the last chunk — which
-//      no assertion here can observe, because in a SINGLE chunk a victim is never a twin
-//      and neither order changes a row. It is copied anyway: "unobservable" is exactly
-//      what the first placement assumed, and the chunked case disproved it;
-//   3. `overlapsLeft` is summed from what HAPPENED — the plan's two halves plus the
-//      victims pass B's `pushed_at IS ?` guard declined — the same way the ingest sums it.
+//   2. `overlapsLeft` comes back from the supersede itself, read in the transaction that
+//      did the deleting, exactly as the ingest reads it.
 //
-// SINGLE CHUNK, deliberately. The real chunk split lives in
-// `ingestHealthConnectPayload`, and the specs that care about chunking and row order
-// (hc-overlap-push-property.test.ts above all) drive THAT rather than this. What this
-// gives a spec is one push against one store, with the passes in the order the ingest
-// runs them.
+// ONE TRANSACTION, SINGLE CHUNK, deliberately. `writeTx` is `.immediate()` and the real
+// path derives and deletes inside the last chunk's, so the helper wraps the pair in one
+// too — anything less would let a spec observe a state production never commits. The real
+// chunk split lives in `ingestHealthConnectPayload`, and the specs that care about
+// chunking and row order (hc-overlap-push-property.test.ts above all) drive THAT.
 
+import { writeTx } from "@/lib/db";
 import {
-  applyMetricSampleSupersede,
-  planMetricSampleSupersede,
+  supersedeMetricSampleOverlaps,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
@@ -51,16 +47,17 @@ import type { UpsertCounts, SyncRowSink } from "@/lib/integrations/sync-log";
 export interface MetricSamplePushResult extends UpsertCounts {
   /**
    * The number the ingest turns into its Review line: day buckets still reading high
-   * after this push finished — stored rows the plan left standing, the excess the push
-   * carries against itself, and the planned deletes pass B's concurrency guard refused.
+   * after this push finished — stored rows the predicate declined, plus the excess the
+   * push carries against itself.
    *
-   * Summed HERE the same way `ingestHealthConnectPayload` sums it, so a spec driving this
-   * helper cannot pass while the real ingest reports something else.
+   * Read from the supersede's own return, the same way `ingestHealthConnectPayload`
+   * reads it, so a spec driving this helper cannot pass while the real ingest reports
+   * something else.
    */
   overlapsLeft: number;
 }
 
-/** Plan, upsert, delete — one push, in the ingest's order. */
+/** Upsert, then supersede — one push, in one transaction, as the last chunk runs it. */
 export function pushMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
@@ -72,19 +69,13 @@ export function pushMetricSamples(
   // instant further ahead of this clock than MAX_PUSH_CLOCK_SKEW_MS becomes NULL here
   // exactly as it does in `ingestHealthConnectPayload`.
   const pushedAt = pushStampFor(options.pushedAt);
-  const plan = planMetricSampleSupersede(profileId, rows, source, { pushedAt });
-  // (2) Pass C first, then pass B — the order the last chunk's transaction runs them in.
-  const counts = upsertMetricSamples(profileId, rows, source, sink, {
-    pushedAt,
+  return writeTx(() => {
+    const counts = upsertMetricSamples(profileId, rows, source, sink, {
+      pushedAt,
+    });
+    const outcome = supersedeMetricSampleOverlaps(profileId, source, pushedAt);
+    counts.superseded += outcome.removed;
+    // (2) From the query that did the deleting, not from a forecast.
+    return { ...counts, overlapsLeft: outcome.overlapsLeft };
   });
-  const superseded = applyMetricSampleSupersede(profileId, plan.victims);
-  counts.superseded += superseded;
-  return {
-    ...counts,
-    // (3) From what happened, guard-declined victims included.
-    overlapsLeft:
-      plan.leftStanding.length +
-      plan.inPushDoubleCounts +
-      (plan.victims.length - superseded),
-  };
 }

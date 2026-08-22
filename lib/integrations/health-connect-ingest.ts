@@ -9,8 +9,7 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
-  applyMetricSampleSupersede,
-  planMetricSampleSupersede,
+  supersedeMetricSampleOverlaps,
   upsertActivities,
   upsertBodyMetrics,
   upsertHrMinutes,
@@ -91,9 +90,9 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
-  // Day buckets left double counting once this push has FINISHED — set after the chunks
-  // commit, not from the plan alone, because the plan is a forecast and the Review line
-  // claims to report what happened. See where it is computed below.
+  // Day buckets left double counting once this push has FINISHED. Read from the store
+  // in the last chunk's transaction, by the same query that decides the deletes, so it
+  // reports what HAPPENED rather than a forecast. See where it is set below.
   let overlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
@@ -154,63 +153,61 @@ export function ingestHealthConnectPayload(
     // device clock that claims the future. Null when the push states nothing readable,
     // and then this push supersedes nothing at all.
     const pushedAt = pushStampFor(parsed.pushedAt);
-    // ── PASS A (#3424) ── BEFORE `chunk()`, AND THAT IS THE WHOLE POINT.
+    // ── THE SUPERSEDE (#3424) ── DERIVED FROM THE STORE, IN THE LAST CHUNK.
     //
-    // What this push does to the stored rows, decided ONCE, read-only, over the WHOLE
-    // push and the store as it stands before any of it is written. It is a pure function
-    // of (pre-push store, push): it cannot see a row this push has written, because none
-    // has been, and it cannot see a chunk boundary, because it runs before there are any.
-    // That is what makes `final store = (pre-store − victims) ⊕ upserts` true by
-    // construction rather than by enumerating the channels that could break it — two of
-    // which were found by adversarial review after being argued unreachable.
-    const supersede = planMetricSampleSupersede(
-      profileId,
-      orderedSamples,
-      source,
-      { pushedAt }
-    );
-    // ── PASS B ── the deletes, ONCE, inside the LAST CHUNK'S transaction.
+    // There is no plan over the payload any more, and its absence is the fix (the owner's
+    // ruling of 2026-08-22T13:46Z). A read-only pass over the push, however carefully
+    // written, reads its facts at one moment and acts on them at another — and rounds 7,
+    // 8 and 9 all walked through that gap, whether the fact was one the plan never asked
+    // (a #508 tombstone refusing the replacement) or one a concurrent writer moved (a
+    // Data → Manage delete, a per-row Edit arming `edited` on the victim).
     //
-    // Not a transaction of its own, and NOT the first chunk's — that was this PR's earlier
-    // reading of the ruling, and the owner corrected it (#3424, 2026-08-22). The reason
-    // was always "a crash between the deletes and the writes must not leave a day reading
-    // LOW with nothing in flight to restore it"; first-chunk placement satisfies that only
-    // for a ONE-CHUNK push. Split the push and it does the opposite: the deletes commit
-    // with chunk 1, chunk 2 fails, and the day reads NOTHING where `main` would still read
-    // the old rows.
+    // So the victim set is derived from THE STORE, inside the LAST chunk's `IMMEDIATE`
+    // transaction and AFTER that chunk's upserts have run: a stored day bucket is a
+    // victim exactly when a row of its own group carrying THIS PUSH'S STAMP overlaps it
+    // and outranks it, unlocked. A row a veto stopped never got the stamp, so it
+    // justifies nothing — every veto is honoured without being named, and a fifth one
+    // costs no edit here. `supersedeMetricSampleOverlaps` carries the argument.
     //
-    // The invariant the placement serves, which is the thing to keep:
+    // THE PLACEMENT IS THE OTHER RULING (#3424, 2026-08-22T05:46Z), and it is the LAST
+    // chunk rather than the first:
     //
     //     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
     //     NEVER NEITHER. A day may read HIGH between commits; it must never read
     //     LOWER than `main` would.
     //
-    // So a victim is deleted only in a transaction committing with or after every row that
-    // replaces it. One chunk: the same transaction as the rows. Many: chunks 1…n−1 commit
-    // upserts only and the store transiently double counts, then the last chunk commits
-    // its upserts AND the whole victim set together. A failure in chunk k leaves old +
-    // chunks<k — visible, never a hole — and the exporter re-carries the unacked rows on
-    // its next push, which pass A re-plans over and collapses.
+    // One chunk: the deletes and the rows are in the same transaction. Many: chunks
+    // 1…n−1 commit upserts only and the store transiently double counts, then the last
+    // chunk commits its upserts AND the victim set together. A failure in chunk k leaves
+    // old + chunks<k — visible, never a hole — and the exporter re-carries the unacked
+    // rows on its next push, which re-derives over that store and collapses it. Rows
+    // landed by chunks 1…n−1 carry the stamp and are committed, so the final transaction
+    // sees the whole push.
     //
-    // `remaining` is what makes this the last chunk: the slices partition `orderedSamples`,
-    // so it reaches 0 exactly once, in the final one. The deletes run AFTER that chunk's
-    // upserts, so pass C never reads a store pass B has touched — the pass-A/pass-C
-    // invariant holds literally rather than by the twin exclusion alone.
+    // `remaining` is what makes this the last chunk: the slices partition
+    // `orderedSamples`, so it reaches 0 exactly once, in the final one.
     let remaining = orderedSamples.length;
-    // How many victims pass B actually removed — the number `counts.superseded` already
-    // reports honestly, kept here because the Review line needs the OTHER half of it.
-    let superseded = 0;
     commitChunks(
       orderedSamples,
       (slice, sink) => {
         remaining -= slice.length;
-        // ── PASS C ── the upsert loop, with no supersede logic in it at all.
+        // The upsert loop, with no supersede logic in it at all — it only stamps.
         const part = upsertMetricSamples(profileId, slice, source, sink, {
           pushedAt,
         });
         if (remaining === 0) {
-          superseded = applyMetricSampleSupersede(profileId, supersede.victims);
-          part.superseded += superseded;
+          const outcome = supersedeMetricSampleOverlaps(
+            profileId,
+            source,
+            pushedAt
+          );
+          part.superseded += outcome.removed;
+          // WHAT THIS PUSH LEFT DOUBLE COUNTING, from the same query that did the
+          // deleting: the candidates the predicate declined (locked, not outranked,
+          // cut at sub-daily granularity) plus the excess the push carries against
+          // ITSELF. Read inside the transaction that acted, so it describes what
+          // happened rather than what was forecast.
+          overlapsLeft = outcome.overlapsLeft;
         }
         return part;
       },
@@ -218,31 +215,6 @@ export function ingestHealthConnectPayload(
         samples = foldCounts([samples, c]);
       }
     );
-    // WHAT THIS PUSH LEFT DOUBLE COUNTING, COMPUTED FROM WHAT HAPPENED (#3438).
-    //
-    // It used to be summed from the PLAN, before `commitChunks` ran, while the comment at
-    // the emit site claimed it covered "every reason a supersede was declined". It did
-    // not cover the last one: pass B's concurrency guards, which decline a victim whose
-    // evidence expired between pass A's read and the DELETE — a row another push has
-    // re-stamped (`pushed_at IS ?`), or one whose replacement is no longer standing under
-    // its natural key (`EXISTS`, #3438). That row stays in the table, the day reads high,
-    // and the plan-side number had already said zero.
-    //
-    // THREE TERMS, all of them days reading high, which is the only thing the line
-    // claims. `leftStanding` is stored rows the push overlapped and did not collapse.
-    // `inPushDoubleCounts` is the excess the push carries against ITSELF — ruling item
-    // 3's "a push carrying both anchorings writes both", which leaves a day double
-    // counting with no STORED row for `leftStanding` to name. And `victims.length -
-    // superseded` is the planned deletes the guards refused: rows still standing, for a
-    // reason the plan could not see because it had not happened yet.
-    //
-    // The three are disjoint by construction: `leftStanding` and `victims` are disjoint
-    // sets of stored ids (pass A prunes one from the other), and `inPushDoubleCounts`
-    // counts incoming rows rather than stored ones.
-    overlapsLeft =
-      supersede.leftStanding.length +
-      supersede.inPushDoubleCounts +
-      (supersede.victims.length - superseded);
     commitChunks(
       parsed.hrMinutes,
       (slice) => upsertHrMinutes(profileId, slice, source),
@@ -333,10 +305,10 @@ export function ingestHealthConnectPayload(
     );
   }
 
-  // The Review line, appended to the details this push already carries. Summed above
-  // from what HAPPENED — the plan's two halves plus the victims pass B's guard declined —
-  // so it covers every reason a supersede was declined, including the one the plan cannot
-  // know because it has not happened yet.
+  // The Review line, appended to the details this push already carries. Read above from
+  // the store, inside the transaction that did the deleting, so it names the days that
+  // are still reading high once this push is on disk — whatever the reason, and with no
+  // reason enumerated anywhere.
   if (overlapsLeft > 0) {
     parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
   }

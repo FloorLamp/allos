@@ -44,7 +44,11 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
-import { planMetricSampleSupersede } from "@/lib/integrations/normalize";
+import {
+  supersedeMetricSampleOverlaps,
+  upsertMetricSamples,
+} from "@/lib/integrations/normalize";
+import { writeTx } from "@/lib/db";
 import { recordUnstampedEra } from "@/lib/integrations/unstamped-era";
 import { writeImportTombstone } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
@@ -507,12 +511,17 @@ describe("the same push leaves the same store, whatever the order and the chunki
     }
   );
 
-  it("plans the same victims and the same left-standing rows for any row order", () => {
-    // THE PURE HALF, with no sort anywhere near it. `planMetricSampleSupersede` is the
-    // function the whole argument rests on being pure in (pre-store, push); this asserts
-    // that directly, on the store the mixed-anchoring scenario builds, rather than
-    // inferring it from an outcome two sorts have already normalised.
-    const p = freshProfile("PROP PLAN-PURE");
+  it("derives the victim set from the STORE, with no payload in hand at all", () => {
+    // THE CLAIM THE WHOLE CONSTRUCTION NOW RESTS ON, asserted with nothing to permute.
+    // The owner's ruling of 2026-08-22 took the plan off the payload: a stored day bucket
+    // is a victim because a row of its own group is IN THE STORE carrying this push's
+    // stamp, and for no other reason. So the predicate can be handed a profile, a source
+    // and a stamp — no rows, no order, no chunk boundary — and must still collapse
+    // exactly what the ingest collapses. There is nothing left for an ordering to move.
+    //
+    // MUTATION: pass anything payload-shaped back into `supersedeMetricSampleOverlaps`
+    // and this call has nothing to give it.
+    const p = freshProfile("PROP STORE-DERIVED");
     ingest(
       p,
       {
@@ -522,9 +531,13 @@ describe("the same push leaves the same store, whatever the order and the chunki
       },
       500
     );
+    // The re-anchored push lands its rows and is then PREVENTED from superseding, by
+    // running it through the upsert half only — so the store is exactly what the last
+    // chunk's transaction sees just before the derivation runs.
+    const stamp = "2026-08-21T03:05:00Z";
     const rows = parseHealthConnectPayload(
       {
-        timestamp: "2026-08-21T03:05:00Z",
+        timestamp: stamp,
         app_version: "1.9.14",
         steps: [
           stepsRec(...NY_20, 11609),
@@ -535,26 +548,34 @@ describe("the same push leaves the same store, whatever the order and the chunki
       "UTC"
     ).samples;
     expect(rows.length).toBe(3);
-    const plans = [
-      rows,
-      [...rows].reverse(),
-      [rows[1], rows[2], rows[0]],
-      [rows[2], rows[0], rows[1]],
-    ].map((order) =>
-      planMetricSampleSupersede(p, order, HC, {
-        pushedAt: "2026-08-21T03:05:00Z",
-      })
-    );
-    const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b);
-    const victimIds = (plan: (typeof plans)[number]) =>
-      sorted(plan.victims.map((v) => v.id));
-    // It found something: the NY 08-19 row is a victim of the re-anchored LA 08-19
-    // bucket, and the NY 08-20 row is re-sent by this push so it is left standing.
-    expect(plans[0].victims.length).toBe(1);
-    expect(plans[0].leftStanding.length).toBe(1);
-    for (const plan of plans.slice(1)) {
-      expect(victimIds(plan)).toEqual(victimIds(plans[0]));
-      expect(sorted(plan.leftStanding)).toEqual(sorted(plans[0].leftStanding));
-    }
+    writeTx(() => upsertMetricSamples(p, rows, HC, undefined, { pushedAt: stamp }));
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ?"
+        )
+        .get(p)
+    ).toEqual({ n: 4 });
+
+    // NO PAYLOAD. Three arguments, none of which is a row.
+    const outcome = writeTx(() => supersedeMetricSampleOverlaps(p, HC, stamp));
+    // The NY 08-19 bucket is collapsed by the re-anchored LA 08-19 one. The NY 08-20 row
+    // is a row this push re-sent, so it carries the stamp and is nobody's victim — it
+    // overlaps the LA 08-20 bucket, and that is the day reading high the line reports.
+    expect(outcome.removed).toBe(1);
+    expect(outcome.overlapsLeft).toBe(1);
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT started_at FROM metric_samples WHERE profile_id = ? ORDER BY started_at"
+          )
+          .all(p) as { started_at: string }[]
+      ).map((r) => r.started_at)
+    ).toEqual([LA_19[0], NY_20[0], LA_20[0]].sort());
+
+    // AND IT IS IDEMPOTENT UNDER THE SAME STAMP, which is the same claim from the other
+    // side: everything the predicate can justify has already been done.
+    expect(writeTx(() => supersedeMetricSampleOverlaps(p, HC, stamp)).removed).toBe(0);
   });
 });
