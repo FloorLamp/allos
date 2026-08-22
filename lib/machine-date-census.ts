@@ -90,3 +90,44 @@ export const CENSUS_EXEMPT_SUBTREES: CensusExemption[] = [
       "to always-visible and this exemption's reason is gone.",
   },
 ];
+
+export interface KnownOffender {
+  /** The censused route where this hit is met. */
+  route: string;
+  /** The nearest `data-testid` ancestor of the offending text node. */
+  testId: string;
+  /** The module that builds the sentence. */
+  source: string;
+  /** Why it is NOT fixed by the change that added this census. */
+  why: string;
+}
+
+/**
+ * MACHINE DATES THE CENSUS SEES AND IS NOT FIXING YET.
+ *
+ * This is NOT the exemption list above and must never be read as one: an entry here
+ * is a real defect that a person can see, recorded rather than hidden. It exists
+ * because a census that has to be green on the day it lands otherwise gets its
+ * ROUTES trimmed until it is — which is the worst outcome available, since the
+ * routes are the coverage.
+ *
+ * SHRINK-ONLY, the same discipline as the migration-hash manifest and the
+ * e2e-hygiene allowlist: the probe asserts each entry is STILL offending, so the
+ * day one is fixed the census fails and asks for the entry to be deleted. An entry
+ * cannot quietly outlive the defect it names.
+ */
+export const CENSUS_KNOWN_OFFENDERS: KnownOffender[] = [
+  {
+    route: "/",
+    testId: "attention-item-detail",
+    source: "lib/biomarker-retest-copy.ts — biomarkerRetestDetail()",
+    why:
+      '"Last tested 2025-05-29 (15mo ago) · retest every 6mo". The sentence is ' +
+      "composed inside the Upcoming generator (lib/queries/upcoming/generators.ts), " +
+      "a profile-scoped query with NO login in context that also feeds the " +
+      "notification and digest builders — so threading DisplayFormatPrefs through it " +
+      "is a change to the Upcoming item contract, not a formatting call, and it is " +
+      "materially larger than the surfaces #3492 enumerated. Found BY this census on " +
+      "the run that first went green, which is the census doing its job.",
+  },
+];

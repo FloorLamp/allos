@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CENSUS_EXEMPT_SUBTREES,
+  CENSUS_KNOWN_OFFENDERS,
   machineDateHits,
   MACHINE_DATE_RE,
 } from "@/lib/machine-date-census";
@@ -139,6 +140,33 @@ describe("the exemption registry", () => {
         e.premise.trim().length,
         `${e.selector} has no premise — the probe has nothing to assert alongside it`
       ).toBeGreaterThan(40);
+    }
+  });
+});
+
+describe("the known-offender ledger", () => {
+  it("is not an exemption list — every entry names a source module and a reason", () => {
+    // The distinction is the whole point: an EXEMPTION says a machine date is
+    // correct here; a LEDGER entry says it is wrong and is not being fixed by this
+    // change. Conflating the two is how a defect becomes a convention.
+    const exemptSelectors = new Set(
+      CENSUS_EXEMPT_SUBTREES.map((e) => e.selector)
+    );
+    for (const k of CENSUS_KNOWN_OFFENDERS) {
+      expect(
+        exemptSelectors.has(`[data-testid="${k.testId}"]`),
+        `${k.testId} is BOTH exempt and a known offender — pick one`
+      ).toBe(false);
+      expect(k.route.startsWith("/")).toBe(true);
+      expect(k.testId.trim().length).toBeGreaterThan(0);
+      expect(
+        k.source.trim().length,
+        `${k.testId} does not name the module that builds the sentence`
+      ).toBeGreaterThan(10);
+      expect(
+        k.why.trim().length,
+        `${k.testId} does not say why it is not fixed here`
+      ).toBeGreaterThan(60);
     }
   });
 });
