@@ -122,15 +122,24 @@ export function originFromToken(data: unknown): ChatOrigin {
 }
 
 /**
- * The origin a LIVE keyboard declares — what a rebuild reads so the re-render keeps
- * saying what the original send said.
+ * The origin a LIVE keyboard DECLARES, or `null` when it declares nothing.
  *
  * The first marked button wins: one message is one send, so its buttons cannot
- * honestly disagree, and a keyboard with no marked button at all is a legacy one.
+ * honestly disagree.
+ *
+ * NULL RATHER THAN THE LEGACY DEFAULT, and the difference is load-bearing for the
+ * hourly reconcile sweep. A rebuild's job is to preserve what the delivered keyboard
+ * says; a keyboard minted before this shipped says nothing, so the rebuild must say
+ * nothing too. Answering `telegram-nudge` here instead would make every rebuild of a
+ * legacy nudge differ from the keyboard already on screen by exactly the marker, and
+ * the sweep — which edits only when the render differs — would spend one Telegram
+ * edit per live food message to add it. Two `message-reconcile` tests caught precisely
+ * that. The legacy READING still happens, but at the tap, where a value is actually
+ * needed (`originFromToken`).
  */
 export function keyboardChatOrigin(
   rows: readonly (readonly { callback_data?: string }[])[] | undefined
-): ChatOrigin {
+): ChatOrigin | null {
   for (const row of rows ?? []) {
     for (const btn of row) {
       if (typeof btn.callback_data !== "string") continue;
@@ -143,19 +152,23 @@ export function keyboardChatOrigin(
       }
     }
   }
-  return UNMARKED_CHAT_ORIGIN;
+  return null;
 }
 
 /**
  * Stamp a built message's whole keyboard with the surface that is about to send or
- * re-send it. Returns the message unchanged when it carries no markable button, and
- * passes `null` straight through so a builder's "nothing to show" answer survives.
+ * re-send it.
+ *
+ * Three things pass straight through unchanged: a `null` message (a builder's
+ * "nothing to show"), a message with no actions, and a `null` origin — which is a
+ * rebuild of a keyboard that declared nothing, and must stay that way rather than
+ * acquiring a marker the delivered message never had.
  */
 export function withChatOrigin<T extends NotificationMessage | null>(
   message: T,
-  origin: ChatOrigin
+  origin: ChatOrigin | null
 ): T {
-  if (!message?.actions) return message;
+  if (!origin || !message?.actions) return message;
   return {
     ...message,
     actions: message.actions.map((action) =>
