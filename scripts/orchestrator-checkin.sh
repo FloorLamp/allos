@@ -501,6 +501,44 @@ echo
 # 3. The roster the orchestrator's own memory cannot be trusted to hold.
 echo "--- in-flight roster (written at dispatch; the only copy that outlives you) ---"
 if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
+
+# ROSTER vs LEDGER DIVERGENCE. They are two files kept in step by
+# dispatch-brief.mjs, and ONLY by it: `new` appends to both, `done` closes both.
+# Close a dispatch by editing the JSONL directly — which is tempting, because it
+# is one append — and the roster keeps a `Cluster` line for a lane that is over.
+# That line is not cosmetic. Live-vs-done classification above is anchored to
+# `^Cluster` (see live_branches), so a stale entry makes a DEAD worktree read
+# LIVE, and a LIVE tree is never a rescue target: after a rollback restored it,
+# its dirty contents would be skipped as "belongs to a live agent". The
+# divergence is silent in both files on their own; only the comparison shows it.
+# Observed 2026-08-22 on card-mode-breakpoint. Always close with
+# `dispatch-brief.mjs done <branch>`.
+LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
+if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
+  roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
+  ledger_live=$(python3 -c '
+import json,sys
+state={}
+for line in open(sys.argv[1]):
+    line=line.strip()
+    if not line: continue
+    try: e=json.loads(line)
+    except Exception: continue
+    b=e.get("branch")
+    if b: state[b]=e.get("status")
+print("\n".join(sorted(b for b,st in state.items() if st=="active")))
+' "$LEDGER" 2>/dev/null)
+  only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+  only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+  if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
+    echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
+    [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
+    [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
+    echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
+    echo "      never a rescue target. Fix the roster by hand, then close via"
+    echo "      dispatch-brief.mjs done <branch> from now on."
+  fi
+fi
 echo
 
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
