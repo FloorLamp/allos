@@ -111,23 +111,40 @@ const STRENGTH_DIGITS_RE = /\p{Nd}/u;
 // often the STEM as the tail: "DOPamine", "DOBUTamine", "OXYcodone", "CISplatin",
 // "PARoxetine", "NIFEdipine" are the canonical published renderings — arguably the
 // most important ones — and every single one of them was FALSE under a pattern that
-// required lower-case letters BEFORE the run. So the rule is two alternatives:
+// required lower-case letters BEFORE the run.
+//
+// AND TWO ALTERNATIVES WERE STILL ONE SHORT. Adding the stem case was described here
+// as closing the convention; it did not. "OXcarbazepine" opens with a run of TWO, and
+// "ePHEDrine" — the ISMP rendering that exists precisely to separate it from
+// "EPINEPHrine" — has ONE lower-case letter before its run. Both are canonical, both
+// were quiet, and the claim has been narrowed to what the three alternatives below
+// actually decide:
 //
 //   * an upper-case run of two or more letters PRECEDED by two or more lower-case
 //     letters in the same token — "amLODIPine", "predniSONE", "traMADol";
-//   * a token that OPENS with an upper-case run of three or more and then turns
-//     lower-case for two or more — "DOPamine", "OXYcodone".
+//   * a token that OPENS with an upper-case run of two or more and then turns
+//     lower-case for two or more — "DOPamine", "OXYcodone", "OXcarbazepine";
+//   * an upper-case run of two or more with lower-case on BOTH sides of it —
+//     "ePHEDrine", "rOPINIRole". One preceding lower-case letter is not enough on
+//     its own ("mRNA", "GoLYTELY"); one preceding letter AND a lower-case tail is,
+//     because neither of those shapes has a tail.
 //
 // Every floor is load-bearing, and each one names a shape it exists to exclude:
 //   * one upper-case letter is ordinary product spelling — "CoQ10", "EpiPen";
-//   * one PRECEDING lower-case letter is the "mRNA"/"GoLYTELY" shape, a spelling
-//     rather than a warning;
-//   * the leading run needs THREE, because two is "NaCl" and every other two-letter
-//     element or unit symbol, and the shortest name on the ISMP list is three
-//     ("CISplatin", "DOPamine", "OXYcodone");
+//   * one PRECEDING lower-case letter with NO lower-case tail is the
+//     "mRNA"/"GoLYTELY" shape, a spelling rather than a warning;
 //   * the trailing lower-case run needs TWO, because one is "NSAIDs", "MCTs", "IUs" —
 //     an abbreviation wearing a plural, not a name wearing a warning. It is also what
-//     keeps "Metformin HCl ER" quiet.
+//     keeps "Metformin HCl ER", "MEq" and a bare "MG" quiet, and it is the floor
+//     doing the work now that the leading run may be two: "NaCl" is quiet because it
+//     opens with ONE capital, and every other two-letter unit or element symbol is
+//     quiet because nothing lower-case follows it.
+//
+// STILL NOT CLOSED, said rather than implied: this is a shape rule over one token and
+// the ISMP list is a vocabulary. A rendering that capitalises a single interior
+// letter, or one whose capital run sits at the very end of a token with nothing after
+// it, is outside all three alternatives. The direction of the miss is the safe one —
+// a missed offer costs a person nothing.
 //
 // The classes are Unicode (`\p{Lu}`/`\p{Ll}`) for the same reason EDGE_PUNCT_RE is:
 // a cased alphabet is not only ASCII, and an ASCII class silently reads a non-ASCII
@@ -136,7 +153,8 @@ const STRENGTH_DIGITS_RE = /\p{Nd}/u;
 // KNOWN CLOSE CALL: trademark styling of the same shape fires — "MiraLAX", "HumaLOG".
 // That is the direction to be wrong in. A true answer buys an OFFER the person can
 // ignore, never a rewrite, and RxNorm's answer for those really is the plainer name.
-const TALL_MAN_RE = /\p{Ll}{2}\p{Lu}{2,}|^\p{Lu}{3,}\p{Ll}{2,}/u;
+const TALL_MAN_RE =
+  /\p{Ll}{2}\p{Lu}{2,}|^\p{Lu}{2,}\p{Ll}{2,}|\p{Ll}\p{Lu}{2,}\p{Ll}{2,}/u;
 
 // How many letters does this token shout? 0 when it does not shout at all. Digits and
 // punctuation inside the token are ignored, so "10MG" shouts on its "MG" and "B12"

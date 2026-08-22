@@ -20,11 +20,30 @@ import {
 // claim over-reached and a two-line mutant refuted it. The census reads one file's
 // text at a time and sees a casing pass expressed FOUR ways: a casing call inside a
 // render interpolation; a casing call BOUND TO A LOCAL that a render interpolation
-// then renders; a Tailwind casing class; an inline `textTransform` style. It does
-// NOT see a casing pass that lives inside another COMPONENT — `<Shout>{med.name}</Shout>`
-// — because the transform is in `Shout`'s own definition and the call site is
-// textually identical to correct code. Closing that would take a real parser and a
-// cross-file component graph. Say "these four mechanisms", never "any mechanism".
+// then renders; a Tailwind casing class; an inline `textTransform` style.
+//
+// THE BOUND-LOCAL MECHANISM WAS THE LEAKY ONE, and it leaked through the very clause
+// its own header called a virtue: a right-hand side of `[^;{}]` stops at a block
+// body, and it stopped just as readily at a template literal's `${`, at an object
+// literal's `{`, and at nothing at all when the casing arrived as a REASSIGNMENT with
+// no declarator (`let shown = med.name; shown = shown.toUpperCase();`). Three
+// ordinary spellings, all of them green. They are in the offender list below.
+//
+// WHAT IT STILL DOES NOT SEE, and this is a list rather than a sentence because
+// "these four mechanisms" is only honest if the exclusions are named:
+//   * a casing pass inside another COMPONENT — `<Shout>{med.name}</Shout>` — because
+//     the transform lives in `Shout`'s own definition and the call site is textually
+//     identical to correct code;
+//   * a cased name that leaves the file and comes back, through a prop, a helper's
+//     return value or a context;
+//   * an alias created by a shape with no `=` in it — a destructure, a function
+//     parameter;
+//   * a casing call inside a callback body, which the RHS deliberately still stops
+//     at: reaching in named three shipped list filters that lower-case a name to
+//     COMPARE, and a guard that cries wolf on those does not survive to catch
+//     anything.
+// Closing the first three takes a real parser and a cross-file graph. Say "these four
+// mechanisms, in the spellings below", never "any mechanism".
 //
 // IT IS AN ABSENCE ASSERTION, so it fails OPEN — the sweep goes green the moment it
 // stops finding anything to examine, and that is the failure #3509 is standing on.
@@ -192,6 +211,27 @@ describe("the census rule can see an offender", () => {
       "a hoisted cased name whose binding wraps onto the next line",
       `const shown =\n  med.provider_name.toLocaleUpperCase();\nreturn <h3>{shown}</h3>;`,
     ],
+    // THE THREE THAT WALKED THROUGH THE BINDING SCAN'S OWN RIGHT-HAND SIDE. Each is
+    // a spelling somebody reaches for without thinking about it, and each was green
+    // under a rule whose header presented the reason as a feature.
+    [
+      "a cased name built in a template literal",
+      "const shown = `${med.name.toUpperCase()}`;\nreturn <h3>{shown}</h3>;",
+    ],
+    [
+      "a cased name on an object's property",
+      `const parts = { shown: med.name.toUpperCase() };\nreturn <h3>{parts.shown}</h3>;`,
+    ],
+    [
+      "a name cased by REASSIGNMENT, with no declarator on the casing line",
+      `let shown = med.name;\nshown = shown.toUpperCase();\nreturn <h3>{shown}</h3>;`,
+    ],
+    [
+      // The fixpoint's own case: an alias of a cased local is the same offence one
+      // hop further out, and a single-pass rule stops at the first hop.
+      "a cased name passed through a second local before rendering",
+      `const raw = med.name;\nconst shout = raw.toUpperCase();\nconst shown = shout;\nreturn <h3>{shown}</h3>;`,
+    ],
   ];
 
   for (const [what, source] of OFFENDERS) {
@@ -297,6 +337,22 @@ describe("the census rule stays quiet on the benign neighbours", () => {
       "a different identifier that merely starts the same way",
       `const shown = med.name.toUpperCase();\nreturn <span>{shownAt}</span>;`,
     ],
+    [
+      // THE RESTRAINT THE WIDENED RIGHT-HAND SIDE HAD TO KEEP. A first attempt let
+      // the RHS cross ANY balanced brace, which reached into callback bodies and
+      // pulled three shipped locals into the binding set — `filtered`,
+      // `flatFiltered`, `canonicalLower`, all of them list filters lower-casing a
+      // name to COMPARE. Only a `${…}` and a LEADING object literal are admitted
+      // now, so a block body still ends the match.
+      "a list filter that lower-cases a name to compare, inside a callback body",
+      `const filtered = useMemo(() => {\n  return xs.filter((p) => p.name.toLowerCase().includes(q));\n});\nreturn <ul>{filtered}</ul>;`,
+    ],
+    [
+      // An alias is not an offence. Half the tree binds a name to a local and
+      // renders it, which is the correct shape.
+      "a name bound to a local and rendered as stored",
+      `const shown = med.name;\nreturn <h3>{shown}</h3>;`,
+    ],
   ];
 
   for (const [what, source] of QUIET) {
@@ -322,13 +378,27 @@ describe("the binding scan reports what it bound", () => {
   });
 
   it("does not bind past the end of the statement", () => {
-    // `[^;{}]` stops at the statement end, so a `{` opening a block body cannot drag
-    // the following statements into the right-hand side and bind an innocent local.
+    // The right-hand side stops at the statement end, so a `{` opening a block body
+    // cannot drag the following statements into it and bind an innocent local.
     expect(
       casedNameBindings(
         `const label = plain;\nfunction f() { return x.name.toUpperCase(); }`
       )
     ).toEqual([]);
+  });
+
+  it("names the reassigned local, not the alias it started as", () => {
+    // The two-step shape, reported rather than only counted: `shown` is the local
+    // that ends up carrying a cased name, and `med.name` is not a local at all.
+    expect(
+      casedNameBindings(`let shown = med.name;\nshown = shown.toUpperCase();`)
+    ).toEqual(["shown"]);
+  });
+
+  it("leaves an uncased alias out of the set", () => {
+    // Binding a name to a local is ordinary. Only casing it is the offence, and a
+    // rule that condemned the alias would flag most of the tree.
+    expect(casedNameBindings(`const shown = med.name;`)).toEqual([]);
   });
 });
 

@@ -86,6 +86,17 @@ describe("isImportedDocumentName — Tall Man lettering", () => {
     ["DOPamine 400 MG", "DOPamine"],
     ["DOBUTamine 250 MG", "DOBUTamine"],
     ["OXYcodone HCl 5 mg", "OXYcodone"],
+    // THE TWO THE STEM ALTERNATIVE STILL MISSED, and both are canonical rather than
+    // exotic. "OXcarbazepine" opens with a run of TWO, so a three-letter floor on the
+    // leading run could never see it; "ePHEDrine" carries ONE lower-case letter
+    // before its run, and it is rendered that way precisely to separate it from
+    // "EPINEPHrine", which is the pair the convention exists for. A rule that missed
+    // both while its comment said the convention was closed was claiming more than it
+    // decided.
+    ["OXcarbazepine 300 mg", "OXcarbazepine"],
+    ["ePHEDrine sulfate 50 mg", "ePHEDrine"],
+    ["EPINEPHrine 0.3 mg auto-injector", "EPINEPHrine"],
+    ["rOPINIRole 1 mg", "rOPINIRole"],
   ];
 
   for (const [name, token] of TALL_MAN) {
@@ -100,10 +111,16 @@ describe("isImportedDocumentName — Tall Man lettering", () => {
 
   it("does not read ordinary product spelling as Tall Man", () => {
     // One interior capital is a spelling ("CoQ10", "EpiPen"); one preceding
-    // lower-case letter is the "mRNA"/"GoLYTELY" shape; a two-letter opening run is
-    // "NaCl" and every other element symbol; a one-letter lower-case tail is an
-    // abbreviation wearing a plural ("NSAIDs", "MCTs", "IUs") or a salt suffix
-    // ("HCl"). Every floor is why the benign list below stays quiet.
+    // lower-case letter with nothing lower-case after the run is the
+    // "mRNA"/"GoLYTELY" shape; a one-letter lower-case tail is an abbreviation
+    // wearing a plural ("NSAIDs", "MCTs", "IUs") or a salt suffix ("HCl").
+    //
+    // THE TRAILING FLOOR IS WHAT CARRIES THE UNIT SYMBOLS now that a leading run of
+    // TWO is enough. "NaCl" is quiet because it opens with one capital, and "MG",
+    // "MEq", "mEq", "mL", "IU" are quiet because nothing lower-case follows their
+    // run — which matters more than it looks: "MG" appears in most of the positive
+    // strings above, and a rule that read it as Tall Man would reach `true` on every
+    // dispensing label off the wrong token.
     for (const name of [
       "CoQ10",
       "EpiPen",
@@ -114,6 +131,12 @@ describe("isImportedDocumentName — Tall Man lettering", () => {
       "MCTs",
       "IUs",
       "Metformin HCl ER",
+      "MG",
+      "MEq",
+      "mEq",
+      "5 mL",
+      "Vitamin D3 5000 IU",
+      "MK-7",
     ])
       expect(tallManWords(name), name).toEqual([]);
   });

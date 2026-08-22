@@ -1249,13 +1249,6 @@ export function selectBand(
 export interface StackItem {
   name: string;
   active: boolean;
-  // What the SOURCE DOCUMENT called this item (`intake_items.source_name`, #3480):
-  // set only on an imported row whose name a person replaced with a standardized one
-  // at import review, and NULL/absent on every other row, which is nearly all of
-  // them. It is NUTRIENT EVIDENCE, not a display name — itemNutrientAmounts below
-  // carries the whole argument for why recognition reads it and the warning copy
-  // does not.
-  sourceName?: string | null;
   doseAmounts: (string | null)[];
   optional?: boolean;
   // The item's label composition (issue #2856), when the person has entered it: one
@@ -1346,41 +1339,7 @@ function itemNutrientAmounts(
   const out = new Map<string, ItemNutrientReading>();
 
   // ── The item's own name, dosed by its dose rows (the original reading) ──────────
-  //
-  // THE NAME THAT IS EVIDENCE IS NOT ALWAYS THE NAME ON SCREEN (#3480, and this is a
-  // repair rather than a nicety). NAME_MATCHERS is a vocabulary of NUTRIENT WORDS;
-  // it has no code path and never has. So when the import boundary lets somebody
-  // swap a portal's label for the RxNorm concept name — "VITAMIN D3" →
-  // "Cholecalciferol", "NIACIN ER" → "Nicotinamide", "IRON SULFATE" → "Ferrous
-  // Sulfate" — the row keeps its dose and loses the only word this file could
-  // recognise it by, and a firing upper-limit warning goes silent while the person
-  // takes exactly what they took before. That was measured on all three of those
-  // nutrients before this line existed.
-  //
-  // `sourceName ?? name` is the repair, and its safety argument is that it is a
-  // NO-OP EVERYWHERE ELSE. `source_name` is NULL on every row that was not renamed
-  // at import review — every hand-entered row, every un-adopted imported row, every
-  // row in the tree before #3480 — so for all of them the evidence is the name, as
-  // it always was. On a renamed row it is the string this file was ALREADY reading a
-  // moment earlier, because adoption writes `source_name = COALESCE(source_name,
-  // name)`. The reading is therefore identical before and after an adoption, which
-  // is the property to hold: adopting a name is a DISPLAY change and must not move a
-  // safety number in either direction. It cannot invent a warning, because it never
-  // reads a string this module was not already reading for that row.
-  //
-  // WHAT IT GIVES UP, stated because it is a real trade: if the document's label is
-  // outside the vocabulary and the standardized name is inside it ("VIT D3 1000 UNIT
-  // CAP" → an RxNorm name containing "Vitamin D"), adoption no longer WIDENS
-  // recognition. That widening never existed on main either, and taking it would
-  // mean a rename could switch a warning on — the direction a false-alarm costs
-  // more than a missed one, since this stack is also read by the RDA reassurance
-  // note.
-  //
-  // Only RECOGNITION and the elemental re-read consult it. `summarizeStack` still
-  // labels every contributor with `item.name`, so the warning names the medicine the
-  // way the person's own screen does.
-  const evidence = item.sourceName ?? item.name;
-  const nameKey = resolveNutrientKey(evidence);
+  const nameKey = resolveNutrientKey(item.name);
   const nameNutrient = nameKey ? BY_KEY.get(nameKey) : undefined;
   if (nameKey && nameNutrient) {
     // Sum the item's dose rows FIRST, then read the day's total as elemental (#2798).
@@ -1399,7 +1358,7 @@ function itemNutrientAmounts(
       contributed = true;
     }
     if (contributed) {
-      const reading = elementalReading(evidence, nameNutrient, statedTotal);
+      const reading = elementalReading(item.name, nameNutrient, statedTotal);
       out.set(nameKey, { amount: reading.amount, compound: reading.compound });
     }
   }

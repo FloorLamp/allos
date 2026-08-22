@@ -13,7 +13,10 @@
 //   • the preserved label survives a SECOND adoption — it records what the DOCUMENT
 //     said, not the previous name;
 //   • declining leaves the row exactly as the import wrote it;
-//   • another profile's row is unreachable from this profile's document.
+//   • another profile's row is unreachable from this profile's document;
+//   • and nutrient recognition follows the STORED NAME, so accepting an offer moves
+//     it exactly as typing the same name over the old one does — the equivalence is
+//     asserted in both directions, and the argument is in that block's own header.
 //
 // EACH HALF OF THE SCOPING IS ASSERTED BY A ROW THAT DIFFERS ONLY IN THAT HALF, and
 // that is not pedantry — it is the difference between a guard and a comment. The
@@ -466,29 +469,39 @@ describe("a row somebody re-saved as a supplement", () => {
   });
 });
 
-// ── THE SAFETY BELT ON THE OTHER SIDE OF THE RENAME ──────────────────────────
+// ── WHAT A RENAME DOES TO NUTRIENT RECOGNITION ───────────────────────────────
 //
-// THE DEFECT THIS PINS, because it is the one that matters most here. lib/dri.ts
-// resolves a nutrient by NAME SUBSTRING — `NAME_MATCHERS`, a vocabulary of nutrient
-// words with no code path in it, and none of the RxNorm concept names a person is
-// offered contains one: "VITAMIN D3" → "Cholecalciferol", "NIACIN ER" →
-// "Nicotinamide", "IRON SULFATE" → "Ferrous Sulfate". So accepting the offer used to
-// SILENCE a firing upper-limit warning while the person went on taking exactly the
-// same dose — measured at 2.5×, 28× and 7× the limit on the three nutrients below.
+// lib/dri.ts resolves a nutrient by NAME SUBSTRING — `NAME_MATCHERS`, a vocabulary
+// of nutrient WORDS with no code path in it. A medication's nutrient reading
+// therefore follows its STORED NAME, and ANY rename moves it: type "Cholecalciferol"
+// over "VITAMIN D3" in the medication form today and the vitamin-D upper-limit
+// warning goes quiet, on main, with no import involved. That is the shipped
+// contract.
 //
-// This PR is what created the pathway: before it nothing renamed an imported name, so
-// the document's word stayed in the row forever and the matchers went on matching.
-// A feature that breaks a safety signal ships with the repair or it does not ship.
+// ACCEPTING AN OFFER IS ONE MORE WAY TO REACH IT, AND IS DELIBERATELY NOT SPECIAL.
+// An earlier round of this PR had recognition read `source_name ?? name` so an
+// adopted row went on reading off the document's label. It was reverted. `source_name`
+// is written ONCE and never again, while `name` is rewritten by every ordinary
+// rename — so the two diverge the moment somebody edits the row from the medication
+// form, and the row's nutrient evidence would be frozen at a string the person can no
+// longer change or even see. Measured on that build: a calcium warning fired naming
+// "Lisinopril 10 mg", which contains no calcium, and a vitamin-D warning stayed
+// silent at 12.5× the limit. Following the name is both safer and consistent with
+// every other rename in the app.
 //
-// THE ASSERTION IS EQUALITY, NOT PRESENCE, and that is deliberate. "A warning still
-// fires" would pass a fix that changed the total, and lib/dri.ts is a declared
-// high-stakes path in BOTH directions — a false upper-limit warning is its own harm,
-// and the same stack feeds the RDA reassurance note, where inflation reads as
-// "you're covered". Asserting the whole reading is unchanged says the only thing
-// worth saying about a display-only change: adopting a name moves no safety number.
+// SO WHAT IS PINNED HERE IS THE EQUIVALENCE, not the direction. The same final name
+// produces the same reading whichever path put it there, because recognition is
+// keyed on the stored name and nothing else. Each case renames TWO otherwise
+// identical rows — one by accepting the offer, one by a plain name UPDATE, which is
+// all an ordinary rename does to this reading (`stackDriContext` maps `item.name`) —
+// and asserts the two readings are equal, in BOTH the silencing and the surfacing
+// direction. A future change that keyed recognition on `rxcui` would break this
+// equivalence ON PURPOSE, because it would give adoption a path a typed rename does
+// not have; it needs an rxcui→nutrient mapping this tree does not carry and is
+// filed separately.
 //
-// It runs the REAL pipeline, the REAL offer read and the REAL write, because the bug
-// lived in the join between them and a unit test on either side saw nothing wrong.
+// It runs the REAL pipeline, the REAL offer read and the REAL write, because the
+// question is about the join between them.
 
 // A CCD carrying one medication, dosed. `strength` rides in the name the way a portal
 // writes it, and the dose row is set after import because the CCD's own dose plumbing
@@ -523,8 +536,20 @@ function rdaReading(profileId: number): string[] {
   return getDietaryAdequacy(profileId).map((r) => `${r.key} ${r.total}`);
 }
 
-describe("accepting an offer does not move a safety number", () => {
-  // [what the document said, the dose, the RxNorm name offered, its code]
+// The whole DRI reading for a profile — both questions, because a rename that moved
+// only one of them would slip past an assertion on either alone.
+function driReading(profileId: number): string[] {
+  return [...ulReading(profileId), ...rdaReading(profileId)];
+}
+
+// What an ordinary rename does to this reading: it changes the stored name. Nothing
+// else `stackDriContext` reads is derived from it.
+function renameByHand(itemId: number, to: string): void {
+  db.prepare("UPDATE intake_items SET name = ? WHERE id = ?").run(to, itemId);
+}
+
+describe("a rename moves nutrient recognition the same way from either path", () => {
+  // [nutrient, what the document said, the dose, the RxNorm name offered, its code]
   const OVER_LIMIT: [string, string, string, string, string][] = [
     [
       "vitamin D",
@@ -538,75 +563,103 @@ describe("accepting an offer does not move a safety number", () => {
   ];
 
   for (const [nutrient, documentName, amount, chosen, rxcui] of OVER_LIMIT) {
-    it(`keeps the ${nutrient} upper-limit warning after the rename`, () => {
-      const { profileId, documentId, itemId } = importedDosedMedication(
-        `ul survives ${nutrient}`,
-        documentName,
-        amount
-      );
-
+    it(`reads a renamed ${nutrient} row off the name it now carries`, () => {
       // The row is over the limit, it is on the offer card, and the name it is
       // offered is one the nutrient vocabulary cannot see. All three have to be
       // true or this test is asserting nothing.
-      const before = ulReading(profileId);
-      expect(before).toHaveLength(1);
-      const rdaBefore = rdaReading(profileId);
+      const adopted = importedDosedMedication(
+        `adopted ${nutrient}`,
+        documentName,
+        amount
+      );
+      expect(ulReading(adopted.profileId)).toHaveLength(1);
       expect(
-        getDocumentImportedNameOffers(profileId, documentId).map((o) => o.id)
-      ).toEqual([itemId]);
+        getDocumentImportedNameOffers(
+          adopted.profileId,
+          adopted.documentId
+        ).map((o) => o.id)
+      ).toEqual([adopted.itemId]);
       expect(resolveNutrientKey(chosen)).toBeNull();
 
-      expect(
-        adoptImportedName(profileId, documentId, itemId, chosen, rxcui, [rxcui])
-      ).toEqual({ ok: true });
-      expect(medRows(profileId)[0].name).toBe(chosen);
+      // The control: the same import, renamed to the same string by hand.
+      const typed = importedDosedMedication(
+        `typed ${nutrient}`,
+        documentName,
+        amount
+      );
+      renameByHand(typed.itemId, chosen);
 
       expect(
-        ulReading(profileId),
-        `the ${nutrient} stack is unchanged — same row, same dose — so the ` +
-          `warning must read exactly as it did before the rename. It went SILENT ` +
-          `when nutrient recognition read only the stored name`
-      ).toEqual(before);
-      expect(rdaReading(profileId)).toEqual(rdaBefore);
+        adoptImportedName(
+          adopted.profileId,
+          adopted.documentId,
+          adopted.itemId,
+          chosen,
+          rxcui,
+          [rxcui]
+        )
+      ).toEqual({ ok: true });
+      expect(medRows(adopted.profileId)[0].name).toBe(chosen);
+
+      expect(
+        driReading(adopted.profileId),
+        `accepting the offer must read exactly as typing "${chosen}" over the ` +
+          `name does — recognition is name-keyed, so adoption is a rename and ` +
+          `nothing more. A path that read some other string for an adopted row ` +
+          `would pin this row's evidence to a name nobody can edit`
+      ).toEqual(driReading(typed.profileId));
+
+      // And say out loud where that lands for this row, so the consequence the
+      // offer's copy names is on the record rather than implied: the vocabulary
+      // cannot see the new name, so the warning is gone.
+      expect(ulReading(adopted.profileId)).toEqual([]);
     });
   }
 
-  it("does not start a warning that was not already firing", () => {
-    // The other direction, and it is the one a repair like this can get wrong. The
-    // document said nothing about a nutrient; the RxNorm name does. Recognition
-    // reads the DOCUMENT's label, so the reading is the one the row already had —
-    // a rename cannot switch a warning on any more than it can switch one off.
-    const { profileId, documentId, itemId } = importedDosedMedication(
-      "no new warning",
+  it("brings a nutrient into view the same way, when the new name is one the vocabulary knows", () => {
+    // The other direction, and the one an equality assertion is needed for: the
+    // document said nothing about a nutrient and the chosen name does. A rename
+    // can start a reading as well as end one — from either path, identically.
+    const adopted = importedDosedMedication(
+      "adopted new nutrient",
       "PREDNISONE 10 MG TAB",
       "60000 mg"
     );
-    expect(ulReading(profileId)).toEqual([]);
+    expect(ulReading(adopted.profileId)).toEqual([]);
+    const typed = importedDosedMedication(
+      "typed new nutrient",
+      "PREDNISONE 10 MG TAB",
+      "60000 mg"
+    );
+    expect(resolveNutrientKey("Calcium Prednisolone Phosphate")).toBe(
+      "calcium"
+    );
+    renameByHand(typed.itemId, "Calcium Prednisolone Phosphate");
 
     expect(
       adoptImportedName(
-        profileId,
-        documentId,
-        itemId,
+        adopted.profileId,
+        adopted.documentId,
+        adopted.itemId,
         "Calcium Prednisolone Phosphate",
         "1234",
         []
       )
     ).toEqual({ ok: true });
-    expect(resolveNutrientKey("Calcium Prednisolone Phosphate")).toBe(
-      "calcium"
-    );
+
+    expect(driReading(adopted.profileId)).toEqual(driReading(typed.profileId));
     expect(
-      ulReading(profileId),
-      "the rename is a display change; it must not conjure a calcium stack out " +
-        "of a steroid the document never called calcium"
-    ).toEqual([]);
+      ulReading(adopted.profileId).some((w) => w.startsWith("calcium ")),
+      "a rename to a name the nutrient vocabulary knows starts a calcium " +
+        "reading, whichever path made it. That is the consequence the offer's " +
+        "copy tells the person about before they choose"
+    ).toBe(true);
   });
 
   it("leaves an un-renamed row reading off its own name", () => {
-    // The control for the whole mechanism: `source_name` is NULL on every row
-    // nobody renamed, so the evidence is the name, exactly as it always was. If
-    // this ever reds, the repair has stopped being a no-op for the rest of the tree.
+    // The control for the whole feature: a row nobody renamed reads exactly as it
+    // did before #3480, and `source_name` is still NULL on it. If this ever reds,
+    // the offer has started changing rows nobody chose to change.
     const { profileId } = importedDosedMedication(
       "unrenamed control",
       "NIACIN ER 1000 MG TAB",

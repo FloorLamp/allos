@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import ImportedNameOffer from "../import/ImportedNameOffer";
 
@@ -32,6 +32,14 @@ import ImportedNameOffer from "../import/ImportedNameOffer";
 // over: the two Server Actions, the router and the toast. The component's own logic —
 // the `isCleanerName` filter over what RxNorm returned, the loading and busy copy,
 // the conditional blocks — is the real thing.
+//
+// THE ADOPT MOCK ANSWERS THREE WAYS, and the first version of this file answered only
+// one. A stub that always returns `{ok: true}` cannot observe either failure branch,
+// and `use()` had a `try … finally` with NO `catch`: a Server Action that REJECTS —
+// offline, a 500, a deploy mid-click — produced an unhandled rejection, the button
+// un-busied, and nothing on screen told the person the rename had not happened. The
+// `{ok:false}` branch was equally unobserved. Both are driven below, and the toast is
+// a SHARED spy so what the person was told is an assertion rather than an assumption.
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcui: vi.fn(async () => [
@@ -45,9 +53,15 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
 // The payload the component posted, captured rather than inferred: what the action
 // is HANDED is the whole of what this component decides.
 const adoptedPayloads: FormData[] = [];
+
+// How the action answers this test. Reassigned per case rather than re-mocked, so the
+// three outcomes a person can actually meet are all reachable from one module mock.
+type AdoptAnswer = () => Promise<{ ok: true } | { ok: false; error: string }>;
+let adoptAnswer: AdoptAnswer = async () => ({ ok: true });
+
 const adopt = vi.fn(async (fd: FormData) => {
   adoptedPayloads.push(fd);
-  return { ok: true } as const;
+  return adoptAnswer();
 });
 vi.mock("@/app/(app)/import/name-actions", () => ({
   adoptImportedMedicationName: (fd: FormData) => adopt(fd),
@@ -57,7 +71,20 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
+// One spy for every render, so a test can read what the person was told. `useToast`
+// returning a fresh `vi.fn()` per call — the first version here — is unobservable.
+const toasted: [string, { tone?: string } | undefined][] = [];
+vi.mock("@/components/Toast", () => ({
+  useToast: () => (message: string, opts?: { tone?: string }) => {
+    toasted.push([message, opts]);
+  },
+}));
+
+beforeEach(() => {
+  adoptAnswer = async () => ({ ok: true });
+  adoptedPayloads.length = 0;
+  toasted.length = 0;
+});
 
 function offer(props: { name: string; sourceName: string | null }) {
   render(
@@ -167,5 +194,89 @@ describe("what the document said survives the rename on screen", () => {
     expect(screen.getByTestId("imported-name-current").textContent).toBe(
       DOCUMENT_STRING
     );
+  });
+});
+
+describe("the moment of choosing says what accepting costs", () => {
+  it("names the consequence beside the candidates, not before them", async () => {
+    // A person pressing "Use this name" is renaming the row the nutrient and
+    // interaction checks key on, so the offer must not read as free. It belongs
+    // HERE — with both names on screen and a button under it — and not as a standing
+    // line on a card somebody scrolls past.
+    offer({ name: DOCUMENT_STRING, sourceName: null });
+    expect(screen.queryByTestId("imported-name-consequence")).toBeNull();
+    await act(async () => {
+      screen.getByTestId("imported-name-find").click();
+    });
+    expect(screen.getByTestId("imported-name-consequence").textContent).toBe(
+      "Any warnings on this med follow its name — a new name can change them."
+    );
+  });
+});
+
+describe("a rename that does not happen says so", () => {
+  // NEITHER BRANCH WAS OBSERVED BY ANY TIER. `use()` had no `catch` at all, so the
+  // rejection case ended in an unhandled rejection and a silently un-busied button —
+  // the person is looking at a medicine they believe they renamed. The DB and action
+  // tiers cannot see this: it is entirely the client's handling of what came back.
+
+  async function pressUse() {
+    offer({ name: DOCUMENT_STRING, sourceName: null });
+    await act(async () => {
+      screen.getByTestId("imported-name-find").click();
+    });
+    await act(async () => {
+      screen.getByTestId("imported-name-use-2418").click();
+    });
+  }
+
+  it("tells the person when the action REJECTS", async () => {
+    // Offline, a 500, a deploy mid-click: the promise rejects, it does not resolve
+    // to an error shape.
+    adoptAnswer = async () => {
+      throw new Error("network down");
+    };
+    await pressUse();
+    expect(
+      toasted,
+      "a rejected Server Action left the button un-busied and said NOTHING — the " +
+        "person is told the rename did not happen, in the same words the action " +
+        "uses for its own refusals"
+    ).toEqual([["Couldn't rename that medication.", { tone: "error" }]]);
+  });
+
+  it("tells the person when the action REFUSES", async () => {
+    // The `{ok:false}` shape — a stale offer, an RxNorm disagreement — whose message
+    // is the action's own and must reach the screen unaltered.
+    adoptAnswer = async () => ({
+      ok: false,
+      error: "Couldn't confirm that name with RxNorm just now. Try again.",
+    });
+    await pressUse();
+    expect(toasted).toEqual([
+      [
+        "Couldn't confirm that name with RxNorm just now. Try again.",
+        { tone: "error" },
+      ],
+    ]);
+  });
+
+  it("leaves the candidate list up so the press can be repeated", async () => {
+    // Both failures. Clearing the list on a failure would strip the person of the
+    // thing they were choosing from, with nothing renamed.
+    adoptAnswer = async () => {
+      throw new Error("network down");
+    };
+    await pressUse();
+    expect(screen.getByTestId("imported-name-use-2418").textContent).toBe(
+      "Use this name"
+    );
+  });
+
+  it("says the rename happened when it did", async () => {
+    // The control for the three above: the success message is distinguishable from
+    // both failures, so a test asserting a failure toast cannot pass on silence.
+    await pressUse();
+    expect(toasted).toEqual([["Renamed to Cholecalciferol.", undefined]]);
   });
 });

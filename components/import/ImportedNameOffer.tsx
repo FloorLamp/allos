@@ -12,10 +12,10 @@ import { useRouter } from "next/navigation";
 //
 // WHAT THE PERSON SEES. The name as the document wrote it, and a button: "Find a
 // clearer name". Pressing it lists the RxNorm concepts that match the string, each
-// with "Use this name". Nothing changes until one is pressed, and the row then says
-// what it kept: "Imported as “…”". Ignoring the offer is a complete answer — the
-// medication keeps the name it has, which is the issue's "declining keeps today's
-// behavior".
+// with "Use this name", under one line saying what accepting one costs. Nothing
+// changes until one is pressed, and the row then says what it kept: "Imported as
+// “…”". Ignoring the offer is a complete answer — the medication keeps the name it
+// has, which is the issue's "declining keeps today's behavior".
 //
 // WHY IT IS AN OFFER AND NOT A TRANSFORM. A casing pass at the display boundary
 // cannot tell whether "OR" is the route abbreviation or a word in a product name,
@@ -93,6 +93,18 @@ export default function ImportedNameOffer({
       toast(`Renamed to ${candidate.name}.`);
       setCandidates(null);
       router.refresh();
+    } catch {
+      // A REJECTED Server Action is not a returned error, and this block used to be
+      // a bare `try … finally`: offline, a 500, a deploy mid-click — the promise
+      // rejects, nothing is caught, and the only thing the person sees is the button
+      // stopping saying "Renaming…". They are left believing a medicine was renamed
+      // when it was not. `find()` above has always caught its own; this is the same
+      // failure on the half that WRITES.
+      //
+      // The same sentence the action returns for its own refusals, deliberately: the
+      // person's question is whether the name changed, and the answer is no either
+      // way.
+      toast("Couldn't rename that medication.", { tone: "error" });
     } finally {
       setBusy(null);
     }
@@ -141,6 +153,23 @@ export default function ImportedNameOffer({
           data-testid="imported-name-candidates"
           className="mt-2 space-y-1 rounded-lg border border-black/10 p-2 dark:border-white/10"
         >
+          {/* AT THE MOMENT OF CHOOSING, and only there. A stored name is what the
+              nutrient and interaction checks key on (lib/dri.ts matches nutrients by
+              name), so accepting a replacement can change which warnings this
+              medicine carries — in either direction. That is a real consequence of
+              pressing the button below, and the card's lead deliberately does not
+              carry it: a standing notice on every offer is a paragraph about
+              matching that nobody reads, while this line appears exactly when a
+              person is looking at both names and deciding between them.
+
+              It says what changes, not how the matching works. */}
+          <p
+            data-testid="imported-name-consequence"
+            className="mb-1 text-xs text-slate-500 dark:text-slate-400"
+          >
+            Any warnings on this med follow its name — a new name can change
+            them.
+          </p>
           {candidates.map((c) => (
             <div
               key={c.rxcui}

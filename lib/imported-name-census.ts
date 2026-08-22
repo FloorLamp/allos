@@ -130,28 +130,128 @@ const CASING_ON_NAME = new RegExp(
 //
 // So the scan first collects the LOCAL NAMES a casing transform of a name was bound
 // to in this file, and then treats an interpolation that renders one of them as
-// exactly what it is: a cased name reaching the DOM. `const`, `let` and `var`, and
-// the right-hand side may wrap onto the next line — `[^;{}]` spans newlines and
-// stops at the statement end, so a `{` opening a block body can never drag the
-// following statements in.
+// exactly what it is: a cased name reaching the DOM.
+//
+// THREE SHAPES WALKED THROUGH THE FIRST VERSION OF IT, and its own header called the
+// thing that let them through a virtue. The right-hand side was `[^;{}]` — "it stops
+// at the statement end, so a `{` opening a block body cannot drag the following
+// statements in", which is true and is also exactly why a `{` of ANY kind ended the
+// match early:
+//
+//     const shown = `${med.name.toUpperCase()}`;     // a template literal RHS
+//     const parts = { shown: med.name.toUpperCase() }; // an object RHS
+//     let shown = med.name;                            // and the two-step:
+//     shown = shown.toUpperCase();                     // no declarator at all
+//
+// All three are ordinary code, and the first two are what anybody building a label
+// writes. So the RHS now tolerates BALANCED braces (two levels, which is what
+// `{{ … }}` and `` `${…}` `` need) while still ending at the statement's `;`, and the
+// scan runs in two more passes:
+//
+//   * a NAME ALIAS is a local bound to a name expression with no casing on it
+//     (`const shown = med.name`). Harmless by itself — it is what half the tree does.
+//   * an ASSIGNMENT, declarator or not, that applies a casing transform to a name, to
+//     a name alias, or to an already-cased binding, marks its target cased. Repeated
+//     to a fixpoint, so a three-step hoist is caught as readily as a two-step one.
 //
 // WHAT IS STILL OUT OF REACH, said plainly rather than left for the next reviewer to
-// find: a COMPONENT that cases its own children — `<Shout>{med.name}</Shout>` — is
-// invisible to any rule that reads one file's text, because the casing lives in
-// `Shout`'s definition and the call site is indistinguishable from correct code.
-// Deciding it would take a real parser and a cross-file component graph. The census
-// claims what it measures (see the test's own wording) and no more.
-const CASED_NAME_BINDING_RE =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;{}]{0,240})/g;
+// find, because this rule reads ONE FILE'S TEXT and is not a parser:
+//   * a COMPONENT that cases its own children — `<Shout>{med.name}</Shout>` — because
+//     the casing lives in `Shout`'s definition and the call site is textually
+//     identical to correct code;
+//   * a cased name that leaves the file and comes back — through a prop, a helper's
+//     return value, a context, a module-level function in another file;
+//   * an alias chain that passes through a shape with no `=` in it, such as a
+//     destructure or a function parameter.
+// Deciding any of those takes a cross-file graph. The census claims what it measures
+// (see the test's own wording) and no more.
+
+// The right-hand side of an assignment: everything up to the statement's `;`. Two
+// brace shapes are admitted and no others, which is the whole of the widening:
+//
+//   * a `${…}` template interpolation, anywhere in the RHS;
+//   * an object literal, only when the RHS OPENS with it.
+//
+// A `{` in any other position still ends the match — so `= useMemo(() => { … })` and
+// `= () => { … }` stop at the block body exactly as before. That restraint is not
+// fastidiousness: reaching into callback bodies pulled three shipped locals into the
+// binding set on the first attempt (`filtered`, `flatFiltered`, `canonicalLower` —
+// list filters that lower-case a name to COMPARE), and a rule that starts naming
+// those is the rule that gets deleted for crying wolf, taking the real one with it.
+const BRACED = String.raw`\{(?:[^{}]|\{[^{}]*\})*\}`;
+// An optional leading object literal, then everything up to the `;` with `${…}`
+// admitted. The leading group is OUTSIDE the repetition on purpose — inside it, an
+// object literal would be allowed at any position and the restraint above would be
+// no restraint at all.
+const RHS = String.raw`(?:${BRACED})?(?:\$${BRACED}|[^;{}]){0,240}`;
+
+const DECLARED_BINDING_RE = new RegExp(
+  String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(${RHS})`,
+  "g"
+);
+
+// Any assignment, declared or not — `shown = shown.toUpperCase()` has no declarator
+// and was invisible to a rule that required one. `!=`, `==`, `>=` and `=>` are
+// excluded so a comparison or an arrow is never read as a binding.
+const ASSIGNMENT_RE = new RegExp(
+  String.raw`(?<![=!<>])\b([A-Za-z_$][\w$]*)\s*=(?![=>])\s*(${RHS})`,
+  "g"
+);
+
+// A casing transform applied to one of the locals we already know carries a name.
+function casingOnLocal(rhs: string, locals: Set<string>): boolean {
+  for (const v of locals) {
+    const id = v.replace(/\$/g, "\\$");
+    if (
+      new RegExp(`(?<![\\w$.])${id}(?![\\w$])\\s*${CASING}`).test(rhs) ||
+      new RegExp(`${CASING}\\s*(?<![\\w$.])${id}(?![\\w$])`).test(rhs)
+    )
+      return true;
+  }
+  return false;
+}
 
 // The local identifiers this source binds a cased name to. Exported so the guard can
 // assert on WHICH binding it found rather than only on the verdict.
 export function casedNameBindings(source: string): string[] {
   const clean = blankComments(source);
-  const found = new Set<string>();
-  for (const m of clean.matchAll(CASED_NAME_BINDING_RE))
-    if (CASING_ON_NAME.test(m[2] ?? "")) found.add(m[1]);
-  return [...found];
+
+  // Locals holding a name with no casing on them yet — `const shown = med.name`.
+  // Not an offence; the material for the two-step one.
+  const aliases = new Set<string>();
+  for (const m of clean.matchAll(DECLARED_BINDING_RE)) {
+    const rhs = m[2] ?? "";
+    if (NAME_IN_INTERP.test(rhs) && !CASING_ON_NAME.test(rhs))
+      aliases.add(m[1]);
+  }
+
+  const cased = new Set<string>();
+  const assignments = [...clean.matchAll(ASSIGNMENT_RE)].map(
+    (m) => [m[1], m[2] ?? ""] as const
+  );
+  // To a fixpoint: an alias cased into a second local, then rendered, is the same
+  // offence one hop further out. Bounded by the number of assignments, so it
+  // terminates on any input.
+  for (let pass = 0; pass < assignments.length + 1; pass += 1) {
+    let grew = false;
+    for (const [target, rhs] of assignments) {
+      if (cased.has(target)) continue;
+      if (
+        CASING_ON_NAME.test(rhs) ||
+        casingOnLocal(rhs, aliases) ||
+        casingOnLocal(rhs, cased) ||
+        // A bare re-binding of an already-cased local — `const shown = shout;` —
+        // carries the cased name onward untouched. Only an EXACT re-binding, so
+        // `const n = shout.length` is not condemned by mentioning one.
+        cased.has(rhs.trim())
+      ) {
+        cased.add(target);
+        grew = true;
+      }
+    }
+    if (!grew) break;
+  }
+  return [...cased];
 }
 
 // Does this interpolation render one of those bindings? A word-boundary match, so

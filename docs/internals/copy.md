@@ -227,6 +227,17 @@ the record (`intake_items.source_name`, rendered as source detail under the
 medication's name and never as a heading). Ignoring the offer is a complete
 answer — the medication keeps the name it has.
 
+Accepting one is a RENAME, with a rename's consequences, and the copy says so at
+the moment of choosing rather than pretending otherwise. Nutrient recognition is
+name-keyed (`lib/dri.ts` matches by name substring), so a new name can change
+which warnings the medication carries — in either direction, exactly as typing
+the same name into the medication form would. One line above the candidate list
+carries it: `"Any warnings on this med follow its name — a new name can change
+them."` It appears only while somebody is choosing between two names, and never
+as a standing notice on the card: a paragraph about how matching works is the
+editorializing rule 6 forbids, and a person who is not renaming anything does
+not need it. The card's lead stays a lead.
+
 Three parts, and a new importer inherits the boundary by writing rows the same
 way any importer already does:
 
@@ -236,8 +247,10 @@ way any importer already does:
   abbreviation anybody uses as a medicine's name is that long), a DISPENSING
   LABEL (two or more shouted tokens with one of four-plus letters, or three of
   any length — a name plus a strength unit plus a dose form), and TALL MAN
-  LETTERING (`"amLODIPine"`, `"predniSONE"` — the ISMP convention and standard
-  Epic/Cerner output). Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
+  LETTERING (`"amLODIPine"`, `"predniSONE"`, `"DOPamine"`, `"OXcarbazepine"`,
+  `"ePHEDrine"` — the ISMP convention and standard Epic/Cerner output, in all
+  three of its orders: the run after the stem, the run at the start, and a run
+  with lower-case on both sides). Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
   `"penicillin v potassium"`, and on the whole abbreviation shelf — `"NAC"`,
   `"DHEA"`, `"TUDCA"`, `"5-HTP"`, `"EPA/DHA"`, `"MCT oil"`. It deliberately
   UNDER-matches a short brand shouted alone (`"ASA 81 mg"`, `"HCTZ 25 mg"`),
@@ -279,10 +292,16 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
   files, 220 name render sites, 45 casing-markup sites — measured 855 / 244 / 56),
   a NAMED SUBJECT that must still register a name render
   (`app/(app)/medications/MedicationRow.tsx`, the brand-coloured heading the
-  issue was filed about), eleven synthetic offenders it must flag, and ten
-  shipped benign neighbours it must stay silent on — the 21 sites that lowercase
-  a name to compare, sort or key a Map are correct, and a guard that flagged them
-  would be deleted within the month. Comments are blanked before the scan: that
+  issue was filed about), fifteen synthetic offenders in the JavaScript half and
+  four in the markup half that it must flag, and fourteen shipped benign
+  neighbours it must stay silent on — the 21 sites that lowercase a name to
+  compare, sort or key a Map are correct, and a guard that flagged them would be
+  deleted within the month. The bound-local half sees a template-literal
+  right-hand side, an object right-hand side and a casing REASSIGNMENT with no
+  declarator; it deliberately still stops at a callback body, and what it cannot
+  see at all (a casing pass inside another component, a name that leaves the file
+  and comes back, an alias made by a destructure) is listed in the test's own
+  header rather than implied. Comments are blanked before the scan: that
   moves the count from 270 to 244, and `className` is excluded from the
   name-expression pattern because it ends in `Name` and was inflating the
   denominator by 118 sites that render no name at all.
@@ -303,6 +322,12 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
 - `lib/__action_tests__/imported-names-card.render.test.ts` — the import review
   page actually RENDERS the card. Deleting the render used to leave every tier
   green and `eslint` at exit 0, so the feature could disappear silently.
+- `components/__tests__/imported-name-offer.test.tsx` — the offer's own DOM, and
+  both ways the rename can fail. The accept handler had a `try … finally` with no
+  `catch`: a Server Action that REJECTED left the button un-busied and said
+  nothing at all, so a person was looking at a medicine they believed they had
+  renamed. Both that and the returned-error branch are driven here; no other tier
+  can see either.
 
 ### 10. Lead + fold
 
