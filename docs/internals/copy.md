@@ -270,13 +270,16 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
   on the names people write. The quiet half carries the weight: an offer that
   fires on ordinary names is dismissed by habit, and the real one goes with it.
 - `lib/__tests__/imported-name-census.test.ts` over `lib/imported-name-census.ts`
-  — no display surface casings a name, in either mechanism (a transform in a JSX
-  interpolation, or an `uppercase`/`capitalize` class over a name render).
+  — no display surface casings a name, in any of its mechanisms: a transform in a
+  JSX interpolation, an `uppercase`/`capitalize` class over a name render
+  (including one reached through a ternary), or an inline `textTransform`. The
+  element's child window is depth-aware, so a nested tag before the name no
+  longer ends it and a sibling after it is correctly outside.
   Because it is an ABSENCE assertion it fails open, so it carries floors (800
-  files, 220 name render sites, 45 casing classes — measured 855 / 244 / 54), a
-  NAMED SUBJECT that must still register a name render
+  files, 220 name render sites, 45 casing-markup sites — measured 855 / 244 / 56),
+  a NAMED SUBJECT that must still register a name render
   (`app/(app)/medications/MedicationRow.tsx`, the brand-coloured heading the
-  issue was filed about), seven synthetic offenders it must flag, and seven
+  issue was filed about), eleven synthetic offenders it must flag, and ten
   shipped benign neighbours it must stay silent on — the 21 sites that lowercase
   a name to compare, sort or key a Map are correct, and a guard that flagged them
   would be deleted within the month. Comments are blanked before the scan: that
