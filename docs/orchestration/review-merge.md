@@ -70,6 +70,15 @@ not at all five by rote.
   it could not read. `lib/__tests__/mobile-density-convention.test.ts` carries
   the fail-closed pattern (resolve, or throw). Tracked as #3509.
 
+  The qualifier, because "presence is safe" is not the rule: an assertion is
+  only as tight as its MATCHER. A substring match is a presence assertion that
+  cannot see corruption which appends to what it looks for. #3501 composed a
+  row name onto a menu that already carried one—the accessible name became
+  `Actions for Actions for entry from 12 Aug`—and two e2e specs asserting that
+  name stayed green, because Playwright matches accessible names by substring
+  and the old string survives intact inside the doubled one. Exact match, or a
+  full-string comparison, is what makes presence fail loudly.
+
 ## Verification hygiene
 
 These are not review taste; each retired a green that meant nothing.
