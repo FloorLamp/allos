@@ -127,6 +127,20 @@ async function readShape(
     ({ kind, channels }) => {
       const box = (el: Element | null) =>
         el?.getBoundingClientRect() ?? new DOMRect();
+      // THE PAINTED TEXT, NOT THE ELEMENT'S BOX. This is the whole reason the probe
+      // can see the defect at all: the old shape gave each header cell a ~37px box
+      // and the label PAINTED PAST IT — the element rects never overlapped, only the
+      // glyphs did, which is exactly what "TelegramPush" is. A Range over the node's
+      // contents measures where the text actually landed, for an inline span and a
+      // block one alike.
+      const textBox = (el: Element | null) => {
+        if (!el) return new DOMRect();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const r = range.getBoundingClientRect();
+        range.detach();
+        return r.width > 0 || r.height > 0 ? r : el.getBoundingClientRect();
+      };
       const card = document.querySelector<HTMLElement>(
         '[data-testid="notification-kinds"]'
       );
@@ -147,7 +161,7 @@ async function readShape(
             null;
           const boxEl = scope?.querySelector<HTMLElement>(control(c)) ?? null;
           const chip = box(chipEl);
-          const name = box(nameEl ?? null);
+          const name = textBox(nameEl ?? null);
           const b = box(boxEl);
           return {
             id: c,
@@ -486,23 +500,37 @@ test.describe("Message kinds at phone width (#3495)", () => {
       // channel's name stacked over its state over its box. If the probe cannot call
       // this collided, then its clean verdict above was never a measurement.
       await member.evaluate(() => {
+        // `!important` on both sides: the phone rules carry it (they override the
+        // call site's own utilities), so a plain inline style would lose to them and
+        // the "forgery" would silently be a no-op — a probe test that proves nothing
+        // while passing is the failure this case exists to avoid.
+        const set = (el: HTMLElement, prop: string, value: string) =>
+          el.style.setProperty(prop, value, "important");
         const strip = document.querySelector<HTMLElement>(
           "[data-matrix-head] [data-matrix-channels]"
         )!;
-        strip.style.display = "grid";
-        strip.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
-        strip.style.width = "160px";
-        strip.style.textAlign = "center";
+        set(strip, "display", "grid");
+        set(strip, "grid-template-columns", "repeat(4, minmax(0, 1fr))");
+        set(strip, "width", "160px");
+        set(strip, "text-align", "center");
         for (const cell of strip.querySelectorAll<HTMLElement>(
           "[data-matrix-head-cell]"
         )) {
-          cell.style.display = "block";
+          set(cell, "display", "block");
           for (const child of cell.querySelectorAll<HTMLElement>("span"))
-            child.style.display = "block";
+            set(child, "display", "block");
         }
       });
 
       const forged = await readShape(member, GHOST_KIND, CHANNEL_IDS);
+      // The OTHER reading the fixed shape asserts: at least one label now paints past
+      // its own cell. Both directions of the probe are exercised, because the two
+      // assertions above fail for different reasons.
+      expect(
+        forged.head.filter((c) => c.labelRight > c.right + 1).map((c) => c.id),
+        "no forged header label paints past its own 40px cell, so the overflow " +
+          "half of the probe cannot see either"
+      ).not.toEqual([]);
       expect(
         collisions(forged.head),
         "the geometry probe did NOT see header labels it was just made to " +
