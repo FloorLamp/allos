@@ -45,6 +45,14 @@
 // audit.md, and `--baseline <prior shots dir>` diffs a previous run —
 // firstData/height growth >15% flags a route, ANY +1 tap flags an action.
 //
+// Geometry probes (#3489): the same census visit also MEASURES RENDERED BOXES —
+// elements whose box exits the viewport horizontally, and rows whose interactive
+// controls differ in height by more than 2px. Both land in metrics.json and as the
+// first two ranked tables in audit.md. The rule is scripts/ux-geometry-census.mjs
+// (shared with the guard that proves it can see); the point is that a contact
+// sheet cannot show a 4px height difference or a chevron one pixel off-screen, so
+// the classes behind #3478/#3481/#3486 were invisible to a census made of pictures.
+//
 // Notes discovered the hard way:
 //   - EMAIL_TEST_CAPTURE (lib/email.ts) is the deterministic mailbox: every send
 //     appends a JSON line there instead of hitting SMTP, so the invite journey
@@ -71,6 +79,11 @@ import {
   HUB_VARIANTS,
   routeSlug,
 } from "./ux-census-routes.mjs";
+import {
+  GEOMETRY_THRESHOLDS,
+  geometryAuditSections,
+  geometryProbe,
+} from "./ux-geometry-census.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -319,6 +332,12 @@ function writeAuditArtifacts(baselineDir) {
     for (const r of aliased) lines.push(`| ${r.route} | ${r.landedOn} |`);
     lines.push("");
   }
+  // #3489 deliverable 1: geometry findings rank ABOVE the existing tables. They
+  // are the only rows here that name a specific broken element rather than a
+  // page-level number, so they are what a reader should meet first — and unlike
+  // firstData/height they cover BOTH viewports, because a control can run off a
+  // 1280px desktop too.
+  lines.push(...geometryAuditSections(metricsRows));
   if (mobile.length) {
     lines.push("## Worst first-data offsets (px, mobile)", "");
     lines.push("| route | firstData |", "|---|---|");
@@ -887,13 +906,23 @@ async function pagesJourney(browser) {
         const wanted = new URL(`${BASE}${target}`).pathname;
         // #1510 Part 1: the metrics probe rides the census visit it already made.
         const m = await page.evaluate(pageProbe);
+        // #3489 deliverable 1: the geometry probes ride the SAME visit. They read
+        // rendered boxes (getBoundingClientRect), never computed styles — the
+        // #3466 lesson: a declaration is not what the user sees.
+        const g = await page.evaluate(geometryProbe, GEOMETRY_THRESHOLDS);
         metricsRows.push({
           route,
           ...(target === route ? {} : { resolved: target }),
           ...(landedOn === wanted ? {} : { landedOn }),
           viewport: tag,
           ...m,
+          ...g,
         });
+        if (g.clippedTotal || g.heightRowsTotal)
+          log(
+            `geometry ${route} (${tag}): ${g.clippedTotal} clipped, ${g.heightRowsTotal} mixed-height rows` +
+              ` (of ${g.clipCandidates} boxes / ${g.controlRowsExamined} control rows examined)`
+          );
         if (m.renderFault)
           log(
             `RENDER FAULT ${route} (${tag}) at ${target}: ${m.renderFault} — the shot is a boundary, not the page`
