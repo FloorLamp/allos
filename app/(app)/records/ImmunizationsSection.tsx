@@ -554,7 +554,10 @@ export default function ImmunizationsSection({
             </details>
 
             <details className="border-t border-black/5 pt-4 dark:border-white/5">
-              <summary className="cursor-pointer text-slate-800 dark:text-slate-100">
+              <summary
+                data-testid="immunization-schedule-disclosure"
+                className="cursor-pointer text-slate-800 dark:text-slate-100"
+              >
                 <h3 className="inline font-semibold">
                   CDC recommended schedule
                 </h3>

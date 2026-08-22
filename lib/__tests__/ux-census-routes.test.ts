@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
+  HOVER_CAPTURES,
   HUB_VARIANTS,
   routeSlug,
 } from "../../scripts/ux-census-routes.mjs";
@@ -170,6 +171,105 @@ describe("ux census disclosure-expansion registry", () => {
       expect(seen.has(e.route), `duplicate entry for ${e.route}`).toBe(false);
       seen.add(e.route);
       expect(e.label, `${e.route} has no label`).toBeTruthy();
+    }
+  });
+});
+
+// #3489 deliverable 4: the hover-capture registry. Same job as the disclosure
+// registry above — the census is a manual seeing tool that may not run for weeks,
+// so a selector that stopped matching would otherwise cost a BLIND SPOT line
+// nobody reads until the next run. The failure here is cheap and immediate.
+//
+// AND ONE MORE THING THIS PINS THAT THE DISCLOSURE GUARD DOES NOT: the markers the
+// registry names must still EXIST in the tree. A hover registry is unusually
+// exposed to a silent rename, because its whole subject is a state no other
+// screenshot shows: if `standing-door` is renamed, every other check in this repo
+// stays green, the census keeps running, and the only symptom is a shot that
+// quietly stops being taken.
+describe("ux census hover-capture registry", () => {
+  // The marker corpus: every data-testid literal and every className token the
+  // app renders. Built from source rather than from a list, so it cannot drift.
+  const sourceDirs = [
+    path.join(here, "..", "..", "app"),
+    path.join(here, "..", "..", "components"),
+  ];
+  let corpus = "";
+  const collect = (dir: string): void => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        collect(full);
+        continue;
+      }
+      if (/\.(tsx|ts|css)$/.test(e.name))
+        corpus += fs.readFileSync(full, "utf8");
+    }
+  };
+  for (const d of sourceDirs) collect(d);
+
+  /**
+   * The identifying tokens a selector depends on: testid values and class names.
+   * Element names, combinators and pseudo-classes are deliberately NOT checked —
+   * `tbody td` renaming is not a thing, and a check that matched on them would be
+   * noise. What is checked is the part somebody can rename in one commit.
+   */
+  const markersIn = (selector: string): string[] => [
+    ...[...selector.matchAll(/data-testid="([^"]+)"/g)].map((m) => m[1]),
+    ...[...selector.matchAll(/(?:^|[\s,>+~])\.?[a-z]*\.([a-zA-Z][\w-]*)/g)].map(
+      (m) => m[1]
+    ),
+  ];
+
+  it("registers only live static routes, once each, with a ruling named", () => {
+    const seen = new Set<string>();
+    for (const e of HOVER_CAPTURES) {
+      expect(
+        staticRoutes.has(e.route),
+        `${e.route} is not an app/(app) route`
+      ).toBe(true);
+      expect(seen.has(e.route), `duplicate entry for ${e.route}`).toBe(false);
+      seen.add(e.route);
+      expect(e.label, `${e.route} has no label`).toBeTruthy();
+      expect(e.target, `${e.route} has no hover target`).toBeTruthy();
+      // The ruling is not decoration: a hover capture only earns its place in the
+      // contact sheet if a reader can see WHY this surface's information lives on
+      // hover at all. #3253 decision 2 and #3375 are the two today.
+      expect(
+        e.ruling,
+        `${e.route} does not name the ruling it captures`
+      ).toMatch(/#\d+/);
+    }
+  });
+
+  it("keys each hover shot to a distinct capture slug", () => {
+    const slugs = HOVER_CAPTURES.map((e) => `${routeSlug(e.route)}-hover`);
+    expect(new Set(slugs).size, "two hover entries share a shot filename").toBe(
+      slugs.length
+    );
+  });
+
+  it("names markers that still exist in the tree", () => {
+    for (const e of HOVER_CAPTURES) {
+      const selectors = [e.target, e.reveals, e.openFirst].filter(
+        Boolean
+      ) as string[];
+      for (const sel of selectors) {
+        const markers = markersIn(sel);
+        expect(
+          markers.length,
+          `${e.route}: \`${sel}\` names no testid or class this guard can pin. ` +
+            `A selector built only from element names cannot be checked for a ` +
+            `rename, which is the failure this registry is most exposed to.`
+        ).toBeGreaterThan(0);
+        for (const marker of markers)
+          expect(
+            corpus.includes(marker),
+            `${e.route}: \`${marker}\` (from \`${sel}\`) is no longer rendered ` +
+              `anywhere under app/ or components/. The hover capture for ` +
+              `"${e.label}" would stop being taken and only a BLIND SPOT line in a ` +
+              `census run nobody has done yet would say so.`
+          ).toBe(true);
+      }
     }
   });
 });
