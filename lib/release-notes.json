@@ -92,6 +92,18 @@
           "title": "On a phone, panels inside a card and the gaps between sections both step down a notch, so less of the screen is padding",
           "kind": "feature",
           "issues": [3466]
+        },
+        {
+          "pr": 3511,
+          "title": "Guards over UI components can be tested cheaply now, so a broken safeguard shows up before it reaches you",
+          "kind": "fix",
+          "issues": [3446]
+        },
+        {
+          "pr": 3508,
+          "title": "Deleting an entry from its form waits for the server, so a discard can no longer leave a stray draft behind",
+          "kind": "fix",
+          "issues": [3454]
         }
       ]
     },
