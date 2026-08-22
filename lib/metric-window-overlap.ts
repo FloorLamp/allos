@@ -59,9 +59,10 @@ import {
 // landed: the same push stored 11609 or 22609 depending only on where the chunk boundary
 // fell, because a delete for one row changed the natural-key twin a later row looked up.
 // What makes order and chunking irrelevant is that THE DELETES ARE NOT DECIDED IN THE
-// WRITE LOOP AT ALL - see the three passes above `planMetricSampleSupersede` in
-// lib/integrations/normalize.ts. This rule is what that plan consults; it is not what
-// makes the plan order-free.
+// WRITE LOOP AT ALL, and are not decided from the payload either: the victim set is
+// derived from THE STORE, in the last chunk's transaction, from the rows that push
+// actually wrote - see `supersedeMetricSampleOverlaps` in lib/integrations/normalize.ts.
+// This rule is what that derivation consults; it is not what makes it order-free.
 
 // AND A NULL STAMP IS *UNKNOWN*, NOT "OLDER THAN EVERYTHING". This is the third state
 // the rule needs, and reading it as the second one was a defect that survived four
@@ -476,12 +477,16 @@ export function pushStampFor(
 /**
  * Plan what an INCOMING window does to the stored rows it overlaps.
  *
+ * `incoming` IS A ROW THE STORE ALREADY HOLDS, in the one caller that matters: the row
+ * this push wrote, read back inside the transaction that will do the deleting. Nothing
+ * about that changes the decision below, which is why this function is unchanged by the
+ * ruling that moved it - it was always a statement about two windows and two stamps.
+ *
  * `stored` is the candidate set for one (profile, metric, source, origin) group, already
- * narrowed to the day radius and with EVERY natural key the push will upsert excluded -
- * not just this row's own twin. Those rows are the upsert's business, not the
- * supersede's, and excluding all of them is what lets the upsert loop read its own
- * pre-image against a store the deletes cannot have moved under it. The caller
- * (`planMetricSampleSupersede`) owns that exclusion; this function just decides.
+ * narrowed to the day radius and with every row THIS push wrote excluded - the caller
+ * (`supersedeMetricSampleOverlaps`) owns that exclusion, spelled `pushed_at IS NOT ?`,
+ * and it is what keeps two rows of one push from being each other's victims. This
+ * function just decides.
  *
  * A stored row is superseded when ALL of these hold: the incoming window is a
  * day-bucket window of a tiling metric; the two overlap as instants; the STORED window

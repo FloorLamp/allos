@@ -8,19 +8,20 @@
 // times a channel nobody had enumerated produced the same outcome: a day reading LOW,
 // `warnings: []`, and the correct row destroyed.
 //
-// So this file does not test channels. The owner's ruling (option 2 on #3424) replaced
-// the construction with three passes:
+// So this file does not test channels. The owner's ruling of 2026-08-22 replaced the
+// construction with two phases:
 //
-//   A  plan, read-only, over the PRE-PUSH store, over the WHOLE push, before `chunk()`
-//   B  apply the deletes, once
-//   C  the upsert loop, with no supersede logic in it at all
+//   C  the upsert loop, with no supersede logic in it at all — it only stamps
+//   B  the victim set DERIVED FROM THE STORE and deleted, in the LAST chunk's IMMEDIATE
+//      transaction, AFTER that chunk's upserts
 //
-// whose correctness argument is one line — final store = (pre-store − victims) ⊕ upserts,
-// with `victims` a pure function of the pre-store and the push. That line says the final
-// store is independent of row order and chunking BY CONSTRUCTION. This file is that line
-// as an executable claim: the SAME push, against the SAME non-empty store, driven
-// through every ordering and chunk size below, must leave byte-identical rows and an
-// identical split every time.
+// whose correctness argument is two lines — final store = (store after ⊕ upserts) −
+// victims, with `victims` a pure function of THE STORE read in the transaction that
+// deletes it. Those lines say the final store is independent of row order and chunking BY
+// CONSTRUCTION: the predicate never sees a row order, a chunk boundary or a payload. This
+// file is that as an executable claim — the SAME push, against the SAME non-empty store,
+// driven through every ordering and chunk size below, must leave byte-identical rows and
+// an identical split every time.
 //
 // WHICH KNOB DOES WHICH WORK, stated rather than implied. `ingestHealthConnectPayload`
 // sorts the parsed samples by `started_at` before chunking, and `upsertMetricSamples`
@@ -157,7 +158,7 @@ function ingest(
 //
 //   `writeOrder` is the same rows keyed by their rank in `id` order — a fact about which
 //   physical order they were written in, which is what the ascending-`started_at` sort
-//   delivers and the ONLY thing it delivers. Measured: with the three passes in place and
+//   delivers and the ONLY thing it delivers. Measured: with the two phases in place and
 //   both sorts removed, `content` is byte-identical across every ordering and chunk size
 //   and only `writeOrder` moves. That is the owner's ruling made executable — the sort is
 //   deterministic write order and NOT what makes the store correct — and it is why these
@@ -330,14 +331,21 @@ const SCENARIOS: Scenario[] = [
     // of a NULL-stamped pre-era row arrives in the same push as the re-anchored bucket
     // that overlaps it.
     //
-    // Under the three passes the stored row is a natural key of this push, so it is never
-    // a victim: the retry finds its twin, `isStaleMetricSnapshot` holds the converged
-    // value, and the re-anchored bucket is written beside it. Under the per-row rule the
-    // outcome depended entirely on which row the loop reached first — the re-anchored
-    // bucket first DELETED the twin, so the retry's `found` came back undefined,
-    // `staleRetry` flipped to false and THE STALE VALUE WAS WRITTEN; the retry first and
-    // the row was held, then deleted, and the reading vanished. Three orders, three
-    // different stores, all with `warnings: []`.
+    // Under the per-row rule the outcome depended entirely on which row the loop reached
+    // first — the re-anchored bucket first DELETED the twin, so the retry's `found` came
+    // back undefined, `staleRetry` flipped to false and THE STALE VALUE WAS WRITTEN; the
+    // retry first and the row was held, then deleted, and the reading vanished. Three
+    // orders, three different stores, all with `warnings: []`.
+    //
+    // AND THE STORE-DERIVED PREDICATE CHANGES THE OUTCOME HERE, in the converging
+    // direction, which is worth stating because the payload-side plan did not (#3438).
+    // The retry is stale-retry vetoed, so it is never stamped and the stored twin keeps
+    // the converged 11609 — but that twin is NULL-stamped, pre-era and unlocked, and the
+    // re-anchored bucket that DID land overlaps it. It is therefore a victim, and the day
+    // collapses to the LA anchoring's 11721 instead of summing to 23330. The old
+    // push-key exclusion protected it because the push CARRIED its key; the ruling asks
+    // only what the push WROTE, and nothing was written there. `survivors` states the
+    // outcome absolutely rather than leaving it to a between-run comparison.
     name: "a stale retry beside the re-anchored bucket that overlaps it",
     seed: (p) => {
       seedUnstamped(p, "steps", ...NY_20, 11609);
@@ -357,13 +365,15 @@ const SCENARIOS: Scenario[] = [
         distRec(...LA_20, 9300),
       ],
     },
+    survivors: ["distance_km@2026-08-20T07:00:00Z", "steps@2026-08-20T07:00:00Z"],
   },
   {
     // A TOMBSTONE IN THE PUSH'S PATH — round 7's refutation, as a property rather than an
     // instance (#3438). The store holds the NY anchoring. The user deleted the
     // LA-anchored duplicate for 08-19 through Data → Manage, which writes a
     // `metric_samples` tombstone on that exact `started_at`, and the rolling window
-    // re-sends it anyway. Pass C is FORBIDDEN to write that row, so pass A must plan no
+    // re-sends it anyway. Pass C is FORBIDDEN to write that row, so it is never stamped
+    // and the derivation must plan no
     // delete for the NY row it overlaps — while the 08-20 pair, which nothing forbids,
     // still collapses. Both halves in one push, so a chunk boundary falls between them.
     //
@@ -409,8 +419,9 @@ const SCENARIOS: Scenario[] = [
     // tests ever reached. The stored NY row is BOTH a row this push re-sends AND a row
     // this push's LA bucket overlaps and outranks. Under the per-row rule it was deleted
     // by the LA bucket and re-inserted (or not) depending on which the loop reached
-    // first; the plan excludes every natural key of the push from being a victim, so it
-    // survives whatever the order, and the day reading high is reported instead.
+    // first. The push WRITES it — a re-send under its own natural key — so it carries this
+    // push's stamp, and two rows of one push are never each other's victims: it survives
+    // whatever the order, and the day reading high is reported instead.
     name: "a mixed-anchoring push over a store holding one of the two",
     seed: (p) => {
       ingest(

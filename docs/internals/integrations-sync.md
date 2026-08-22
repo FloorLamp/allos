@@ -753,8 +753,8 @@ profile-local day. Measured on prod profile 1 after a one-tap New York → Los
 Angeles switch — 23330 steps on a day with 11721, and the same shape on
 `distance_km`, `total_kcal` and `active_kcal`. WHAT may supersede WHAT is decided in
 `lib/metric-window-overlap.ts` and is scoped to `source = health-connect`; the deletes
-are planned and applied in `lib/integrations/normalize.ts`, driven from
-`lib/integrations/health-connect-ingest.ts`, and run in three passes (below).
+are derived and applied in `lib/integrations/normalize.ts`, driven from
+`lib/integrations/health-connect-ingest.ts`, in two phases (below).
 
 **A PUSH CARRIES ONE ANCHORING**, which is why the rule is one rule. The owner settled
 this from the exporter's retained bodies (the ruling on #3424): across all 50 pushes
@@ -785,164 +785,148 @@ stamp and supersedes nothing; a stampless push supersedes nothing. Freshness del
 does not compare the two windows' ENDS: a completed re-anchored bucket for a past day
 legitimately ends earlier than the old-anchoring "today so far" row it overlaps.
 
-**IT RUNS IN THREE PASSES, AND NOT INSIDE THE WRITE LOOP.** The rule used to run per row
-inside the upsert loop: find the overlaps, delete them, upsert. The owner's ruling (#3424,
-option 2) splits it:
+**IT RUNS IN TWO PHASES, AND THE SUPERSEDE IS NOT INSIDE THE WRITE LOOP.** The rule used
+to run per row inside the upsert loop: find the overlaps, delete them, upsert. A first
+ruling (#3424, option 2) replaced that with a read-only PLAN over the payload, computed
+before any row was written — and the owner's ruling of 2026-08-22T13:46Z replaced the plan
+in turn. What ships is:
 
-- **A — `planMetricSampleSupersede`** (`lib/integrations/normalize.ts`). Read-only, over
-  the PRE-PUSH store, over the WHOLE push, and **before `chunk()`**. Returns the stored
-  row ids the push collapses and the overlaps it leaves standing.
-- **B — `applyMetricSampleSupersede`**. The deletes, once, inside the **last** chunk's
-  transaction, after that chunk's upserts (see the invariant below).
-- **C — `upsertMetricSamples`**. The upsert loop, with no supersede logic in it at all.
+- **C — `upsertMetricSamples`** (`lib/integrations/normalize.ts`). The upsert loop, with
+  no supersede logic in it at all. All it does for the rule is write `pushed_at`.
+- **B — `supersedeMetricSampleOverlaps`**. The victim set **derived from the store** and
+  deleted, inside the **last** chunk's `IMMEDIATE` transaction, **after** that chunk's
+  upserts have run.
 
-The invariant that split buys is one line:
+**WHY THE PLAN WENT, AND IT IS THE WHOLE OF WHAT ROUNDS 7–9 BOUGHT.** A read-only pass over
+the payload reads its facts at one moment and acts on them at another, and every refutation
+after the split walked through that gap:
+
+| round | what moved between the read and the DELETE |
+| --- | --- |
+| 7 | a fact the plan never asked — the #508 tombstone refused the row whose landing licensed the delete, and the day went to **zero** |
+| 8 | a fact a concurrent writer moved — the user deleted the replacement through Data → Manage, and the tombstone that delete writes vetoed the push's re-send |
+| 9a | `updateReadingAt` armed the #133 lock on the VICTIM, from the trends detail page's per-row Edit, between the passes |
+| 9b | round 8's own `EXISTS` clause was insufficient: "a row stands under that key" does not imply "that row covers what the victim covered", and a fifteen-minute locked twin licensed collapsing a whole day bucket — 8060 → 60 |
+
+Each fix was another re-statement clause in the DELETE, and the argument for "this is the
+last one" had become a ten-row table rather than a construction. That is option 1 at the
+guard level, over a shape that keeps producing them.
+
+**THE CONSTRUCTION THAT CLOSES THE CLASS.** Inside the last chunk's `IMMEDIATE`
+transaction, after that chunk's upserts:
+
+> A stored day-bucket row of `(profile, metric, source = health-connect, origin)` is a
+> victim iff, **under the lock right now**: it is overlapped by a row of the same group
+> carrying **this push's stamp**; its own stamp is older or NULL-in-era; `edited = 0`; its
+> key is not one this push wrote. Delete exactly those, in the same transaction.
+
+**Nothing about the payload enters it.** The justification for a delete is a row that IS IN
+THE STORE WITH THIS PUSH'S STAMP — which is true precisely when pass C let it land, because
+every upsert that runs stamps the row (`unchanged` re-sends included) and a tombstoned,
+mis-routed, edit-locked or stale-retry row never gets the stamp onto a row that could
+justify anything. So the four vetoes are **structurally visible without being enumerated**:
+a suppressed replacement justifies nothing (7, 8); an edit-lock on a narrow twin leaves no
+stamped DAY BUCKET overlapping the victim (9b); `edited`, `pushed_at` and the overlap are
+read where `writeTx` is `.immediate()` and no other writer can move them (9a). Rows landed
+by chunks 1…n−1 carry the stamp and are committed, so one query sees the whole push; a
+concurrent LATER push carries a LATER stamp and justifies only its own deletes.
+
+The clauses live in four places, and each is a term of the predicate rather than a guard
+bolted onto it:
+
+- `WHERE profile_id = ? AND source = ? AND pushed_at = ?` — **the rows this push wrote**,
+  served by `idx_metric_samples_pushed` (`20260822-hc-pushed-at-index`; without it this is
+  a scan of the profile's whole sample history under the write lock).
+- `isSupersedingWindow` on each of them — **the metric list and the granularity gate**.
+  Also the cost bound: an 11.5k-row `1m` push clears the gate nowhere and issues no
+  candidate query at all.
+- `AND pushed_at IS NOT ?` on the candidate query — **"its key is not one this push
+  wrote"**, NULL-safely. Two rows of one push share a stamp, so neither is the other's
+  victim: a push carrying BOTH anchorings writes both (ruling item 3) and the day double
+  counts visibly.
+- `planSupersede` (`lib/metric-window-overlap.ts`) — the overlap as INSTANTS, the stored
+  row's own day-bucket granularity, `pushOutranks` (with NULL read as UNKNOWN and the era
+  markers as the only thing that licenses deleting one), and the #133 edit lock.
+
+The correctness argument is then two lines:
 
 ```
-final store = (pre-store − victims) ⊕ upserts
+final store = (store after ⊕ upserts) − victims
+victims     = a pure function of THE STORE, read in the transaction that deletes it
 ```
 
-where `victims` is a pure function of (pre-push store, push), computed before anything is
-written. Order- and chunk-independence follow from THAT, not from an enumeration of the
-channels that could break them — which is the point, because the enumeration was wrong
-twice. `lib/__db_tests__/hc-overlap-push-property.test.ts` is that line as a test: the
-same push, several orderings and chunk sizes including a one-row chunk, against a
-NON-EMPTY store, must leave byte-identical rows every time.
+Order- and chunk-independence follow from the second line: the predicate never sees a row
+order, a chunk boundary, or a payload. `lib/__db_tests__/hc-overlap-push-property.test.ts`
+is that as a test — the same push, several orderings and chunk sizes including a one-row
+chunk, against a NON-EMPTY store, must leave byte-identical rows every time, and one case
+calls the predicate with a profile, a source and a stamp and nothing else.
 
-**WHERE PASS B COMMITS, AND THE INVARIANT THAT DECIDES IT.** The line above is about the
-FINAL state. A chunked push also has states BETWEEN commits, and the first version of pass
-B got them wrong: it ran in the FIRST chunk's transaction, justified by "a crash between
-the deletes and the writes must not leave a day reading low with nothing in flight to
-restore it". That reason is right and the placement was not — it satisfies the reason only
-when the push is ONE chunk. Split it and the deletes commit with chunk 1, chunk 2 fails,
-and the day reads NOTHING where `main` still reads the old row (measured: 8000 → nothing).
-The owner corrected it (#3424, the ruling of 2026-08-22) and pinned the invariant instead:
+**THE DELETE CARRIES NO RE-STATEMENT CLAUSES, AND THEIR ABSENCE IS THE RULING.** The
+earlier construction's DELETE re-stated the victim's `pushed_at` and the replacement's
+natural key (`EXISTS`), because the plan was read in one transaction and applied in
+another. There is no such interval now, so both are gone — the lock is the guard. A clause
+that can never fire is a clause the next reader defends. What the DELETE still re-states is
+`profile_id`, redundantly and on purpose: `lib/__tests__/profile-scoping.test.ts` reads
+that literal, which is also why the SQL is not hoisted to a named constant.
+
+**WHERE IT COMMITS, AND THE INVARIANT THAT DECIDES IT.** A chunked push has states BETWEEN
+commits, and an earlier round put the deletes in the FIRST chunk's transaction, justified
+by "a crash between the deletes and the writes must not leave a day reading low with
+nothing in flight to restore it". That reason is right and the placement was not — it
+satisfies the reason only when the push is ONE chunk. Split it and the deletes commit with
+chunk 1, chunk 2 fails, and the day reads NOTHING where `main` still reads the old row
+(measured: 8000 → nothing). The owner corrected it (#3424, the ruling of
+2026-08-22T05:46Z) and pinned the invariant instead:
 
 > At every commit point the store holds the OLD rows, or OLD + NEW, or NEW — **never
 > neither**. The mechanism may leave a day reading HIGH between commits; it must never
 > read LOWER than `main` would.
 
-So a victim is deleted only in a transaction that commits with or after every row of the
-push that replaces it. One chunk: the same transaction as the rows. Many chunks: chunks
-1…n−1 commit upserts only and the store transiently reads high — the visible double count
-— and the final chunk commits its upserts and the whole victim set together. A failure in
-chunk k leaves old + chunks<k: a double count, never a hole. The exporter re-carries the
-unacked rows on its next push (its failed deltas fold into the next one, measured on the
-08-21 DNS failures), pass A re-plans over that store, and that push collapses it. Pinned by
-the D1 cases in `lib/__db_tests__/hc-overlap-supersede-refutations.test.ts`.
+So the derivation and the deletes run in the LAST chunk's transaction, after its upserts.
+One chunk: the same transaction as the rows. Many chunks: chunks 1…n−1 commit upserts only
+and the store transiently reads high — the visible double count — and the final chunk
+commits its upserts and the whole victim set together. A failure in chunk k leaves old +
+chunks<k: a double count, never a hole. The exporter re-carries the unacked rows on its
+next push (its failed deltas fold into the next one, measured on the 08-21 DNS failures),
+which re-derives over that store and collapses it. Pinned by the D1 cases in
+`lib/__db_tests__/hc-overlap-supersede-refutations.test.ts`.
 
-**THE DELETE RE-STATES BOTH FACTS PASS A'S DECISION RESTED ON**, because three processes
-share one DB file: pass A's read and pass B's DELETE can be separated by another push's
-committed writes, or by the user's own, and the last-chunk placement widens that window.
+**PASS C'S FOUR VETOES ARE STATED ONCE AND CONSULTED BY NOBODY ELSE** (#3438). Pass C holds
+four unilateral vetoes over what gets written: a body metric mis-routed into the samples
+path, the #508 re-import tombstone, the #133 edit lock, and #1101's stale retry. They live
+in `metricSampleVeto`, which is the only place the upsert loop may decline a row, and each
+one's Review accounting lives in `VETO_TALLY`, a `Record` over the `MetricSampleVeto`
+union. The supersede does **not** ask them — it asks the store what carries this push's
+stamp, which is exactly the set of rows no veto stopped. **A fifth veto** therefore means a
+new union member (a compile error at `VETO_TALLY` until its accounting is stated) plus its
+condition in `metricSampleVeto`, and no edit to the supersede at all.
 
-- `pushed_at IS ?` — **the victim's provenance**, NULL-safe. A row another push has since
-  re-stamped is a row that push has claimed as current, and must not be deleted on
-  evidence that has expired. `IS` rather than `=`: the stamp is NULL on every pre-column
-  row, and those are the rows this rule exists to collapse.
-- `EXISTS (…)` on the licensing row's natural key — **the replacement** (#3438). A victim
-  is deleted because an incoming row was going to stand over the same span. Pass A honours
-  every veto it can SEE, but a veto a concurrent writer creates AFTER pass A read is not
-  one of them: the user deletes the re-anchored row through Data → Manage between the
-  passes, the tombstone that delete writes vetoes the push's re-send of that same row, and
-  the old-anchoring victim went with nothing left to replace it — **the day at zero**,
-  committed, where `main` still reads the old row. So `SupersedeVictim` carries the
-  natural key of the row that licensed the delete, and pass B asks the store, inside the
-  same transaction, whether anything stands there.
-
-**What the `EXISTS` is and is not exact about.** It does NOT say "a veto fired"; it says
-**a row stands under the replacement's natural key**, which is the invariant's own test
-spelled in SQL. The push's row landed → it is that key → the delete proceeds, unchanged
-for every push nothing raced. The tombstone and body-metric vetoes put nothing under the
-key, so with no concurrent insert the DELETE matches nothing and the victim stays. The
-#133 lock and the #1101 stale retry both REQUIRE a twin, so when one of them newly fires
-between the passes a row is standing under that key by definition and the delete proceeds
-— not a hole, because the day is then left holding that reading rather than nothing, which
-is the whole of what the invariant asks. A row that landed in an earlier chunk and was
-deleted by someone else before the last one runs fails the `EXISTS` and the day reads
-high: the safe direction. Pinned by the R8 cases in
-`lib/__db_tests__/hc-overlap-supersede-refutations.test.ts`, including the control that
-the same plan still deletes when nothing raced it.
-
-**IT IS THE PRE-PASS, NOT THE SHARED STAMP, THAT MAKES A CHUNK SPLIT HARMLESS**, and this
-paragraph replaces the opposite claim. Rows of one push do share a stamp, so neither can
-out-rank the other — but that says only that a row of the push cannot be another row's
-VICTIM. It says nothing about what a row of the push READS, and the read is where two
-refutations landed: the same push stored 11609 or 22609 depending only on where the chunk
-boundary fell, because a delete for one row changed the natural-key twin a later row
-looked up. The shared stamp was cited for several review rounds as the reason a split is
-harmless "by construction"; it does not carry that claim, and the pre-pass is what does.
-
-**The push-key exclusion** is what pass A buys the invariant with, and it is WIDER than
-the per-row rule's was. The old code excluded an incoming row's OWN natural-key twin from
-its candidates. The plan excludes every stored row whose `started_at` is the natural key
-of ANY row in the push: a row this push is about to upsert must never also be a victim,
-whichever row of the push would have collapsed it. So pass C reads its own pre-image —
-the #133 lock, the #1101 stale-retry guard, the value merge — against a store whose only
-difference from the pre-push store is rows that are, by construction, no incoming row's
-twin. It removes victimhood and not the report: such a row is a real double count, so it
-moves to the overlaps left standing rather than vanishing from both lists.
-
-**PASS C'S VETOES ARE VISIBLE TO PASS A, AND THAT IS THE OTHER HALF OF THE EXCLUSION**
-(#3438). `final store = (pre-store − victims) ⊕ upserts` assumes `⊕ upserts` is TOTAL —
-that every row of the push lands. It is not. Pass C holds four unilateral vetoes over
-what gets written: a body metric mis-routed into the samples path, the #508 re-import
-tombstone, the #133 edit lock, and #1101's stale retry. Pass A consulted none of them,
-so it planned a delete for a stored row on the strength of an incoming row pass C then
-refused to write — measured on the tombstone: a store holding one day bucket, a
-tombstone on the re-anchored key (which is what Data → Manage writes when a user deletes
-one of two duplicated readings), one stamped push carrying the re-anchoring, and the day
-went to **zero**, permanently, with `warnings: []` and `superseded: 1` claiming a
-replacement. That reads LOWER than `main`, which the invariant above forbids outright.
-
-Guarding the tombstone alone would have been the mistake the three-pass split was ruled
-in to stop, so the vetoes are stated ONCE, in `metricSampleVeto`, and both passes ask it:
-
-- Pass C asks it instead of testing four conditions inline, and each veto's accounting
-  lives in `VETO_TALLY`, a `Record` over the `MetricSampleVeto` union.
-- Pass A asks it before it plans anything. A vetoed row plans **no delete** and counts no
-  in-push double count. It still **reports**, when the store holds its twin: no veto
-  writes, so that twin stays exactly as it is, and pass A measures the overlaps against
-  the twin's own stored window. A vetoed row with no twin puts nothing in the store under
-  that key and says nothing about it.
+**WHAT THE CLASS-CLOSING COSTS, PAID DELIBERATELY.** A push EVERY row of which is vetoed
+stamps nothing, so it derives no victims — right — and also **reports no overlaps left
+standing**, where the payload-side plan used to report the vetoed row's stored twin. Same
+for a push with no readable stamp at all: its rows land with `pushed_at` NULL and nothing
+distinguishes them from the pre-column NULLs beside them. The double count stays VISIBLE in
+the day total either way; what is lost is the sentence in Review naming it. Of 228 captured
+exporter payloads, all 175 carrying an `app_version` — every real push — state a readable
+`timestamp`, so the reachable cases are a phone more than `MAX_PUSH_CLOCK_SKEW_MS` ahead of
+this server and a non-exporter caller. The alternative was keeping a payload-side pre-pass
+alive purely to compute a warning, which is the construction rounds 7–9 died on. Pinned,
+with the cost written into the case name, in
+`lib/__db_tests__/hc-overlap-supersede-refutations.test.ts`.
 
 **ONE DOUBLE COUNT IS STILL SILENT, deliberately.** Two stored day buckets that overlap
-EACH OTHER, under a push whose only row is vetoed with no twin: nothing lands, so nothing
-names them, and Review says nothing. It is not a regression — `main` is silent on it too,
-and every path here reports a stored-side double count only as a by-product of an incoming
-row landing on one of the pair. Closing it means a question no pass asks (do two STORED
-rows overlap each other?), with a different unit — excess readings per cluster, not
-distinct rows the push touched — and answering it only on the vetoed-no-twin branch would
-make the count depend on whether a row happened to be tombstoned. Left open in writing
-rather than half-closed.
+EACH OTHER, under a push that stamped nothing near them. Naming them means asking a
+question no phase asks — do two STORED rows overlap each other? — with a different unit
+(excess readings per cluster, not distinct rows this push touched), and it would change the
+Review line on every push rather than on this one. `main` is silent on it too. Left open in
+writing rather than half-closed.
 
-**PASS A AND PASS C AGREE WITHIN THIS PROCESS, AND THE ONE DIVERGENCE POINTS THE OTHER WAY
-FROM WHAT THIS DOC USED TO SAY.** Both read the twin through the same SQL literal, and
-pass C runs before pass B in every chunk. The one in-process divergence is a push carrying
-the same natural key twice: pass A reads the PRE-PUSH store for both rows, pass C sees the
-first row's write when it reaches the second. It runs **pass C vetoing where pass A did
-not** — so pass A plans MORE victims, not fewer — and only ever as `stale-retry`
-(`body-metric` is a function of the metric; `tombstone` needs NO twin, and after the first
-row lands there is one; `edit-lock` reads `edited`, which the insert defaults to 0 and the
-ON CONFLICT never touches). The victims it plans are still sound, by the rows rather than
-by the count: the row that stands under the key ends strictly later and starts at the same
-instant, so its window strictly CONTAINS the vetoed row's, `date` derives from the shared
-start, `isDayBucketWindow` has no upper bound, and the push carries one stamp. Everything
-the vetoed row planned, the standing row licenses — and under the same natural key, so
-pass B's `EXISTS` finds it.
-
-**A fifth veto** means a new member of `MetricSampleVeto` — a compile error at
-`VETO_TALLY` until its Review accounting is stated — plus its condition in
-`metricSampleVeto`, which is the only place pass C may decline a row. Pass A needs no
-edit: it asks whether a row is vetoed and whether a twin exists, never which veto fired.
-Moving an existing veto so it fires on an insert rather than an update costs nothing
-either, for the same reason.
-
-**One call is ONE profile and ONE source.** Pass A takes both as parameters, the candidate
-`SELECT` is scoped by both, and the function returns an empty plan unless the source is
-`health-connect` — so the push-key exclusion can be keyed on `(metric, origin,
-started_at)` alone. That premise is enforced by the signature rather than re-derived per
-row, and it is stated here because nothing else stated it: a caller that batched two
-profiles or two sources into one call would break the exclusion.
+**One call is ONE profile and ONE source.** `supersedeMetricSampleOverlaps` takes both as
+parameters, both queries are scoped by both, and it returns immediately unless the source
+is `health-connect` — so a supersede group is `(metric, origin)` alone. That premise is
+enforced by the signature rather than re-derived per row, and it is stated here because
+nothing else stated it: a caller that batched two profiles or two sources into one call
+would break the grouping.
 
 **A NULL `pushed_at` is UNKNOWN, not "older than everything".** This is the third state,
 and reading it as the second one was a defect that survived four adversarial rounds. The
@@ -1093,53 +1077,44 @@ anchoring. `integration_sync_events.superseded` (migration
 and it is the ONE count segment deliberately absent from `received`, because a
 superseded row is a stored row we removed, not a row the source sent.
 
-**A DOUBLE COUNT THIS PUSH COULD NOT COLLAPSE IS SAID OUT LOUD.** `planSupersede`
-returns every stored day bucket the incoming row overlapped and did not collapse, for
-any reason — no stamp on this push, a stamp the clock bound refused, a phone whose clock
-went backwards, a NULL stored stamp with no proof it predates the column, a stored bucket
-below the granularity gate, or the #133 lock — and pass A unions them across the whole
-push. It counts **distinct stored rows**, not (incoming, stored) pairs: two incoming
-buckets declining over one stored row is one reading left double counting, and the pair
-count said two.
+**A DOUBLE COUNT THIS PUSH COULD NOT COLLAPSE IS SAID OUT LOUD, FROM THE SAME QUERY THAT
+DID THE DELETING.** `overlapsLeft` is read out of `supersedeMetricSampleOverlaps` inside
+the last chunk's transaction, so it describes what HAPPENED rather than what was forecast,
+and no reason has to be enumerated anywhere. Two terms:
 
-**AND THE PUSH'S OWN SECOND ROW COUNTS TOO**, which is a separate number because it has
-to be. `leftStanding` is stored row IDS, so it can only ever name rows that were in the
-table BEFORE the push — and two rows of one push are never in each other's candidate
-sets. A push carrying both anchorings of a day the store held NEITHER row of writes both
-(ruling item 3, the right outcome) and leaves the day double counting with no stored row
-for the report to point at: it reported `superseded: 0` and no warning at all. So pass A
-also counts the EXCESS day buckets the push carries against itself —
-`inPushDoubleCounts`, one per overlapping bucket beyond the first. A pair either of whose members is a row
-`leftStanding` already names is not counted twice: a re-sent row and its stored twin are
-one reading updated in place, and which of the pair is the re-sent one flips with the
-direction of travel.
+- **The candidates the predicate declined**, as DISTINCT stored rows — locked by #133, not
+  outranked (a stamp older than the stored row's, or a NULL stored stamp with no proof it
+  predates the column), or cut at sub-daily granularity. Distinct rows and not (stamped,
+  stored) pairs: two stamped buckets declining over one stored row is one reading left
+  double counting, and the pair count said two. A row another stamped bucket collapses is
+  pruned out — the collapse is the truth.
+- **The excess the push carries against ITSELF**: a stamped day bucket overlapping an
+  earlier-starting stamped day bucket **filed under the same `date`**. No stored id can
+  hold that shape — a push carrying both anchorings of a day the store held NEITHER row of
+  writes both (ruling item 3, the right outcome) and used to report `superseded: 0` and no
+  warning at all.
 
-**ONE ROW PER NATURAL KEY GOES INTO THAT SCAN** (#3438). The ON CONFLICT merges every row
-of a push sharing a key into ONE stored row, so two copies of one record are one reading —
-the same principle the paragraph above applies to a stored row and its re-send, and the
-same collapse `scripts/hc-origin-overlap-census.ts` makes on `(metric, origin,
-started_at)` "so a re-sent moving-end snapshot is not reported as an overlap with itself".
-Without it, two copies of one record warned "1 reading" and three warned "2 readings" over
-a store holding a single row: a false warning that scaled with the number of copies,
-measured on a fresh store through the real ingest. Two DIFFERENT keys overlapping is still
-counted — that is ruling item 3's "write both", and it really is two readings summing into
-one day.
+**THE `date` IS PART OF THAT GROUPING, AND WITHOUT IT THE COUNT OVER-REPORTS.**
+`getMetricDailyTotals` sums by `date`, so two rows make a day read high exactly when they
+are filed under the same one. A re-anchored push CHAINS across days — the LA 08-19 bucket
+overlaps the NY 08-20 bucket by three hours — and counting that pair says two days read
+high over a store where exactly one does. The payload-side plan suppressed it by a
+different route (the pair touched a natural key already named in `leftStanding`); on this
+side of the ruling the stored rows carry the stamp and are never candidates, so the `date`
+is what carries it. Measured on the property suite's mixed-anchoring scenario: 2 without,
+1 with.
 
-**AND THE NUMBER IS SUMMED AFTER THE CHUNKS COMMIT, NOT FROM THE PLAN** (#3438). It used
-to be `leftStanding.length + inPushDoubleCounts`, taken before the first write, while the
-emit site described it as covering "every reason a supersede was declined". It did not
-cover the last one: pass B's concurrency guards decline a victim whose evidence expired
-between pass A's read and the DELETE — one another push has re-stamped, or one whose
-replacement is no longer standing under its natural key. That row stays in the table and
-the day reads high, and the plan-side number had already said zero. So the ingest adds a third
-term — `victims.length` minus the rows pass B actually removed — and computes the whole
-line after `commitChunks`. `counts.superseded` was always honest (it returns real
-`.changes`); this is the number that was not. The three terms are disjoint: `leftStanding`
-and `victims` are disjoint sets of stored ids, and `inPushDoubleCounts` counts incoming
-rows. `lib/__db_tests__/hc-metric-sample-push.ts` sums it the same way, and its header
-says which three things it copies from the ingest — the stamp going through
-`pushStampFor`, pass B running after pass C, and this sum — because the claim that it
-could not drift was once written without them.
+**IT NEEDS NO DEDUPE, WHICH IS ONE THING THE STORE-DERIVED SHAPE GIVES BACK** (#3438). The
+payload-side count had to collapse a push's rows to one per natural key by hand, because
+the ON CONFLICT merges them into ONE stored row and two copies of one record warned "1
+reading" over a store holding a single row — a false warning that scaled with the number of
+copies. The store holds one row per natural key by construction, so a record sent twice is
+one row and says nothing. Two DIFFERENT keys overlapping is still counted: that is ruling
+item 3's "write both", and it really is two readings summing into one day.
+
+`lib/__db_tests__/hc-metric-sample-push.ts` reads the number the same way — out of the
+supersede's own return, inside one `writeTx` — and its header says what it copies from the
+ingest and why the order it once got wrong is now structurally impossible to get wrong.
 
 The line names READINGS, not daily totals: two stale buckets can fall in one
 profile-local day, so the earlier wording could report two days wrong when one is. It

@@ -64,8 +64,8 @@ const PUSH_BASE = Date.parse("2026-08-21T18:00:00Z");
 let pushSeq = 0;
 const stampFor = (seq: number) =>
   new Date(PUSH_BASE + seq * 60_000).toISOString().slice(0, 19) + "Z";
-// ONE PUSH, THE THREE PASSES THE INGEST RUNS (#3424, owner ruling option 2): plan over
-// the whole push against the pre-push store, apply the deletes once, then upsert. The
+// ONE PUSH, THE WAY THE INGEST RUNS IT (#3424, the ruling of 2026-08-22): upsert, then
+// derive the victim set from the store and delete it, both inside one transaction. The
 // composition lives in ./hc-metric-sample-push so no spec can re-derive it differently.
 function upsert(
   profile: number,
@@ -181,7 +181,9 @@ describe("the westward switch the prod incident and the repro both describe", ()
     // first, the re-send landed and the Honolulu row then deleted it — the same push,
     // the same store, ONE row fewer. That is the defect rounds 1 and 5 both found.
     //
-    // MUTATION: drop the push-key exclusion from `planMetricSampleSupersede` and this
+    // MUTATION: drop the `AND pushed_at IS NOT ?` clause from the candidate query in
+    // `supersedeMetricSampleOverlaps` — the push-key exclusion, on this side of the
+    // ruling — and this
     // goes to 1 — and the property test's 1-row chunk ordering loses the 3000 row.
     expect(counts.superseded).toBe(0);
     // The day still reads 6500 for 3500 walked, so Review still says so: a stored row
@@ -584,7 +586,9 @@ describe("what the rule must NEVER delete", () => {
     // see that pass A never consulted the tombstones at all. This one seeds the store,
     // tombstones the RE-ANCHORED key the way Data → Manage does, and re-sends it.
     //
-    // MUTATION: drop the veto consultation from `planMetricSampleSupersede` and the
+    // MUTATION: weaken the first query's `AND pushed_at = ?` in
+    // `supersedeMetricSampleOverlaps` to `AND pushed_at IS NOT NULL` — "any stored row
+    // justifies" rather than "a row THIS push wrote justifies" — and the
     // seeded 8000 goes, permanently, with `superseded: 1` and no warning.
     const p = freshProfile("TOMBSTONE-VICTIM");
     upsert(
