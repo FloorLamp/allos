@@ -326,6 +326,18 @@ async function expectArrangement(
   ).toEqual([...ALL_ACTIONS].sort());
   expect(seen.besideText, report).toBe(opts.besideText);
   expect(arrangement(seen), report).toBe(opts.expected);
+  // `items-end`, measured, WHEREVER the rail is a rail. Band counting alone
+  // accepts a left-aligned column, which is not what this card has at `md`+ and
+  // not what "renders exactly as today" means. It belongs here rather than at
+  // one call site: the first draft asserted it only at 1280px, and the mutant
+  // that drops the pair's `md` column then went red at desktop while the
+  // boundary width — where the same defect renders — stayed green.
+  if (opts.expected === "rail-column")
+    expect(
+      new Set(seen.rightEdges).size,
+      `at ${opts.width}px the rail's controls no longer share a right edge: ` +
+        seen.rightEdges.join(", ")
+    ).toBe(1);
 
   const other =
     opts.expected === "primary-then-pair" ? "rail-column" : "primary-then-pair";
@@ -412,18 +424,13 @@ test("at desktop width the rail is unchanged: one control per row, right-aligned
   });
   try {
     await page.goto("/training?tab=overview");
-    const { seen } = await expectArrangement(page, {
+    // Three bands, one control each, sharing one right edge — the right-edge
+    // half rides in `expectArrangement` with the arrangement it qualifies.
+    await expectArrangement(page, {
       width: DESKTOP_WIDTH,
       expected: "rail-column",
       besideText: true,
     });
-    // `items-end`, measured: three rows sharing one right edge. Band counting
-    // alone would accept a left-aligned column, which is not the rail this card
-    // has at `md`+ and not what "renders exactly as today" means.
-    expect(
-      new Set(seen.rightEdges).size,
-      `the rail's three controls no longer share a right edge: ${seen.rightEdges.join(", ")}`
-    ).toBe(1);
   } finally {
     await page.close();
   }
