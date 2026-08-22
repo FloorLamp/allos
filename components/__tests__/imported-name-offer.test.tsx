@@ -42,7 +42,13 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   ]),
 }));
 
-const adopt = vi.fn(async () => ({ ok: true }) as const);
+// The payload the component posted, captured rather than inferred: what the action
+// is HANDED is the whole of what this component decides.
+const adoptedPayloads: FormData[] = [];
+const adopt = vi.fn(async (fd: FormData) => {
+  adoptedPayloads.push(fd);
+  return { ok: true } as const;
+});
 vi.mock("@/app/(app)/import/name-actions", () => ({
   adoptImportedMedicationName: (fd: FormData) => adopt(fd),
 }));
@@ -132,9 +138,8 @@ describe("both versions are on screen before anything is accepted", () => {
     await act(async () => {
       screen.getByTestId("imported-name-use-2418").click();
     });
-    expect(adopt).toHaveBeenCalledTimes(1);
-    const fd = adopt.mock.calls[0][0] as unknown as FormData;
-    expect(Object.fromEntries(fd.entries())).toEqual({
+    expect(adoptedPayloads).toHaveLength(1);
+    expect(Object.fromEntries(adoptedPayloads[0].entries())).toEqual({
       item_id: "7",
       document_id: "4",
       rxcui: "2418",
