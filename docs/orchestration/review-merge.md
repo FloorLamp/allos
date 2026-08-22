@@ -96,6 +96,13 @@ These are not review taste; each retired a green that meant nothing.
 - Mutate only against a COMMITTED, `git status`-verified-clean tree. Assert the
   substitution count is exactly what you intended—a zero-substitution mutant is
   a false survivor, not a passing test.
+- **COMMIT THE REAL EDIT BEFORE MUTATING IT.** The `git checkout --` trap is
+  sharper when the mutation and the work live in the SAME FILE: restoring the
+  mutation and destroying the edit are then the same command, and the run that
+  just went red is exactly what makes you reach for it. Seven sightings this
+  session; the last one took out a just-verified fix, and the mutations before it
+  in the same run were safe only because that work happened to be committed
+  already.
 - Never read an exit code through a pipe. `cmd | tail` exits with tail's status.
 - **A number is a grep until it has been spot-checked.** This holds for numbers
   you relay as much as numbers you produce, and the relay is the unguarded half.

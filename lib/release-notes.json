@@ -122,6 +122,12 @@
           "title": "Labels and their values stay together on phone-width tables, so a card's details read as pairs instead of a run-on",
           "kind": "fix",
           "issues": [3499]
+        },
+        {
+          "pr": 3519,
+          "title": "Database tests stop rebuilding the schema for every single test, so the suite stops getting slower each release",
+          "kind": "fix",
+          "issues": [3470, 3471]
         }
       ]
     },
