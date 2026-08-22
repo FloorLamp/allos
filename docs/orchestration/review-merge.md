@@ -63,6 +63,21 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **What KEYS on the field you are rewriting?** A stored string is rarely only
+  display. #3537 standardised imported medication names — an offer the person
+  accepts — and silenced three FIRING upper-limit warnings: vitamin D at 250
+  against a UL of 100, niacin 1000 against 35, iron 325 against 45. `lib/dri.ts`
+  matches nutrients by NAME SUBSTRING and has no code path at all, so replacing
+  `"VITAMIN D3"` with `"Cholecalciferol"` removed the only signal it could use.
+  The cruel part is that the same write attaches an `rxcui` — the PR's own
+  comment said "a name somebody standardized is exactly the moment the safety
+  matchers can start keying on a code instead of a string", which was true of the
+  interaction engine that reads codes and false of the limit engine that does
+  not. Two passes missed it because both asked "can this write reach the wrong
+  row" and neither asked "who else reads this column". Before a diff rewrites a
+  stored value, enumerate every matcher, join and filter that keys on it — and
+  check the ones that key on it WEAKLY (a substring, a LIKE, a name) first,
+  because those fail silently and leave no error to find.
 - **Premise audit.** Every declarative claim in a comment, a doc, or a PR body
   is a testable assertion. Probe a guard from the branch it does NOT cover, and
   mutate every exemption BOTH ways—an exemption asserted without the premise
