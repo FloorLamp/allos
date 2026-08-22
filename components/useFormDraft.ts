@@ -553,10 +553,42 @@ export function useFormDraft<E = undefined>({
   // A create form that has produced a server row (the activity editor's auto-save
   // does this) re-keys onto that row: the "new" draft is handed over rather than
   // left behind, where it would restore into a SECOND, duplicate record.
+  //
+  // THE HANDOVER MOVES THE REGISTRY ENTRY TOO (#3443). `markUnsavedWork` is keyed, and
+  // every other release in this hook — `clear`, `discard`, the unmount cleanup —
+  // releases `keyRef.current`, which by the time any of them runs is the NEW key. This
+  // line is the only place left that still knows the old key's name.
+  //
+  // WHAT IT IS WORTH, MEASURED — read this before trusting #3443's description. That
+  // issue was filed off a hand-replay of an ASSUMED call order, and the shipped order
+  // is not that one. Instrumenting `markUnsavedWork` in a real browser across the
+  // activity create path (2026-08-22, three variants: a plain create, one left idle a
+  // second, and one typed into continuously across the re-key) shows the create key
+  // released ~1 ms BEFORE this effect runs, every time, by `ActivityForm`'s
+  // `savedAt > 0 && !dirty` → `clear()` effect, which still sees `keyRef.current` as
+  // the create key. So on this path the registry never holds two keys, with or without
+  // this line — `hasUnsavedWork()` does not stick true and #2471's reopen is not
+  // suppressed. Nothing in the tree reds when the line is deleted; the e2e case in
+  // `e2e/update-notice.spec.ts` was checked exactly that way, by deleting it and
+  // rebuilding, and stayed green.
+  //
+  // IT STAYS FOR ONE REASON, and not the one #3443 gives: that early release is
+  // ANOTHER COMPONENT'S effect ordering, not a property of this hook. A re-key that is
+  // not preceded by a save-clear — a caller moving `recordId` for its own reasons —
+  // would strand the old key for the life of the page, and this is where that costs a
+  // line to prevent. Do not read it as the repair of an observed browser defect, and
+  // do not delete it expecting a test to object.
+  //
+  // Released unconditionally rather than only when the form is clean: the key names a
+  // form that no longer exists under that name, and `write()` below re-registers
+  // under the new key with the same `entryRef` whenever there is still something to
+  // flush. Reached on every activity create (`ActivityForm` passes
+  // `recordId: editData?.id ?? createdId`), so this is the ordinary path, not an edge.
   useEffect(() => {
     const prev = keyRef.current;
     keyRef.current = key;
     if (prev && key && prev !== key) {
+      markUnsavedWork(prev, false);
       void deleteDraft(prev);
       write();
     }

@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { comboboxRows, expectNoClippedContent, settledFill } from "./helpers";
+import {
+  comboboxRows,
+  deleteActivityFromForm,
+  expectNoClippedContent,
+  settledFill,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Issue #1613 — the activity form's sticky exercise header at phone width.
@@ -44,15 +49,15 @@ async function box(locator: Locator) {
 // Delete the auto-saved draft (the completed set makes the activity savable, so
 // the debounced autosave creates a row). Waiting for the Delete button is what
 // proves the row exists before removing it — see form-fill-paths' note.
+//
+// The discard itself goes through `deleteActivityFromForm` (#3454): the form going
+// away is a `setState`, so `toBeHidden()` was satisfied by the browser alone and the
+// DELETE it started was still in flight when the test — and the shared-profile
+// teardown guard — moved on.
 async function cleanUpDraft(page: Page): Promise<void> {
   const del = page.getByRole("button", { name: "Delete", exact: true });
   await expect(del).toBeVisible();
-  await del.click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(page.getByTestId("activity-form")).toBeHidden();
+  await deleteActivityFromForm(page, { trigger: del });
 }
 
 test("a multi-part exercise header reads and taps at 390px (#1613)", async ({

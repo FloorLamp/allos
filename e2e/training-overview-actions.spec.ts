@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { deleteActivityFromForm } from "./helpers";
 import {
   E2E_LOGIN_OVERVIEW_NO_ROUTINE,
   E2E_LOGIN_OVERVIEW_REST,
@@ -42,13 +43,11 @@ async function expectStandingActions(page: Page): Promise<void> {
   ).toBe(true);
 }
 
+// The discard goes through `deleteActivityFromForm` (#3454) — the form unmounting is
+// a client `setState` and says nothing about whether `deleteActivity` has run, so the
+// old spelling left the live draft racing this spec's own teardown guard.
 async function closeEmptyLiveWorkout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(page.getByTestId("activity-form")).toBeHidden();
+  await deleteActivityFromForm(page);
 }
 
 test("a no-routine Overview answers first and keeps both logging doors (#3062)", async ({
