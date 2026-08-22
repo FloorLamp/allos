@@ -518,19 +518,26 @@ export default async function OverviewSection() {
                   </div>
                 </dl>
               </div>
-              <div className="flex flex-col items-start gap-2 md:items-end">
-                <TrainingOverviewActions stacked />
-                {nextWorkout.actionHref && (
-                  <PendingTextLink
-                    href={nextWorkout.actionHref}
-                    label="workout details"
-                    testId="next-workout-details"
-                    className="btn-ghost"
-                  >
-                    View details
-                  </PendingTextLink>
-                )}
-              </div>
+              {/* The card's action rail (#3473). "View details" goes THROUGH
+                  TrainingOverviewActions rather than beside it: below `md` it
+                  shares a line with "Log activity", and two controls only share
+                  a line if they share a flex container. `stacked` keeps the
+                  `md`+ rail — a right-aligned column — exactly as it was. */}
+              <TrainingOverviewActions
+                stacked
+                secondary={
+                  nextWorkout.actionHref ? (
+                    <PendingTextLink
+                      href={nextWorkout.actionHref}
+                      label="workout details"
+                      testId="next-workout-details"
+                      className="btn-ghost"
+                    >
+                      View details
+                    </PendingTextLink>
+                  ) : null
+                }
+              />
             </div>
             <TrainingContextChips context={nw} />
           </div>
