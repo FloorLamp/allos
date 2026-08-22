@@ -126,6 +126,7 @@ const FILE_BUDGETS = {
   "app/AGENTS.md": { lines: 80, genre: "prose" },
   "components/AGENTS.md": { lines: 60, genre: "prose" },
   "lib/AGENTS.md": { lines: 100, genre: "prose" },
+  "lib/__db_tests__/AGENTS.md": { lines: 60, genre: "prose" },
   "lib/migrations/AGENTS.md": { lines: 80, genre: "prose" },
   "lib/queries/AGENTS.md": { lines: 60, genre: "prose" },
   "docs/orchestration.md": { lines: 80, genre: "runbook" },
