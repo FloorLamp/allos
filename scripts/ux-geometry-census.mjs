@@ -83,10 +83,18 @@ export const GEOMETRY_THRESHOLDS = {
  * keeps the harness and the guard measuring with the same numbers instead of two
  * drifting copies.
  *
- * @param {{controlHeightTolerancePx: number, clipEpsilonPx: number, maxRowsPerVisit: number}} opts
+ * `subjectSelector` is the NAMED SUBJECT (#3522's pattern): a selector the caller
+ * claims this surface renders. The probe reports whether it was among the boxes it
+ * actually measured, which is the tighter half of proving a sweep took place — a
+ * candidate COUNT says "something was here", the subject says "the thing you are
+ * making a claim about was here". The harness does not pass one; the guard does.
+ *
+ * @param {{controlHeightTolerancePx: number, clipEpsilonPx: number, maxRowsPerVisit: number, subjectSelector?: string}} opts
  */
 export function geometryProbe(opts) {
   const { controlHeightTolerancePx, clipEpsilonPx, maxRowsPerVisit } = opts;
+  const subjectSelector = opts.subjectSelector ?? null;
+  let subjectExamined = false;
 
   // SCOPE: `<main>`. The page's own content, not the shell.
   //
@@ -105,6 +113,7 @@ export function geometryProbe(opts) {
       controlRowsExamined: 0,
       heightRowsTotal: 0,
       heightRows: [],
+      ...(subjectSelector ? { subjectExamined: false } : {}),
     };
 
   // The viewport's CONTENT width — `clientWidth` and not `innerWidth`, because
@@ -141,7 +150,10 @@ export function geometryProbe(opts) {
     const tag = el.tagName.toLowerCase();
     const testId = el.getAttribute("data-testid");
     const id = el.getAttribute("id");
-    const text = (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 48);
+    const text = (el.textContent ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 48);
     const label =
       el.getAttribute("aria-label") ||
       (el.tagName === "SELECT"
@@ -183,7 +195,11 @@ export function geometryProbe(opts) {
    * exempt; only a scroller with something to scroll does.
    */
   const insideHorizontalScroller = (el) => {
-    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    for (
+      let p = el.parentElement;
+      p && p !== document.body;
+      p = p.parentElement
+    ) {
       const ox = getComputedStyle(p).overflowX;
       if (
         (ox === "auto" || ox === "scroll") &&
@@ -199,6 +215,7 @@ export function geometryProbe(opts) {
   for (const el of clipCandidateEls) {
     if (!shown(el)) continue;
     clipCandidates += 1;
+    if (subjectSelector && el.matches(subjectSelector)) subjectExamined = true;
     const r = el.getBoundingClientRect();
     const left = docLeft(r);
     const right = left + r.width;
@@ -235,16 +252,26 @@ export function geometryProbe(opts) {
   };
 
   const byContainer = new Map();
-  const allControls = [...root.querySelectorAll(CONTROL_SELECTOR)].filter(shown);
+  const allControls = [...root.querySelectorAll(CONTROL_SELECTOR)].filter(
+    shown
+  );
   const controlSet = new Set(allControls);
+  if (subjectSelector && !subjectExamined)
+    subjectExamined = allControls.some((el) => el.matches(subjectSelector));
   for (const el of allControls) {
     // A control that CONTAINS another control is a container wearing a control's
     // tag — a card-sized `<a>` wrapping a row of buttons. Comparing its height to
     // the buttons inside it is a category error and would flag every such card.
-    if ([...el.querySelectorAll(CONTROL_SELECTOR)].some((c) => controlSet.has(c)))
+    if (
+      [...el.querySelectorAll(CONTROL_SELECTOR)].some((c) => controlSet.has(c))
+    )
       continue;
     let owner = null;
-    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    for (
+      let p = el.parentElement;
+      p && p !== document.body;
+      p = p.parentElement
+    ) {
       if (isRowContainer(p)) {
         owner = p;
         break;
@@ -300,6 +327,7 @@ export function geometryProbe(opts) {
     controlRowsExamined,
     heightRowsTotal: heightRows.length,
     heightRows: heightRows.slice(0, maxRowsPerVisit),
+    ...(subjectSelector ? { subjectExamined } : {}),
   };
 }
 
