@@ -165,10 +165,10 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await page.goto("/training?tab=log"); // default "Log" tab
 
     // Open a fresh create form (the seeded activity makes the Training Log — and its
-    // "New activity" button — render instead of the empty state).
+    // "Add activity" button — render instead of the empty state).
     await hydratedClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "New activity" })
+      page.getByRole("main").getByRole("button", { name: "Add activity" })
     );
 
     // Pick a known cardio activity so the session-level equipment picker mounts;
@@ -272,7 +272,7 @@ test("the strength picker creates and selects a travel machine without losing th
       page,
       page
         .getByTestId("training-log-actions")
-        .getByRole("button", { name: "New activity" })
+        .getByRole("button", { name: "Add activity" })
     );
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);
@@ -404,7 +404,7 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
     await page.goto("/training?tab=log");
     await hydratedClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "New activity" })
+      page.getByRole("main").getByRole("button", { name: "Add activity" })
     );
 
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
@@ -500,7 +500,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
       page,
       page
         .getByTestId("training-log-actions")
-        .getByRole("button", { name: "New activity" })
+        .getByRole("button", { name: "Add activity" })
     );
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);

@@ -668,7 +668,7 @@ test("a create form that re-keys onto its saved row leaves the registry empty (#
   // swallow window on the first control after the goto (the form-drafts note).
   await hydratedClick(
     page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
+    page.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
 

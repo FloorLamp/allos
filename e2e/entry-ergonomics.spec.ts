@@ -203,7 +203,7 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
-  await expect(actions).toContainText("New activity");
+  await expect(actions).toContainText("Add activity");
   await expect(button).toBeVisible();
 
   // These are page-level actions, aligned with search rather than living in the
@@ -254,7 +254,7 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   ).toBe(14);
   await expect(actions).toBeHidden();
   await expect(
-    actions.getByRole("button", { name: "New activity" })
+    actions.getByRole("button", { name: "Add activity" })
   ).toBeHidden();
 
   // The mobile nav remains through 767px, so page actions must not reappear at
@@ -400,14 +400,14 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  // Open a fresh create form. The "New activity" button lives in the Training Log
+  // Open a fresh create form. The "Add activity" button lives in the Training Log
   // header inside <main>; the editor it opens mounts either in the docked pane
   // (inside <main>) or the body-level overlay portal, so the form's own fields are
   // addressed by their unique testids/roles rather than main-scoped (there is
   // exactly one editor instance — same reasoning as the #206 recent-sessions spec).
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // PICK a known cardio activity from the combobox — typing the name alone doesn't
@@ -707,7 +707,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
   // est-calories spec's note on why the editor isn't main-scoped).
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Pick a lift the seed trains repeatedly (Barbell Bench Press, weeks of
@@ -763,7 +763,7 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
 
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Running requires a distance field; pick it so both Distance and Duration show.
@@ -792,7 +792,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   // est-calories spec's note on why the editor isn't main-scoped).
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Pick a curated SPORT. Sports are duration-only (no distance field), which is
@@ -877,7 +877,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
 
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Barbell Bench Press is an upper-body lift → a 2.5 (kg) step for the seeded
@@ -974,7 +974,7 @@ test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
 
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
@@ -1007,7 +1007,7 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
 
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // A unilateral lift offers "Track sides separately", which swaps the row for the
@@ -1037,7 +1037,7 @@ test("a set row has a warmup toggle that flips its pressed state (#338)", async 
 
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   await pickActivity(page, "Barbell Bench Press");
@@ -1084,7 +1084,7 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // est-calories spec — see its note on why fields are addressed by testid/role).
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await page.getByPlaceholder(/What did you do/).fill("Running");
   await page
@@ -1164,7 +1164,7 @@ test("typing keeps the lifts you log ahead of a sport you never have (#2384)", a
   page,
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
-  await page.getByRole("button", { name: "New activity" }).click();
+  await page.getByRole("button", { name: "Add activity" }).click();
 
   const field = page.getByPlaceholder(/What did you do/);
   const listbox = await openCombobox(page, field);
@@ -1200,7 +1200,7 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   // A barbell lift, so the weight field carries the plate affordance at all
   // (`showPlate` in StrengthSets is `isBarbell(equipment) || isBarbellLift(name)`).

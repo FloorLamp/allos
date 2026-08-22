@@ -159,7 +159,7 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await page.goto("/training?tab=log");
   await page
     .getByTestId("training-log-actions")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp

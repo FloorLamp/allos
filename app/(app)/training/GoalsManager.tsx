@@ -53,7 +53,7 @@ function goalValueText(g: OutcomeGoal, value: number, wu: WeightUnit): string {
   return String(value);
 }
 
-// Outcome-goal list + create/edit modal. The "New goal" button and per-card "Edit"
+// Outcome-goal list + create/edit modal. The "Add goal" button and per-card "Edit"
 // open one shared modal hosting GoalForm (create when no goal, edit otherwise).
 export default function GoalsManager({
   goals,
@@ -111,7 +111,7 @@ export default function GoalsManager({
 
   return (
     <div>
-      {/* flex-wrap (#2892): the New-goal button takes its own line on narrow
+      {/* flex-wrap (#2892): the Add-goal button takes its own line on narrow
           screens instead of squeezing the heading. */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
@@ -135,12 +135,12 @@ export default function GoalsManager({
           onClick={() => setModal({})}
           className="btn inline-flex items-center gap-1.5"
         >
-          <IconPlus className="h-4 w-4" /> New goal
+          <IconPlus className="h-4 w-4" /> Add goal
         </button>
       </div>
 
       {goals.length === 0 ? (
-        <EmptyState message="No goals yet. Create one with “New goal”." />
+        <EmptyState message="No goals yet. Create one with “Add goal”." />
       ) : visibleGoals.length === 0 ? (
         <EmptyState message="All goals are archived. Use “Show archived” to see them." />
       ) : (
@@ -425,7 +425,7 @@ export default function GoalsManager({
 
       {modal && (
         <ModalShell
-          title={modal.goal ? "Edit goal" : "New goal"}
+          title={modal.goal ? "Edit goal" : "Add goal"}
           onClose={() => setModal(null)}
         >
           <GoalForm

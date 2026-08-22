@@ -124,10 +124,10 @@ test.describe("goals can target a lab value (#1853)", () => {
     });
     try {
       await page.goto("/training?tab=goals");
-      // "New goal" opens the modal (setModal), and since #3220 it lands ON the
+      // "Add goal" opens the modal (setModal), and since #3220 it lands ON the
       // subject pick — the one picker holding all three goal vocabularies, whose
       // pick DERIVES the kind. Neither posts anything; the combobox is the signal.
-      await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
+      await hydratedClick(page, page.getByRole("button", { name: "Add goal" }));
       const form = page.getByTestId("goal-form");
       await expect(form).toBeVisible();
 

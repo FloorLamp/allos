@@ -235,7 +235,7 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
 // no signal. Release it only on success and the form waits forever: the session
 // never gets a row at all, which is strictly worse than the two-row defect this
 // branch fixes, and no spec in the tree would notice. `entry-ergonomics` aborts
-// every action POST but opens through "New activity" (not live, so the gate is
+// every action POST but opens through "Add activity" (not live, so the gate is
 // never armed), and `stale-build-save` starts live but arms its failure AFTER the
 // create has landed. Neither can reach this.
 //

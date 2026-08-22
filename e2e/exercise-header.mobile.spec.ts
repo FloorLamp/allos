@@ -83,7 +83,7 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "+ Add activity" }).click();
+  await page.getByRole("button", { name: "+ Add another activity" }).click();
   const parts = page.getByTestId("activity-part");
   await expect(parts).toHaveCount(2);
   const second = parts.nth(1); // nth-ok: the part this spec just added, addressed by the order it created

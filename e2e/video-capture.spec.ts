@@ -291,7 +291,7 @@ test("Media appears mid-CREATE, as soon as autosave has made the row (#1524)", a
     await page.goto("/training?tab=log");
     await page
       .getByRole("main")
-      .getByRole("button", { name: "New activity" })
+      .getByRole("button", { name: "Add activity" })
       .click();
     await openMoreDetails(page);
 

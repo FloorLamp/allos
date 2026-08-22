@@ -38,7 +38,7 @@ async function tapScrimCorner(page: Page) {
 
 async function openNewGoal(page: Page) {
   await page.goto("/training?tab=goals");
-  await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
+  await hydratedClick(page, page.getByRole("button", { name: "Add goal" }));
   const form = page.getByTestId("goal-form");
   await expect(form).toBeVisible();
   return form;

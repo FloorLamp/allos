@@ -168,7 +168,7 @@ export default function RoutinesManager({
             onClick={() => setBuilder({})}
             className="btn inline-flex items-center gap-1.5"
           >
-            <IconPlus className="h-4 w-4" /> New routine
+            <IconPlus className="h-4 w-4" /> Add routine
           </button>
         </div>
       </div>
@@ -361,7 +361,7 @@ export default function RoutinesManager({
       {/* Custom builder / edit */}
       {builder && (
         <ModalShell
-          title={builder.routine ? "Edit routine" : "New routine"}
+          title={builder.routine ? "Edit routine" : "Add routine"}
           onClose={() => setBuilder(null)}
         >
           <RoutineBuilder

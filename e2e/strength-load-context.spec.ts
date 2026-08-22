@@ -151,7 +151,7 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     await page.goto("/training?tab=goals");
 
     // Opens the goal modal in client state; the dialog is the signal.
-    await hydratedClick(page, page.getByRole("button", { name: "New goal" }));
+    await hydratedClick(page, page.getByRole("button", { name: "Add goal" }));
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     const form = page.getByTestId("goal-form");

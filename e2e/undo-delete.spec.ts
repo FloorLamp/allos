@@ -100,7 +100,7 @@ async function createProbe(page: Page): Promise<string> {
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
   await page.getByPlaceholder(/What did you do/).fill("Running");

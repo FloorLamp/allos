@@ -439,7 +439,7 @@ export function seedNowStrip(): void {
   // A dedicated ADULT profile with NOTHING logged (#809): the brand-new/post-onboarding
   // first-run state that every other fixture profile lacks. Kept activity-free so the
   // training-first-run spec can assert the Training Log's first-run empty variant renders the
-  // action row (Start workout + New activity, no Repeat last). Idempotent: hard-clear any
+  // action row (Start workout + Add activity, no Repeat last). Idempotent: hard-clear any
   // activities (and their sets) on a reused server so the profile can never drift out of
   // its empty contract.
   const emptyTrainingId = adultFixtureProfileId(EMPTY_TRAINING_PROFILE);
