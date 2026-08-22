@@ -44,6 +44,16 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // rendered `sm:hidden` inside the cell. That keeps the column's meaning available
 // to sighted and assistive users in stacked-row mode, where the `<th>` is gone.
 //
+// A META CELL'S VALUE IS ONE THING (#3499). Below `sm` the cell lays its label and
+// its value out as a single non-wrapping flex line, so the pair reads as a pair and
+// the row wraps BETWEEN pairs instead of inside one. The cell's children are that
+// flex line's items — so a value passed as several loose siblings becomes several
+// items sitting side by side, not the stack the desktop block flow gave it. The
+// sleep history's per-nap `<div>`s were exactly this: three naps rendered on one
+// line and pushed the row 29px past its own right edge. Pass a value that has
+// internal structure as ONE node and let it stack inside itself; a long value is
+// still free to wrap within its own text, which is what "atomic" leaves alone.
+//
 // SORTING. Header-click sorting lives in the (hidden) `thead`, so a sortable table
 // pairs this with `components/TableSortSelect.tsx` — a compact `sm:hidden` select
 // over the SAME `?sort=`/`?dir=` params `SortableHeader` writes.

@@ -172,17 +172,17 @@ is recorded in that test; adoption elsewhere is a review question, not a gate.
 The standing transformations a desktop anatomy must undergo; a new surface
 adopts the idiom rather than re-deriving a phone shape.
 
-| desktop anatomy                   | phone idiom                                                                                                            | source                           |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| Data table                        | cards via `ResponsiveTable` (never a bespoke clipping `<table>`); meta pairs atomic — wrap between pairs, never inside | #3457, #3497, **ruled** #3499    |
-| Checkbox matrix                   | per-kind stacked rows with labeled state chips                                                                         | **ruled** — #3495                |
-| Corner toasts                     | one queued full-width snackbar above the dock                                                                          | #3373                            |
-| Pagers                            | one idiom with thumb targets, from `lib/pagination.ts` + `PaginationControls`                                          | #3378                            |
-| Anchored ⋯ popover                | bottom action sheet, titled per #3501                                                                                  | #3374                            |
-| Text + trailing actions           | actions wrap under the text when width is short — identity is never what truncates                                     | #3491, #3473                     |
-| Standing rare-cadence entry forms | folded behind a disclosure                                                                                             | #1497 (#3474 closes a violation) |
-| Hover-only information            | needs a touch path                                                                                                     | #3375                            |
-| Tap floor                         | 40px minimum targets                                                                                                   | #644, #3377                      |
+| desktop anatomy                   | phone idiom                                                                                                                                                                                  | source                                                                                                                                                             |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Data table                        | cards via `ResponsiveTable` (never a bespoke clipping `<table>`); meta pairs atomic — wrap between pairs, never inside; a consumer takes the base treatment rather than restyling meta cells | #3457, #3497, #3499 ✓ shipped — guard: the rendered-geometry pair scan in `responsive-tables.mobile.spec.ts` / `trends-metric-pages.spec.ts` (`scanCardMetaPairs`) |
+| Checkbox matrix                   | per-kind stacked rows with labeled state chips                                                                                                                                               | **ruled** — #3495                                                                                                                                                  |
+| Corner toasts                     | one queued full-width snackbar above the dock                                                                                                                                                | #3373                                                                                                                                                              |
+| Pagers                            | one idiom with thumb targets, from `lib/pagination.ts` + `PaginationControls`                                                                                                                | #3378                                                                                                                                                              |
+| Anchored ⋯ popover                | bottom action sheet, titled per #3501                                                                                                                                                        | #3374                                                                                                                                                              |
+| Text + trailing actions           | actions wrap under the text when width is short — identity is never what truncates                                                                                                           | #3491, #3473                                                                                                                                                       |
+| Standing rare-cadence entry forms | folded behind a disclosure                                                                                                                                                                   | #1497 (#3474 closes a violation)                                                                                                                                   |
+| Hover-only information            | needs a touch path                                                                                                                                                                           | #3375                                                                                                                                                              |
+| Tap floor                         | 40px minimum targets                                                                                                                                                                         | #644, #3377                                                                                                                                                        |
 
 ## 6. Copy
 
@@ -216,13 +216,13 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 | Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466)                                        | shipped — the proven pattern |
 | Design-guard suite                    | chips, add-affordance labels, sheet titles, link tones — lands with each primitive per the guards ruling                                                                   | pending, per-issue           |
 | Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan, hover captures, cross-page consistency lane, dirty-profile shape, middle-state dials, post-merge mini-census | **ruled**                    |
-| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                         | #3446 (open)                 |
+| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                         | #3446 ✓ shipped              |
 
 ## Work map
 
-Build order (the umbrella issue tracks it): this registry → #3446 → primitives
-(#3475, #3486, #3499, #3466 ✓ shipped, #3501, #3492) → idiom adopters (#3495, #3460,
-#3491, #3473, plus standing #3374/#3378/#3408) → copy cluster (#3488, #3490,
-#3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
+Build order (the umbrella issue tracks it): this registry → #3446 ✓ shipped →
+primitives (#3475, #3486, #3499 ✓ shipped, #3466 ✓ shipped, #3501, #3492) → idiom
+adopters (#3495, #3460 ✓ shipped, #3491, #3473, plus standing #3374/#3378/#3408) →
+copy cluster (#3488, #3490, #3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
 #3481, #3493, #3496, #3497, #3498, #3500) ship independently and adopt the
 relevant primitive when they touch one.
