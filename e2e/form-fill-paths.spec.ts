@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { comboboxRows, settledClick } from "./helpers";
+import { comboboxRows, deleteActivityFromForm, settledClick } from "./helpers";
 import {
   E2E_LOGIN_FORM_DELOAD,
   E2E_LOGIN_FORM_PLATEAU,
@@ -67,17 +67,19 @@ async function openNewActivity(page: Page) {
 // auto-save creates a NEW row. We must WAIT for the Delete button to appear (which only
 // happens once that row has persisted) BEFORE deleting — otherwise remove() takes its
 // no-row branch (just closes) and the pending unmount-flush save leaks an ORPHAN today
-// session, which shifts the next repeat's suggestion seed. Then assert the form closed,
-// so the flush can't re-create the row mid-teardown (remove() guards its signature).
+// session, which shifts the next repeat's suggestion seed.
+//
+// THE DISCARD ITSELF SETTLES ON THE SERVER (#3454). This used to end on
+// `expect(activity-form).toBeHidden()`, which is a `setState` — true the instant the
+// editor unmounts and silent about whether `deleteActivity` has run. The delete was
+// therefore still in flight while the next test, and the shared-profile teardown
+// guard, went looking. `deleteActivityFromForm` waits for the "Activity deleted."
+// toast, which `useUndoableDelete` raises only after `await action(fd)` resolved, and
+// takes it down again so it cannot intercept a later bottom-right click (#2861).
 async function cleanUpDraft(page: Page) {
   const del = page.getByRole("button", { name: "Delete", exact: true });
   await expect(del).toBeVisible();
-  await del.click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(page.getByTestId("activity-form")).toBeHidden();
+  await deleteActivityFromForm(page, { trigger: del });
 }
 
 test("deload week shaves the routine lift's next-set suggestion (#923)", async ({

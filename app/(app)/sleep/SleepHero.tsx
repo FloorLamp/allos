@@ -86,7 +86,7 @@ export default function SleepHero({
   const delta = baselineDeltaPhrase(summary);
   const source = activityProvenanceLabel(summary.source);
   return (
-    <section className="card mb-6" data-testid="sleep-hero">
+    <section className="card section-seam mb-6" data-testid="sleep-hero">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
           <IconMoon className="h-5 w-5" stroke={1.75} aria-hidden />

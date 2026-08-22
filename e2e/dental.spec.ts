@@ -106,7 +106,14 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // Delete it through the shared record-actions menu and confirm it's gone.
     const survivor = list.getByRole("row").filter({ hasText: NAME });
     const actions = survivor.getByLabel("Record actions");
-    await expect(actions).toHaveAttribute("title", "Record actions");
+    // Since #3501 the trigger names the ROW it acts on, not just its kind — below
+    // `md` this menu is a sheet that has left the row behind by the time anyone
+    // reads its heading. The tooth is part of that name because it is part of how
+    // the list prints the record (lib/dental.ts, dentalDisplayLabel).
+    await expect(actions).toHaveAttribute(
+      "title",
+      `Record actions for ${NAME} \u00b7 #${TOOTH}`
+    );
     await actions.click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await page

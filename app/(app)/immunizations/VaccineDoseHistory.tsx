@@ -108,6 +108,7 @@ export default function VaccineDoseHistory({
       <RecordTable
         items={ordered}
         columns={columns}
+        itemName={(im) => vaccineDisplayName(im.vaccine)}
         emptyMessage="No doses recorded for this vaccine yet."
         renderEditForm={(im, done) => (
           <>

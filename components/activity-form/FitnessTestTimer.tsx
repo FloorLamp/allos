@@ -212,6 +212,20 @@ export default function FitnessTestTimer({
 
   // ── Takeover: full-screen on mobile, large centered panel on desktop ────────────────
   // ONE responsive tree — breakpoint insets, not a hidden md:* mirror.
+  //
+  // A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
+  // docs/internals/overlays.md. The host mounts a dialog when the consumer renders
+  // it and unmounts it when it closes, and THIS SURFACE MUST SURVIVE BEING CLOSED:
+  // collapsing the takeover returns the viewer to the entry sheet with the run
+  // still going (the comment at the top of this file says so, and the elapsed
+  // state lives in this component). Rendering it through the host would reset a
+  // half-finished plank every time someone glanced back at the instructions.
+  //
+  // It is also NESTED INSIDE an already-open dialog and deliberately carries no
+  // scrim of its own — the sheet it opens from is already scrimmed, and a second
+  // scrim would darken the first. Its Escape is a capture-phase listener that
+  // stops propagation so collapsing the timer does not also close the sheet
+  // underneath it; a host-owned Escape has no way to express that.
   return (
     <div
       role="dialog"

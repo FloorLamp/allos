@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, readyForOffline } from "./helpers";
+import { hydratedClick, readyForOffline, settledClick } from "./helpers";
 import { switchToProfile } from "./family-helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
@@ -187,7 +187,39 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   //    behind auth again.
   await page.goto("/");
   // Log out sits at the sidebar's bottom since #1801 — no menu to open first.
-  await page.getByRole("button", { name: "Log out" }).click();
+  //
+  // settledClick, NOT a bare click, and the reason is structural rather than
+  // precautionary (#3400). This control has NO pre-hydration fallback, and it is
+  // the only interaction in this test that does not have a retrying `expect`
+  // behind it:
+  //
+  //   * `<form action={serverAction}>` + `type="submit"` — what the LOGIN form
+  //     above is — posts NATIVELY before React attaches, so a tap in the
+  //     hydration window still lands. That is why `login()` needs no gate.
+  //   * Log out is `type="button"` with an `onClick`, and its form's action is a
+  //     CLIENT function (`submitLogout`), so React SSRs no usable action
+  //     attribute. #2908 made it `type="button"` deliberately — as a submit
+  //     button the async IndexedDB wipe raced the navigation and lost, leaving
+  //     one login's PHI readable by the next person — and in doing so it removed
+  //     the progressive-enhancement fallback from the one control that ends a
+  //     session. A click dispatched before React attaches now does NOTHING AT
+  //     ALL: no submit event, no POST, no navigation, and no error either. The
+  //     bare click then failed here as a bare `waitForURL` timeout naming
+  //     nothing, three times on CI (#3400).
+  //
+  // settledClick is the right helper of the three, and the choice is load-bearing:
+  // logout IS a Server Action (`logoutAction` in app/(app)/session-actions.ts is
+  // "use server" and ends in `redirect("/login")`), so there is a same-origin POST
+  // to correlate with — hydratedClick would close the same window but prove
+  // nothing about the POST, and followLink is for `<a href>` navigations. Per
+  // settledClick's own contract, a click that both posts and navigates resolves on
+  // the POST, and the `waitForURL` below then asserts where the redirect landed.
+  //
+  // KEEP THE waitForURL. settledClick returns when the action POST is answered;
+  // the redirect is a separate claim (#42/#1042 is "logout locks the card behind
+  // auth again"), and this is the assertion that the person actually arrives at
+  // /login rather than sitting on a page whose session is gone.
+  await settledClick(page, page.getByRole("button", { name: "Log out" }));
   await page.waitForURL(/\/login/, { timeout: 20_000 });
 
   const afterLogout = await page.evaluate(

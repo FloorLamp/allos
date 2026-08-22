@@ -3003,3 +3003,311 @@ export async function readyForOffline(page: Page): Promise<void> {
     .poll(() => offlineChunksWarm(page), { timeout: 30_000 })
     .toBe("warm");
 }
+
+// ── A dialog body does not overflow sideways (#3395) ─────────────────────────
+//
+// `tap-target` extends a compact control's hit area with an `inset: -6px`
+// pseudo-element under `@media (pointer: coarse)`. The extension paints nothing
+// and sits OUTSIDE the control's box, so it contributes to a scroll container's
+// overflow extent while being invisible in every screenshot.
+//
+// Everywhere else `<main>`'s `overflow-x-clip` absorbs it silently. INSIDE A
+// DIALOG BODY IT IS NOT ABSORBED: since #2774 the sheet's content region is the
+// scroll owner, and since #3360 it is `overflow-x-hidden` — which refuses the
+// USER but still reports the extent, and (per #3382) still lets a script park the
+// box sideways. So a compact control flush against the region's right edge pushes
+// 6px of nothing past it, and the only symptom is a body a thumb can nudge with
+// no affordance back.
+//
+// THE TRIGGER IS NOT "SOMEBODY ADDS A BAD ELEMENT". It is any change that removes
+// horizontal padding from a container holding a flush-edge `tap-target` control —
+// which is exactly what #3361's body-chrome rule encourages, since that rule is
+// about bodies NOT carrying their own insets. #3360 did it to FoodLogBar's header
+// and took the food sheet to 5px (#3384, fixed in #3392 with `pr-1.5` below `md`).
+
+/**
+ * WHAT IS STICKING OUT of a scroll region, not just how far.
+ *
+ * KEEP THIS even when the assertion it annotates is green — a reviewer will read
+ * it as dead weight and it is the opposite. `scrollWidth - clientWidth` is a
+ * number with no author: the first time this went red on CI it said
+ * "Received: 5" and nothing else, and 5px in a dialog body can be a bleed, a
+ * hit-area pseudo-element, sub-pixel rounding, or a child that was transiently
+ * wide during mount. Those need different fixes. This walks the region and ranks
+ * its children by how far their ESCAPING overflow reaches past the region's right
+ * edge, so the next red arrives with its cause attached instead of a bare integer.
+ * It found the real one: a `tap-target` extension on the food sheet's preferences
+ * button (#3384).
+ */
+export async function overflowStory(content: Locator): Promise<string> {
+  return content.evaluate((node) => {
+    const over = node.scrollWidth - node.clientWidth;
+    if (over <= 0) return "nothing overflows";
+    const edge = node.getBoundingClientRect().right;
+    // RANKED BY REACH PAST THE REGION'S EDGE, not by "does this element overflow
+    // at all". Nearly every `tap-target` in a sheet overflows its own box by 6px
+    // — that is what the hit-area extension IS — and listing them all buries the
+    // one that matters under a wall of innocents. Only an element whose overflow
+    // actually ARRIVES at the region's right edge can make the region scrollable,
+    // so that is the question asked.
+    const culprits = Array.from(node.querySelectorAll("*"))
+      .filter(
+        (el): el is HTMLElement =>
+          el instanceof HTMLElement &&
+          // Only overflow that ESCAPES can make the region scrollable. A
+          // `truncate` span overruns its box by a mile and clips every pixel of
+          // it, so it is not a suspect — including it put three innocent labels
+          // at the top of this list the first time round.
+          getComputedStyle(el).overflowX === "visible"
+      )
+      .map((el) => ({
+        el,
+        reach:
+          el.getBoundingClientRect().right +
+          (el.scrollWidth - el.clientWidth) -
+          edge,
+      }))
+      .filter((c) => c.reach > -0.5)
+      .sort((a, b) => b.reach - a.reach)
+      .slice(0, 3)
+      .map(
+        ({ el, reach }) =>
+          `<${el.tagName.toLowerCase()} data-testid="${
+            el.getAttribute("data-testid") ?? ""
+          }" class="${el.className}"> reaches ${Math.round(reach)}px past`
+      );
+    return `region overflows by ${over}px; ${
+      culprits.join(" | ") ||
+      "no element reaches the edge — check text, a pseudo-element, or a mid-mount width"
+    }`;
+  });
+}
+
+/**
+ * A dialog body holds everything it contains — nothing escapes past its right
+ * edge, and the region is therefore not sideways-scrollable at all.
+ *
+ * `label` names the surface in the failure, because this is run over a table of
+ * dialogs and "expected 5 to be <= 0" says nothing about WHICH one.
+ *
+ * THIS ASSERTS NOTHING ABOUT AN EMPTY REGION, and the caller is what stops it
+ * being asked one. A body that is still rendering its loading paragraph fits any
+ * width, so a check taken there passes for a reason that has nothing to do with
+ * the surface — the race that resolves toward the empty DOM fails toward GREEN
+ * (#3384). Wait for a named child of the mounted content BEFORE calling this.
+ */
+export async function expectNoEscapingOverflow(
+  content: Locator,
+  label: string
+): Promise<void> {
+  const scrollable = await content.evaluate(
+    (node) => node.scrollWidth - node.clientWidth
+  );
+  expect(
+    scrollable,
+    `${label}: ${await overflowStory(content)}\n` +
+      "A dialog body must hold everything it contains. The usual cause is a " +
+      "flush-edge `tap-target` control whose 6px hit-area extension has nowhere " +
+      "to sit after a container lost its horizontal padding (#3395). THE FIX IS " +
+      "THE CONTAINER, never the control: the extension is the accessibility " +
+      "feature, so give it room (`pr-1.5` below `md` is what #3392 used) rather " +
+      "than taking it away."
+  ).toBeLessThanOrEqual(0);
+}
+
+// ── CARD-MODE LABEL–VALUE PAIRS (#3499) ──────────────────────────────────────
+//
+// Below `sm` a `.table-cards` meta cell renders its column's label beside the
+// value it names (`components/ResponsiveTable.tsx` → the `table-cards` utility in
+// app/globals.css). The two must READ as one pair: wrapping may break between
+// pairs, never between a label and the START of its own value.
+//
+// WHY THIS IS MEASURED AND NOT ASSERTED FROM THE COMPUTED STYLE. "The pair did
+// not break across lines" is a fact about GEOMETRY. `toHaveCSS("display",
+// "inline-flex")` asserts the DECLARATION, which is a different claim and one
+// that has already shipped green over a wrong render in this tree: #3466's
+// stepped 16px seam measured 16 on the exact element it styled while the seam the
+// user saw stayed 24, because it collapsed against an unstepped parent two files
+// away. So this reads rects — the label's box against the FIRST line box of its
+// value — and asks whether they share a line.
+//
+// `getClientRects()[0]` is the load-bearing detail: a range over a wrapping value
+// returns one rect per line box, and the FIRST one is the value's start. That is
+// what "atomic" binds the label to — a long provider name is still free to wrap
+// inside itself (#3499 says so in as many words), so comparing against the
+// value's whole bounding box would fail the very case the ruling allows.
+//
+// THE SCAN REPORTS ITS CORPUS, not just its verdict. "No pair is broken" is an
+// ABSENCE, and an absence over a selector goes green the moment the selector
+// stops matching anything at all (#3509). Callers assert on `labels` — the pairs
+// the scan actually SAW — so a scan that has gone blind fails loudly instead of
+// passing quietly, and `forgeBrokenCardPair` below proves the scan can still see
+// a break by making one on purpose.
+export interface CardPairScan {
+  /** Every label the scan resolved to a rendered pair, in DOM order. */
+  labels: string[];
+  /** One `LABEL → value` line per pair the scan saw. The corpus, for diagnosis. */
+  pairs: string[];
+  /** The pairs whose value's first line box does NOT share a line with its label. */
+  breaks: string[];
+  /**
+   * The pairs whose cell runs past its own row's right edge.
+   *
+   * The other half of "atomic", and the failure mode the first cut of #3499 shipped
+   * into the sleep history: a cell is now a flex line, so a value passed as several
+   * loose sibling nodes becomes several ITEMS on that line rather than the stack the
+   * block flow used to give it, and a three-nap day ran 29px off the row. A page-level
+   * clipping check does not see this — the row scrolls, the document does not — so the
+   * measurement has to be the cell against its row.
+   */
+  overflows: string[];
+}
+
+// Two independent rect reads can never be compared exactly (#2505), and a label
+// and its value sit on slightly different baselines because the label is a step
+// smaller. 1px of slack absorbs sub-pixel rounding; the defect this guards puts
+// the value on the NEXT line, tens of pixels away.
+const PAIR_LINE_SLACK_PX = 1;
+
+export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
+  return scope.evaluate((root, slack) => {
+    const labels: string[] = [];
+    const pairs: string[] = [];
+    const breaks: string[] = [];
+    const overflows: string[] = [];
+    const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
+    for (const cell of cells) {
+      const label = cell.querySelector<HTMLElement>(
+        ":scope > .card-cell-label"
+      );
+      // No label is no pair: an unlabeled meta cell (a subject chip, which IS its
+      // own label — #534) has nothing to be separated from.
+      if (!label) continue;
+      const labelRect = label.getClientRects()[0];
+      // The label is `sm:hidden`, so at desktop width there is no pair on screen.
+      if (!labelRect || labelRect.width === 0) continue;
+
+      // The value's START: the first rendered node after the label, and the first
+      // line box of it. A bare text node is the common case (`{r.date}`), so it
+      // needs a Range — an element child (`NotesText`'s span) has rects directly.
+      let valueRect: DOMRect | undefined;
+      for (let node = label.nextSibling; node; node = node.nextSibling) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!node.textContent?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          valueRect = range.getClientRects()[0];
+          if (valueRect) break;
+          continue;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        valueRect = (node as Element).getClientRects()[0];
+        if (valueRect) break;
+      }
+      const name = label.textContent?.trim() ?? "";
+      // A cell whose value renders nothing has no pair to break — `Td`'s `empty`
+      // is supposed to have dropped it from the card entirely.
+      if (!valueRect) continue;
+
+      const whole = cell.textContent?.trim() ?? "";
+      const pair = `${name} → ${whole.slice(name.length).trim().slice(0, 48)}`;
+      labels.push(name);
+      pairs.push(pair);
+
+      // SAME LINE = the two boxes overlap vertically. Comparing tops would fail on
+      // the baseline offset between two font sizes; overlap is what "on one line"
+      // actually means, and it is font-size agnostic.
+      const overlap =
+        Math.min(labelRect.bottom, valueRect.bottom) -
+        Math.max(labelRect.top, valueRect.top);
+      // …and the value starts AFTER the label, rather than the label having been
+      // pushed onto a line of its own above it.
+      const startsAfter = valueRect.left >= labelRect.right - slack;
+      if (overlap <= 0 || !startsAfter) breaks.push(pair);
+
+      const row = cell.closest("tr");
+      if (
+        row &&
+        cell.getBoundingClientRect().right >
+          row.getBoundingClientRect().right + slack
+      )
+        overflows.push(pair);
+    }
+    return { labels, pairs, breaks, overflows };
+  }, PAIR_LINE_SLACK_PX);
+}
+
+/**
+ * Break one pair ON PURPOSE and return its `LABEL → value` id.
+ *
+ * The discriminator for the absence assertion above. A green "no pair is broken"
+ * is also what a scan that matches nothing — or one whose rect reads have quietly
+ * degraded to zeroes — would report, so every caller forges an offender and
+ * requires the scan to flag exactly it (#3509).
+ *
+ * WHAT IT FORGES IS THE DEFECT'S OWN SHAPE, and the shape was measured rather
+ * than assumed. `Td` renders the label span and the value with NO whitespace
+ * between them (JSX drops it; the 4px gap is the label's margin), and a margin is
+ * not a soft-wrap opportunity — so in the pre-#3499 inline flow the label could
+ * only ever be split from its value when that value was a BLOCK, which begins a
+ * line of its own. That is the real defect and it is not rare: a RecordTable
+ * column whose `cell()` returns a `<div>` (the visits list) and the sleep
+ * history's per-nap `<div>`s both rendered "VISIT" / "NAPS" alone above their own
+ * values before this change.
+ *
+ * So the forgery restores exactly that: the cell back to the block box it used to
+ * be, and the label made block inside it, which puts the value on the next line
+ * whether it is a text node or an element. `!important` because
+ * `metric-readings-list` pins its metas with `!important` of its own.
+ *
+ * A NARROWED BLOCK BOX WAS TRIED FIRST AND SILENTLY DID NOTHING — the label and
+ * the value have no break opportunity between them, so they overflowed the narrow
+ * cell side by side on one line and the scan was right not to flag them. The
+ * discriminator caught its own first draft, which is the argument for having one.
+ */
+const FORGED_PROPERTIES = ["display"] as const;
+
+export async function forgeBrokenCardPair(scope: Locator): Promise<string> {
+  const forged = await scope.evaluate((root) => {
+    const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
+    for (const cell of cells) {
+      const label = cell.querySelector<HTMLElement>(
+        ":scope > .card-cell-label"
+      );
+      const labelRect = label?.getClientRects()[0];
+      if (!label || !labelRect || labelRect.width === 0) continue;
+      const name = label.textContent ?? "";
+      if (!cell.textContent?.slice(name.length).trim()) continue;
+      cell.dataset.forgedPairBreak = "true";
+      label.dataset.forgedPairBreak = "true";
+      cell.style.setProperty("display", "block", "important");
+      label.style.setProperty("display", "block", "important");
+      const whole = cell.textContent?.trim() ?? "";
+      const trimmed = name.trim();
+      return `${trimmed} → ${whole.slice(trimmed.length).trim().slice(0, 48)}`;
+    }
+    return "";
+  });
+  expect(
+    forged,
+    "forgeBrokenCardPair found no labeled meta pair to break — the scan is then " +
+      "asserting an absence over an empty corpus, which is the failure it exists " +
+      "to rule out."
+  ).not.toBe("");
+  return forged;
+}
+
+/** Undo `forgeBrokenCardPair`, so the caller can run a control AFTER the restore. */
+export async function restoreForgedPair(scope: Locator): Promise<void> {
+  await scope.evaluate(
+    (root, properties) => {
+      for (const node of root.querySelectorAll<HTMLElement>(
+        '[data-forged-pair-break="true"]'
+      )) {
+        for (const property of properties) node.style.removeProperty(property);
+        delete node.dataset.forgedPairBreak;
+      }
+    },
+    FORGED_PROPERTIES as unknown as string[]
+  );
+}

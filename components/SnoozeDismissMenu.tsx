@@ -169,10 +169,18 @@ export function SnoozeDismissItems({
 // surfaces speak the same shared findings-suppression store, but each keeps its
 // own action so it revalidates its own paths. Each action reads `signal_key`
 // (+ `days` for a snooze) from the submitted FormData.
-export default function SnoozeDismissMenu(props: SnoozeDismissProps) {
+export default function SnoozeDismissMenu({
+  itemName,
+  ...props
+}: SnoozeDismissProps & {
+  // The attention row's own title (#3501). The sheet this opens below `md` has
+  // detached from the row by the time anyone reads its heading, and "Snooze 1
+  // week" hovering over a five-row list answers to nothing.
+  itemName: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
-    <OverflowMenu label="Snooze or dismiss" open={open} onOpenChange={setOpen}>
+    <OverflowMenu itemName={itemName} open={open} onOpenChange={setOpen}>
       {({ runAction }) => (
         <SnoozeDismissItems {...props} runAction={runAction} />
       )}

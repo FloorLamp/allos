@@ -10,7 +10,10 @@ an **index into decided history**, not a proposal: every claim below cites the
 module that embodies it and the issue where the lesson was learned.
 
 Use it two ways: a new domain or surface starts from these shapes, and existing
-code converges toward them when touched. It is not a rewrite mandate — the
+code converges toward them when touched. This file is the ARCHITECTURE layer;
+the visual and interaction layer has its own registry in
+`docs/internals/design-system.md` (tokens, container/control/affordance
+grammar, phone idioms, and their guards). It is not a rewrite mandate — the
 explicit conclusion of the rebuild analysis behind #2085 is that
 convergence-by-consolidation beats replacement, and that the accumulated
 rulings and guards are the repository's most valuable asset.

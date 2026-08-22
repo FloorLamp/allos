@@ -57,7 +57,10 @@ export default function DashboardStandingCluster({
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
   return (
-    <section className="mb-8" aria-labelledby="dashboard-standing-title">
+    <section
+      className="section-seam-lg mb-8"
+      aria-labelledby="dashboard-standing-title"
+    >
       <h2
         id="dashboard-standing-title"
         className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
@@ -105,9 +108,18 @@ export default function DashboardStandingCluster({
                     )
                     .find((entry) => entry != null);
                   return (
+                    // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
+                    // 45rem is 720px at the root default — the same seam #3252
+                    // ruled — but Tailwind cannot order an ARBITRARY px
+                    // breakpoint against its named rem ones, so the same seam
+                    // spelled in px emits BEFORE every `sm:` rule. At >=720px
+                    // both queries match, the selectors tie on specificity, and
+                    // the later `sm:` two-column template wins: the third column
+                    // never applied at ANY width, while the cell below turned
+                    // visible on its own and auto-flowed onto a second grid row.
                     <div
                       key={family.key}
-                      className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 min-[720px]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[720px]:items-center"
+                      className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:items-center"
                       data-standing-family={family.key}
                       data-standing-composition={family.composition}
                     >
@@ -115,8 +127,18 @@ export default function DashboardStandingCluster({
                         {family.label}
                       </dt>
                       <dd className="min-w-0">
+                        {/* THE DOOR'S RAIL (#3459 item 2). Every door in this family
+                          lands on ONE x — the right edge of the facts cell, just left
+                          of the sparkline column — instead of trailing whichever
+                          member's text it happens to follow. The anchor is whichever
+                          element is exactly one LINE wide for the hovered member, so
+                          the door's y stays on the row you are pointing at: a
+                          `members` family stacks, so each `li` is that line; a
+                          `single`/`composed` family puts every member on ONE line, so
+                          the `ul` is. Both have the dd's right edge, which is the
+                          whole point. */}
                         <ul
-                          className={`flex min-w-0 gap-1.5 ${
+                          className={`relative flex min-w-0 gap-1.5 ${
                             family.composition === "members"
                               ? "flex-col"
                               : "flex-row flex-wrap gap-x-4"
@@ -167,17 +189,26 @@ export default function DashboardStandingCluster({
                             const className =
                               "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm";
                             // The door: where this row goes, revealed on hover and on
-                            // keyboard focus alike. It sits IN FLOW as the row's last
-                            // element and only fades and slides — so it can never move
-                            // the row, and the age it stands in for keeps its own box
-                            // while it steps aside (app/globals.css, "Dashboard hover
-                            // doors"). No door on a row that is not a link.
+                            // keyboard focus alike. It is PINNED to the right edge of
+                            // the family's facts cell (#3459 item 2) and only fades and
+                            // slides — being out of flow, it can never move the row,
+                            // and the age it stands in for keeps its own box while it
+                            // steps aside (app/globals.css, "Dashboard hover doors").
+                            // `pointer-events-none` because every member's door box
+                            // occupies the SAME rail: a door that could take the
+                            // pointer would let the rail reveal a neighbour's door
+                            // instead of its own. No door on a row that is not a link.
                             const door = presentation.href
                               ? doorLabel(presentation.href)
                               : null;
                             return (
                               <li
                                 key={candidate.candidateId}
+                                className={
+                                  family.composition === "members"
+                                    ? "relative"
+                                    : undefined
+                                }
                                 data-testid="dashboard-candidate"
                                 data-candidate-id={candidate.candidateId}
                                 data-fact-key={candidate.factKey}
@@ -196,7 +227,7 @@ export default function DashboardStandingCluster({
                                     {door && (
                                       <span
                                         data-testid="standing-door"
-                                        className="standing-door ml-auto text-xs font-medium text-brand-700 dark:text-brand-400"
+                                        className="standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
                                         aria-hidden="true"
                                       >
                                         {door} ›
@@ -220,8 +251,9 @@ export default function DashboardStandingCluster({
                         not, so a family with no trend read does not pull its
                         neighbours' plots out of line. Below 720px the whole track is
                         gone (the grid drops back to two columns) and the row's facts
-                        stand alone. */}
-                      <div className="hidden min-[720px]:flex min-[720px]:justify-end">
+                        stand alone. The 45rem spelling is load-bearing — see the
+                        cascade note on the row above. */}
+                      <div className="hidden min-[45rem]:flex min-[45rem]:justify-end">
                         {series && <StandingSparkline series={series} />}
                       </div>
                     </div>

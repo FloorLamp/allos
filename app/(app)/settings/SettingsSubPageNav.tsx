@@ -18,7 +18,7 @@ export default function SettingsSubPageNav({
   const pathname = usePathname();
   return (
     <div
-      className="mb-6 flex flex-wrap gap-2"
+      className="section-seam mb-6 flex flex-wrap gap-2"
       data-testid="settings-subpage-nav"
       aria-label="Group sections"
     >

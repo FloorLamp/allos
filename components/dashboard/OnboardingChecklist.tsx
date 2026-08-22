@@ -83,7 +83,7 @@ export default function OnboardingChecklist({
 
   return (
     <section
-      className={`card mb-6 border-l-4 border-l-emerald-500 dark:border-l-emerald-400 ${
+      className={`card section-seam mb-6 border-l-4 border-l-emerald-500 dark:border-l-emerald-400 ${
         mobileOnly ? "md:hidden" : ""
       }`}
       data-testid="onboarding-checklist"

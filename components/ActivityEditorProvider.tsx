@@ -197,6 +197,15 @@ export default function ActivityEditorProvider({
   >(null);
   const markEditorLinkFollowedRef = useRef<() => void>(() => {});
   const [liveRowId, setLiveRowId] = useState<number | null>(null);
+  // THE IN-FLIGHT HALF OF CREATE-AT-START (#3441). `liveRowId` says which row the
+  // session owns; this says the question is still open — the POST that mints it has
+  // gone out and not answered. The form's autosave reads it and defers a rowless
+  // save rather than inserting a row of its own, which is what turned one live
+  // session into two activities. Owned HERE, beside the create it describes, because
+  // this is the only place that knows the request exists: every entry point
+  // (`openLive`, `openSession`, and so every caller of either) reaches the create
+  // through `startLiveSession`, so there is one seam to hold, not one per caller.
+  const [liveCreatePending, setLiveCreatePending] = useState(false);
   const liveSessionSeqRef = useRef(0);
   const liveOwnedRowIdRef = useRef<number | null>(null);
   // Finish changes the editor out of live PRESENTATION before the finished form
@@ -279,6 +288,10 @@ export default function ActivityEditorProvider({
     // The session is over: invalidate any still-in-flight create so it
     // discards itself instead of stranding an orphan row nobody adopted.
     liveSessionSeqRef.current++;
+    // …and release the form's create gate with it (#3441): after this the create
+    // can never be adopted, so waiting for it would only hold back the close-path
+    // flush that carries the last edit.
+    setLiveCreatePending(false);
     const id = liveOwnedRowIdRef.current ?? editData?.id ?? null;
     liveOwnedRowIdRef.current = null;
     if (id == null) return;
@@ -306,6 +319,7 @@ export default function ActivityEditorProvider({
       setOpen(false);
       liveCleanupPendingRef.current = false;
       liveOwnedRowIdRef.current = null;
+      setLiveCreatePending(false);
       setDismissedPresenceId(id);
       if (window.location.pathname === `/training/activity/${id}`)
         router.replace(trainingRelevant ? "/training" : "/timeline");
@@ -323,6 +337,7 @@ export default function ActivityEditorProvider({
       setPrefill(prefillData);
       setLive(true);
       setLiveRowId(null);
+      setLiveCreatePending(true);
       liveOwnedRowIdRef.current = null;
       liveCleanupPendingRef.current = true;
       const seq = ++liveSessionSeqRef.current;
@@ -340,6 +355,13 @@ export default function ActivityEditorProvider({
       void startWorkout(fd)
         .catch(() => null)
         .then((res) => {
+          // CLEAR THE GATE ON EVERY LEG, and only for the session that opened it
+          // (#3441). A refusal or a dead connection must release the form to mint
+          // its own row — that rowless fallback is what makes a gym dead spot
+          // degrade to the pre-step session rather than to no session at all. The
+          // seq check is what stops a stale create's answer from unlatching a gate
+          // a NEWER session just closed.
+          if (liveSessionSeqRef.current === seq) setLiveCreatePending(false);
           if (!res || !res.ok) return;
           const replaced = liveSessionSeqRef.current !== seq;
           const owned = liveOwnedRowIdRef.current;
@@ -658,6 +680,7 @@ export default function ActivityEditorProvider({
           initialDate={createDate ?? undefined}
           live={live}
           adoptRowId={live ? liveRowId : null}
+          adoptPending={live && liveCreatePending}
           onRowOwned={live ? onLiveRowOwned : undefined}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}

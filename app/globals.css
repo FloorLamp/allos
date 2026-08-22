@@ -285,6 +285,102 @@
   border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   THE SUB-PANEL INSET CONVENTION (issue #3466 class A).
+
+   A recurring shape: a `rounded-lg border p-*` (or tinted) box INSIDE a `.card`.
+   The card already spends its gutter (`p-4` below `sm`, #1416 section A) and the
+   page shell already spent 16px before that, so a 16px box inset puts phone text
+   42–48px from the screen edge — a second, untokenized gutter layer. The card
+   token itself is at the platform floor and is NOT touched here (a text line in a
+   card is already ~83% of a 390px viewport); what steps down is the SECOND layer.
+
+   This comment is the MECHANISM (why the rules are spelled the way they are);
+   docs/internals/design-system.md is the INDEX a reader looking for "which class
+   do I add" will reach for, and it carries both tier tables side by side.
+
+   ONE convention, THREE tiers, chosen by the inset the box carries TODAY:
+
+       today's inset        add this class        phone     desktop
+       p-4 (16) / p-5       subpanel-inset        12px      unchanged
+       p-3 (12)             subpanel-inset-sm     10px      unchanged
+       p-2.5 (10)           subpanel-inset-xs      8px      unchanged
+
+   HOW TO USE IT, AND WHY IT IS SPELLED THIS WAY. Each rule is a `max-sm:`
+   override, so a call site KEEPS the padding vocabulary it already had and only
+   ADDS the class — `p-3` stays `p-3 subpanel-inset-sm`, `px-4 py-3.5 sm:px-5
+   sm:py-4` stays and gains `subpanel-inset`. Two things follow, and both are the
+   reason for the shape:
+
+     1. DESKTOP IS IDENTICAL BY CONSTRUCTION, not by inspection. Every declaration
+        below lives inside `max-sm:`, so at ≥`sm` these classes emit nothing at
+        all. There is no per-site desktop value to get wrong and no reviewer
+        obligation to check 30 of them.
+     2. `!` IS LOAD-BEARING. Tailwind 4 sorts custom utilities independently of
+        source order (see the note on `metric-readings-list` below), so without it
+        a call site's own `p-4` could win the tie and the convention would apply
+        or not depending on generated order. Same reason, same spelling, as the
+        `max-sm:*!` overrides in the table utilities.
+
+   A NEW sub-panel gets the convention by adding one class from the table — it is
+   a vocabulary, not an automatic rule. A structural selector (`.card [class*=
+   "rounded-"]`) was considered and rejected: it would also catch badges, chips,
+   pills and `.input`s, none of which are gutters. A tree-wide guard was
+   considered and rejected too — a census of `rounded-* border p-{2.5,3,4}` boxes
+   finds 107 of them, and #3466 cleared the great majority (card footnotes,
+   /upcoming's hover-fill rows, /medical/cycles' chips, the dose-ledger pager,
+   the integrations `code` blocks) as list rhythm or field chrome rather than
+   gutters, so the guard would have to carry a ~100-entry allow-list and would be
+   deleted within a week — taking the real convention with it. */
+@utility subpanel-inset {
+  @apply max-sm:p-3!;
+}
+
+@utility subpanel-inset-sm {
+  @apply max-sm:p-2.5!;
+}
+
+@utility subpanel-inset-xs {
+  @apply max-sm:p-2!;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   THE SECTION RHYTHM CONVENTION (issue #3466 class C).
+
+   Vertical seams BETWEEN page sections kept desktop scale on a phone: 24px seams
+   on ~20 routes, 32px on the dashboard's Standing/Ahead, 40px between the Visits
+   pane's sections. One notch down below `sm` — 40→24, 32→24, 24→16 — desktop
+   unchanged, same `max-sm:` + `!` construction and for the same two reasons as
+   the sub-panel tiers above.
+
+       today's seam           add this class        phone     desktop
+       mb-6 (24)              section-seam          16px      unchanged
+       mb-8 (32)              section-seam-lg       24px      unchanged
+       space-y-10 (40)        section-stack         24px      unchanged
+       space-y-6 (24)         section-stack-sm      16px      unchanged
+
+   The two `space-y` tiers exist because a stack of sections spends its rhythm on
+   the CHILDREN's margins rather than its own — same seam, different property, so
+   it needs the same convention rather than a second one.
+
+   `components/dashboard/NowStrip.tsx` is deliberately NOT a tenant: #3460 owns
+   the Now strip's own margin and trims it there. */
+@utility section-seam {
+  @apply max-sm:mb-4!;
+}
+
+@utility section-seam-lg {
+  @apply max-sm:mb-6!;
+}
+
+@utility section-stack {
+  @apply max-sm:space-y-6!;
+}
+
+@utility section-stack-sm {
+  @apply max-sm:space-y-4!;
+}
+
 @utility input {
   /* Field boundaries are their own token (#2701, WCAG 1.4.11): a control's
      boundary holds ≥3:1 against the field and the canvas in both modes — the
@@ -553,8 +649,39 @@
   & td[data-card="value"] {
     @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
   }
+  /* ATOMIC LABEL–VALUE PAIRS (#3499). A meta cell IS a pair — the column's label
+     plus the value it names — and it used to be a plain block box, so the two ran
+     together in one inline flow and the line could break BETWEEN the label and its
+     own value. Three of them side by side then read as one undifferentiated strip
+     ("MODALITY Ultrasound DATE Oct 10, 2024 SOURCE Document"), which is what the
+     owner's phone review of the imaging study list called unreadable.
+
+     MAKING THE CELL ITS OWN FLEX CONTAINER IS WHAT BINDS THE PAIR, and it binds it
+     BY CONSTRUCTION rather than by tuning: the label span and the value are the
+     container's flex items, and a flex container that does not wrap keeps its items
+     on ONE flex line whatever their text lengths are. So no label can be separated
+     from the START of its value, and the only wrapping left is the ROW's
+     `flex-wrap`, which breaks between whole cells — between pairs, never inside one.
+     `whitespace-nowrap`/`shrink-0` on the label is the same promise for the label's
+     own text.
+
+     `min-w-0` is what keeps that affordable. Without it a pair's `min-width: auto`
+     floors the cell at its own min-content and a long value pushes the card
+     sideways; with it, a pair too long for the line shrinks and its VALUE wraps
+     inside itself — a wrapping provider name is allowed, because "atomic" binds the
+     label to the value's start, not to all of it (#3499's own wording).
+
+     CONTRAST NOW CARRIES THE PAIRING the line break used to. The label keeps the
+     uppercase micro style and the muted tone from `card-cell-label` — a colour
+     declared ON the span, which beats this rule by being direct rather than
+     inherited, whatever the specificity — while the value steps up to the same tone
+     the desktop column already uses (`@utility td`). Label and value were the same
+     slate-500 before, which is why the strip had nothing to read it by. */
   & td[data-card="meta"] {
-    @apply max-sm:order-4 max-sm:text-xs max-sm:text-slate-500 max-sm:dark:text-slate-400;
+    @apply max-sm:order-4 max-sm:inline-flex max-sm:min-w-0 max-sm:items-baseline max-sm:text-xs max-sm:text-slate-700 max-sm:dark:text-slate-300;
+  }
+  & td[data-card="meta"] .card-cell-label {
+    @apply max-sm:shrink-0 max-sm:whitespace-nowrap;
   }
   & td[data-card="full"] {
     @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
@@ -588,23 +715,27 @@
 }
 
 @utility metric-readings-list {
-  /* A metric detail page already gives its readings one containing card. Flatten
-     those phone rows into compact divider-separated records so they do not read
-     as padded cards nested inside another card. Desktop keeps the table grid. */
-  /* Tailwind 4 sorts custom utilities independently of source order. These
-     intentional overrides must beat the generic `table-cards` rules regardless
-     of that generated order. */
+  /* A metric detail page already gives its readings one containing card. `table-cards`
+     already renders every phone row as a flat divider-separated record (#1616), so
+     what is left here is the INSET: a row inside an existing card does not also pay
+     the card’s own `p-3` gutter. Nothing else about the flattening is restated —
+     `mb-0`, `rounded-none`, `border-x-0`, `border-t-0`, `bg-transparent` and the
+     last-child divider were byte-identical restatements of the base and came off in
+     #3499, where an override kept without a reason is the drift the registry exists
+     to stop. Desktop keeps the table grid.
+     Tailwind 4 sorts custom utilities independently of source order, so the overrides
+     that are genuinely intentional carry `!` and beat the generic `table-cards` rules
+     regardless of that generated order. */
   & tr {
-    @apply max-sm:mb-0 max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
-  }
-  & tr:last-child {
-    @apply max-sm:border-b-0;
+    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
   }
   /* This list keeps its VALUE on the head line (below), so the title must NOT
      reserve the whole line the way the generic #2588 rule does — it goes back to a
      zero basis and grows, which is what pins the value and the ⋯ to the right of
-     the date. Its metas already claim `basis-full`, so they were never at risk of
-     packing onto the head line in the first place. */
+     the date. The #2588 basis is what keeps the metas off that head line here: the
+     title still grows to fill it, so a meta pair only ever lands on the line below.
+     (Its metas used to claim `basis-full` from a bespoke stacked override; #3499
+     deleted that and the readings adopted the shared atomic-pair treatment.) */
   & td[data-card="title"] {
     @apply max-sm:basis-0!;
   }
@@ -613,6 +744,20 @@
   }
   & td[data-card="actions"] {
     @apply max-sm:order-3! max-sm:ml-0!;
+  }
+  /* THE ONE META DECLARATION THIS LIST STILL OWNS, and it is a WRAP rule rather than
+     pair styling — #3499 deleted the bespoke stacked shape (`justify-between`,
+     `text-right`, `gap-3`, the label's `mr-0`) so the readings render the same atomic
+     pairs as every other card. It cannot go with them: the #2588 head-line basis is
+     what keeps a meta off the identity line, and the `basis-0!` title above
+     deliberately opts OUT of it so the value and the ⋯ pin to the date's right. With
+     no basis of its own a meta's base size is its content, which fits — so SOURCE and
+     NOTES would pack onto the date/value line and shove the `ml-auto` value into the
+     middle of the row. Reinstating the base's own rule for this one list is what buys
+     that back. (`w-full` came off with the rest: a flex item's `flex-basis` already
+     decides its main size, so the width was never read.) */
+  & td[data-card="meta"] {
+    @apply max-sm:basis-full!;
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element
@@ -627,15 +772,6 @@
       inset: -4px;
     }
   }
-  & td[data-card="meta"] {
-    @apply max-sm:flex max-sm:w-full! max-sm:basis-full! max-sm:justify-between max-sm:gap-3 max-sm:text-right;
-  }
-  & td[data-card="meta"] .card-cell-label {
-    @apply max-sm:mr-0 max-sm:shrink-0;
-  }
-  & td.metric-reading-source {
-    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
-  }
 }
 
 @utility practice-session-list {
@@ -645,25 +781,23 @@
   & tr {
     @apply max-sm:px-0! max-sm:py-2!;
   }
+  /* This surface keeps its own DENSITY (a whole line per meta, one step larger than
+     the base's `text-xs`) and takes the shared pair treatment for everything else.
+     It used to restate the base's `text-slate-500`, which stopped being a restatement
+     when #3499 stepped the value's tone up for contrast — leaving a same-specificity
+     tie with `.table-cards td[data-card="meta"]` that Tailwind 4's independent
+     utility sort, not this file, would have decided. Dropping the colour resolves the
+     tie in the only direction that keeps a label distinguishable from its value. */
   & td[data-card="meta"] {
-    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
+    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm;
   }
 }
 
 @utility card-cell-label {
-  .metric-readings-list td[data-card="meta"] & {
-    @apply max-sm:mr-0 max-sm:shrink-0;
-  }
   /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
   /* The passing muted pairing (#794): the label is set apart from its value by
      case and size, never by dropping below the contrast floor. */
   @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
-}
-
-@utility metric-reading-source {
-  .metric-readings-list &:is(td) {
-    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
-  }
 }
 
 @utility tap-target {
@@ -1503,6 +1637,56 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── SECTION: Touch tap targets ── */
+/* THE BUTTON FAMILY'S HEIGHT FLOOR (#3486), declared ONCE for the whole family.
+   `btn` / `btn-ghost` / `btn-danger` set padding and nothing else, so a button's
+   height was whatever its CONTENT happened to be: a 20px text line gives 36px,
+   and the same button with its label hidden below `sm` (`hidden sm:inline`) has
+   only a 16px icon left, so it renders 32px — measurably shorter than the labeled
+   sibling beside it. That is the "shorter wellness +" the 2026-08-21 phone review
+   spotted, and two call sites had already hand-fixed their own copy of it with a
+   local `min-h-10 min-w-10 … sm:min-h-0 sm:min-w-0`. Those hand fixes are the
+   evidence, not the fix: the ninth icon-only composition added next month would
+   have inherited nothing.
+
+   So the floor lives with the family, at the 40px floor #3377 named for this and
+   that the two hand-fixed call sites had already reached for independently, and
+   only below `sm` — desktop density keeps its compact `btn-sm` rows, where a
+   mouse is doing the pointing. `btn-sm` composes as `btn btn-sm`, so it inherits
+   this from `.btn` rather than needing its own rule. Width too, not just height:
+   an icon-only button is the one shape that can be narrower than the floor, and a
+   labeled button is already wider than 40px, so the width half is a no-op
+   everywhere it is not needed.
+
+   IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
+   CEILING. The first cut of this rule was unlayered, on the reasoning that
+   outranking a call site's own `min-h-*` is what stops one drifting below the
+   number. It does the opposite: `min-block-size` does not compose, it REPLACES, so
+   the winning declaration is simply the last word — and an unlayered 40px beat the
+   pager's deliberate `min-h-11`, shrinking a 44px thumb step to 40 and taking
+   e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
+   floor. Tailwind orders `components` before `utilities`, so this loses to any
+   call-site `min-h-*` and the two numbers resolve the way a reader expects them
+   to: the family sets 40 for everything that asks for nothing, and a surface that
+   needs MORE — the pager's 44px tap step — says so and gets it. A surface that
+   wants LESS is not asking for a smaller floor; it is telling us it is not a
+   member of this family.
+
+   The guard is e2e/button-height-floor.mobile.spec.ts, which measures RENDERED
+   bounding boxes at 390px — a class-string assertion would have passed against
+   the very tree this defect shipped in. The other direction, that this rule never
+   pulls a taller target DOWN, is the pager's own rendered-box measurement in
+   e2e/mobile-ui-polish.spec.ts, which is the test that caught it. */
+@layer components {
+  @media (max-width: 639.98px) {
+    .btn,
+    .btn-ghost,
+    .btn-danger {
+      min-block-size: 2.5rem;
+      min-inline-size: 2.5rem;
+    }
+  }
+}
+
 /* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
    density, which is below the ~44px touch-target guideline. On coarse-pointer
    (touch) devices only, extend the clickable area with an invisible pseudo

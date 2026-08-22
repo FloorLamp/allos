@@ -110,7 +110,7 @@ export default function TrajectoryWatchCard({
 
   const n = rollup.analyteCount;
   return (
-    <div className="card mb-6" data-testid="trajectory-findings">
+    <div className="card section-seam mb-6" data-testid="trajectory-findings">
       <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
         <IconTrendingUp
           className="h-4 w-4 shrink-0 text-amber-500"

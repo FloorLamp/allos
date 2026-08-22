@@ -159,7 +159,8 @@ export default function SharedSupplyCard({
           )}
           {pool.canWrite && (
             <OverflowMenu
-              label={`${pool.name} bottle actions`}
+              kind="Bottle"
+              itemName={pool.name}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

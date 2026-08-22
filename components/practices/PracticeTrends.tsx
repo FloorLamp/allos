@@ -82,7 +82,7 @@ export default function PracticeTrends({
     value: week.count,
   }));
   const embeddedSurface =
-    "rounded-lg border border-black/5 p-4 sm:p-5 dark:border-white/10";
+    "subpanel-inset rounded-lg border border-black/5 p-4 sm:p-5 dark:border-white/10";
 
   return (
     <details

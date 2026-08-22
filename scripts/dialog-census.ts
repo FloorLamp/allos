@@ -30,6 +30,7 @@ function facts(entry: DialogEntry): string {
   const bits: string[] = [];
   bits.push(h.portal ? "own portal" : "no portal (inline)");
   if (h.ownFullViewportLayer) bits.push("own fixed inset-0");
+  if (h.scrim) bits.push("own scrim");
   bits.push(h.sharedFocusTrap ? "shared focus trap" : "own focus behaviour");
   if (h.sharedBodyLock) bits.push("shared body lock");
   if (h.sharedOverlayPrimitives) bits.push("shared overlay primitives");
@@ -74,15 +75,39 @@ function main() {
     log();
   }
 
-  log(
-    `HOSTLESS — a dialog belonging to NO DIALOG host (${census.hostless.length})`
-  );
-  for (const entry of census.hostless) {
-    log(`  ${entry.rel}`);
+  // TWO SECTIONS, NOT ONE, because the owner's ruling on #3405 makes them
+  // different answers. An EXCEPTION is a dialog the shared host cannot serve, and
+  // it answers to the convergence rule. A SCOPED-OUT surface was never a member of
+  // the family, so calling it an exception would hand the next hand-rolled dialog
+  // a precedent it has not earned. Printing them together is what made "nine
+  // hostless dialogs" a number nobody could act on.
+  const show = (entry: DialogEntry) => {
+    // WHICH SIGNAL FOUND IT, printed because the two are different findings
+    // (#3445). "by ANATOMY" also means the surface tells assistive technology
+    // nothing — it carries no role and no aria-modal — which is a defect beside
+    // the question of where it renders, and it is only visible here.
+    const found =
+      entry.declaredBy === "anatomy"
+        ? "  [found by ANATOMY — declares no role/aria-modal]"
+        : "";
+    log(`  ${entry.rel}${found}`);
     log(`      ${facts(entry)}`);
-    const note = HOSTLESS_DIALOGS[entry.rel];
-    log(`      ${note ?? "*** NOT RECORDED in HOSTLESS_DIALOGS ***"}`);
-  }
+    const record = HOSTLESS_DIALOGS[entry.rel];
+    log(`      ${record?.why ?? "*** NOT RECORDED in HOSTLESS_DIALOGS ***"}`);
+  };
+
+  log(
+    `RECORDED EXCEPTIONS — a dialog the shared host cannot serve ` +
+      `(${census.exceptions.length}); reasons in docs/internals/overlays.md`
+  );
+  for (const entry of census.exceptions) show(entry);
+  log();
+
+  log(
+    `SCOPED OUT BY ANATOMY — full-viewport, but not a dialog at all ` +
+      `(${census.scopedOut.length})`
+  );
+  for (const entry of census.scopedOut) show(entry);
   log();
 
   if (census.unrecordedHostless.length > 0) {
@@ -99,7 +124,8 @@ function main() {
   log(
     `totals: ${census.hosts.length} hosts, ${census.hosted.length} hosted, ` +
       `${census.confirmCallers.length} confirm callers, ` +
-      `${census.hostless.length} hostless`
+      `${census.exceptions.length} recorded exceptions, ` +
+      `${census.scopedOut.length} scoped out`
   );
 }
 

@@ -76,7 +76,7 @@ export default function EndurancePlanBar({
             <li
               key={p.id}
               data-testid="endurance-plan-card"
-              className="rounded-lg border border-black/5 px-3 py-3 text-sm dark:border-white/10"
+              className="subpanel-inset-sm rounded-lg border border-black/5 px-3 py-3 text-sm dark:border-white/10"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
@@ -162,7 +162,7 @@ export default function EndurancePlanBar({
             await createEndurancePlan(fd);
             setShowForm(false);
           }}
-          className="mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
+          className="subpanel-inset-sm mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
           data-testid="endurance-form"
         >
           <div className="grid gap-3 sm:grid-cols-2">

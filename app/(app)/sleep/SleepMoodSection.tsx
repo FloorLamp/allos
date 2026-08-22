@@ -311,10 +311,20 @@ export default function SleepMoodSection({
                         className="whitespace-nowrap text-slate-700 dark:text-slate-200"
                         data-testid="sleep-history-naps"
                       >
-                        {(napsByDate.get(row.date) ?? []).length === 0
-                          ? "—"
-                          : (napsByDate.get(row.date) ?? []).map((nap) => (
-                              <div
+                        {/* ONE node for the value, because a card-mode meta cell is
+                            a flex container since #3499 and its children are its
+                            flex items: three loose `<div>`s became three items on
+                            ONE line and pushed a three-nap day 29px past the row's
+                            right edge. Wrapped, the naps are one value that stacks
+                            internally, which is what every other meta cell in the
+                            tree already passes. Desktop is a block flow either way. */}
+                        {(napsByDate.get(row.date) ?? []).length === 0 ? (
+                          "—"
+                        ) : (
+                          <span className="block">
+                            {(napsByDate.get(row.date) ?? []).map((nap) => (
+                              <span
+                                className="block"
                                 key={`${nap.startMinutes}:${nap.endMinutes}`}
                               >
                                 {formatSleepWindow(
@@ -323,8 +333,10 @@ export default function SleepMoodSection({
                                   nap.endMinutes
                                 )}{" "}
                                 · {formatHm(nap.durationMin)}
-                              </div>
+                              </span>
                             ))}
+                          </span>
+                        )}
                       </Td>
                       {/* Mood is what the phone used to lose to the card edge —
                           "🙂 Good (4" against a 480px grid in a 358px card. It is
@@ -459,11 +471,7 @@ function SleepMoodRowMenu({
 
   return (
     <div className="flex items-center justify-end">
-      <OverflowMenu
-        label={`Actions for ${dateLabel}`}
-        open={open}
-        onOpenChange={setOpen}
-      >
+      <OverflowMenu itemName={dateLabel} open={open} onOpenChange={setOpen}>
         {({ close }) => (
           <>
             <button

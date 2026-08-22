@@ -93,7 +93,7 @@ export default function MedicalFilters({
 
   return (
     <div
-      className="mb-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-between"
+      className="section-seam mb-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-between"
       data-testid="medical-filters"
     >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4">

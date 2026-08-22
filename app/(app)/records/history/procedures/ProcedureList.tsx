@@ -99,6 +99,7 @@ export default function ProcedureList({
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs(), performedAt)}
+      itemName={(p) => p.name}
       emptyMessage="No procedures yet. Add one, or import a MyChart / CCD health record to populate your surgical history."
       multiView={
         multiView

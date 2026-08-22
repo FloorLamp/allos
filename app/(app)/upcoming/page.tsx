@@ -686,7 +686,7 @@ function MultiviewHint() {
   return (
     <div
       data-testid="multiview-hint"
-      className="mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
+      className="section-seam mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
     >
       <IconUsers className="mt-0.5 h-5 w-5 shrink-0" stroke={1.75} />
       <div className="min-w-0 flex-1">
@@ -732,7 +732,7 @@ function DemographicsNudge({
   return (
     <div
       data-testid="demographics-nudge"
-      className="mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
+      className="section-seam mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
     >
       <IconInfoCircle className="mt-0.5 h-5 w-5 shrink-0" stroke={1.75} />
       {!multi ? (
@@ -1410,6 +1410,7 @@ function Row({
           <div className="flex min-w-0 shrink-0 items-center gap-1">
             {cta}
             <UpcomingRowMenu
+              itemName={item.title}
               folded={hasMenu ? actions : []}
               preventiveRuleKey={preventiveRuleKey}
               overrideAction={async (fd) => {

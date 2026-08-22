@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ScrollFade from "@/components/ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
 
 // The ONE filter affordance for a record list surface (#1449, cluster C).
@@ -23,6 +24,40 @@ import type { AppRoute } from "@/lib/hrefs";
 // the mobile vertical-cost posture of #1416/#1455. Pills carry `aria-pressed`
 // (callback mode) or live in a labelled group (link mode) so the control reads
 // as a filter, not as navigation, to a screen reader.
+//
+// ── A FILTER DOES NOT DRESS AS A DESTINATION (#3408, item E) ─────────────────
+//
+// It read as one anyway. This pill and the Records hub's pane chips
+// (app/(app)/records/RecordsTabs.tsx) were the SAME rounded-full outline with the
+// SAME brand-tinted active state — so History › Immunizations at 430px stacked
+// three look-alike strips with three different meanings: hub tabs, pane chips,
+// then these. Two of them navigate; this one narrows a list in place. A reader
+// cannot tell which by looking, and the screen-reader affordance the paragraph
+// above describes is invisible to the eye.
+//
+// SO A FILTER IS AN INSET CONTROL, NOT AN OUTLINE CHIP. It sits ON the surface
+// rather than floating above it: a soft tinted well, `rounded-md` rather than
+// `rounded-full`, no border, and an active state that FILLS with brand rather
+// than tinting an outline. The vocabulary is deliberately the one this app
+// already uses for segmented in-place controls, so the distinction is "control"
+// vs "destination" and not "two arbitrary chip styles".
+//
+// ONE DECISION, EVERY FILTER. This component IS the family's single filter
+// affordance (that is what the paragraph above is about), so changing it here is
+// the one visual grammar decision the issue asks for — Immunizations' status
+// strip, Conditions', Dental's, Skin's and the dose ledger's all move together,
+// and the next filter inherits it instead of inventing an eleventh species.
+//
+// THE ROW SAYS THAT IT SCROLLS. Seven options on a 430px screen overflow with no
+// affordance at all — the owner's report — so the scroller is `ScrollFade`, the
+// same masked container `RecordTable` already wraps its table in. It publishes
+// `data-fade-left`/`data-fade-right`, which makes "this row scrolls, and says so"
+// an assertable claim rather than a gradient in a screenshot.
+//
+// ScrollFade is a client component and this file still declares no directive and
+// uses no hooks, so both drive modes keep composing into a server component —
+// rendering a client child from a server parent is exactly what that boundary is
+// for.
 
 export type FilterPillOption<T extends string> = {
   value: T;
@@ -37,6 +72,7 @@ export default function FilterPills<T extends string>({
   onSelect,
   label,
   testId,
+  optionTestId,
 }: {
   options: readonly FilterPillOption<T>[];
   value: T;
@@ -44,20 +80,41 @@ export default function FilterPills<T extends string>({
   // Names the control for assistive tech, e.g. "Filter conditions by status".
   label: string;
   testId?: string;
+  // A stable marker per OPTION, for a list whose specs address one state
+  // directly (the encounter kind filter's `encounter-kind-ambulatory`). Optional
+  // because most filters are addressed by their visible label; supplying it is
+  // what let a hand-rolled chip row adopt this component without rewriting its
+  // specs (#3408, item E / item G).
+  optionTestId?: (value: T) => string;
 }) {
+  // 32px TALL — `py-1.5` around `text-sm`, no explicit min-height — rather than
+  // the 44px tap floor. (An earlier draft of this note argued for a `min-h-9`
+  // that was never in the string; the class list below is what actually renders,
+  // and it measures 32.)
+  //
+  // These sit shoulder to shoulder in a scrolling row, and a 44px-tall strip of
+  // seven is a band of chrome above the list it is meant to narrow. The floor's
+  // own wording is about a control a finger must ACQUIRE; a pill in a horizontal
+  // strip is acquired by its WIDTH, which is never the constrained axis here —
+  // the strip scrolls sideways and each label carries its own hit area along it.
+  // The nav chips it must be told apart from keep their own height.
   const pill = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition ${
+    `flex shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
       active
-        ? "border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300"
-        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
+        ? "bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950"
+        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
     }`;
 
   return (
-    <div
+    <ScrollFade
       role="group"
       aria-label={label}
       data-testid={testId ?? "filter-pills"}
-      className="flex gap-2 overflow-x-auto"
+      // The marker the class-level "nav chips and filter chips are visually
+      // distinct" assertion reads, so that claim does not have to be spelled as a
+      // brittle list of Tailwind classes in a spec.
+      data-chip-role="filter"
+      className="flex gap-2"
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -67,6 +124,7 @@ export default function FilterPills<T extends string>({
               key={o.value}
               href={o.href}
               aria-current={active ? "true" : undefined}
+              data-testid={optionTestId?.(o.value)}
               className={pill(active)}
             >
               {o.label}
@@ -78,6 +136,7 @@ export default function FilterPills<T extends string>({
             key={o.value}
             type="button"
             aria-pressed={active}
+            data-testid={optionTestId?.(o.value)}
             onClick={() => onSelect?.(o.value)}
             className={pill(active)}
           >
@@ -85,6 +144,6 @@ export default function FilterPills<T extends string>({
           </button>
         );
       })}
-    </div>
+    </ScrollFade>
   );
 }

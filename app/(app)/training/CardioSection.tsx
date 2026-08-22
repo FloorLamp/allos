@@ -67,7 +67,7 @@ export default async function CardioSection() {
               both are present). */}
           {(prs.length > 0 || weekly.data.length > 0) && (
             <div
-              className={`mb-6 grid gap-6 ${
+              className={`section-seam mb-6 grid gap-6 ${
                 prs.length > 0 && weekly.data.length > 0 ? "lg:grid-cols-2" : ""
               }`}
             >
@@ -104,7 +104,7 @@ export default async function CardioSection() {
           )}
 
           {mixTotal > 0 && (
-            <div className="card mb-6">
+            <div className="card section-seam mb-6">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
                 Intensity mix
               </h3>

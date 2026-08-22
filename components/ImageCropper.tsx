@@ -302,6 +302,24 @@ export default function ImageCropper({
     );
   }
 
+  // A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
+  // docs/internals/overlays.md. Two reasons the shared host cannot serve this one:
+  //
+  //   1. IT OPENS OVER AN ALREADY-OPEN DIALOG. Both profile-photo pickers live
+  //      inside a ModalShell, and the cropper is raised from there — hence the
+  //      `z-120` below, above the sheet's `z-60` AND above the toasts' `z-100`,
+  //      because a toast must not land on top of a crop the person is dragging.
+  //      The host has no stacking prop; `zIndexClass` stops at BottomSheet.
+  //   2. ITS POINTER DRAG MANIPULATES CONTENT. The whole panel is a drag surface
+  //      for panning the image inside the crop circle, so a sheet's swipe-down
+  //      dismissal would arbitrate against the gesture the surface exists for.
+  //      #1469 already scopes the GESTURE out for exactly this reason
+  //      (RAW_DRAG_LISTENER_ALLOW); this is the same anatomy answering the host
+  //      question the same way.
+  //
+  // What it does NOT get to keep is a hand-rolled scroll contract: the scroller
+  // below contains its overscroll, and the widened chokepoint guard (#3405) checks
+  // that rather than taking this comment's word for it.
   return createPortal(
     <div
       className="fixed inset-0 z-120 flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-900/50 p-4 sm:p-8 dark:bg-black/70"

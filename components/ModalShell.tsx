@@ -125,7 +125,9 @@ export default function ModalShell({
   children,
   size = "md",
   presentation = "dialog",
+  fullScreenBelowMd = false,
   initialFocusRef,
+  closeDisabled = false,
   testId = "modal-shell",
 }: {
   title: string;
@@ -139,7 +141,22 @@ export default function ModalShell({
   // fallback). Each one is registered in
   // lib/__tests__/overlay-motion-chokepoint.test.ts with its justification.
   presentation?: Extract<SheetPresentation, "dialog" | "centered">;
+  // Fill the phone viewport instead of floating a card in it, below `md` only
+  // (#3423). Passes straight through to BottomSheet, which documents the whole
+  // decision; a `dialog` presentation is already a sheet at that width and has
+  // no use for it.
+  fullScreenBelowMd?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  // Grey out the ✕ while this surface has a reason to refuse dismissal — a write
+  // already in flight, which closing would not cancel (#3405 review).
+  //
+  // The alternative a consumer reaches for is a no-op `onClose`, and that is the
+  // thing this exists to stop: the ✕ still looks live, still takes the tap, and
+  // does nothing. `MergeConflictDialog` had exactly that for the length of one
+  // review — an affordance lying about what it will do, beside a Cancel button
+  // that was honestly `disabled`. See BottomSheet's note for why this disables
+  // the CONTROL only and leaves Escape and the gestures on their own path.
+  closeDisabled?: boolean;
   testId?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -180,8 +197,10 @@ export default function ModalShell({
       onGestureDismiss={onGestureDismiss}
       title={title}
       presentation={presentation}
+      fullScreenBelowMd={fullScreenBelowMd}
       size={size}
       showClose
+      closeDisabled={closeDisabled}
       testId={testId}
       panelRef={panelRef}
       initialFocusRef={initialFocusRef}

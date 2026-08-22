@@ -233,12 +233,7 @@ function ReadingRow({
           </span>
         )}
       </Td>
-      <Td
-        slot="meta"
-        label="Source"
-        empty={!row.source && !row.observed}
-        className="metric-reading-source"
-      >
+      <Td slot="meta" label="Source" empty={!row.source && !row.observed}>
         {row.source ?? "—"}
         {/* Where this reading was actually taken, said out loud: a clinic-measured
             value is not a wearable one. It is corrected in place all the same — the
@@ -286,7 +281,8 @@ function ReadingRow({
         ) : (
           <div className="flex items-center justify-end">
             <OverflowMenu
-              label="Reading actions"
+              kind="Reading"
+              itemName={row.date}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

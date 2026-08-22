@@ -19,7 +19,7 @@ export function PanelSiblingsCard({
   return (
     <div
       data-testid="panel-siblings"
-      className="card mb-6 border-l-4 border-l-violet-300 text-sm dark:border-l-violet-700"
+      className="card section-seam mb-6 border-l-4 border-l-violet-300 text-sm dark:border-l-violet-700"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <span className="text-slate-700 dark:text-slate-200">

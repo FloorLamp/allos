@@ -21,7 +21,7 @@
 // CONFIRM-NEVER-SILENT (#798). Nothing in this module writes. Catalog prefill and
 // the parse below produce FORM STATE; the user's save is the write.
 
-import { readGroupedNumber } from "./dri";
+import { readGroupedNumber, WRITTEN_NUMBER } from "./dri";
 import type { IngredientUnit } from "./dri";
 
 // One label ingredient of an intake item, as stored. `amount`/`unit` are the
@@ -116,8 +116,21 @@ export type IngredientAmountReading =
 // whole-string framing is local: an ingredient amount must be ONE quantity end to end,
 // while a dose amount is free text that gets scanned. What "1,000" and "2,5" mean is
 // one question, and it now has exactly one answer.
-const AMOUNT_RE =
-  /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(mcg|\u00b5g|ug|mg|g|iu)$/i;
+//
+// AND THE NUMBER ITSELF IS IMPORTED TOO (#3451). This pattern used to spell its own
+// `\d{1,3}(?:,\d{3})+\u2026|\d+(?:\.\d+)?`, which happened to agree with `readGroupedNumber`
+// about `.` and `,` and disagreed with it about everything else: "1\u2019000 mg" on a Swiss
+// label matched nothing here and read as `unreadable`, while the dose half read it as a
+// confident ZERO. Two readers, two answers, on the shape lib/dri.ts cites as its
+// motivating example. Now the SHAPE of a written number comes from `WRITTEN_NUMBER` and
+// its MEANING from `readGroupedNumber`, so the only thing local to this file is the
+// anchoring \u2014 which is exactly what "the whole-string framing is local" was supposed to
+// mean. The plain space is refused on both sides: `WRITTEN_NUMBER` cannot span it, so
+// "1 000 mg" matches nothing here, and the dose half takes it whole and declines it.
+const AMOUNT_RE = new RegExp(
+  String.raw`^(${WRITTEN_NUMBER})\s*(mcg|\u00b5g|ug|mg|g|iu)$`,
+  "i"
+);
 
 // Mass converts to milligrams or micrograms: grams fold to mg at the boundary
 // (canonical-units-at-the-write-boundary), mcg stays mcg so a 100 mcg label does not

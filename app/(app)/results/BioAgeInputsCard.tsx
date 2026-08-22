@@ -77,7 +77,7 @@ export default async function BioAgeInputsCard() {
   return (
     <section
       data-testid="bio-age-inputs-card"
-      className="card mb-6 border-brand-100 dark:border-brand-950"
+      className="card section-seam mb-6 border-brand-100 dark:border-brand-950"
     >
       <div className="flex items-start gap-3">
         <IconActivityHeartbeat className="mt-0.5 h-6 w-6 shrink-0 text-brand-500" />

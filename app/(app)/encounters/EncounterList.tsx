@@ -9,6 +9,7 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import ProviderName from "@/components/ProviderName";
 import DiagnosisChips from "@/components/DiagnosisChips";
+import FilterPills from "@/components/FilterPills";
 import { diagnosisList } from "@/lib/diagnosis-chips";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -199,30 +200,34 @@ export default function EncounterList({
 
   return (
     <>
+      {/* THE FIFTH FILTER SPECIES RETIRES (#3408, items E and G). This row was a
+          private `FilterChip` — a fifth shape for the one job
+          components/FilterPills.tsx exists to be, and the reason the hub could
+          grow an eleventh button species without anyone deciding to. It renders
+          the shared control now, in CALLBACK mode (the filter is local state, not
+          a query param), keeping its per-kind testids through `optionTestId`.
+          Nothing about what it filters or how moved. */}
       {presentKinds.length > 1 ? (
-        <div
-          className="mb-3 flex flex-wrap gap-1.5"
-          data-testid="encounter-kind-filter"
-        >
-          <FilterChip
-            label="All"
-            active={kind === "all"}
-            onClick={() => setKind("all")}
-            testid="encounter-kind-all"
+        <div className="mb-3">
+          <FilterPills
+            options={[
+              { value: "all" as const, label: "All" },
+              ...presentKinds.map((k) => ({
+                value: k,
+                label: ENCOUNTER_KIND_LABELS[k],
+              })),
+            ]}
+            value={kind}
+            onSelect={setKind}
+            label="Filter visits by type"
+            testId="encounter-kind-filter"
+            optionTestId={(v) => `encounter-kind-${v}`}
           />
-          {presentKinds.map((k) => (
-            <FilterChip
-              key={k}
-              label={ENCOUNTER_KIND_LABELS[k]}
-              active={kind === k}
-              onClick={() => setKind(k)}
-              testid={`encounter-kind-${k}`}
-            />
-          ))}
         </div>
       ) : null}
       <RecordTable
         items={shown}
+        itemName={(e) => `${dateLabel(e, fmt)} visit`}
         columns={buildColumns(fmt, linkedRecordCounts, episodes)}
         emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
         multiView={
@@ -261,35 +266,5 @@ export default function EncounterList({
         }}
       />
     </>
-  );
-}
-
-// A single kind-filter chip. Active chip reads as a solid brand pill; inactive as a
-// quiet outline. `data-testid` gives the browser test a stable per-kind hook.
-function FilterChip({
-  label,
-  active,
-  onClick,
-  testid,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  testid: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      data-testid={testid}
-      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-        active
-          ? "bg-brand-600 text-white dark:bg-brand-500"
-          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-      }`}
-    >
-      {label}
-    </button>
   );
 }

@@ -160,7 +160,7 @@ export default function SleepTrendsSection({
   ];
 
   return (
-    <section className="mb-6" data-testid="sleep-trends">
+    <section className="section-seam mb-6" data-testid="sleep-trends">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">

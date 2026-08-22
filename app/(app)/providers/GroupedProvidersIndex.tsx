@@ -266,11 +266,22 @@ function ProviderRow({
             <IconPhone className="h-4 w-4" stroke={1.75} />
           </a>
         ) : null}
-        <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-          {p.activity > 0
-            ? `${p.activity} ${p.activity === 1 ? "record" : "records"}`
-            : "—"}
-        </span>
+        {/* AN ABSENCE STOPS DRAWING A GLYPH (#3408, item 8 — but see below).
+            This row is a FLEX row, not a grid: there is no column to keep
+            aligned, so the "—" was a placeholder paying for nothing. On a phone
+            card it read as a control — a bare dash at the right-hand end of a
+            row, exactly where every other row in the app puts one — which is
+            what the owner reported as "a bare − with no disclosure affordance
+            grammar". It was never a control and never collapsed anything.
+
+            #2399's rule and #531–#534's ("label by what DIFFERS") both land on
+            the same answer: a provider with no records for this profile says
+            nothing, and the ones with records still say how many. */}
+        {p.activity > 0 ? (
+          <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+            {`${p.activity} ${p.activity === 1 ? "record" : "records"}`}
+          </span>
+        ) : null}
       </span>
     </div>
   );

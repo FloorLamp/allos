@@ -27,14 +27,21 @@ import {
 import { EmptyState } from "@/components/ui";
 import { dataSectionHref, clinicalResultDetailHref } from "@/lib/hrefs";
 import { Notice } from "@/components/Notice";
-import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
+import {
+  parseSortColumn,
+  parseSortDir,
+  sortRows,
+  type SortChoice,
+} from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
+import TableSortSelect from "@/components/TableSortSelect";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import ScrollFade from "@/components/ScrollFade";
 import { STATUS_TEXT, statusBadge } from "@/app/(app)/immunizations/status-ui";
 import ScheduleGrid from "@/app/(app)/immunizations/ScheduleGrid";
 import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
 import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
 import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
-import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
 import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRecordActions";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
@@ -65,6 +72,18 @@ const STATUS_RANK: Record<VaccineStatus, number> = {
 };
 
 type SortKey = "vaccine" | "status" | "last" | "doses" | "next";
+
+// The same five columns the SortableHeaders carry, for the card-mode control.
+// Below `sm` the header row is hidden (the row is a card there), so this is the
+// ONLY way to re-sort on a phone — and it writes the identical `?sort=`/`?dir=`
+// params, so the server-side ordering above is untouched.
+const VACCINE_SORT_CHOICES: readonly SortChoice[] = [
+  { column: "status", label: "Status" },
+  { column: "vaccine", label: "Vaccine" },
+  { column: "last", label: "Last dose", defaultDir: "desc" },
+  { column: "doses", label: "Doses" },
+  { column: "next", label: "Next due" },
+];
 
 // Within a status band, a risk-elevated (issue #553) vaccine leads. STATUS_RANK
 // spans 0..6; multiplying by 10 leaves room to subtract the priority (max 2)
@@ -190,7 +209,15 @@ export default function ImmunizationsSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div>
-        <div className="mb-6 flex flex-wrap items-start gap-2">
+        {/* ONE PRIMARY, ONE ⋯ (#3408, item C / item G). Four button species used
+            to stand here on every visit — a full `btn` primary, a bordered
+            secondary, and two icon-only squares — above a list whose records are
+            rare-cadence by definition (#1497). The add stays the pane's single
+            primary; import, print and share fold into the ⋯ that
+            ImmunizationRecordActions now hosts (it owns the share modal, so the
+            fold belongs with it), and below `md` that ⋯ is an action sheet.
+            Print and share keep their #1849 acting-profile scoping untouched. */}
+        <div className="section-seam mb-6 flex flex-wrap items-center gap-2">
           <AddEntryPanel
             testId="add-immunization-panel"
             panelId="add-immunization-panel-body"
@@ -200,19 +227,26 @@ export default function ImmunizationsSection({
           >
             <ImmunizationForm action={addImmunization} defaultDate={now} />
           </AddEntryPanel>
-          <MyChartImport compact />
-          {/* Print / share the vaccination record (#1849). Acting-profile scoped
-              like the schedule above it; the artifact names the person it is for. */}
-          <ImmunizationRecordActions />
+          <ImmunizationRecordActions includeImport />
         </div>
 
         {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
           action, inlined so the merged /records SectionHeader stays generic). */}
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        {/* THE COUNTS STOP FLOATING AGAINST THE SENTENCE (#3408, item 6). At
+            430px `justify-between` on a wrapping row put three `text-2xl` numerals
+            hard against the right edge with the status sentence orphaned above
+            them, reading as two unrelated things. Below `md` the counts are a row
+            of their OWN under the sentence and shrink to a running-text scale;
+            from `md` up, where there is room for both on one line, nothing
+            changes. */}
+        <div className="mb-4 flex flex-col gap-1 md:mb-6 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {subtitle}
           </p>
-          <div className="flex gap-2">
+          <div
+            className="flex gap-3 md:gap-2"
+            data-testid="immunization-summary-counts"
+          >
             <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
             <Summary count={summary.dueCount} label="Due" tone="amber" />
             <Summary
@@ -245,23 +279,58 @@ export default function ImmunizationsSection({
           </Notice>
         )}
 
-        {/* Master table: one row per tracked vaccine, sortable + status-filterable,
-      each row drilling into the per-vaccine detail view. */}
-        {/* Heading then filter on its OWN row (#1449): the seven status pills need
-            the full width to scroll in one line, which a `justify-between` flex row
-            beside the heading would deny them on a phone. */}
-        <div className="mb-4 space-y-3">
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Vaccines
-          </h2>
+        {/* ── THE VACCINE LIST ─────────────────────────────────────────────────
+            THE FILTER SITS ON THE LIST IT FILTERS (#3408, item E). "Vaccines" was
+            a heading line of its own with the status strip under it and the list
+            under that — three stacked rows before the first record. The label is
+            now IN the filter row, which is what makes the strip read as this
+            list's control rather than as a third navigation layer. #1449's point
+            still holds and is why the strip gets the full width below `sm`: seven
+            pills cannot scroll in one line beside a heading on a phone, so the
+            label and the strip share a row only from `sm` up.
+
+            A SORT CONTROL, BECAUSE THE HEADERS ARE GONE (#3408, item D). Card mode
+            hides `thead`, so the SortableHeader links that carry sorting become
+            unreachable — `TableSortSelect` is the house answer, one control
+            encoding both axes over the SAME `?sort=`/`?dir=` params. One sort
+            model, two affordances; not a second implementation. */}
+        <div className="mb-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="shrink-0 font-semibold text-slate-800 dark:text-slate-100">
+              Vaccines
+            </h2>
+            <TableSortSelect
+              choices={VACCINE_SORT_CHOICES}
+              defaultSort="status"
+              label="Sort vaccines"
+            />
+          </div>
+          {/* THE LABEL AND THE FILTER ARE ONE BLOCK, NOT ONE ROW. #1449 already
+              ruled that seven status pills need the full width to scroll in one
+              line on a phone, and putting "Vaccines" beside them takes ~90px of
+              the 430 they have — that ruling is not silently reversed here. What
+              the issue is actually asking for is that the strip stop reading as a
+              third NAVIGATION layer, and what did that was the standalone heading
+              line between them: `space-y-2` inside one wrapper directly above the
+              list makes the label and the strip read as this list's own header,
+              which is the same thing at a tenth of the cost. */}
           <ImmunizationStatusFilter value={statusFilter} />
         </div>
         {rows.length === 0 ? (
-          <EmptyState message="No vaccines match this filter." />
+          <EmptyState compact message="No vaccines match this filter." />
         ) : (
-          <div className="card mb-6 overflow-hidden p-0">
-            <div className="max-h-[70vh] overflow-auto">
-              <table className="w-full">
+          // THE CARD CHROME AND THE 70vh SCROLLER ARE DESKTOP FURNITURE. Below
+          // `sm` the rows ARE cards — a bordered box around them is a second
+          // border, and a 70vh inner scroller on a phone is a nested scroll
+          // region inside the page's own, which is the shape #3360 spent a whole
+          // issue undoing one layer up. Both start at `sm`, where the table is a
+          // table again.
+          <div className="section-seam mb-6 sm:card sm:overflow-hidden sm:p-0">
+            <ScrollFade className="sm:max-h-[70vh] sm:overflow-y-auto">
+              <ResponsiveTable
+                className="w-full"
+                data-testid="immunization-vaccines-table"
+              >
                 <thead>
                   <tr className="border-b border-black/5 dark:border-white/10">
                     <SortableHeader
@@ -274,9 +343,13 @@ export default function ImmunizationsSection({
                       label="Status"
                       defaultSort="status"
                     />
-                    {/* Last dose / Doses / Next due hide below their breakpoints so
-                  the table fits a phone; they stay on the detail view, and the
-                  key facts fold under the name cell on small screens. */}
+                    {/* Last dose / Doses / Next due still hide below their
+                  breakpoints in the TABLE — three more columns is what makes a
+                  table need a sideways swipe. On a CARD they come back as meta
+                  lines, which is the whole point of the responsive-table
+                  machinery: a responsively-hidden column is not lost on a phone,
+                  it is re-placed. That is what retires the hand-rolled
+                  `sm:hidden` detail line this cell used to carry beside them. */}
                     <SortableHeader
                       column="last"
                       label="Last dose"
@@ -309,7 +382,7 @@ export default function ImmunizationsSection({
                         key={a.code}
                         className="border-b border-black/5 last:border-0 dark:border-white/10"
                       >
-                        <td className="td">
+                        <Td slot="title">
                           <Link
                             href={`/immunizations/${a.code}`}
                             className="font-medium text-brand-700 hover:underline dark:text-brand-400"
@@ -325,34 +398,58 @@ export default function ImmunizationsSection({
                               Prioritized — {riskReason}
                             </div>
                           )}
-                          <div className="text-xs text-slate-500 sm:hidden dark:text-slate-400">
-                            {a.detail}
-                            {a.nextLabel ? ` · ${a.nextLabel}` : ""}
-                          </div>
-                        </td>
-                        <td className="td">
+                        </Td>
+                        {/* The status pill is the row's HEADLINE — what you came
+                            to the list to read — so it is the card's `value`, not
+                            one meta line among four. */}
+                        <Td slot="value">
                           <span className={`badge ${badge.cls}`}>
                             {badge.text}
                           </span>
-                        </td>
-                        <td className="td hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300">
+                        </Td>
+                        <Td
+                          slot="meta"
+                          label="Last dose"
+                          empty={a.lastDate == null}
+                          className="hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300"
+                        >
                           {a.lastDate ?? "—"}
-                        </td>
-                        <td className="td hidden text-slate-600 md:table-cell dark:text-slate-300">
+                        </Td>
+                        {/* "Doses 0" is not a fact about this vaccine, it is the
+                            absence of one — and on the phone card it is a whole
+                            line saying nothing, on the rows (unknown / due) that
+                            dominate the list. It keeps its CELL so the desktop
+                            grid stays aligned; it just claims no card slot
+                            (#531–#534, "label by what DIFFERS"). A required-dose
+                            count is real information even at zero, so a vaccine
+                            with a known series still shows "0 / 2". */}
+                        <Td
+                          slot="meta"
+                          label="Doses"
+                          empty={
+                            a.dosesReceived === 0 && a.dosesRequired == null
+                          }
+                          className="hidden text-slate-600 md:table-cell dark:text-slate-300"
+                        >
                           {a.dosesReceived}
                           {a.dosesRequired != null
                             ? ` / ${a.dosesRequired}`
                             : ""}
-                        </td>
-                        <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
+                        </Td>
+                        <Td
+                          slot="meta"
+                          label="Next due"
+                          empty={a.nextLabel == null}
+                          className="hidden text-slate-500 md:table-cell dark:text-slate-400"
+                        >
                           {a.nextLabel ?? "—"}
-                        </td>
+                        </Td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </ResponsiveTable>
+            </ScrollFade>
           </div>
         )}
 
@@ -363,15 +460,27 @@ export default function ImmunizationsSection({
                 Immunity titers
               </h3>
               {titers.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  No antibody/titer results yet. They appear here automatically
-                  when a lab report with immunity markers (e.g. Hepatitis B
-                  Surface Antibody, Measles IgG) is added under{" "}
-                  <Link href="/results/clinical-results" className="underline">
-                    Clinical results
-                  </Link>
-                  .
-                </p>
+                // AN ABSENCE PAYS A LINE, NOT A PARAGRAPH (#3408, item B). Four
+                // lines of prose explaining a feature that has produced nothing
+                // yet, above the fold, every visit. The compact empty state says
+                // the same thing in the house shape and keeps the one link that
+                // is actually actionable.
+                <EmptyState
+                  compact
+                  message={
+                    <>
+                      No antibody/titer results yet — they appear here when a
+                      lab report with immunity markers is added under{" "}
+                      <Link
+                        href="/results/clinical-results"
+                        className="underline"
+                      >
+                        Clinical results
+                      </Link>
+                      .
+                    </>
+                  }
+                />
               ) : (
                 <div className="divide-y divide-black/5 dark:divide-white/5">
                   {titers.map((t) => (
@@ -423,6 +532,7 @@ export default function ImmunizationsSection({
               <div className="mt-3">
                 {recordedDoses.length === 0 ? (
                   <EmptyState
+                    compact
                     message="No immunizations recorded yet. Use Add immunization, or import a MyChart export."
                     action={{
                       href: dataSectionHref("import"),
@@ -477,6 +587,18 @@ export default function ImmunizationsSection({
   );
 }
 
+// THE COUNTS ARE A LINE ON A PHONE AND A TILE ROW ON A DESKTOP (#3408, item 6).
+//
+// Three stacked `text-2xl` numerals with a caption under each is ~100px of
+// vertical space to say "1 overdue, 0 due, 3 no record" — on the one viewport
+// where vertical space is the scarce resource, directly above the list those
+// three numbers are ABOUT. Below `md` the same three facts read as one running
+// line at `text-sm`, which is ~20px; from `md` up, where the row sits beside the
+// status sentence with room to spare, the tiles are unchanged.
+//
+// ONE AUTHORED NODE, NOT TWO (#2305). The number and its label are the same two
+// elements at both widths — `inline`/`md:block` and a scale swap — so there is no
+// hidden twin holding a stale count.
 function Summary({
   count,
   label,
@@ -492,9 +614,15 @@ function Summary({
     slate: "text-slate-500 dark:text-slate-400",
   };
   return (
-    <div className="text-center">
-      <div className={`text-2xl font-bold ${tones[tone]}`}>{count}</div>
-      <div className="text-xs text-slate-400">{label}</div>
+    <div className="flex items-baseline gap-1 md:block md:text-center">
+      <span
+        className={`text-sm font-semibold md:block md:text-2xl md:font-bold ${tones[tone]}`}
+      >
+        {count}
+      </span>
+      <span className="text-xs text-slate-500 md:block md:text-slate-400 dark:text-slate-400">
+        {label}
+      </span>
     </div>
   );
 }

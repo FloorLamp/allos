@@ -70,6 +70,7 @@ export default function CareGoalList({
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs(), appointments)}
+      itemName={(g) => g.description}
       emptyMessage="No health goals yet. Add one, or import a MyChart / CCD health record to populate goals set in your records."
       multiView={
         multiView

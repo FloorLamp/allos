@@ -522,12 +522,147 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   expect(Math.abs(during.width - before.width)).toBeLessThan(1);
   expect(Math.abs(during.y - before.y)).toBeLessThan(1);
 
+  // AND IT LANDS ON THE RAIL (#3459 item 2): the right edge of the family row's
+  // facts cell, whichever member is hovered — not trailing whatever text this
+  // member happens to end with. Polled rather than read once, because the door
+  // slides 0.25rem on its way in and a single read can catch it mid-transition.
+  await expect
+    .poll(async () =>
+      Math.round(
+        await row.evaluate((li) => {
+          const facts = li.closest("dd")!.getBoundingClientRect();
+          const label = li
+            .querySelector("[data-testid='standing-door']")!
+            .getBoundingClientRect();
+          return facts.right - label.right;
+        })
+      )
+    )
+    .toBe(0);
+
   // The IDENTICAL treatment from the keyboard. Move the mouse away first, so what is
   // being measured is focus and not a lingering hover.
   await page.mouse.move(0, 0);
   await expect.poll(() => opacity(door)).toBe("0");
   await link.focus();
   await expect.poll(() => opacity(door)).toBe("1");
+});
+
+test("a stacked family's door lands on the member you are pointing at, not on the stack", async ({
+  page,
+}) => {
+  // THE `members` BRANCH, which nothing else exercises. A `single`/`composed`
+  // family puts every member on ONE line, so anchoring its doors to the `ul` and
+  // to the `li` are indistinguishable — and the door test above happens to pick a
+  // `composed` row. A `members` family STACKS, so the two differ by the whole
+  // height of the stack, and only here can the wrong anchor be seen.
+  //
+  // The rail assertion in the test above reads x ONLY, by construction: a door
+  // anchored to the stack keeps the identical right edge and moves in y. So this
+  // reads y.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="members"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: every stacked family anchors its doors the same way
+  await expect(family).toBeVisible();
+
+  const doored = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") });
+  const count = await doored.count();
+  // A one-member "stack" is not a stack: it would make this test green against
+  // the very anchor it exists to reject, so the fixture must really stack.
+  expect(count, "the stacked family under test has one member").toBeGreaterThan(
+    1
+  );
+
+  // The LAST member — furthest from the top of the stack, so a door anchored to
+  // the stack is furthest from where it belongs.
+  const member = doored.nth(count - 1);
+  const link = member.getByRole("link").first(); // first-ok: the member row IS its link
+  await link.scrollIntoViewIfNeeded();
+  await link.hover();
+  const door = member.getByTestId("standing-door");
+  await expect
+    .poll(() => door.evaluate((n) => getComputedStyle(n).opacity))
+    .toBe("1");
+
+  const placed = await member.evaluate((li) => {
+    const row = li.getBoundingClientRect();
+    const stack = li.closest("ul")!.getBoundingClientRect();
+    const label = li
+      .querySelector("[data-testid='standing-door']")!
+      .getBoundingClientRect();
+    const facts = li.closest("dd")!.getBoundingClientRect();
+    return {
+      rowCentre: row.top + row.height / 2,
+      rowHeight: row.height,
+      stackHeight: stack.height,
+      doorCentre: label.top + label.height / 2,
+      doorHeight: label.height,
+      railGap: facts.right - label.right,
+    };
+  });
+
+  // The fixture must actually stack, or the assertions below cannot discriminate.
+  expect(
+    placed.stackHeight,
+    `stack ${placed.stackHeight} vs row ${placed.rowHeight}`
+  ).toBeGreaterThan(placed.rowHeight + 8);
+
+  // ON THE MEMBER'S OWN LINE: same centre, and no taller than the line itself.
+  expect(
+    placed.doorCentre - placed.rowCentre,
+    `door centre is ${placed.doorCentre - placed.rowCentre}px off the row it belongs to`
+  ).toBeCloseTo(0, 0);
+  expect(placed.doorHeight).toBeLessThanOrEqual(placed.rowHeight + 1);
+  // And still on the rail — the x half, unchanged.
+  expect(placed.railGap).toBeCloseTo(0, 0);
+});
+
+test("the door rail is not a pointer target, so it cannot reveal a neighbour's door", async ({
+  page,
+}) => {
+  // Every member of a family shares ONE door rail, so their door boxes overlap
+  // exactly. If a door could take the pointer, the topmost — the last member in
+  // the DOM — would answer for the whole rail, and hovering it would reveal that
+  // member's door no matter which member the pointer was actually over.
+  //
+  // Paired with a PRESENCE check on purpose: an absence assertion that never had
+  // a door to suppress would pass against a page with no doors at all.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="composed"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: composed families all share one rail the same way
+  await expect(family).toBeVisible();
+  const doors = family.getByTestId("standing-door");
+  expect(await doors.count()).toBeGreaterThan(1);
+  const opacities = () =>
+    doors.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).opacity)
+    );
+
+  // PRESENCE: a member's own text does reveal that member's door.
+  const first = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: the leading member, hovered to prove a door can appear
+  await first.getByRole("link").first().hover(); // first-ok: the member row IS its link
+  await expect.poll(async () => (await opacities()).includes("1")).toBe(true);
+
+  // ABSENCE: the rail itself belongs to nobody. Hover the far right of the facts
+  // cell, past every member's text, and no door may answer.
+  const rail = await family.evaluate((node) => {
+    const facts = node.querySelector("dd")!.getBoundingClientRect();
+    const list = node.querySelector("ul")!.getBoundingClientRect();
+    return { x: facts.right - 5, y: list.top + list.height / 2 };
+  });
+  await page.mouse.move(rail.x, rail.y);
+  await expect
+    .poll(async () => (await opacities()).join(","))
+    .toMatch(/^0(,0)*$/);
 });
 
 test("the age text steps aside for the door rather than being deleted", async ({
@@ -628,6 +763,34 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
       );
     expect(rights.length).toBeGreaterThan(1);
     expect(new Set(rights).size).toBe(1);
+
+    // AND THAT COLUMN IS THE TRAILING ONE (#3459). The shared-edge check above
+    // cannot tell "aligned in the column" from "aligned in the wrong place": when
+    // the three-column template lost the cascade to `sm:`, EVERY plot auto-flowed
+    // onto a second grid row and they all shared one right edge down there — so
+    // that assertion passed against precisely the bug it existed to catch. The
+    // ruling is about POSITION, so position is what this pins: the plot sits to
+    // the right of the facts it belongs to, on the same row as them.
+    const column = await weight.evaluate((row) => {
+      const facts = row.querySelector("dd")!.getBoundingClientRect();
+      const plot = row
+        .querySelector("[data-testid='standing-sparkline']")!
+        .getBoundingClientRect();
+      return {
+        plotLeft: plot.left,
+        plotTop: plot.top,
+        plotBottom: plot.bottom,
+        factsRight: facts.right,
+        factsTop: facts.top,
+        factsBottom: facts.bottom,
+      };
+    });
+    expect(
+      column.plotLeft,
+      `the plot starts at ${column.plotLeft}, the facts cell ends at ${column.factsRight}`
+    ).toBeGreaterThanOrEqual(column.factsRight);
+    expect(column.plotTop).toBeLessThan(column.factsBottom);
+    expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

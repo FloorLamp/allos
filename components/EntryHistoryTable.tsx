@@ -58,7 +58,8 @@ export default function EntryHistoryTable<T extends { id: number }>({
   collapsedCount = 5,
   expandToggle,
   readOnly = false,
-  menuLabel,
+  menuKind,
+  menuItemName,
   rowTestId,
   editTestId,
   deleteTestId,
@@ -85,7 +86,12 @@ export default function EntryHistoryTable<T extends { id: number }>({
   // column goes away rather than rendering a menu whose every item would refuse —
   // the rows themselves are still the record and stay readable.
   readOnly?: boolean;
-  menuLabel: string | ((item: T) => string);
+  // The row's ⋯ identity (#3501). `menuKind` is the row's noun ("Dose",
+  // "Session"); `menuItemName` is the row itself, in whatever form the table
+  // already shows it — a time, a date, a name. The finished sentence is
+  // lib/overflow-menu-label.ts's, not this table's and not its callers'.
+  menuKind?: string;
+  menuItemName: (item: T) => string;
   rowTestId?: (item: T) => string;
   editTestId?: (item: T) => string;
   deleteTestId?: (item: T) => string;
@@ -193,11 +199,8 @@ export default function EntryHistoryTable<T extends { id: number }>({
                     <Td slot="actions" className="px-2 py-2">
                       <div className="flex justify-end">
                         <OverflowMenu
-                          label={
-                            typeof menuLabel === "string"
-                              ? menuLabel
-                              : menuLabel(item)
-                          }
+                          kind={menuKind}
+                          itemName={menuItemName(item)}
                           open={menuOpenId === item.id}
                           onOpenChange={(open) =>
                             setMenuOpenId(open ? item.id : null)

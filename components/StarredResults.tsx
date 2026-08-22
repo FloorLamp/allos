@@ -155,7 +155,7 @@ export default async function StarredResults({
 
   return (
     <div
-      className="card mb-6"
+      className="card section-seam mb-6"
       data-testid={
         profileId != null ? `starred-results-${profileId}` : "starred-results"
       }

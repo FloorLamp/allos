@@ -12,8 +12,12 @@
   share inodes because nothing writes to it; a linked build directory would let
   one cluster's build corrupt another's. The harness seeds it — see
   `docs/orchestration/e2e-ci.md`.
-- Concurrent DB gates can run about six times slower. Re-run a timing failure
-  alone before treating it as a regression.
+- Concurrent gates run about six times slower (DB tier: 161 s alone, 862 s at
+  load 18). `agent-gates.sh` gives both vitest tiers a 60 s per-test ceiling, CI
+  keeps 15 s (`vitest.timeouts.ts` derives both). A 60 s timeout is a real hang.
+- CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
+  mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
+  `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
