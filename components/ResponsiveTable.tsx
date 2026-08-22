@@ -44,7 +44,7 @@ import { cardCellAttrs, CARD_MODE_ONLY, type CardSlot } from "@/lib/card-row";
 // assertion would fire on a legitimately-constant one-group view. Ask the question
 // when you author a slotted cell in a grouped table.
 //
-// Because `thead` is hidden below `sm`, a `meta` cell carries its own `label`,
+// Because `thead` is hidden in card mode, a `meta` cell carries its own `label`,
 // rendered inside the cell under `CARD_MODE_ONLY` (lib/card-row.ts). That keeps the column's meaning available
 // to sighted and assistive users in stacked-row mode, where the `<th>` is gone.
 //
@@ -59,7 +59,7 @@ import { cardCellAttrs, CARD_MODE_ONLY, type CardSlot } from "@/lib/card-row";
 // still free to wrap within its own text, which is what "atomic" leaves alone.
 //
 // SORTING. Header-click sorting lives in the (hidden) `thead`, so a sortable table
-// pairs this with `components/TableSortSelect.tsx` — a compact `sm:hidden` select
+// pairs this with `components/TableSortSelect.tsx` — a compact `CARD_MODE_ONLY` select
 // over the SAME `?sort=`/`?dir=` params `SortableHeader` writes.
 //
 // ADOPTION is incremental (the ProfileScope posture): the two highest-traffic
@@ -89,7 +89,7 @@ export function ResponsiveTable({
 
 // A table cell that also knows what it becomes on a card.
 //
-// `label` is shown ONLY in card mode (`sm:hidden`), where the column header is
+// `label` is shown ONLY in card mode (`CARD_MODE_ONLY`), where the column header is
 // hidden — it is the same string the `<th>` carries, passed once. It applies to
 // `meta` AND `value` cells, and is OPT-IN per cell: a self-describing headline
 // (a biomarker's "66 mg/dL" with its flag) passes none, while a bare number that
