@@ -140,6 +140,16 @@ These are not review taste; each retired a green that meant nothing.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
+- **Check what a merge would CLOSE, with the full keyword set.** GitHub honours
+  ten: close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved —
+  in the PR body AND in every commit message. Typed from memory the natural
+  three are `fixes|closes|resolves`, and that set silently misses the rest.
+  `node scripts/orchestration/closing-keywords.mjs <pr>` reads all of them from
+  both places; exit 3 means something closes. It exists because the three-keyword
+  version reported "nothing closes" on a PR whose body said `closed #3486`, and
+  #3486 — explicitly unfinished, with three open parts — was closed by the merge
+  one minute before the owner commented listing what was still open on it. The
+  failure direction is why it earned a file: a missed keyword reads as safe.
 - Verify linked issues closed, then clean the worktree and local branch.
 
 ## Merge queue
