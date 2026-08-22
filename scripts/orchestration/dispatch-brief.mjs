@@ -313,7 +313,13 @@ function buildBrief(opts) {
 - Worktree setup: git fetch origin main && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} origin/main
 - cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
-- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts
+- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts.
+  AND IF TYPECHECK FAILS NAMING A PACKAGE YOU DID NOT ADD, that is the same drift
+  wearing a different error. Your node_modules is HARD-LINKED from the parent tree,
+  which was built at some earlier main; a dependency that landed after it is simply
+  absent, and the failure points at the import rather than at the cause. Measured
+  2026-08-22: a lane lost time to \`@testing-library/react\` missing because #3511
+  had added it hours after the parent tree was built. npm ci in the worktree.
 - FIRST ACTION is the worktree + node_modules link, BEFORE reading any source. If it
   fails you must know before spending context.
 - If a tool call is DENIED by the permission system, or fails for an environment

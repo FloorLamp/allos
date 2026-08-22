@@ -116,6 +116,12 @@
           "title": "Every row's action menu names the row it acts on, and add buttons all reach the same tappable size",
           "kind": "fix",
           "issues": [3501]
+        },
+        {
+          "pr": 3516,
+          "title": "Labels and their values stay together on phone-width tables, so a card's details read as pairs instead of a run-on",
+          "kind": "fix",
+          "issues": [3499]
         }
       ]
     },
