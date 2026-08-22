@@ -191,9 +191,79 @@ export function trashEntry(
 // The one-line summary a Trash row leads with: the identifying content when the
 // capture has any, the non-PHI kind label when it doesn't. Pure so the surface and
 // its tests agree on what an untitled capture reads as.
-export function trashEntryHeadline(entry: TrashEntry): string {
-  if (entry.title && entry.date) return `${entry.title} · ${entry.date}`;
+//
+// `dateLabel` IS A PARAMETER RATHER THAN `entry.date`, AND THAT IS THE BOUNDARY
+// (#3491 item 3, #3492's mechanism). `entry.date` is a STORAGE date — the raw
+// `YYYY-MM-DD` the payload was captured with — and this function's output is copy.
+// Reading the storage value here is what put "activity · 2026-08-19" on the screen,
+// and no amount of convention stops the next author doing it again. So the display
+// value is the only one in scope: a caller with no formatted date to hand cannot
+// construct the day-stating headline at all, and gets the label-only one, which is
+// the honest reading of "we have no date to show".
+export function trashEntryHeadline(
+  entry: TrashEntry,
+  dateLabel: string | null
+): string {
+  if (entry.title && dateLabel) return `${entry.title} · ${dateLabel}`;
   if (entry.title) return entry.title;
-  if (entry.date) return `${entry.label} · ${entry.date}`;
+  if (dateLabel) return `${entry.label} · ${dateLabel}`;
   return entry.label;
+}
+
+// How long a capture has left, as the row's own sentence. Lives here rather than in
+// the component so the WHOLE subtitle is derivable in the pure tier — a subtitle
+// half of which is assembled in TSX cannot be asked "does the kind label appear
+// exactly once across these two lines?" (#3491 item 2).
+export function trashExpiryLine(entry: TrashEntry): string {
+  if (entry.expiresInDays === 0) return "Expires today";
+  if (entry.expiresInDays === 1) return "Expires tomorrow";
+  return `Expires in ${entry.expiresInDays} days`;
+}
+
+// The display strings a Trash row needs and this module refuses to invent: both
+// dates, already rendered through the reader's DisplayFormatPrefs at the surface.
+export interface TrashEntryDateLabels {
+  /** The capture's own date. Null when the payload carried none. */
+  date: string | null;
+  /** The day the capture was taken. */
+  deletedOn: string;
+}
+
+// A Trash row's two lines.
+export interface TrashEntryCopy {
+  headline: string;
+  subtitle: string;
+}
+
+// THE TWO LINES ARE DERIVED TOGETHER, BECAUSE THEY OVERLAP (#3491 item 2).
+//
+// The headline's fallback branch leads with the kind label — that is its entire
+// purpose, since an untitled capture has nothing else to say. The subtitle used to
+// print the label again unconditionally, so an untitled row read "activity · Aug 19,
+// 2026" above "activity · Deleted Aug 20, 2026 · Expires in 25 days" and stated its
+// kind twice while the fact that distinguishes it was fighting for room.
+//
+// Whether the headline used the label is not a fact the subtitle can guess at from
+// outside; it is the headline's own branch. So one function owns both, and the rule
+// is exact rather than approximate: the label appears in the subtitle if and only if
+// the headline did NOT lead with it — which is if and only if the capture had a
+// title.
+export function trashEntryCopy(
+  entry: TrashEntry,
+  dates: TrashEntryDateLabels
+): TrashEntryCopy {
+  const parts: string[] = [];
+  // The headline leads with the label exactly when there is no title (both the
+  // `label · date` branch and the bare-label one), so this is its complement.
+  if (entry.title) parts.push(entry.label);
+  if (entry.childCount > 0)
+    parts.push(
+      `${entry.childCount} related ${entry.childCount === 1 ? "row" : "rows"}`
+    );
+  parts.push(`Deleted ${dates.deletedOn}`);
+  parts.push(trashExpiryLine(entry));
+  return {
+    headline: trashEntryHeadline(entry, dates.date),
+    subtitle: parts.join(" · "),
+  };
 }

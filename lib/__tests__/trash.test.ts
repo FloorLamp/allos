@@ -3,9 +3,12 @@ import {
   TRASH_EXCLUDED_KIND,
   parseSqliteUtc,
   trashEntry,
+  trashEntryCopy,
   trashEntryHeadline,
   type TrashCapture,
 } from "@/lib/trash";
+import { machineDateHits } from "@/lib/machine-date-census";
+import { DEFAULT_FORMAT_PREFS, formatDateWithYear } from "@/lib/format-date";
 import { BULK_CORRECTION_KIND } from "@/lib/bulk-correction";
 import { serializePayload } from "@/lib/undo-delete";
 
@@ -202,27 +205,146 @@ describe("trashEntry on payloads it cannot fully read", () => {
 });
 
 describe("trashEntryHeadline", () => {
-  const head = (over: Partial<TrashCapture>) =>
-    trashEntryHeadline(trashEntry(capture(over), 30, NOW));
+  // The date the surface hands in is ALREADY through the display boundary — the
+  // headline never sees `entry.date` (#3491 item 3). These labels are what
+  // formatDateWithYear emits under the default prefs.
+  const head = (over: Partial<TrashCapture>, dateLabel: string | null) =>
+    trashEntryHeadline(trashEntry(capture(over), 30, NOW), dateLabel);
 
   it("leads with the identifying content when the capture has any", () => {
-    expect(head({})).toBe("Evening walk · 2026-08-01");
+    expect(head({}, "Aug 1, 2026")).toBe("Evening walk · Aug 1, 2026");
   });
 
   it("falls back to the non-PHI kind label plus the date", () => {
     expect(
-      head({
-        kind: "body-metric",
-        label: "body metric",
-        payload: serializePayload("body-metric", {
-          metric: [{ id: 5, date: "2026-07-30" }],
-        }),
-      })
-    ).toBe("body metric · 2026-07-30");
+      head(
+        {
+          kind: "body-metric",
+          label: "body metric",
+          payload: serializePayload("body-metric", {
+            metric: [{ id: 5, date: "2026-07-30" }],
+          }),
+        },
+        "Jul 30, 2026"
+      )
+    ).toBe("body metric · Jul 30, 2026");
   });
 
   it("falls back to the label alone when nothing could be derived", () => {
-    expect(head({ payload: "{not json" })).toBe("activity");
+    expect(head({ payload: "{not json" }, null)).toBe("activity");
+  });
+
+  it("drops the date half when the caller has no display label for it", () => {
+    // The honest reading of "we have no formatted date": say less, never reach
+    // past the boundary for the storage value.
+    expect(head({}, null)).toBe("Evening walk");
+  });
+});
+
+// ── THE PAIR (#3491 item 2) ───────────────────────────────────────────────────
+//
+// The headline and the subtitle are one derivation because they OVERLAP. Testing
+// either alone is what let the surface state a capture's kind twice: each line was
+// individually correct, and only the pair was wrong.
+describe("trashEntryCopy — the headline and subtitle derived together", () => {
+  const LABELS = { date: "Aug 1, 2026", deletedOn: "Aug 4, 2026" };
+  const copy = (
+    over: Partial<TrashCapture> = {},
+    dates: { date: string | null; deletedOn: string } = LABELS
+  ) => trashEntryCopy(trashEntry(capture(over), 30, NOW), dates);
+
+  // An untitled capture: the payload has a date but no human title, so the
+  // headline's fallback branch leads with the kind label.
+  const UNTITLED: Partial<TrashCapture> = {
+    kind: "body-metric",
+    label: "body metric",
+    payload: serializePayload("body-metric", {
+      metric: [{ id: 5, date: "2026-07-30" }],
+    }),
+  };
+
+  it("states an untitled capture's kind EXACTLY ONCE across the two lines", () => {
+    const { headline, subtitle } = copy(UNTITLED, {
+      date: "Jul 30, 2026",
+      deletedOn: "Aug 4, 2026",
+    });
+    expect(headline).toBe("body metric · Jul 30, 2026");
+    // The whole defect in one assertion: count the label over BOTH lines, because
+    // one line at a time is how it shipped.
+    const both = `${headline}\n${subtitle}`;
+    expect(both.split("body metric").length - 1).toBe(1);
+    expect(subtitle).toBe("Deleted Aug 4, 2026 · Expires in 29 days");
+  });
+
+  it("keeps the kind in the subtitle when the headline led with a title instead", () => {
+    const { headline, subtitle } = copy();
+    expect(headline).toBe("Evening walk · Aug 1, 2026");
+    // The headline says nothing about WHAT was deleted, so the subtitle must.
+    expect(subtitle).toBe(
+      "activity · 2 related rows · Deleted Aug 4, 2026 · Expires in 29 days"
+    );
+    expect(`${headline}\n${subtitle}`.split("activity").length - 1).toBe(1);
+  });
+
+  it("states the kind once even when there is no date at all", () => {
+    const { headline, subtitle } = copy(
+      { payload: "{not json" },
+      { date: null, deletedOn: "Aug 4, 2026" }
+    );
+    expect(headline).toBe("activity");
+    expect(subtitle).toBe("Deleted Aug 4, 2026 · Expires in 29 days");
+    expect(`${headline}\n${subtitle}`.split("activity").length - 1).toBe(1);
+  });
+
+  it("counts the cascade only when there is one", () => {
+    const { subtitle } = copy({
+      payload: serializePayload("activity", {
+        activity: [
+          { id: 41, profile_id: 1, date: "2026-08-01", title: "Solo" },
+        ],
+      }),
+    });
+    expect(subtitle).toBe(
+      "activity · Deleted Aug 4, 2026 · Expires in 29 days"
+    );
+  });
+
+  // ── THE DISPLAY BOUNDARY, ASKED WITH #3492's OWN RULE (#3491 item 3) ─────────
+  //
+  // Not a second matcher: `machineDateHits` is the shared rule from
+  // lib/machine-date-census.ts, the same one e2e/machine-date-census.spec.ts runs
+  // over rendered text nodes. Here it is asked of the copy at its SOURCE, where a
+  // storage date could only get in by this module reaching past its parameters.
+  it("cannot state a machine date, even though every input it is given is one", () => {
+    const entry = trashEntry(capture(UNTITLED), 30, NOW);
+    // The inputs really are storage dates — otherwise this proves nothing.
+    expect(machineDateHits(entry.date ?? "")).toEqual(["2026-07-30"]);
+    expect(machineDateHits(entry.deletedAt)).toEqual(["2026-08-04"]);
+
+    const { headline, subtitle } = trashEntryCopy(entry, {
+      date: formatDateWithYear(entry.date ?? "", DEFAULT_FORMAT_PREFS),
+      deletedOn: formatDateWithYear(
+        entry.deletedAt.slice(0, 10),
+        DEFAULT_FORMAT_PREFS
+      ),
+    });
+    expect(
+      machineDateHits(`${headline}\n${subtitle}`),
+      "a Trash row states a storage-format date. Both dates cross the display " +
+        "boundary at the surface (lib/format-date, via useFormatPrefs) and " +
+        "lib/trash.ts takes only the formatted labels — see #3492."
+    ).toEqual([]);
+  });
+
+  it("passes a machine date straight through when one is handed in", () => {
+    // The counter-proof: this module does not sanitize, it REFUSES to source. The
+    // assertion above would be worth nothing if the pair scrubbed dates on its own
+    // — it would then be green no matter what the surface passed.
+    const { headline } = copy(UNTITLED, {
+      date: "2026-07-30",
+      deletedOn: "Aug 4, 2026",
+    });
+    expect(machineDateHits(headline)).toEqual(["2026-07-30"]);
   });
 });
 
