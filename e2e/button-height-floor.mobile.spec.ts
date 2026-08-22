@@ -182,3 +182,141 @@ test.describe("the button family has one height at phone width (#3486)", () => {
     ).toEqual([]);
   });
 });
+
+// ── THE FLOOR'S REACH, OUTSIDE THE FAMILY (#3486 part 3) ────────────────────
+//
+// Everything above is about the `.btn` family, which is the set #3510 declared
+// the floor on. This block is about the OTHER registered mechanism, and about the
+// fact that it has an arithmetic precondition nothing in the tree stated.
+//
+// `.tap-target` extends a control's clickable area by `inset: -6px` — SIX PIXELS
+// PER SIDE, a fixed 12px in total. So it reaches 44 only from a 32px rendered box
+// up. Four steppers on /nutrition carried the class at `h-7` (28px), which is 40px
+// effective: under the floor while wearing the token that says the floor is met.
+// That is worse than a plainly undersized control, because nothing was ever going
+// to look at it again.
+//
+// WHY THIS IS MEASURED HERE AND NOT ONLY IN THE SOURCE CENSUS.
+// `lib/__tests__/tap-floor-reach.test.ts` reads the class list, which is how it
+// can cover every route and every state at once. It cannot tell you the rule
+// REACHED the element: `@media (pointer: coarse)` is a real condition, and this
+// project's own history is a floor that read correctly in the stylesheet and did
+// not arrive (#3514's cascade bug, caught by a bounding box). So the numbers below
+// come from `getBoundingClientRect()` and from the browser's own computed style
+// for the pseudo-element, and the effective target is those two measurements
+// added — never a class name.
+test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () => {
+  test.use({ viewport: PHONE });
+
+  // `.tap-target`'s extension, and the smallest rendered box it can lift to the
+  // floor. Derived, not spelled — the same derivation `lib/tap-floor-reach.ts`
+  // makes, so the two cannot disagree about what 32 means.
+  const TAP_TARGET_INSET_PX = 6;
+  const TAP_TARGET_MIN_RENDERED_PX = TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
+
+  test("the food-log steppers are 44px effective, by box plus overlay", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+    // Wait for the CONTENT this measures. A row still folded behind "more
+    // groups" is not in the DOM, and a sweep over what is not there is green.
+    const row = page.getByTestId("food-group-nuts_seeds");
+    if (!(await row.isVisible())) {
+      await page.getByTestId("food-more-groups-summary").click();
+      await expect(row).toBeVisible();
+    }
+
+    for (const testId of ["undo-nuts_seeds", "log-nuts_seeds"]) {
+      const stepper = page.getByTestId(testId);
+      await expect(stepper).toBeVisible();
+      const box = await stepper.boundingBox();
+      expect(box).not.toBeNull();
+
+      // Half one: the rendered box clears the mechanism's minimum.
+      expect(
+        box!.height,
+        `${testId} renders ${box!.height}px. \`.tap-target\` adds a fixed ` +
+          `2x${TAP_TARGET_INSET_PX}px, so a control below ${TAP_TARGET_MIN_RENDERED_PX}px cannot reach the ` +
+          `${TAP_FLOOR_PX}px floor no matter how the overlay is spelled.`
+      ).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
+      expect(box!.width).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
+
+      // Half two: the overlay actually ARRIVED at this element in this viewport.
+      // Read back out of the browser, not out of the stylesheet — the whole
+      // reason the family's floor needed a rendered guard.
+      const overlayInset = await stepper.evaluate((el) => {
+        const style = getComputedStyle(el, "::after");
+        return { content: style.content, top: style.top };
+      });
+      expect(
+        overlayInset.content,
+        `${testId} has no \`::after\` in a coarse-pointer viewport, so the ` +
+          "`.tap-target` class in its class list is decoration. The rule lives in " +
+          "app/globals.css under `@media (pointer: coarse)`."
+      ).not.toBe("none");
+      const inset = Math.abs(Number.parseFloat(overlayInset.top));
+      expect(Number.isFinite(inset)).toBe(true);
+      expect(
+        box!.height + 2 * inset,
+        `${testId} is ${box!.height}px rendered + 2x${inset}px overlay = ` +
+          `${box!.height + 2 * inset}px effective, under the ${TAP_FLOOR_PX}px floor #3514 ruled.`
+      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+
+      // …and the extension is where a thumb would find it, rather than merely
+      // declared: a point outside the visible box still resolves to this control.
+      const outside = await page.evaluate(
+        ({ x, y, id }) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit?.closest(`[data-testid="${id}"]`) !== null;
+        },
+        {
+          x: box!.x + box!.width / 2,
+          y: box!.y - (TAP_TARGET_INSET_PX - 2),
+          id: testId,
+        }
+      );
+      expect(
+        outside,
+        `A tap ${TAP_TARGET_INSET_PX - 2}px above ${testId}'s visible edge does not land on it, so ` +
+          "the overlay is not receiving the tap it exists to receive."
+      ).toBe(true);
+    }
+  });
+
+  test("no `.tap-target` on this page is too small for its own mechanism", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+    const extended = page.locator(".tap-target:visible");
+    // A sweep over nothing is green and says nothing — the same discipline the
+    // family sweep above keeps.
+    expect(await extended.count()).toBeGreaterThan(0);
+
+    const tooSmall = await extended.evaluateAll(
+      (els, minimum) =>
+        els
+          .map((el) => ({
+            what:
+              el.getAttribute("data-testid") ??
+              el.getAttribute("aria-label") ??
+              (el.textContent ?? "").trim().slice(0, 30),
+            height: el.getBoundingClientRect().height,
+          }))
+          .filter((b) => b.height < minimum),
+      TAP_TARGET_MIN_RENDERED_PX
+    );
+
+    expect(
+      tooSmall,
+      `A \`.tap-target\` control renders under ${TAP_TARGET_MIN_RENDERED_PX}px at ${PHONE.width}px. The ` +
+        `overlay adds a fixed 2x${TAP_TARGET_INSET_PX}px, so below that it lands short of the ` +
+        `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Either give the ` +
+        "control the rendered height, or register it in " +
+        "`lib/__tests__/tap-floor-reach.test.ts` with what would close it."
+    ).toEqual([]);
+  });
+});
