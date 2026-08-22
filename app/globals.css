@@ -1005,6 +1005,14 @@
     @apply max-sm:hidden!;
   }
 
+  /* The slot a kind with no master toggle reserves, so every kind's title starts
+     at one x. Safety kinds cannot be turned off and the always-on kinds have
+     nothing to turn off, and a block-per-kind layout has no header row to make a
+     missing leading control read as a column rather than as raggedness. */
+  & [data-matrix-toggle-slot] {
+    @apply max-sm:block!;
+  }
+
   /* The header chips: box first, then the channel and its setup state on one
      line. This is the "four different baselines" defect at its root — every
      sweep box now sits on the same line as every other, beside the name of the

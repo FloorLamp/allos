@@ -849,7 +849,7 @@ export default function NotificationPrefs({
               const state = columnBulkState(sweep, disabled[c.id]);
               const label = columnBulkLabel(c.label, state);
               return (
-                <span key={c.id} className="block" data-matrix-head-cell>
+                <span key={c.id} className="block" data-matrix-head-cell={c.id}>
                   <span title={`${c.label} — follows ${c.owner}`}>
                     {c.short}
                   </span>
@@ -903,6 +903,21 @@ export default function NotificationPrefs({
               >
                 <div className="min-w-0" data-matrix-kind>
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* THE MISSING MASTER TOGGLE RESERVES ITS SLOT — below the
+                        card-mode boundary only (#3495). Safety kinds carry no
+                        enable by design (they cannot be turned off) and neither
+                        do the always-on kinds, so their titles started 24px left
+                        of every toggleable kind's. On a desktop grid, under a
+                        header row, that reads as a column; on a phone, where each
+                        kind is its own block, it reads as ragged. The spacer is
+                        `hidden` at `sm`+, so the desktop rows are untouched. */}
+                    {e.control.type !== "toggle" && (
+                      <span
+                        className="hidden h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                        data-matrix-toggle-slot
+                      />
+                    )}
                     {e.control.type === "toggle" && (
                       <input
                         type="checkbox"
@@ -918,7 +933,10 @@ export default function NotificationPrefs({
                         data-testid={e.controlTestId ?? `kind-enable-${e.kind}`}
                       />
                     )}
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <span
+                      className="text-sm font-medium text-slate-800 dark:text-slate-100"
+                      data-matrix-kind-title
+                    >
                       {e.label}
                     </span>
                     {e.safety && (

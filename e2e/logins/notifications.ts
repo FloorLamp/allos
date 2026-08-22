@@ -50,6 +50,17 @@ export const NOTIF_SWEEP_PROFILE = "Notif Sweep (e2e)";
 export const E2E_LOGIN_MATRIX_INK = "e2e_matrix_ink";
 export const MATRIX_INK_PROFILE = "Matrix Ink (e2e)";
 
+// A member with a dedicated adult profile for the PHONE SHAPE of the kind x channel
+// matrix (#3495). Isolated for the same reason every other matrix fixture here is: the
+// spec proves that a chip for an unconfigured channel still edits the kept preference,
+// which means it WRITES a login-scoped disabled-kinds blob — on a shared login that
+// write would silence a kind for every other spec's session, and a --repeat-each pass
+// would re-enter with the previous run's state. Its channels are deliberately left as
+// the seed makes them (nothing configured), because the "waiting" chip this spec is
+// about is what an unconfigured channel renders.
+export const E2E_LOGIN_MATRIX_PHONE = "e2e_matrix_phone";
+export const MATRIX_PHONE_PROFILE = "Matrix Phone (e2e)";
+
 // Two dedicated profiles for the persisted notify-tick log viewer (#2209). The spec
 // asserts on RUN ROWS grouped by (run, profile), so it must own every line it counts
 // — a shared profile would let another fixture's tick lines drift into its totals.
