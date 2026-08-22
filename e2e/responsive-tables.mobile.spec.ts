@@ -159,6 +159,13 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
         "label. The pair is supposed to be one non-wrapping flex line " +
         "(`table-cards` in app/globals.css); wrapping belongs BETWEEN pairs."
     ).toEqual([]);
+    expect(
+      scan.overflows,
+      "a card-mode meta cell ran past its own row. The usual cause is a value " +
+        "passed as several loose sibling nodes: the cell is a flex line, so they " +
+        "become items side by side instead of stacking. Pass one node " +
+        "(components/ResponsiveTable.tsx says so where `label` is documented)."
+    ).toEqual([]);
 
     // (b) …and it can still SEE a break. The forgery is the pre-#3499 layout on
     // one cell, so this fails if the rect reads have gone blind.

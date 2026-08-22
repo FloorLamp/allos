@@ -343,6 +343,10 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
       readingsScan.breaks,
       "a metric reading put a meta value on a different line from its own label"
     ).toEqual([]);
+    expect(
+      readingsScan.overflows,
+      "a metric reading's meta cell ran past its own row"
+    ).toEqual([]);
     const forgedReadingPair = await forgeBrokenCardPair(readingsBody);
     expect(
       (await scanCardMetaPairs(readingsBody)).breaks,

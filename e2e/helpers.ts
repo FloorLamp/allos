@@ -3150,6 +3150,17 @@ export interface CardPairScan {
   pairs: string[];
   /** The pairs whose value's first line box does NOT share a line with its label. */
   breaks: string[];
+  /**
+   * The pairs whose cell runs past its own row's right edge.
+   *
+   * The other half of "atomic", and the failure mode the first cut of #3499 shipped
+   * into the sleep history: a cell is now a flex line, so a value passed as several
+   * loose sibling nodes becomes several ITEMS on that line rather than the stack the
+   * block flow used to give it, and a three-nap day ran 29px off the row. A page-level
+   * clipping check does not see this — the row scrolls, the document does not — so the
+   * measurement has to be the cell against its row.
+   */
+  overflows: string[];
 }
 
 // Two independent rect reads can never be compared exactly (#2505), and a label
@@ -3163,6 +3174,7 @@ export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
     const labels: string[] = [];
     const pairs: string[] = [];
     const breaks: string[] = [];
+    const overflows: string[] = [];
     const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
     for (const cell of cells) {
       const label = cell.querySelector<HTMLElement>(
@@ -3212,8 +3224,16 @@ export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
       // pushed onto a line of its own above it.
       const startsAfter = valueRect.left >= labelRect.right - slack;
       if (overlap <= 0 || !startsAfter) breaks.push(pair);
+
+      const row = cell.closest("tr");
+      if (
+        row &&
+        cell.getBoundingClientRect().right >
+          row.getBoundingClientRect().right + slack
+      )
+        overflows.push(pair);
     }
-    return { labels, pairs, breaks };
+    return { labels, pairs, breaks, overflows };
   }, PAIR_LINE_SLACK_PX);
 }
 
@@ -3221,17 +3241,32 @@ export async function scanCardMetaPairs(scope: Locator): Promise<CardPairScan> {
  * Break one pair ON PURPOSE and return its `LABEL → value` id.
  *
  * The discriminator for the absence assertion above. A green "no pair is broken"
- * is also what a scan that matches nothing, or one whose rect reads have silently
- * degraded to zeroes, would report — so every caller forges an offender and
- * requires the scan to flag exactly it. The forgery is the pre-#3499 layout
- * restored on one cell (a block box too narrow to hold the label and the value on
- * one line), which is the defect this guard exists for rather than an arbitrary
- * mangling.
+ * is also what a scan that matches nothing — or one whose rect reads have quietly
+ * degraded to zeroes — would report, so every caller forges an offender and
+ * requires the scan to flag exactly it (#3509).
  *
- * Inline styles beat the utility's `(0,2,1)` selector, and `restoreForgedPair`
- * puts the cell back so the caller can re-scan and prove the flag came from the
- * forgery and not from the page having been broken all along.
+ * WHAT IT FORGES IS THE DEFECT'S OWN SHAPE, and the shape was measured rather
+ * than assumed. `Td` renders the label span and the value with NO whitespace
+ * between them (JSX drops it; the 4px gap is the label's margin), and a margin is
+ * not a soft-wrap opportunity — so in the pre-#3499 inline flow the label could
+ * only ever be split from its value when that value was a BLOCK, which begins a
+ * line of its own. That is the real defect and it is not rare: a RecordTable
+ * column whose `cell()` returns a `<div>` (the visits list) and the sleep
+ * history's per-nap `<div>`s both rendered "VISIT" / "NAPS" alone above their own
+ * values before this change.
+ *
+ * So the forgery restores exactly that: the cell back to the block box it used to
+ * be, and the label made block inside it, which puts the value on the next line
+ * whether it is a text node or an element. `!important` because
+ * `metric-readings-list` pins its metas with `!important` of its own.
+ *
+ * A NARROWED BLOCK BOX WAS TRIED FIRST AND SILENTLY DID NOTHING — the label and
+ * the value have no break opportunity between them, so they overflowed the narrow
+ * cell side by side on one line and the scan was right not to flag them. The
+ * discriminator caught its own first draft, which is the argument for having one.
  */
+const FORGED_PROPERTIES = ["display"] as const;
+
 export async function forgeBrokenCardPair(scope: Locator): Promise<string> {
   const forged = await scope.evaluate((root) => {
     const cells = root.querySelectorAll<HTMLElement>('td[data-card="meta"]');
@@ -3241,37 +3276,38 @@ export async function forgeBrokenCardPair(scope: Locator): Promise<string> {
       );
       const labelRect = label?.getClientRects()[0];
       if (!label || !labelRect || labelRect.width === 0) continue;
-      if (!cell.textContent?.slice(label.textContent?.length ?? 0).trim())
-        continue;
+      const name = label.textContent ?? "";
+      if (!cell.textContent?.slice(name.length).trim()) continue;
       cell.dataset.forgedPairBreak = "true";
-      // A block box exactly as wide as its own (nowrap) label: nothing else can
-      // share that first line, so the value is pushed onto the next one.
-      cell.style.display = "block";
-      cell.style.width = `${Math.ceil(labelRect.width)}px`;
-      const name = label.textContent?.trim() ?? "";
+      label.dataset.forgedPairBreak = "true";
+      cell.style.setProperty("display", "block", "important");
+      label.style.setProperty("display", "block", "important");
       const whole = cell.textContent?.trim() ?? "";
-      return `${name} → ${whole.slice(name.length).trim().slice(0, 48)}`;
+      const trimmed = name.trim();
+      return `${trimmed} → ${whole.slice(trimmed.length).trim().slice(0, 48)}`;
     }
     return "";
   });
   expect(
     forged,
-    "forgeBrokenCardPair found no labeled meta pair to break — the scan below " +
-      "would then be asserting an absence over an empty corpus, which is the " +
-      "failure it exists to rule out."
+    "forgeBrokenCardPair found no labeled meta pair to break — the scan is then " +
+      "asserting an absence over an empty corpus, which is the failure it exists " +
+      "to rule out."
   ).not.toBe("");
   return forged;
 }
 
 /** Undo `forgeBrokenCardPair`, so the caller can run a control AFTER the restore. */
 export async function restoreForgedPair(scope: Locator): Promise<void> {
-  await scope.evaluate((root) => {
-    for (const cell of root.querySelectorAll<HTMLElement>(
-      'td[data-forged-pair-break="true"]'
-    )) {
-      cell.style.removeProperty("display");
-      cell.style.removeProperty("width");
-      delete cell.dataset.forgedPairBreak;
-    }
-  });
+  await scope.evaluate(
+    (root, properties) => {
+      for (const node of root.querySelectorAll<HTMLElement>(
+        '[data-forged-pair-break="true"]'
+      )) {
+        for (const property of properties) node.style.removeProperty(property);
+        delete node.dataset.forgedPairBreak;
+      }
+    },
+    FORGED_PROPERTIES as unknown as string[]
+  );
 }
