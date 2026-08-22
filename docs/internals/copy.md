@@ -168,7 +168,7 @@ units display-normalized (UCUM bracket stripping per #1018's equivalence —
 (`summarizeNames` and template joins — #3496), and clinical names are never
 title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported
 ALL-CAPS names are cleaned at the import boundary with the person confirming,
-never by a display casing pass — #3480).
+never by a display casing pass — #3480, shipped).
 
 **Dates, as shipped (#3492).** There is one date boundary and it already
 existed: the display vocabulary in `lib/format-date.ts` — `formatLongDate`,
@@ -213,6 +213,121 @@ assumed.
 catches a call to a pref-taking formatter that omits the prefs, and an
 implicit-locale `toLocale*`. It cannot see a surface that calls no formatter at
 all — which is the whole of what #3492 found, and what the census probe adds.
+
+**Imported names, as shipped (#3480).** A portal-imported medication carries the
+document's own label — `"Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)"` —
+and every surface renders it as stored. The parenthetical is the portal's
+ALL-CAPS sig-style label with a dose-form code (`"OR"` = oral).
+
+The boundary is the IMPORT, and it is an OFFER rather than a transform. The
+import review page's Medications tab lists this document's medications whose
+stored name still reads as the document's label and offers RxNorm's preferred
+name for each; accepting stores the clean name and moves the portal string onto
+the record (`intake_items.source_name`, rendered as source detail under the
+medication's name and never as a heading). Ignoring the offer is a complete
+answer — the medication keeps the name it has.
+
+Accepting one is a RENAME, with a rename's consequences, and the copy says so at
+the moment of choosing rather than pretending otherwise. Nutrient recognition is
+name-keyed (`lib/dri.ts` matches by name substring), so a new name can change
+which warnings the medication carries — in either direction, exactly as typing
+the same name into the medication form would. One line above the candidate list
+carries it: `"Any warnings on this med follow its name — a new name can change
+them."` It appears only while somebody is choosing between two names, and never
+as a standing notice on the card: a paragraph about how matching works is the
+editorializing rule 6 forbids, and a person who is not renaming anything does
+not need it. The card's lead stays a lead.
+
+Three parts, and a new importer inherits the boundary by writing rows the same
+way any importer already does:
+
+- `lib/imported-name.ts` — the pure predicate. Does a stored name read as the
+  document's label? Three shapes, each a different one rather than more of the
+  same: a SHOUTED WORD (six or more upper-case letters in one token — no
+  abbreviation anybody uses as a medicine's name is that long), a DISPENSING
+  LABEL (two or more shouted tokens with one of four-plus letters, or three of
+  any length — a name plus a strength unit plus a dose form), and TALL MAN
+  LETTERING (`"amLODIPine"`, `"predniSONE"`, `"DOPamine"`, `"OXcarbazepine"`,
+  `"ePHEDrine"` — the ISMP convention and standard Epic/Cerner output, in all
+  three of its orders: the run after the stem, the run at the start, and a run
+  with lower-case on both sides). Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
+  `"penicillin v potassium"`, and on the whole abbreviation shelf — `"NAC"`,
+  `"DHEA"`, `"TUDCA"`, `"5-HTP"`, `"EPA/DHA"`, `"MCT oil"`. It deliberately
+  UNDER-matches a short brand shouted alone (`"ASA 81 mg"`, `"HCTZ 25 mg"`),
+  which is the same shape as `"DHEA 50 mg"` and cannot be separated from it
+  without a vocabulary of drug names: a missed offer costs nothing, an offer on
+  somebody's supplement shelf costs every future one.
+- `lib/queries/imports.ts` `getDocumentImportedNameOffers` — the SCOPE GATE, and
+  the reason the offer cannot drift into the display pass this rule rejects. The
+  predicate is only ever asked about rows an import wrote (`source =
+'extracted'`), so a name somebody typed is never examined. Any importer whose
+  rows land in `intake_items` as `extracted` with a `document_id` is covered on
+  the day it ships, with nothing to register.
+- `lib/imported-name-write.ts` — the one write. Scoped to profile + document +
+  extracted + a non-blank stored name — EXACTLY what the offer read lists, so
+  there is no row the card can show and the button cannot reach. It is not scoped
+  on `kind`: that is the person's classification and they may change it from the
+  medication form at any time, while provenance is what the boundary is about.
+  `source_name` is written with `COALESCE`, so what the DOCUMENT said is recorded
+  once and never overwritten by a later rename.
+
+Why not the cheap version: a casing pass at the display boundary cannot tell
+whether `"OR"` is a route abbreviation or a word in a product name, and it
+rewrites, on every render, text nobody agreed to change. That is the same ruling
+`lib/allergen-vocabulary.ts` records for allergens, one layer further in.
+
+**Guards.** Three, over one rule:
+
+- `lib/__tests__/imported-name.test.ts` — the predicate SEES the observed string
+  and the other portal shapes, off the words that actually shout, and stays QUIET
+  on the names people write. The quiet half carries the weight: an offer that
+  fires on ordinary names is dismissed by habit, and the real one goes with it.
+- `lib/__tests__/imported-name-census.test.ts` over `lib/imported-name-census.ts`
+  — no display surface casings a name, in any of its mechanisms: a transform in a
+  JSX interpolation, an `uppercase`/`capitalize` class over a name render
+  (including one reached through a ternary), or an inline `textTransform`. The
+  element's child window is depth-aware, so a nested tag before the name no
+  longer ends it and a sibling after it is correctly outside.
+  Because it is an ABSENCE assertion it fails open, so it carries floors (800
+  files, 220 name render sites, 45 casing-markup sites — measured 855 / 244 / 56),
+  a NAMED SUBJECT that must still register a name render
+  (`app/(app)/medications/MedicationRow.tsx`, the brand-coloured heading the
+  issue was filed about), fifteen synthetic offenders in the JavaScript half and
+  four in the markup half that it must flag, and fourteen shipped benign
+  neighbours it must stay silent on — the 21 sites that lowercase a name to
+  compare, sort or key a Map are correct, and a guard that flagged them would be
+  deleted within the month. The bound-local half sees a template-literal
+  right-hand side, an object right-hand side and a casing REASSIGNMENT with no
+  declarator; it deliberately still stops at a callback body, and what it cannot
+  see at all (a casing pass inside another component, a name that leaves the file
+  and comes back, an alias made by a destructure) is listed in the test's own
+  header rather than implied. Comments are blanked before the scan: that
+  moves the count from 270 to 244, and `className` is excluded from the
+  name-expression pattern because it ends in `Name` and was inflating the
+  denominator by 118 sites that render no name at all.
+- `lib/__db_tests__/imported-name-boundary.test.ts` — the boundary over the REAL
+  pipeline (`extractFromCcda` → `healthRecordToPersistInput` →
+  `persistDocumentImport`): the name lands VERBATIM, the offer fires on it, a
+  hand-entered medication with the same shouting shape is never offered,
+  accepting preserves the document's label through a second adoption, and the
+  write refuses another profile's row, another document's row, and a manual row.
+  Each half of the scoping is asserted BY A ROW THAT DIFFERS ONLY IN THAT HALF —
+  the attack row shares the profile's document, the document's id and the
+  extracted source, so the clause under test is the only thing that can reject
+  it. A guard whose attack row is rejected by a neighbouring clause proves the
+  neighbour, not the subject.
+- `lib/__action_tests__/imported-name.actions.test.ts` — the RxNorm re-check.
+  An unreachable or disagreeing lookup REFUSES rather than renaming, and the row
+  is unchanged afterwards; nothing else in the tree observed that block.
+- `lib/__action_tests__/imported-names-card.render.test.ts` — the import review
+  page actually RENDERS the card. Deleting the render used to leave every tier
+  green and `eslint` at exit 0, so the feature could disappear silently.
+- `components/__tests__/imported-name-offer.test.tsx` — the offer's own DOM, and
+  both ways the rename can fail. The accept handler had a `try … finally` with no
+  `catch`: a Server Action that REJECTED left the button un-busied and said
+  nothing at all, so a person was looking at a medicine they believed they had
+  renamed. Both that and the returned-error branch are driven here; no other tier
+  can see either.
 
 ### 10. Lead + fold
 
