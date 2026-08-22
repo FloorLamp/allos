@@ -52,11 +52,12 @@ export default function ChartJumpChips({ chips }: { chips: ChartChip[] }) {
           key={c.id}
           href={`#${c.id}`}
           data-testid={`chart-jump-${c.id}`}
-          className={`shrink-0 rounded-full border px-3 py-1 text-sm font-medium transition ${
-            active === c.id
-              ? "border-brand-500 bg-brand-600 text-white"
-              : "border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          }`}
+          // A jump chip is a DESTINATION (an in-page anchor), so it takes the
+          // chip primitive's nav role (#3475) — and its lit state is now painted
+          // from `aria-current`, which this strip did not previously set at all:
+          // "which chart am I looking at" was a colour-only answer.
+          aria-current={active === c.id ? "true" : undefined}
+          className="chip chip-nav"
         >
           {c.label}
         </a>

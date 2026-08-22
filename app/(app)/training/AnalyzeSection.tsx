@@ -369,11 +369,12 @@ export default async function AnalyzeSection({
                     key={`${option.kind}:${option.item}`}
                     href={option.href}
                     aria-current={current ? "page" : undefined}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                      current
-                        ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500 dark:text-white"
-                        : "border-(--border) bg-surface text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-300"
-                    }`}
+                    // The nav role of the chip primitive (#3475). This strip
+                    // and the Equipment strip below it used to be two
+                    // hand-rolled pills in ONE file — different padding
+                    // (`py-1.5` vs `py-1`) and different selected brand shades
+                    // (600 vs 500) — which is the drift the primitive closes.
+                    className="chip chip-nav"
                   >
                     <ActivityIcon
                       type={option.kind}
@@ -409,14 +410,12 @@ export default async function AnalyzeSection({
                     aria-current={
                       c.lane === view.activeLane ? "true" : undefined
                     }
-                    className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
-                      c.lane === view.activeLane
-                        ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-                    }`}
+                    className="chip chip-nav"
                   >
                     {c.label}
-                    <span className="ml-1.5 opacity-70 tabular-nums">
+                    {/* The chip's own `gap-1.5` spaces this; an `ml-1.5` here
+                        would double it now that the pill is a flex row. */}
+                    <span className="opacity-70 tabular-nums">
                       {c.sessions}
                     </span>
                   </Link>

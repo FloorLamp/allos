@@ -31,6 +31,7 @@ import {
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import AddEntryPanel from "@/components/AddEntryPanel";
+import { StatBox } from "@/components/StatBox";
 import CycleForecastCard from "./CycleForecastCard";
 import TtcSection from "./TtcSection";
 import CycleForm from "./CycleForm";
@@ -184,10 +185,10 @@ export default async function CyclePage() {
         {stats.cycleCount > 0 ? (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Average" value={fmtDays(stats.meanLength)} />
-              <Stat label="Shortest" value={fmtDays(stats.minLength)} />
-              <Stat label="Longest" value={fmtDays(stats.maxLength)} />
-              <Stat
+              <StatBox label="Average" value={fmtDays(stats.meanLength)} />
+              <StatBox label="Shortest" value={fmtDays(stats.minLength)} />
+              <StatBox label="Longest" value={fmtDays(stats.maxLength)} />
+              <StatBox
                 label="Variability"
                 value={fmtDays(stats.variabilityDays)}
               />
@@ -301,17 +302,6 @@ export default async function CyclePage() {
         )}
       </section>
     </PageContainer>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-(--border) bg-surface px-3 py-2">
-      <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-        {value}
-      </div>
-    </div>
   );
 }
 
