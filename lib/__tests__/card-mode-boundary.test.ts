@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CARD_MODE_BREAKPOINT_PX, CARD_MODE_ONLY } from "../card-row";
+import {
+  CARD_MODE_BREAKPOINT_PX,
+  CARD_MODE_ONLY,
+  CARD_MODE_ROW_STACK,
+} from "../card-row";
 
 // THE CARD-MODE BOUNDARY IS ONE NUMBER, HELD IN THREE PLACES (issue #3457).
 //
@@ -219,32 +223,53 @@ describe("card-mode boundary (#3457)", () => {
       ).toBe(true);
   });
 
-  it("the two consumers inherit the boundary instead of restating it", () => {
+  it("the row-stack classes spell the SAME variant, derived not typed (#3491)", () => {
+    // CARD_MODE_ROW_STACK is the non-table half of the boundary: a flex line
+    // whose actions wrap beneath its text below `sm`. Tailwind's scanner reads
+    // source as text, so the variant has to be a literal SOMEWHERE — the point
+    // of putting it in lib/card-row.ts is that this is the one place it can be
+    // held to the declared number.
+    expect(CARD_MODE_ROW_STACK.text).toBe(
+      `max-${CARD_MODE_VARIANT}:basis-full`
+    );
+    expect(CARD_MODE_ROW_STACK.lead).toBe(
+      `max-${CARD_MODE_VARIANT}:whitespace-normal`
+    );
+  });
+
+  it("the consumers inherit the boundary instead of restating it", () => {
     // SCOPED TO THE FILES THAT ACTUALLY HAVE A CARD-MODE-ONLY ELEMENT. A
     // tree-wide "nobody may write `sm:hidden`" would be wrong: plenty of
     // surfaces hide something at `sm` for reasons that have nothing to do with
     // a table becoming cards.
-    for (const rel of [
-      "components/ResponsiveTable.tsx",
-      "components/TableSortSelect.tsx",
-    ]) {
+    //
+    // Each entry names the export it is required to import. A consumer that
+    // stacks a row (#3491's Trash list) inherits a different constant than one
+    // that hides card-mode-only markup, and demanding CARD_MODE_ONLY of both
+    // would be a guard that fires on correct code.
+    const consumers: [string, string][] = [
+      ["components/ResponsiveTable.tsx", "CARD_MODE_ONLY"],
+      ["components/TableSortSelect.tsx", "CARD_MODE_ONLY"],
+      ["app/(app)/data/TrashList.tsx", "CARD_MODE_ROW_STACK"],
+    ];
+    for (const [rel, symbol] of consumers) {
       const text = read(rel);
       expect(
-        text.includes("CARD_MODE_ONLY"),
-        `${rel} renders markup that exists only in card mode, so it takes the ` +
-          `boundary from CARD_MODE_ONLY (lib/card-row.ts) rather than writing ` +
-          `a variant of its own (#3457).`
+        text.includes(symbol),
+        `${rel} renders markup whose arrangement changes at the card-mode ` +
+          `boundary, so it takes that boundary from ${symbol} ` +
+          `(lib/card-row.ts) rather than writing a variant of its own (#3457).`
       ).toBe(true);
       const literals = [
         ...stripTsComments(text).matchAll(
-          /["'`][^"'`]*\b(max-)?(sm|md):hidden\b/g
+          /["'`][^"'`]*\b(max-)?(sm|md):[a-z0-9[-]/g
         ),
       ].map((m) => m[0]);
       expect(
         literals,
         `${rel} hardcodes the card-mode boundary in a class string. That is ` +
           `the second copy of a number that has to agree with app/globals.css ` +
-          `and with every AC — import CARD_MODE_ONLY instead.`
+          `and with every AC — import from lib/card-row.ts instead.`
       ).toEqual([]);
     }
   });
