@@ -156,12 +156,14 @@ jobs:
         run: ./node_modules/.bin/tsx scripts/e2e-shard-plan.ts --verify
 
   # Pure unit suite AND the coverage regression floor in one pass. This runs
-  # the same test set as `npm test` (vitest.config.ts include: lib/**), just
-  # under v8 coverage, so it doubles as the correctness gate — a separate
-  # `npm test` step would only re-run the identical suite. Fails the job if
-  # lib/** coverage drops below the thresholds in vitest.config.ts (a tripwire
-  # a few points under the current baseline). app/** and components/** are
-  # intentionally not gated.
+  # the same test set as `npm test` — ALL THREE vitest.config.ts projects: the two
+  # over lib/**, plus the jsdom tier over components/** (#3446) — just under v8
+  # coverage, so it doubles as the correctness gate; a separate `npm test` step
+  # would only re-run the identical suite. Fails the job if lib/** coverage drops
+  # below the thresholds in vitest.config.ts (a tripwire a few points under the
+  # current baseline). The coverage DENOMINATOR is still lib/** only: app/** and
+  # components/** are intentionally not gated for coverage, even though the
+  # component tier runs here.
   test-unit:
     runs-on: ubuntu-latest
     steps:
