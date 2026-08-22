@@ -26,7 +26,10 @@
 //      would refuse (it bypassed it, and both spec files were dating their pushes ten
 //      days into the future, past the 12h clock bound — every one of those stamps would
 //      have been NULL in production, and a NULL stamp supersedes nothing);
-//   2. pass B runs AFTER pass C, in the same call, as it does in the last chunk;
+//   2. pass B runs AFTER pass C, in the same call, as it does in the last chunk — which
+//      no assertion here can observe, because in a SINGLE chunk a victim is never a twin
+//      and neither order changes a row. It is copied anyway: "unobservable" is exactly
+//      what the first placement assumed, and the chunked case disproved it;
 //   3. `overlapsLeft` is summed from what HAPPENED — the plan's two halves plus the
 //      victims pass B's `pushed_at IS ?` guard declined — the same way the ingest sums it.
 //

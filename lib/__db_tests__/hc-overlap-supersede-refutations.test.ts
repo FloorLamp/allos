@@ -1376,12 +1376,64 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
   });
 
+  it("prunes a row a vetoed bucket left standing and a landing bucket collapsed", () => {
+    // THE VETO IS A FACT ABOUT THE INCOMING ROW, NOT ABOUT THE STORED ONE, so one stored
+    // row can be left standing by a vetoed bucket of a push and collapsed by a bucket of
+    // the same push that lands. Every other reason a row lands in `leftStanding` is a
+    // fact about the stored row plus the push's one stamp and cannot vary that way — the
+    // prune of `leftStanding` by `victims` was a no-op before this, and its comment
+    // claimed to be the arbiter of a case that could not arise. Now it can.
+    //
+    // The collapse is the truth: a row that lands does replace the stored one, so the
+    // Review line must not also report it as standing.
+    //
+    // MUTATION: drop `for (const id of victims.keys()) leftStanding.delete(id)` from
+    // `planMetricSampleSupersede` and the line reports 2 days reading high over a store
+    // holding exactly one excess reading.
+    const p = freshProfile("R7-PRUNE");
+    pushAt(
+      p,
+      {
+        steps: [
+          steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
+          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+        ],
+      },
+      "2026-05-02T00:00:00Z",
+      2
+    );
+    // The user hand-corrects the re-anchored row, so the push's re-send of it is vetoed.
+    db.prepare(
+      "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
+    ).run(p, "2026-05-01T15:00:00Z");
+    const result = pushAt(
+      p,
+      {
+        steps: [
+          // Vetoed by the #133 lock — its twin stays, and the 8000 row it overlaps is
+          // left standing on its account.
+          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9999),
+          // Lands, overlaps the same 8000 row, outranks it: that row is collapsed.
+          steps("2026-05-01T07:00:00Z", "2026-05-02T07:00:00Z", 8100),
+        ],
+      },
+      "2026-05-02T02:00:00Z",
+      2
+    );
+    expect(result.split.superseded).toBe(1);
+    expect(result.split.edited).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8100, 8500]);
+    // ONE reading standing over the day, not two: the locked row. The 8000 row is gone.
+    expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
+  });
+
   it("still collapses the stored row when a row of the SAME push DOES land", () => {
-    // THE VETO IS A FACT ABOUT THE INCOMING ROW, so one stored row can be left standing
-    // by a vetoed bucket of a push and collapsed by a bucket of the same push that lands.
-    // The collapse is the truth. MUTATION: make the veto skip the whole row's plan
-    // unconditionally, or drop the `victims` prune of `leftStanding`, and this goes red
-    // one way or the other — the rule stops collapsing anything a tombstoned key touched.
+    // A VETOED ROW DECLINES A DELETE; IT DOES NOT VETO THE PUSH. The re-anchored bucket
+    // here is tombstoned and lands nowhere, but a second bucket of the same push does
+    // land, does overlap the stored row and does outrank it — so the collapse happens and
+    // the day is left reading right. MUTATION: skip the whole PUSH when any row is
+    // vetoed, or hoist the veto to a `return emptySupersedePlan()`, and the stored row
+    // survives beside the new one with the day reading 16100.
     const p = freshProfile("R7-MIXED");
     pushAt(
       p,
