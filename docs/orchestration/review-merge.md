@@ -79,6 +79,15 @@ not at all five by rote.
   and the old string survives intact inside the doubled one. Exact match, or a
   full-string comparison, is what makes presence fail loudly.
 
+- **A guard over a boundary should DERIVE its numbers from the boundary.** A
+  spec that hard-codes 639 and 768 stays green after the boundary moves — green
+  about the wrong number, which is worse than red. #3538's card-mode spec
+  computes its widths from `CARD_MODE_BREAKPOINT_PX`, so moving the constant
+  moves the spec. The same shape applies to any guard whose subject is a named
+  constant: read the constant, do not restate it. This is also what makes a
+  boundary worth naming — a number with one home can be inherited; a number
+  spelled out in fourteen consumers can only be re-agreed.
+
 ## Verification hygiene
 
 These are not review taste; each retired a green that meant nothing.
@@ -106,6 +115,14 @@ These are not review taste; each retired a green that meant nothing.
 - Never read an exit code through a pipe. `cmd | tail` exits with tail's status.
 - **A number is a grep until it has been spot-checked.** This holds for numbers
   you relay as much as numbers you produce, and the relay is the unguarded half.
+  **An issue body's own counts are the least-checked numbers in the pipeline**,
+  because they arrive already written and read as findings rather than as
+  measurements. Twice in one session a lane re-derived one and it was wrong:
+  a "31 references" count whose 31st was a ZIP code in `lib/zip-centroids.json`,
+  and #3457's "5 more applying `table-cards` directly", which is 0 — the utility
+  is applied in exactly one place, and the five counted were companion utilities
+  riding on it. Both would have sized the work wrongly. Instruct every lane to
+  re-derive the counts its issue states, and to report the derivation.
 - **The dangerous check is the one that fails toward a plausible correction of
   work that was already right.** A check saying "you did not do the thing" gets
   acted on; a check saying "you did something impossible" gets investigated. Four
