@@ -2,12 +2,10 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import {
+  expectAtomicCardPairs,
   expectNoClippedContent,
   followLink,
-  forgeBrokenCardPair,
   hydratedClick,
-  restoreForgedPair,
-  scanCardMetaPairs,
   settledBoxes,
 } from "./helpers";
 import {
@@ -334,26 +332,7 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     // line with its own label, over a corpus the scan is required to have seen —
     // and a break forged on purpose has to be flagged, or the clean sweep proves
     // nothing.
-    const readingsScan = await scanCardMetaPairs(readingsBody);
-    expect(
-      readingsScan.labels,
-      `pairs seen: ${readingsScan.pairs.join(" | ")}`
-    ).toEqual(expect.arrayContaining(["Source"]));
-    expect(
-      readingsScan.breaks,
-      "a metric reading put a meta value on a different line from its own label"
-    ).toEqual([]);
-    expect(
-      readingsScan.overflows,
-      "a metric reading's meta cell ran past its own row"
-    ).toEqual([]);
-    const forgedReadingPair = await forgeBrokenCardPair(readingsBody);
-    expect(
-      (await scanCardMetaPairs(readingsBody)).breaks,
-      "the scan did not flag a reading pair broken on purpose"
-    ).toEqual([forgedReadingPair]);
-    await restoreForgedPair(readingsBody);
-    expect((await scanCardMetaPairs(readingsBody)).breaks).toEqual([]);
+    await expectAtomicCardPairs(readingsBody, ["Source"]);
     // Entry is deliberate and metric-scoped: the combined morning-measurements
     // form must not sit open on a detail page or expose unrelated fields.
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);

@@ -61,7 +61,15 @@ export default function VaccineDoseHistory({
       header: "Dose",
       cellClassName: "text-slate-600 dark:text-slate-300",
       cell: (im) => (
-        <>
+        // ONE node for the value, not a fragment of five. Below `sm` this cell is
+        // a non-wrapping flex line (#3499), so each top-level node would be an
+        // ITEM on it — the administration line and the reaction would sit BESIDE
+        // the dose label instead of under it, and a row with all of them runs past
+        // its own right edge. That is the sleep-history naps regression exactly
+        // (#3517); wrapped, this stacks inside itself and the pair stays atomic.
+        // Desktop is a block flow either way. Guarded by
+        // lib/__tests__/card-meta-value-census.test.ts.
+        <span className="block">
           {labels.get(im.id) ?? "—"}
           <NotesText notes={im.notes} className="ml-2 text-xs text-slate-400" />
           {/* Lot / route / site + any adverse reaction (#1406), through the
@@ -86,7 +94,7 @@ export default function VaccineDoseHistory({
               testid={`immunization-encounter-${im.id}`}
             />
           ) : null}
-        </>
+        </span>
       ),
     },
     {
