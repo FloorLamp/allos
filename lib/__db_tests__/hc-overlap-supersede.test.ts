@@ -24,6 +24,7 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { pushMetricSamples } from "./hc-metric-sample-push";
+import { pushStampFor } from "@/lib/metric-window-overlap";
 import { emptyCounts } from "@/lib/integrations/sync-log";
 import { writeImportTombstone } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
@@ -52,8 +53,17 @@ beforeAll(() => {
 // stated. `upsertMetricSamples` deletes nothing without one — deliberately, because the
 // version that derived freshness from the rows' own `ended_at` was measured dropping a
 // correcting reading and reporting "nothing new" (see lib/metric-window-overlap.ts).
-const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
+//
+// IN THE PAST, AND PINNED THERE (#3438). `pushStampFor` nulls a stated instant more than
+// MAX_PUSH_CLOCK_SKEW_MS ahead of the server clock, and a NULL stamp supersedes nothing.
+// This file used to date its pushes 2026-09-01, ten days after the day it was written,
+// and got away with it only because the shared helper bypassed `pushStampFor` — in
+// production every stamp it minted would have been refused. The helper no longer bypasses
+// it, and the case below pins the base rather than trusting the next edit to remember.
+const PUSH_BASE = Date.parse("2026-08-21T18:00:00Z");
 let pushSeq = 0;
+const stampFor = (seq: number) =>
+  new Date(PUSH_BASE + seq * 60_000).toISOString().slice(0, 19) + "Z";
 // ONE PUSH, THE THREE PASSES THE INGEST RUNS (#3424, owner ruling option 2): plan over
 // the whole push against the pre-push store, apply the deletes once, then upsert. The
 // composition lives in ./hc-metric-sample-push so no spec can re-derive it differently.
@@ -65,11 +75,7 @@ function upsert(
   options: Parameters<typeof upsertMetricSamples>[4] = {}
 ) {
   pushSeq += 1;
-  const opts = {
-    pushedAt:
-      new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
-    ...options,
-  };
+  const opts = { pushedAt: stampFor(pushSeq), ...options };
   return pushMetricSamples(profile, rows, source, sink, opts);
 }
 
@@ -572,6 +578,54 @@ describe("what the rule must NEVER delete", () => {
     ]);
   });
 
+  it("keeps the STORED row alive when a tombstone forbids the row that would replace it", () => {
+    // #3438, round 7's refutation. The case above seeds a FRESH profile, so there is no
+    // stored row for the plan to name a victim from — which is why this suite could not
+    // see that pass A never consulted the tombstones at all. This one seeds the store,
+    // tombstones the RE-ANCHORED key the way Data → Manage does, and re-sends it.
+    //
+    // MUTATION: drop the veto consultation from `planMetricSampleSupersede` and the
+    // seeded 8000 goes, permanently, with `superseded: 1` and no warning.
+    const p = freshProfile("TOMBSTONE-VICTIM");
+    upsert(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-05-01T00:00:00Z",
+          "2026-05-01T23:00:00Z",
+          8000
+        ),
+      ],
+      HC
+    );
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([8000]);
+    writeImportTombstone(
+      p,
+      "metric_samples",
+      metricSampleTombstoneKey("steps", HC, ORIGIN, "2026-05-01T15:00:00Z")
+    );
+    const counts = upsert(
+      p,
+      [
+        sample(
+          "steps",
+          "2026-05-01",
+          "2026-05-01T15:00:00Z",
+          "2026-05-02T01:00:00Z",
+          8500
+        ),
+      ],
+      HC
+    );
+    expect(counts.suppressed).toBe(1);
+    expect(counts.superseded).toBe(0);
+    // The suppressed row put nothing in the store, so no day reads high either.
+    expect(counts.overlapsLeft).toBe(0);
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([8000]);
+  });
+
   // WHAT USED TO STAND HERE, AND WHY IT DID NOT. This case was guarded by `!staleRetry`
   // — `isStaleMetricSnapshot(found.ended_at, r.ended_at)`, an `ended_at` comparison,
   // which lib/metric-window-overlap.ts's own header spends a page explaining cannot
@@ -786,7 +840,7 @@ describe("the SQL narrowing agrees with the pure rule", () => {
     );
     // Stated explicitly here only so the hand-run predicate below and the real ingest
     // call at the end of the test compare against the SAME push.
-    const PUSHED_AT = "2027-01-01T00:00:00Z";
+    const PUSHED_AT = "2026-08-22T00:00:00Z";
     const withStamp = { ...incoming, pushedAt: PUSHED_AT };
     // What the pure rule says about the WHOLE stored group, unnarrowed.
     const all = db
@@ -975,5 +1029,18 @@ describe("each batch is processed in ascending started_at order", () => {
     };
     ingestHealthConnectPayload(p, parsed, HC, 2);
     expect(insertOrder(p)).toEqual(ASCENDING);
+  });
+});
+
+describe("the fixtures state a stamp production would accept", () => {
+  it("dates its pushes in the PAST", () => {
+    // #3438. This file used to mint `2026-09-01` stamps, ten days after the day it was
+    // written, and got away with it only because the shared push helper bypassed
+    // `pushStampFor`. In production every one of them would have been refused by the 12h
+    // clock bound, and a refused stamp supersedes nothing — so every case here would have
+    // been asserting against a rule that never ran.
+    expect(PUSH_BASE).toBeLessThan(Date.now());
+    expect(pushStampFor(stampFor(1))).toBe(stampFor(1));
+    expect(pushStampFor(stampFor(pushSeq))).toBe(stampFor(pushSeq));
   });
 });

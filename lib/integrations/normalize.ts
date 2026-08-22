@@ -559,6 +559,173 @@ export interface MetricSampleUpsertOptions {
 // The ascending-`started_at` sort survives as deterministic write order and NOTHING MORE.
 // It does no work here and must not be described as what makes the store correct.
 
+// ── PASS C'S VETOES, AND WHY PASS A HAS TO SEE THEM (#3438) ───────────────────────
+//
+// `final store = (pre-store − victims) ⊕ upserts` assumes `⊕ upserts` IS TOTAL — that
+// every row of the push lands. IT IS NOT. Pass C holds four UNILATERAL VETOES over what
+// gets written, and a row a veto stops is not a replacement for anything:
+//
+//   body-metric  a measure that belongs in body_metrics, mis-routed here by a parser
+//   tombstone    #508's re-import tombstone — the user deleted this exact reading
+//   edit-lock    #133's lock — the stored twin is hand-corrected and wins
+//   stale-retry  #1101's moving-END rule — the stored twin holds the newer snapshot
+//
+// Round 7 refuted the PR through the tombstone one. Pass A promoted a stored
+// old-anchoring row to `victims` on the strength of an incoming re-anchored row that
+// pass C then REFUSED to write; pass B deleted the stored row; the day went to ZERO,
+// permanently, with `warnings: []` and `superseded: 1` telling the reader a row had been
+// replaced. It is reachable from Data → Manage, which writes exactly that tombstone on
+// the row's `started_at` (`app/(app)/data/manage-actions.ts`): delete the re-anchored one
+// of two duplicated step rows and the next rolling-window push destroys the other. The
+// store then reads LOWER than `main` — the one thing the ruling's invariant forbids
+// outright.
+//
+// GUARDING THE TOMBSTONE ALONE WOULD BE THE MISTAKE THE THREE-PASS SPLIT WAS RULED IN TO
+// STOP: a patch on the channel that was demonstrated, over a construction that keeps
+// producing them. The other three vetoes are the same shape and want only a differently
+// arranged store to fire. So the vetoes are stated ONCE, HERE, and BOTH passes ask this
+// one function:
+//
+//   • pass C asks it instead of testing four conditions inline, and the accounting each
+//     branch used to own now lives in `VETO_TALLY`;
+//   • pass A asks it before it plans anything, and a vetoed row PLANS NO DELETE and
+//     counts no in-push double count — a row that never lands replaces nothing and
+//     doubles nothing. It still REPORTS, though, when the store holds its twin: no veto
+//     writes, so that twin stays exactly as it is, and whatever it overlaps is a day
+//     reading high. Pass A asks only whether a twin exists, never which veto fired.
+//
+// WHAT A FIFTH VETO COSTS, since that is the property this has to hold and not just the
+// four instances. Adding one means adding a member to `MetricSampleVeto` — a compile
+// error at `VETO_TALLY`, a `Record` over the union, until its accounting is stated — and
+// adding its condition to `metricSampleVeto`, which is the ONLY place pass C may decline
+// a row: the upsert loop has no other `continue`. Pass A then honours it with NO EDIT AT
+// ALL, because pass A never asks why a row is vetoed, only whether it is. Moving an
+// existing veto so it fires on an insert rather than an update costs nothing either, for
+// the same reason.
+//
+// PASS A AND PASS C GET THE SAME ANSWER. Both read the twin on the ON CONFLICT natural
+// key through `metricSampleVetoes` below, off one SQL literal; pass C runs BEFORE pass B
+// in every chunk, so neither can observe a delete, and the push-key exclusion already
+// keeps a victim from ever being a twin. The ONE divergence is a push carrying the same
+// natural key twice: pass A reads the pre-push store for both rows, while pass C sees the
+// first row's write when it reaches the second. That direction is safe — pass A vetoes
+// where pass C would not, so it plans FEWER victims, and a plan that deletes less can
+// only leave a day reading HIGH, which the invariant permits.
+export type MetricSampleVeto =
+  "body-metric" | "tombstone" | "edit-lock" | "stale-retry";
+
+/** The stored row under an incoming row's ON CONFLICT natural key — pass C's `found`. */
+interface MetricSampleTwin {
+  id: number;
+  value: number;
+  date: string;
+  ended_at: string;
+  edited: number;
+  activity_external_id: string | null;
+}
+
+/**
+ * What each veto does to the counts a person reads in Review.
+ *
+ * A `Record` over the union rather than a switch, so a fifth veto does not COMPILE until
+ * it has said what Review shows for it.
+ */
+const VETO_TALLY: Record<MetricSampleVeto, (counts: UpsertCounts) => void> = {
+  // NOT COUNTED, deliberately. A parser mis-routing a body metric into the samples path
+  // is a programming error rather than a disposition; counting it would re-split the
+  // measure across two tables in Review as well as in the store.
+  "body-metric": () => {},
+  tombstone: (counts) => {
+    counts.suppressed++;
+  },
+  // Its OWN split (#659), like the body-metrics and vitals paths: a lock hold is not an
+  // ordinary no-op re-send, so it stays visible in Review rather than hidden inside
+  // `unchanged`.
+  "edit-lock": (counts) => {
+    counts.edited++;
+  },
+  "stale-retry": (counts) => {
+    tallyUpsert(counts, classifyUpsert(true, true));
+  },
+};
+
+interface MetricSampleVetoes {
+  /** The stored row under this incoming row's natural key, or undefined. */
+  twin(r: NormMetricSample): MetricSampleTwin | undefined;
+  /** Why pass C will refuse to write this row, or null when it will write it. */
+  veto(
+    r: NormMetricSample,
+    twin: MetricSampleTwin | undefined
+  ): MetricSampleVeto | null;
+}
+
+/**
+ * The veto set for one (profile, source), prepared once per pass.
+ *
+ * The tombstone set and the twin statement are read ONCE for the batch. Pass C pays for
+ * them per push rather than per row, and pass A pays only on a push that carries a day
+ * bucket at all, because it asks AFTER the granularity gate.
+ */
+function metricSampleVetoes(
+  profileId: number,
+  source: string
+): MetricSampleVetoes {
+  // The pre-image read on the ON CONFLICT natural key, as ONE literal both passes use:
+  // they have to agree on which stored row is a row's twin, or the veto pass A computes
+  // is not the veto pass C applies. `id` is carried so an update's provenance row (#1333)
+  // names the existing row rather than relying on lastInsertRowid (unreliable for an
+  // ON CONFLICT DO UPDATE).
+  const find = db.prepare(
+    "SELECT id, value, date, ended_at, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND started_at = ?"
+  );
+  // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
+  // re-inserted by the rolling window. Loaded once for the batch.
+  const tombstoned = loadImportTombstones(profileId, "metric_samples");
+  return {
+    twin: (r) =>
+      find.get(profileId, r.metric, source, r.origin ?? null, r.started_at) as
+        MetricSampleTwin | undefined,
+    veto: (r, twin) => {
+      // These belong in body_metrics (via upsertBodyMetrics); never let them land in
+      // metric_samples and re-split the measure across two tables.
+      if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) return "body-metric";
+      // No live row AND a tombstone for this natural key: the resurrecting insert is
+      // refused, so this row lands nowhere at all.
+      if (
+        !twin &&
+        tombstoned.has(
+          metricSampleTombstoneKey(
+            r.metric,
+            source,
+            r.origin ?? null,
+            r.started_at
+          )
+        )
+      )
+        return "tombstone";
+      // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
+      // detail-page readings table's per-row Edit. A hand-corrected sample survives every
+      // later re-push of the rolling window — the same contract activities /
+      // body_metrics / medical_records have had since #133.
+      if (twin && isEditLocked(twin.edited)) return "edit-lock";
+      // A delayed retry of an older cumulative snapshot must never roll a newer
+      // day-so-far value backward — #1101's moving-END rule, for the natural-key twin and
+      // NOTHING ELSE. The natural key intentionally omits `ended_at`, so freshness is an
+      // explicit part of the runtime merge rule (#1101 review).
+      //
+      // IT IS NOT A GATE ON THE SUPERSEDE, and #3424 took it out of that job for good:
+      // `isStaleMetricSnapshot` compares `ended_at`, the comparison
+      // lib/metric-window-overlap.ts's header spends a page explaining cannot decide
+      // which of two ANCHORINGS is current, and as a gate it was STRICT so a
+      // byte-identical replay walked straight through it. What it decides here is
+      // whether THIS ROW lands, which is the only thing pass A asks it.
+      if (twin && isStaleMetricSnapshot(twin.ended_at, r.ended_at))
+        return "stale-retry";
+      return null;
+    },
+  };
+}
+
 /**
  * WHAT ONE PUSH DOES TO THE STORE IT ARRIVED AT — pass A, read-only.
  *
@@ -749,6 +916,12 @@ export function planMetricSampleSupersede(
   // vanishing from both lists. The one row that belongs in NEITHER list is the incoming
   // row's OWN twin: that is the same reading being updated in place, not a second copy of
   // it, and the candidate SELECT below excludes it.
+  //
+  // BUILT OVER EVERY ROW, THE VETOED ONES INCLUDED (#3438). This set only ever REMOVES
+  // victimhood, so an over-inclusive one can leave a day reading high and never low. And
+  // for the two vetoes that require a stored twin — #133's lock and #1101's stale retry —
+  // that twin is precisely the row that must not be deleted, since the incoming row is
+  // declining to replace it.
   const pushKeys = new Set<string>();
   const keyOf = (metric: string, origin: string | null, startedAt: string) =>
     JSON.stringify([metric, origin, startedAt]);
@@ -775,6 +948,9 @@ export function planMetricSampleSupersede(
   // thing that licenses deleting a NULL-stamped row, read ONCE for the push because it is
   // a constant this push cannot move.
   const era: UnstampedEra | null = readUnstampedEra();
+  // PASS C'S VETOES, ASKED HERE (#3438). A row pass C will refuse to write is not
+  // replacing anything, so it must not plan a delete. See the header above.
+  const vetoes = metricSampleVetoes(profileId, source);
 
   // Victim id → the `pushed_at` pass A read on that row. A Map rather than a Set because
   // pass B re-states that stamp in the DELETE: what pass A decided is only valid while the
@@ -800,13 +976,39 @@ export function planMetricSampleSupersede(
     // not scanned for and not reported. It is the one residual in `left` this caller does
     // not deliver; the permanent one (a stored sub-daily bucket) is.
     if (!isSupersedingWindow(r.metric, r.started_at, r.ended_at)) continue;
-    dayBuckets.push({
-      metric: r.metric,
-      origin: r.origin ?? null,
-      started_at: r.started_at,
-      ended_at: r.ended_at,
-    });
-    const { from, to } = supersedeDateRange(r.date);
+    // AND WHAT PASS C WILL ACTUALLY LEAVE UNDER THIS NATURAL KEY (#3438). Asked AFTER the
+    // granularity gate on purpose: the twin lookup then costs nothing on an 11.5k-row
+    // `1m` push, which carries no day buckets at all.
+    //
+    // A VETOED ROW PLANS NO DELETE, because it is not replacing anything — that is the
+    // whole refutation. What it may still do is REPORT. Two of the four vetoes require a
+    // stored twin, and no veto writes anything, so that twin stays EXACTLY as it is: the
+    // window standing under this key when the push is done is the TWIN'S, and the rows it
+    // overlaps are real days reading high. A vetoed row with NO twin — the #508 tombstone,
+    // a mis-routed body metric — puts nothing in the store under this key and has nothing
+    // to say about it.
+    //
+    // This asks only WHETHER a twin exists, never WHICH veto fired, so a fifth veto is
+    // handled here with no edit at all.
+    const twin = vetoes.twin(r);
+    const veto = vetoes.veto(r, twin);
+    // The window that will stand under this natural key once the push is done.
+    let standingWindow: { date: string; ended_at: string };
+    if (veto === null) standingWindow = { date: r.date, ended_at: r.ended_at };
+    else if (twin)
+      standingWindow = { date: twin.date, ended_at: twin.ended_at };
+    else continue;
+    // The in-push double count is between rows that LAND, so a vetoed row is not one of
+    // them: what stands under its key is a row the store already had, and any overlap
+    // with it is `leftStanding`'s to name.
+    if (veto === null)
+      dayBuckets.push({
+        metric: r.metric,
+        origin: r.origin ?? null,
+        started_at: r.started_at,
+        ended_at: r.ended_at,
+      });
+    const { from, to } = supersedeDateRange(standingWindow.date);
     const candidates = findOverlaps.all(
       profileId,
       r.metric,
@@ -816,7 +1018,11 @@ export function planMetricSampleSupersede(
       to,
       r.started_at
     ) as MetricWindow[];
-    const plan = planSupersede({ ...r, pushedAt }, candidates, era);
+    const plan = planSupersede(
+      { ...r, ...standingWindow, pushedAt },
+      candidates,
+      era
+    );
     for (const standing of plan.left) {
       leftStanding.add(standing.id);
       standingKeyById.set(
@@ -825,23 +1031,30 @@ export function planMetricSampleSupersede(
       );
     }
     for (const victim of plan.supersede) {
-      // The wider exclusion, applied where it can still be reported: a row this push is
-      // about to upsert is never deleted, and the day it leaves reading high is said out
-      // loud instead of being silently collapsed into nothing.
+      // TWO REASONS A COLLAPSE IS DECLINED AND STILL REPORTED. The wider push-key
+      // exclusion: a row this push is about to upsert is never deleted, and the day it
+      // leaves reading high is said out loud instead of being silently collapsed into
+      // nothing. And the veto: the row that would have done the collapsing is not being
+      // written, so there is nothing to replace the stored row with.
       const victimKey = keyOf(r.metric, r.origin ?? null, victim.started_at);
-      if (pushKeys.has(victimKey)) {
+      if (veto !== null || pushKeys.has(victimKey)) {
         leftStanding.add(victim.id);
         standingKeyById.set(victim.id, victimKey);
       } else victims.set(victim.id, victim.pushed_at);
     }
   }
-  // Disjoint, so the Review line counts rows still reading wrong and nothing else. Every
-  // reason a row lands in `left` rather than in `supersede` is a fact about that STORED
-  // row plus this push's one stamp — the granularity gate, the #133 lock, `pushOutranks`,
-  // and the push-key exclusion above, which asks only whether some row of this push
-  // carries the stored row's key. None of them varies between the incoming buckets that
-  // overlap it, so no row can be collapsed by one and left by another. Stated here rather
-  // than left to be re-derived, since two rounds were lost to a claim of that shape.
+  // Disjoint, and THIS LINE IS WHAT MAKES THEM SO rather than a property of the loop.
+  //
+  // Most reasons a row lands in `left` rather than in `supersede` are facts about that
+  // STORED row plus this push's one stamp — the granularity gate, the #133 lock,
+  // `pushOutranks`, and the push-key exclusion, which asks only whether some row of this
+  // push carries the stored row's key. Those cannot vary between the incoming buckets
+  // that overlap it. THE VETO CAN (#3438): it is a fact about the INCOMING row, so one
+  // stored row may be left standing by a vetoed bucket of this push and collapsed by a
+  // bucket that lands. The collapse is the truth — a row that lands does replace it — so
+  // the prune below is the arbiter, and it is stated here because an earlier version of
+  // this comment claimed the case could not arise. Two rounds were lost to a claim of
+  // that shape.
   for (const id of victims.keys()) leftStanding.delete(id);
   return {
     victims: [...victims].map(([id, pushedAt]) => ({ id, pushedAt })),
@@ -930,14 +1143,12 @@ export function upsertMetricSamples(
   sink?: SyncRowSink,
   options: MetricSampleUpsertOptions = {}
 ): UpsertCounts {
-  // Pre-image on the natural key the ON CONFLICT below merges on, so a re-send of
-  // the rolling window that lands the same value/date is counted unchanged rather
-  // than a write (info.changes can't see that the values matched). `id` is carried so
-  // an update's provenance row (#1333) names the existing row rather than relying on
-  // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
-  const find = db.prepare(
-    "SELECT id, value, date, ended_at, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND started_at = ?"
-  );
+  // The pre-image on the natural key the ON CONFLICT below merges on, and the four
+  // vetoes read against it — through the ONE function pass A also asks (#3438), so the
+  // rows this loop refuses to write are the rows pass A refused to plan deletes for. A
+  // re-send of the rolling window that lands the same value/date is counted unchanged
+  // rather than a write (info.changes can't see that the values matched).
+  const vetoes = metricSampleVetoes(profileId, source);
   const stmt = db.prepare(
     `INSERT INTO metric_samples
        (profile_id, source, origin, metric, date, started_at, ended_at, value,
@@ -956,9 +1167,6 @@ export function upsertMetricSamples(
        -- already set, which would re-open the row to a replay.
        pushed_at = COALESCE(excluded.pushed_at, metric_samples.pushed_at)`
   );
-  // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
-  // re-inserted by the rolling window. Loaded once for the batch.
-  const tombstoned = loadImportTombstones(profileId, "metric_samples");
   const counts = emptyCounts();
 
   // ── PASS C, AND ONLY PASS C (#3424) ───────────────────────────────────────────
@@ -1004,75 +1212,22 @@ export function upsertMetricSamples(
       : rows;
 
   for (const r of ordered) {
-    if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
-      // These belong in body_metrics (via upsertBodyMetrics); never let them land
-      // in metric_samples and re-split the measure across two tables.
-      continue;
-    }
-    const found = find.get(
-      profileId,
-      r.metric,
-      source,
-      r.origin ?? null,
-      r.started_at
-    ) as
-      | {
-          id: number;
-          value: number;
-          date: string;
-          ended_at: string;
-          edited: number;
-          activity_external_id: string | null;
-        }
-      | undefined;
-    // No live row AND a tombstone for this natural key: skip the resurrecting insert.
-    if (
-      !found &&
-      tombstoned.has(
-        metricSampleTombstoneKey(
-          r.metric,
-          source,
-          r.origin ?? null,
-          r.started_at
-        )
-      )
-    ) {
-      counts.suppressed++;
-      continue;
-    }
-    // A delayed retry of an older cumulative snapshot — #1101's moving-END rule, for the
-    // natural-key twin and NOTHING ELSE. It is read here only because its accounting
-    // branch is below; it is deliberately NOT a gate on the supersede any more.
+    const found = vetoes.twin(r);
+    // THE FOUR VETOES, AND THE ONLY PLACE THIS LOOP MAY DECLINE A ROW (#3438). They used
+    // to stand here as four inline conditions, which is how pass A came to plan a delete
+    // for a stored row on the strength of an incoming row this loop then refused to
+    // write. Both passes now read them from `metricSampleVetoes`, so pass A cannot plan
+    // against a push member that never lands — and a FIFTH veto is honoured by pass A
+    // with no edit to pass A at all. The accounting lives in `VETO_TALLY`, a `Record`
+    // over the union, so the new member does not compile until it says what Review shows.
     //
-    // IT USED TO GATE IT, AND THAT WAS THE SAME SUBSTITUTION THIS FILE KEEPS MAKING.
-    // `isStaleMetricSnapshot` compares `ended_at`, the comparison
-    // lib/metric-window-overlap.ts's header spends a page explaining cannot decide which
-    // of two ANCHORINGS is current. As a gate it was also STRICT, so a byte-identical
-    // replay — equal ends — walked straight through it and deleted the correct row. The
-    // stamp is what answers this question; an end answers a different one.
-    const staleRetry =
-      !!found && isStaleMetricSnapshot(found.ended_at, r.ended_at);
-    // The #1101 stale-retry guard and the #133 lock below read a store the supersede has
-    // already finished with (pass B), and neither can see a row this push is about to
-    // write — the plan excluded every one of this push's natural keys from being a
-    // victim. That is the invariant the three-pass shape exists to give them.
-
-    // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
-    // detail-page readings table's per-row Edit. A hand-corrected sample survives
-    // every later re-push of the rolling window, counted `unchanged` — the same
-    // contract activities / body_metrics / medical_records have had since #133.
-    if (found && isEditLocked(found.edited)) {
-      // Its OWN split (#659), like the body-metrics and vitals paths above: a lock
-      // hold is not an ordinary no-op re-send, so it stays visible in Review rather
-      // than hidden inside `unchanged`.
-      counts.edited++;
-      continue;
-    }
-    // A delayed retry of an older cumulative snapshot must never roll a newer
-    // day-so-far value backward. The natural key intentionally omits ended_at, so
-    // freshness is an explicit part of the runtime merge rule (#1101 review).
-    if (staleRetry) {
-      tallyUpsert(counts, classifyUpsert(true, true));
+    // The reads behind them see a store pass B has not touched: pass B runs after this
+    // loop in every chunk, and the plan excluded every one of this push's natural keys
+    // from being a victim regardless. That is the invariant the three-pass shape exists
+    // to give them.
+    const veto = vetoes.veto(r, found);
+    if (veto !== null) {
+      VETO_TALLY[veto](counts);
       continue;
     }
     const info = stmt.run(

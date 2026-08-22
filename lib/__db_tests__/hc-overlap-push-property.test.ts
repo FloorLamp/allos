@@ -46,6 +46,8 @@ import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { planMetricSampleSupersede } from "@/lib/integrations/normalize";
 import { recordUnstampedEra } from "@/lib/integrations/unstamped-era";
+import { writeImportTombstone } from "@/lib/integrations/tombstones";
+import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 import {
   UNSTAMPED_ERA_AT_KEY,
   UNSTAMPED_ERA_MAX_ID_KEY,
@@ -231,6 +233,16 @@ interface Scenario {
   seed: (profileId: number) => void;
   /** The push, as the exporter would send it. */
   body: Rec;
+  /**
+   * The rows the store must hold afterwards, as `metric@started_at` in `content` order.
+   *
+   * OPTIONAL, AND NOT DECORATION (#3438). Everything else here is a comparison BETWEEN
+   * runs, which goes green whenever the outcome is wrong the same way every time — and
+   * round 7's refutation was exactly that: a stored reading deleted, identically, at
+   * every chunk size. A scenario whose point is that a particular row SURVIVES says so
+   * absolutely.
+   */
+  survivors?: string[];
 }
 
 const SCENARIOS: Scenario[] = [
@@ -343,6 +355,51 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // A TOMBSTONE IN THE PUSH'S PATH — round 7's refutation, as a property rather than an
+    // instance (#3438). The store holds the NY anchoring. The user deleted the
+    // LA-anchored duplicate for 08-19 through Data → Manage, which writes a
+    // `metric_samples` tombstone on that exact `started_at`, and the rolling window
+    // re-sends it anyway. Pass C is FORBIDDEN to write that row, so pass A must plan no
+    // delete for the NY row it overlaps — while the 08-20 pair, which nothing forbids,
+    // still collapses. Both halves in one push, so a chunk boundary falls between them.
+    //
+    // This file never seeded a tombstone before, which is why the doc's stand-in for the
+    // whole identity could not see the defect either.
+    name: "a re-anchored bucket the #508 tombstone forbids",
+    seed: (p) => {
+      ingest(
+        p,
+        {
+          timestamp: "2026-08-21T01:00:00Z",
+          app_version: "1.9.14",
+          steps: [stepsRec(...NY_19, 9000), stepsRec(...NY_20, 11609)],
+          distance: [distRec(...NY_19, 7100), distRec(...NY_20, 9200)],
+        },
+        500
+      );
+      for (const metric of ["steps", "distance_km"])
+        writeImportTombstone(
+          p,
+          "metric_samples",
+          metricSampleTombstoneKey(metric, HC, ORIGIN, LA_19[0])
+        );
+    },
+    body: {
+      timestamp: "2026-08-21T03:05:00Z",
+      app_version: "1.9.14",
+      steps: [stepsRec(...LA_19, 9100), stepsRec(...LA_20, 11721)],
+      distance: [distRec(...LA_19, 7180), distRec(...LA_20, 9300)],
+    },
+    // The forbidden LA 08-19 row lands nowhere and the NY 08-19 row it would have
+    // replaced is still there; the 08-20 pair, which nothing forbids, collapses.
+    survivors: [
+      "distance_km@2026-08-19T04:00:00Z",
+      "distance_km@2026-08-20T07:00:00Z",
+      "steps@2026-08-19T04:00:00Z",
+      "steps@2026-08-20T07:00:00Z",
+    ],
+  },
+  {
     // A MIXED-ANCHORING PUSH AGAINST A STORE THAT ALREADY HOLDS ONE OF THE TWO — the
     // configuration ruling item 3 governs, and the one none of the five `freshProfile`
     // tests ever reached. The stored NY row is BOTH a row this push re-sends AND a row
@@ -415,6 +472,10 @@ describe("the same push leaves the same store, whatever the order and the chunki
       // AND THE COMPARISON EXAMINED SOMETHING. A presence assertion about byte-identical
       // rows only fails loudly if there were rows; this says so before believing it.
       expect(baseline.content.length).toBeGreaterThan(0);
+      if (scenario.survivors)
+        expect(
+          baseline.content.map((r) => `${r.metric}@${r.started_at}`)
+        ).toEqual(scenario.survivors);
       expect(runs.length).toBe(
         Object.keys(ORDERINGS).length * CHUNK_SIZES.length
       );

@@ -28,6 +28,9 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { pushMetricSamples } from "./hc-metric-sample-push";
+import { pushStampFor } from "@/lib/metric-window-overlap";
+import { writeImportTombstone } from "@/lib/integrations/tombstones";
+import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 
 const HC = "health-connect";
 const ORIGIN = "com.fitbit.FitbitMobile";
@@ -74,8 +77,17 @@ function rowCount(profile: number, metric: string): number {
 // measured over the captured payloads: of 228 bodies, all 175 carrying an `app_version`
 // (i.e. every real push) state a readable one. So these fixtures state one too, and a
 // caller that wants to REPLAY a push passes that push's own stamp back.
-const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
+//
+// AND STATE ONE IN THE PAST (#3438). `pushStampFor` nulls a stated instant more than
+// MAX_PUSH_CLOCK_SKEW_MS ahead of the server clock. This file used to date its pushes
+// 2026-09-01, ten days after the day it was written, so every `push()` here — which goes
+// through the REAL ingest — was running with `pushedAt: null` and superseding nothing:
+// the "the rule declined" assertions below were passing for the wrong reason, and their
+// stated MUTATIONS could not have gone red. The case at the end of this file pins it.
+const PUSH_BASE = Date.parse("2026-08-21T18:00:00Z");
 let pushSeq = 0;
+const stampFor = (seq: number) =>
+  new Date(PUSH_BASE + seq * 60_000).toISOString().slice(0, 19) + "Z";
 
 /** A direct upsert whose batch is a LATER push than the one before it. */
 function upsert(
@@ -89,8 +101,7 @@ function upsert(
   // The three passes the ingest runs, not `upsertMetricSamples` alone — the supersede
   // does not live in the upsert loop any more (#3424, owner ruling option 2).
   return pushMetricSamples(profile, rows, source, sink, {
-    pushedAt:
-      new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
+    pushedAt: stampFor(pushSeq),
     ...options,
   });
 }
@@ -100,9 +111,7 @@ function push(
   timestamp?: string
 ) {
   pushSeq += 1;
-  const stamp =
-    timestamp ??
-    new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z";
+  const stamp = timestamp ?? stampFor(pushSeq);
   const parsed = parseHealthConnectPayload(
     { ...body, timestamp: stamp },
     "UTC"
@@ -1160,5 +1169,205 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
     );
     expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
     expect(stored(p, "steps")).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R7 — pass A planned a delete for a row pass C was FORBIDDEN to write.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R7 — a row pass C will not write plans no delete", () => {
+  // THE REFUTATION. `final store = (pre-store − victims) ⊕ upserts` assumed `⊕ upserts`
+  // was TOTAL. It is not: pass C holds four unilateral vetoes over what lands, and pass A
+  // consulted none of them. It promoted the stored old-anchoring row to `victims` on the
+  // strength of an incoming re-anchored row that the #508 tombstone then stopped pass C
+  // from writing, and pass B deleted the stored row anyway. The day went to ZERO — the
+  // committed FINAL state, not a between-commits transient, and the next push re-plans,
+  // finds no victim, re-suppresses the incoming row and leaves it at zero forever.
+  // `warnings: []`, and `superseded: 1` told the reader a row had been REPLACED.
+  //
+  // Nothing recovers it. The supersede delete is sync-internal by design: no re-import
+  // tombstone (pinned in hc-overlap-supersede.test.ts) and no undo capture, because it is
+  // a raw `dropOverlap.run()` rather than the undo-delete path.
+  //
+  // REACHABLE FROM THE UI THIS PR EXISTS FOR. `app/(app)/data/manage-actions.ts` writes a
+  // `metric_samples` tombstone keyed on the row's exact `started_at` when a user deletes a
+  // reading. A user sees today's step count duplicated across two anchorings, deletes the
+  // RE-ANCHORED one, and the next rolling-window push destroys the other.
+  //
+  // MUTATION for every case below: drop the `vetoes.veto(...)` consultation from
+  // `planMetricSampleSupersede` — the stored reading is deleted and the day reads lower
+  // than `main` would, which is the one thing the ruling's invariant forbids outright.
+
+  /** The Data → Manage delete, through the same key builder that action uses. */
+  function tombstone(p: number, startedAt: string): void {
+    writeImportTombstone(
+      p,
+      "metric_samples",
+      metricSampleTombstoneKey("steps", HC, ORIGIN, startedAt)
+    );
+  }
+
+  function pushAt(
+    p: number,
+    body: Record<string, unknown>,
+    timestamp: string,
+    chunkSize: number
+  ) {
+    const parsed = parseHealthConnectPayload(
+      { app_version: "1.9.14", ...body, timestamp },
+      "UTC"
+    );
+    lastParsedDetails = parsed.details;
+    return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+  }
+
+  it("keeps the stored row when a TOMBSTONE stops the row that would replace it", () => {
+    // The lens's configuration, through the real ingest at chunkSize 2.
+    const p = freshProfile("R7-TOMBSTONE-VICTIM");
+    pushAt(
+      p,
+      { steps: [steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000)] },
+      "2026-05-02T00:00:00Z",
+      2
+    );
+    // THE SEED IS REALLY THERE — a survival assertion over an empty table passes for the
+    // wrong reason, and the shipped tombstone case seeds a FRESH profile, which is why
+    // the suite could not see this.
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+    tombstone(p, "2026-05-01T15:00:00Z");
+
+    const result = pushAt(
+      p,
+      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
+      "2026-05-02T02:00:00Z",
+      2
+    );
+    expect(result.split.suppressed).toBe(1);
+    expect(result.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+    // Nothing to report: one reading stands where one reading stood. The suppressed row
+    // put nothing in the store, so there is no day reading high to name.
+    expect(warningsOf(result)).toEqual([]);
+
+    // AND IT STAYS THAT WAY. The defect's worst property was that the zero was permanent,
+    // so the next push of the same rolling window is driven too.
+    const again = pushAt(
+      p,
+      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
+      "2026-05-02T03:00:00Z",
+      2
+    );
+    expect(again.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
+  });
+
+  it("keeps the stored row when the #133 LOCK stops the row that would replace it", () => {
+    // The same construction through a different veto, which is the point: guarding the
+    // tombstone alone would have left this one live.
+    const p = freshProfile("R7-LOCK-VICTIM");
+    // Both anchorings in ONE push, so neither is the other's victim (ruling item 3).
+    pushAt(
+      p,
+      {
+        steps: [
+          steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
+          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+        ],
+      },
+      "2026-05-02T00:00:00Z",
+      2
+    );
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 8500]);
+    // The user hand-corrects the re-anchored one.
+    db.prepare(
+      "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
+    ).run(p, "2026-05-01T15:00:00Z");
+
+    const result = pushAt(
+      p,
+      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9999)] },
+      "2026-05-02T02:00:00Z",
+      2
+    );
+    expect(result.split.edited).toBe(1);
+    expect(result.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 8500]);
+    // AND IT IS SAID OUT LOUD. The locked row stays, so the day really does read high —
+    // pass A reports the overlap against the TWIN's stored window rather than pretending
+    // a vetoed row touched nothing.
+    expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
+  });
+
+  it("keeps the stored row when the #1101 STALE RETRY stops the row that would replace it", () => {
+    const p = freshProfile("R7-STALE-VICTIM");
+    pushAt(
+      p,
+      {
+        steps: [
+          steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
+          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+        ],
+      },
+      "2026-05-02T00:00:00Z",
+      2
+    );
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 8500]);
+    // A queued push drains late: the same natural key, an END that stopped EARLIER, a
+    // smaller value. #1101 holds the stored snapshot, so this row lands nowhere.
+    const result = pushAt(
+      p,
+      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T20:00:00Z", 6000)] },
+      "2026-05-02T02:00:00Z",
+      2
+    );
+    expect(result.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 8500]);
+    expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
+  });
+
+  it("still collapses the stored row when a row of the SAME push DOES land", () => {
+    // THE VETO IS A FACT ABOUT THE INCOMING ROW, so one stored row can be left standing
+    // by a vetoed bucket of a push and collapsed by a bucket of the same push that lands.
+    // The collapse is the truth. MUTATION: make the veto skip the whole row's plan
+    // unconditionally, or drop the `victims` prune of `leftStanding`, and this goes red
+    // one way or the other — the rule stops collapsing anything a tombstoned key touched.
+    const p = freshProfile("R7-MIXED");
+    pushAt(
+      p,
+      { steps: [steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000)] },
+      "2026-05-02T00:00:00Z",
+      2
+    );
+    tombstone(p, "2026-05-01T15:00:00Z");
+    const result = pushAt(
+      p,
+      {
+        steps: [
+          // Vetoed: tombstoned, lands nowhere.
+          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+          // Lands, overlaps the stored row, outranks it.
+          steps("2026-05-01T07:00:00Z", "2026-05-02T07:00:00Z", 8100),
+        ],
+      },
+      "2026-05-02T02:00:00Z",
+      2
+    );
+    expect(result.split.suppressed).toBe(1);
+    expect(result.split.superseded).toBe(1);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8100]);
+    expect(warningsOf(result)).toEqual([]);
+  });
+});
+
+describe("the fixtures state a stamp production would accept", () => {
+  it("dates its pushes in the PAST", () => {
+    // #3438. This file used to state `timestamp: 2026-09-01`, ten days after the day it
+    // was written, so `pushStampFor` refused every one of them and every `push()` above
+    // ran with `pushedAt: null` — superseding nothing, and passing its "the rule declined"
+    // assertions for a reason that had nothing to do with the guard under test.
+    expect(PUSH_BASE).toBeLessThan(Date.now());
+    expect(pushStampFor(stampFor(1))).toBe(stampFor(1));
+    expect(pushStampFor(stampFor(pushSeq))).toBe(stampFor(pushSeq));
   });
 });

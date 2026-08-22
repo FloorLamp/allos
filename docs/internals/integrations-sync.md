@@ -857,6 +857,36 @@ difference from the pre-push store is rows that are, by construction, no incomin
 twin. It removes victimhood and not the report: such a row is a real double count, so it
 moves to the overlaps left standing rather than vanishing from both lists.
 
+**PASS C'S VETOES ARE VISIBLE TO PASS A, AND THAT IS THE OTHER HALF OF THE EXCLUSION**
+(#3438). `final store = (pre-store − victims) ⊕ upserts` assumes `⊕ upserts` is TOTAL —
+that every row of the push lands. It is not. Pass C holds four unilateral vetoes over
+what gets written: a body metric mis-routed into the samples path, the #508 re-import
+tombstone, the #133 edit lock, and #1101's stale retry. Pass A consulted none of them,
+so it planned a delete for a stored row on the strength of an incoming row pass C then
+refused to write — measured on the tombstone: a store holding one day bucket, a
+tombstone on the re-anchored key (which is what Data → Manage writes when a user deletes
+one of two duplicated readings), one stamped push carrying the re-anchoring, and the day
+went to **zero**, permanently, with `warnings: []` and `superseded: 1` claiming a
+replacement. That reads LOWER than `main`, which the invariant above forbids outright.
+
+Guarding the tombstone alone would have been the mistake the three-pass split was ruled
+in to stop, so the vetoes are stated ONCE, in `metricSampleVeto`, and both passes ask it:
+
+- Pass C asks it instead of testing four conditions inline, and each veto's accounting
+  lives in `VETO_TALLY`, a `Record` over the `MetricSampleVeto` union.
+- Pass A asks it before it plans anything. A vetoed row plans **no delete** and counts no
+  in-push double count. It still **reports**, when the store holds its twin: no veto
+  writes, so that twin stays exactly as it is, and pass A measures the overlaps against
+  the twin's own stored window. A vetoed row with no twin puts nothing in the store under
+  that key and says nothing about it.
+
+**A fifth veto** means a new member of `MetricSampleVeto` — a compile error at
+`VETO_TALLY` until its Review accounting is stated — plus its condition in
+`metricSampleVeto`, which is the only place pass C may decline a row. Pass A needs no
+edit: it asks whether a row is vetoed and whether a twin exists, never which veto fired.
+Moving an existing veto so it fires on an insert rather than an update costs nothing
+either, for the same reason.
+
 **One call is ONE profile and ONE source.** Pass A takes both as parameters, the candidate
 `SELECT` is scoped by both, and the function returns an empty plan unless the source is
 `health-connect` — so the push-key exclusion can be keyed on `(metric, origin,
@@ -1029,11 +1059,25 @@ sets. A push carrying both anchorings of a day the store held NEITHER row of wri
 (ruling item 3, the right outcome) and leaves the day double counting with no stored row
 for the report to point at: it reported `superseded: 0` and no warning at all. So pass A
 also counts the EXCESS day buckets the push carries against itself —
-`inPushDoubleCounts`, one per overlapping bucket beyond the first — and the ingest adds
-the two before calling `overlapsLeftWarning`. A pair either of whose members is a row
+`inPushDoubleCounts`, one per overlapping bucket beyond the first. A pair either of whose members is a row
 `leftStanding` already names is not counted twice: a re-sent row and its stored twin are
 one reading updated in place, and which of the pair is the re-sent one flips with the
 direction of travel.
+
+**AND THE NUMBER IS SUMMED AFTER THE CHUNKS COMMIT, NOT FROM THE PLAN** (#3438). It used
+to be `leftStanding.length + inPushDoubleCounts`, taken before the first write, while the
+emit site described it as covering "every reason a supersede was declined". It did not
+cover the last one: pass B's `pushed_at IS ?` guard declines a victim a concurrent push
+re-stamped between pass A's read and the DELETE. That row stays in the table and the day
+reads high, and the plan-side number had already said zero. So the ingest adds a third
+term — `victims.length` minus the rows pass B actually removed — and computes the whole
+line after `commitChunks`. `counts.superseded` was always honest (it returns real
+`.changes`); this is the number that was not. The three terms are disjoint: `leftStanding`
+and `victims` are disjoint sets of stored ids, and `inPushDoubleCounts` counts incoming
+rows. `lib/__db_tests__/hc-metric-sample-push.ts` sums it the same way, and its header
+says which three things it copies from the ingest — the stamp going through
+`pushStampFor`, pass B running after pass C, and this sum — because the claim that it
+could not drift was once written without them.
 
 The line names READINGS, not daily totals: two stale buckets can fall in one
 profile-local day, so the earlier wording could report two days wrong when one is. It

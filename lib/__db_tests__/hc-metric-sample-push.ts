@@ -12,7 +12,23 @@
 // So a test that called `upsertMetricSamples` alone would exercise a mechanism production
 // does not have, and would go green on a store the real path would never produce. This
 // helper is the composition, in ONE place, shared by every spec that drives a push
-// directly — so a spec cannot drift from the ingest by re-deriving the order itself.
+// directly.
+//
+// IT MIRRORS `ingestHealthConnectPayload`, AND A REVIEW ROUND PAID FOR SAYING SO OUT LOUD
+// RATHER THAN CLAIMING IT (#3438). The header used to promise "a spec cannot drift from
+// the ingest by re-deriving the order itself" while this file ran plan → DELETE → UPSERT
+// and production had moved to plan → UPSERT → DELETE — drift in exactly the direction the
+// owner's 2026-08-22 correction went, and the one that decides whether pass C can observe
+// pass B. The claim is now written as the three things this file must copy, each beside
+// the line that copies it:
+//
+//   1. the stamp goes through `pushStampFor`, so a spec cannot mint a stamp production
+//      would refuse (it bypassed it, and both spec files were dating their pushes ten
+//      days into the future, past the 12h clock bound — every one of those stamps would
+//      have been NULL in production, and a NULL stamp supersedes nothing);
+//   2. pass B runs AFTER pass C, in the same call, as it does in the last chunk;
+//   3. `overlapsLeft` is summed from what HAPPENED — the plan's two halves plus the
+//      victims pass B's `pushed_at IS ?` guard declined — the same way the ingest sums it.
 //
 // SINGLE CHUNK, deliberately. The real chunk split lives in
 // `ingestHealthConnectPayload`, and the specs that care about chunking and row order
@@ -26,22 +42,22 @@ import {
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
+import { pushStampFor } from "@/lib/metric-window-overlap";
 import type { UpsertCounts, SyncRowSink } from "@/lib/integrations/sync-log";
 
 export interface MetricSamplePushResult extends UpsertCounts {
   /**
-   * The number the ingest turns into its Review line: distinct stored day buckets the
-   * plan left standing, PLUS the excess day buckets the push carries against itself. It
-   * comes off the PLAN, which knows it before the first write, so it travels beside the
-   * counts instead of through a side channel keyed on them.
+   * The number the ingest turns into its Review line: day buckets still reading high
+   * after this push finished — stored rows the plan left standing, the excess the push
+   * carries against itself, and the planned deletes pass B's concurrency guard refused.
    *
-   * Both halves, and summed HERE the same way `ingestHealthConnectPayload` sums them, so
-   * a spec driving this helper cannot pass while the real ingest reports something else.
+   * Summed HERE the same way `ingestHealthConnectPayload` sums it, so a spec driving this
+   * helper cannot pass while the real ingest reports something else.
    */
   overlapsLeft: number;
 }
 
-/** Plan, delete, upsert — one push, in the ingest's order. */
+/** Plan, upsert, delete — one push, in the ingest's order. */
 export function pushMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
@@ -49,12 +65,23 @@ export function pushMetricSamples(
   sink?: SyncRowSink,
   options: { pushedAt?: string | null } = {}
 ): MetricSamplePushResult {
-  const plan = planMetricSampleSupersede(profileId, rows, source, options);
-  const removed = applyMetricSampleSupersede(profileId, plan.victims);
-  const counts = upsertMetricSamples(profileId, rows, source, sink, options);
-  counts.superseded += removed;
+  // (1) The stamp the ROUTE would have produced, not the one the caller typed. A stated
+  // instant further ahead of this clock than MAX_PUSH_CLOCK_SKEW_MS becomes NULL here
+  // exactly as it does in `ingestHealthConnectPayload`.
+  const pushedAt = pushStampFor(options.pushedAt);
+  const plan = planMetricSampleSupersede(profileId, rows, source, { pushedAt });
+  // (2) Pass C first, then pass B — the order the last chunk's transaction runs them in.
+  const counts = upsertMetricSamples(profileId, rows, source, sink, {
+    pushedAt,
+  });
+  const superseded = applyMetricSampleSupersede(profileId, plan.victims);
+  counts.superseded += superseded;
   return {
     ...counts,
-    overlapsLeft: plan.leftStanding.length + plan.inPushDoubleCounts,
+    // (3) From what happened, guard-declined victims included.
+    overlapsLeft:
+      plan.leftStanding.length +
+      plan.inPushDoubleCounts +
+      (plan.victims.length - superseded),
   };
 }

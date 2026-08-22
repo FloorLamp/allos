@@ -91,9 +91,9 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
-  // Stored day buckets the supersede plan declined to collapse — set once from the plan,
-  // not accumulated per chunk, because the plan already saw the whole push.
-  // Surfaced as a Review line below rather than left for someone to notice in a total.
+  // Day buckets left double counting once this push has FINISHED — set after the chunks
+  // commit, not from the plan alone, because the plan is a forecast and the Review line
+  // claims to report what happened. See where it is computed below.
   let overlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
@@ -169,16 +169,6 @@ export function ingestHealthConnectPayload(
       source,
       { pushedAt }
     );
-    // Overlapping day buckets this push leaves double counting. Known before the first
-    // write, since the plan already knows everything the store can tell it.
-    //
-    // BOTH HALVES, because a day reading high reads high either way. `leftStanding` is
-    // stored rows the push overlapped and did not collapse; `inPushDoubleCounts` is the
-    // excess the push carries against itself — ruling item 3's "a push carrying both
-    // anchorings writes both", which leaves a day double counting with no STORED row for
-    // `leftStanding` to name. Reporting only the first was silent on exactly the
-    // configuration the ruling wrote item 3 for.
-    overlapsLeft = supersede.leftStanding.length + supersede.inPushDoubleCounts;
     // ── PASS B ── the deletes, ONCE, inside the LAST CHUNK'S transaction.
     //
     // Not a transaction of its own, and NOT the first chunk's — that was this PR's earlier
@@ -207,6 +197,9 @@ export function ingestHealthConnectPayload(
     // upserts, so pass C never reads a store pass B has touched — the pass-A/pass-C
     // invariant holds literally rather than by the twin exclusion alone.
     let remaining = orderedSamples.length;
+    // How many victims pass B actually removed — the number `counts.superseded` already
+    // reports honestly, kept here because the Review line needs the OTHER half of it.
+    let superseded = 0;
     commitChunks(
       orderedSamples,
       (slice, sink) => {
@@ -215,17 +208,39 @@ export function ingestHealthConnectPayload(
         const part = upsertMetricSamples(profileId, slice, source, sink, {
           pushedAt,
         });
-        if (remaining === 0)
-          part.superseded += applyMetricSampleSupersede(
-            profileId,
-            supersede.victims
-          );
+        if (remaining === 0) {
+          superseded = applyMetricSampleSupersede(profileId, supersede.victims);
+          part.superseded += superseded;
+        }
         return part;
       },
       (c) => {
         samples = foldCounts([samples, c]);
       }
     );
+    // WHAT THIS PUSH LEFT DOUBLE COUNTING, COMPUTED FROM WHAT HAPPENED (#3438).
+    //
+    // It used to be summed from the PLAN, before `commitChunks` ran, while the comment at
+    // the emit site claimed it covered "every reason a supersede was declined". It did
+    // not cover the last one: pass B's `pushed_at IS ?` guard, which declines a victim a
+    // concurrent push has re-stamped between pass A's read and the DELETE. That row stays
+    // in the table, the day reads high, and the plan-side number had already said zero.
+    //
+    // THREE HALVES, all of them days reading high, which is the only thing the line
+    // claims. `leftStanding` is stored rows the push overlapped and did not collapse.
+    // `inPushDoubleCounts` is the excess the push carries against ITSELF — ruling item
+    // 3's "a push carrying both anchorings writes both", which leaves a day double
+    // counting with no STORED row for `leftStanding` to name. And `victims.length -
+    // superseded` is the planned deletes the guard refused: rows still standing, for a
+    // reason the plan could not see because it had not happened yet.
+    //
+    // The three are disjoint by construction: `leftStanding` and `victims` are disjoint
+    // sets of stored ids (pass A prunes one from the other), and `inPushDoubleCounts`
+    // counts incoming rows rather than stored ones.
+    overlapsLeft =
+      supersede.leftStanding.length +
+      supersede.inPushDoubleCounts +
+      (supersede.victims.length - superseded);
     commitChunks(
       parsed.hrMinutes,
       (slice) => upsertHrMinutes(profileId, slice, source),
