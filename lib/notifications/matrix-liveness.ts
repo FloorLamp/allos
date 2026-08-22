@@ -173,6 +173,23 @@ export function cellInkNote(ink: CellInk): string | null {
   return ink === "ghost" ? "kept, waiting on this channel's setup" : null;
 }
 
+// The same fact, in ONE word, printed BESIDE the control on the phone shape (#3495).
+//
+// Below the card-mode boundary the matrix stops being a grid under four headers and
+// each kind's channels become labeled chips, so the legend box is no longer the only
+// place a reader can learn what a faded tick means — the chip says it in place. This
+// is deliberately NOT `cellInkNote`: that string is an accessible-name SUFFIX, read
+// after "Refill nudges to Home Assistant", and a visible chip that said "kept,
+// waiting on this channel's setup" would be four times the width of the control it
+// annotates on a 390px row.
+//
+// Held to `cellInkNote` by lib/__tests__/matrix-liveness.test.ts: the two must be
+// non-null for exactly the same ink, so a chip can never be silent about a state the
+// accessible name discloses (or the other way round).
+export function cellInkChipNote(ink: CellInk): string | null {
+  return ink === "ghost" ? "waiting" : null;
+}
+
 function andList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   if (items.length === 2) return `${items[0]} and ${items[1]}`;

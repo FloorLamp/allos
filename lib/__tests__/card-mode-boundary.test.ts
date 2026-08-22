@@ -58,6 +58,13 @@ const FAMILY = [
   "table-nested-row",
   "metric-readings-list",
   "practice-session-list",
+  // Not a table at all (#3495): the Settings → Notifications kind × channel
+  // matrix, whose four channel columns become labeled chips below the boundary.
+  // It is in the family because it answers the same question the table utilities
+  // do — "what does this surface become on a phone" — and because a surface that
+  // declared that in `max-md:` would be exactly the #3457 drift, on a card the
+  // 640–768px band renders as a four-column grid.
+  "notification-kind-matrix",
   "card-cell-label",
 ] as const;
 
@@ -184,15 +191,17 @@ describe("card-mode boundary (#3457)", () => {
 
   it("the whole family scopes to the card-mode boundary and nothing else", () => {
     const found = scanCardModeScopes(bodies, FAMILY);
-    // CENSUS FLOOR. Measured 2026-08-22: 89 `max-sm:` prefixes plus one raw
-    // `@media (max-width: 639.98px)` block across the six utilities — 90. The
-    // floor sits at about half, so ordinary editing does not trip it while a
-    // scan that has stopped reading the file does (#3529's shape).
+    // CENSUS FLOOR. Re-derived 2026-08-22 with #3495's utility in the family:
+    // 110 `max-sm:` prefixes plus one raw `@media (max-width: 639.98px)` block
+    // across the seven utilities — 111. (It read 89 + 1 = 90 over six before
+    // `notification-kind-matrix`, which contributes 21.) The floor sits at about
+    // half, so ordinary editing does not trip it while a scan that has stopped
+    // reading the file does (#3529's shape).
     expect(
       found.length,
       "the card-mode scope scan found almost nothing in app/globals.css — the " +
         "verdict below is then an absence over an empty corpus."
-    ).toBeGreaterThan(45);
+    ).toBeGreaterThan(55);
     expect(
       found.filter((s) => !s.ok).map((s) => `${s.utility}: ${s.spelling}`),
       "a `table-cards`-family declaration is scoped to a breakpoint that is " +

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cellInkChipNote,
   cellInkNote,
   channelReadiness,
   columnLiveness,
@@ -7,6 +8,7 @@ import {
   deadColumnNotes,
   isColumnReady,
   matrixCellInk,
+  type CellInk,
   type ChannelFacts,
   type ChannelReadiness,
   type DeadColumn,
@@ -122,6 +124,27 @@ describe("matrixCellInk", () => {
     expect(cellInkNote("ghost")).toBe("kept, waiting on this channel's setup");
     expect(cellInkNote("live")).toBeNull();
     expect(cellInkNote("off")).toBeNull();
+  });
+
+  // #3495. The phone shape prints the state BESIDE the control instead of leaving it
+  // to the legend box, so the chip carries its own one-word spelling of the same fact.
+  it("prints the ghost as one visible word for the phone chip", () => {
+    expect(cellInkChipNote("ghost")).toBe("waiting");
+    expect(cellInkChipNote("live")).toBeNull();
+    expect(cellInkChipNote("off")).toBeNull();
+  });
+
+  // THE TWO SPELLINGS ARE ONE DECISION. A chip that stayed silent about a state the
+  // accessible name discloses (or the reverse) would put the phone reader and the
+  // screen-reader reader on different pages — the exact split #2565 part B closed
+  // between the grid's ink and its words. Asserted over the whole `CellInk` union so
+  // a fourth ink cannot be added to one function and forgotten in the other.
+  it("is non-null for exactly the inks cellInkNote is non-null for", () => {
+    const inks: CellInk[] = ["live", "ghost", "off"];
+    expect(
+      inks.map((i) => cellInkChipNote(i) !== null),
+      "cellInkChipNote and cellInkNote disagree about which ink has something to say"
+    ).toEqual(inks.map((i) => cellInkNote(i) !== null));
   });
 });
 
