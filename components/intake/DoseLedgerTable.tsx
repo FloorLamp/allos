@@ -229,7 +229,8 @@ export default function DoseLedgerTable({
           items={rows}
           columns={columns}
           readOnly={!canWrite}
-          menuLabel="Dose actions"
+          menuKind="Dose"
+          menuItemName={(row) => formatLongDate(row.date, formatPrefs)}
           rowTestId={() => "dose-ledger-row"}
           renderEditForm={(row, done) => {
             const item = itemById.get(row.itemId);

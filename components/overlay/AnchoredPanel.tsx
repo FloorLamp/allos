@@ -171,6 +171,11 @@ export default function AnchoredPanel({
         open={open}
         onClose={onClose}
         title={title}
+        // An anchored panel's sheet title is the name of the ROW it came from
+        // (#3501), so its length is the row's, not the copywriter's. One line,
+        // ellipsised — declared here, for every ⋯ panel at once, rather than by
+        // each of the thirty callers that mount one.
+        titleTruncates
         testId={sheetTestId ?? "anchored-panel-sheet"}
         {...(sheetZIndexClass ? { zIndexClass: sheetZIndexClass } : {})}
       >

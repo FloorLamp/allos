@@ -35,7 +35,7 @@ export default function AddSupplementModal({
         data-testid="supplement-add-toggle"
         aria-label="Add supplement"
         onClick={() => setOpen(true)}
-        className="btn btn-sm min-h-10 min-w-10 px-2 sm:min-h-0 sm:min-w-0 sm:px-3"
+        className="btn btn-sm px-2 sm:px-3"
       >
         <IconPlus className="h-4 w-4" stroke={2} />
         <span className="hidden sm:inline">Add supplement</span>

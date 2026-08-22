@@ -245,6 +245,7 @@ export default function ImagingStudyList({
       <RecordTable
         items={filtered}
         columns={columns}
+        itemName={(s) => studyDisplayLabel(s)}
         emptyMessage={
           items.length
             ? "No imaging studies match these filters."

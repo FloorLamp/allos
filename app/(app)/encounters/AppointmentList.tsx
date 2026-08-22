@@ -449,7 +449,8 @@ export default function AppointmentList({
                   </>
                 )}
                 <OverflowMenu
-                  label="Appointment actions"
+                  kind="Appointment"
+                  itemName={a.title?.trim() || a.provider_name || ""}
                   open={menuOpenId === a.id}
                   onOpenChange={(open) => setMenuOpenId(open ? a.id : null)}
                 >

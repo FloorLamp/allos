@@ -47,7 +47,14 @@ test.describe("Import detail: tabbed records browser", () => {
       "page"
     );
     await expect(page.getByRole("heading", { name: /^Labs/ })).toBeVisible();
-    await expect(page.getByRole("cell", { name: /Ferritin/ })).toBeVisible();
+    // The row's NAME cell (`td[data-card="title"]`), not "any cell that mentions
+    // the analyte". Since #3501 the actions cell carries the ⋯ trigger's own
+    // accessible name — "Result actions for Ferritin" — so a bare role=cell
+    // match now answers with two cells in the same row. The name cell is where a
+    // row's identity has always lived, and it is what this line was reaching for.
+    await expect(
+      page.locator('td[data-card="title"]').filter({ hasText: "Ferritin" })
+    ).toBeVisible();
     // A canonicalized lab row's name still links to its biomarker series view.
     await expect(
       page.getByRole("link", { name: "Ferritin", exact: true })

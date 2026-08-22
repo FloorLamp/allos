@@ -384,7 +384,7 @@ export default function EpisodeTimeline({
     const key = keyFor(event);
     return (
       <OverflowMenu
-        label={`Actions for ${event.label} on ${fmtDate(event.date, formatPrefs)}`}
+        itemName={`${event.label} on ${fmtDate(event.date, formatPrefs)}`}
         open={openMenu === key}
         onOpenChange={(open) => setOpenMenu(open ? key : null)}
       >

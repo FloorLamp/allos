@@ -175,7 +175,8 @@ export default function ProtocolControls({
                 </span>
               )}
               <OverflowMenu
-                label="More protocol actions"
+                kind="More protocol"
+                itemName={protocol.name}
                 open={menuOpen}
                 onOpenChange={setMenuOpen}
               >

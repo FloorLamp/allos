@@ -82,6 +82,7 @@ export interface RecordTableMultiView<T> {
 export default function RecordTable<T extends { id: number }>({
   items,
   columns,
+  itemName,
   renderEditForm,
   onDelete,
   confirmDelete,
@@ -93,6 +94,12 @@ export default function RecordTable<T extends { id: number }>({
 }: {
   items: T[];
   columns: RecordColumn<T>[];
+  // The row's display name, for its ⋯ menu (#3501). `columns[0].cell` renders the
+  // row's identity but returns a ReactNode, so the plain-text form has to come
+  // from the caller — which already has it, in the same field the delete
+  // confirmation quotes. Required rather than defaulted: a shared table is where
+  // "Record actions" ×2000 came from, and a default would just spell it again.
+  itemName: (item: T) => string;
   renderEditForm: (item: T, done: () => void) => React.ReactNode;
   onDelete: (item: T) => void | Promise<void>;
   confirmDelete: (item: T) => DeleteConfirm;
@@ -256,7 +263,8 @@ export default function RecordTable<T extends { id: number }>({
                       return (
                         <div className="flex items-center justify-end">
                           <OverflowMenu
-                            label="Record actions"
+                            kind="Record"
+                            itemName={itemName(item)}
                             open={menuOpenId === item.id}
                             onOpenChange={(open) =>
                               setMenuOpenId(open ? item.id : null)

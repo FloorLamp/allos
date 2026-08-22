@@ -1,5 +1,20 @@
 import { test, expect } from "./fixtures";
+import { type Locator, type Page } from "@playwright/test";
 import { followLink } from "./helpers";
+
+// THE ROW NAMED `name`, ADDRESSED BY ITS NAME CELL.
+//
+// Not `getByRole("cell", { name })`: since #3501 a row's ⋯ trigger is named for
+// the row it acts on ("Result actions for E2E Settled Marker"), so the actions
+// cell answers to the row's name as well as the name cell does, and a bare
+// role=cell match resolves to two cells in one row. `td[data-card="title"]` is
+// where a row's identity has always lived (components/RecordTable.tsx), and it
+// is what every assertion below was reaching for. One helper rather than five
+// hand-narrowed selectors — present and ABSENT go through the same locator, so
+// the two can never drift into asking different questions.
+function namedRow(scope: Page | Locator, name: string): Locator {
+  return scope.locator('td[data-card="title"]').filter({ hasText: name });
+}
 
 // "Check these first" → the row it names (issue #2339). The card ranked the rows
 // the extractor hedged on but could not open any of them, so a reviewer had to
@@ -54,9 +69,7 @@ test.describe("Import triage: the confidence card links to the row it names", ()
     expect(background).not.toBe("rgba(0, 0, 0, 0)");
 
     // Nothing was filtered away — a single match selects, it does not hide.
-    await expect(
-      page.getByRole("cell", { name: "E2E Settled Marker" })
-    ).toBeVisible();
+    await expect(namedRow(page, "E2E Settled Marker")).toBeVisible();
     await expect(page.getByTestId("triage-focus-notice")).toHaveCount(0);
 
     // The follow-through (#2339): the row now carries the extractor's hedge and
@@ -133,12 +146,8 @@ test.describe("Import triage: the confidence card links to the row it names", ()
       table.getByRole("heading", { name: "Labs (2)" })
     ).toBeVisible();
     await expect(table.locator("tbody tr")).toHaveCount(2);
-    await expect(
-      table.getByRole("cell", { name: "E2E Twin Marker" })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("cell", { name: "E2E Settled Marker" })
-    ).toHaveCount(0);
+    await expect(namedRow(table, "E2E Twin Marker")).toBeVisible();
+    await expect(namedRow(page, "E2E Settled Marker")).toHaveCount(0);
 
     // And there is a way back out of the filter.
     await followLink(
@@ -146,9 +155,7 @@ test.describe("Import triage: the confidence card links to the row it names", ()
       notice.getByRole("link", { name: "Show all rows" }),
       /\/import\/910\?tab=lab$/
     );
-    await expect(
-      page.getByRole("cell", { name: "E2E Settled Marker" })
-    ).toBeVisible();
+    await expect(namedRow(page, "E2E Settled Marker")).toBeVisible();
   });
 
   test("a label naming nothing says so instead of offering a dead link", async ({
@@ -175,8 +182,6 @@ test.describe("Import triage: the confidence card links to the row it names", ()
     await expect(notice).toContainText("Nothing on this tab is named");
     await expect(page.locator('tr[data-focused="true"]')).toHaveCount(0);
     // The tab's own rows are untouched by a label that matched nothing.
-    await expect(
-      page.getByRole("cell", { name: "E2E Settled Marker" })
-    ).toBeVisible();
+    await expect(namedRow(page, "E2E Settled Marker")).toBeVisible();
   });
 });

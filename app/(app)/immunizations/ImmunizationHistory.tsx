@@ -135,6 +135,7 @@ export default function ImmunizationHistory({
     <RecordTable
       items={items}
       columns={columns}
+      itemName={(im) => vaccineDisplayName(im.vaccine)}
       emptyMessage="No immunizations recorded yet. Add one, or import a MyChart export."
       defaultSort={{ index: 1, dir: "desc" }}
       tieBreak={(a, b) => b.date.localeCompare(a.date)}

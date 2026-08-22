@@ -423,7 +423,8 @@ export default function MedicationCard({
                 />
               )}
               <OverflowMenu
-                label="Medication actions"
+                kind="Medication"
+                itemName={s.name}
                 open={menuOpen}
                 onOpenChange={setMenuOpen}
               >
@@ -1033,7 +1034,7 @@ export default function MedicationCard({
                     </div>
                     {canWrite ? (
                       <OverflowMenu
-                        label={`Actions for ${se.effect}`}
+                        itemName={se.effect}
                         open={sideEffectMenuId === se.id}
                         onOpenChange={(nextOpen) =>
                           setSideEffectMenuId(nextOpen ? se.id : null)

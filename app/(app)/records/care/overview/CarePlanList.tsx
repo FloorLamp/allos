@@ -97,6 +97,7 @@ export default function CarePlanList({
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs(), appointments)}
+      itemName={(c) => c.description}
       emptyMessage="No care-plan items yet. Add one, or import a MyChart / CCD health record to populate your planned care."
       multiView={
         multiView

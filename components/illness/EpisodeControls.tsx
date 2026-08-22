@@ -28,6 +28,7 @@ import {
 // the printed page. Everything keys on the STABLE episode id (#856), not a date anchor.
 export default function EpisodeControls({
   episodeId,
+  situation,
   ongoing,
   promoted,
   canWrite,
@@ -35,6 +36,9 @@ export default function EpisodeControls({
   editor,
 }: {
   episodeId: number;
+  // What the page's own h1 calls this episode ("Flu", "Cold") — the name its ⋯
+  // sheet owes a viewer who can no longer see the header (#3501).
+  situation: string;
   ongoing: boolean;
   promoted: boolean;
   canWrite: boolean;
@@ -141,7 +145,8 @@ export default function EpisodeControls({
 
       {canWrite && (
         <OverflowMenu
-          label="More episode actions"
+          kind="More episode"
+          itemName={situation}
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >

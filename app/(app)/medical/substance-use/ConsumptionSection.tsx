@@ -243,7 +243,7 @@ export default function ConsumptionSection({
           ) : null}
         </div>
         <OverflowMenu
-          label={`${def.label} options`}
+          itemName={def.label}
           open={cardMenuOpen}
           onOpenChange={setCardMenuOpen}
         >
@@ -343,7 +343,10 @@ export default function ConsumptionSection({
                 expandedLabel: "Show fewer entries",
                 testId: `substance-history-toggle-${substance}`,
               }}
-              menuLabel={`${def.label} entry actions`}
+              menuKind={`${def.label} entry`}
+              menuItemName={(entry) =>
+                formatDateWithYear(entry.date, formatPrefs)
+              }
               rowTestId={(entry) =>
                 `substance-history-row-${substance}-${entry.id}`
               }

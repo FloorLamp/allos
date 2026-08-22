@@ -193,6 +193,7 @@ export default function DentalProcedureList({
       <RecordTable
         items={filtered}
         columns={columns}
+        itemName={(d) => dentalDisplayLabel(d)}
         emptyMessage="No dental records yet. Add one, or upload a dental exam/treatment record to import it."
         multiView={
           multiView

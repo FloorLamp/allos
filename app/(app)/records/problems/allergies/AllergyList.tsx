@@ -170,6 +170,7 @@ export default function AllergyList({
     <RecordTable
       items={items}
       columns={buildColumns(contraindications, recordedAt)}
+      itemName={(a) => `${a.substance} allergy`}
       emptyMessage="No allergies recorded. Add one, or import a MyChart export."
       multiView={
         multiView

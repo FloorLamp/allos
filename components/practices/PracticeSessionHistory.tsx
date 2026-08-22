@@ -117,7 +117,10 @@ export default function PracticeSessionHistory({
           expandedLabel: "Show fewer sessions",
           testId: "practice-session-toggle",
         }}
-        menuLabel="Session actions"
+        menuKind="Session"
+        menuItemName={(session) =>
+          formatDateWithYear(session.date, formatPrefs)
+        }
         rowTestId={(session) => `practice-session-${session.id}`}
         editTestId={() => "practice-session-edit"}
         deleteTestId={() => "practice-session-delete"}
