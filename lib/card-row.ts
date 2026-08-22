@@ -54,6 +54,42 @@ export const CARD_MODE_BREAKPOINT_PX = 640;
 // than spelling `sm:` again (#3457).
 export const CARD_MODE_ONLY = "sm:hidden";
 
+// A ROW THAT STACKS IN CARD MODE (issue #3491).
+//
+// The other half of the same boundary, for a surface that is not a table: a flex
+// line carrying lead text beside a `shrink-0` action pair. Above the boundary it is
+// one line and the text truncates into whatever the actions leave; below it the
+// text claims the whole line, the actions wrap beneath, and the text stops
+// truncating because it no longer has to fit beside anything.
+//
+// #3491 is what this is for. Data → Trash rendered exactly that shape, and at
+// 390px the two buttons ("Restore", "Delete permanently") left the headline about
+// 120px — so `truncate` ate the only fact that distinguishes one untitled capture
+// from another, and an activity read "activity · 2026-0…". The layout was
+// discarding a working identity model.
+//
+// SPELLED HERE, NOT AT THE CONSUMER, for the reason CARD_MODE_ONLY is (#3457):
+// Tailwind's scanner reads source as text, so the variant has to appear as a
+// literal somewhere — and the right somewhere is the module that DECLARES the
+// boundary. `lib/__tests__/card-mode-boundary.test.ts` derives both spellings from
+// CARD_MODE_BREAKPOINT_PX, so moving the boundary moves these with it.
+export const CARD_MODE_ROW_STACK = {
+  /**
+   * On the TEXT BLOCK of such a row: claim the whole flex line below the
+   * boundary, which is what pushes the next flex child onto its own row. The
+   * parent needs `flex-wrap` for the wrap to happen at all.
+   */
+  text: "max-sm:basis-full",
+  /**
+   * On a `truncate`d LEAD LINE inside that block: stop clipping once the line is
+   * full-width. `truncate` is `overflow-hidden text-ellipsis whitespace-nowrap`,
+   * and normal whitespace is the half that matters — with wrapping restored the
+   * block's height grows to fit, so nothing is clipped and the ellipsis rule has
+   * nothing to do.
+   */
+  lead: "max-sm:whitespace-normal",
+} as const;
+
 // Where a cell lands in the card presentation. A cell with NO slot is dropped from
 // the card entirely — the deliberate "this column is desktop-only detail" choice.
 //   title   — the row's identity (biomarker name, session date). One per row.

@@ -6,7 +6,10 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { emptyTrashNow, purgeTrashEntry } from "./trash-actions";
-import { trashEntryHeadline, type TrashEntry } from "@/lib/trash";
+import { trashEntryCopy, type TrashEntry } from "@/lib/trash";
+import { CARD_MODE_ROW_STACK } from "@/lib/card-row";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatDateWithYear } from "@/lib/format-date";
 
 // Data → Trash, the interactive half (issue #2013).
 //
@@ -20,17 +23,26 @@ import { trashEntryHeadline, type TrashEntry } from "@/lib/trash";
 // by the time a button is tapped — swept by the hourly tick, restored in another tab —
 // and "Restored"/"Deleted" would then be a claim about a write that never happened.
 
-function expiryLine(entry: TrashEntry): string {
-  if (entry.expiresInDays === 0) return "Expires today";
-  if (entry.expiresInDays === 1) return "Expires tomorrow";
-  return `Expires in ${entry.expiresInDays} days`;
-}
-
 function TrashRow({ entry }: { entry: TrashEntry }) {
   const [pending, startTransition] = useTransition();
   const [outcome, setOutcome] = useState<string | null>(null);
   const confirm = useConfirm();
   const toast = useToast();
+  const prefs = useFormatPrefs();
+
+  // BOTH DATES CROSS THE DISPLAY BOUNDARY HERE (#3491 item 3, #3492's rule). The
+  // entry carries storage dates — the payload's `YYYY-MM-DD` and the holding row's
+  // SQLite UTC stamp — and lib/trash.ts will not build a sentence out of either.
+  // Always-year, because a capture's own date is routinely from another year while
+  // the delete is always inside the retention window, and a list that carries the
+  // year on some rows and not others reads ragged (the #3492 judgment call).
+  const { headline, subtitle } = trashEntryCopy(entry, {
+    date: entry.date ? formatDateWithYear(entry.date, prefs) : null,
+    // The delete instant's calendar day. `deletedAt` is stored UTC and this is the
+    // UTC day, which is what this line has always shown — rendering it through the
+    // prefs changes the SHAPE, not which day is named.
+    deletedOn: formatDateWithYear(entry.deletedAt.slice(0, 10), prefs),
+  });
 
   function onRestore() {
     startTransition(async () => {
@@ -48,7 +60,7 @@ function TrashRow({ entry }: { entry: TrashEntry }) {
   async function onPurge() {
     const ok = await confirm({
       title: "Delete permanently?",
-      message: `“${trashEntryHeadline(entry)}” and anything captured with it — including any video clips — will be removed now. This cannot be undone.`,
+      message: `“${headline}” and anything captured with it — including any video clips — will be removed now. This cannot be undone.`,
       confirmLabel: "Delete permanently",
       danger: true,
     });
@@ -65,20 +77,14 @@ function TrashRow({ entry }: { entry: TrashEntry }) {
       className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
       data-testid="trash-row"
     >
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${CARD_MODE_ROW_STACK.text}`}>
         <p
-          className="truncate text-sm text-slate-800 dark:text-slate-100"
+          className={`truncate text-sm text-slate-800 dark:text-slate-100 ${CARD_MODE_ROW_STACK.lead}`}
           data-testid="trash-row-headline"
         >
-          {trashEntryHeadline(entry)}
+          {headline}
         </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          {entry.label}
-          {entry.childCount > 0
-            ? ` · ${entry.childCount} related ${entry.childCount === 1 ? "row" : "rows"}`
-            : ""}{" "}
-          · Deleted {entry.deletedAt.slice(0, 10)} · {expiryLine(entry)}
-        </p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
         <NotesText
           notes={entry.notes}
           as="p"
@@ -105,7 +111,16 @@ function TrashRow({ entry }: { entry: TrashEntry }) {
         </button>
         <button
           type="button"
-          className="btn-danger"
+          // THE QUIET DESTRUCTIVE TREATMENT, not the saturated fill (#3491 item 4).
+          // The design system already says a destructive verb is never a standing
+          // red button beside a record and always confirms (#3374/#3408); this row
+          // was the counter-example, and on a surface whose whole purpose is
+          // recovery it shouted down Restore once per row. The alarm lives where
+          // the irreversible step is taken — the confirm dialog's `danger: true`
+          // action — and the row wears the same ghost-plus-rose-text Delete the
+          // history rows use (CycleHistoryRow, RoutinesManager, FamilyManager,
+          // EquipmentDetailActions, ImportDetailActions, FrequencyTargets).
+          className="btn-ghost text-rose-600 dark:text-rose-400"
           disabled={pending}
           onClick={onPurge}
           data-testid="trash-purge"
