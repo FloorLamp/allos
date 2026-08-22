@@ -1,7 +1,9 @@
 // Pure placement/label logic for the responsive card presentation of a table row
 // (issue #1426).
 //
-// Below `sm` the app's wide tables stop being tables: `components/ResponsiveTable`
+// Below `sm` — the boundary is CARD_MODE_BREAKPOINT_PX below, and #3457 is why it
+// is stated here rather than restated per consumer — the app's wide tables stop
+// being tables: `components/ResponsiveTable`
 // re-lays the SAME row DOM as a stacked card (see the `.table-cards` block in
 // app/globals.css). There is no second row model and no second content tree — a
 // cell declares ONCE, where it is authored, which part of the card it becomes, and
@@ -9,6 +11,48 @@
 // cell claims, and which attributes survive onto a card's compact meta line.
 //
 // Kept DB-free and React-free so it unit-tests in the pure tier.
+
+// ── THE CARD-MODE BOUNDARY, DECLARED ONCE (issue #3457) ─────────────────────
+//
+// Card mode starts BELOW `sm` (640px), not below `md`. Every requirement, AC,
+// component and spec that needs the number reads it from here instead of
+// restating a breakpoint of its own — that restating is what #3457 was filed
+// about: `table-cards` did its work in `max-sm:` while the mobile-native
+// campaign wrote its requirements in `md`, so between 640px and 768px a surface
+// a requirement called cards rendered as a sort-header table and nothing looked
+// wrong at the widths anyone tested (390px and 430px, where the two agree).
+//
+// IT IS `sm`, AND THAT WAS THE DECISION RATHER THAN THE DEFAULT. The 640–768px
+// band is not an accident to be tidied away — it is a designed middle tier. The
+// record lists ladder their columns in THREE steps, not two: a base set at every
+// width, a second set from `sm` (`hidden sm:table-cell`), a third from `md`
+// (`hidden md:table-cell`). The `sm` tier exists ONLY to give 640–768px a
+// narrower table than the desktop one, and moving card mode to `max-md:` would
+// make every one of those declarations inert — `.table-cards td[data-card]`
+// (0,2,1) outranks the `.hidden` utility (0,1,0), so the cell would render as a
+// card pair in that band and the column tier would never be read again.
+// Re-derived 2026-08-22: 27 `sm:table-cell` declarations across 12 files.
+//
+// It also agrees with every other phone primitive in the tree, which are all
+// `sm`-keyed: the #3466 density conventions (`max-sm:` throughout), the phone
+// reading order in lib/phone-fold.ts ("EVERY slot resets at `sm`"), this
+// module's own card-cell labels, and the card-mode sort select.
+//
+// The CSS half of the boundary is the `@utility table-cards` block in
+// app/globals.css; `lib/__tests__/card-mode-boundary.test.ts` holds the two
+// halves to the same number, and `e2e/card-mode-boundary.spec.ts` measures what
+// actually renders either side of it.
+
+// The narrowest viewport that renders a `.table-cards` table AS A TABLE. Card
+// mode is `width < CARD_MODE_BREAKPOINT_PX`; this is Tailwind's `sm` (40rem),
+// which `max-sm:` compiles to as `@media (width < 40rem)`.
+export const CARD_MODE_BREAKPOINT_PX = 640;
+
+// The class that says "this markup exists only in card mode" — a `<th>`'s label
+// reprinted inside its own cell, the sort select that stands in for the hidden
+// header strip. Written once here so a consumer inherits the boundary rather
+// than spelling `sm:` again (#3457).
+export const CARD_MODE_ONLY = "sm:hidden";
 
 // Where a cell lands in the card presentation. A cell with NO slot is dropped from
 // the card entirely — the deliberate "this column is desktop-only detail" choice.

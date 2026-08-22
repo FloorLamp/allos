@@ -679,7 +679,26 @@
 @utility table-cards {
   /* ── Responsive tables (issue #1426) ────────────────────────────────────────
      Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
-     flat divider rows — over the SAME DOM. There is no second content tree and no
+     flat divider rows — over the SAME DOM.
+
+     THE BOUNDARY IS `sm` (640px) BY DECISION, NOT BY DEFAULT (#3457), and it is
+     declared once — as `CARD_MODE_BREAKPOINT_PX` in lib/card-row.ts — so a
+     requirement, an AC or a component quotes that rather than a fresh number.
+     #3457 was filed because everything ASKING for card mode wrote its
+     requirements in `md` while these rules do their work in `max-sm:`; at 390px
+     and 430px the two agree, so the disagreement only ever showed between 640px
+     and 768px. It resolves toward `sm`, and the reason is in this file's own
+     neighbours: the record lists ladder their columns in THREE steps, a base set
+     at every width, a second from `hidden sm:table-cell`, a third from
+     `hidden md:table-cell`. The `sm` tier exists ONLY to give 640–768px a
+     NARROWER table than the desktop one — so that band already has a designed
+     rendering, and it is the one this utility is deliberately not reaching.
+     Widening these rules to the `md` breakpoint would silence that tier
+     everywhere: `.table-cards td[data-card=...]` is (0,2,1) and the `.hidden`
+     utility is (0,1,0), so the cell would come back as a card pair in the band
+     and the column step would never be read again.
+
+     There is no second content tree and no
      `hidden md:*` twin pair to drift (the responsive-surface rule in AGENTS.md):
      every cell is authored once, in one `<td>`, and declares where it lands on the
      card via `data-card` (components/ResponsiveTable.tsx → lib/card-row.ts).
