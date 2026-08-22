@@ -198,11 +198,10 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
     const prevTz = getTimezone(profile.id);
     if (tz !== prevTz) {
       setTimezone(profile.id, tz);
-      // The ingest tables that store profile-LOCAL time computed at ingest
-      // (hr_minutes.ts and Health Connect body_metrics.date) re-key on a timezone
-      // change, so the next rolling-window push would duplicate ~48h of data under the
-      // shifted keys (#608). Sweep the current window's push-sourced rows so the next
-      // push repopulates them cleanly under the new keys.
+      // Health Connect's body_metrics.date is a profile-LOCAL day computed at ingest,
+      // so it re-keys on a timezone change and the next push would leave the old row
+      // standing beside the re-keyed one (#608). Sweep only the days that push can
+      // actually re-key — the bound and its derivation live with the sweep (#3524).
       sweepIngestWindowForTimezoneChange(profile.id);
     }
   }

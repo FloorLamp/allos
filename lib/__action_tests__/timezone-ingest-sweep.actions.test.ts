@@ -2,9 +2,10 @@
 // rows that key on profile-LOCAL time at ingest (#608).
 //
 // Health Connect body_metrics.date is computed in the profile's timezone at ingest and
-// never re-keyed, so a timezone change would make the next rolling-window push INSERT
-// ~48h of duplicates under the shifted keys. saveProfileSettings sweeps the current
-// window's push-sourced rows on a tz change so the re-push repopulates cleanly. This
+// never re-keyed, so a timezone change would make the next push INSERT a duplicate
+// under the shifted key. saveProfileSettings sweeps the days that push can actually
+// re-key (the bound is derived in lib/integrations/ingest-timezone-sweep.ts, #3524).
+// This
 // drives the real action and asserts exactly which rows are swept (and which are
 // preserved: manual rows, edit-locked rows, old rows, other providers' rows).
 //
@@ -50,7 +51,7 @@ describe("saveProfileSettings sweeps ingest rows on a timezone change (#608)", (
     setTimezone(profile.id, "America/New_York");
 
     const anchor = today(profile.id);
-    const recent = shiftDateStr(anchor, -1); // in the ~3-day window
+    const recent = shiftDateStr(anchor, -1); // inside the re-sendable window
     const old = shiftDateStr(anchor, -10); // outside the window
 
     // Health Connect rows in the window (swept) + an edit-locked one (kept) + an old
