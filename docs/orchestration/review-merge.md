@@ -57,10 +57,34 @@ not at all five by rote.
   is a testable assertion. Probe a guard from the branch it does NOT cover, and
   mutate every exemption BOTH ways—an exemption asserted without the premise
   that licenses it outlives its reason silently.
+- **A constraint documented on one branch is not a constraint on the
+  predicate.** #3537's name predicate had two branches: two shouted words, or
+  one shouted word carrying most of the letters. Its comment said the two-word
+  floor "is the reason the predicate does not need an allow-list of acronyms."
+  It was not: a bare acronym is the WHOLE name, so its share is 1.0 and the
+  second branch admits it regardless of the floor. 17 of 19 ordinary supplement
+  names fired (`NAC`, `MSM`, `DHEA`, `BCAA`, `5-HTP`…) while every Tall Man
+  rendering — `amLODIPine Besylate 5 MG tablet`, standard Epic/Cerner output and
+  the exact register the feature targeted — stayed quiet. Read every threshold
+  justification against ALL branches, and test a predicate on the names it will
+  actually meet rather than on the ones its author had in hand.
 - **Does the declaration reach the screen?** A computed-style assertion measures
   a DECLARATION; the user sees a RENDERED result. #3466 shipped a stepped 16px
   seam whose rendered gap stayed 24px—it collapsed against an unstepped parent
   two files away, and the guard read 16 on that exact element. Measure geometry.
+- **Does the attack REACH the clause it is named for?** When several predicates
+  guard one write, the FIRST one to reject an attack row absorbs it, and every
+  later clause is unobserved no matter what the test is called. #3537's write
+  was scoped by profile, document, source and kind; `profile_id` and
+  `kind` were both removable with the guard file 12/12 green, because the test
+  named "cannot rename another profile's medication" passed a row in a DIFFERENT
+  DOCUMENT and `document_id` rejected it first. The tell is the naming: a test
+  named for a clause it never reaches reads as coverage in every review. An
+  attack row must be identical on every predicate but the one under test — and
+  the only way to know it is is to mutate that clause alone and watch the test
+  go red. Two of the four halves there DID go red, which is what made the other
+  two invisible: the file was not weak, it was uneven.
+
 - **Which direction does the assertion point?** An ABSENCE assertion over text
   or DOM FAILS OPEN; a PRESENCE assertion over the same text fails LOUDLY.
   #3494's guard forbade a class on two elements and both were restorable with
