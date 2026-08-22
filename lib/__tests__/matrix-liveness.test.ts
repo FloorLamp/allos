@@ -127,24 +127,85 @@ describe("matrixCellInk", () => {
   });
 
   // #3495. The phone shape prints the state BESIDE the control instead of leaving it
-  // to the legend box, so the chip carries its own one-word spelling of the same fact.
+  // to the legend box, so the chip carries its own short spelling of the same fact.
   it("prints the ghost as one visible word for the phone chip", () => {
-    expect(cellInkChipNote("ghost")).toBe("waiting");
+    expect(cellInkChipNote("ghost")).toBe("kept");
     expect(cellInkChipNote("live")).toBeNull();
     expect(cellInkChipNote("off")).toBeNull();
+  });
+
+  // THE EXPECTATION TABLE IS THE GUARD, AND IT IS KEYED BY THE UNION.
+  //
+  // This started life as `const inks: CellInk[] = ["live", "ghost", "off"]`, and that
+  // array could not do the job its own comment claimed. `CellInk[]` accepts a SUBSET,
+  // so widening the union never touched it: adding a `"blocked"` ink to `CellInk` and
+  // to `cellInkNote` alone — the exact failure the comment called impossible — left
+  // this file at 23 passed, the whole pure tier green and `npm run typecheck` at exit
+  // 0 (measured on this branch before the fix). A guard over a mandatory-review file
+  // that cannot see the case its own comment names is worse than no comment.
+  //
+  // A `Record<CellInk, …>` cannot be satisfied by a subset. A fourth ink is a TYPE
+  // error right here — "Property 'blocked' is missing" — before a single test runs,
+  // which is the only form of this guard that cannot go quietly green.
+  const INK_EXPECTATIONS: Record<
+    CellInk,
+    { note: string | null; chip: string | null }
+  > = {
+    live: { note: null, chip: null },
+    ghost: { note: "kept, waiting on this channel's setup", chip: "kept" },
+    off: { note: null, chip: null },
+  };
+  const ALL_INKS = Object.keys(INK_EXPECTATIONS) as CellInk[];
+
+  it("says exactly this for every ink in the union, not just the ones listed here", () => {
+    expect(
+      ALL_INKS.map((i) => [i, cellInkNote(i), cellInkChipNote(i)]),
+      "an ink's two spellings drifted from the table this file holds them to"
+    ).toEqual(
+      ALL_INKS.map((i) => [
+        i,
+        INK_EXPECTATIONS[i].note,
+        INK_EXPECTATIONS[i].chip,
+      ])
+    );
   });
 
   // THE TWO SPELLINGS ARE ONE DECISION. A chip that stayed silent about a state the
   // accessible name discloses (or the reverse) would put the phone reader and the
   // screen-reader reader on different pages — the exact split #2565 part B closed
-  // between the grid's ink and its words. Asserted over the whole `CellInk` union so
-  // a fourth ink cannot be added to one function and forgotten in the other.
+  // between the grid's ink and its words.
   it("is non-null for exactly the inks cellInkNote is non-null for", () => {
-    const inks: CellInk[] = ["live", "ghost", "off"];
     expect(
-      inks.map((i) => cellInkChipNote(i) !== null),
+      ALL_INKS.map((i) => cellInkChipNote(i) !== null),
       "cellInkChipNote and cellInkNote disagree about which ink has something to say"
-    ).toEqual(inks.map((i) => cellInkNote(i) !== null));
+    ).toEqual(ALL_INKS.map((i) => cellInkNote(i) !== null));
+  });
+
+  // WCAG 2.5.3 (Label in Name, Level A), held in the pure tier as a string property.
+  //
+  // On the phone shape the chip is a VISIBLE label on a checkbox whose accessible
+  // name ends in `cellInkNote`. The name is one string at every width, so the visible
+  // text has to be a SUBSTRING of it — otherwise a speech-input user saying what they
+  // can see cannot reach the control. The chip note being a leading substring of the
+  // full note is half of that property; the other half (the chip uses the same
+  // channel label the name does) is composed in TSX and asserted off the real DOM in
+  // e2e/notification-matrix-phone.mobile.spec.ts.
+  it("says nothing in the chip that the accessible name does not already say", () => {
+    for (const ink of ALL_INKS) {
+      const chip = cellInkChipNote(ink);
+      if (chip === null) continue;
+      const note = cellInkNote(ink);
+      expect(
+        note,
+        `the ${ink} chip says "${chip}" while the accessible name says nothing`
+      ).not.toBeNull();
+      expect(
+        note?.startsWith(chip),
+        `the ${ink} chip's visible "${chip}" is not the start of the accessible ` +
+          `name's "${note}" — a checkbox whose visible label is absent from its ` +
+          `accessible name fails WCAG 2.5.3 (Label in Name, Level A)`
+      ).toBe(true);
+    }
   });
 });
 

@@ -980,6 +980,21 @@
     @apply max-sm:hidden!;
   }
 
+  /* THE SWEEP ROW IS A PANEL OF CONTROLS, NOT A FIFTH KIND ROW (#3550's review).
+     Hiding "Kind" and shortening the intro were each right and together left four
+     16px boxes at the SAME left edge, size, font and colour as the routing chips
+     below them, with nothing visible saying that one tap turns off every non-safety
+     kind on that channel. Two halves of one answer, and neither works alone:
+     the strip becomes a framed, tinted block so it cannot be mistaken for a kind's
+     own line of chips, and it carries a visible label saying what its boxes write.
+     The desktop strip is a header rule under a two-column grid and is untouched. */
+  & [data-matrix-head] {
+    @apply max-sm:rounded-md! max-sm:border! max-sm:border-black/10! max-sm:bg-slate-50! max-sm:p-3! max-sm:dark:border-white/10! max-sm:dark:bg-slate-900/40!;
+  }
+  & [data-matrix-sweep-label] {
+    @apply max-sm:block! max-sm:text-slate-600! max-sm:dark:text-slate-300!;
+  }
+
   /* The channel strip — the header's four sweeps, and each row's four cells.
      A wrapping line of chips instead of a 160px four-column grid, so a chip is
      as wide as its own label and nothing is asked to fit 37px. */

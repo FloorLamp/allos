@@ -840,6 +840,27 @@ export default function NotificationPrefs({
           data-matrix-head
         >
           <span data-matrix-head-label>Kind</span>
+          {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
+              #3550's review: cutting the intro to one sentence and hiding "Kind"
+              were each right and together left four 16px boxes with the same left
+              edge, size, font and colour as the routing chips 133px below, and
+              nothing visible saying that ONE TAP turns off every non-safety kind on
+              that channel. `columnBulkLabel` is the boxes' `title` and accessible
+              name, and neither reaches a sighted phone user: `title` needs a hover a
+              touch device does not have.
+              So the disclosure is a LABEL AT THE CONTROL rather than a paragraph
+              above the card — the fewest words that are true about what the four
+              boxes write, in the same slot "Kind" occupies at desktop. The row's
+              other half of the answer is visual: below the boundary the strip is a
+              framed, tinted panel (app/globals.css), so it reads as a panel of controls rather
+              than as a fifth kind row. */}
+          <span
+            className="hidden"
+            data-matrix-sweep-label
+            data-testid="matrix-sweep-label"
+          >
+            All kinds at once &mdash; except safety reminders
+          </span>
           <span
             className="grid grid-cols-4 gap-1 text-center sm:w-52"
             data-matrix-channels
@@ -1174,7 +1195,7 @@ export default function NotificationPrefs({
                           data-matrix-chip-label
                           data-testid={`matrix-chip-${c.id}-${e.kind}`}
                         >
-                          {chip ? `${c.short} — ${chip}` : c.short}
+                          {chip ? `${c.label} — ${chip}` : c.label}
                         </span>
                       </label>
                     ) : (
@@ -1192,7 +1213,7 @@ export default function NotificationPrefs({
                           data-matrix-chip-label
                           data-testid={`matrix-chip-${c.id}-${e.kind}`}
                         >
-                          {`${c.short} — can’t carry this`}
+                          {`${c.label} — can’t carry this`}
                         </span>
                       </span>
                     );

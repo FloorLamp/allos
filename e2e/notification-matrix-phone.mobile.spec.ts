@@ -111,6 +111,14 @@ interface Shape {
   toggleableTitleLeft: number;
   /** Rendered height and line-height of the two lines of meta copy above the list. */
   metaHeights: { height: number; lineHeight: number }[];
+  /** How the sweep strip is painted, against how a kind's chip line is painted. */
+  sweepPanel: {
+    labelText: string;
+    labelPainted: boolean;
+    background: string;
+    borderTopWidth: number;
+  };
+  rowPanel: { background: string; borderTopWidth: number };
 }
 
 /**
@@ -202,6 +210,17 @@ async function readShape(
           lineHeight: parseFloat(getComputedStyle(el).lineHeight) || 16,
         }));
 
+      const sweepLabel = document.querySelector<HTMLElement>(
+        '[data-testid="matrix-sweep-label"]'
+      );
+      const paint = (el: Element | null) => {
+        const cs = el ? getComputedStyle(el) : null;
+        return {
+          background: cs?.backgroundColor ?? "",
+          borderTopWidth: parseFloat(cs?.borderTopWidth ?? "0") || 0,
+        };
+      };
+
       return {
         channelCount:
           headStrip?.querySelectorAll("[data-matrix-head-cell]").length ?? 0,
@@ -223,6 +242,16 @@ async function readShape(
         safetyTitleLeft: titleLeft("dose"),
         toggleableTitleLeft: titleLeft("preventive"),
         metaHeights: meta,
+        sweepPanel: {
+          labelText: (sweepLabel?.textContent ?? "").trim(),
+          labelPainted: !!(
+            sweepLabel &&
+            sweepLabel.getBoundingClientRect().width > 0 &&
+            sweepLabel.getBoundingClientRect().height > 0
+          ),
+          ...paint(headStrip),
+        },
+        rowPanel: paint(rowEl?.querySelector("[data-matrix-channels]") ?? null),
       };
     },
     { kind, channels: [...channels] }
@@ -242,6 +271,39 @@ function collisions(chips: Chip[]): string[] {
         out.push(`${a.id} "${a.labelText}" overlaps ${b.id} "${b.labelText}"`);
     }
   return out;
+}
+
+/**
+ * Every routing checkbox, with the text a sighted reader sees beside it and the name
+ * assistive technology and speech input get. WCAG 2.5.3 (Label in Name, Level A) is
+ * the check: the accessible name must CONTAIN the visible label text, or a speech
+ * user saying what they can see cannot reach the control.
+ *
+ * The name is read off `aria-label`, which is what the accname computation resolves
+ * to for these inputs — proved once, against Playwright's own computation, by the
+ * `toHaveAccessibleName` assertion beside the first use of this probe.
+ */
+async function readLabelInName(page: Page) {
+  return page.evaluate(() =>
+    [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '[data-matrix-cell] input[type="checkbox"]'
+      ),
+    ].map((input) => {
+      const chip = input
+        .closest("[data-matrix-cell]")
+        ?.querySelector<HTMLElement>("[data-matrix-chip-label]");
+      const r = chip?.getBoundingClientRect();
+      return {
+        testid: input.getAttribute("data-testid") ?? "",
+        visible:
+          chip && r && r.width > 0 && r.height > 0
+            ? (chip.textContent ?? "").trim()
+            : "",
+        name: input.getAttribute("aria-label") ?? "",
+      };
+    })
+  );
 }
 
 test.describe("Message kinds at phone width (#3495)", () => {
@@ -376,9 +438,14 @@ test.describe("Message kinds at phone width (#3495)", () => {
         `matrix-cell-${GHOST_CHANNEL}-${GHOST_KIND}`
       );
       await expect(ghostCell).toHaveAttribute("data-ink", "ghost");
+      // The chip names its channel with the SAME label the accessible name uses —
+      // "Home Assistant", not the column's 2-letter short form — and its state word
+      // is the start of the accessible name's note ("kept", from "kept, waiting on
+      // this channel's setup"). That pairing is WCAG 2.5.3, asserted over every cell
+      // below; this is the one string spelled out.
       await expect(
         member.getByTestId(`matrix-chip-${GHOST_CHANNEL}-${GHOST_KIND}`)
-      ).toHaveText("HA — waiting");
+      ).toHaveText("Home Assistant — kept");
 
       // ── (5) SAFETY KINDS: NO TOGGLE, AND STILL ALIGNED ────────────────────
       await expect(
@@ -391,6 +458,77 @@ test.describe("Message kinds at phone width (#3495)", () => {
         )}px left of the ${TOGGLEABLE_KIND} title — the missing master toggle ` +
           `has to reserve its slot below the boundary, not shift the row`
       ).toBeLessThanOrEqual(1);
+
+      // ── (5b) THE COLUMN SWEEP SAYS WHAT IT DOES, VISIBLY ─────────────────
+      // #3550's review. One tap on a sweep box turns off every non-safety kind on
+      // that channel — 12 of the 14 — with no confirm and no undo. Before this the
+      // only disclosure was `columnBulkLabel` as `title` and accessible name, and
+      // NEITHER reaches a sighted phone user: `title` needs a hover a touch device
+      // does not have. Two readings, because the fix has two halves and either alone
+      // leaves the regression standing.
+      expect(
+        shape.sweepPanel.labelPainted,
+        "the sweep row carries no visible label at " +
+          `${PHONE_WIDTH}px, so nothing on screen says that its four boxes write ` +
+          "every kind at once"
+      ).toBe(true);
+      expect(
+        shape.sweepPanel.labelText.toLowerCase(),
+        "the sweep row's label does not name the safety carve-out, so it " +
+          "overstates what a tap does"
+      ).toContain("safety");
+      // …and the strip is no longer painted like a kind's own line of chips. The
+      // defect was an IDENTITY: same left edge, same 16px box, same 12px font, same
+      // colour as the routing chips 133px below. A framed, tinted panel is what
+      // breaks it, so that is what is measured — against the row's chip line, read
+      // in the same pass.
+      expect(
+        shape.sweepPanel.background,
+        "the sweep strip paints no background of its own, so it still reads as " +
+          "one more line of routing chips"
+      ).not.toBe(shape.rowPanel.background);
+      expect(
+        shape.sweepPanel.borderTopWidth,
+        "the sweep strip has no frame around it; the routing chips have none " +
+          "either, which is exactly the identity #3550 flagged"
+      ).toBeGreaterThan(shape.rowPanel.borderTopWidth);
+      expect(
+        Math.abs(shape.head[0].boxLeft - shape.row[0].boxLeft),
+        "a sweep box still starts at the same x as a routing box on the rows " +
+          "below — the measurement that made the two indistinguishable"
+      ).toBeGreaterThan(1);
+
+      // ── (5c) WCAG 2.5.3, LABEL IN NAME (Level A) ──────────────────────────
+      // The chip label sits inside the `<label>` that wraps the checkbox, so below
+      // the boundary the control has a VISIBLE label — which it does not have at
+      // desktop, where the chip is `hidden`. `aria-label` wins the accessible-name
+      // computation, so unless the visible text is contained in it a speech-input
+      // user saying what they can see cannot reach the control. The accessible name
+      // is ONE string at every width, so the property is kept by shortening the
+      // VISIBLE text into the name rather than by rewording the name: the chip uses
+      // the channel label the name uses, and `cellInkChipNote` is a leading
+      // substring of `cellInkNote` (held in lib/__tests__/matrix-liveness.test.ts).
+      const cells = await readLabelInName(member);
+      expect(
+        cells.length,
+        "no routing checkbox rendered a visible chip label, so the 2.5.3 verdict " +
+          "below is an absence over an empty corpus"
+      ).toBeGreaterThanOrEqual(12);
+      expect(
+        cells
+          .filter((c) => c.visible !== "" && !c.name.includes(c.visible))
+          .map((c) => `${c.testid}: visible "${c.visible}" ∉ name "${c.name}"`),
+        "a checkbox's visible label is not contained in its accessible name — " +
+          "WCAG 2.5.3 (Label in Name, Level A). Introduced at phone width: at " +
+          "desktop these checkboxes have no visible label at all."
+      ).toEqual([]);
+      // The probe reads `aria-label`; this is the one assertion that proves that is
+      // what the accname computation actually resolves to for this element.
+      await expect(ghostCell).toHaveAccessibleName(
+        cells.find(
+          (c) => c.testid === `matrix-cell-${GHOST_CHANNEL}-${GHOST_KIND}`
+        )!.name
+      );
 
       // ── (6) THE META BUDGET ───────────────────────────────────────────────
       // "Meta copy before the first control fits in ~3 lines at 390px." Read as
@@ -409,7 +547,9 @@ test.describe("Message kinds at phone width (#3495)", () => {
         `the explanatory copy above the first control is ${metaLines} lines at ` +
           `${PHONE_WIDTH}px; the ruling budgets about three. (The actionable ` +
           `per-login/per-profile setup bullets are deliberately not counted — ` +
-          `they are steps, not meta.)`
+          `they are steps, not meta. Neither is the sweep row's own label, for ` +
+          `the same reason: it names the control it sits on rather than ` +
+          `explaining the page, and #3550 required exactly that disclosure.)`
       ).toBeLessThanOrEqual(3);
 
       // ── (7) NOTHING OVERFLOWS THE VIEWPORT ────────────────────────────────
@@ -563,9 +703,26 @@ test.describe("Message kinds at desktop width — unchanged (#3495)", () => {
         await expect(
           member.getByTestId(`matrix-chip-${c}-${GHOST_KIND}`)
         ).toBeHidden();
+      // Nor is the sweep row's label: at desktop the boxes sit under the channel
+      // names in a two-column header whose left cell says "Kind", and #3495 rules
+      // that arrangement unchanged. This is the assertion that fails if the #3550
+      // disclosure leaks past the card-mode boundary.
+      await expect(member.getByTestId("matrix-sweep-label")).toBeHidden();
+      await expect(member.getByText("Kind", { exact: true })).toBeVisible();
 
       const shape = await readShape(member, GHOST_KIND, CHANNEL_IDS);
       expect(shape.channelCount).toBe(CHANNEL_IDS.length);
+
+      // WCAG 2.5.3's OTHER half, and the reason the phone case exists at all: at
+      // desktop these checkboxes have no visible label, so the success criterion
+      // does not apply here and never did. Read off the same probe, so the two
+      // widths are one claim rather than two.
+      const cells = await readLabelInName(member);
+      expect(
+        cells.filter((c) => c.visible !== "").map((c) => c.testid),
+        "a routing checkbox grew a visible label at desktop width; the chip is " +
+          "card-mode-only and #3495 rules the desktop matrix unchanged"
+      ).toEqual([]);
 
       // Four cells, one baseline, evenly spaced — the desktop grid, measured.
       const cys = shape.row.map((c) => c.boxCy);

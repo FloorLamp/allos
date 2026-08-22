@@ -60,7 +60,8 @@ export interface TrashEntry {
   // The capture's own CALENDAR DAY, as storage `YYYY-MM-DD` — never a display
   // string, and never a timestamp. `DATE_COLUMNS` falls through to `recorded_at`
   // and `created_at`, which SQLite stores as "YYYY-MM-DD HH:MM:SS", so the day is
-  // taken off the front rather than passed on whole: see `calendarDay` below.
+  // taken off the front rather than passed on whole, and a value that is neither a
+  // day nor a day-led instant is `null` rather than forwarded: see `calendarDay`.
   date: string | null;
   notes: string | null;
   // Captured rows BESIDE the root — the sets of an activity, the doses and adherence
@@ -99,7 +100,10 @@ const TITLE_COLUMNS = [
 // clinical roots lead with their CLINICAL date (when the lesion was observed, when the
 // allergy started) and fall through to created_at when it was never recorded — the same
 // order their own surfaces read them in.
-const DATE_COLUMNS = [
+// Exported for the census in lib/__tests__/trash.test.ts, which walks
+// UNDO_KINDS × DATE_COLUMNS: a census over the columns has to match on THE LIST, not
+// on a copy of it that can fall behind.
+export const DATE_COLUMNS = [
   "date",
   "observed_date",
   "onset_date",
@@ -119,12 +123,24 @@ const DATE_COLUMNS = [
 // boundary #3491 item 3 drew — `entry.date` is a STORAGE day, and nothing downstream
 // should have to know which column it came from.
 //
-// Anything that is not a leading `YYYY-MM-DD` followed by a separator is returned
-// untouched: it is not a date this function can make a claim about, and inventing one
-// would be worse than passing it on.
+// ANYTHING THAT IS NOT A DAY OR A DAY-LED INSTANT IS REFUSED, and that is the half
+// of this function the first cut got wrong. It passed an unrecognised value through
+// untouched, on the reasoning that inventing a date is worse than forwarding one —
+// true, but it leaves a THIRD option unconsidered and that option is the right one.
+// `formatDateWithYear` returns what it cannot parse UNCHANGED, so "passed through" is
+// not a neutral act: it is the exact path that put "2026-08-22 14:03:55" on the Trash
+// row. A root that someday stores `2026/08/22` or an epoch string would reach the
+// screen the same way, and a census over the spellings this schema uses today could
+// never see it. So the field keeps the type its own comment gives it — a storage day
+// or nothing — and a shape this function cannot vouch for degrades to no date at all,
+// which every caller already handles (TrashList passes `null`, and the headline drops
+// to the title or the kind label). Held by the UNDO_KINDS × DATE_COLUMNS census in
+// lib/__tests__/trash.test.ts, in both directions.
+const STORAGE_DAY = /^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/;
+
 function calendarDay(value: string | null): string | null {
-  if (value === null) return null;
-  return /^\d{4}-\d{2}-\d{2}[T ]/.test(value) ? value.slice(0, 10) : value;
+  const m = value === null ? null : STORAGE_DAY.exec(value);
+  return m ? m[1] : null;
 }
 
 function firstString(row: Row, columns: readonly string[]): string | null {

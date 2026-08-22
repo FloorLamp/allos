@@ -192,11 +192,22 @@ describe("card-mode boundary (#3457)", () => {
   it("the whole family scopes to the card-mode boundary and nothing else", () => {
     const found = scanCardModeScopes(bodies, FAMILY);
     // CENSUS FLOOR. Re-derived 2026-08-22 with #3495's utility in the family:
-    // 110 `max-sm:` prefixes plus one raw `@media (max-width: 639.98px)` block
-    // across the seven utilities — 111. (It read 89 + 1 = 90 over six before
-    // `notification-kind-matrix`, which contributes 21.) The floor sits at about
-    // half, so ordinary editing does not trip it while a scan that has stopped
-    // reading the file does (#3529's shape).
+    // 121 `max-sm:` prefixes plus one raw `@media (max-width: 639.98px)` block
+    // across the seven utilities — 122. (It read 89 + 1 = 90 over six before
+    // `notification-kind-matrix`, which contributes 32.) The floor sits a little
+    // under half, so ordinary editing does not trip it while a scan that has
+    // stopped reading the file does (#3529's shape).
+    //
+    // THE NUMBER IS WHAT `scanCardModeScopes` RETURNS, NEVER WHAT A GREP COUNTS,
+    // and the difference is not academic: this scan reads COMMENT-STRIPPED utility
+    // bodies, and the prose inside a utility routinely spells the variant it is
+    // explaining. `notification-kind-matrix` has a comment block saying "Every rule
+    // below is `max-sm:`", so `git grep -c 'max-sm:'` over that utility reads 33
+    // against the scan's 32. An earlier revision of this comment recorded 111/21
+    // for a scan that returned 112/22 — a guard whose entire discipline is "the
+    // number was measured" cannot afford a recorded measurement that is not what
+    // the scan produces, and the way to keep it honest is to take the number from
+    // the scanner rather than from a text search that sees a different corpus.
     expect(
       found.length,
       "the card-mode scope scan found almost nothing in app/globals.css — the " +
