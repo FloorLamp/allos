@@ -141,6 +141,52 @@ export function seedSleep(): void {
     "e2e: seeded sleep stages (14 nights) + a tz-correct 5h night & nap for profile 1 (#1066)"
   );
 
+  // ── A THREE-NAP WAKE-DAY, so the sleep history CAN express #3517 ─────────────
+  //
+  // The naps regression (#3517): a card-mode meta cell is a flex line since #3499,
+  // so naps passed as several loose sibling nodes became several ITEMS on that line
+  // and ran the row 29px past its own right edge. One nap cannot reproduce it at
+  // any viewport — a single flex item shrinks and wraps inside itself — and one nap
+  // is all this seed carried, so `e2e/mobile-clipping.mobile.spec.ts` item 2b would
+  // have been green over a page that could not be wrong.
+  //
+  // PLACED ON `today-2`, DELIBERATELY, and not on `today`:
+  //   * `today` is the wake-day the hero reads. Its main-vs-nap split (#1118) and
+  //     `mainSleepSession`'s duration-tie → earliest-END tiebreak are pinned by
+  //     sleep-page.spec, and the block above owns that day entirely on purpose.
+  //   * `today-2` already HAS a history row — the #160 SRI block seeds a nightly
+  //     `sleep_min` session for every wake-day today-1 … today-28 — so this adds
+  //     naps to an existing row rather than creating one. `data-history-count`,
+  //     the 10-row page size and `sleep-mood-history-row` counts (sleep-page.spec
+  //     :384/:437/:443) are therefore all unchanged, and today-2 sits on page 1.
+  //   * The naps are AFTERNOON windows (14:00/16:00/18:00 local), well clear of the
+  //     23:00 → 07:00 overnight that owns the same wake-day, so the SRI window and
+  //     the night's own summary read exactly as before.
+  //
+  // Durations are all under NAP_MAX so none of them is elected an overnight.
+  const NAP_DAY = shiftDateStr(COACH_TODAY, -2);
+  const napWindows: [string, string, number][] = [
+    ["14:00", "14:40", 40],
+    ["16:00", "16:35", 35],
+    ["18:00", "18:25", 25],
+  ];
+  // Idempotent: clear only THIS block's own windows, never the SRI overnight that
+  // shares the wake-day.
+  const napDelete = db.prepare(
+    `DELETE FROM metric_samples
+      WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
+        AND date = ? AND started_at = ?`
+  );
+  for (const [startWall, endWall, minutes] of napWindows) {
+    const start = iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, startWall)!);
+    const end = iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, endWall)!);
+    napDelete.run(PROFILE_ID, NAP_DAY, start);
+    sleepSessionInsert.run(PROFILE_ID, NAP_DAY, start, end, minutes);
+  }
+  console.log(
+    `e2e: seeded a three-nap wake-day (${NAP_DAY}) for profile 1 (#3517)`
+  );
+
   // Bedtime-supplement context for the same two most-recent overnight sessions.
   // Reuse the base seed's real Before-sleep supplement instead of minting a second
   // schedule. Last night's start-day is taken; the preceding night's is deliberately

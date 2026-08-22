@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import {
+  expectAtomicCardPairs,
   expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
@@ -36,6 +37,20 @@ async function overhangWithin(inner: Locator, outer: Locator): Promise<number> {
 async function scrollableBy(locator: Locator): Promise<number> {
   return locator.evaluate((node) => node.scrollWidth - node.clientWidth);
 }
+
+// How many naps one wake-day must carry for the sleep history to be ABLE to show
+// the #3517 defect, in nap lines on a single card.
+//
+// The unit is nap nodes in one meta cell, and the number is measured rather than
+// chosen: at 390px, three naps ran the row 29px past its own right edge and one
+// ran it 0px. Two is the first count that puts a second flex item on the line, so
+// two would already be a real test — three is what the regression was actually
+// found at, and it leaves the margin that says the failure is the layout rather
+// than a rounding edge. The fixture that satisfies this lives in
+// `e2e/seed/sleep.ts`; if it drifts back to one nap, the assertion using this
+// constant fails and names the fixture instead of passing over a page that
+// cannot be wrong.
+const MIN_NAPS_TO_EXPRESS_THE_DEFECT = 3;
 
 test.describe("mobile clipping batch (#2614)", () => {
   test("item 1: every Trends tab is laid out inside the strip beside the range control", async ({
@@ -99,6 +114,100 @@ test.describe("mobile clipping batch (#2614)", () => {
     await expect(mood.locator(".card-cell-label")).toHaveText("Mood");
     const card = page.getByTestId("sleep-mood-history-row").first(); // first-ok: same row as the cell above — the card that holds it
     expect(await overhangWithin(mood, card)).toBeLessThanOrEqual(1);
+  });
+
+  // ── THE NAPS CELL, WHICH IS WHERE THE PRIMITIVE ACTUALLY BROKE (#3517) ──────
+  //
+  // `scanCardMetaPairs` shipped in #3516 guarding card-mode meta pairs, asserted
+  // from two specs — and NOT from the one surface that had really regressed. The
+  // sleep history passed its naps as loose sibling `<div>`s. Valid under the old
+  // block flow, which stacked them; a flex line does not, so a three-nap day ran
+  // its row 29px past its own right edge. No spec saw it and no page-level check
+  // could: the same width comparison taken on the ROOT element read ZERO the whole
+  // time. The `<tr>` scrolls; the document does not — which is why the scan
+  // measures each cell against ITS OWN ROW, and why item 2 above (a clean
+  // `sleep-history-scroll-fade`) was green over the defect too.
+  //
+  // IT LIVES HERE RATHER THAN IN A NEW SPEC FILE ON PURPOSE. #3517 expected this
+  // to cost a new file and therefore a re-partition of all twelve duration-balanced
+  // e2e shards. It does not: this spec already renders the sleep history in card
+  // mode at 390px (item 2, right above), and its subject — "content clipped inside
+  // its own container" — IS the naps failure exactly. So the coverage lands with
+  // the shard plan untouched.
+  //
+  // THE FIXTURE IS REAL, NOT FORGED. The seed used to carry ONE nap on the day the
+  // hero reads, and one nap cannot express the defect at any viewport: a single
+  // flex item wraps inside itself. `e2e/seed/sleep.ts` now seeds a genuine
+  // three-nap wake-day on an OLDER history date, so this test measures a page that
+  // can actually be wrong. Forging three nodes here would have proved the SCAN
+  // works, which is a different claim from the page being correct.
+  test("item 2b: a multi-nap sleep card keeps its naps inside its own row (#3517)", async ({
+    page,
+  }) => {
+    await page.goto("/sleep");
+    const history = page.getByTestId("sleep-mood-history");
+    await expect(history).toBeVisible();
+    // Wait for a rendered naps CELL, never the table: a region that has not painted
+    // its content satisfies every geometry claim made about it (#3384), and an
+    // empty naps corpus is the state that flatters this test.
+    await expect(
+      history.getByTestId("sleep-history-naps").first() // first-ok: any painted naps cell proves the rows rendered; the reads below are over ALL of them
+    ).toBeVisible();
+
+    // One settled read over every naps cell on the page: how many nap lines the
+    // value holds, and how far the row it sits in could be scrolled sideways.
+    const cells = await history.evaluate((root) =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>('[data-testid="sleep-history-naps"]')
+      ).map((cell) => {
+        const label = cell.querySelector(".card-cell-label");
+        const text = (cell.textContent ?? "").trim();
+        const row = cell.closest("tr");
+        return {
+          labelled: !!label,
+          // Naps counted from the RENDERED TEXT, one `·` per "start → end ·
+          // duration" line, NOT from the value's node structure. Counting nodes
+          // would make this fixture check shape-dependent, and the shape is
+          // exactly what the geometry assertion below is here to judge: under the
+          // regression it read zero, so the test went red on "the seed drifted"
+          // and would have sent the next reader to e2e/seed/sleep.ts instead of to
+          // the layout. A count that survives both shapes lets the right assertion
+          // be the one that fires.
+          naps: (text.match(/·/g) ?? []).length,
+          rowScroll: row ? row.scrollWidth - row.clientWidth : 0,
+          text: text.slice(0, 60),
+        };
+      })
+    );
+
+    // THE FIXTURE HAS TO BE ABLE TO EXPRESS THE DEFECT. One nap cannot: a single
+    // flex item shrinks and wraps inside itself at any viewport. The seed used to
+    // carry exactly one, so a green test here would have proved nothing about the
+    // page — `e2e/seed/sleep.ts` now seeds a genuine three-nap wake-day, and this
+    // is the assertion that fails, naming the fixture, if it ever drifts back.
+    const labelled = cells.filter((c) => c.labelled);
+    expect(
+      Math.max(0, ...labelled.map((c) => c.naps)),
+      `naps cells seen: ${labelled.map((c) => `${c.naps}× ${c.text}`).join(" | ")}`
+    ).toBeGreaterThanOrEqual(MIN_NAPS_TO_EXPRESS_THE_DEFECT);
+
+    // Measured the way the defect was found, and the only way it CAN be found: the
+    // row's own scroller. This read 29 with three naps and 0 with one, while
+    // the same comparison taken on the ROOT element read ZERO throughout — the
+    // `<tr>` scrolls, the document does not, which is why item 2's clean
+    // `sleep-history-scroll-fade` was green over the defect as well.
+    expect(
+      labelled.filter((c) => c.rowScroll > 1).map((c) => c.text),
+      "a sleep history row scrolls sideways. Its naps are flex items on the " +
+        "cell's single line, so several loose sibling nodes sit side by side " +
+        "instead of stacking (components/ResponsiveTable.tsx, where `label` is " +
+        "documented). Pass the naps as ONE node."
+    ).toEqual([]);
+
+    // …and the full pair scan over the same history, with the discriminator that
+    // keeps an absence assertion honest (#3509): the labels it must have SEEN, then
+    // a break forged on purpose that it must flag, then the control after restore.
+    await expectAtomicCardPairs(history, ["Naps", "Mood"]);
   });
 
   test("item 4: a home Clinical results label keeps its identity when the value is long", async ({

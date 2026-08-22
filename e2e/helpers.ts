@@ -3311,3 +3311,55 @@ export async function restoreForgedPair(scope: Locator): Promise<void> {
     FORGED_PROPERTIES as unknown as string[]
   );
 }
+
+/**
+ * Assert one card-mode scope's meta pairs, WITH the discriminator attached.
+ *
+ * The two claims this makes — "no pair is broken" and "no cell overflows its row"
+ * — are both ABSENCES, and an absence over a selector goes green the moment the
+ * selector stops matching (#3509). So the discriminator is not an optional extra
+ * a call site may skip: it lives HERE, bound to the assertion, because #3517 asked
+ * for the guard to reach more surfaces and the cheapest way to reach more surfaces
+ * is a call site that forgets it. Three steps, in this order:
+ *
+ *   (a) the scan SAW `mustSee` — without it the two absences below are both
+ *       satisfied by a scan that found no pairs at all;
+ *   (b) the absences hold;
+ *   (c) a break forged ON PURPOSE is flagged, and exactly it — so a scan whose
+ *       rect reads have gone blind fails loudly instead of sweeping clean.
+ *
+ * The control runs AFTER the restore, not only before it.
+ */
+export async function expectAtomicCardPairs(
+  scope: Locator,
+  mustSee: string[]
+): Promise<CardPairScan> {
+  const scan = await scanCardMetaPairs(scope);
+  expect(scan.labels, `pairs seen: ${scan.pairs.join(" | ")}`).toEqual(
+    expect.arrayContaining(mustSee)
+  );
+  expect(
+    scan.breaks,
+    "a card-mode meta cell put its value on a different line from its own " +
+      "label. The pair is supposed to be one non-wrapping flex line " +
+      "(`table-cards` in app/globals.css); wrapping belongs BETWEEN pairs."
+  ).toEqual([]);
+  expect(
+    scan.overflows,
+    "a card-mode meta cell ran past its own row. The usual cause is a value " +
+      "passed as several loose sibling nodes: the cell is a flex line, so they " +
+      "become items side by side instead of stacking. Pass one node " +
+      "(components/ResponsiveTable.tsx says so where `label` is documented)."
+  ).toEqual([]);
+
+  const forged = await forgeBrokenCardPair(scope);
+  expect(
+    (await scanCardMetaPairs(scope)).breaks,
+    "the scan did not flag a pair broken ON PURPOSE — it cannot see the " +
+      "defect it is here to catch, so its clean sweep above meant nothing."
+  ).toEqual([forged]);
+
+  await restoreForgedPair(scope);
+  expect((await scanCardMetaPairs(scope)).breaks).toEqual([]);
+  return scan;
+}
