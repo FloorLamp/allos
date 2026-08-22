@@ -99,6 +99,15 @@ export type CreateAffordance = {
   primary: boolean;
   /** Resolved housing, or null when the file itself houses it in none. */
   housing: Housing | null;
+  /**
+   * The icon-only-below-`sm` composition: the visible label is a child span
+   * carrying `hidden sm:inline`, so below `sm` the control renders as a bare
+   * glyph. `display: none` removes that span from the accessible name, which is
+   * why the next field is not a nicety.
+   */
+  iconOnlyBelowSm: boolean;
+  /** An `aria-label` on the tag — literal or expression, either is a name. */
+  hasAriaLabel: boolean;
   /** The component this affordance is declared inside, when it is exported. */
   ownerComponent: string | null;
 };
@@ -468,6 +477,12 @@ export function findCreateAffordances(source: string): CreateAffordance[] {
       found.push({
         line: lineOf(m.index),
         kind: "button",
+        // The label span is `hidden sm:inline`, so below `sm` this renders as a
+        // bare glyph. `display: none` takes that span OUT of the accessible name
+        // computation — the visible text is not a fallback, it is absent — so on
+        // a phone the `aria-label` is the only name the control has.
+        iconOnlyBelowSm: /hidden\s+sm:inline/.test(inner),
+        hasAriaLabel: /(?<![\w-])aria-label\s*=/.test(tag),
         label: named.trim(),
         verb: leadingVerb(named)!,
         primary: isPrimary(tag) || tagName === "SubmitButton",
@@ -502,6 +517,10 @@ export function findCreateAffordances(source: string): CreateAffordance[] {
       kind: "entry-panel",
       label,
       verb: leadingVerb(label)!,
+      // A panel always renders its label beside the glyph; there is no icon-only
+      // composition here to have.
+      iconOnlyBelowSm: false,
+      hasAriaLabel: false,
       // The panel IS its own housing: #1497's rare-cadence disclosure is a
       // resolved placement, which is how #3482 closed the cycles page's
       // "mid-page, unhoused" row without moving it into a header.

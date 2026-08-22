@@ -244,6 +244,40 @@ describe("the add affordance's grammar (#3486)", () => {
         "file, with the reason."
     ).toEqual([]);
   });
+
+  it("names every icon-only create for AT, because below `sm` it has no other name", () => {
+    // #3486's third §4 rule, as the tree actually ships it. The registry used to
+    // record "icon-only `+` ... never a page/section primary", and three of the
+    // app's page-level primaries are exactly that below `sm` — /wellness's `+`,
+    // the supplement add toggle, the metric measurement toggle — with
+    // `e2e/button-height-floor.mobile.spec.ts` DEPENDING on the wellness one
+    // being icon-only in order to measure the case the height floor exists for.
+    // A rule whose own guard requires the opposite is a decision licensed by a
+    // claim that is not true, so the rule now describes what ships and this is
+    // the half of it a scan can hold.
+    //
+    // The claim is narrow and load-bearing: the visible label span carries
+    // `hidden sm:inline`, and `display: none` removes it from the accessible
+    // name computation. Below `sm` the `aria-label` is not a nicety, it is the
+    // control's ONLY name — and a phone is where this composition happens.
+    const nameless = found
+      .filter((a) => a.iconOnlyBelowSm && !a.hasAriaLabel)
+      .map((a) => `${a.file}:${a.line} — "${a.label}"`);
+    expect(
+      nameless,
+      "An add affordance hides its label below `sm` (`hidden sm:inline`) and has no " +
+        "`aria-label`. `display: none` takes the span out of the accessible name, so " +
+        "this control is silently NAMELESS on a phone — the one viewport where it is " +
+        "icon-only. Give it an `aria-label`, or let it keep its visible label."
+    ).toEqual([]);
+    // And the composition is really present, so the check above is not green over
+    // an empty filter — the same census discipline the file opens with.
+    expect(
+      found.filter((a) => a.iconOnlyBelowSm).length,
+      "No icon-only create found at all. Either the composition is gone or this scan " +
+        "has stopped seeing it; the assertion above is meaningless either way."
+    ).toBeGreaterThanOrEqual(2);
+  });
 });
 
 // ── THE HALF THAT MAKES THE GREEN ABOVE WORTH ANYTHING ──────────────────────
@@ -368,6 +402,24 @@ describe("the sweep stays quiet on the benign neighbours", () => {
     expect(
       scan(`<div><button className="btn">+ Add another activity</button></div>`)
     ).toEqual([]);
+  });
+
+  it("catches an icon-only create with no accessible name, and stays quiet on a named one", () => {
+    const nameless = scan(
+      `<button className="btn"><IconPlus /><span className="hidden sm:inline">Add</span></button>`
+    );
+    expect(nameless[0].iconOnlyBelowSm).toBe(true);
+    expect(nameless[0].hasAriaLabel).toBe(false);
+    // /wellness's actual shape: the same composition, named.
+    const named = scan(
+      `<button className="btn" aria-label="Add practice"><IconPlus /><span className="hidden sm:inline">Add</span></button>`
+    );
+    expect(named[0].iconOnlyBelowSm).toBe(true);
+    expect(named[0].hasAriaLabel).toBe(true);
+    // A labeled button is not the icon-only composition and is not asked for one.
+    expect(
+      scan(`<button className="btn">Add practice</button>`)[0].iconOnlyBelowSm
+    ).toBe(false);
   });
 
   it("houses a create in a section heading row, whether the heading is inside it or above it", () => {
