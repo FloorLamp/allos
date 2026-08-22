@@ -98,6 +98,32 @@ export const HIGH_STAKES = [
     glob: /^scripts\/(backup|restore)\.ts$/,
     why: "operator backup/restore CLIs",
   },
+  // A DELETE THE USER DID NOT ASK FOR is the same tier as the backup path, and
+  // for the reason the backup entry gives: it is silent until the day it is
+  // everything. Nearly every other `DELETE FROM` in this tree is
+  // `WHERE id = ? AND profile_id = ?` behind an explicit affordance — the user
+  // asked, and a bug deletes the row they were looking at. This module is the
+  // exception: it deletes a RANGE of ingested health readings as a side effect
+  // of a settings change, unattended, and nothing in the UI says a reading is
+  // about to go. #3524 is what that costs — four days of resting heart rate
+  // destroyed on production across two travel switches, discovered only because
+  // the owner went looking, and recoverable only from a host backup.
+  //
+  // SIXTH instance of the miss recorded five times below and above: --check
+  // answered "ordinary" for PR #3539, which narrows this very sweep, because the
+  // question was read as "which subsystem" (integrations) rather than "what does
+  // a bug here destroy". The four earlier repairs added the file that had just
+  // been missed; so does this one. THE TEST FOR A SIBLING: does this module
+  // delete rows the user did not ask it to delete? If yes it belongs here,
+  // whatever subsystem it lives in. A bulk delete BEHIND an explicit
+  // user affordance (`data/manage-actions.ts`'s "delete all my X", the family
+  // profile cascade) does not qualify on its own — the user is present and
+  // confirming — though either would qualify on other grounds if its scoping
+  // changed.
+  {
+    glob: /^lib\/integrations\/ingest-timezone-sweep\.ts$/,
+    why: "unattended deletion of ingested health rows on a timezone change — a bug destroys readings the user recorded and no source will re-send",
+  },
   // The safety-signal tier: dose reminders and escalations must never be
   // silently disabled (findings doctrine: their justification is not effectiveness).
   {
