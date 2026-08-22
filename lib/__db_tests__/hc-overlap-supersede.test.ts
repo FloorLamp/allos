@@ -20,7 +20,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
-  metricSampleUpsertReport,
+  applyMetricSampleSupersede,
+  planMetricSampleSupersede,
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
@@ -54,6 +55,12 @@ beforeAll(() => {
 // correcting reading and reporting "nothing new" (see lib/metric-window-overlap.ts).
 const PUSH_BASE = Date.parse("2026-09-01T00:00:00Z");
 let pushSeq = 0;
+// ONE PUSH, THE THREE PASSES THE INGEST RUNS (#3424, owner ruling option 2): plan over
+// the whole push against the pre-push store, apply the deletes once, then upsert. The
+// supersede does not live inside `upsertMetricSamples` any more, so a test that called it
+// alone would exercise a different mechanism than production does. Single-chunk here on
+// purpose — the chunked and reordered cases belong to
+// lib/__db_tests__/hc-overlap-push-property.test.ts, which drives the real ingest.
 function upsert(
   profile: number,
   rows: NormMetricSample[],
@@ -62,11 +69,19 @@ function upsert(
   options: Parameters<typeof upsertMetricSamples>[4] = {}
 ) {
   pushSeq += 1;
-  return upsertMetricSamples(profile, rows, source, sink, {
+  const opts = {
     pushedAt:
       new Date(PUSH_BASE + pushSeq * 60_000).toISOString().slice(0, 19) + "Z",
     ...options,
-  });
+  };
+  const plan = planMetricSampleSupersede(profile, rows, source, opts);
+  const removed = applyMetricSampleSupersede(profile, plan.victims);
+  const counts = upsertMetricSamples(profile, rows, source, sink, opts);
+  counts.superseded += removed;
+  // The declined-overlap diagnostic the ingest turns into a Review line. It comes off the
+  // PLAN now — it is known before the first write — so it travels beside the counts here
+  // rather than through a side channel keyed on them.
+  return { ...counts, overlapsLeft: plan.leftStanding.length };
 }
 
 /** A fresh profile, so one test's rows can never explain another's survival. */
@@ -468,7 +483,7 @@ describe("what the rule must NEVER delete", () => {
     // MUTATION: count the held row into `edited` again and `received` reads 2 for a
     // 1-sample payload (lib/__tests__/sync-log.test.ts pins the arithmetic).
     expect(counts.edited).toBe(0);
-    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(counts.overlapsLeft).toBe(1);
     // The hand-corrected row is still there, with its hand-corrected value.
     expect(
       storedRows(p, "steps")
@@ -517,7 +532,7 @@ describe("what the rule must NEVER delete", () => {
     );
     // MUTATION: drop the Set and count PAIRS again — the Review line says "2 daily
     // totals" for ONE day that reads wrong. Verified red as zzr6-attack A5a.
-    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(counts.overlapsLeft).toBe(1);
     expect(counts.edited).toBe(0);
   });
 
@@ -684,7 +699,7 @@ describe("what the rule must NEVER delete", () => {
       HC
     );
     expect(counts.superseded).toBe(0);
-    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(counts.overlapsLeft).toBe(1);
     // And it is still reported on the NEXT push, because nothing repaired it.
     counts = upsert(
       p,
@@ -699,7 +714,7 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    expect(metricSampleUpsertReport(counts)?.overlapsLeftStanding).toBe(1);
+    expect(counts.overlapsLeft).toBe(1);
     expect(storedRows(p, "steps").map((r) => r.value)).toEqual([9000, 200]);
   });
 

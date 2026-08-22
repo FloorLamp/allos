@@ -49,7 +49,19 @@ import {
 // `metric_samples.pushed_at`, the instant the EXPORTER stamped on the push that wrote it
 // (`payload.timestamp`), and a row may only supersede a stored row whose stamp is
 // STRICTLY OLDER. A replay carries the same stamp as the push it replays, so it takes
-// nothing; two rows of ONE push carry the SAME stamp, so no chunk can out-rank another.
+// nothing.
+//
+// THAT IS THE FRESHNESS RULE AND IT IS NOT THE ORDERING ONE. Two rows of one push do
+// carry the same stamp, so neither can out-rank the other - but that fact was cited for
+// years' worth of review rounds as the reason a chunk split is harmless, and it does not
+// carry that claim. It says rows of a push cannot be each other's VICTIMS. It says
+// nothing about what a row of the push READS, and the read is where two refutations
+// landed: the same push stored 11609 or 22609 depending only on where the chunk boundary
+// fell, because a delete for one row changed the natural-key twin a later row looked up.
+// What makes order and chunking irrelevant is that THE DELETES ARE NOT DECIDED IN THE
+// WRITE LOOP AT ALL - see the three passes above `planMetricSampleSupersede` in
+// lib/integrations/normalize.ts. This rule is what that plan consults; it is not what
+// makes the plan order-free.
 
 // AND A NULL STAMP IS *UNKNOWN*, NOT "OLDER THAN EVERYTHING". This is the third state
 // the rule needs, and reading it as the second one was a defect that survived four
@@ -70,14 +82,29 @@ import {
 //   * `startedAt`      the instant `metric_samples.pushed_at` began being written.
 //   * `lastUnstampedId` the highest `metric_samples.id` that existed at that instant.
 //
-// `id` is `INTEGER PRIMARY KEY AUTOINCREMENT` (migration 083), so it is monotonic and
-// never reused - `id <= lastUnstampedId` is an EXACT statement that the row was already
-// in the table when the column landed, not a heuristic. And `incoming > startedAt` is an
-// exact statement that the push happened after that. Together they say the only thing
-// that is actually known about a NULL row: it is one of the pre-existing rows the
-// migration itself saw, and this push is newer than all of them. Every OTHER NULL - a
-// row a stampless push wrote afterwards, a row whose provenance the store cannot
-// establish - is simply not superseded, and the double count stays visible.
+// THE TWO HALVES ARE NOT EQUALLY EXACT, and saying so is the point of this paragraph.
+//
+//   * `id <= lastUnstampedId` IS exact. `id` is `INTEGER PRIMARY KEY AUTOINCREMENT`
+//     (migration 083), so it is monotonic and never reused: the comparison is a
+//     statement about this database's own counter, and it cannot become true for a row
+//     written later. Not a heuristic.
+//   * `incoming > startedAt` IS NOT. It compares a PHONE's stamp to THIS SERVER's clock
+//     at the moment the migration ran - two clocks, never synchronised, and this repo
+//     bounds the phone's only in one direction (MAX_PUSH_CLOCK_SKEW_MS, below). A phone
+//     running behind the server reads as older than the era it actually postdates.
+//     What that costs is bounded and self-healing and points the safe way: such a push
+//     collapses NONE of its own pre-era NULLs, so the double count stays visible until
+//     real time passes the offset, or until #3439 replays history. A phone running AHEAD
+//     could in principle claim to postdate an era it predates - but a push that predates
+//     the era predates the column, so it cannot be delivered by an exporter that is
+//     writing stamps, and the skew bound refuses the far-future case outright.
+//
+// So together they state something slightly weaker than "the push is newer": the row is
+// one of the pre-existing rows the migration itself saw, and this push SAYS it happened
+// after the column landed. That is the strongest thing available about a NULL row, and
+// where it is wrong it is wrong toward keeping rows. Every OTHER NULL - a row a stampless
+// push wrote afterwards, a row whose provenance the store cannot establish - is simply
+// not superseded, and the double count stays visible.
 //
 // TWO CLOSURES WERE WEIGHED AND LOST, both recorded here so this is not re-opened:
 //
@@ -135,8 +162,9 @@ import {
 //
 // So the pair phase 1 existed to settle is one the exporter does not send, and the only
 // evidence that separates two anchorings is the one this rule already uses: the PUSH
-// BOUNDARY. Rows of one push share a stamp and can never be each other's victims, which
-// is what makes a chunk split harmless BY CONSTRUCTION rather than by a pre-pass.
+// BOUNDARY. Rows of one push share a stamp, so none can be another's victim - and a
+// chunk split is harmless for a DIFFERENT and stronger reason, which is that the whole
+// push's effect is planned before any of it is written.
 //
 // Every defect three adversarial passes found lived in that phase — a completed
 // re-anchored bucket ranked staler than the still-filling row it corrects (3000 stored
@@ -331,14 +359,18 @@ export function isSupersedingWindow(
  * WHEN THE COLUMN STARTED BEING WRITTEN, AND WHAT WAS ALREADY IN THE TABLE.
  *
  * Recorded once by `20260821-hc-overlap-supersede` and never moved again. It is the
- * only thing that licenses deleting a NULL-stamped row — see the header. Both halves
- * are exact facts about the store rather than estimates:
+ * only thing that licenses deleting a NULL-stamped row — see the header, which is also
+ * where the difference between these two halves is spelled out:
  *
- *   - `startedAt` is the instant the migration ran, so a push stamped after it happened
- *     after every row that was already there.
- *   - `lastUnstampedId` is `MAX(metric_samples.id)` at that instant. The column is
- *     `INTEGER PRIMARY KEY AUTOINCREMENT` (migration 083): monotonic, never reused, so
- *     `id <= lastUnstampedId` cannot become true for a row written later.
+ *   - `lastUnstampedId` is `MAX(metric_samples.id)` at that instant, and comparing
+ *     against it is EXACT. The column is `INTEGER PRIMARY KEY AUTOINCREMENT`
+ *     (migration 083): monotonic, never reused, so `id <= lastUnstampedId` cannot become
+ *     true for a row written later.
+ *   - `startedAt` is the instant the migration ran, ON THIS SERVER'S CLOCK, and the
+ *     stamp it is compared against comes from a PHONE. That comparison is therefore not
+ *     exact — it is a cross-clock one, bounded in the direction that matters and failing
+ *     toward keeping rows: a phone behind the server collapses none of its own pre-era
+ *     NULLs until real time passes the offset.
  */
 export interface UnstampedEra {
   startedAt: string;
@@ -360,9 +392,11 @@ export const UNSTAMPED_ERA_MAX_ID_KEY = "hc_overlap_unstamped_era_max_id";
  *   - The stored row HAS a stamp: the plain comparison. Strictly newer wins, so a
  *     replay (same stamp) and a second chunk of the same push (same stamp) take nothing.
  *   - The stored row's stamp is NULL and it is one of the rows the migration SAW
- *     (`id <= era.lastUnstampedId`), and this push happened after the migration
- *     (`incoming > era.startedAt`): superseded. That is the pre-PR double count the fix
- *     exists to collapse, and both halves are proven rather than assumed.
+ *     (`id <= era.lastUnstampedId`, an exact statement about this database's own id
+ *     counter), and this push SAYS it happened after the migration
+ *     (`incoming > era.startedAt`, a phone stamp against a server instant — see the
+ *     header, and note it is the cross-clock half): superseded. That is the pre-PR
+ *     double count the fix exists to collapse.
  *   - The stored row's stamp is NULL and either half is unproven: NOT superseded. NULL
  *     means UNKNOWN. A row whose provenance the store cannot establish is not a row this
  *     path may delete, so the double count stays — visible, counted, and repairable.
@@ -428,9 +462,12 @@ export function pushStampFor(
 /**
  * Plan what an INCOMING window does to the stored rows it overlaps.
  *
- * `stored` is the candidate set for one (profile, metric, source, origin) group,
- * already narrowed to the day radius and with the incoming row's own natural-key twin
- * excluded - that row is the upsert's business, not the supersede's.
+ * `stored` is the candidate set for one (profile, metric, source, origin) group, already
+ * narrowed to the day radius and with EVERY natural key the push will upsert excluded -
+ * not just this row's own twin. Those rows are the upsert's business, not the
+ * supersede's, and excluding all of them is what lets the upsert loop read its own
+ * pre-image against a store the deletes cannot have moved under it. The caller
+ * (`planMetricSampleSupersede`) owns that exclusion; this function just decides.
  *
  * A stored row is superseded when ALL of these hold: the incoming window is a
  * day-bucket window of a tiling metric; the two overlap as instants; the STORED window

@@ -239,11 +239,16 @@ export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
 // "usually" is the honest shape — telling someone their total will fix itself when it
 // will not is worse than not mentioning it.
 export function overlapsLeftWarning(count: number): string {
-  const totals = count === 1 ? "1 daily total" : `${count} daily totals`;
+  // READINGS, NOT DAILY TOTALS. The number handed in is DISTINCT STORED ROWS the plan
+  // left standing, and two stale buckets can fall in ONE profile-local day — so the
+  // earlier wording ("2 daily totals") named a unit the count does not measure and could
+  // report two days wrong when one is. The rows are what is counted, so the rows are what
+  // this says; the days they land in is what it says about them.
+  const readings = count === 1 ? "1 reading" : `${count} readings`;
   return (
-    `${totals} from before a timezone change could not be replaced by this push, so ` +
-    "those days count some activity twice and read HIGH. Most clear on the next push " +
-    "that carries a later timestamp than the reading it replaces."
+    `${readings} from before a timezone change could not be replaced by this push, so ` +
+    "the days they fall in count some activity twice and read HIGH. Most clear on the " +
+    "next push that carries a later timestamp than the reading it replaces."
   );
 }
 // Require two such records before hinting: a genuine `daily` push made within an hour

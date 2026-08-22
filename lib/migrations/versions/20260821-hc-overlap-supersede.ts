@@ -45,11 +45,16 @@ import {
 // NULL means UNKNOWN. So this migration writes down the two facts that make a subset of
 // those NULLs checkable, and the rule will delete no others:
 //
-//  3. `hc_overlap_unstamped_era_at` — the instant `pushed_at` began being written. A
-//     push stamped after it happened after every row already in the table.
-//  4. `hc_overlap_unstamped_era_max_id` — `MAX(metric_samples.id)` at that instant.
-//     `id` is INTEGER PRIMARY KEY AUTOINCREMENT (migration 083), so it is monotonic and
-//     never reused: `id <= that` cannot become true for a row written later.
+//  3. `hc_overlap_unstamped_era_at` — the instant `pushed_at` began being written, on
+//     THIS SERVER'S clock. A push stamped after it SAYS it happened after every row
+//     already in the table; it is compared against a PHONE's stamp, so that half is a
+//     cross-clock comparison rather than an exact one, and it fails toward keeping rows
+//     (a phone running behind collapses none of its own pre-era NULLs until real time
+//     passes the offset). lib/metric-window-overlap.ts spells this out.
+//  4. `hc_overlap_unstamped_era_max_id` — `MAX(metric_samples.id)` at that instant. This
+//     half IS exact: `id` is INTEGER PRIMARY KEY AUTOINCREMENT (migration 083), so it is
+//     monotonic and never reused, and `id <= that` cannot become true for a row written
+//     later.
 //
 // Written FIRST-WRITE-WINS, never moved. A re-run — a restore, a half-applied database,
 // a second boot — happens later than the moment the column landed, and moving the marker

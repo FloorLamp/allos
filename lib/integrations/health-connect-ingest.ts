@@ -9,7 +9,8 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
-  metricSampleUpsertReport,
+  applyMetricSampleSupersede,
+  planMetricSampleSupersede,
   upsertActivities,
   upsertBodyMetrics,
   upsertHrMinutes,
@@ -90,7 +91,8 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
-  // Overlapping day buckets the supersede declined to collapse, across every chunk.
+  // Stored day buckets the supersede plan declined to collapse — set once from the plan,
+  // not accumulated per chunk, because the plan already saw the whole push.
   // Surfaced as a Review line below rather than left for someone to notice in a total.
   let overlapsLeft = 0;
   const vitalIds: number[] = [];
@@ -141,9 +143,10 @@ export function ingestHealthConnectPayload(
     );
     // ASCENDING started_at BEFORE THE CHUNK SPLIT — deterministic write order only.
     // `upsertMetricSamples` orders what it is GIVEN and only ever sees one chunk, so
-    // sorting here is what makes the per-chunk order a global one. Correctness no longer
-    // rests on it: rows of one push share a `pushed_at` and a supersede needs a strictly
-    // older stamp, so a chunk split cannot change what survives (owner ruling on #3424).
+    // sorting here is what makes the per-chunk order a global one. Correctness does not
+    // rest on it, and no longer rests on the stamp either: the deletes are planned over
+    // the whole push below and applied before any of it is written, so neither row order
+    // nor the chunk split can reach them (owner ruling on #3424, option 2).
     const orderedSamples = [...parsed.samples].sort((a, b) =>
       compareWindowStarts(a.started_at, b.started_at)
     );
@@ -151,13 +154,47 @@ export function ingestHealthConnectPayload(
     // device clock that claims the future. Null when the push states nothing readable,
     // and then this push supersedes nothing at all.
     const pushedAt = pushStampFor(parsed.pushedAt);
+    // ── PASS A (#3424) ── BEFORE `chunk()`, AND THAT IS THE WHOLE POINT.
+    //
+    // What this push does to the stored rows, decided ONCE, read-only, over the WHOLE
+    // push and the store as it stands before any of it is written. It is a pure function
+    // of (pre-push store, push): it cannot see a row this push has written, because none
+    // has been, and it cannot see a chunk boundary, because it runs before there are any.
+    // That is what makes `final store = (pre-store − victims) ⊕ upserts` true by
+    // construction rather than by enumerating the channels that could break it — two of
+    // which were found by adversarial review after being argued unreachable.
+    const supersede = planMetricSampleSupersede(
+      profileId,
+      orderedSamples,
+      source,
+      { pushedAt }
+    );
+    // Overlapping day buckets the plan declined to collapse. Known before the first
+    // write, since the plan already knows everything the store can tell it.
+    overlapsLeft = supersede.leftStanding.length;
+    // ── PASS B ── the deletes, ONCE, inside the FIRST CHUNK'S transaction.
+    //
+    // Not a transaction of its own: a crash between the deletes and the writes must not
+    // leave a day reading LOW with nothing in flight to restore it. The deletes and the
+    // first rows of the push commit or roll back together. `pending` is what makes this
+    // the first chunk only — every later chunk sees it already spent.
+    let pending: readonly number[] | null = supersede.victims;
     commitChunks(
       orderedSamples,
-      (slice, sink) =>
-        upsertMetricSamples(profileId, slice, source, sink, { pushedAt }),
+      (slice, sink) => {
+        const removed = pending
+          ? applyMetricSampleSupersede(profileId, pending)
+          : 0;
+        pending = null;
+        // ── PASS C ── the upsert loop, with no supersede logic in it at all.
+        const part = upsertMetricSamples(profileId, slice, source, sink, {
+          pushedAt,
+        });
+        part.superseded += removed;
+        return part;
+      },
       (c) => {
         samples = foldCounts([samples, c]);
-        overlapsLeft += metricSampleUpsertReport(c)?.overlapsLeftStanding ?? 0;
       }
     );
     commitChunks(
