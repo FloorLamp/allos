@@ -32,6 +32,7 @@ import {
   isSupersedingWindow,
   planSupersede,
   supersedeDateRange,
+  windowsOverlap,
   type MetricWindow,
   type UnstampedEra,
 } from "@/lib/metric-window-overlap";
@@ -563,15 +564,113 @@ export interface MetricSampleUpsertOptions {
  * DISTINCT STORED ROWS, not (incoming, stored) pairs: one stored row overlapped by two
  * incoming buckets of one push is one reading left double counting, and the pair count
  * said 2. The two sets are disjoint — a row this push collapses is not a row it left.
+ *
+ * `inPushDoubleCounts` IS THE SHAPE `leftStanding` STRUCTURALLY CANNOT HOLD, and it is
+ * here because the ruling's item 3 produces exactly that shape. `leftStanding` is stored
+ * row IDS, so it can only ever name rows that were in the table BEFORE this push. When a
+ * push carries BOTH anchorings of one day and the store held NEITHER, both rows are
+ * written — ruling item 3, and the right outcome — and the day double counts with no
+ * stored row anywhere for the report to point at. Five shipped tests seeded one of the
+ * two and so always had one; the store-holds-neither push reported nothing at all.
+ *
+ * So the in-push overlaps are counted separately and added to the same Review line: the
+ * person reading a total that reads HIGH does not care which side of the push the second
+ * reading came from. See `countInPushDoubleCounts`.
  */
 export interface MetricSampleSupersedePlan {
   victims: number[];
   leftStanding: number[];
+  inPushDoubleCounts: number;
 }
 
 /** The plan for a push this rule has nothing to say about — a source other than HC. */
 function emptySupersedePlan(): MetricSampleSupersedePlan {
-  return { victims: [], leftStanding: [] };
+  return { victims: [], leftStanding: [], inPushDoubleCounts: 0 };
+}
+
+/**
+ * The EXCESS day buckets a push carries against ITSELF — one per overlap beyond the
+ * first, for each group of mutually overlapping incoming day buckets.
+ *
+ * "Overlaps a row of the same push that STARTS EARLIER" is the whole definition, and it
+ * gives the count the Review line needs without a clustering pass: in a pair exactly one
+ * row has the later start, so a push carrying both anchorings of one day counts 1 — the
+ * same number the store-holds-one configuration reports for the same symptom, where the
+ * stale row is a stored one. Three mutually overlapping buckets count 2.
+ *
+ * IT IS NOT SAYING WHICH ROW IS WRONG. Two rows of one push share a stamp, so nothing in
+ * the payload ranks them (see lib/metric-window-overlap.ts) — and this counts rather than
+ * chooses precisely because choosing is what two earlier versions did and what cost a
+ * reading. Both rows are written either way; this only makes the day say so.
+ *
+ * AND IT NEVER RE-COUNTS AN OVERLAP `leftStanding` ALREADY HOLDS. When a push re-sends a
+ * row the store already has, the stored row and the incoming row are ONE reading updated
+ * in place, not two — so a re-sent bucket overlapped by the same push's re-anchored one
+ * is reported once, as the stored row `leftStanding` names. `reportedKeys` is the natural
+ * keys of the stored rows that made it into `leftStanding`, and EITHER member of a pair
+ * carrying one of them takes the pair out of this count. Either, not just one side: the
+ * re-sent row starts LATER than the re-anchored one going west (Tokyo → Honolulu) and
+ * EARLIER going east, so a rule that looked at one end reported the westward store-holds-
+ * one push as "2 readings" for a day holding two rows, one excess — the same
+ * pairs-not-rows error `leftStanding`'s own docstring was written to close.
+ *
+ * SCANNED ONLY BETWEEN DAY-BUCKET ROWS (`isSupersedingWindow`) — the same rows pass A
+ * already looks up stored candidates for, so an 11.5k-row `1m` push has none of them and
+ * pays nothing. The fine-grained-against-day-bucket shape is left unreported here for the
+ * same reason it is left unreported against the store: it would mean comparing every
+ * minute bucket against every other, and the cost is not worth a shape the exporter is
+ * not observed to send.
+ */
+function countInPushDoubleCounts(
+  rows: readonly DayBucketRow[],
+  reportedKeys: ReadonlySet<string>
+): number {
+  const groups = new Map<string, DayBucketRow[]>();
+  for (const r of rows) {
+    const key = JSON.stringify([r.metric, r.origin]);
+    const group = groups.get(key);
+    if (group) group.push(r);
+    else groups.set(key, [r]);
+  }
+  let excess = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    // Sorted here rather than trusting the caller: `planMetricSampleSupersede` is a pure
+    // function of the rows it was handed, and the property test hands it permutations.
+    const sorted = [...group].sort((a, b) =>
+      compareWindowStarts(a.started_at, b.started_at)
+    );
+    const reported = (r: DayBucketRow) =>
+      reportedKeys.has(JSON.stringify([r.metric, r.origin, r.started_at]));
+    for (let i = 1; i < sorted.length; i++) {
+      const later = sorted[i];
+      if (reported(later)) continue;
+      for (let j = 0; j < i; j++) {
+        const earlier = sorted[j];
+        if (reported(earlier)) continue;
+        if (
+          windowsOverlap(
+            earlier.started_at,
+            earlier.ended_at,
+            later.started_at,
+            later.ended_at
+          )
+        ) {
+          excess++;
+          break;
+        }
+      }
+    }
+  }
+  return excess;
+}
+
+/** One incoming row that cleared `isSupersedingWindow`, kept for the in-push scan. */
+interface DayBucketRow {
+  metric: string;
+  origin: string | null;
+  started_at: string;
+  ended_at: string;
 }
 
 /**
@@ -653,6 +752,14 @@ export function planMetricSampleSupersede(
 
   const victims = new Set<number>();
   const leftStanding = new Set<number>();
+  // The incoming rows the in-push scan runs over — exactly the ones that clear the gate
+  // below, so the scan costs nothing on a push that carries no day buckets at all.
+  const dayBuckets: DayBucketRow[] = [];
+  // The natural key of every stored row that lands in `leftStanding`, so the in-push scan
+  // can tell a reading this push is UPDATING from a second reading it is adding. Keyed by
+  // stored id, because a row one incoming bucket left standing can still be collapsed by
+  // another, and the map is read only after that pruning.
+  const standingKeyById = new Map<number, string>();
   for (const r of rows) {
     // ONLY DAY-BUCKET WINDOWS ARE LOOKED UP, and that is a cost bound as much as a safety
     // one. `planSupersede` would also report a FINE-GRAINED incoming row landing on a
@@ -661,6 +768,12 @@ export function planMetricSampleSupersede(
     // not scanned for and not reported. It is the one residual in `left` this caller does
     // not deliver; the permanent one (a stored sub-daily bucket) is.
     if (!isSupersedingWindow(r.metric, r.started_at, r.ended_at)) continue;
+    dayBuckets.push({
+      metric: r.metric,
+      origin: r.origin ?? null,
+      started_at: r.started_at,
+      ended_at: r.ended_at,
+    });
     const { from, to } = supersedeDateRange(r.date);
     const candidates = findOverlaps.all(
       profileId,
@@ -672,14 +785,22 @@ export function planMetricSampleSupersede(
       r.started_at
     ) as MetricWindow[];
     const plan = planSupersede({ ...r, pushedAt }, candidates, era);
-    for (const standing of plan.left) leftStanding.add(standing.id);
+    for (const standing of plan.left) {
+      leftStanding.add(standing.id);
+      standingKeyById.set(
+        standing.id,
+        keyOf(r.metric, r.origin ?? null, standing.started_at)
+      );
+    }
     for (const victim of plan.supersede) {
       // The wider exclusion, applied where it can still be reported: a row this push is
       // about to upsert is never deleted, and the day it leaves reading high is said out
       // loud instead of being silently collapsed into nothing.
-      if (pushKeys.has(keyOf(r.metric, r.origin ?? null, victim.started_at)))
+      const victimKey = keyOf(r.metric, r.origin ?? null, victim.started_at);
+      if (pushKeys.has(victimKey)) {
         leftStanding.add(victim.id);
-      else victims.add(victim.id);
+        standingKeyById.set(victim.id, victimKey);
+      } else victims.add(victim.id);
     }
   }
   // Disjoint, so the Review line counts rows still reading wrong and nothing else. Every
@@ -690,7 +811,16 @@ export function planMetricSampleSupersede(
   // overlap it, so no row can be collapsed by one and left by another. Stated here rather
   // than left to be re-derived, since two rounds were lost to a claim of that shape.
   for (const id of victims) leftStanding.delete(id);
-  return { victims: [...victims], leftStanding: [...leftStanding] };
+  return {
+    victims: [...victims],
+    leftStanding: [...leftStanding],
+    // The double count this push carries against ITSELF, which no set of stored ids can
+    // hold. Ruling item 3 says write both rows; this is the half that says so out loud.
+    inPushDoubleCounts: countInPushDoubleCounts(
+      dayBuckets,
+      new Set([...leftStanding].map((id) => standingKeyById.get(id)!))
+    ),
+  };
 }
 
 /**

@@ -30,9 +30,13 @@ import type { UpsertCounts, SyncRowSink } from "@/lib/integrations/sync-log";
 
 export interface MetricSamplePushResult extends UpsertCounts {
   /**
-   * Distinct stored day buckets the plan left standing — the number the ingest turns
-   * into its Review line. It comes off the PLAN, which knows it before the first write,
-   * so it travels beside the counts instead of through a side channel keyed on them.
+   * The number the ingest turns into its Review line: distinct stored day buckets the
+   * plan left standing, PLUS the excess day buckets the push carries against itself. It
+   * comes off the PLAN, which knows it before the first write, so it travels beside the
+   * counts instead of through a side channel keyed on them.
+   *
+   * Both halves, and summed HERE the same way `ingestHealthConnectPayload` sums them, so
+   * a spec driving this helper cannot pass while the real ingest reports something else.
    */
   overlapsLeft: number;
 }
@@ -49,5 +53,8 @@ export function pushMetricSamples(
   const removed = applyMetricSampleSupersede(profileId, plan.victims);
   const counts = upsertMetricSamples(profileId, rows, source, sink, options);
   counts.superseded += removed;
-  return { ...counts, overlapsLeft: plan.leftStanding.length };
+  return {
+    ...counts,
+    overlapsLeft: plan.leftStanding.length + plan.inPushDoubleCounts,
+  };
 }

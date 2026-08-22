@@ -169,9 +169,16 @@ export function ingestHealthConnectPayload(
       source,
       { pushedAt }
     );
-    // Overlapping day buckets the plan declined to collapse. Known before the first
+    // Overlapping day buckets this push leaves double counting. Known before the first
     // write, since the plan already knows everything the store can tell it.
-    overlapsLeft = supersede.leftStanding.length;
+    //
+    // BOTH HALVES, because a day reading high reads high either way. `leftStanding` is
+    // stored rows the push overlapped and did not collapse; `inPushDoubleCounts` is the
+    // excess the push carries against itself — ruling item 3's "a push carrying both
+    // anchorings writes both", which leaves a day double counting with no STORED row for
+    // `leftStanding` to name. Reporting only the first was silent on exactly the
+    // configuration the ruling wrote item 3 for.
+    overlapsLeft = supersede.leftStanding.length + supersede.inPushDoubleCounts;
     // ── PASS B ── the deletes, ONCE, inside the FIRST CHUNK'S transaction.
     //
     // Not a transaction of its own: a crash between the deletes and the writes must not

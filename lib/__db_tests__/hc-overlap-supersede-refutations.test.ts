@@ -304,6 +304,50 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     expect(warningsOf(only)).toContain(overlapsLeftWarning(1));
   });
 
+  it("says so even when the store held NEITHER of the two", () => {
+    // ROUND 6's REFUTATION, AND THE GAP THE SEEDING CORRECTION OPENED. Every case above
+    // seeds the store, which is right for pinning the push-key exclusion — but it made
+    // the store-holds-NEITHER push the one configuration nothing covered, and that is the
+    // configuration where the Review line was silent. `leftStanding` is stored row IDS,
+    // so it can only ever name rows that were in the table before the push; two rows of
+    // ONE push are never in each other's candidate sets. Both rows are written (right,
+    // ruling item 3), the day sums 20000 for 11000 walked — and the push reported
+    // `superseded: 0`, `overlapsLeft: 0`, `warnings: []`.
+    //
+    // MUTATION: drop `inPushDoubleCounts` from the plan (or stop adding it in the ingest)
+    // and this goes back to a silent wrong total, with every other spec in this file and
+    // in hc-overlap-supersede.test.ts still green.
+    const p = freshProfile("BOTH-ANCHORINGS-EMPTY-STORE");
+    const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
+    expect(only.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
+    // ONE, not two. The excess is what the day carries beyond the first reading, which is
+    // the same number the seeded case above reports for the same symptom — there the
+    // stale row is a stored one, here it is the push's own.
+    expect(warningsOf(only)).toContain(overlapsLeftWarning(1));
+  });
+
+  it("stays quiet when the two buckets of one push do NOT overlap", () => {
+    // The other direction, because a count that fires on every multi-day push would be
+    // worse than one that never fires. Consecutive day buckets under ONE anchoring tile
+    // rather than nest — that is the premise the whole rule rests on — so a push carrying
+    // two of them is the ordinary case and says nothing.
+    const p = freshProfile("BOTH-ANCHORINGS-DISJOINT");
+    const quiet = push(
+      p,
+      {
+        steps: [
+          steps("2026-08-19T04:00:00Z", "2026-08-20T04:00:00Z", 8000),
+          NY,
+        ],
+      },
+      "2026-08-21T06:00:05Z"
+    );
+    expect(quiet.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 9000]);
+    expect(warningsOf(quiet)).toEqual([]);
+  });
+
   it("collapses on the next push that carries only the new anchoring", () => {
     // The half that makes the trade acceptable: it is transient, and it converges
     // WITHOUT anything having to decide between two rows of one push.
