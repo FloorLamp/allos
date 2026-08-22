@@ -153,7 +153,7 @@ export default function HealthConnectSetup({
           className="text-sm text-slate-600 dark:text-slate-300"
           data-testid="health-connect-token-note"
         >
-          The token is shown only when it&apos;s created.
+          The token is shown only when it’s created.
         </p>
       )}
 
