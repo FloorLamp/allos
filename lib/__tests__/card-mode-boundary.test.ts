@@ -275,7 +275,7 @@ describe("card-mode boundary (#3457)", () => {
     const benign: [string, string][] = [
       [
         "the raw phone-only block metric-readings-list really has",
-        "@utility metric-readings-list {\n  @media (max-width: 639.98px) {\n    & td::after { content: \"\"; }\n  }\n}",
+        '@utility metric-readings-list {\n  @media (max-width: 639.98px) {\n    & td::after { content: ""; }\n  }\n}',
       ],
       [
         "a deliberately desktop-only block inside a utility",

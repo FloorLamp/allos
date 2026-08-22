@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { CARD_MODE_BREAKPOINT_PX } from "../lib/card-row";
 
 // WHERE CARD MODE STARTS, MEASURED AS A RENDERED LAYOUT (issue #3457).
