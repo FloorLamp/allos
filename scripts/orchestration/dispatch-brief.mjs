@@ -373,6 +373,13 @@ ${nodeLine}
   source files carry a deliberate NUL as a composite-key separator, so rg calls them
   BINARY and skips them: a plain \`rg <pattern>\` reports a clean sweep it never took.
   They are listed in lib/__tests__/nul-byte-census.test.ts (#3206).
+- PREFER \`git grep\` TO \`rg\` FOR A CENSUS IN YOUR WORKTREE. \`rg\` HANGS here, and
+  \`--glob '!node_modules'\` does NOT save it: your node_modules is a \`cp -al\` hardlink
+  copy, which ripgrep's gitignore handling does not skip the way it would a normal
+  ignored directory. \`git grep\` is fast, and it scans exactly the TRACKED set — which
+  is the set a census should be making a claim about anyway, so this is a correctness
+  win and not only a speed one. Measured 2026-08-22 on #3457, where a lane lost a
+  census run to it. The \`-a\` rule above still applies when you do reach for rg.
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
