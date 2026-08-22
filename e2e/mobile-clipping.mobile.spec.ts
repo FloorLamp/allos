@@ -123,8 +123,8 @@ test.describe("mobile clipping batch (#2614)", () => {
   // sleep history passed its naps as loose sibling `<div>`s. Valid under the old
   // block flow, which stacked them; a flex line does not, so a three-nap day ran
   // its row 29px past its own right edge. No spec saw it and no page-level check
-  // could: `document.documentElement.scrollWidth - clientWidth` read ZERO the
-  // whole time. The `<tr>` scrolls; the document does not — which is why the scan
+  // could: the same width comparison taken on the ROOT element read ZERO the whole
+  // time. The `<tr>` scrolls; the document does not — which is why the scan
   // measures each cell against ITS OWN ROW, and why item 2 above (a clean
   // `sleep-history-scroll-fade`) was green over the defect too.
   //
@@ -158,9 +158,7 @@ test.describe("mobile clipping batch (#2614)", () => {
     // value holds, and how far the row it sits in could be scrolled sideways.
     const cells = await history.evaluate((root) =>
       Array.from(
-        root.querySelectorAll<HTMLElement>(
-          '[data-testid="sleep-history-naps"]'
-        )
+        root.querySelectorAll<HTMLElement>('[data-testid="sleep-history-naps"]')
       ).map((cell) => {
         const label = cell.querySelector(".card-cell-label");
         // The value is the one node after the label (the `Td` rule the naps fix
@@ -190,8 +188,8 @@ test.describe("mobile clipping batch (#2614)", () => {
 
     // Measured the way the defect was found, and the only way it CAN be found: the
     // row's own scroller. This read 29 with three naps and 0 with one, while
-    // `document.documentElement.scrollWidth - clientWidth` read ZERO throughout —
-    // the `<tr>` scrolls, the document does not, which is why item 2's clean
+    // the same comparison taken on the ROOT element read ZERO throughout — the
+    // `<tr>` scrolls, the document does not, which is why item 2's clean
     // `sleep-history-scroll-fade` was green over the defect as well.
     expect(
       labelled.filter((c) => c.rowScroll > 1).map((c) => c.text),
