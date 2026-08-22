@@ -88,6 +88,31 @@ describe("isImportedDocumentName — the names a person writes", () => {
   }
 });
 
+describe("the fixtures that already sit near this boundary", () => {
+  // Every medication a fixture or seed inserts as `source = 'extracted'` — the
+  // complete set, and the only rows the offer can ever reach: e2e/seed/imports.ts,
+  // e2e/timeline-linked-context.spec.ts, scripts/seed.ts. All three must land on the
+  // QUIET side, or an offer card appears above the import page's medication listing
+  // in specs that never asked for one.
+  const SEEDED_EXTRACTED = ["E2E Loratadine", "E2E Lisinopril", "Atorvastatin"];
+
+  for (const name of SEEDED_EXTRACTED) {
+    it(`leaves the seeded ${JSON.stringify(name)} alone`, () => {
+      expect(isImportedDocumentName(name)).toBe(false);
+    });
+  }
+
+  it("does not light up on the e2e naming convention", () => {
+    // THE CLOSE CALL, and it is worth pinning on its own. Every e2e fixture is
+    // prefixed "E2E ", which IS a shouted word — "E2E Loratadine" is quiet only
+    // because 3 of its 13 letters shout, under the 0.5 share. Lower that share and
+    // every seeded medication in the suite grows an offer card at once, in specs
+    // that assert on the import page's geometry and never mention names.
+    expect(shoutingWords("E2E Loratadine")).toEqual(["E2E"]);
+    expect(isImportedDocumentName("E2E Loratadine")).toBe(false);
+  });
+});
+
 describe("isCleanerName — what may be offered as a replacement", () => {
   const CURRENT = "Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)";
 

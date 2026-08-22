@@ -22,7 +22,7 @@ import {
 //      many casing classes did it see. A scan that breaks drops to near zero and
 //      reds instead of passing.
 //   2. A NAMED SUBJECT. One file that MUST contain a name render, so a floor met by
-//      344 sites in the wrong places still cannot hide a rule that stopped matching
+//      244 sites in the wrong places still cannot hide a rule that stopped matching
 //      the shape it was written for.
 //   3. SYNTHETIC OFFENDERS. Sources authored to break the rule, which it must flag —
 //      and benign neighbours it must stay silent on.

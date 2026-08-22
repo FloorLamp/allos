@@ -132,7 +132,9 @@ export default function ImportedNameOffer({
         </p>
       )}
       {note && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{note}</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {note}
+        </p>
       )}
       {candidates && candidates.length > 0 && (
         <div

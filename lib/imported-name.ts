@@ -72,7 +72,8 @@ function letterCount(word: string): number {
 function shouts(word: string): boolean {
   const letters = word.match(/[A-Za-z]/g) ?? [];
   return (
-    letters.length >= MIN_SHOUT_LETTERS && letters.every((c) => c === c.toUpperCase())
+    letters.length >= MIN_SHOUT_LETTERS &&
+    letters.every((c) => c === c.toUpperCase())
   );
 }
 
