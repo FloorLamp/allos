@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
+import { cardCellAttrs, CARD_MODE_ONLY, type CardSlot } from "@/lib/card-row";
 
 // The shared responsive-table primitive (issue #1426).
 //
@@ -9,7 +9,11 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // scroll rule) some of it clipped outright.
 //
 // APPROACH. Below `sm` the table stops being a table and becomes a stack of flat,
-// divider-separated records — WITHOUT a second content tree. This is the
+// divider-separated records — WITHOUT a second content tree. THE BOUNDARY IS
+// `sm` (640px) AND IT IS DECLARED ONCE, as `CARD_MODE_BREAKPOINT_PX` in
+// lib/card-row.ts: this component does not own it, does not restate it, and a
+// requirement that needs it quotes that constant rather than a fresh `md`
+// (#3457 — the 640–768px band is a deliberate narrower-table tier, not a gap). This is the
 // responsive-surface rule (AGENTS.md:
 // "never author into a single branch of a `hidden md:*` pair") taken to its
 // conclusion: there is exactly ONE `<table>` in the DOM, exactly one set of cells,
@@ -41,7 +45,7 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // when you author a slotted cell in a grouped table.
 //
 // Because `thead` is hidden below `sm`, a `meta` cell carries its own `label`,
-// rendered `sm:hidden` inside the cell. That keeps the column's meaning available
+// rendered inside the cell under `CARD_MODE_ONLY` (lib/card-row.ts). That keeps the column's meaning available
 // to sighted and assistive users in stacked-row mode, where the `<th>` is gone.
 //
 // A META CELL'S VALUE IS ONE THING (#3499). Below `sm` the cell lays its label and
@@ -116,7 +120,7 @@ export function Td({
   return (
     <td className={`td ${className}`} colSpan={colSpan} {...attrs} {...rest}>
       {showLabel ? (
-        <span className="card-cell-label sm:hidden">{label}</span>
+        <span className={`card-cell-label ${CARD_MODE_ONLY}`}>{label}</span>
       ) : null}
       {children}
     </td>
