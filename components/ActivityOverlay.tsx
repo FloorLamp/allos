@@ -183,7 +183,7 @@ export default function ActivityOverlay({
             ? "Workout in progress"
             : editData
               ? "Edit activity"
-              : "New activity"
+              : "Add activity"
         }
         tabIndex={-1}
         className="min-h-full w-full bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] outline-hidden sm:max-w-2xl sm:border-l-2 sm:border-slate-300 sm:p-8 sm:pt-0 sm:shadow-2xl sm:dark:border-white/25"

@@ -38,9 +38,9 @@ export const ROUTINE_DELOAD_PROFILE = "Routine Deload (e2e)";
 // (and every other fixture profile above, incl. No Gear which seeds one activity
 // precisely so its Log tab renders the Training Log) always have activities, which is
 // exactly why the first-run Training → Log regression — the empty state short-
-// circuiting the Training Log and hiding "New activity" — was never caught. This profile
+// circuiting the Training Log and hiding "Add activity" — was never caught. This profile
 // stays activity-free so the training-first-run spec can assert the first-run empty
-// variant renders the action row (Start workout + New activity, NO Repeat last). No
+// variant renders the action row (Start workout + Add activity, NO Repeat last). No
 // birthdate → adult, and /training renders the full hub
 // (TrainingLogView), not the minor's RestrictedActivityView.
 export const E2E_LOGIN_EMPTY_TRAINING = "e2e_empty_training";

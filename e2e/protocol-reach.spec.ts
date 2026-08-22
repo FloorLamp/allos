@@ -36,7 +36,7 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
       select.locator("option", { hasText: "Creatine Monohydrate" })
     ).toHaveCount(1);
     await page
-      .getByRole("dialog", { name: "New protocol" })
+      .getByRole("dialog", { name: "Add protocol" })
       .getByRole("button", { name: "Close" })
       .click();
 

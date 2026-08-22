@@ -11,7 +11,7 @@ import { toggleSavedItem } from "@/app/(app)/saved-actions";
 // They used to be a FOOTER ROW under every sparkline: a ★ button plus two reorder
 // arrows, ~90px per tile, nine tiles deep on a phone. The affordances are unchanged
 // (same `star-toggle` / `saved-move-up` / `saved-move-down` hooks); they now live
-// behind the 40px kebab every other row action in the app uses (the #1488/#1491
+// behind the shared kebab every other row action in the app uses (the #1488/#1491
 // standard), which is also how the tile grid can go two-abreast at 390px without
 // the controls eating the tile.
 //

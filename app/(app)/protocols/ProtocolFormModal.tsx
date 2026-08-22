@@ -23,11 +23,11 @@ export default function ProtocolFormModal(props: CreateProtocolFormProps) {
         onClick={() => setOpen(true)}
         data-testid="new-protocol-toggle"
       >
-        + New protocol
+        + Add protocol
       </button>
       {open && (
         <ModalShell
-          title="New protocol"
+          title="Add protocol"
           onClose={() => setOpen(false)}
           size="md"
         >

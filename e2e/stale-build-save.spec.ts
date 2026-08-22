@@ -45,7 +45,7 @@ import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 // at the moment the session starts, and the title does not reach it until
 // `settledFill` lands three lines later. A failure in between runs a
 // `DELETE … WHERE title = 'Stalenet live'` that matches nothing. The other three
-// tests drive "New activity", whose row is only ever born by a save that already
+// tests drive "Add activity", whose row is only ever born by a save that already
 // carries the title, so they have no such window and are left alone.
 //
 // The gap this closes is NARROWER than it looks, and worth stating so the next
@@ -329,7 +329,7 @@ test("a form that can never attempt a save still converges, and is restored with
     await page.goto("/training?tab=log");
     await page
       .getByRole("main")
-      .getByRole("button", { name: "New activity" })
+      .getByRole("button", { name: "Add activity" })
       .click();
     await expect(page.getByTestId("activity-form")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), UNSAVEABLE_TITLE);
@@ -402,7 +402,7 @@ test("a deploy that stays broken gets ONE automatic attempt and then the banner 
 
     await page
       .getByRole("main")
-      .getByRole("button", { name: "New activity" })
+      .getByRole("button", { name: "Add activity" })
       .click();
     await expect(page.getByTestId("activity-form")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), RATION_TITLE);
@@ -452,7 +452,7 @@ test("a never-created session closed under a stale build queues its capture, and
 
     await page
       .getByRole("main")
-      .getByRole("button", { name: "New activity" })
+      .getByRole("button", { name: "Add activity" })
       .click();
     await expect(page.getByTestId("activity-form")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), QUEUED_TITLE);

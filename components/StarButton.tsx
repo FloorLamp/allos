@@ -112,7 +112,16 @@ export default function StarButton({
         compact
           ? "gap-1 px-2 py-1 text-xs"
           : iconOnlyBelowSm
-            ? "h-9 w-9 gap-1.5 p-0 text-sm sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
+            ? // 44px RENDERED below `sm`, not 36 (#3486's reach, decided by #3514's
+              // ruling). This is a hand-rolled control outside the `.btn` family, so
+              // the family's floor in app/globals.css cannot see it — which is how a
+              // 36px star toggle came to sit beside a 40px `.btn` measurement toggle
+              // on /trends/metric/weight, two heights in one row, and be found by
+              // #3529's geometry probe. Of #3514's two mechanisms this takes the
+              // RENDERED one rather than `.tap-target`, because the neighbour it
+              // shares a row with is a rendered 44: a hit-area overlay would have
+              // met the floor and left the row still looking uneven.
+              "h-11 w-11 gap-1.5 p-0 text-sm sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
             : "gap-1.5 px-3 py-1.5 text-sm"
       } ${
         shown

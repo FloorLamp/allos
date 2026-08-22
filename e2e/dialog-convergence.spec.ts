@@ -53,7 +53,7 @@ test("a wheel over the page behind an open dialog moves nothing until it closes"
   await expect.poll(() => scrollY(page)).toBe(0);
 
   await hydratedClick(page, main.getByTestId("new-protocol-toggle"));
-  const dialog = page.getByRole("dialog", { name: "New protocol" });
+  const dialog = page.getByRole("dialog", { name: "Add protocol" });
   await expect(dialog).toBeVisible();
 
   await wheelOverScrim(page);
@@ -93,9 +93,9 @@ test("a dialog's declared size decides how wide it renders", async ({
     page.getByRole("main").getByTestId("new-protocol-toggle")
   );
   await expect(
-    page.getByRole("dialog", { name: "New protocol" })
+    page.getByRole("dialog", { name: "Add protocol" })
   ).toBeVisible();
-  const large = await panelWidth(page, "New protocol");
+  const large = await panelWidth(page, "Add protocol");
 
   expect(
     large,

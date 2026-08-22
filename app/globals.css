@@ -559,7 +559,7 @@
    had no such primitive, so every strip hand-rolled one — `app/(app)/training/
    AnalyzeSection.tsx` alone drew TWO, with different padding and different
    selected brand shades, on one screen. `.btn` is the wrong home (a chip is not
-   a button-family member and takes no 40px floor, see below) and `.badge` is
+   a button-family member and takes no height floor, see below) and `.badge` is
    the wrong home too: a badge is a STATUS LABEL nobody can press. This is the
    third thing, and it is one class plus a role.
 
@@ -599,13 +599,13 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 40px floor
+   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
    (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
    not reach here — chips are acquired by their WIDTH along a scrolling row, and
    a 44px-tall strip of seven is a band of chrome above the list it narrows
-   (FilterPills' own measured note). #3514 is open on whether the registry's tap
-   floor is 40 or 44 and is UNRULED; this primitive declares neither, so nothing
-   here depends on that answer. A strip that genuinely needs a bigger target
+   (FilterPills' own measured note). #3514 has since RULED the floor at 44px
+   effective, by rendered size OR by `.tap-target`'s hit-area extension; this
+   primitive declares neither, so nothing here changed. A strip that genuinely needs a bigger target
    still says so at its call site and wins — `@utility` sorts into the utilities
    layer, so it cannot lower a call site's `min-h-*`. */
 @utility chip {
@@ -876,7 +876,9 @@
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element
-     extends the clickable button box to 40px. */
+     extends the clickable button box to 44px — 32 + 2×6, the same arithmetic
+     `.tap-target` uses, which is the floor #3514 ruled. It was `-4px`, i.e. 40px
+     effective, back when the registry still said the floor was 40. */
   & td[data-card="actions"] [data-testid="overflow-menu-trigger"] {
     @apply max-sm:relative max-sm:h-8 max-sm:w-8;
   }
@@ -884,7 +886,7 @@
     & td[data-card="actions"] [data-testid="overflow-menu-trigger"]::after {
       content: "";
       position: absolute;
-      inset: -4px;
+      inset: -6px;
     }
   }
 }
@@ -1763,14 +1765,24 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    evidence, not the fix: the ninth icon-only composition added next month would
    have inherited nothing.
 
-   So the floor lives with the family, at the 40px floor #3377 named for this and
-   that the two hand-fixed call sites had already reached for independently, and
-   only below `sm` — desktop density keeps its compact `btn-sm` rows, where a
-   mouse is doing the pointing. `btn-sm` composes as `btn btn-sm`, so it inherits
-   this from `.btn` rather than needing its own rule. Width too, not just height:
-   an icon-only button is the one shape that can be narrower than the floor, and a
-   labeled button is already wider than 40px, so the width half is a no-op
-   everywhere it is not needed.
+   So the floor lives with the family, and only below `sm` — desktop density keeps
+   its compact `btn-sm` rows, where a mouse is doing the pointing. `btn-sm`
+   composes as `btn btn-sm`, so it inherits this from `.btn` rather than needing
+   its own rule. Width too, not just height: an icon-only button is the one shape
+   that can be narrower than the floor, and a labeled button is already wider than
+   it, so the width half is a no-op everywhere it is not needed.
+
+   THE NUMBER IS 44, AND WHAT IT MEASURES IS A RENDERED BOX (owner ruling on
+   #3514, 2026-08-21). It shipped at 40, because #3486's text said 40. #3514 then
+   found the registry holding TWO numbers under one name, and that the mechanism
+   §5 cited for the smaller one — #644's `.tap-target`, `inset: -6px` around a
+   32px icon — never produced 40 at all; it produces 44. The ruling is one number
+   and two mechanisms: the tap floor is 44px EFFECTIVE everywhere, met either by
+   RENDERED size (this rule, or a call site's own `min-h-11`) or by extending a
+   deliberately smaller rendered control to >=44 effective with `.tap-target`.
+   Rendered height and hit area are different guarantees, so a rule states which
+   one it means — this one means rendered — and no bare "tap floor" number is
+   citable without saying. A control that uses NEITHER mechanism is the defect.
 
    IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
    CEILING. The first cut of this rule was unlayered, on the reasoning that
@@ -1781,8 +1793,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
    floor. Tailwind orders `components` before `utilities`, so this loses to any
    call-site `min-h-*` and the two numbers resolve the way a reader expects them
-   to: the family sets 40 for everything that asks for nothing, and a surface that
-   needs MORE — the pager's 44px tap step — says so and gets it. A surface that
+   to: the family sets the floor for everything that asks for nothing, and a
+   surface that needs MORE says so and gets it. A surface that
    wants LESS is not asking for a smaller floor; it is telling us it is not a
    member of this family.
 
@@ -1796,8 +1808,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     .btn,
     .btn-ghost,
     .btn-danger {
-      min-block-size: 2.5rem;
-      min-inline-size: 2.5rem;
+      min-block-size: 2.75rem;
+      min-inline-size: 2.75rem;
     }
   }
 }

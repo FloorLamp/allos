@@ -36,7 +36,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
     page,
     page
       .getByTestId("training-log-actions")
-      .getByRole("button", { name: "New activity" })
+      .getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
 

@@ -127,7 +127,7 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
   // Type into a form and leave it unsaved — the state a takeover used to destroy.
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   const title = page.getByLabel("Activity name");
   await title.fill("Kept across the update");

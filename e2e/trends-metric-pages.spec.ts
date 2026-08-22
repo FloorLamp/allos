@@ -342,8 +342,29 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
       mobileStar,
       mobileLog,
     ]);
-    expect(mobileStarBox.width).toBeLessThanOrEqual(40);
-    expect(mobileLogBox.width).toBeLessThanOrEqual(40);
+    // THIS PAIR IS THE ROW #3529's GEOMETRY PROBE FOUND, and the assertion is
+    // rewritten around what it actually meant.
+    //
+    // It used to read `<= 40` on each width, where 40 was the tap floor doubling
+    // as "compact, i.e. icon-only rather than labeled". Both controls now render
+    // 44, because #3514 ruled ONE tap floor at 44 effective — so the old ceiling
+    // was the previous floor written down as a maximum. And while it held, this
+    // row was a 40px log toggle beside a 36px star: two control heights in one
+    // row, #3486's own defect shape, on a surface #3486's fix had shipped to. The
+    // ceiling passed the entire time, because it never asked the two to AGREE.
+    //
+    // So each meets the floor, the two are equal to each other, and the
+    // compactness the old ceiling was really guarding is kept as a separate,
+    // looser bound: the labeled variant from `sm` up is far wider, so 48
+    // distinguishes icon-only from labeled without pinning anyone's padding.
+    const TAP_FLOOR_PX = 44;
+    for (const box of [mobileStarBox, mobileLogBox]) {
+      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.width).toBeLessThanOrEqual(48);
+    }
+    expect(mobileStarBox.height).toBe(mobileLogBox.height);
+    expect(mobileStarBox.width).toBe(mobileLogBox.width);
     await expect(mobileLog).toHaveAccessibleName("Log weight manually");
     await expect(mobileLog.locator("svg")).toBeVisible();
     await expect(mobileLog.locator("span")).toBeHidden();

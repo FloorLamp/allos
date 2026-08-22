@@ -133,7 +133,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // Open a fresh CREATE editor from the training log actions toolbar.
   await page
     .getByTestId("training-log-actions")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
@@ -277,7 +277,7 @@ test("the set row's tab order is the same with the effort column on and off (#33
   await page.goto("/training?tab=log");
   await page
     .getByTestId("training-log-actions")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await pickActivity(page, "Barbell Bench Press");
 

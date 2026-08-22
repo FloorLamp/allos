@@ -192,7 +192,7 @@ export default function FrequencyTargets({
           />
         </div>
         <SubmitButton pendingLabel="Saving…">
-          {selectedId == null ? "Add routine" : "Update routine"}
+          {selectedId == null ? "Add target" : "Update target"}
         </SubmitButton>
         {selectedId != null && (
           <button

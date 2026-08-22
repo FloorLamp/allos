@@ -27,17 +27,20 @@ import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 // because this file taught it.
 //
 // THE ROWS ANSWER THE TAP FLOOR THE TRIGGER ALREADY HONOURED. `py-1.5` is a 32px
-// row: fine under a mouse, under the 40px minimum (#644) the trigger below spells
-// out in the same file. The floor is met where a finger is actually doing the
-// tapping — 44px below `md`, where the sheet is, and 40px on a coarse pointer at
-// any width above it (a tablet gets the popover and a thumb). A fine pointer from
+// row: fine under a mouse, under the 44px floor (#644; ruled one number on #3514)
+// that the trigger below reaches with `.tap-target`. The floor is met where a
+// finger is actually doing the tapping — 44px below `md`, where the sheet is, and
+// 44px on a coarse pointer at any width above it (a tablet gets the popover and a
+// thumb). That second number was `py-2.5`, a 40px row, written when the registry
+// still said the floor was 40; #3514 ruled 44 and it moves with the rest.
+// A fine pointer from
 // `md` up keeps the compact desktop row. The two `md:` rules are keyed on
 // MUTUALLY EXCLUSIVE pointer media, deliberately: a `md:py-1.5` sitting beside a
-// `md:pointer-coarse:py-2.5` would leave which one wins to stylesheet order.
+// `md:pointer-coarse:py-3` would leave which one wins to stylesheet order.
 export const MENU_ITEM =
-  "block w-full px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-2.5 dark:text-slate-200 dark:hover:bg-ink-800";
+  "block w-full px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-3 dark:text-slate-200 dark:hover:bg-ink-800";
 export const MENU_ITEM_DANGER =
-  "block w-full px-3 py-3 text-left text-sm text-rose-600 hover:bg-rose-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-2.5 dark:text-rose-400 dark:hover:bg-rose-950";
+  "block w-full px-3 py-3 text-left text-sm text-rose-600 hover:bg-rose-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-3 dark:text-rose-400 dark:hover:bg-rose-950";
 
 const MENU_WIDTH = 160; // matches w-40
 
@@ -162,9 +165,15 @@ export default function OverflowMenu({
         title={label}
         aria-haspopup="menu"
         data-testid="overflow-menu-trigger"
-        // ≥40px hit box (#644): a 16px glyph centered in a 40px box so the sole
-        // per-row action affordance clears the touch-target minimum on mobile.
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+        // ≥44px EFFECTIVE hit box (#644, one number ruled on #3514): a 16px glyph
+        // centered in a 40px RENDERED box, extended to 52 on a coarse pointer by
+        // `.tap-target`'s `inset: -6px`. The comment here used to claim "≥40px hit
+        // box (#644)" — #644's mechanism never produced 40, and the row density this
+        // control lives in is why the box stays 40 RENDERED rather than growing: the
+        // ruling's second mechanism exists for exactly this case. The 32px variant
+        // the responsive-table surface shrinks it to carries its own `::after`
+        // (app/globals.css, `.table-cards`), also at -6px, also reaching 44.
+        className="tap-target flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconDots className="h-4 w-4" />
       </button>
