@@ -81,14 +81,17 @@ function rows(db: Database.Database, table: string): string {
   return JSON.stringify(
     all.map((row) =>
       Object.fromEntries(
-        Object.entries(row).map(([k, v]) => [
-          k,
-          table === "settings" &&
-          k === "value" &&
-          ASYNC_PROGRESS_SETTINGS.has(String(row["key"]))
-            ? "<async boot-task progress>"
-            : stable(v),
-        ] as const)
+        Object.entries(row).map(
+          ([k, v]) =>
+            [
+              k,
+              table === "settings" &&
+              k === "value" &&
+              ASYNC_PROGRESS_SETTINGS.has(String(row["key"]))
+                ? "<async boot-task progress>"
+                : stable(v),
+            ] as const
+        )
       )
     )
   );
@@ -125,7 +128,8 @@ describe("migratedDb() stands in for a real migration replay (#3471)", () => {
       Object.fromEntries(
         names.map((t) => [
           t,
-          (db.prepare(`SELECT count(*) n FROM "${t}"`).get() as { n: number }).n,
+          (db.prepare(`SELECT count(*) n FROM "${t}"`).get() as { n: number })
+            .n,
         ])
       );
     expect(counts(snap)).toEqual(counts(real));
@@ -134,7 +138,8 @@ describe("migratedDb() stands in for a real migration replay (#3471)", () => {
     const seeded = counts(real);
     expect(seeded["canonical_result_definitions"]).toBeGreaterThan(50);
     expect(seeded["profiles"]).toBe(1);
-    for (const t of names) expect([t, rows(snap, t)]).toEqual([t, rows(real, t)]);
+    for (const t of names)
+      expect([t, rows(snap, t)]).toEqual([t, rows(real, t)]);
   });
 });
 
@@ -146,9 +151,11 @@ describe("migratedDb() hands out independent databases (#3471)", () => {
     const later = migratedDb();
 
     const names = (db: Database.Database) =>
-      (db.prepare("SELECT name FROM profiles ORDER BY id").all() as {
-        name: string;
-      }[]).map((r) => r.name);
+      (
+        db.prepare("SELECT name FROM profiles ORDER BY id").all() as {
+          name: string;
+        }[]
+      ).map((r) => r.name);
 
     // The writer really wrote — without this the two assertions below would pass
     // on a probe that never happened, which is the way an isolation check fails

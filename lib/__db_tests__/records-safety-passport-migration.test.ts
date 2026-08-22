@@ -71,7 +71,7 @@ describe("migration 122 — schema shape", () => {
        VALUES ('Penicillin', 'Hives', 'moderate', ?)`
     ).run(p);
     // The backfill already ran during the boot this snapshot came from; running it
-  // again must not double.
+    // again must not double.
     up122(db);
     up122(db);
     const n = db
