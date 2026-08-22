@@ -96,20 +96,38 @@ describe("Panel and Category are desktop-only detail (#2316)", () => {
 describe("readingDateLine (#2316)", () => {
   const TODAY = "2026-08-09";
 
-  it("is ONE line carrying the ISO date and the compact age", () => {
+  it("is ONE line carrying the DISPLAY date and the compact age", () => {
     const line = readingDateLine(
       { date: "2026-06-03", category: "lab" },
       TODAY,
       true
     );
-    expect(line.date).toBe("2026-06-03");
+    // The login's date shape, NOT the stored one (#3492). This assertion used to
+    // read "2026-06-03", which is what put the storage format on the app's densest
+    // clinical surface: the day half was `reading.date` printed verbatim.
+    expect(line.date).toBe("Jun 3, 2026");
     // The #1216 formatter's own bucket — not a second rounding of the same span.
     expect(line.age).toBe("2mo");
     expect(`${line.date}${DATE_AGE_SEPARATOR}${line.age}`).toBe(
-      "2026-06-03 · 2mo"
+      "Jun 3, 2026 · 2mo"
     );
     expect(line.stale).toBe(false);
     expect(line.ageTitle).toBeNull();
+  });
+
+  it("renders the day in the login's chosen date format, not one fixed shape", () => {
+    // The prefs are threaded in rather than resolved here, so this module stays pure
+    // and the app keeps exactly one date formatter. All three closed-enum shapes
+    // reach the row — including "iso", which is a login CHOOSING the machine shape
+    // and is the one case where a YYYY-MM-DD on this row is correct.
+    const of = (dateFormat: "mdy" | "dmy" | "iso") =>
+      readingDateLine({ date: "2026-06-03", category: "lab" }, TODAY, false, {
+        timeFormat: "24h",
+        dateFormat,
+      }).date;
+    expect(of("mdy")).toBe("Jun 3, 2026");
+    expect(of("dmy")).toBe("3 Jun 2026");
+    expect(of("iso")).toBe("2026-06-03");
   });
 
   it("puts the amber treatment and its title on the AGE token when stale", () => {

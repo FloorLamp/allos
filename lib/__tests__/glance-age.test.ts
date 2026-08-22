@@ -46,14 +46,19 @@ describe("what a glance card says about a reading's age", () => {
       freshness: "current",
       form: "long",
       floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
+      dateLabel: "Sunday, August 9",
     });
-    expect(current.text).toBe("2026-08-09");
+    // The DAY the caller handed in, not the stored one (#3492). This assertion used
+    // to read "2026-08-09", which is precisely the defect: the module printed the
+    // machine date whenever a caller declined to render one.
+    expect(current.text).toBe("Sunday, August 9");
     const stale = glanceAgeToken({
       date: "2022-03-08",
       today: TODAY,
       freshness: "due",
       form: "long",
       floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
+      dateLabel: "Tuesday, March 8, 2022",
     });
     expect(stale.text).toBe("4 years ago");
   });
@@ -75,6 +80,7 @@ describe("what a glance card says about a reading's age", () => {
       freshness: "due",
       form: "long",
       floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+      dateLabel: "Tuesday, March 8, 2022",
     });
     expect(labs.className).toBe(vitals.className);
     expect(labs.className).toContain("amber");
@@ -90,14 +96,23 @@ describe("what a glance card says about a reading's age", () => {
     // An undatable reading has no knowable age, so it claims nothing either way: no
     // amber, no hover sentence, and — in the long form — the date rather than a
     // relative age it cannot honestly state.
-    for (const form of ["compact", "long"] as const) {
-      const na = glanceAgeToken({
+    for (const na of [
+      glanceAgeToken({
         date: "2022-03-08",
         today: TODAY,
         freshness: "not-applicable",
-        form,
+        form: "compact",
         floorLabel: RECENT_LAB_STALE_LABEL,
-      });
+      }),
+      glanceAgeToken({
+        date: "2022-03-08",
+        today: TODAY,
+        freshness: "not-applicable",
+        form: "long",
+        floorLabel: RECENT_LAB_STALE_LABEL,
+        dateLabel: "Mar 8, 2022",
+      }),
+    ]) {
       expect(na.stale).toBe(false);
       expect(na.title).toBeNull();
       expect(na.className).not.toContain("amber");
@@ -109,8 +124,9 @@ describe("what a glance card says about a reading's age", () => {
         freshness: "not-applicable",
         form: "long",
         floorLabel: RECENT_LAB_STALE_LABEL,
+        dateLabel: "Mar 8, 2022",
       }).text
-    ).toBe("2022-03-08");
+    ).toBe("Mar 8, 2022");
   });
 });
 
@@ -133,16 +149,31 @@ describe("the as-of form (#2615 item 3)", () => {
     }
   });
 
-  it("falls back to the ISO day when the caller states no formatted one", () => {
+  // THE FALLBACK IS GONE, AND ITS ABSENCE IS THE ASSERTION (#3492).
+  //
+  // This test used to pin the opposite behaviour — "falls back to the ISO day when
+  // the caller states no formatted one" — and that fallback is exactly how a machine
+  // date reached the dashboard: the two Standing vitals rows asked for a form that
+  // states a day and passed no label, so the module printed `2026-07-22`. A surface
+  // that states a day now cannot be constructed without one, and the check is a
+  // COMPILE-time one because that is the only kind a future call site cannot skip.
+  it("a form that states a day cannot be built without a pref-formatted label", () => {
+    const withoutLabel = {
+      date: "2026-07-29",
+      today: TODAY,
+      freshness: "due",
+      form: "as-of",
+      floorLabel: "a week",
+    } as const;
+    // @ts-expect-error — a day-stating form with no `dateLabel` is the defect this
+    // boundary exists to make unrepresentable. If this line ever stops erroring, the
+    // ISO escape hatch is back and #3492 has regressed.
+    void glanceAgeToken(withoutLabel);
+    // The runtime half of the same claim: nothing but the caller's label reaches the
+    // text, so there is no second source a day could come from.
     expect(
-      glanceAgeToken({
-        date: "2026-07-29",
-        today: TODAY,
-        freshness: "due",
-        form: "as-of",
-        floorLabel: "a week",
-      }).text
-    ).toBe("as of 2026-07-29");
+      glanceAgeToken({ ...withoutLabel, dateLabel: "Jul 29, 2026" }).text
+    ).toBe("as of Jul 29, 2026");
   });
 
   it("takes the same amber treatment and sentence as the two glance cards", () => {
@@ -161,6 +192,7 @@ describe("the as-of form (#2615 item 3)", () => {
       freshness: "due",
       form: "long",
       floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+      dateLabel: "Mar 8, 2022",
     });
     expect(chartCard.className).toBe(vitals.className);
     expect(chartCard.stale).toBe(true);
