@@ -483,10 +483,10 @@ const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
 // old row summing into the same profile-local day. Edit-locked rows survive it,
 // tombstoned rows stay dead, and point readings are untouched.
 //
-// THAT DELETE DOES NOT HAPPEN IN THIS FUNCTION. It is planned over the whole push and
-// applied once, before the upserts — `planMetricSampleSupersede` and
-// `applyMetricSampleSupersede` below, whose header carries the argument. All this
-// function does for the rule is write `pushed_at`.
+// THAT DELETE DOES NOT HAPPEN IN THIS FUNCTION. It is planned over the whole push before
+// anything is written, and applied once, in the transaction of the push's LAST chunk —
+// `planMetricSampleSupersede` and `applyMetricSampleSupersede` below, whose headers carry
+// the argument for each half. All this function does for the rule is write `pushed_at`.
 //
 // Guard: body fat % and resting HR belong in body_metrics, not
 // here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
@@ -505,7 +505,7 @@ export interface MetricSampleUpsertOptions {
 // ── THE OVERLAP-SUPERSEDE, IN THREE PASSES (#3424) ────────────────────────────────
 //
 // A  planMetricSampleSupersede   read-only, over the PRE-PUSH store, over the WHOLE push
-// B  applyMetricSampleSupersede  the deletes, once
+// B  applyMetricSampleSupersede  the deletes, once, in the LAST chunk's transaction
 // C  upsertMetricSamples         the upsert loop, with no supersede in it at all
 //
 // WHY IT IS SHAPED THIS WAY, since five adversarial rounds paid for the answer. The rule
@@ -543,6 +543,19 @@ export interface MetricSampleUpsertOptions {
 // is that line as a test: the same push, several orderings and chunk sizes including a
 // 1-row chunk, against a NON-EMPTY store, must leave byte-identical rows every time.
 //
+// AND ONE MORE INVARIANT, ABOUT THE COMMITS RATHER THAN THE ORDER (#3424, the ruling of
+// 2026-08-22). The line above is about the FINAL state; a chunked push also has states in
+// between, and the first version of pass B — deletes in the FIRST chunk's transaction —
+// got them wrong: chunk 2 failing left the day reading NOTHING where `main` still read
+// the old rows. So:
+//
+//     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+//     NEVER NEITHER. A day may read HIGH between commits; it must never read LOWER
+//     than `main` would.
+//
+// Pass B therefore commits in the LAST chunk's transaction. `applyMetricSampleSupersede`
+// carries the argument and the concurrency guard that goes with it.
+//
 // The ascending-`started_at` sort survives as deterministic write order and NOTHING MORE.
 // It does no work here and must not be described as what makes the store correct.
 
@@ -577,8 +590,21 @@ export interface MetricSampleUpsertOptions {
  * person reading a total that reads HIGH does not care which side of the push the second
  * reading came from. See `countInPushDoubleCounts`.
  */
+/**
+ * One stored row the plan collapses, CARRYING THE STAMP IT WAS PLANNED AGAINST.
+ *
+ * `pushedAt` is the victim's `metric_samples.pushed_at` exactly as pass A read it, and it
+ * is the evidence pass A's decision rested on: this row belongs to an older push than the
+ * one now arriving. Pass B re-states it in the DELETE, so the row is removed only if that
+ * evidence is still true. See `applyMetricSampleSupersede`.
+ */
+export interface SupersedeVictim {
+  id: number;
+  pushedAt: string | null;
+}
+
 export interface MetricSampleSupersedePlan {
-  victims: number[];
+  victims: SupersedeVictim[];
   leftStanding: number[];
   inPushDoubleCounts: number;
 }
@@ -750,7 +776,13 @@ export function planMetricSampleSupersede(
   // a constant this push cannot move.
   const era: UnstampedEra | null = readUnstampedEra();
 
-  const victims = new Set<number>();
+  // Victim id → the `pushed_at` pass A read on that row. A Map rather than a Set because
+  // pass B re-states that stamp in the DELETE: what pass A decided is only valid while the
+  // row still carries the stamp the decision was made against (see
+  // `applyMetricSampleSupersede`). Two incoming buckets can name the same stored row, and
+  // both read it in the same read-only pass, so the second write of a key is the same
+  // value as the first.
+  const victims = new Map<number, string | null>();
   const leftStanding = new Set<number>();
   // The incoming rows the in-push scan runs over — exactly the ones that clear the gate
   // below, so the scan costs nothing on a push that carries no day buckets at all.
@@ -800,7 +832,7 @@ export function planMetricSampleSupersede(
       if (pushKeys.has(victimKey)) {
         leftStanding.add(victim.id);
         standingKeyById.set(victim.id, victimKey);
-      } else victims.add(victim.id);
+      } else victims.set(victim.id, victim.pushed_at);
     }
   }
   // Disjoint, so the Review line counts rows still reading wrong and nothing else. Every
@@ -810,9 +842,9 @@ export function planMetricSampleSupersede(
   // carries the stored row's key. None of them varies between the incoming buckets that
   // overlap it, so no row can be collapsed by one and left by another. Stated here rather
   // than left to be re-derived, since two rounds were lost to a claim of that shape.
-  for (const id of victims) leftStanding.delete(id);
+  for (const id of victims.keys()) leftStanding.delete(id);
   return {
-    victims: [...victims],
+    victims: [...victims].map(([id, pushedAt]) => ({ id, pushedAt })),
     leftStanding: [...leftStanding],
     // The double count this push carries against ITSELF, which no set of stored ids can
     // hold. Ruling item 3 says write both rows; this is the half that says so out loud.
@@ -826,9 +858,44 @@ export function planMetricSampleSupersede(
 /**
  * PASS B. Apply the plan's deletes, once, and say how many rows went.
  *
- * Runs inside the FIRST CHUNK'S transaction rather than one of its own, deliberately: a
- * crash between B and C must not leave a day reading LOW with nothing in flight to
- * restore it. The deletes and the first rows of the push land or roll back together.
+ * IT RUNS IN THE **LAST** CHUNK'S TRANSACTION, AFTER THAT CHUNK'S UPSERTS. An earlier
+ * round of this PR put it in the FIRST chunk's, with the justification below — "a crash
+ * between B and C must not leave a day reading LOW with nothing in flight to restore it".
+ * That sentence is still the reason. The placement it was used to justify was wrong, and
+ * the owner corrected it (#3424, the ruling of 2026-08-22): first-chunk placement gives
+ * atomicity only when the push is ONE chunk. In a multi-chunk push the deletes commit
+ * with chunk 1, and a failure in chunk 2 leaves the day reading NOTHING where `main`
+ * would still read the old rows — measured at 8000 → nothing. The letter of the earlier
+ * ruling produced exactly the outcome its own reason forbids.
+ *
+ * THE INVARIANT, which is the durable thing here and outlives any placement:
+ *
+ *     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+ *     NEVER NEITHER. The mechanism may leave a day reading HIGH between commits;
+ *     it must never read LOWER than `main` would.
+ *
+ * The placement follows from it: a victim is deleted only in a transaction that commits
+ * with or after every row of the push that replaces it. One chunk — the same transaction
+ * as the rows. Many chunks — chunks 1…n−1 commit upserts only and the store transiently
+ * reads high (old + new, the visible double count), and the final chunk commits its
+ * upserts and the WHOLE victim set together. A failure in chunk k leaves old + chunks<k:
+ * a double count, never a hole. The exporter re-carries the unacked rows on its next push
+ * (its failed deltas fold into the next one — measured on the 08-21 DNS failures), pass A
+ * re-plans over that store, and that push collapses it.
+ *
+ * PASS A'S PLAN IS STILL VALID WHEN THIS RUNS, and it is not re-derived here. Victims were
+ * computed excluding the natural-key twin of EVERY incoming row of the push, so no upsert
+ * in chunks 1…n−1 — nor in the last chunk, which runs before this — can touch a victim.
+ * The set of ids is exactly what pass A returned.
+ *
+ * THE `pushed_at IS ?` GUARD IS FOR ANOTHER PROCESS, NOT FOR THIS ONE. Three processes
+ * share one DB file (`lib/db.ts`), so pass A's read and this DELETE can be separated by
+ * another push's committed writes — a window that widens with the number of chunks. The
+ * clause re-states the stamp pass A actually read on the victim, so a row RE-STAMPED by a
+ * concurrent push between the two is not deleted on stale evidence: it is a row some
+ * other push has since claimed as current, and the DELETE simply matches nothing. `IS`
+ * rather than `=` because the stamp is NULL on every pre-column row, and `= NULL` is never
+ * true — the NULL-stamped victims are the deploy-day rows this rule exists to collapse.
  *
  * THE DELETE RE-STATES `profile_id`, redundantly and on purpose: every id it is given
  * came out of the profile-scoped candidate SELECT in pass A. A barrier nothing observes
@@ -844,14 +911,15 @@ export function planMetricSampleSupersede(
  */
 export function applyMetricSampleSupersede(
   profileId: number,
-  victims: readonly number[]
+  victims: readonly SupersedeVictim[]
 ): number {
   if (victims.length === 0) return 0;
   const dropOverlap = db.prepare(
-    "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+    "DELETE FROM metric_samples WHERE id = ? AND profile_id = ? AND pushed_at IS ?"
   );
   let removed = 0;
-  for (const id of victims) removed += dropOverlap.run(id, profileId).changes;
+  for (const victim of victims)
+    removed += dropOverlap.run(victim.id, profileId, victim.pushedAt).changes;
   return removed;
 }
 

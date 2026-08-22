@@ -485,12 +485,14 @@ describe("the same push leaves the same store, whatever the order and the chunki
       })
     );
     const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b);
+    const victimIds = (plan: (typeof plans)[number]) =>
+      sorted(plan.victims.map((v) => v.id));
     // It found something: the NY 08-19 row is a victim of the re-anchored LA 08-19
     // bucket, and the NY 08-20 row is re-sent by this push so it is left standing.
     expect(plans[0].victims.length).toBe(1);
     expect(plans[0].leftStanding.length).toBe(1);
     for (const plan of plans.slice(1)) {
-      expect(sorted(plan.victims)).toEqual(sorted(plans[0].victims));
+      expect(victimIds(plan)).toEqual(victimIds(plans[0]));
       expect(sorted(plan.leftStanding)).toEqual(sorted(plans[0].leftStanding));
     }
   });

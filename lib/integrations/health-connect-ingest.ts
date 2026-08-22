@@ -145,8 +145,8 @@ export function ingestHealthConnectPayload(
     // `upsertMetricSamples` orders what it is GIVEN and only ever sees one chunk, so
     // sorting here is what makes the per-chunk order a global one. Correctness does not
     // rest on it, and no longer rests on the stamp either: the deletes are planned over
-    // the whole push below and applied before any of it is written, so neither row order
-    // nor the chunk split can reach them (owner ruling on #3424, option 2).
+    // the whole push below, before any of it is written, so neither row order nor the
+    // chunk split can reach them (owner ruling on #3424, option 2).
     const orderedSamples = [...parsed.samples].sort((a, b) =>
       compareWindowStarts(a.started_at, b.started_at)
     );
@@ -179,25 +179,47 @@ export function ingestHealthConnectPayload(
     // `leftStanding` to name. Reporting only the first was silent on exactly the
     // configuration the ruling wrote item 3 for.
     overlapsLeft = supersede.leftStanding.length + supersede.inPushDoubleCounts;
-    // ── PASS B ── the deletes, ONCE, inside the FIRST CHUNK'S transaction.
+    // ── PASS B ── the deletes, ONCE, inside the LAST CHUNK'S transaction.
     //
-    // Not a transaction of its own: a crash between the deletes and the writes must not
-    // leave a day reading LOW with nothing in flight to restore it. The deletes and the
-    // first rows of the push commit or roll back together. `pending` is what makes this
-    // the first chunk only — every later chunk sees it already spent.
-    let pending: readonly number[] | null = supersede.victims;
+    // Not a transaction of its own, and NOT the first chunk's — that was this PR's earlier
+    // reading of the ruling, and the owner corrected it (#3424, 2026-08-22). The reason
+    // was always "a crash between the deletes and the writes must not leave a day reading
+    // LOW with nothing in flight to restore it"; first-chunk placement satisfies that only
+    // for a ONE-CHUNK push. Split the push and it does the opposite: the deletes commit
+    // with chunk 1, chunk 2 fails, and the day reads NOTHING where `main` would still read
+    // the old rows.
+    //
+    // The invariant the placement serves, which is the thing to keep:
+    //
+    //     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+    //     NEVER NEITHER. A day may read HIGH between commits; it must never read
+    //     LOWER than `main` would.
+    //
+    // So a victim is deleted only in a transaction committing with or after every row that
+    // replaces it. One chunk: the same transaction as the rows. Many: chunks 1…n−1 commit
+    // upserts only and the store transiently double counts, then the last chunk commits
+    // its upserts AND the whole victim set together. A failure in chunk k leaves old +
+    // chunks<k — visible, never a hole — and the exporter re-carries the unacked rows on
+    // its next push, which pass A re-plans over and collapses.
+    //
+    // `remaining` is what makes this the last chunk: the slices partition `orderedSamples`,
+    // so it reaches 0 exactly once, in the final one. The deletes run AFTER that chunk's
+    // upserts, so pass C never reads a store pass B has touched — the pass-A/pass-C
+    // invariant holds literally rather than by the twin exclusion alone.
+    let remaining = orderedSamples.length;
     commitChunks(
       orderedSamples,
       (slice, sink) => {
-        const removed = pending
-          ? applyMetricSampleSupersede(profileId, pending)
-          : 0;
-        pending = null;
+        remaining -= slice.length;
         // ── PASS C ── the upsert loop, with no supersede logic in it at all.
         const part = upsertMetricSamples(profileId, slice, source, sink, {
           pushedAt,
         });
-        part.superseded += removed;
+        if (remaining === 0)
+          part.superseded += applyMetricSampleSupersede(
+            profileId,
+            supersede.victims
+          );
         return part;
       },
       (c) => {
