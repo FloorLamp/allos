@@ -14,19 +14,16 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
+import { migratedDb } from "./migrated-db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up016 } from "@/lib/migrations/versions/016-goal-status-drop-archived";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
-function bootedDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 10000");
-  migrate(db); // baseline + all migrations (incl. 016) + boot tasks; profile 1 exists
-  return db;
-}
+// The booted end state (incl. 016) without replaying the chain per test — see
+// ./migrated-db.ts (#3471). The legacy-fold test below still replays, because its
+// question IS the chain.
+const bootedDb = migratedDb;
 
 function goalsSql(db: Database.Database): string {
   return (

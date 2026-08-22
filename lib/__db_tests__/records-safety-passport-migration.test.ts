@@ -10,18 +10,16 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
+import { migratedDb } from "./migrated-db";
 import { up as up122 } from "@/lib/migrations/versions/122-records-safety-passport";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
-function newDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 10000");
-  migrate(db);
-  return db;
-}
+// The migrated end state, taken from the snapshot rather than replayed per test —
+// ./migrated-db.ts (#3471). Every test here starts AFTER 122 has applied and then
+// exercises up122 against that end state, so the snapshot is the same starting
+// point the replay produced.
+const newDb = migratedDb;
 
 function columns(db: Database.Database, table: string): string[] {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
@@ -72,7 +70,8 @@ describe("migration 122 — schema shape", () => {
       `INSERT INTO allergies (substance, reaction, severity, profile_id)
        VALUES ('Penicillin', 'Hives', 'moderate', ?)`
     ).run(p);
-    // The backfill already ran during migrate(); running it again must not double.
+    // The backfill already ran during the boot this snapshot came from; running it
+  // again must not double.
     up122(db);
     up122(db);
     const n = db
