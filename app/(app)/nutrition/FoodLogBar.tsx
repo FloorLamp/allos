@@ -1186,6 +1186,13 @@ export default function FoodLogBar({
                   shown in full — the same content, told to stay expanded. */}
               <FoodRowLabel group={g} expanded />
             </div>
+            {/* 32px RENDERED, NOT 28 (#3486's reach). `.tap-target` is #3514's
+                second registered mechanism and it adds a FIXED 12px — `inset:
+                -6px` on every side — so it reaches the 44px floor only from 32px
+                up. At `h-7` this stepper was 28 + 12 = 40 effective while wearing
+                the class that says the floor is met, which is worse than a plainly
+                undersized control: nothing was ever going to look at it again.
+                lib/tap-floor-reach.ts holds the arithmetic for the whole class. */}
             <button
               type="button"
               data-testid={`undo-${g.slug}`}
@@ -1193,7 +1200,7 @@ export default function FoodLogBar({
               title="Remove a serving"
               disabled={mealCount <= 0}
               onClick={() => bump(g.slug, -1)}
-              className="tap-target flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
+              className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
             >
               <IconMinus className="h-4 w-4" stroke={2} />
             </button>
@@ -1214,7 +1221,7 @@ export default function FoodLogBar({
               aria-label={`Add a ${g.name} serving to ${activeSlot}`}
               title="Add a serving"
               onClick={() => bump(g.slug, 1)}
-              className="tap-target flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
+              className="tap-target flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
             >
               <IconPlus className="h-4 w-4" stroke={2} />
             </button>
