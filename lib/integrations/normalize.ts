@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
+import { utcInstant } from "@/lib/date";
 import type { ActivityType, ActivityComponent, MedicalFlag } from "@/lib/types";
 import {
   normalizeResultStatus,
@@ -45,11 +46,18 @@ export interface NormBodyMetric {
   weight_kg?: Kg;
   body_fat_pct?: number;
   resting_hr?: number;
-  // The absolute instant (ISO) this reading was taken. Only used to collapse multiple
-  // same-date readings within a batch deterministically (#605) — the LATEST non-null
-  // value wins per field. Sources that already emit one row per date (Health
-  // Connect) omit it; Withings/Oura set it so their unsorted per-reading rows fold
-  // in chronological order. Never persisted.
+  // The absolute instant this reading was taken, canonical UTC (#2205's `utcInstant`
+  // shape). Two uses, and it grew the second one in #3524:
+  //   • it orders the per-batch collapse of multiple same-date readings (#605) — the
+  //     LATEST non-null value wins per field. Withings/Oura set it so their unsorted
+  //     per-reading rows fold in chronological order; Health Connect pre-aggregates per
+  //     day and sets the latest instant that contributed to the day.
+  //   • it is PERSISTED as `body_metrics.occurred_at` — "when the day's reading was
+  //     actually taken", the column migration 165 (#2235) declared and left for its
+  //     first writer to bind. It stays DESCRIPTIVE: the natural key is still
+  //     (profile_id, date, source) and there is still one row per day.
+  // Absent means day-grain, and that is what the column stores: NULL, never a midnight
+  // anchor.
   measured_at?: string;
   // The day is only PARTIALLY covered by this batch's rolling window (#606): its
   // body-fat / resting-HR day-averages were computed from a partial tail of the day's
@@ -346,13 +354,21 @@ export function upsertBodyMetrics(
   // Atomic upsert on the unique key: the bound values are the RESOLVED post-image
   // (incoming for a fresh row, mergeBodyMetric(mine, incoming) for an existing one),
   // so `excluded.*` already carries the merged triple and DO UPDATE writes it.
+  // `occurred_at` is written from the collapsed row's `measured_at` and is BOUND, never
+  // built here — the column is on the canonical instant convention (#2205 phase 2,
+  // lib/time-columns.ts), and lib/__tests__/instant-writer-scan.test.ts is the ratchet
+  // that keeps the shape a decision of the column rather than of this call site. It is
+  // COALESCEd on update so a later window that states no instant cannot blank one an
+  // earlier window recorded — the same "fills gaps, never blanks" rule mergeBodyMetric
+  // applies to the values beside it.
   const upsert = db.prepare(
-    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source, occurred_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, date, source) DO UPDATE SET
        weight_kg = excluded.weight_kg,
        body_fat_pct = excluded.body_fat_pct,
-       resting_hr = excluded.resting_hr`
+       resting_hr = excluded.resting_hr,
+       occurred_at = COALESCE(excluded.occurred_at, body_metrics.occurred_at)`
   );
 
   // Re-import tombstones for body_metrics: a source-owned row the user merged away or
@@ -415,7 +431,8 @@ export function upsertBodyMetrics(
       post.weight_kg,
       post.body_fat_pct,
       post.resting_hr,
-      source
+      source,
+      bodyMetricOccurredAt(r.measured_at)
     );
     tallyUpsert(counts, disposition);
     // Per-row provenance (#1333): the affected row id is the pre-image row's id on an
@@ -427,6 +444,19 @@ export function upsertBodyMetrics(
     });
   }
   return counts;
+}
+
+// A source's stated reading instant, re-serialized onto the canonical stored shape
+// (#2205). It is NOT hand-built here — `utcInstant` is lib/date.ts's one writer for the
+// convention — because the sources do not agree on a spelling: Health Connect already
+// mints canonical, Withings states a local ISO with an offset and Oura a bedtime end, and
+// a column that accepted all three would be back to holding several serializations of
+// one quantity. Unparseable or absent → NULL, which is the column's honest "day-grain,
+// nobody stated a time".
+function bodyMetricOccurredAt(measuredAt: string | undefined): string | null {
+  if (!measuredAt) return null;
+  const d = new Date(measuredAt);
+  return Number.isNaN(d.getTime()) ? null : utcInstant(d);
 }
 
 const BODY_METRIC_COMPARE_COLS: string[] = [

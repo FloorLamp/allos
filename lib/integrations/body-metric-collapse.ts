@@ -18,7 +18,11 @@ import type { NormBodyMetric } from "./normalize";
 // byDate aggregation and makes the stored triple independent of the batch order.
 //
 // `partial_day` is a per-date property (the HC partial-window guard, #606), so it is
-// carried through from any row in the group.
+// carried through from any row in the group. `measured_at` survives the collapse for the
+// same reason the values do — it is the LATEST stated instant in the group, which is the
+// instant the winning weight came from, and it is what `upsertBodyMetrics` persists as
+// `body_metrics.occurred_at` (#3524). Dropping it here was invisible while nothing
+// persisted it.
 export function collapseBodyMetricsByDate(
   rows: NormBodyMetric[]
 ): NormBodyMetric[] {
@@ -49,6 +53,7 @@ export function collapseBodyMetricsByDate(
       if (r.body_fat_pct != null) out.body_fat_pct = r.body_fat_pct;
       if (r.resting_hr != null) out.resting_hr = r.resting_hr;
       if (r.partial_day) out.partial_day = true;
+      if (r.measured_at) out.measured_at = r.measured_at;
     }
     return out;
   });
