@@ -106,6 +106,20 @@ These are not review taste; each retired a green that meant nothing.
 - Never read an exit code through a pipe. `cmd | tail` exits with tail's status.
 - **A number is a grep until it has been spot-checked.** This holds for numbers
   you relay as much as numbers you produce, and the relay is the unguarded half.
+- **The dangerous check is the one that fails toward a plausible correction of
+  work that was already right.** A check saying "you did not do the thing" gets
+  acted on; a check saying "you did something impossible" gets investigated. Four
+  times in one session a grep over a just-edited file reported an edit missing,
+  because the window was reading the author's own comment EXPLAINING the edit and
+  quoting what it removed. The defence is not skepticism about the number—it is
+  asking what the check was matching on, and opening the file.
+- **A comment can generate a real rule.** Tailwind's content scanner reads source
+  as text, so a class name in an English sentence compiles to CSS: `.min-h-9`
+  shipped because a comment mentioned it (#3523), and deleting the sentence
+  deleted the rule. The asymmetry is usable—the scanner can only ADD from prose,
+  never remove—so a claim over the compiled sheet should REQUIRE the rules it
+  expects rather than FORBID rules it does not. The presence form is immune to
+  this; the absence form is not.
 
 ## Migrations
 
