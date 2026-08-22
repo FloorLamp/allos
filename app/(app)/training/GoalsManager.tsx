@@ -208,7 +208,8 @@ export default function GoalsManager({
                     )}
                   </div>
                   <OverflowMenu
-                    label="Goal actions"
+                    kind="Goal"
+                    itemName={g.title}
                     open={openMenu === g.id}
                     onOpenChange={(o) => setOpenMenu(o ? g.id : null)}
                   >

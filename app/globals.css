@@ -1599,6 +1599,56 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── SECTION: Touch tap targets ── */
+/* THE BUTTON FAMILY'S HEIGHT FLOOR (#3486), declared ONCE for the whole family.
+   `btn` / `btn-ghost` / `btn-danger` set padding and nothing else, so a button's
+   height was whatever its CONTENT happened to be: a 20px text line gives 36px,
+   and the same button with its label hidden below `sm` (`hidden sm:inline`) has
+   only a 16px icon left, so it renders 32px — measurably shorter than the labeled
+   sibling beside it. That is the "shorter wellness +" the 2026-08-21 phone review
+   spotted, and two call sites had already hand-fixed their own copy of it with a
+   local `min-h-10 min-w-10 … sm:min-h-0 sm:min-w-0`. Those hand fixes are the
+   evidence, not the fix: the ninth icon-only composition added next month would
+   have inherited nothing.
+
+   So the floor lives with the family, at the 40px floor #3377 named for this and
+   that the two hand-fixed call sites had already reached for independently, and
+   only below `sm` — desktop density keeps its compact `btn-sm` rows, where a
+   mouse is doing the pointing. `btn-sm` composes as `btn btn-sm`, so it inherits
+   this from `.btn` rather than needing its own rule. Width too, not just height:
+   an icon-only button is the one shape that can be narrower than the floor, and a
+   labeled button is already wider than 40px, so the width half is a no-op
+   everywhere it is not needed.
+
+   IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
+   CEILING. The first cut of this rule was unlayered, on the reasoning that
+   outranking a call site's own `min-h-*` is what stops one drifting below the
+   number. It does the opposite: `min-block-size` does not compose, it REPLACES, so
+   the winning declaration is simply the last word — and an unlayered 40px beat the
+   pager's deliberate `min-h-11`, shrinking a 44px thumb step to 40 and taking
+   e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
+   floor. Tailwind orders `components` before `utilities`, so this loses to any
+   call-site `min-h-*` and the two numbers resolve the way a reader expects them
+   to: the family sets 40 for everything that asks for nothing, and a surface that
+   needs MORE — the pager's 44px tap step — says so and gets it. A surface that
+   wants LESS is not asking for a smaller floor; it is telling us it is not a
+   member of this family.
+
+   The guard is e2e/button-height-floor.mobile.spec.ts, which measures RENDERED
+   bounding boxes at 390px — a class-string assertion would have passed against
+   the very tree this defect shipped in. The other direction, that this rule never
+   pulls a taller target DOWN, is the pager's own rendered-box measurement in
+   e2e/mobile-ui-polish.spec.ts, which is the test that caught it. */
+@layer components {
+  @media (max-width: 639.98px) {
+    .btn,
+    .btn-ghost,
+    .btn-danger {
+      min-block-size: 2.5rem;
+      min-inline-size: 2.5rem;
+    }
+  }
+}
+
 /* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
    density, which is below the ~44px touch-target guideline. On coarse-pointer
    (touch) devices only, extend the clickable area with an invisible pseudo

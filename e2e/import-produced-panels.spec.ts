@@ -55,7 +55,14 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
     await expect(
       page.getByRole("columnheader", { name: "Panel", exact: true })
     ).toBeVisible();
-    await expect(page.getByRole("cell", { name: /E2E Sodium/ })).toBeVisible();
+    // The row's NAME cell (`td[data-card="title"]`), not "any cell that mentions
+    // the analyte". Since #3501 the actions cell carries the ⋯ trigger's own
+    // accessible name — "Result actions for E2E Sodium" — so a bare role=cell
+    // match now answers with two cells in the same row. The name cell is where a
+    // row's identity has always lived, and it is what this line was reaching for.
+    await expect(
+      page.locator('td[data-card="title"]').filter({ hasText: "E2E Sodium" })
+    ).toBeVisible();
     // The analyte grid keeps its per-row editing affordance.
     await expect(
       page.getByRole("button", { name: "Result actions" }).first() // first-ok: doc 909 is this spec's own fixture (a single lab row)

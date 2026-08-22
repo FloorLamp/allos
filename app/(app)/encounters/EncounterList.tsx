@@ -227,6 +227,7 @@ export default function EncounterList({
       ) : null}
       <RecordTable
         items={shown}
+        itemName={(e) => `${dateLabel(e, fmt)} visit`}
         columns={buildColumns(fmt, linkedRecordCounts, episodes)}
         emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
         multiView={

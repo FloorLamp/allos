@@ -94,6 +94,7 @@ export default function FamilyHistoryList({
     <RecordTable
       items={items}
       columns={COLUMNS}
+      itemName={(f) => f.condition}
       emptyMessage="No family history yet. Add an entry, or import a MyChart / CCD health record to populate it."
       multiView={
         multiView

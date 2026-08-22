@@ -121,7 +121,8 @@ function LesionRecordRow({
         )}
         <span className="ml-auto">
           <OverflowMenu
-            label="Record actions"
+            kind="Record"
+            itemName={formatRecordDate(record.observed_date, "—", fmt)}
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >

@@ -94,7 +94,11 @@ export default function ImmunizationRecordActions({
   return (
     <div className="print:hidden">
       <OverflowMenu
-        label="Record actions"
+        kind="Record"
+        // A SURFACE menu, not a row menu: print, share and import act on the
+        // immunization record as a whole, so the record IS the thing named. It is
+        // registered as such in lib/__tests__/overflow-menu-identity.test.ts.
+        itemName="Immunizations"
         open={menuOpen}
         onOpenChange={setMenuOpen}
         panelClassName="w-56"

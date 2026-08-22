@@ -459,11 +459,7 @@ function SleepMoodRowMenu({
 
   return (
     <div className="flex items-center justify-end">
-      <OverflowMenu
-        label={`Actions for ${dateLabel}`}
-        open={open}
-        onOpenChange={setOpen}
-      >
+      <OverflowMenu itemName={dateLabel} open={open} onOpenChange={setOpen}>
         {({ close }) => (
           <>
             <button

@@ -494,7 +494,7 @@ export default function PortalsSurface({
           {/* ⋯ trailing everything, on every row type (#1874 point 14). */}
           {(writable || (i.ignored && canAct)) && (
             <OverflowMenu
-              label={`Actions for ${i.patientLabel}`}
+              itemName={i.patientLabel}
               open={openMenu === rowKey}
               onOpenChange={(open) => setOpenMenu(open ? rowKey : null)}
             >
@@ -648,7 +648,7 @@ export default function PortalsSurface({
             // Maintenance verbs, not co-equal CTAs (#1874 point 5): Ignore and Not now
             // live in the ⋯, and the durable one is admin-only (#1875).
             <OverflowMenu
-              label={`Actions for ${p.patientLabel}`}
+              itemName={p.patientLabel}
               open={openMenu === rowKey}
               onOpenChange={(open) => setOpenMenu(open ? rowKey : null)}
             >
@@ -937,7 +937,7 @@ export default function PortalsSurface({
     const key = `account-menu-${account.id}`;
     return (
       <OverflowMenu
-        label={`Actions for ${account.name}`}
+        itemName={account.name}
         open={openMenu === key}
         onOpenChange={(open) => setOpenMenu(open ? key : null)}
       >
@@ -1067,7 +1067,7 @@ export default function PortalsSurface({
           <RowNote id={sectionKey} note={note} />
           {isAdmin && (
             <OverflowMenu
-              label={`Actions for ${portal.name}`}
+              itemName={portal.name}
               open={openMenu === sectionKey}
               onOpenChange={(open) => setOpenMenu(open ? sectionKey : null)}
             >

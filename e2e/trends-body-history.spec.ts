@@ -50,7 +50,7 @@ test("the body history table pages instead of rendering every row (#2530)", asyn
     await expect(
       rows
         .nth(0)
-        .getByRole("button", { name: `Actions for entry from ${firstDate}` })
+        .getByRole("button", { name: `Entry actions for ${firstDate}` })
     ).toBeVisible();
 
     // Next is a real navigation: the page rides the URL, so what it turns is the

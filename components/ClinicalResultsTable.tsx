@@ -522,7 +522,8 @@ function ClinicalResultRow({
         {hasMenu ? (
           <div className="flex items-center justify-end">
             <OverflowMenu
-              label="Result actions"
+              kind="Result"
+              itemName={r.name}
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >

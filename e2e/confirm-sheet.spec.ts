@@ -26,7 +26,7 @@ test("the same confirm uses its desktop presentation and cancels cleanly", async
   // The row's ⋯ trigger names its own entry (#2530), so the substring match finds
   // every body-history row's menu and none of the page's other controls.
   const rowActions = page.getByRole("button", {
-    name: "Actions for entry from",
+    name: "Entry actions for",
   });
   await expect(rowActions.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it
 

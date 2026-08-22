@@ -232,7 +232,8 @@ export default function EditableSupplementRow({
             />
           )}
           <OverflowMenu
-            label="Supplement actions"
+            kind="Supplement"
+            itemName={s.name}
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >

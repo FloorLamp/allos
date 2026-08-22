@@ -122,6 +122,7 @@ export default function BottomSheet({
   presentation = "sheet",
   zIndexClass = "z-60",
   titleHidden = false,
+  titleTruncates = false,
   size = "sm",
   showClose = false,
   closeDisabled = false,
@@ -155,6 +156,14 @@ export default function BottomSheet({
   // visually-hidden heading — so screen readers announce it exactly as before;
   // this is never a way to ship a nameless dialog.
   titleHidden?: boolean;
+  // Keep the visible heading to ONE LINE, ellipsised (#3501). A sheet whose title
+  // is built from a row's display name inherits that name's length, and a long one
+  // wrapped the header and pushed the close control off the first line. The sheet
+  // is still identified by its first words, which is what the heading is for.
+  // Set by `components/overlay/AnchoredPanel.tsx` for every ⋯ panel it hosts, and
+  // off by default: a sheet whose title is authored copy (a form, a confirm) is
+  // written to fit and should be allowed to wrap rather than lose its last words.
+  titleTruncates?: boolean;
   // How wide the panel gets from `sm` up (#2774). Below `sm` every presentation
   // is full-width, so there is nothing to choose. See OVERLAY_PANEL_MAX_WIDTH
   // for what the three buckets mean; the default is the sheet's historical
@@ -341,7 +350,7 @@ export default function BottomSheet({
     ? "sr-only"
     : `font-semibold text-slate-900 dark:text-slate-100 ${
         asDialog || asCentered ? "text-lg" : "text-base"
-      }`;
+      }${titleTruncates ? " min-w-0 truncate" : ""}`;
   const heading = (
     <h2 id={titleId} className={titleClass}>
       {title}
