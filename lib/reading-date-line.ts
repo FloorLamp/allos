@@ -1,4 +1,9 @@
-import { formatCompactAge } from "./format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatCompactAge,
+  formatDateWithYear,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import { isBiomarkerStale } from "./reference-range";
 
 // ONE line for "when was this reading taken?" (issue #2316).
@@ -8,11 +13,17 @@ import { isBiomarkerStale } from "./reference-range";
 // that is provenance navigation rather than a date at all. On a phone those three
 // lines are ~40% of a card, and two of them say the same thing.
 //
-// So the date is one line — `2026-06-03 · 2mo` — at BOTH viewports, from one
+// So the date is one line — `Jun 3, 2026 · 2mo` — at BOTH viewports, from one
 // authored tree (no `sm:` branch; the wide table's Date column reads better as one
 // line too). The compact half is the SHARED formatter (#1216's `formatCompactAge`),
 // not a second one, so the dashboard's clinical-result readout and this row can never
 // round the same date into different buckets. The link moved into the row's ⋯ menu.
+//
+// The DAY half is a DISPLAY string, not the stored one (#3492). It used to be
+// `reading.date` printed verbatim, which put "2026-06-03" in front of a reader on
+// the app's densest clinical surface. Prefs are threaded in rather than resolved
+// here, so this module stays pure and there is still exactly one date formatter in
+// the app; the default is the documented login-less shape, as everywhere else.
 //
 // The over-a-year amber treatment travels with the AGE token, because the age is
 // what went stale — the date itself is just a fact. Staleness is not re-derived
@@ -34,7 +45,7 @@ const AGE_CLASS_CURRENT = "text-slate-500 dark:text-slate-400";
 const AGE_CLASS_STALE = "text-amber-600 dark:text-amber-400";
 
 export interface ReadingDateLine {
-  /** The reading's own day, printed as stored. */
+  /** The reading's own day, rendered through the login's date prefs (#3492). */
   date: string;
   /** The compact age beside it, or null when this row shows no age. */
   age: string | null;
@@ -52,11 +63,13 @@ export interface ReadingDateLine {
 export function readingDateLine(
   reading: { date: string; category: string | null },
   today: string,
-  showAge: boolean
+  showAge: boolean,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): ReadingDateLine {
+  const day = formatDateWithYear(reading.date, prefs);
   if (!showAge)
     return {
-      date: reading.date,
+      date: day,
       age: null,
       stale: false,
       ageTitle: null,
@@ -64,7 +77,7 @@ export function readingDateLine(
     };
   const stale = isBiomarkerStale(reading.date, reading.category, today);
   return {
-    date: reading.date,
+    date: day,
     age: formatCompactAge(reading.date, today),
     stale,
     ageTitle: stale ? STALE_AGE_TITLE : null,

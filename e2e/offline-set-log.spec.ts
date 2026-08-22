@@ -58,7 +58,7 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
   await page.goto("/training?tab=log");
   await hydratedClick(
     page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
+    page.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
 
@@ -118,7 +118,7 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
   // #1596 boundary).
   await hydratedClick(
     page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
+    page.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   await expect(page.getByTestId("draft-restore-banner")).toHaveCount(0);

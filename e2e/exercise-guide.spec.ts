@@ -70,7 +70,7 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   // in the dock or the overlay portal; see entry-ergonomics.spec.ts's note).
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 
   // Pick a catalog lift with per-implement guide notes (Barbell Bench Press →

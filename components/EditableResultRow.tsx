@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import type { ClinicalObservation } from "@/lib/types";
 import { observationNameLink } from "@/lib/import-browser";
+import { formatDateWithYear } from "@/lib/format-date";
+import { useFormatPrefs } from "./FormatPrefsProvider";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { Tag, MedicalValue } from "./ui";
 import { Td } from "./ResponsiveTable";
@@ -40,6 +42,7 @@ export default function EditableResultRow({
   // What the extractor hedged about THIS row, when a flag resolved to it alone.
   flag?: ConfidenceFlag;
 }) {
+  const prefs = useFormatPrefs();
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
@@ -127,8 +130,11 @@ export default function EditableResultRow({
         <td className="td">
           <Tag value={r.category ?? "Needs category"} />
         </td>
+        {/* The login's date format, not the stored one (#3492) — the sibling of
+            the read-only row's cell in ExtractedObservations, and year-bearing for
+            the same reason: imported rows cross years. */}
         <Td slot="meta" label="Date" className="whitespace-nowrap">
-          {r.date}
+          {formatDateWithYear(r.date, prefs)}
         </Td>
         <Td slot="actions">
           <div className="flex items-center justify-end">

@@ -1,12 +1,9 @@
 import { test, expect } from "./fixtures";
-import type { Locator } from "@playwright/test";
 import {
+  expectAtomicCardPairs,
   expectNoClippedContent,
   followLink,
-  forgeBrokenCardPair,
   hydratedClick,
-  restoreForgedPair,
-  scanCardMetaPairs,
   settledSelect,
 } from "./helpers";
 
@@ -146,41 +143,11 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
   // (#3509) — so every surface here (a) names labels it must have SEEN, and (b)
   // forges a break and requires the scan to flag exactly it, then restores and
   // re-runs the control.
-  const expectAtomicPairs = async (scope: Locator, mustSee: string[]) => {
-    const scan = await scanCardMetaPairs(scope);
-    // (a) The scan SAW what it is meant to see. Without this the two assertions
-    // below are both satisfied by a scan that found no pairs at all.
-    expect(scan.labels, `pairs seen: ${scan.pairs.join(" | ")}`).toEqual(
-      expect.arrayContaining(mustSee)
-    );
-    expect(
-      scan.breaks,
-      "a card-mode meta cell put its value on a different line from its own " +
-        "label. The pair is supposed to be one non-wrapping flex line " +
-        "(`table-cards` in app/globals.css); wrapping belongs BETWEEN pairs."
-    ).toEqual([]);
-    expect(
-      scan.overflows,
-      "a card-mode meta cell ran past its own row. The usual cause is a value " +
-        "passed as several loose sibling nodes: the cell is a flex line, so they " +
-        "become items side by side instead of stacking. Pass one node " +
-        "(components/ResponsiveTable.tsx says so where `label` is documented)."
-    ).toEqual([]);
-
-    // (b) …and it can still SEE a break. The forgery is the pre-#3499 layout on
-    // one cell, so this fails if the rect reads have gone blind.
-    const forged = await forgeBrokenCardPair(scope);
-    const forgedScan = await scanCardMetaPairs(scope);
-    expect(
-      forgedScan.breaks,
-      "the scan did not flag a pair broken ON PURPOSE — it cannot see the " +
-        "defect it is here to catch, so its clean sweep above meant nothing."
-    ).toEqual([forged]);
-
-    // The control AFTER the restore, not only before it.
-    await restoreForgedPair(scope);
-    expect((await scanCardMetaPairs(scope)).breaks).toEqual([]);
-  };
+  // The assertion and its discriminator are ONE call (`expectAtomicCardPairs` in
+  // ./helpers), because #3517 asks this guard to reach more surfaces and the
+  // cheapest way to reach a new surface is a call site that forgets the forgery.
+  // Binding them together makes "do not add a call site that skips it" structural
+  // rather than a review rule.
 
   test("an imaging study card reads as distinct label-value pairs, and they wrap between pairs (#3499)", async ({
     page,
@@ -191,7 +158,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     // its content yet satisfies every geometry assertion made about it (#3384).
     const table = list.locator("table").first(); // first-ok: the claim is about the card SHAPE of a study row, not which table on the page owns it
     await expect(table.locator('td[data-card="title"]').first()).toBeVisible(); // first-ok: same — any rendered study row proves the pair layout
-    await expectAtomicPairs(table, ["Modality", "Date"]);
+    await expectAtomicCardPairs(table, ["Modality", "Date"]);
 
     // The pairing has to be READABLE, not merely unbroken: label and value were
     // the same slate-500 before #3499, which is why the strip ran together. This
@@ -232,7 +199,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await expect(
       table.locator('td[data-card="meta"] .card-cell-label').first() // first-ok: any labeled meta cell proves the pairs painted before they are measured
     ).toBeVisible();
-    await expectAtomicPairs(table, ["Date"]);
+    await expectAtomicCardPairs(table, ["Date"]);
   });
 
   test("the training analyze sessions table stacks as flat rows too", async ({

@@ -130,7 +130,7 @@ test("a routine edited from its chip actually persists (#2888)", async ({
   await page.locator('select[name="scope_kind"]').selectOption("region");
   await page.locator('select[name="scope_value"]').selectOption(OWNED);
   await settledFill(page, card.locator('input[name="per_week"]'), "2");
-  await settledClick(page, card.getByRole("button", { name: "Add routine" }));
+  await settledClick(page, card.getByRole("button", { name: "Add target" }));
   await expect(chip()).toHaveAttribute(
     "title",
     new RegExp(`${OWNED}: \\d+/2 this week`)
@@ -144,7 +144,7 @@ test("a routine edited from its chip actually persists (#2888)", async ({
     await settledFill(page, card.locator('input[name="per_week"]'), "4");
     await settledClick(
       page,
-      card.getByRole("button", { name: "Update routine" })
+      card.getByRole("button", { name: "Update target" })
     );
 
     // The edit survives a fresh server render: four squares, not two.

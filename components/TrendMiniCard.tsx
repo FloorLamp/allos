@@ -39,7 +39,8 @@ import type { AppRoute } from "@/lib/hrefs";
 //     at a glance where a column of names does not.
 //   • The controls sat in a ~90px FOOTER ROW under the chart, per tile. They moved
 //     into the corner ⋯ overflow menu (the #1488/#1491 standard), which is the same
-//     40px hit box every other row action uses and costs the tile no vertical band.
+//     hit box every other row action uses (40px rendered, extended to the 44px
+//     floor by `.tap-target` — #3514) and costs the tile no vertical band.
 //     The sparkline shortened with them (h-32 → h-20): with the value promoted to a
 //     headline, the plot's job is the SHAPE of the move, not its magnitude.
 //

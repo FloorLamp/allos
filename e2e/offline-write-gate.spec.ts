@@ -572,7 +572,7 @@ test("R3e — a draft's autosave debounce does not land a half-typed record afte
   // swallowed invisibly (e2e/form-drafts.spec.ts states the same reason at length).
   await hydratedClick(
     page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
+    page.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // A combobox fill must land in React STATE, not just on the DOM node: opening the
@@ -845,7 +845,7 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
   await tabB.goto("/training?tab=log");
   await hydratedClick(
     tabB,
-    tabB.getByRole("main").getByRole("button", { name: "New activity" })
+    tabB.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(tabB.getByTestId("activity-form")).toBeVisible();
 
@@ -995,7 +995,7 @@ test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leave
   await tabB.goto("/training?tab=log");
   await hydratedClick(
     tabB,
-    tabB.getByRole("main").getByRole("button", { name: "New activity" })
+    tabB.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(tabB.getByTestId("activity-form")).toBeVisible();
 

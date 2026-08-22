@@ -3,6 +3,7 @@ import { IconChevronRight } from "@tabler/icons-react";
 import type { ProducedItem } from "@/lib/import-browser";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { triageRowId } from "@/lib/confidence-triage";
+import { formatDateWithYear, type DisplayFormatPrefs } from "@/lib/format-date";
 import { EmptyState } from "./ui";
 import { ConfidenceRowNote } from "./ConfidenceBadge";
 import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
@@ -15,12 +16,17 @@ import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 export default function ProducedListing({
   title,
   items,
+  prefs,
   tabKey,
   focusedRowId,
   rowFlags,
 }: {
   title: string;
   items: ProducedItem[];
+  // The login's date display prefs, resolved at the import page's request boundary
+  // (#3492). A server component has no `useFormatPrefs()` to reach for, so the
+  // prefs arrive as a prop — the row's day must never print as stored.
+  prefs: DisplayFormatPrefs;
   // The tab these rows belong to — half of a row's anchor id, so a "Check these
   // first" link can land on one of them (#2339). NULL for the merged Body-metrics
   // tab, whose ids repeat across its three source tables: no stable per-row
@@ -72,7 +78,7 @@ export default function ProducedListing({
                   )}
                   {item.date && (
                     <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                      {item.date}
+                      {formatDateWithYear(item.date, prefs)}
                     </span>
                   )}
                   <IconChevronRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-300 group-hover:text-brand-600 dark:text-slate-600 dark:group-hover:text-brand-400" />

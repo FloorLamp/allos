@@ -305,6 +305,13 @@ export default function ScheduleGrid({
                       onMouseEnter={() => setHoverCode(entry.code)}
                     >
                       <td
+                        // Named for the census hover pass (#3489 d4). The grid's
+                        // group-label rows are <td>s too, and they carry no
+                        // handler — a registry selector of `tbody td` hovers one
+                        // of those, reports an honest no-op, and the surface with
+                        // the tree's clearest hover-only content silently stops
+                        // being captured. Measured 2026-08-22, on the first run.
+                        data-testid="schedule-grid-vaccine-cell"
                         className={`sticky left-0 z-10 cursor-help px-3 py-1.5 ${
                           rowHover
                             ? "bg-slate-50 dark:bg-ink-850"
@@ -387,6 +394,12 @@ export default function ScheduleGrid({
         typeof document !== "undefined" &&
         createPortal(
           <div
+            // Named so the UX census's hover pass (#3489 deliverable 4) can say
+            // WHICH element a hover revealed. This panel is the sole path to the
+            // grid's per-dose content (#3375), and it is portalled out of <main>,
+            // so a capture that could not name it would be a picture of a page
+            // with something extra on it and no way to say what.
+            data-testid="schedule-grid-tip"
             className="pointer-events-none fixed z-50 max-w-xs rounded-lg border border-(--border) bg-surface px-3 py-2 text-xs shadow-lg"
             style={{
               left: Math.min(tip.x + 14, window.innerWidth - 250),

@@ -28,7 +28,7 @@ async function openNewActivity(page: Page) {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
 }
 

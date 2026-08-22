@@ -87,23 +87,31 @@ export default function FilterPills<T extends string>({
   // specs (#3408, item E / item G).
   optionTestId?: (value: T) => string;
 }) {
-  // 32px TALL — `py-1.5` around `text-sm`, no explicit min-height — rather than
-  // the 44px tap floor. (An earlier draft of this note argued for a `min-h-9`
-  // that was never in the string; the class list below is what actually renders,
-  // and it measures 32.)
+  // ── THE FILTER ROLE OF THE CHIP PRIMITIVE (#3475) ─────────────────────────
   //
-  // These sit shoulder to shoulder in a scrolling row, and a 44px-tall strip of
-  // seven is a band of chrome above the list it is meant to narrow. The floor's
-  // own wording is about a control a finger must ACQUIRE; a pill in a horizontal
-  // strip is acquired by its WIDTH, which is never the constrained axis here —
-  // the strip scrolls sideways and each label carries its own hit area along it.
-  // The nav chips it must be told apart from keep their own height.
-  const pill = (active: boolean) =>
-    `flex shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
-      active
-        ? "bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950"
-        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-    }`;
+  // The class list this component used to hand-write IS the filter role, and it
+  // now lives once in `app/globals.css` as `chip chip-filter`. Nothing here
+  // changed shape, padding or colour; what changed is that the next filter-ish
+  // strip inherits this instead of copying it.
+  //
+  // 34px TALL — `px-3 py-1.5` around `text-sm` plus the primitive's reserved 1px
+  // border, no explicit min-height — rather than the 44px tap floor. (It was 32
+  // here before the primitive; the two extra pixels are the border the nav role
+  // has always drawn, now reserved by BOTH roles so the two strips occupy the
+  // same box. Measured, in e2e/records-pane-anatomy.mobile.spec.ts.) These sit shoulder to shoulder in a scrolling row,
+  // and a 44px-tall strip of seven is a band of chrome above the list it is
+  // meant to narrow. The floor's own wording is about a control a finger must
+  // ACQUIRE; a pill in a horizontal strip is acquired by its WIDTH, which is
+  // never the constrained axis here — the strip scrolls sideways and each label
+  // carries its own hit area along it. The primitive declares no floor for
+  // exactly this reason, so the number survives the move.
+  //
+  // AND THE SELECTED SHADE IS NO LONGER WRITTEN HERE AT ALL. The lit state is
+  // painted from `aria-pressed` / `aria-current`, which this component already
+  // carried because a colour-only answer to "which filter am I in?" is
+  // unreadable to AT and to a test. A filter cannot look active without saying
+  // it is.
+  const pill = "chip chip-filter";
 
   return (
     <ScrollFade
@@ -125,7 +133,7 @@ export default function FilterPills<T extends string>({
               href={o.href}
               aria-current={active ? "true" : undefined}
               data-testid={optionTestId?.(o.value)}
-              className={pill(active)}
+              className={pill}
             >
               {o.label}
             </Link>
@@ -138,7 +146,7 @@ export default function FilterPills<T extends string>({
             aria-pressed={active}
             data-testid={optionTestId?.(o.value)}
             onClick={() => onSelect?.(o.value)}
-            className={pill(active)}
+            className={pill}
           >
             {o.label}
           </button>

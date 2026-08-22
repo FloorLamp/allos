@@ -6,6 +6,8 @@ import type { ClinicalObservation } from "@/lib/types";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { groupContiguous } from "@/lib/table-sort";
 import { observationNameLink } from "@/lib/import-browser";
+import { formatDateWithYear } from "@/lib/format-date";
+import { useFormatPrefs } from "./FormatPrefsProvider";
 import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
@@ -41,6 +43,7 @@ function ReadonlyObservationRow({
   focused: boolean;
   flag?: ConfidenceFlag;
 }) {
+  const prefs = useFormatPrefs();
   const nameLink = r.category
     ? observationNameLink(r.category, r.canonical_name)
     : null;
@@ -91,8 +94,12 @@ function ReadonlyObservationRow({
       >
         <NotesText notes={r.notes} />
       </Td>
+      {/* The reading's day in the login's date format, never the stored one
+          (#3492). An imported record routinely predates this calendar year, so
+          this is the year-bearing entry of the display vocabulary rather than an
+          auto-year one. */}
       <Td slot="meta" label="Date" className="whitespace-nowrap">
-        {r.date}
+        {formatDateWithYear(r.date, prefs)}
       </Td>
     </tr>
   );

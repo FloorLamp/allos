@@ -446,7 +446,7 @@ export default function ActivityPartsList({
           }
           className="btn-ghost"
         >
-          + Add activity
+          + Add another activity
         </button>
         {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
             the legs while editing, matching the save-time fold. */}

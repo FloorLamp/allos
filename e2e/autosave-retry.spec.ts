@@ -51,7 +51,7 @@ test("a save that dies in the swap window retries itself to success — zero tap
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await expect(page.getByTestId("activity-form")).toBeVisible();
 

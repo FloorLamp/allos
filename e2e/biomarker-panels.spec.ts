@@ -248,14 +248,17 @@ test.describe("the phone card (#2316)", () => {
       .getByTestId("clinical-results-table")
       .locator("tr")
       .filter({ hasText: IMPORT_ROW });
-    // The age token sits inside the same cell as the ISO date — one `<td>`, one
-    // line, at both viewports. Its text is the #1216 compact bucket, so it is
-    // never the "2 months ago" long form the stack used to carry.
+    // The age token sits inside the same cell as the DAY — one `<td>`, one line, at
+    // both viewports. Its text is the #1216 compact bucket, so it is never the
+    // "2 months ago" long form the stack used to carry. The day beside it renders
+    // through the login's date prefs since #3492 (it used to print "2026-06-20",
+    // the stored value).
     const dateCell = row.locator('td[data-card="meta"]').filter({
       has: page.getByTestId("clinical-result-age"),
     });
     await expect(dateCell).toHaveCount(1);
-    await expect(dateCell).toContainText("2026-06-20");
+    await expect(dateCell).toContainText("Jun 20, 2026");
+    await expect(dateCell).not.toContainText("2026-06-20");
     await expect(dateCell.getByTestId("clinical-result-age")).not.toHaveText(
       /ago/
     );

@@ -7,6 +7,7 @@ import { IconUpload } from "@tabler/icons-react";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
+import LeadFold from "@/components/LeadFold";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import {
   DOCUMENT_CAPTURE_MAX_EDGE,
@@ -175,16 +176,32 @@ export default function UploadForm({
 
   return (
     <form ref={formRef} action={handleUpload} className="mt-4 space-y-4">
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Drop in a <strong>lab report or scan</strong> (PDF, image, or
-        spreadsheet) and the AI reads your results — or a{" "}
-        <strong>health-record export</strong> (a MyChart “Download Summary”
-        CCD/XDM package, a SMART Health Card, or a FHIR bundle from Epic / Apple
-        Health) to import your immunizations, labs, and vitals directly. Missing
-        date of birth or sex is filled in from the record. You can select or
-        drop <strong>several files at once</strong> (up to{" "}
-        {MEDICAL_UPLOAD_BATCH_CAP} per batch).
-      </p>
+      {/* LEAD + FOLD (copy.md rule 10 / #3488). The intro used to name CCD/XDM,
+          SMART Health Card and FHIR in bold on the first screen — eight lines of
+          standards alphabet before either button, on the viewport with the least
+          room for it. The formats are not gone; they are one tap away, under the
+          question a person would actually ask. Nothing about what the importer
+          ACCEPTS changed. */}
+      <LeadFold
+        testId="upload-intro"
+        summary="What can I import?"
+        lead={
+          <>
+            Drop in a lab report, scan, or health-record export — we’ll read it
+            for you. Several files at once is fine.
+          </>
+        }
+        detail={
+          <>
+            A <strong>lab report or scan</strong> (PDF, image, or spreadsheet)
+            is read by the AI. A <strong>health-record export</strong> — a
+            MyChart “Download Summary” CCD/XDM package, a SMART Health Card, or
+            a FHIR bundle from Epic / Apple Health — imports your immunizations,
+            labs, and vitals directly. Missing date of birth or sex is filled in
+            from the record. Up to {MEDICAL_UPLOAD_BATCH_CAP} files per batch.
+          </>
+        }
+      />
       {/* The ONE real picker, offscreen. Both affordances below drive it, and it is
           the only element carrying `name="file"` — so whatever lands in it (picked,
           dropped, or photographed) rides the same single submit. */}
@@ -267,7 +284,13 @@ export default function UploadForm({
           onClick={() => inputRef.current?.click()}
         >
           <IconUpload className="h-4 w-4" stroke={1.75} aria-hidden />
-          Upload
+          {/* "Choose files", not "Upload" (#3488). The desktop dropzone above has
+              always said "Choose files" for the SAME action, while this said
+              "Upload" — the word the form's actual submit also wears, eighty
+              pixels below it and greyed out by the #1450 disabled treatment. Two
+              buttons with one name and different jobs read as one broken button.
+              One verb, one job: this one opens the picker, "Upload" submits. */}
+          Choose files
         </button>
         <PhotoCapture
           triggerLabel="Camera"
@@ -312,27 +335,40 @@ export default function UploadForm({
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SubmitButton
-          disabled={demo || selected.length === 0}
-          pendingLabel="Uploading…"
-          data-testid="medical-upload-submit"
-          className="btn"
+      {/* THE SUBMIT ROW APPEARS WITH THE FIRST FILE (#3488). It used to render
+          always: a permanently disabled "Upload" under a button also called
+          "Upload", plus a sentence promising to read "it" in the background when
+          there was no "it" — the post-submit explainer shown before there was
+          anything to submit. The empty card is now the two doors and nothing
+          below them. In demo mode nothing can be selected at all (the picker and
+          the input are both disabled), so the row simply never appears and the
+          `upload-disabled-hint` above is the whole explanation. */}
+      {selected.length > 0 && (
+        <div
+          data-testid="medical-upload-submit-row"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2"
         >
-          Upload
-        </SubmitButton>
-        <span className="text-sm text-slate-500 dark:text-slate-400">
-          We’ll read {selected.length > 1 ? "them" : "it"} in the background —
-          follow progress and results in the{" "}
-          <Link
-            href="/data?section=review"
-            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+          <SubmitButton
+            disabled={demo || selected.length === 0}
+            pendingLabel="Uploading…"
+            data-testid="medical-upload-submit"
+            className="btn"
           >
-            Review
-          </Link>{" "}
-          tab.
-        </span>
-      </div>
+            Upload
+          </SubmitButton>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            We’ll read {selected.length > 1 ? "them" : "it"} in the background —
+            follow progress and results in the{" "}
+            <Link
+              href="/data?section=review"
+              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+            >
+              Review
+            </Link>{" "}
+            tab.
+          </span>
+        </div>
+      )}
     </form>
   );
 }

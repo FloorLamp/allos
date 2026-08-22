@@ -49,7 +49,17 @@ export default function Tabs({
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-black/10 dark:border-white/10">
+      {/* A TAB STRIP SCROLLS WITHOUT PAINTING A SCROLLBAR (#3488, design-system.md
+          §3). `overflow-x-auto` alone leaves a sliver of UA chrome under the two
+          tabs on a phone, where the strip is already the shortest thing on the
+          card. The suppression is the pair — `scrollbar-width: none` for Firefox
+          and the standard, `::-webkit-scrollbar` for Chromium/WebKit — spelled
+          the way `ScrollFade` and `NavTabs` already spell it. Scrolling itself is
+          untouched: the row still scrolls, by drag and by keyboard. */}
+      <div
+        data-testid="tab-strip"
+        className="mb-4 flex gap-1 overflow-x-auto border-b border-black/10 scrollbar-none [&::-webkit-scrollbar]:hidden dark:border-white/10"
+      >
         {tabs.map((t) => {
           const isActive = active === t.id;
           return (

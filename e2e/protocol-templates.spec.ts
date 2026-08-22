@@ -15,7 +15,7 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
   await expect(toggle).toBeVisible();
   await toggle.click();
 
-  const dialog = page.getByRole("dialog", { name: "New protocol" });
+  const dialog = page.getByRole("dialog", { name: "Add protocol" });
   await expect(dialog).toBeVisible();
   // The dialog declares itself a work surface, one size up from a confirm.
   //

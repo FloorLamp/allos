@@ -9,23 +9,28 @@ import {
   type SortChoice,
 } from "@/lib/table-sort";
 import { currentPathHref } from "@/lib/hrefs";
+import { CARD_MODE_ONLY } from "@/lib/card-row";
 
 // The card-mode sort control (issue #1426).
 //
-// A `.table-cards` table hides its `thead` below `sm` — the row is a card there, so
-// the SortableHeader links that carry sorting are unreachable. This select stands in
+// A `.table-cards` table hides its `thead` in card mode — the row is a card there,
+// so the SortableHeader links that carry sorting are unreachable. This select stands in
 // for the whole header strip on a phone: ONE control encoding both axes
 // (`column:dir`), writing the SAME `?sort=`/`?dir=` params SortableHeader writes and
 // preserving every other param. So there is one sort model, one server-side ordering,
 // and two affordances over it — not a second sorting implementation.
 //
-// Rendered `sm:hidden` by default: above `sm` the real headers are back.
+// Rendered under `CARD_MODE_ONLY` by default: from the card-mode boundary up, the
+// real headers are back. The boundary is `CARD_MODE_BREAKPOINT_PX` in
+// lib/card-row.ts and this file does not restate it (#3457) — it used to say
+// "below `sm`" in prose beside a hardcoded `sm:hidden`, which is two copies of a
+// number that has to agree with the CSS in app/globals.css and with every AC.
 export default function TableSortSelect({
   choices,
   defaultSort,
   defaultDir = "asc",
   label = "Sort",
-  className = "sm:hidden",
+  className = CARD_MODE_ONLY,
 }: {
   choices: readonly SortChoice[];
   // Column that's sorted when no `sort` param is present — mirrors SortableHeader's

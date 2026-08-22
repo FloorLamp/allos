@@ -190,7 +190,7 @@ export default function TrainingLogView({
   // First-run: a brand-new/post-onboarding profile with nothing logged yet
   // (issue #809). Distinct from "no activities match your filters" below — over an
   // empty history the search/filter controls are meaningless, so the empty state
-  // hides them and leads with the action row (New activity / Start workout) so the
+  // hides them and leads with the action row (Add activity / Start workout) so the
   // user can actually log their first activity. Keyed on the UNFILTERED groups.
   const hasActivities = groups.length > 0;
 
@@ -556,7 +556,7 @@ export default function TrainingLogView({
       )}
       <button type="button" onClick={() => openCreate()} className="btn">
         <IconPlus className="h-4 w-4" stroke={2.5} />
-        New activity
+        Add activity
       </button>
     </>
   );

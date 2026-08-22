@@ -22,11 +22,14 @@ import SyncTimestamp from "./integrations/SyncTimestamp";
 //
 // Since #1880 (items 7 + 8) a card has TWO states matching its two jobs:
 //   • a CONNECTED card's job is status — name, standing chip, one fact, Manage →.
-//     Its owner already knows what the source does; the blurb and sixteen
+//     Its owner already knows what the source does; the pitch and sixteen
 //     data-type chips it used to show forever were a pitch aimed at someone who
 //     already bought.
 //   • an UNCONNECTED card keeps the pitch — short blurb, a few representative
-//     chips, Set up →.
+//     chips, Set up →. Since #3490 that "short blurb" is the registry's `lead`,
+//     the one-sentence half of the lead+fold split: the card renders the lead
+//     ALONE and never the folded detail, which is what #1880 asked for and a
+//     single 146-word `blurb` field could not supply.
 // And the grid orders by state instead of interleaving failures, connected
 // sources, and adverts in registry order: attention first (red border,
 // Reconnect →), then healthy connected, then an "Available" group for the
@@ -166,7 +169,7 @@ function PitchCard({ def }: { def: IntegrationDef }) {
         )}
       </div>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        {def.blurb}
+        {def.lead}
       </p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {def.dataTypes.slice(0, PITCH_CHIP_CAP).map((d) => (

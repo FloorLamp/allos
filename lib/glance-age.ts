@@ -89,15 +89,13 @@ export function glanceSeriesToneClass(stale: boolean): string {
   return stale ? SERIES_CLASS_STALE : SERIES_CLASS_CURRENT;
 }
 
-export interface GlanceAgeInput {
-  /** The reading's own day (YYYY-MM-DD). */
+interface GlanceAgeCommon {
+  /** The reading's own day (YYYY-MM-DD) — a profile-local DAY, never an instant. */
   date: string;
   /** The PROFILE-local day the age is measured against (#1186), never the server's. */
   today: string;
   /** The verdict this surface's own floor already produced. */
   freshness: FreshnessState;
-  /** The form this surface's layout can hold. */
-  form: GlanceAgeForm;
   /**
    * How this surface's floor reads in a sentence ("a year", "six months") — the one
    * thing the hover sentence cannot know on its own, and the reason the sentence is
@@ -105,26 +103,53 @@ export interface GlanceAgeInput {
    * do.
    */
   floorLabel: string;
-  /**
-   * The reading's day already rendered in the login's date format ("Jul 29"). Used by
-   * the forms that state a DATE rather than an age; omitted, the ISO day stands in,
-   * which is what the `long` form has always emitted for a current reading. Display
-   * prefs belong to the caller — this module stays pure and prefs-free.
-   */
-  dateLabel?: string;
 }
+
+// THE MACHINE-TO-DISPLAY BOUNDARY, MADE UNSKIPPABLE (#3492).
+//
+// `dateLabel` used to be OPTIONAL, with `input.dateLabel ?? input.date` standing the
+// raw ISO day in when a caller omitted it. That fallback is how "112/72 mmHg
+// 2026-07-22" reached the dashboard: both Standing vitals rows ask for the `long`
+// form and neither passed a label, so the ONE surface in this module that prints a
+// day printed the storage format. Nothing was broken — the escape hatch was taken,
+// silently, by the only callers that could take it.
+//
+// So the shape below makes the two questions inseparable: a form that STATES A DAY
+// (`long`, `as-of`) cannot be constructed without the day already rendered through
+// the login's date prefs, and a form that states only an AGE (`compact`) has no
+// place to put one. The next glance surface inherits the boundary from the type
+// rather than from anybody remembering — which is the whole difference between this
+// and a fourth per-site format call.
+//
+// This module stays PURE and prefs-free on purpose: the caller holds the prefs
+// (`useFormatPrefs()` in a client component, `getDisplayFormatPrefs(login.id)` at a
+// server page's boundary) and hands in the finished string from lib/format-date's
+// display vocabulary. Formatting here would need the prefs threaded into a pure
+// model, and would put a second date formatter beside the one that already exists.
+export type GlanceAgeInput =
+  | (GlanceAgeCommon & {
+      /** A narrow fixed-width column: the age is the only thing that fits. */
+      form: "compact";
+    })
+  | (GlanceAgeCommon & {
+      form: "long" | "as-of";
+      /**
+       * The reading's day ALREADY rendered in the login's date format ("Jul 29",
+       * "Friday, July 24"). Required, not defaulted — see the note above.
+       */
+      dateLabel: string;
+    });
 
 export function glanceAgeToken(input: GlanceAgeInput): GlanceAgeToken {
   const stale = input.freshness === "due";
-  const day = input.dateLabel ?? input.date;
   const text =
-    input.form === "as-of"
-      ? `as of ${day}`
-      : input.form === "compact"
-        ? formatCompactAge(input.date, input.today)
+    input.form === "compact"
+      ? formatCompactAge(input.date, input.today)
+      : input.form === "as-of"
+        ? `as of ${input.dateLabel}`
         : stale
           ? formatRelativeDate(input.date, input.today)
-          : day;
+          : input.dateLabel;
   return {
     text,
     stale,

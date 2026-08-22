@@ -57,11 +57,13 @@ import {
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
+  getDisplayFormatPrefs,
   getUnitPrefs,
   getProfileAgeOn,
   getProfileReproductiveStatus,
   getProfileSex,
 } from "@/lib/settings";
+import { formatDateWithYear } from "@/lib/format-date";
 import { degFTo, tempUnitLabel } from "@/lib/units";
 import {
   getBiomarkerOutcomeGoals,
@@ -127,6 +129,13 @@ export default async function ClinicalResultDetailPage(props: {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  // Resolved once at this page's request boundary and used for every day this page
+  // states (#3492). The bespoke history table below and the two prose lines above it
+  // printed the stored `YYYY-MM-DD` straight into copy; a day a person reads is a
+  // profile-local DAY rendered in their own format, and it is always year-bearing
+  // here because a biomarker series routinely spans years.
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const day = (iso: string) => formatDateWithYear(iso, formatPrefs);
   const canonical = searchParams.name?.trim();
   // A paramless /results/clinical-results/view is a degenerate page (#1447). It isn't a state anything
   // links to — `clinicalResultDetailHref` (lib/hrefs) already returns the LIST route
@@ -631,8 +640,8 @@ export default async function ClinicalResultDetailPage(props: {
       {stale && (
         <Notice tone="amber" className="section-seam mb-6">
           <span className="font-semibold">These results are stale.</span> The
-          most recent result is from {latest.date} ({humanizeAge(ageDays)} ago).
-          It may be time to repeat it —{" "}
+          most recent result is from {day(latest.date)} ({humanizeAge(ageDays)}{" "}
+          ago). It may be time to repeat it —{" "}
           <Link href="/data" className="font-medium underline">
             upload your latest records
           </Link>{" "}
@@ -694,7 +703,7 @@ export default async function ClinicalResultDetailPage(props: {
             />
           </div>
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            as of {latest.date}
+            as of {day(latest.date)}
           </div>
         </div>
         {referenceEntries.map((e) => (
@@ -733,7 +742,7 @@ export default async function ClinicalResultDetailPage(props: {
               <div className="label">Goal</div>
               <div className="text-sm font-medium text-brand-700 dark:text-brand-400">
                 {biomarkerGoalTargetText(goal)}
-                {goal.target_date ? ` by ${goal.target_date}` : ""}
+                {goal.target_date ? ` by ${day(goal.target_date)}` : ""}
               </div>
               <div
                 className="text-xs text-slate-500 dark:text-slate-400"
@@ -934,7 +943,7 @@ export default async function ClinicalResultDetailPage(props: {
                     aria-hidden
                   />
                   <span className="w-24 shrink-0 text-slate-500 dark:text-slate-400">
-                    {r.date}
+                    {day(r.date)}
                   </span>
                   <span className="font-medium text-slate-800 dark:text-slate-100">
                     {r.value ?? "—"}
@@ -996,7 +1005,7 @@ export default async function ClinicalResultDetailPage(props: {
                     key={r.id}
                     className="border-b border-black/5 dark:border-white/10"
                   >
-                    <td className="td whitespace-nowrap">{r.date}</td>
+                    <td className="td whitespace-nowrap">{day(r.date)}</td>
                     <td className="td" data-basis={basis.kind}>
                       {/* The severity word visibly, not only in the accessibility
                         tree (#1220/#2315): this list intermixes out-of-range and

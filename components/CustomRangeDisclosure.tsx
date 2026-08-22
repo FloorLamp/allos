@@ -53,14 +53,29 @@ export function CustomRangeDisclosure({
 }
 
 // The "Custom…" pill. Mobile-only (`sm:hidden` comes from the caller's class, so
-// the pill styling stays in one place — DateRangeControl's rangePillClass).
-export function CustomRangeToggle({ className }: { className: string }) {
+// the pill styling stays in one place — DateRangeControl's RANGE_PILL, which is
+// the chip primitive's filter role).
+export function CustomRangeToggle({
+  active,
+  className,
+}: {
+  // Whether the window in effect IS a custom range — i.e. whether this pill is
+  // the selected one among its quick-range siblings. `aria-current` rather than
+  // `aria-pressed` because the siblings are links that already say it that way,
+  // and because this button separately owns `aria-expanded` for the panel it
+  // discloses: pressed-and-expanded on one control is two different questions
+  // wearing one answer. The chip primitive paints the lit state from this
+  // attribute (#3475), so the pill cannot look selected without saying so.
+  active: boolean;
+  className: string;
+}) {
   const ctx = useContext(Ctx);
   if (!ctx) return null;
   return (
     <button
       type="button"
       data-testid="custom-range-toggle"
+      aria-current={active ? "true" : undefined}
       aria-expanded={ctx.open}
       aria-controls={ctx.panelId}
       onClick={ctx.toggle}

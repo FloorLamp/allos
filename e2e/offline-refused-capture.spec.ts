@@ -306,7 +306,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     await page.goto("/training?tab=log");
     await hydratedClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "New activity" })
+      page.getByRole("main").getByRole("button", { name: "Add activity" })
     );
     await expect(page.getByTestId("activity-form")).toBeVisible();
 

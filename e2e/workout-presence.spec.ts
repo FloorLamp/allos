@@ -236,7 +236,7 @@ async function openNewActivity(page: Page, title: string) {
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await expect(page.getByTestId("activity-form")).toBeVisible();
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);

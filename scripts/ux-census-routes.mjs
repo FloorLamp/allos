@@ -162,6 +162,83 @@ export const DISCLOSURE_EXPANSIONS = [
   },
 ];
 
+// Hover-capture registry (#3489 deliverable 4). The census photographs the
+// RESTING state, so anything that exists only while a pointer is over an element
+// is invisible to it by construction. #3459 item 2 is the named miss — the
+// Standing door labels were shipped, re-ruled and fixed without the census ever
+// producing one picture of them — and #3375 is a whole issue about information
+// that exists only on hover, on surfaces the census has photographed many times.
+//
+// A registered entry gets a SECOND capture, `…-hover.png`, beside the default
+// shot: the same contract as DISCLOSURE_EXPANSIONS above, with `page.hover()` in
+// place of the click loop. Three rules the pass enforces, each for a reason:
+//
+//   DESKTOP ONLY. The census runs every route at 1280×900 and again at 390×844.
+//   A phone has no hover, so a `…-hover.png` from the mobile pass is a picture of
+//   a state no phone user can reach — and it would sit in the contact sheet
+//   looking exactly like evidence. That is worse than no capture.
+//
+//   THE ROUTE'S OWN VISIT ONLY (`landedOn === wanted`). An alias landing here
+//   would produce a second hover shot filed under a route the reader was not
+//   looking at — the same guard, for the same reason, as the expansion pass.
+//
+//   A NO-OP IS REPORTED, NOT PHOTOGRAPHED. If the rendered difference is empty —
+//   no pixels changed in the region, nothing revealed, hidden or moved — the shot
+//   is SKIPPED and a BLIND SPOT line names the entry. A byte-identical twin of the
+//   default shot is noise a reader cannot tell from the default without opening
+//   both; the fact that a ruled hover affordance stopped doing anything is a real
+//   finding and is kept.
+//
+// What NOT to register: a bare `title=` tooltip. It is native browser chrome,
+// drawn outside the page, and never appears in a screenshot —
+// scripts/ux-hover-census.mjs says so at length. #3375 owns that class.
+//
+// lib/__tests__/ux-census-routes.test.ts pins each entry's route to a live
+// page.tsx; e2e/ux-hover-capture.spec.ts proves the probe can see a reveal and
+// stays quiet on a hover that changes nothing.
+/**
+ * @typedef {object} HoverCapture
+ * @property {string} route      censused static route carrying the hover affordance
+ * @property {string} label      human name for log lines and the audit table
+ * @property {string} target     selector for the element to hover (first match wins)
+ * @property {string} [reveals]  selector for the ruled payload, resolved INSIDE the
+ *                               target first and document-wide only as a fallback
+ * @property {string} [openFirst] selector clicked before hovering, when the
+ *                               affordance lives behind a closed disclosure
+ * @property {string} ruling     which decision put a fact on hover, for the reader
+ */
+
+/** @type {HoverCapture[]} */
+export const HOVER_CAPTURES = [
+  {
+    // #3459 item 2 / #3253 decision 2: the door label slides in at the right edge
+    // of the facts cell and the age steps aside for it. Both halves are opacity
+    // exchanges in app/globals.css ("Dashboard hover doors"), so the census's
+    // static shot shows the age and never the door.
+    route: "/",
+    label: "Standing family door labels",
+    target: "a.standing-row",
+    reveals: '[data-testid="standing-door"]',
+    ruling: "#3253 decision 2, re-ruled by #3459 item 2",
+  },
+  {
+    // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
+    // content exists ONLY in a mouse-driven panel — descriptions, schedule
+    // summaries and dose status, with no other path. The grid itself sits behind a
+    // closed <details>, which is what `openFirst` is for.
+    route: "/records/history/immunizations",
+    label: "CDC schedule grid vaccine tooltip",
+    // The vaccine NAME cell specifically. `tbody td` also matches the grid's
+    // group-label rows, which carry no handler: registered that way the entry
+    // reported an honest no-op and the surface stopped being captured (measured
+    // on this pass's first run).
+    target: '[data-testid="schedule-grid-vaccine-cell"]',
+    reveals: '[data-testid="schedule-grid-tip"]',
+    openFirst: '[data-testid="immunization-schedule-disclosure"]',
+    ruling: "#3375 — the tooltip is the sole path to this content",
+  },
+];
+
 // Query-driven hub panels are not separate page.tsx files, so the filesystem
 // census otherwise sees only their default state. Keep each non-default state
 // explicit: these visits get their own desktop/mobile screenshot and metrics row.

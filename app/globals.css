@@ -552,6 +552,121 @@
     var(--badge-bd, color-mix(in srgb, currentColor 30%, transparent));
 }
 
+/* ── THE CHIP PRIMITIVE (issue #3475) ───────────────────────────────────────
+
+   A chip is a SMALL, SELECTABLE, SHOULDER-TO-SHOULDER control: a pane tab, a
+   filter option, a quick-access link, a time-window pick. Before this the app
+   had no such primitive, so every strip hand-rolled one — `app/(app)/training/
+   AnalyzeSection.tsx` alone drew TWO, with different padding and different
+   selected brand shades, on one screen. `.btn` is the wrong home (a chip is not
+   a button-family member and takes no height floor, see below) and `.badge` is
+   the wrong home too: a badge is a STATUS LABEL nobody can press. This is the
+   third thing, and it is one class plus a role.
+
+   TWO ROLES, ALREADY SHIPPED AND ALREADY RULED (#3408). This does not invent a
+   vocabulary; it registers the one the app already speaks:
+
+     .chip .chip-nav     — a DESTINATION. Outline pill, `rounded-full`, selected
+                           = brand outline + brand tint. Records' pane strip.
+     .chip .chip-filter  — a CONTROL that narrows a list in place. Inset well,
+                           `rounded-md`, no border, selected = brand FILL.
+                           `components/FilterPills.tsx` is the app's one filter
+                           affordance and renders through this.
+
+   The pair is deliberately unmistakable at a glance, because #3408 was filed
+   about a phone stacking three look-alike strips with three different meanings.
+   A NEW chip strip picks the role by what it DOES and inherits both states; it
+   does not pick colours.
+
+   ONE PADDING, BOTH ROLES — AND THE BORDER IS PART OF THE SIZE. `px-3 py-1.5`
+   over `text-sm` is 32px of content box; the nav role's 1px border makes it 34
+   and the borderless filter role 32, so "one padding scale" does NOT give one
+   height on its own. That was measured, not reasoned: the first cut of this
+   primitive asserted 32 for both and the rendered box came back 34 for the nav
+   chip. So the BASE reserves the border — `1px solid transparent` — and a role
+   only ever changes its COLOUR. Both roles render 34px, by construction rather
+   than by two call sites agreeing.
+   (Before this: the nav role was `py-1` + border = 30px, one Analyze strip was
+   `py-1.5` + border = 34 and the second `py-1` + border = 30, and FilterPills
+   was 32. Four heights for one idea is the drift this closes.)
+
+   THE SELECTED STATE IS PAINTED FROM THE ARIA, NOT FROM A TERNARY. Both roles
+   key their lit state on `[aria-current]` (excluding the literal "false") or
+   `[aria-pressed="true"]` — the two attributes the shipped chip strips already
+   carry, because #1485/#2869 ruled that "which one am I on?" must have a
+   non-visual answer. Reading the paint off the same attribute makes that
+   structural: a chip CANNOT look selected without announcing that it is, and a
+   call site cannot spell the selected shade differently because it no longer
+   spells it at all.
+
+   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
+   (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
+   not reach here — chips are acquired by their WIDTH along a scrolling row, and
+   a 44px-tall strip of seven is a band of chrome above the list it narrows
+   (FilterPills' own measured note). #3514 has since RULED the floor at 44px
+   effective, by rendered size OR by `.tap-target`'s hit-area extension; this
+   primitive declares neither, so nothing here changed. A strip that genuinely needs a bigger target
+   still says so at its call site and wins — `@utility` sorts into the utilities
+   layer, so it cannot lower a call site's `min-h-*`. */
+@utility chip {
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  /* Reserved so a bordered role and a borderless one occupy the same box. The
+     fill paints under it (`background-clip` is `border-box` by default), so a
+     transparent border is invisible rather than a 1px light seam. */
+  border: 1px solid transparent;
+}
+
+@utility chip-nav {
+  @apply rounded-full text-slate-600 dark:text-slate-300;
+  /* The structural-grey border pair, not a literal (#794). */
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  &:hover {
+    background-color: var(--ghost-hover);
+  }
+  /* Specificity 0,3,0 (class + attribute + the :not()'s attribute) beats the
+     base and the hover above, so the lit state survives a pointer resting on
+     it. `[aria-current="false"]` is excluded because React renders that string
+     when a call site passes the literal false rather than undefined. */
+  &[aria-current]:not([aria-current="false"]),
+  &[aria-pressed="true"] {
+    @apply border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300;
+  }
+}
+
+@utility chip-filter {
+  @apply rounded-md bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300;
+  &:hover {
+    @apply bg-slate-200 dark:bg-ink-700;
+  }
+  &[aria-current]:not([aria-current="false"]),
+  &[aria-pressed="true"] {
+    @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
+  }
+}
+
+/* ── THE STAT TILE (issue #3475) ────────────────────────────────────────────
+
+   An uppercase label over a bold value, in a small box, repeated across a grid.
+   `components/StatBox.tsx` is the blessed tier and this is the treatment it
+   wears; page-local copies fold into it rather than re-deciding.
+
+   TOKENS, NOT LITERALS. It used to be `bg-slate-50 dark:bg-ink-900` — a literal
+   pair outside #2701's token system, so it drifted from every other tinted
+   inset in the app and needed its dark twin maintained by hand. `--ghost` is
+   the token for exactly this (`.btn-ghost` reads it), and it carries its own
+   dark value.
+
+   THE CARD RADIUS, ON PURPOSE. #2701 ruled two radii: `--radius-card` for
+   SURFACES and `--radius-control` for CONTROLS. A stat tile is a surface — it
+   holds content and nothing presses it — and it was wearing `rounded-lg`, the
+   control radius, which is the specific mismatch #3475 names. */
+@utility stat-tile {
+  @apply px-3 py-2;
+  border-radius: var(--radius-card);
+  background-color: var(--ghost);
+}
+
 @utility th {
   /* Slightly tighter cell padding on phones so wide tables fit more columns. */
   @apply px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:px-3 dark:text-slate-400;
@@ -564,7 +679,26 @@
 @utility table-cards {
   /* ── Responsive tables (issue #1426) ────────────────────────────────────────
      Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
-     flat divider rows — over the SAME DOM. There is no second content tree and no
+     flat divider rows — over the SAME DOM.
+
+     THE BOUNDARY IS `sm` (640px) BY DECISION, NOT BY DEFAULT (#3457), and it is
+     declared once — as `CARD_MODE_BREAKPOINT_PX` in lib/card-row.ts — so a
+     requirement, an AC or a component quotes that rather than a fresh number.
+     #3457 was filed because everything ASKING for card mode wrote its
+     requirements in `md` while these rules do their work in `max-sm:`; at 390px
+     and 430px the two agree, so the disagreement only ever showed between 640px
+     and 768px. It resolves toward `sm`, and the reason is in this file's own
+     neighbours: the record lists ladder their columns in THREE steps, a base set
+     at every width, a second from `hidden sm:table-cell`, a third from
+     `hidden md:table-cell`. The `sm` tier exists ONLY to give 640–768px a
+     NARROWER table than the desktop one — so that band already has a designed
+     rendering, and it is the one this utility is deliberately not reaching.
+     Widening these rules to the `md` breakpoint would silence that tier
+     everywhere: `.table-cards td[data-card=...]` is (0,2,1) and the `.hidden`
+     utility is (0,1,0), so the cell would come back as a card pair in the band
+     and the column step would never be read again.
+
+     There is no second content tree and no
      `hidden md:*` twin pair to drift (the responsive-surface rule in AGENTS.md):
      every cell is authored once, in one `<td>`, and declares where it lands on the
      card via `data-card` (components/ResponsiveTable.tsx → lib/card-row.ts).
@@ -761,7 +895,9 @@
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element
-     extends the clickable button box to 40px. */
+     extends the clickable button box to 44px — 32 + 2×6, the same arithmetic
+     `.tap-target` uses, which is the floor #3514 ruled. It was `-4px`, i.e. 40px
+     effective, back when the registry still said the floor was 40. */
   & td[data-card="actions"] [data-testid="overflow-menu-trigger"] {
     @apply max-sm:relative max-sm:h-8 max-sm:w-8;
   }
@@ -769,7 +905,7 @@
     & td[data-card="actions"] [data-testid="overflow-menu-trigger"]::after {
       content: "";
       position: absolute;
-      inset: -4px;
+      inset: -6px;
     }
   }
 }
@@ -1648,14 +1784,24 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    evidence, not the fix: the ninth icon-only composition added next month would
    have inherited nothing.
 
-   So the floor lives with the family, at the 40px floor #3377 named for this and
-   that the two hand-fixed call sites had already reached for independently, and
-   only below `sm` — desktop density keeps its compact `btn-sm` rows, where a
-   mouse is doing the pointing. `btn-sm` composes as `btn btn-sm`, so it inherits
-   this from `.btn` rather than needing its own rule. Width too, not just height:
-   an icon-only button is the one shape that can be narrower than the floor, and a
-   labeled button is already wider than 40px, so the width half is a no-op
-   everywhere it is not needed.
+   So the floor lives with the family, and only below `sm` — desktop density keeps
+   its compact `btn-sm` rows, where a mouse is doing the pointing. `btn-sm`
+   composes as `btn btn-sm`, so it inherits this from `.btn` rather than needing
+   its own rule. Width too, not just height: an icon-only button is the one shape
+   that can be narrower than the floor, and a labeled button is already wider than
+   it, so the width half is a no-op everywhere it is not needed.
+
+   THE NUMBER IS 44, AND WHAT IT MEASURES IS A RENDERED BOX (owner ruling on
+   #3514, 2026-08-21). It shipped at 40, because #3486's text said 40. #3514 then
+   found the registry holding TWO numbers under one name, and that the mechanism
+   §5 cited for the smaller one — #644's `.tap-target`, `inset: -6px` around a
+   32px icon — never produced 40 at all; it produces 44. The ruling is one number
+   and two mechanisms: the tap floor is 44px EFFECTIVE everywhere, met either by
+   RENDERED size (this rule, or a call site's own `min-h-11`) or by extending a
+   deliberately smaller rendered control to >=44 effective with `.tap-target`.
+   Rendered height and hit area are different guarantees, so a rule states which
+   one it means — this one means rendered — and no bare "tap floor" number is
+   citable without saying. A control that uses NEITHER mechanism is the defect.
 
    IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
    CEILING. The first cut of this rule was unlayered, on the reasoning that
@@ -1666,8 +1812,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
    floor. Tailwind orders `components` before `utilities`, so this loses to any
    call-site `min-h-*` and the two numbers resolve the way a reader expects them
-   to: the family sets 40 for everything that asks for nothing, and a surface that
-   needs MORE — the pager's 44px tap step — says so and gets it. A surface that
+   to: the family sets the floor for everything that asks for nothing, and a
+   surface that needs MORE says so and gets it. A surface that
    wants LESS is not asking for a smaller floor; it is telling us it is not a
    member of this family.
 
@@ -1681,8 +1827,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     .btn,
     .btn-ghost,
     .btn-danger {
-      min-block-size: 2.5rem;
-      min-inline-size: 2.5rem;
+      min-block-size: 2.75rem;
+      min-inline-size: 2.75rem;
     }
   }
 }

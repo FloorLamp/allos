@@ -116,7 +116,7 @@ function deleteIntakeItem(name: string) {
 async function openNewActivity(page: Page) {
   await hydratedClick(
     page,
-    page.getByRole("main").getByRole("button", { name: "New activity" })
+    page.getByRole("main").getByRole("button", { name: "Add activity" })
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
 }

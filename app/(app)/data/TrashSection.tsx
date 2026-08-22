@@ -35,9 +35,8 @@ export default function TrashSection({
           Deleted rows are kept here for {retentionDays}{" "}
           {retentionDays === 1 ? "day" : "days"}, then purged for good — along
           with any video clips they captured. Restoring puts a row back with its
-          children (an activity brings its sets, a medication its doses and
-          adherence history) under a new id. An admin sets the window in Settings
-          → Server.
+          children: an activity brings its sets, a medication its doses and
+          adherence history. An admin sets the window in Settings → Server.
         </p>
       </div>
 

@@ -60,13 +60,13 @@ async function deleteOpenDraft(page: Page) {
   await deleteActivityFromForm(page);
 }
 
-// Open the PLAIN (non-live) create form via "New activity", log one complete set,
+// Open the PLAIN (non-live) create form via "Add activity", log one complete set,
 // and title it, so the plain-form Finish (#1124) can be exercised.
 async function startPlainSession(page: Page, title: string) {
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Add activity" })
     .click();
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // Not live: no live control strip in the plain create form.

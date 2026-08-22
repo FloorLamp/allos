@@ -27,7 +27,7 @@ function def(cadenceMinutes?: number): IntegrationDef {
     name: "Test provider",
     kind: "oauth",
     status: "available",
-    blurb: "",
+    lead: "",
     dataTypes: [],
     pull:
       cadenceMinutes === undefined

@@ -29,7 +29,12 @@ import {
   episodesForDocument,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
-import { getProfileFullName, getUnitPrefs } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getProfileFullName,
+  getUnitPrefs,
+} from "@/lib/settings";
+import { formatDateWithYear } from "@/lib/format-date";
 import { portalById } from "@/lib/portals";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
@@ -218,6 +223,12 @@ export default async function ImportDetailPage(props: {
   const id = Number(params.id);
   const doc = id ? getMedicalDocument(profile.id, id) : undefined;
   if (!doc) notFound();
+
+  // The login's date/time display prefs, resolved ONCE at this page's request
+  // boundary and threaded down (#964/#3492). Every day this page states — the
+  // provenance line here, the per-row DATE cells in the records browser — renders
+  // through them, so the page never shows the storage format.
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // The tabbed records browser (#271): one tab per non-empty produced type,
   // built from the SAME counts source the toast/extracted_count uses (#212);
@@ -438,10 +449,15 @@ export default async function ImportDetailPage(props: {
                 label="Detected format"
                 value={documentFormatLabel(doc)}
               />
+              {/* The document's own date, through the login's date prefs (#3492) —
+                  a machine date is what we STORE, never what a provenance line
+                  reads. Year-bearing: an imported record routinely predates this
+                  calendar year, so the auto-year formatters would drop the one
+                  part of it a reader needs. */}
               {doc.document_date && (
                 <ProvenanceRow
                   label="Document date"
-                  value={doc.document_date}
+                  value={formatDateWithYear(doc.document_date, formatPrefs)}
                 />
               )}
               {doc.source && (
@@ -600,6 +616,7 @@ export default async function ImportDetailPage(props: {
                 <ProducedListing
                   title={activeTab.label}
                   items={visibleItems}
+                  prefs={formatPrefs}
                   tabKey={activeTab.kind === "body" ? null : activeTab.key}
                   focusedRowId={focusedRowId}
                   rowFlags={rowFlags}
