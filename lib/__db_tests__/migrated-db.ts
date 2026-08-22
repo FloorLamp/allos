@@ -26,9 +26,9 @@ import { migrate } from "@/lib/db";
 // WHY NOT THE ON-DISK TEMPLATE the shared project already builds
 // (./shared-template.ts, ./global-setup.ts)? It is the same end state and it would
 // cost nothing to build. It cannot be deserialized: `global-setup` leaves the
-// template in WAL journal mode, that mode is recorded in the file header, and an
-// in-memory database cannot use WAL — SQLite answers `SQLITE_CANTOPEN`, verified
-// on the template file and on `serialize()` of a read-only handle to it. Copying
+// template at `journal_mode = WAL`, that setting is recorded in the file header,
+// and an in-memory database cannot use WAL — SQLite answers `SQLITE_CANTOPEN`,
+// verified on the template file and on `serialize()` of a read-only handle. Copying
 // the template to a temp FILE instead is what `setup-shared.ts` already does for
 // the singleton; the callers here want an in-process handle they own and close, so
 // they take the cheaper in-memory route and pay one replay per worker for it.
