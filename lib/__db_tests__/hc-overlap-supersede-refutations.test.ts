@@ -351,10 +351,11 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     push(p, { steps: [NY] }, "2026-08-21T05:00:05Z");
 
   it("stores both, says so, and deletes nothing", () => {
-    // MUTATION: drop the push-key exclusion from `planMetricSampleSupersede` and the
-    // stored NY row is deleted here — by the TOKYO bucket of the very push that is
-    // re-sending it. Whether it came back then depended on which of the two the loop
-    // reached first, which is rounds 1 and 5 in one fixture.
+    // MUTATION: drop the `AND pushed_at IS NOT ?` clause from the candidate query in
+    // `supersedeMetricSampleOverlaps` — the push-key exclusion, on this side of the
+    // ruling — and the stored NY row is deleted here, by the TOKYO bucket of the very
+    // push that is re-sending it. Whether it came back then depended on which of the two
+    // the loop reached first, which is rounds 1 and 5 in one fixture.
     const p = freshProfile("BOTH-ANCHORINGS-ONE-PUSH");
     seedNY(p);
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
@@ -1250,9 +1251,16 @@ describe("R7 — a row pass C will not write plans no delete", () => {
   // reading. A user sees today's step count duplicated across two anchorings, deletes the
   // RE-ANCHORED one, and the next rolling-window push destroys the other.
   //
-  // MUTATION for every case below: drop the `vetoes.veto(...)` consultation from
-  // `planMetricSampleSupersede` — the stored reading is deleted and the day reads lower
-  // than `main` would, which is the one thing the ruling's invariant forbids outright.
+  // AND THE VETOES ARE NOT CONSULTED ANY MORE — they do not have to be. The victim set is
+  // derived from the rows carrying this push's stamp (#3424, the ruling of
+  // 2026-08-22T13:46Z), and a vetoed row is never written and never stamped, so it
+  // justifies nothing without any pass asking why.
+  //
+  // MUTATION for every case below: weaken the first query's `AND pushed_at = ?` in
+  // `supersedeMetricSampleOverlaps` to `AND (pushed_at = ? OR 1 = 1)` — "any stored row
+  // justifies" rather than "a row THIS push wrote justifies" — and the stored reading is
+  // deleted, so the day reads lower than `main` would, which is the one thing the
+  // ruling's invariant forbids outright.
 
   /** The Data → Manage delete, through the same key builder that action uses. */
   function tombstone(p: number, startedAt: string): void {
@@ -1802,22 +1810,23 @@ describe("R8/R9 — the victim set is derived from the store, under the lock", (
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("R8b — a push carrying one natural key twice", () => {
-  // THE REFUTATION. `countInPushDoubleCounts` groups by (metric, origin) and counts
-  // "overlaps a row of this push that starts earlier". Two copies of ONE record share a
-  // `started_at`, so they overlap totally — and the ON CONFLICT merges them into ONE
-  // stored row. The store was right every time; the warning was false and scaled with the
-  // number of copies: two copies said "1 reading", three said "2 readings", over a store
-  // holding one row.
+  // THE REFUTATION, AND THE SHAPE THAT MADE IT STRUCTURALLY IMPOSSIBLE. The in-push
+  // double count was computed over the PAYLOAD and grouped by (metric, origin): two copies
+  // of ONE record share a `started_at`, so they overlap totally — and the ON CONFLICT
+  // merges them into ONE stored row. The store was right every time; the warning was false
+  // and scaled with the number of copies: two copies said "1 reading", three said "2
+  // readings", over a store holding one row. It needed a hand-written dedupe to one row
+  // per natural key.
   //
-  // The principle was already written one paragraph up in the same docstring, for the
-  // stored side only — "the stored row and the incoming row are ONE reading updated in
-  // place, not two" — and `scripts/hc-origin-overlap-census.ts` already collapses on
-  // (metric, origin, started_at) "so a re-sent moving-end snapshot is not reported as an
-  // overlap with itself". The dedupe of `dayBuckets` is that same collapse, applied to the
-  // incoming side.
+  // The count is now taken over the rows carrying this push's stamp — i.e. over the STORE,
+  // which holds one row per natural key by construction — so there is nothing left to
+  // dedupe and no way to spell the defect. `scripts/hc-origin-overlap-census.ts` already
+  // made the same collapse on (metric, origin, started_at) "so a re-sent moving-end
+  // snapshot is not reported as an overlap with itself"; here the unique index does it.
   //
-  // MUTATION for the first three cases: drop the `dayBucketKeys` guard in
-  // `planMetricSampleSupersede` and each reports a double count over a single stored row.
+  // These cases stay as the guarantee rather than as the guard: the LAST one is the true
+  // positive the collapse must not take with it, and it is the one a mutation reaches
+  // (drop `row.date` from the grouping key, or the `windowsOverlap` test, and it moves).
 
   function pushSteps(p: number, records: unknown[], timestamp: string) {
     const parsed = parseHealthConnectPayload(
