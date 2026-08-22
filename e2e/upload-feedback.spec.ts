@@ -69,9 +69,16 @@ test.describe("Medical document upload feedback", () => {
     ).toBeVisible();
 
     // The input is cleared after submit, so re-selecting the same file re-fires
-    // its change event (and the button re-disables until a file is picked again).
+    // its change event.
     await expect(input).toHaveValue("");
-    await expect(submit).toBeDisabled();
+    // …and the card returns to its empty state: the submit row is GONE, not a
+    // disabled button sitting under an identically-named picker (#3488 fix 2).
+    // This assertion used to read `toBeDisabled()`; the button is no longer
+    // rendered at all when nothing is selected.
+    await expect(submit).toHaveCount(0);
+    await expect(page.getByTestId("medical-upload-submit-row")).toHaveCount(0);
+    // The two doors are still there, so "gone" is the row and not the card.
+    await expect(page.getByTestId("medical-upload-actions")).toBeAttached();
   });
 
   // Issue #1315: the upload confirmation and the extraction-complete toast used to
