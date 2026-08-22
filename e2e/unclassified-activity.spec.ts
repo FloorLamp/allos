@@ -153,7 +153,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
     await member
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
-      .click();
+      .click(); // confirm-delete-ok: the URL check below IS the server settle — leaveDeletedActivityPage navigates only once `onDeleted` has fired — and deleteActivityFromForm cannot be used here because it dismisses the very toast the Undo below has to press
     await expect(member).toHaveURL(/\/timeline$/);
     await member.getByRole("button", { name: "Undo" }).click();
     await expect(member.getByText("Restored.")).toBeVisible();

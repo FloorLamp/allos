@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
   comboboxRows,
+  deleteActivityFromForm,
   followLink,
   hydratedClick,
   openCombobox,
@@ -133,11 +134,14 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
     page,
     page.getByRole("button", { name: "Activity actions" })
   );
-  await page.getByTestId("delete-activity").click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  // Through the shared discard (#3454): the count below is read after a hard
+  // navigation, which re-renders the feed from the SERVER — so a DELETE still in
+  // flight leaves the row in the HTML and `toHaveCount` then retries against a
+  // document that will never change. The row-menu delete raises the same
+  // "Activity deleted." toast the editor footer's does.
+  await deleteActivityFromForm(page, {
+    trigger: page.getByTestId("delete-activity"),
+  });
   await page.goto("/training?tab=log");
   await expect(titleRows).toHaveCount(before);
 });
@@ -485,11 +489,11 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   // Clean up: delete the just-created activity from the still-open editor. The
   // Delete button only appears once the auto-save has created the row, so waiting on
   // it also confirms the activity persisted. Restores the seed for later specs.
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  //
+  // Through the shared discard (#3454) — nothing follows it here, so without a
+  // settle the test ENDS while the DELETE is in flight and the shared-profile
+  // teardown guard reads the draft on its way out.
+  await deleteActivityFromForm(page);
 });
 
 test("the activity form keeps workout entry primary and context visible across breakpoints", async ({
@@ -743,11 +747,13 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
   ).toBeVisible();
 
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  //
+  // THE SITE #3454 WAS FILED FOR. This ended on the confirm's Delete and asserted
+  // nothing after it, so the `noStrandedSharedDraft` teardown guard read the worker
+  // database while the DELETE was still in flight — 2 failures in 4 runs on an
+  // unmodified `origin/main`, and a red in `e2e (4)` on PR #3464, whose diff is
+  // entirely `lib/` number readers.
+  await deleteActivityFromForm(page);
 });
 
 test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
@@ -772,12 +778,9 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
   await expect(page.getByText(/Avg speed:/)).toContainText("12");
   await expect(page.getByText(/Pace:/)).toContainText("5:00");
 
-  // Clean up the auto-saved draft (a duration makes it savable).
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  // Clean up the auto-saved draft (a duration makes it savable). Through the shared
+  // discard (#3454) — nothing follows it, so the teardown guard is what reads next.
+  await deleteActivityFromForm(page);
 });
 
 test("a lone sport logged with Start/End auto-fills its Duration and shows real minutes (#791)", async ({
@@ -840,11 +843,12 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
     .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  // #3454's SECOND measured site. The `toHaveCount(0)` below retries, but it retries
+  // against the HTML a hard navigation already fetched — so a DELETE that had not
+  // landed when the `goto` was issued leaves the row in a document that never
+  // updates, and the retry can only run the clock out. Red once in a batch on PR
+  // #3456, green on an identical re-run, 6.5s alone.
+  await deleteActivityFromForm(page);
   await page.goto("/training?tab=log");
   await expect(newRow).toHaveCount(0);
 });

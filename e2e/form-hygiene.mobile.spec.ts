@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import {
   comboboxRows,
+  deleteActivityFromForm,
   expectNoClippedContent,
   setRpeColumn,
   settledFill,
@@ -78,16 +79,13 @@ async function fillSet1Weight(page: Page, value: string): Promise<void> {
 // Delete the auto-saved draft so the worker's DB is left as this spec found it.
 // A COMPLETE set makes the activity savable and the debounced autosave creates a
 // row; the Delete button appears only once that row exists, so waiting on it is
-// what makes the cleanup real (the form-fill-paths precedent).
+// what makes the cleanup real (the form-fill-paths precedent). The discard goes
+// through `deleteActivityFromForm`, so it returns once the row is GONE rather than
+// once the form stopped rendering (#3454).
 async function cleanUpDraft(page: Page): Promise<void> {
   const del = page.getByRole("button", { name: "Delete", exact: true });
   await expect(del).toBeVisible();
-  await del.click();
-  await page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(page.getByTestId("activity-form")).toBeHidden();
+  await deleteActivityFromForm(page, { trigger: del });
 }
 
 test("the live set row shows a 4-character load at 390px (#1450)", async ({
