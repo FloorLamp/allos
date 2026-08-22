@@ -303,7 +303,8 @@ export default async function PatientPortalsPage() {
       <PortalsSurface
         stage={stage}
         checklist={checklist}
-        blurb={def.blurb}
+        lead={def.lead}
+        detail={def.detail}
         portals={portalViews}
         accounts={accountViews}
         identities={identityViews}

@@ -16,13 +16,14 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Google Health Connect",
     kind: "push",
     status: "available",
-    blurb:
-      "Sync weight, body fat, resting heart rate, steps, heart rate, and workouts " +
-      "from your Android phone. An exporter app on the phone pushes Health Connect " +
-      "data to this app on a schedule. It's also the supported way to bring in " +
-      "nutrition: food trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio " +
-      "write your logged macros to Health Connect, so calories and protein/carbs/fat " +
-      "flow through here and chart on Trends → Nutrition → Macros.",
+    lead: "Sync weight, heart rate, steps, and workouts from your Android phone.",
+    detail:
+      "The full list is weight, body fat, resting heart rate, steps, heart rate, and " +
+      "workouts. An exporter app on the phone pushes Health Connect data to this app " +
+      "on a schedule. It's also the supported way to bring in nutrition: food " +
+      "trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio write your logged " +
+      "macros to Health Connect, so calories and protein/carbs/fat flow through here " +
+      "and chart on Trends → Nutrition → Macros.",
     dataTypes: [
       "Weight",
       "Body fat",
@@ -154,10 +155,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Strava",
     kind: "oauth",
     status: "available",
-    blurb:
-      "Pull runs, rides, and other activities directly from Strava. Connect once " +
-      "with OAuth and activities sync automatically — with heart rate, elevation, " +
-      "pace, calories, and cycling power/cadence.",
+    lead: "Pull runs, rides, and other activities directly from Strava.",
+    detail:
+      "Connect once with OAuth and activities sync automatically — with heart rate, " +
+      "elevation, pace, calories, and cycling power/cadence.",
     dataTypes: [
       "Workouts",
       "Distance",
@@ -228,10 +229,12 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Oura Ring",
     kind: "token",
     status: "available",
-    blurb:
+    lead:
       "Pull sleep, nightly heart-rate variability and resting heart rate, and " +
-      "workouts from your Oura Ring. Create a personal access token in the Oura " +
-      "developer portal and paste it here — no OAuth app or callback URL needed.",
+      "workouts from your Oura Ring.",
+    detail:
+      "Create a personal access token in the Oura developer portal and paste it " +
+      "here — no OAuth app or callback URL needed.",
     dataTypes: [
       "Sleep",
       "Sleep stages",
@@ -271,11 +274,14 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Withings",
     kind: "oauth",
     status: "available",
-    blurb:
-      "Pull weight and body composition, blood pressure, SpO2, temperature, resting " +
-      "heart rate, and sleep from your Withings scale, blood-pressure cuff, and sleep " +
-      "sensors. Connect once with OAuth and measurements sync automatically — blood " +
-      "pressure lands as vitals alongside manual readings.",
+    lead:
+      "Pull weight, blood pressure, sleep and more from your Withings devices.",
+    detail:
+      "The full list is weight and body composition, blood pressure, SpO2, " +
+      "temperature, resting heart rate, and sleep, from your Withings scale, " +
+      "blood-pressure cuff, and sleep sensors. Connect once with OAuth and " +
+      "measurements sync automatically — blood pressure lands as vitals alongside " +
+      "manual readings.",
     dataTypes: [
       "Weight",
       "Body composition",
@@ -320,8 +326,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Garmin Connect",
     kind: "oauth",
     status: "planned",
-    blurb:
-      "Pull activities, daily steps, sleep, and heart rate from Garmin Connect. " +
+    lead:
+      "Pull activities, daily steps, sleep, and heart rate from Garmin Connect.",
+    detail:
       "Garmin's official Health API requires an approved partner account (the " +
       "developer program is currently paused) and a public webhook, so it's not " +
       "yet available for self-hosted use.",
@@ -335,10 +342,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Fitbit (Google Takeout)",
     kind: "archive",
     status: "available",
-    blurb:
-      "Import a Fitbit account export downloaded from Google Takeout. This is the " +
-      "only way to bring in body composition from a scale that syncs to Fitbit: " +
-      "Fitbit does not forward weight or body fat to Health Connect, so those " +
+    lead:
+      "Import a Fitbit account export downloaded from Google Takeout.",
+    detail:
+      "This is the only way to bring in body composition from a scale that syncs to " +
+      "Fitbit: Fitbit does not forward weight or body fat to Health Connect, so those " +
       "readings — often years of them — are invisible to the phone exporter. Sleep, " +
       "workouts, resting heart rate, SpO2 and respiratory rate come along too, plus " +
       "Fitbit's own sleep and readiness scores, which are stored and shown as " +
@@ -390,7 +398,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
           label: "weight",
           selector: { table: "body_metrics", column: "weight_kg" },
           because:
-            "Fitbit does not forward scale weight to Health Connect, so the phone exporter never carries it (the blurb above says the same thing to the user).",
+            "Fitbit does not forward scale weight to Health Connect, so the phone exporter never carries it (the folded detail above says the same thing to the user).",
         },
         {
           id: "body-fat",
@@ -440,11 +448,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // mapped — both of which "How it works" and the mapping card below it say again, in
     // more detail, a few centimetres further down the same page. A six-line wall at the
     // top of a setup page is read by nobody; the mechanics belong where the mechanics are.
-    blurb:
+    lead:
       "Bring in visit summaries, labs, medications and immunizations from hospital " +
-      "and clinic patient portals. A small companion tool signs in on your own " +
-      "computer and pushes what it downloads here — your portal password, and even " +
-      "the portal's web address, never leave that machine.",
+      "and clinic patient portals.",
+    detail:
+      "A small companion tool signs in on your own computer and pushes what it " +
+      "downloads here — your portal password, and even the portal's web address, " +
+      "never leave that machine.",
     dataTypes: [
       "Visit summaries",
       "Labs",
@@ -466,13 +476,15 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Weather & UV (Open-Meteo)",
     kind: "public",
     status: "available",
-    blurb:
-      "Bring in the actual UV index and solar irradiance at your home location, so " +
-      "your outdoor daylight time becomes a two-sided UV dose — enough sun for " +
-      "vitamin D and circadian light, but a heads-up before you'd burn. Powered by " +
-      "Open-Meteo: no API key or account, and its free historical archive backfills " +
-      "the UV for activities you already logged. Needs only your home location " +
-      "(Settings → Profile); works offline with a clear-sky estimate.",
+    lead:
+      "Bring in the actual UV index at your home location, so your outdoor daylight " +
+      "time becomes a two-sided UV dose.",
+    detail:
+      "Solar irradiance comes with it: enough sun for vitamin D and circadian light, " +
+      "but a heads-up before you'd burn. Powered by Open-Meteo: no API key or " +
+      "account, and its free historical archive backfills the UV for activities you " +
+      "already logged. Needs only your home location (Settings → Profile); works " +
+      "offline with a clear-sky estimate.",
     dataTypes: ["UV index", "Solar irradiance"],
     // NO override: weather takes the cadence-derived DEFAULT
     // (DEFAULT_SILENCE_TOLERANCE_POLLS × its declared 60-minute cadence = 12 h), the
@@ -508,8 +520,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Calendar feed",
     kind: "feed",
     status: "available",
-    blurb:
-      "Subscribe to your appointments in Google, Apple, or Outlook Calendar. " +
+    lead:
+      "Subscribe to your appointments in Google, Apple, or Outlook Calendar.",
+    detail:
       "Enable the feed to get a private link your calendar app checks " +
       "automatically, so upcoming medical visits — with reminders — show up " +
       "alongside the rest of your schedule.",
