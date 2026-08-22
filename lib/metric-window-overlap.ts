@@ -410,7 +410,10 @@ export const UNSTAMPED_ERA_MAX_ID_KEY = "hc_overlap_unstamped_era_max_id";
  *     double count the fix exists to collapse.
  *   - The stored row's stamp is NULL and either half is unproven: NOT superseded. NULL
  *     means UNKNOWN. A row whose provenance the store cannot establish is not a row this
- *     path may delete, so the double count stays — visible, counted, and repairable.
+ *     path may delete, so the double count stays — visible and counted, and it stays for
+ *     good: a stored NULL never becomes non-NULL and the era markers never grow, so no
+ *     later push can reach it either. What visible buys is a day that reads HIGH beside
+ *     a stored row still holding the right number, not a repair that is coming.
  *
  * An unreadable or absent INCOMING stamp is refused outright in every state: a push that
  * cannot say when it happened gets to delete nothing.
