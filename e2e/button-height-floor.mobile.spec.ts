@@ -66,6 +66,57 @@ test.describe("the button family has one height at phone width (#3486)", () => {
     expect(iconOnly!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   });
 
+  // THE TWO CALL SITES THE FAMILY RULE REPLACED, MEASURED WHERE THEY LIVE.
+  //
+  // These are the highest-risk buttons in the whole change and the only two that
+  // got measurably LESS source: each carried its own `min-h-10 min-w-10 …
+  // sm:min-h-0 sm:min-w-0`, and collapsing them into the family is what the issue
+  // asked for — but it means their 40px now comes from a rule declared in another
+  // file, under a media query, in a layer. Nothing about the deletion proves the
+  // replacement reached them. So each is opened at 390px, in its icon-only state,
+  // and its RENDERED box is read.
+  //
+  // Both halves matter and only one is a measurement: `noLocalFloor` is a
+  // DECLARATION check (the hand fix is really gone, so there is one number in the
+  // codebase rather than three), and it is checked only AFTER the element is
+  // proven visible — an absence assertion over the class string of an element that
+  // never mounted is green and means nothing.
+  const COLLAPSED_HAND_FIXES = [
+    {
+      what: "the supplement add toggle (#3486: was min-h-10 min-w-10 …)",
+      route: "/nutrition?tab=supplements",
+      testId: "supplement-add-toggle",
+    },
+    {
+      what: "the metric measurement toggle (#3486: was min-h-10 min-w-10 …)",
+      route: "/trends/metric/weight",
+      testId: "metric-measurement-toggle",
+    },
+  ];
+
+  for (const site of COLLAPSED_HAND_FIXES) {
+    test(`${site.what} keeps its floor from the family`, async ({ page }) => {
+      await page.goto(site.route);
+      const trigger = page.getByTestId(site.testId);
+      await expect(trigger).toBeVisible();
+
+      const box = await trigger.boundingBox();
+      expect(box).not.toBeNull();
+      expect(
+        box!.height,
+        `${site.testId} renders ${box!.height}px tall at ${PHONE.width}px. Its own ` +
+          "`min-h-10` was removed in favour of the family floor in app/globals.css — " +
+          "if this is short, the family rule is not reaching it."
+      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+
+      // …and the hand fix really is gone, so 40 is written once and not three
+      // times. Safe to ask only because the element above is proven present.
+      const className = await trigger.getAttribute("class");
+      expect(className).not.toMatch(/\bmin-[hw]-10\b/);
+    });
+  }
+
   test("no button on the page renders under the tap floor", async ({
     page,
   }) => {

@@ -434,8 +434,10 @@ const SWIPE_POINT_ALLOW: Record<string, number> = {};
 // markers on the node, then click ONCE.
 //
 // Located two ways in the suite, both matched: the `overflow-menu-trigger` testid, and
-// the trigger's accessible name (`aria-label={label}` on the same button), which reads
-// "… actions" or "Actions for …" at all but three call sites.
+// the trigger's accessible name (`aria-label` on the same button), which since #3501
+// reads "… actions for …" or "Actions for …" at EVERY call site — the name is composed
+// in lib/overflow-menu-label.ts rather than typed per caller, so the accessible-name
+// arm below no longer has exceptions to miss.
 //
 // THE MENU ITEM IS NOT IN SCOPE, and that is a mechanism claim, not a concession. The
 // panel is `{open && createPortal(…)}` — a menu item exists only because a trigger
@@ -445,10 +447,16 @@ const SWIPE_POINT_ALLOW: Record<string, number> = {};
 // it is removed by an argument rather than papered over with a marker.
 //
 // KNOWN LIMIT: a trigger stored in a `const` and clicked in a later statement evades
-// the `(?!;)` gap, and so does a trigger named by one of the three labels that do not
-// say "actions" (`"Snooze or dismiss"`, `${def.label} options`, `label={name}`) unless
-// the spec used the testid. Both are deliberate — the testid is on every trigger, so
-// the honest fix at an evading site is to spell it that way — not supported escapes.
+// the `(?!;)` gap. That is deliberate — the testid is on every trigger, so the honest
+// fix at an evading site is to spell it that way — not a supported escape.
+//
+// The OTHER limit this note used to carry is gone: three labels did not say "actions"
+// at all (`"Snooze or dismiss"`, `${def.label} options`, `label={name}`) and their
+// call sites were invisible to the name arm unless they used the testid. #3501 retired
+// the `label` prop that let a caller write those, so the arm's coverage went up on its
+// own — and the seven bare taps it then revealed (substance-use, substance-quicklog)
+// were converted rather than granted an allowance, which is what raised those files to
+// the discipline the rest of the suite already had.
 //
 // The `(?!;)` guard is the MULTI_BOX_RE `(?!Promise\.all)` trick: without it the lazy
 // gap walks out of one statement and pairs a marker with a stranger's `.click(`.
