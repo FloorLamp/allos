@@ -1188,11 +1188,11 @@ export default function NotificationPrefs({
                           &mdash;
                         </span>
                         <span
-                          className="hidden text-xs font-normal text-slate-400 dark:text-slate-500"
+                          className="hidden text-xs font-normal text-slate-500 dark:text-slate-400"
                           data-matrix-chip-label
                           data-testid={`matrix-chip-${c.id}-${e.kind}`}
                         >
-                          {c.short} &mdash; can&rsquo;t carry this
+                          {`${c.short} — can’t carry this`}
                         </span>
                       </span>
                     );
