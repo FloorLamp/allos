@@ -30,7 +30,8 @@ import {
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // Floors, measured 2026-08-22 on this tree: 855 .tsx files under app/ + components/,
-// 244 name render sites, 54 casing classes. Each floor sits a little under its
+// 244 name render sites, 56 casing-markup sites (54 casing classes plus the two
+// `className={expr}` spellings the widened rule now reaches). Each floor sits a little under its
 // measurement so ordinary deletion churn does not red the build, while the failure
 // this test exists for — a rule that quietly stops matching, which takes the count to
 // single digits — cannot get past it.
@@ -173,10 +174,36 @@ describe("the census rule can see an offender", () => {
     });
   }
 
-  it("flags a casing class over a name render", () => {
-    const source = `<span className="text-xs uppercase">{med.name}</span>`;
-    expect(cssCasingOverNameHits(source).length).toBeGreaterThan(0);
-  });
+  // THE MARKUP HALF, and these four are the shapes review had to find because the
+  // rule could not. Each was planted on the exact heading #3480 names.
+  const MARKUP_OFFENDERS: [string, string][] = [
+    [
+      "a casing class over a name render",
+      `<span className="text-xs uppercase">{med.name}</span>`,
+    ],
+    [
+      "an inline textTransform over a name render",
+      `<span style={{ textTransform: "uppercase" }}>{med.name}</span>`,
+    ],
+    [
+      "a casing class reached through a ternary",
+      `<span className={current ? "uppercase" : "normal-case"}>{med.name}</span>`,
+    ],
+    [
+      "a casing class whose element wraps a NESTED tag before the name",
+      `<b className="uppercase"><i>·</i>{med.name}</b>`,
+    ],
+  ];
+
+  for (const [what, source] of MARKUP_OFFENDERS) {
+    it(`flags ${what}`, () => {
+      expect(
+        cssCasingOverNameHits(source).length,
+        `the census must SEE ${JSON.stringify(source)} — the markup half is the ` +
+          `half with no JavaScript in it, so nothing else in the tree can catch it`
+      ).toBeGreaterThan(0);
+    });
+  }
 });
 
 describe("the census rule stays quiet on the benign neighbours", () => {
@@ -211,6 +238,21 @@ describe("the census rule stays quiet on the benign neighbours", () => {
     [
       "a non-name value cased for display",
       `<span>{status.toUpperCase()}</span>`,
+    ],
+    [
+      "an inline textTransform on text that is not a name",
+      `<span style={{ textTransform: "uppercase" }}>{unitLabel}</span>`,
+    ],
+    [
+      "a ternary casing class on text that is not a name",
+      `<span className={active ? "uppercase" : "normal-case"}>{tabLabel}</span>`,
+    ],
+    [
+      "a name rendered in the SIBLING after a cased element",
+      // The window is depth-aware, so this element's own `</span>` ends it. Without
+      // that, every eyebrow in the tree would drag the next name in and the rule
+      // would be deleted for crying wolf.
+      `<span className="uppercase">Dose</span><span>{med.name}</span>`,
     ],
   ];
 

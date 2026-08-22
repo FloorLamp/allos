@@ -149,54 +149,111 @@ export function nameCasingHits(source: string): CensusHit[] {
   return nameRenderSites(source).filter((h) => CASING_ON_NAME.test(h.text));
 }
 
-// ── The CSS half, because a class can casing-pass a name too ──────────────────
+// ── The MARKUP half, because a class or a style can casing-pass a name too ───
 //
-// `className="uppercase"` on the element that renders a name is a display casing
-// pass with no JavaScript in it at all, so the rule above cannot see it. This is the
-// hole, and it is closed by measurement rather than by argument: the tree carries 54
-// casing classes (measured 2026-08-22) and NONE of them wraps a name render — every
-// one sits on an eyebrow, a unit suffix or a table label. The rule below re-derives
-// that on every run, and the test floors the 54 so a scan that stops finding casing
-// classes at all cannot pass by finding nothing.
+// `className="uppercase"` on the element that renders a name is a display casing pass
+// with no JavaScript in it at all, so the rule above cannot see it. Neither can it see
+// `style={{ textTransform: "uppercase" }}`, which is the same pass wearing a different
+// attribute. This is the hole, and it is closed by measurement rather than by
+// argument: the tree carries 54 casing classes (measured 2026-08-22) and NONE of them
+// wraps a name render — every one sits on an eyebrow, a unit suffix or a table label.
+// The rule below re-derives that on every run, and the test floors the count so a scan
+// that stops finding casing markup at all cannot pass by finding nothing.
 //
-// The window is a heuristic (a casing class, then the element's own children before
-// the next tag closes), and heuristics under-match. It is still worth having: an
-// under-matching rule that catches the obvious spelling is what the tree would
-// actually get wrong, and the alternative was a paragraph asserting the hole was
-// empty with nothing checking it.
+// THREE SHAPES IT USED TO MISS, all of them planted on the exact heading #3480 names
+// and all of them found by review rather than by the guard:
+//   • an inline `style={{ textTransform: "uppercase" }}` — a different attribute;
+//   • `className={current ? "uppercase" : "normal-case"}` — the class in an
+//     EXPRESSION rather than a string literal, which is how a conditional style is
+//     always written, and 133 .tsx files carry a `className={…}` of some kind;
+//   • `<b className="uppercase"><i>·</i>{med.name}</b>` — a NESTED tag, which ended
+//     the old window at the first `</` it met (the inner `</i>`) and so never reached
+//     the name. The window is now depth-aware.
+//
+// The window is still a heuristic, and heuristics under-match. It is worth having: an
+// under-matching rule that catches the spellings somebody would actually reach for is
+// what the tree would get wrong, and the alternative was a paragraph asserting the
+// hole was empty with nothing checking it.
 
-const CSS_CASING_RE =
-  /className\s*=\s*(?:"|'|\{`|\{")([^"'`]*\b(?:uppercase|lowercase|capitalize)\b[^"'`]*)/g;
+// A className or style attribute, with its value — a string literal, a template, or a
+// braces expression (one level of nesting, which covers both `{cond ? "a" : "b"}` and
+// `{{ textTransform: "uppercase" }}`).
+const CASING_MARKUP_RE =
+  /(className|style)\s*=\s*(?:"[^"]*"|'[^']*'|\{(?:[^{}]|\{[^{}]*\})*\})/g;
 
-// How far past the class to look for the element's rendered children: to the next
-// closing tag, capped so a long sibling list cannot drag an unrelated name in.
-const CSS_WINDOW = 240;
+// A Tailwind casing class, anywhere in a className value.
+const CASING_CLASS_RE = /\b(?:uppercase|lowercase|capitalize)\b/;
 
-// Every casing class in this source — the denominator the floor is asserted on.
-export function cssCasingClassSites(source: string): CensusHit[] {
-  const clean = blankComments(source);
-  return [...clean.matchAll(CSS_CASING_RE)].map((m) => ({
-    text: m[1].trim(),
-    line: lineOf(clean, m.index),
-  }));
+// The same pass as an inline style.
+const CASING_STYLE_RE =
+  /textTransform\s*:\s*["'`]\s*(?:uppercase|lowercase|capitalize)/;
+
+function isCasingMarkup(attr: string, value: string): boolean {
+  return attr === "className"
+    ? CASING_CLASS_RE.test(value)
+    : CASING_STYLE_RE.test(value);
 }
 
-// Every casing class whose element then renders a name — the offending shape.
+// How far past the element to look for its rendered children, capped so a long
+// child list cannot drag an unrelated name in.
+const CSS_WINDOW = 240;
+
+// The children of the element whose opening tag this attribute sits in — depth-aware,
+// so a nested tag closes itself rather than ending the window, and a SIBLING after
+// this element's own `</…>` is correctly outside it.
+function childWindow(clean: string, from: number): string {
+  let i = clean.indexOf(">", from);
+  if (i === -1) return "";
+  if (clean[i - 1] === "/") return ""; // self-closing: no children to case
+  const start = i + 1;
+  const cap = Math.min(clean.length, start + CSS_WINDOW);
+  let depth = 0;
+  i = start;
+  while (i < cap) {
+    if (clean[i] === "<") {
+      const next = clean[i + 1] ?? "";
+      if (next === "/") {
+        if (depth === 0) break;
+        depth -= 1;
+        const close = clean.indexOf(">", i);
+        if (close === -1) break;
+        i = close;
+      } else if (/[A-Za-z]/.test(next)) {
+        const close = clean.indexOf(">", i);
+        if (close === -1) break;
+        if (clean[close - 1] !== "/") depth += 1;
+        i = close;
+      }
+    }
+    i += 1;
+  }
+  return clean.slice(start, Math.min(i, cap));
+}
+
+// Every casing class or casing style in this source — the denominator the floor is
+// asserted on.
+export function cssCasingClassSites(source: string): CensusHit[] {
+  const clean = blankComments(source);
+  const hits: CensusHit[] = [];
+  for (const m of clean.matchAll(CASING_MARKUP_RE)) {
+    if (!isCasingMarkup(m[1], m[0])) continue;
+    hits.push({ text: m[0].trim(), line: lineOf(clean, m.index) });
+  }
+  return hits;
+}
+
+// Every casing class or casing style whose element then renders a name — the
+// offending shape.
 export function cssCasingOverNameHits(source: string): CensusHit[] {
   const clean = blankComments(source);
   const hits: CensusHit[] = [];
-  for (const m of clean.matchAll(CSS_CASING_RE)) {
-    const from = m.index + m[0].length;
-    const closes = clean.indexOf("</", from);
-    const end = Math.min(
-      closes === -1 ? from + CSS_WINDOW : closes,
-      from + CSS_WINDOW
-    );
-    const window = clean.slice(from, end);
+  for (const m of clean.matchAll(CASING_MARKUP_RE)) {
+    if (!isCasingMarkup(m[1], m[0])) continue;
+    const window = childWindow(clean, m.index + m[0].length);
     for (const interp of window.matchAll(/\{([^{}]*)\}/g)) {
       if (!NAME_IN_INTERP.test(interp[1] ?? "")) continue;
       hits.push({
-        text: `${m[1].trim()} over {${(interp[1] ?? "").trim()}}`,
+        text: `${m[0].trim()} over {${(interp[1] ?? "").trim()}}`,
         line: lineOf(clean, m.index),
       });
       break;
