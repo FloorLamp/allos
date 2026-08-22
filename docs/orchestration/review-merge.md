@@ -63,6 +63,21 @@ not at all five by rote.
 - **Blast radius.** Measure the CONSUMERS, not the changed unit, and enumerate
   them in both trees. A shared primitive's edit reaches every mount site; a PR
   that names three of ten has checked three.
+- **Copy that explains a mechanism can be falsified by the action it explains.**
+  #3537 put _"Any warnings on this med follow its name — a new name can change
+  them"_ above a button whose entire effect is to write an authoritative
+  `rxcui` — taking the row from name-fallback to code-first, and making the
+  sentence false for that row the moment it is pressed. It was accidentally true
+  beforehand only because imported rows land with a NULL code. When a diff adds
+  explanatory copy at a control, ask what the control DOES to the thing the copy
+  asserts, and check the copy again on the after state.
+
+  Its sibling, and the reason the claim survived review: **"keys on X and Y" is
+  not a symmetric statement.** Five of that tree's ten warning surfaces match
+  "on name plus rxcui" — with the code tested FIRST and `continue`d, so the name
+  is the FALLBACK. The PR body's supporting sentence was literally true and
+  meant the opposite of what it was offered for. Read the order, not the list.
+
 - **A fixture carrying ONE item cannot see a defect that needs two.** When a
   mechanism operates on a SET, a test with a single member proves nothing about
   how members interact. #3438's round-7 guard pushed one day-bucket and passed
