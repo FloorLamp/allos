@@ -146,6 +146,18 @@
           "title": "The design review now measures button and text positions on real pages, catching clipped names and mismatched controls",
           "kind": "fix",
           "issues": [3489]
+        },
+        {
+          "pr": 3527,
+          "title": "One tap-target size across the app, so small buttons are as easy to hit as large ones",
+          "kind": "fix",
+          "issues": [3514]
+        },
+        {
+          "pr": 3528,
+          "title": "Sleep naps and vaccine doses stop running off the edge of a phone card, and a check now covers every such list",
+          "kind": "fix",
+          "issues": [3517]
         }
       ]
     },
