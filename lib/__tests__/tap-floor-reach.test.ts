@@ -117,7 +117,11 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   // ── inline glyphs ────────────────────────────────────────────────────────
   { file: "components/FoodGuidance.tsx", controls: 1, why: INLINE_GLYPH },
   { file: "components/HouseholdCard.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "app/(app)/trends/TrendingDigest.tsx", controls: 1, why: INLINE_GLYPH },
+  {
+    file: "app/(app)/trends/TrendingDigest.tsx",
+    controls: 1,
+    why: INLINE_GLYPH,
+  },
   { file: "app/(app)/upcoming/page.tsx", controls: 1, why: INLINE_GLYPH },
   { file: "components/FindingCard.tsx", controls: 1, why: INLINE_GLYPH },
   { file: "components/FindingRow.tsx", controls: 1, why: INLINE_GLYPH },
@@ -166,15 +170,31 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     why: DENSE_EDITOR,
   },
   { file: "components/MoodValencePicker.tsx", controls: 1, why: DENSE_EDITOR },
-  { file: "app/(app)/training/TrainingLogView.tsx", controls: 1, why: DENSE_EDITOR },
-  { file: "components/ProfileSwitcherPanel.tsx", controls: 1, why: DENSE_EDITOR },
+  {
+    file: "app/(app)/training/TrainingLogView.tsx",
+    controls: 1,
+    why: DENSE_EDITOR,
+  },
+  {
+    file: "components/ProfileSwitcherPanel.tsx",
+    controls: 1,
+    why: DENSE_EDITOR,
+  },
   { file: "components/SidebarContent.tsx", controls: 1, why: DENSE_EDITOR },
-  { file: "app/(app)/trends/ChartJumpMenu.tsx", controls: 1, why: DENSE_EDITOR },
+  {
+    file: "app/(app)/trends/ChartJumpMenu.tsx",
+    controls: 1,
+    why: DENSE_EDITOR,
+  },
   { file: "components/CompactDateMenu.tsx", controls: 1, why: DENSE_EDITOR },
   { file: "components/MobileDetailPage.tsx", controls: 1, why: DENSE_EDITOR },
 
   // ── typed fields ─────────────────────────────────────────────────────────
-  { file: "app/(app)/settings/family/FamilyManager.tsx", controls: 2, why: TYPED_FIELD },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    controls: 2,
+    why: TYPED_FIELD,
+  },
   { file: "components/SaveTrendKeyPicker.tsx", controls: 1, why: TYPED_FIELD },
   { file: "components/TableSortSelect.tsx", controls: 1, why: TYPED_FIELD },
   { file: "components/WhenControl.tsx", controls: 2, why: TYPED_FIELD },
@@ -183,7 +203,11 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     controls: 3,
     why: `${TYPED_FIELD} — and these three are \`h-[38px]\`, a pinned arbitrary value`,
   },
-  { file: "components/illness/SymptomPhotoStrip.tsx", controls: 3, why: TYPED_FIELD },
+  {
+    file: "components/illness/SymptomPhotoStrip.tsx",
+    controls: 3,
+    why: TYPED_FIELD,
+  },
   { file: "components/video/VideoClipGrid.tsx", controls: 2, why: TYPED_FIELD },
   {
     file: "components/medications/PediatricDoseBandPicker.tsx",
@@ -222,7 +246,8 @@ function sourceFiles(root: string): string[] {
     })) {
       const rel = `${dir}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules" || entry.name.startsWith("."))
+          continue;
         walk(rel);
       } else if (entry.name.endsWith(".tsx")) {
         out.push(rel);
@@ -296,8 +321,14 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     const SUBJECTS = [
       { file: "app/(app)/nutrition/FoodLogBar.tsx", testid: "undo-" },
       { file: "app/(app)/nutrition/FoodLogBar.tsx", testid: "log-" },
-      { file: "app/(app)/nutrition/ProteinQuickAdd.tsx", testid: "protein-quickadd-undo" },
-      { file: "app/(app)/nutrition/ProteinQuickAdd.tsx", testid: "protein-quickadd-add" },
+      {
+        file: "app/(app)/nutrition/ProteinQuickAdd.tsx",
+        testid: "protein-quickadd-undo",
+      },
+      {
+        file: "app/(app)/nutrition/ProteinQuickAdd.tsx",
+        testid: "protein-quickadd-add",
+      },
     ];
     for (const subject of SUBJECTS) {
       const source = withoutComments(read(subject.file));
@@ -399,7 +430,10 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
         "registered, and this census prices it — find where it went."
     ).not.toBeNull();
     const inset = /inset:\s*-(\d+(?:\.\d+)?)px/.exec(block![1]);
-    expect(inset, "`.tap-target::after` no longer declares a negative `inset`").not.toBeNull();
+    expect(
+      inset,
+      "`.tap-target::after` no longer declares a negative `inset`"
+    ).not.toBeNull();
     expect(
       Number(inset![1]),
       `app/globals.css extends \`.tap-target\` by ${inset?.[1]}px per side, but ` +
@@ -515,7 +549,7 @@ describe("the sweep can see an offender", () => {
     const byId = scan(
       "export default function X() {\n" +
         "  return <li>\n" +
-        "    <input id={`tune-${c}`} type=\"checkbox\" className=\"h-4 w-4\" />\n" +
+        '    <input id={`tune-${c}`} type="checkbox" className="h-4 w-4" />\n' +
         "    <label htmlFor={`tune-${c}`}>Pick</label>\n" +
         "  </li>;\n" +
         "}"
