@@ -142,12 +142,15 @@ const ROUTES: CensusRoute[] = [
     // composition (#3388). See e2e/trash-probe.ts.
     path: "/data?section=trash",
     why: "Data → Trash: the row headline's capture date and its 'Deleted …' subtitle (#3491).",
-    // The floor is LOW because this route is one card and two planted rows, not a
-    // table: measured 2026-08-22 at 40 rendered text nodes, floored at a third.
-    // It still separates "the list rendered" from "the empty state rendered",
-    // which is the distinction that matters here (the empty state is one
-    // paragraph inside the page shell).
-    minTextNodes: 14,
+    // MEASURED 2026-08-22, and the number the floor has to clear is not zero.
+    // This route's failure-to-render state is not a blank page — it is the trash
+    // EMPTY STATE, which renders the same intro card and reads 13 rendered text
+    // nodes. The two planted rows read 24, and one row alone reads 20. So 18
+    // sits above every state in which the list did not render and below the one
+    // it is in the census for. (The other routes' "3× the floor" rounding would
+    // have put it at 8 — under the empty state, which is exactly the silence an
+    // absence assertion is flattered by.)
+    minTextNodes: 18,
     subject: '[data-testid="trash-row-headline"]',
     plant: () =>
       plantTrashCaptures([
