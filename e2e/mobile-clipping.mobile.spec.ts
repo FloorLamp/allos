@@ -161,16 +161,21 @@ test.describe("mobile clipping batch (#2614)", () => {
         root.querySelectorAll<HTMLElement>('[data-testid="sleep-history-naps"]')
       ).map((cell) => {
         const label = cell.querySelector(".card-cell-label");
-        // The value is the one node after the label (the `Td` rule the naps fix
-        // exists to honour), and its element children are the individual naps.
-        let value: Element | null = label?.nextElementSibling ?? null;
-        if (!label) value = cell.firstElementChild;
+        const text = (cell.textContent ?? "").trim();
         const row = cell.closest("tr");
         return {
           labelled: !!label,
-          naps: value ? value.childElementCount : 0,
+          // Naps counted from the RENDERED TEXT, one `·` per "start → end ·
+          // duration" line, NOT from the value's node structure. Counting nodes
+          // would make this fixture check shape-dependent, and the shape is
+          // exactly what the geometry assertion below is here to judge: under the
+          // regression it read zero, so the test went red on "the seed drifted"
+          // and would have sent the next reader to e2e/seed/sleep.ts instead of to
+          // the layout. A count that survives both shapes lets the right assertion
+          // be the one that fires.
+          naps: (text.match(/·/g) ?? []).length,
           rowScroll: row ? row.scrollWidth - row.clientWidth : 0,
-          text: (cell.textContent ?? "").trim().slice(0, 60),
+          text: text.slice(0, 60),
         };
       })
     );
