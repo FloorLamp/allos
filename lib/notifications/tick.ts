@@ -14,6 +14,7 @@ import {
 import { buildWorkoutTargetReminder } from "../notifications/workouts";
 import { buildPracticeReminder } from "../notifications/practices";
 import { buildFoodNudge } from "../notifications/food";
+import { withChatOrigin } from "./chat-origin";
 import { attachUsualRoutine } from "../notifications/usual-routine-attach";
 import {
   attachUsualForSlots,
@@ -543,7 +544,15 @@ export async function tickProfile(
           // holds on this side too. If the dose reminder already took it, `claim`
           // answers null and this is the plain nudge.
           build: () => {
-            const nudge = buildFoodNudge(profileId, w, date);
+            // THE PROACTIVE SEND declares itself (#3087): every `food:` button on this
+            // keyboard is marked as a nudge, so a tap on it — today, or after a
+            // rebuild, or after a "Show more" — still says so. `/food` re-renders this
+            // exact builder and marks the opposite, which is why neither relies on
+            // being the default.
+            const nudge = withChatOrigin(
+              buildFoodNudge(profileId, w, date),
+              "telegram-nudge"
+            );
             return nudge
               ? dispatchableUsual(
                   attachUsualRoutine(

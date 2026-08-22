@@ -94,7 +94,10 @@ export function foodNudgePointerFromMessage(
   messageId: number
 ): FoodNudgePointer | null {
   for (const token of deliveredCallbackTokens(msg)) {
-    const m = /^food:\d+:([A-Za-z]+):(\d{4}-\d{2}-\d{2}):.+$/.exec(token);
+    // `(?:[nc]:)?` is the optional origin marker (#3087) — see chat-origin.ts.
+    const m = /^food:(?:[nc]:)?\d+:([A-Za-z]+):(\d{4}-\d{2}-\d{2}):.+$/.exec(
+      token
+    );
     if (!m) continue;
     const window = m[1];
     if (!FOOD_NUDGE_WINDOWS.includes(window as FoodNudgeWindow)) continue;

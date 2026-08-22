@@ -144,11 +144,17 @@ export const IMPORTED: LoggedVia = "import";
 /**
  * The stamp the offline queue's replay writes.
  *
- * DELIBERATELY the replay, not the surface that queued the write. A queued intent
- * carries no honest record of which control produced it — the surfaces are three
- * mountings of one action and the capture predates the round trip — so inventing one
- * at replay time would put a guess in a column whose entire value is that it does not
- * guess. `offline-replay` is the true answer to "how did this row get here".
+ * DELIBERATELY the replay, not the surface that queued the write. #3087's acceptance
+ * criteria require it in those words, and name the reason: what a later analysis needs
+ * to know about these rows is that they arrived through the queue, because a replayed
+ * write's timing tells you nothing about when the person acted.
+ *
+ * IT IS NOT that the surface is unknowable. It is in scope at both `enqueue` calls —
+ * `WeightQuickAdd` sets `dashboard-widget` on the online branch of the same function,
+ * and `LogPracticeButton` already holds its surface when it queues — so carrying it
+ * would be recording something the client knows and currently discards, not inventing
+ * anything. The column stores one fact per row; the issue chose this one, and a
+ * two-axis "queued from X, replayed" is a wider change than #3087 asked for.
  */
 export const OFFLINE_REPLAY: LoggedVia = "offline-replay";
 
@@ -158,8 +164,20 @@ export const OFFLINE_REPLAY: LoggedVia = "offline-replay";
  *
  * The migration keeps its OWN copy of this list on purpose: a migration must describe
  * the schema IT shipped, and it must not start meaning something different when a
- * later tranche extends this one. `lib/__db_tests__/logged-via-provenance.test.ts`
- * asserts that this list, that one, and the actual columns all agree.
+ * later tranche extends this one.
+ *
+ * TWO GUARDS HOLD THE COPIES TOGETHER, AND BOTH ASK IN BOTH DIRECTIONS. That matters
+ * more than it sounds: a forward-only check (`for (const table of this list)`) is
+ * satisfied by DELETING a name, so a shipped ledger could be quietly demoted into the
+ * census's exclusion registry with every test still green — which is exactly what an
+ * adversarial mutant did.
+ *
+ *   • `lib/__db_tests__/logged-via-provenance.test.ts` reads the LIVE SCHEMA — every
+ *     table in `sqlite_master`, not just the ones named here — and asserts that the
+ *     set carrying a `logged_via` column is EXACTLY this list.
+ *   • `lib/__tests__/logged-via-census.test.ts` reads the MIGRATION'S OWN TEXT and
+ *     asserts its tranche is exactly this list, in the pure tier where no database
+ *     exists.
  */
 export const LEDGERS_WITH_LOGGED_VIA = [
   "intake_item_logs",

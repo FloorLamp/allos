@@ -29,10 +29,14 @@ import { LEDGERS_WITH_LOGGED_VIA } from "@/lib/logged-via";
 // scan is also pure, so it lives in the fast tier beside the repo's other source
 // guards. `lib/__db_tests__/logged-via-provenance.test.ts` asks the schema half.
 //
-// THE INSERT SPELLINGS ARE THE REPO'S OWN, not the issue's. `git grep` over the
-// tracked set finds `INSERT INTO` (3165), `INSERT OR IGNORE INTO` (64) and
-// `INSERT OR REPLACE INTO` (12), so the pattern accepts the whole `INSERT OR <verb>
-// INTO` family rather than the bare form the issue happened to write.
+// THE INSERT SPELLINGS ARE THE REPO'S OWN, not the issue's. Over the whole tracked
+// set — `git grep -o -i '<spelling>' | wc -l`, on 2026-08-22 — the repo writes
+// `INSERT INTO` 4053 times, `INSERT OR IGNORE INTO` 117 and `INSERT OR REPLACE INTO`
+// 19, so the pattern accepts the whole `INSERT OR <verb> INTO` family rather than the
+// bare form the issue happened to write. Those three figures are a SNAPSHOT of the
+// tracked tree (most of it migrations and fixtures this corpus excludes) and drift
+// with every merge; nothing asserts them. What the pattern must cover is the SET of
+// spellings, and that is what the reach test below plants and proves.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -272,6 +276,27 @@ function inserts(root: string): Insert[] {
 const REPO_INSERTS = inserts(REPO);
 const TRANCHE = new Set<string>(LEDGERS_WITH_LOGGED_VIA);
 
+/**
+ * The migration's own tranche, read out of its SOURCE TEXT.
+ *
+ * Text, not an import, for the reason the migration keeps a second copy at all: a
+ * migration describes the schema IT shipped, so it exports `up` and nothing else, and
+ * importing a list out of it would invite a later tranche to reuse the same array and
+ * quietly change what this one means.
+ */
+function migrationTranche(root: string): string[] {
+  const src = fs.readFileSync(
+    path.join(
+      root,
+      "lib/migrations/versions/20260822-logged-via-provenance.ts"
+    ),
+    "utf8"
+  );
+  const block = /const TRANCHE = \[([\s\S]*?)\] as const;/.exec(src);
+  if (!block) return [];
+  return [...block[1].matchAll(/"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
+}
+
 describe("the user-write ledger census", () => {
   it("has a corpus to make a claim about", () => {
     // AN ABSENCE ASSERTION FAILS OPEN. Everything below is "nothing undeclared" and
@@ -332,6 +357,30 @@ describe("the user-write ledger census", () => {
         "the row it writes reads NULL for ever (#3087). The type system cannot see " +
         "this one — a hand-written column list simply omits the column."
     ).toEqual([]);
+  });
+
+  it("agrees with the migration's own tranche, IN BOTH DIRECTIONS", () => {
+    // A FORWARD-ONLY CHECK IS SATISFIED BY DELETION, which is the hole this closes.
+    // `for (const table of LEDGERS_WITH_LOGGED_VIA)` never visits a name that was
+    // removed, so a shipped ledger could be dropped from the tranche and re-declared
+    // in NOT_A_USER_WRITE_LEDGER above — "not a place a person logs something about
+    // themselves" — while its column, its stamped write cores and every guard here
+    // stayed exactly as they are. An adversarial mutant did precisely that to
+    // `symptom_logs` and survived both tiers.
+    //
+    // Sorted-set equality asks both questions at once: a name in the migration and
+    // not in the list is a demotion, and a name in the list with no column behind it
+    // is a claim about a schema that was never shipped.
+    const declared = [...LEDGERS_WITH_LOGGED_VIA].sort();
+    const shipped = migrationTranche(REPO).sort();
+    expect(shipped.length).toBeGreaterThan(0);
+    expect(
+      shipped,
+      "LEDGERS_WITH_LOGGED_VIA and the migration that added the columns disagree " +
+        "(#3087). A ledger cannot be moved out of the tranche by editing a list — " +
+        "the column is still there, and demoting it into NOT_A_USER_WRITE_LEDGER " +
+        "would make the census claim nobody logs anything on it."
+    ).toEqual(declared);
   });
 
   it("declares no table twice", () => {

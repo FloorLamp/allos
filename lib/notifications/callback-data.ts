@@ -18,6 +18,11 @@ import { isRealIsoDate } from "../date";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import {
+  ORIGIN_MARK_PATTERN,
+  originFromMark,
+  type ChatOrigin,
+} from "./chat-origin";
 import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
 import {
   DIGEST_TIME_DISMISS_PREFIX,
@@ -996,20 +1001,34 @@ export interface FoodLogCallback {
   window: FoodNudgeWindow;
   date: string;
   group: string;
+  // WHICH KEYBOARD MINTED THIS BUTTON (#3087). `/food` re-renders the SAME builder
+  // the proactive tick sends, so the token is the only thing that can carry the
+  // difference through the round trip. See lib/notifications/chat-origin.ts.
+  origin: ChatOrigin;
 }
 
 // Parse a "food:<profileId>:<window>:<date>:<slug>" token. The slug is the greedy
 // tail (a food-group slug is snake_case with no colons, so this is robust even if a
 // future slug grew unusual characters). Malformed (bad prefix/window/date, missing
 // slug) → null; the handler still validates the slug against the catalog on write.
+const FOOD_LOG_RE = new RegExp(
+  `^food:${ORIGIN_MARK_PATTERN}(\\d+):([A-Za-z]+):(\\d{4}-\\d{2}-\\d{2}):(.+)$`
+);
+
 export function parseFoodLogCallback(data: unknown): FoodLogCallback | null {
   if (typeof data !== "string") return null;
-  const m = /^food:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2}):(.+)$/.exec(data);
+  const m = FOOD_LOG_RE.exec(data);
   if (!m) return null;
-  const profileId = Number(m[1]);
-  const window = m[2] as FoodNudgeWindow;
+  const profileId = Number(m[2]);
+  const window = m[3] as FoodNudgeWindow;
   if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
-  return { profileId, window, date: m[3], group: m[4] };
+  return {
+    profileId,
+    window,
+    date: m[4],
+    group: m[5],
+    origin: originFromMark(m[1]),
+  };
 }
 
 // A protein "+Xg" quick-log tap (#1073): "foodprotein:<profileId>:<window>:<date>:<grams>".
@@ -1020,21 +1039,31 @@ export interface FoodProteinCallback {
   window: FoodNudgeWindow;
   date: string;
   grams: number;
+  // Same marker, same reason as FoodLogCallback above (#3087).
+  origin: ChatOrigin;
 }
+
+const FOOD_PROTEIN_RE = new RegExp(
+  `^foodprotein:${ORIGIN_MARK_PATTERN}(\\d+):([A-Za-z]+):(\\d{4}-\\d{2}-\\d{2}):(\\d+)$`
+);
 
 export function parseFoodProteinCallback(
   data: unknown
 ): FoodProteinCallback | null {
   if (typeof data !== "string") return null;
-  const m = /^foodprotein:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(
-    data
-  );
+  const m = FOOD_PROTEIN_RE.exec(data);
   if (!m) return null;
-  const profileId = Number(m[1]);
-  const window = m[2] as FoodNudgeWindow;
-  const grams = Number(m[4]);
+  const profileId = Number(m[2]);
+  const window = m[3] as FoodNudgeWindow;
+  const grams = Number(m[5]);
   if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window) || !grams) return null;
-  return { profileId, window, date: m[3], grams };
+  return {
+    profileId,
+    window,
+    date: m[4],
+    grams,
+    origin: originFromMark(m[1]),
+  };
 }
 
 // The Telegram toast for a protein "+Xg" tap, from the typed addProteinGramsCore outcome.

@@ -125,6 +125,41 @@ describe("the migration's shape", () => {
     }
   });
 
+  it("carries the column on EXACTLY the tranche — asked of the SCHEMA, not the list", () => {
+    // THE REVERSE DIRECTION, and the one that catches a demotion. Every assertion
+    // above loops `for (const table of LEDGERS_WITH_LOGGED_VIA)`, which is satisfied
+    // by DELETING a name: remove `symptom_logs` from the list, add it to the census's
+    // NOT_A_USER_WRITE_LEDGER with a reason, and a shipped ledger whose column exists
+    // and whose write cores stamp it is reclassified as "not a place a person logs
+    // something about themselves" with every guard in both tiers still green. That
+    // mutant was run and it survived; this is what kills it.
+    //
+    // The question is asked of `sqlite_master` — every table the migrated database
+    // actually has — so the answer cannot be derived from the list it is checking.
+    const tables = (
+      db
+        .prepare(
+          `SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
+        )
+        .all() as { name: string }[]
+    ).map((r) => r.name);
+    const carrying = tables
+      .filter((table) =>
+        (
+          db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+        ).some((c) => c.name === "logged_via")
+      )
+      .sort();
+    expect(carrying.length).toBeGreaterThan(0);
+    expect(
+      carrying,
+      "The tables that actually carry `logged_via` and LEDGERS_WITH_LOGGED_VIA " +
+        "disagree (#3087). A ledger cannot leave the tranche by being deleted from " +
+        "a list — the column is still on the table and its cores still stamp it."
+    ).toEqual([...LEDGERS_WITH_LOGGED_VIA].sort());
+  });
+
   it("takes NO foreign key — the whole lesson of notify_message_id", () => {
     // `notify_message_id` is `REFERENCES notify_messages(id) ON DELETE SET NULL`
     // against a table pruned on a 3-day retention, so it is DESIGNED to evaporate,

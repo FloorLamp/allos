@@ -168,6 +168,7 @@ import {
   renderMergedIntakeMessage,
 } from "./intake-format";
 import { buildFoodNudge } from "./food";
+import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { countVisibleFoodButtons } from "./food-format";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import { messagePointerIdAt } from "./message-pointers";
@@ -1488,12 +1489,17 @@ async function handleUsualRoutineTap(
     return;
   }
   if (family === "food") {
-    const rebuilt = buildFoodNudge(
-      profileId,
-      offer.window,
-      date,
-      countVisibleFoodButtons(rows) || undefined,
-      { ref: { chatId, messageId } }
+    // EVERY REBUILD PRESERVES THE ORIGIN (#3087) — read off the live keyboard, which
+    // is the only record of which builder call minted this message.
+    const rebuilt = withChatOrigin(
+      buildFoodNudge(
+        profileId,
+        offer.window,
+        date,
+        countVisibleFoodButtons(rows) || undefined,
+        { ref: { chatId, messageId } }
+      ),
+      keyboardChatOrigin(rows)
     );
     if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
   }
@@ -1553,7 +1559,10 @@ async function handleFoodLog(
     profileId,
     food.group,
     food.date,
-    NUDGE,
+    // NOT the module-level NUDGE (#3087). `/food` re-renders the same builder the tick
+    // sends, so the two are indistinguishable at this handler; the token carries which
+    // keyboard minted the button, marked at the mint site.
+    food.origin,
     tapAt,
     undefined,
     { eatenAt: tapAt, source: "tap" },
@@ -1571,12 +1580,13 @@ async function handleFoodLog(
   // expansion (#1075): rebuild at the visible count read off the keyboard, so a tap after
   // "Show more" keeps the expanded window rather than collapsing to the compact default.
   const visibleCount = countVisibleFoodButtons(rows) || undefined;
-  const rebuilt = buildFoodNudge(
-    profileId,
-    food.window,
-    food.date,
-    visibleCount,
-    { ref: { chatId, messageId } }
+  // The re-render carries the origin forward, or the SECOND tap on a `/food` list
+  // would report a nudge (#3087).
+  const rebuilt = withChatOrigin(
+    buildFoodNudge(profileId, food.window, food.date, visibleCount, {
+      ref: { chatId, messageId },
+    }),
+    food.origin
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
@@ -1620,7 +1630,8 @@ async function handleFoodProtein(
     profileId,
     token.date,
     token.grams,
-    NUDGE,
+    // Same axis, same token marker as the food-group button beside it (#3087).
+    token.origin,
     tapAt,
     undefined,
     { eatenAt: tapAt, source: "tap" },
@@ -1679,9 +1690,12 @@ async function handleFoodExpand(
     token.action === "more"
       ? current + FOOD_QUICK_COUNT
       : Math.max(FOOD_QUICK_COUNT, current - FOOD_QUICK_COUNT);
-  const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
-    ref: { chatId, messageId },
-  });
+  const rebuilt = withChatOrigin(
+    buildFoodNudge(profileId, token.window, token.date, next, {
+      ref: { chatId, messageId },
+    }),
+    keyboardChatOrigin(rows)
+  );
   // Show more / show less writes nothing: the clamp above IS the outcome, so the ack
   // goes before the redraw (#2418).
   await answerCallbackQuery(cq.id);

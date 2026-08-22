@@ -932,7 +932,17 @@ export async function handleFoodCommand(
 
   const skipped: string[] = [];
   for (const pid of profileIds) {
-    const built = buildFoodNudge(pid, currentFoodSlot(pid), today(pid));
+    // THE MINT SITE, AND THE ONLY PLACE THAT KNOWS (#3087). This is a REPLY to a
+    // slash command, but it re-renders `buildFoodNudge` — the same builder, the same
+    // `food:` tokens, the same keyboard the tick sends unbidden — so nothing about the
+    // delivered message distinguishes the two. Marking the tokens here is what carries
+    // the answer through the round trip to `handleFoodLog`, which used to stamp the
+    // module-level `telegram-nudge` on every one of these taps and so inverted the
+    // exact nudge-vs-command axis #3087 exists to measure.
+    const built = withChatOrigin(
+      buildFoodNudge(pid, currentFoodSlot(pid), today(pid)),
+      "telegram-command"
+    );
     // Null is the life-stage gate (an infant logs no food groups, #591) — answered
     // honestly below rather than with an empty keyboard.
     if (!built) {
@@ -1382,6 +1392,7 @@ import { getProfileNameById } from "../profile-summary-load";
 import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
+import { withChatOrigin } from "./chat-origin";
 import { currentFoodSlot } from "../queries";
 import {
   buildPracticeCorrectionRebuild,
