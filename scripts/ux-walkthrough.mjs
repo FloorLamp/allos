@@ -117,10 +117,19 @@ let shotSeq = 0;
 // always means an unauthenticated session or a stuck page (it once meant 58
 // copies of /login that read as a completed census) — warn loudly.
 const recentHashes = [];
-async function shot(page, name) {
+// `fullPage` defaults to true — the census wants the whole surface. It is FALSE
+// for hover captures, and that is a correctness fix rather than a preference:
+// measured 2026-08-22, a full-page capture of the immunization schedule grid's
+// hover panel did not contain the panel at all. `position: fixed` (and `sticky`)
+// are positioned against the VIEWPORT, and Chromium's beyond-the-viewport
+// full-page capture renders them somewhere else — so the shot showed the page
+// while the audit row beside it said five elements had been revealed. A picture
+// that contradicts its own caption is the worst available outcome here, because
+// the picture is what gets believed.
+async function shot(page, name, { fullPage = true } = {}) {
   const file = `${String(shotSeq++).padStart(2, "0")}-${name}.png`;
   const p = path.join(SHOTS, file);
-  await page.screenshot({ path: p, fullPage: true });
+  await page.screenshot({ path: p, fullPage });
   manifest.push({ file, name });
   recentHashes.push(
     crypto.createHash("md5").update(fs.readFileSync(p)).digest("hex")
@@ -847,8 +856,17 @@ async function expandDisclosures(page, exp) {
 // Each entry gets its own visit rather than riding the route's original one, which
 // costs one navigation per registered entry (two today) and keeps the default shot
 // and its metrics row untouched — the same contract the expansion pass keeps.
-async function captureHoverStates(page, tag) {
+async function captureHoverStates(page, tag, keep) {
   for (const entry of HOVER_CAPTURES) {
+    // UX_ROUTES scoping applies here too: a run scoped to one hub (#3489's
+    // post-merge mini-census shape) must not wander off to hover a route it was
+    // told not to look at. Said out loud rather than skipped silently — an entry
+    // missing from a run's hover table would otherwise be indistinguishable from
+    // one that produced nothing.
+    if (!keep(entry.route)) {
+      log(`hover ${entry.route}: outside UX_ROUTES — not captured this run`);
+      continue;
+    }
     const row = {
       route: entry.route,
       label: entry.label,
@@ -912,7 +930,13 @@ async function captureHoverStates(page, tag) {
         continue;
       }
       const name = `page-${tag}-${routeSlug(entry.route)}-hover`;
-      await shot(page, name);
+      // VIEWPORT, not full page. Two reasons, and both are why this is also how a
+      // reviewer TELLS a hover shot from a static one at contact-sheet scale: a
+      // fixed-position payload only renders where the user sees it in a viewport
+      // capture (see `shot`), and a hover state is by definition where the pointer
+      // is — which is on screen. Every static census shot is full-page and tall;
+      // every hover shot is 1280×900. The shapes differ before the caption is read.
+      await shot(page, name, { fullPage: false });
       hoverRows.push({
         ...row,
         found: true,
@@ -1100,7 +1124,7 @@ async function pagesJourney(browser) {
     // decides it. On the mobile pass a hover capture is a picture of a state no
     // phone user can reach, sitting in the contact sheet looking like evidence —
     // worse than no capture at all.
-    if (tag === "desktop") await captureHoverStates(page, tag);
+    if (tag === "desktop") await captureHoverStates(page, tag, keep);
     await ctx.close();
   }
 }

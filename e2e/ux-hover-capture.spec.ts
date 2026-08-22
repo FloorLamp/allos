@@ -127,6 +127,10 @@ const FORGED_HOST_ID = "forged-hover-host";
 const FORGED_REVEAL = "forged-hover-reveal";
 const FORGED_NOOP = "forged-hover-noop";
 const FORGED_PAYLOAD_TEXT = "door label six";
+// The host's own box, in VIEWPORT coordinates — which is what a non-fullPage
+// screenshot clips against, and which equals its document box because the plant
+// scrolls to the top.
+const FORGED_HOST_CLIP = { x: 0, y: 0, width: 640, height: 420 };
 
 function plantForgedHovers(): void {
   const style = document.createElement("style");
@@ -149,9 +153,15 @@ function plantForgedHovers(): void {
     // exact mechanism app/globals.css uses for the standing door, which is why a
     // probe that reads boxes alone would see nothing here — the payload's
     // rectangle is identical in both states.
+    // The payload is `position: fixed`, deliberately: that is the shape a
+    // full-page capture silently loses (measured 2026-08-22 on the immunization
+    // schedule grid, whose panel is portalled AND fixed), and it is the shape
+    // the census's own registry carries. The in-flow shape — the standing door —
+    // is exercised by the real `/` surface above on every run.
     '<div id="forged-hover-reveal" style="position:absolute;left:80px;top:80px;' +
       'width:240px;height:44px;background:#ffffff">' +
-      '<span class="forged-payload">door label six</span></div>' +
+      '<span class="forged-payload" style="position:fixed;left:100px;top:180px">' +
+      "door label six</span></div>" +
       // The benign twin: a target with no hover rule at all. Hovering it must
       // change nothing — no pixels, no visibility, no movement — because that is
       // the case whose picture the census must NOT take.
@@ -268,21 +278,37 @@ async function expectHoverProbeSees(
   // state would leave every `-hover.png` showing the resting state while the table
   // beside it swore something was revealed — the worst available outcome, because
   // the shot would be read as evidence.
+  // The clip is the opaque forged host and nothing else, so the only thing that
+  // can differ between the two captures is the forgery — the rest of the page is
+  // live and would otherwise let this pass for unrelated reasons.
+  const capture = () =>
+    page.screenshot({ fullPage: false, clip: FORGED_HOST_CLIP });
   const payloadPainted = () =>
     page
       .locator(".forged-payload")
       .evaluate((el: Element) => el.checkVisibility({ opacityProperty: true }));
+
+  // The pointer is still on the no-op target from the measurement above; park it
+  // somewhere inert inside the opaque host so the resting capture is genuinely
+  // resting. This is the same trap `measureHover` parks against, met here because
+  // this comparison is outside it.
+  await page.mouse.move(600, 400);
+  const resting = await capture();
   await page.locator(`#${FORGED_REVEAL}`).hover();
   // Wait for the REVEAL, not for a clock. The opacity transition finishing is the
   // signal, and polling it is both faster than the settle budget and immune to a
   // box slow enough to blow through it.
   await expect.poll(payloadPainted).toBe(true);
-  await page.screenshot({ fullPage: true });
+  const hovered = await capture();
+
   expect(
-    await payloadPainted(),
-    "the hover state did not survive a full-page screenshot, so every `-hover.png` " +
-      "the census writes is a picture of the resting state."
-  ).toBe(true);
+    resting.equals(hovered),
+    "the capture the census actually writes came back byte-identical with and " +
+      "without the hover, so every `-hover.png` is a picture of the resting state " +
+      "while the audit row beside it swears something was revealed. This is what a " +
+      "full-page capture did to a `position: fixed` payload on 2026-08-22 — the " +
+      "reason hover shots are viewport captures (scripts/ux-walkthrough.mjs, `shot`)."
+  ).toBe(false);
 
   // ── RESTORE, AND CONTROL AFTER THE RESTORE ──────────────────────────────────
   await page.evaluate(removeForgedHovers);

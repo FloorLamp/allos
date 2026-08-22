@@ -424,6 +424,14 @@ export function summarizeHover(before, after, opts, pixelsChanged) {
  * @param {typeof HOVER_THRESHOLDS & {subjectSelector?: string}} opts
  */
 export async function measureHover(page, entry, opts) {
+  // PARK THE POINTER FIRST. A real mouse position outlives the call that set it —
+  // through a `page.goto`, into the next registered entry, into the next
+  // measurement — so without this the "before" snapshot of entry N+1 can be taken
+  // with the pointer still resting on entry N's target, and a hover state already
+  // present in the baseline reads as a hover that changed nothing. Measured
+  // 2026-08-22: two consecutive measurements in the guard came back byte-identical
+  // for exactly this reason, and the failure direction is the flattering one.
+  await page.mouse.move(0, 0);
   const target = page.locator(entry.target).first();
   await target.scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
