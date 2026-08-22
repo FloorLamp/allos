@@ -349,18 +349,18 @@ export function upsertBodyMetrics(
   // the user-edit lock: a source-owned row the user has hand-edited (via the Review
   // resolver) is left alone on re-ingest so the rolling window never clobbers it.
   const find = db.prepare(
-    "SELECT id, edited, weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
+    "SELECT id, edited, weight_kg, body_fat_pct, resting_hr, occurred_at FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
   );
   // Atomic upsert on the unique key: the bound values are the RESOLVED post-image
   // (incoming for a fresh row, mergeBodyMetric(mine, incoming) for an existing one),
   // so `excluded.*` already carries the merged triple and DO UPDATE writes it.
-  // `occurred_at` is written from the collapsed row's `measured_at` and is BOUND, never
-  // built here — the column is on the canonical instant convention (#2205 phase 2,
-  // lib/time-columns.ts), and lib/__tests__/instant-writer-scan.test.ts is the ratchet
-  // that keeps the shape a decision of the column rather than of this call site. It is
-  // COALESCEd on update so a later window that states no instant cannot blank one an
-  // earlier window recorded — the same "fills gaps, never blanks" rule mergeBodyMetric
-  // applies to the values beside it.
+  // `occurred_at` is BOUND like every other value here — the column is on the canonical
+  // instant convention (#2205 phase 2, lib/time-columns.ts) and
+  // lib/__tests__/instant-writer-scan.test.ts is the ratchet that keeps its stored shape
+  // a decision of the COLUMN rather than of this call site. The "a later window that
+  // states no instant does not blank one an earlier window recorded" rule is resolved in
+  // JS below, beside the value merge it mirrors, rather than as a SQL COALESCE: the same
+  // reason mergeBodyMetric is pure and the statement writes a post-image.
   const upsert = db.prepare(
     `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source, occurred_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -368,7 +368,7 @@ export function upsertBodyMetrics(
        weight_kg = excluded.weight_kg,
        body_fat_pct = excluded.body_fat_pct,
        resting_hr = excluded.resting_hr,
-       occurred_at = COALESCE(excluded.occurred_at, body_metrics.occurred_at)`
+       occurred_at = excluded.occurred_at`
   );
 
   // Re-import tombstones for body_metrics: a source-owned row the user merged away or
@@ -388,7 +388,12 @@ export function upsertBodyMetrics(
     };
     if (!hasBodyMetric(incoming)) continue; // nothing to store
     const mine = find.get(profileId, r.date, source) as
-      (BodyMetricValues & { id: number; edited: number | null }) | undefined;
+      | (BodyMetricValues & {
+          id: number;
+          edited: number | null;
+          occurred_at: string | null;
+        })
+      | undefined;
     // No live row AND a tombstone for this (date, source): the user removed it — skip
     // the re-insert and count it suppressed (a live row wins; the tombstone is stale).
     if (!mine && tombstoned.has(bodyMetricTombstoneKey(r.date, source))) {
@@ -432,7 +437,11 @@ export function upsertBodyMetrics(
       post.body_fat_pct,
       post.resting_hr,
       source,
-      bodyMetricOccurredAt(r.measured_at)
+      // Fills a gap, never blanks one: a window that states no instant leaves the one an
+      // earlier window recorded. NOT in BODY_METRIC_COMPARE_COLS on purpose — a row whose
+      // three values are unchanged stays `unchanged`, so newly learning an instant does
+      // not manufacture a Review line for every stored day (#605's churn).
+      bodyMetricOccurredAt(r.measured_at) ?? mine?.occurred_at ?? null
     );
     tallyUpsert(counts, disposition);
     // Per-row provenance (#1333): the affected row id is the pre-image row's id on an
