@@ -143,14 +143,25 @@ function ingest(
 
 // ── the snapshot the comparison is made on ────────────────────────────────────
 //
-// EVERY COLUMN THE PUSH CAN TOUCH, and `id` as a RANK rather than a value. Each run uses
-// its own profile, so absolute ids differ by construction and comparing them would fail
-// for a reason that is not about this rule; the rank still says whether two runs wrote
-// the same rows in the same order, which is the part that could differ. Rows are read in
-// a canonical order so the comparison is about CONTENT, and the rank carries write order
-// alongside it.
+// TWO SNAPSHOTS, AND KEEPING THEM APART IS THE POINT.
+//
+//   `content` is every column the push can touch, read in a canonical order. THIS is the
+//   store, and this is what the correctness argument claims is independent of row order
+//   and chunking. It must hold whether or not anything sorts.
+//
+//   `writeOrder` is the same rows keyed by their rank in `id` order — a fact about which
+//   physical order they were written in, which is what the ascending-`started_at` sort
+//   delivers and the ONLY thing it delivers. Measured: with the three passes in place and
+//   both sorts removed, `content` is byte-identical across every ordering and chunk size
+//   and only `writeOrder` moves. That is the owner's ruling made executable — the sort is
+//   deterministic write order and NOT what makes the store correct — and it is why these
+//   are two assertions with two messages rather than one. Folding the rank into the
+//   content comparison would report "a different store" for a diff that is nothing of the
+//   kind, and send the next reader hunting a data defect that is not there.
+//
+// `id` is a rank rather than a value because each run uses its own profile, so absolute
+// ids differ by construction.
 interface Row {
-  idRank: number;
   metric: string;
   source: string;
   origin: string | null;
@@ -162,23 +173,26 @@ interface Row {
   pushed_at: string | null;
 }
 
-function snapshot(profileId: number): Row[] {
+function snapshot(profileId: number): {
+  content: Row[];
+  writeOrder: string[];
+} {
   const byId = db
     .prepare(
-      `SELECT id, metric, source, origin, date, started_at, ended_at, value, edited,
+      `SELECT metric, source, origin, date, started_at, ended_at, value, edited,
               pushed_at
          FROM metric_samples WHERE profile_id = ? ORDER BY id`
     )
-    .all(profileId) as (Omit<Row, "idRank"> & { id: number })[];
-  const rank = new Map(byId.map((r, i) => [r.id, i]));
-  return byId
-    .map(({ id, ...rest }) => ({ idRank: rank.get(id)!, ...rest }))
-    .sort(
+    .all(profileId) as Row[];
+  return {
+    content: [...byId].sort(
       (a, b) =>
         a.metric.localeCompare(b.metric) ||
         String(a.origin).localeCompare(String(b.origin)) ||
         a.started_at.localeCompare(b.started_at)
-    );
+    ),
+    writeOrder: byId.map((r) => `${r.metric}@${r.started_at}`),
+  };
 }
 
 // ── the orderings ─────────────────────────────────────────────────────────────
@@ -329,7 +343,8 @@ describe("the same push leaves the same store, whatever the order and the chunki
     (_name, scenario) => {
       const runs: {
         label: string;
-        rows: Row[];
+        content: Row[];
+        writeOrder: string[];
         split: UpsertCounts;
         warnings: string[];
       }[] = [];
@@ -357,24 +372,33 @@ describe("the same push leaves the same store, whatever the order and the chunki
             reorder(scenario.body, permute),
             chunkSize
           );
-          runs.push({ label, rows: snapshot(p), split, warnings });
+          runs.push({ label, ...snapshot(p), split, warnings });
         }
       }
 
       const baseline = runs[0];
       // AND THE COMPARISON EXAMINED SOMETHING. A presence assertion about byte-identical
       // rows only fails loudly if there were rows; this says so before believing it.
-      expect(baseline.rows.length).toBeGreaterThan(0);
+      expect(baseline.content.length).toBeGreaterThan(0);
       expect(runs.length).toBe(
         Object.keys(ORDERINGS).length * CHUNK_SIZES.length
       );
 
       for (const run of runs.slice(1)) {
-        // Byte-identical rows: every column the push can touch, plus write order.
+        // THE STORE. Byte-identical rows, every column the push can touch. This is the
+        // claim `final store = (pre-store − victims) ⊕ upserts` makes, and nothing about
+        // it depends on either sort.
         expect(
-          { label: baseline.label, rows: run.rows },
+          run.content,
           `${run.label} left a different store than ${baseline.label}`
-        ).toEqual({ label: baseline.label, rows: baseline.rows });
+        ).toEqual(baseline.content);
+        // THE WRITE ORDER, which is a separate and weaker claim: the ascending sort makes
+        // `metric_samples.id` follow the day for anyone reading the table by hand. A
+        // failure HERE means the sort stopped being global — not that a reading moved.
+        expect(
+          run.writeOrder,
+          `${run.label} wrote the rows in a different order than ${baseline.label} — the sort, not the store`
+        ).toEqual(baseline.writeOrder);
         // Identical counts — the split a person reads in Review, including `superseded`.
         expect(run.split, `${run.label} reported a different split`).toEqual(
           baseline.split
