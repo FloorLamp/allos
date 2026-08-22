@@ -140,6 +140,12 @@
           "title": "Dates read the way you set them everywhere, instead of surfacing as 2026-05-24 on imports, results and the dashboard",
           "kind": "fix",
           "issues": [3492]
+        },
+        {
+          "pr": 3529,
+          "title": "The design review now measures button and text positions on real pages, catching clipped names and mismatched controls",
+          "kind": "fix",
+          "issues": [3489]
         }
       ]
     },
