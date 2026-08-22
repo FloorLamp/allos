@@ -19,6 +19,10 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { up } from "@/lib/migrations/versions/20260821-hc-overlap-supersede";
+import {
+  UNSTAMPED_ERA_AT_KEY,
+  UNSTAMPED_ERA_MAX_ID_KEY,
+} from "@/lib/metric-window-overlap";
 
 /** The two tables this migration alters, in their pre-migration shape. */
 function seed(): Database.Database {
@@ -106,6 +110,22 @@ function columns(mem: Database.Database, table: string): Set<string> {
   );
 }
 
+/** The two era markers as the migration left them, or undefined for a missing one. */
+function era(mem: Database.Database): {
+  at: string | undefined;
+  maxId: string | undefined;
+} {
+  const read = (key: string) =>
+    (
+      mem.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+        { value: string } | undefined
+    )?.value;
+  return {
+    at: read(UNSTAMPED_ERA_AT_KEY),
+    maxId: read(UNSTAMPED_ERA_MAX_ID_KEY),
+  };
+}
+
 function ids(mem: Database.Database): number[] {
   return (
     mem.prepare("SELECT id FROM metric_samples ORDER BY id").all() as {
@@ -181,6 +201,67 @@ describe("20260821-hc-overlap-supersede", () => {
       .prepare("SELECT pushed_at FROM metric_samples WHERE id = 1")
       .get() as { pushed_at: string | null };
     expect(stored.pushed_at).toBe(null);
+  });
+
+  // ── THE ERA MARKERS, ASSERTED ON THE MIGRATION'S OWN CLAUSE ────────────────────
+  //
+  // These three exist because a mutant survived the whole suite: change the migration's
+  // `ON CONFLICT(key) DO NOTHING` to `DO UPDATE SET value = excluded.value` and every
+  // spec stayed green — migration 6/6, era 11/11. The era spec asserts the marker never
+  // moves, but it drives `recordUnstampedEra`, whose FIRST-WRITE-WINS guard is a
+  // `getSetting(...) !== undefined` check in lib/integrations/unstamped-era.ts. So it
+  // pins the READER and never the migration's clause, and the migration writes its two
+  // rows directly — it cannot reach back into `@/lib/db`. Two guards, one tested.
+  //
+  // Moving the markers is not cosmetic. `startedAt` is the instant the column landed; a
+  // re-run — a restore, a half-applied database, a second boot — happens LATER, so a
+  // marker that moves re-classifies every row written in between as pre-existing, which
+  // is the exact confusion NULL-means-unknown exists to end. `lastUnstampedId` moving is
+  // worse: it hands the supersede a licence to delete rows a stamped push wrote.
+
+  it("writes both era markers", () => {
+    const mem = seed();
+    expect(era(mem)).toEqual({ at: undefined, maxId: undefined });
+    up(mem);
+    const { at, maxId } = era(mem);
+    // MAX(metric_samples.id) over the four seeded rows, as a string.
+    expect(maxId).toBe("4");
+    expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
+  it("does not move the markers on a re-run, even as the table grows under it", () => {
+    // MUTATION: `DO NOTHING` → `DO UPDATE SET value = excluded.value`. This is the case
+    // that kills it, and the row inserted between the runs is what makes it observable:
+    // `utcInstant()` has SECOND resolution, so two runs inside one second recompute the
+    // SAME `at` and a marker that moved would look identical. `MAX(id)` does not depend
+    // on the clock at all, so the assertion cannot pass for the wrong reason.
+    const mem = seed();
+    up(mem);
+    const first = era(mem);
+    expect(first.maxId).toBe("4");
+    mem
+      .prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, origin, metric, date, started_at, ended_at, value, edited)
+         VALUES (1, 'health-connect', NULL, 'steps', '2026-08-22',
+                 '2026-08-22T07:00:00Z', '2026-08-22T19:00:00Z', 4200, 0)`
+      )
+      .run();
+    up(mem);
+    up(mem);
+    expect(era(mem)).toEqual(first);
+  });
+
+  it("does not move markers a previous run already recorded", () => {
+    // The store the ruling names: era markers already present, from a run whose values
+    // no recomputation could reproduce. Both halves are observable here without any
+    // clock dependency, so this kills the same mutant on the `at` key too.
+    const mem = seed();
+    const put = mem.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+    put.run(UNSTAMPED_ERA_AT_KEY, "2020-01-01T00:00:00Z");
+    put.run(UNSTAMPED_ERA_MAX_ID_KEY, "0");
+    up(mem);
+    expect(era(mem)).toEqual({ at: "2020-01-01T00:00:00Z", maxId: "0" });
   });
 
   it("is ALL-OR-NOTHING — a failure part way leaves NEITHER column", () => {
