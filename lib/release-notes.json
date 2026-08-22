@@ -164,6 +164,12 @@
           "title": "Integration and import pages open with one sentence and fold the rest, instead of a wall of text on a phone",
           "kind": "fix",
           "issues": [3488, 3490]
+        },
+        {
+          "pr": 3531,
+          "title": "Every add button says Add, sits in one of four places, and is big enough to hit on a phone",
+          "kind": "fix",
+          "issues": [3486, 3514]
         }
       ]
     },
