@@ -257,6 +257,6 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 Build order (the umbrella issue tracks it): this registry → #3446 ✓ shipped →
 primitives (#3475, #3486 ✓ shipped except the floor's REACH, #3499 ✓ shipped, #3466 ✓ shipped, #3501, #3492 ✓ shipped, #3514 ✓ shipped) → idiom
 adopters (#3495, #3460 ✓ shipped, #3491, #3473, plus standing #3374/#3378/#3408) →
-copy cluster (#3488 ✓ shipped, #3490 ✓ shipped, #3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
+copy cluster (#3488 ✓ shipped, #3490 ✓ shipped, #3480 ✓ shipped) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
 #3481, #3493, #3496, #3497, #3498, #3500) ship independently and adopt the
 relevant primitive when they touch one.

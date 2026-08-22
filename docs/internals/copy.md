@@ -168,7 +168,7 @@ units display-normalized (UCUM bracket stripping per #1018's equivalence —
 (`summarizeNames` and template joins — #3496), and clinical names are never
 title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported
 ALL-CAPS names are cleaned at the import boundary with the person confirming,
-never by a display casing pass — #3480).
+never by a display casing pass — #3480, shipped).
 
 **Dates, as shipped (#3492).** There is one date boundary and it already
 existed: the display vocabulary in `lib/format-date.ts` — `formatLongDate`,
@@ -213,6 +213,68 @@ assumed.
 catches a call to a pref-taking formatter that omits the prefs, and an
 implicit-locale `toLocale*`. It cannot see a surface that calls no formatter at
 all — which is the whole of what #3492 found, and what the census probe adds.
+
+**Imported names, as shipped (#3480).** A portal-imported medication carries the
+document's own label — `"Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)"` —
+and every surface renders it as stored. The parenthetical is the portal's
+ALL-CAPS sig-style label with a dose-form code (`"OR"` = oral).
+
+The boundary is the IMPORT, and it is an OFFER rather than a transform. The
+import review page's Medications tab lists this document's medications whose
+stored name still reads as the document's label and offers RxNorm's preferred
+name for each; accepting stores the clean name and moves the portal string onto
+the record (`intake_items.source_name`, rendered as source detail under the
+medication's name and never as a heading). Ignoring the offer is a complete
+answer — the medication keeps the name it has.
+
+Three parts, and a new importer inherits the boundary by writing rows the same
+way any importer already does:
+
+- `lib/imported-name.ts` — the pure predicate. Does a stored name read as the
+  document's label? Two shouted words, or one shouted word carrying most of the
+  name's letters. Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
+  `"penicillin v potassium"`.
+- `lib/queries/imports.ts` `getDocumentImportedNameOffers` — the SCOPE GATE, and
+  the reason the offer cannot drift into the display pass this rule rejects. The
+  predicate is only ever asked about rows an import wrote (`source =
+'extracted'`), so a name somebody typed is never examined. Any importer whose
+  rows land in `intake_items` as `extracted` with a `document_id` is covered on
+  the day it ships, with nothing to register.
+- `lib/imported-name-write.ts` — the one write. Scoped to profile + document +
+  extracted + medication, and `source_name` is written with `COALESCE`, so what
+  the DOCUMENT said is recorded once and never overwritten by a later rename.
+
+Why not the cheap version: a casing pass at the display boundary cannot tell
+whether `"OR"` is a route abbreviation or a word in a product name, and it
+rewrites, on every render, text nobody agreed to change. That is the same ruling
+`lib/allergen-vocabulary.ts` records for allergens, one layer further in.
+
+**Guards.** Three, over one rule:
+
+- `lib/__tests__/imported-name.test.ts` — the predicate SEES the observed string
+  and the other portal shapes, off the words that actually shout, and stays QUIET
+  on the names people write. The quiet half carries the weight: an offer that
+  fires on ordinary names is dismissed by habit, and the real one goes with it.
+- `lib/__tests__/imported-name-census.test.ts` over `lib/imported-name-census.ts`
+  — no display surface casings a name, in either mechanism (a transform in a JSX
+  interpolation, or an `uppercase`/`capitalize` class over a name render).
+  Because it is an ABSENCE assertion it fails open, so it carries floors (800
+  files, 220 name render sites, 45 casing classes — measured 855 / 244 / 54), a
+  NAMED SUBJECT that must still register a name render
+  (`app/(app)/medications/MedicationRow.tsx`, the brand-coloured heading the
+  issue was filed about), seven synthetic offenders it must flag, and seven
+  shipped benign neighbours it must stay silent on — the 21 sites that lowercase
+  a name to compare, sort or key a Map are correct, and a guard that flagged them
+  would be deleted within the month. Comments are blanked before the scan: that
+  moves the count from 270 to 244, and `className` is excluded from the
+  name-expression pattern because it ends in `Name` and was inflating the
+  denominator by 118 sites that render no name at all.
+- `lib/__db_tests__/imported-name-boundary.test.ts` — the boundary over the REAL
+  pipeline (`extractFromCcda` → `healthRecordToPersistInput` →
+  `persistDocumentImport`): the name lands VERBATIM, the offer fires on it, a
+  hand-entered medication with the same shouting shape is never offered,
+  accepting preserves the document's label through a second adoption, and the
+  write refuses another profile's row, another document's row, and a manual row.
 
 ### 10. Lead + fold
 
