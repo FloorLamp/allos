@@ -1061,7 +1061,24 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
     chunkSize: number
   ) {
     const parsed = parseHealthConnectPayload({ ...body, timestamp }, "UTC");
+    lastParsedDetails = parsed.details;
     return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+  }
+
+  /**
+   * The concurrent push, as a trigger: it re-stamps one stored row while pass C is
+   * inserting, which is exactly the window pass B's `pushed_at IS ?` clause defends.
+   * A trigger rather than a spy for the same reason `abortOn` is one — it fires inside
+   * the real transaction, so what is observed is SQLite's boundary and not a mock's.
+   */
+  function restampOn(p: number, startedAt: string, stamp: string): () => void {
+    db.exec(
+      `CREATE TEMP TRIGGER d1_restamp AFTER INSERT ON metric_samples
+         WHEN NEW.profile_id = ${p}
+         BEGIN UPDATE metric_samples SET pushed_at = '${stamp}'
+                WHERE profile_id = ${p} AND started_at = '${startedAt}'; END`
+    );
+    return () => db.exec("DROP TRIGGER d1_restamp");
   }
 
   it("leaves the OLD row plus the committed chunks when chunk 2 of 3 fails", () => {
@@ -1169,6 +1186,39 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
     );
     expect(applyMetricSampleSupersede(p, plan.victims)).toBe(1);
     expect(stored(p, "steps")).toEqual([]);
+  });
+
+  it("counts a guard-declined victim as a day still reading high", () => {
+    // THE REVIEW LINE REPORTS WHAT HAPPENED, AND THIS IS THE REASON IT COULD NOT SEE
+    // (#3438). `overlapsLeft` used to be summed off the PLAN, before `commitChunks` ran,
+    // while the emit site described it as covering "every reason a supersede was
+    // declined". Pass B's `pushed_at IS ?` guard is a reason the plan structurally cannot
+    // know, because it happens after the plan is made: the victim survives, the day reads
+    // high, and Review said nothing at all. `counts.superseded` was always honest — it
+    // returns real `.changes` — so this is the number that was wrong, not the comment.
+    //
+    // Driven through the REAL ingest so the number asserted is the one the ingest
+    // computes, with the concurrent push staged as a trigger that fires inside pass C.
+    //
+    // MUTATION: drop the `victims.length - superseded` term in
+    // `ingestHealthConnectPayload`, or move the sum back before `commitChunks`, and this
+    // reports no overlaps and no warning over a day holding two anchorings.
+    const p = freshProfile("D1-GUARD-REPORTED");
+    seedNyDay(p);
+    const undo = restampOn(p, "2026-05-01T04:00:00Z", "2026-05-02T06:30:00Z");
+    let result;
+    try {
+      result = pushChunked(p, LA_PUSH, "2026-05-02T06:00:00Z", 500);
+    } finally {
+      undo();
+    }
+    // The guard refused the delete on evidence that had expired, so the NY row is still
+    // there beside the three LA ones — reading high, never low.
+    expect(result.split.superseded).toBe(0);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([
+      7000, 8000, 8100, 900,
+    ]);
+    expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
   });
 });
 
