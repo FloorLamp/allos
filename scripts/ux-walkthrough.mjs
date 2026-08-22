@@ -76,6 +76,7 @@ import { chromium } from "@playwright/test";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
+  HOVER_CAPTURES,
   HUB_VARIANTS,
   routeSlug,
 } from "./ux-census-routes.mjs";
@@ -84,6 +85,14 @@ import {
   geometryAuditSections,
   geometryProbe,
 } from "./ux-geometry-census.mjs";
+import {
+  HOVER_THRESHOLDS,
+  hoverAuditSections,
+  hoverClip,
+  hoverRegionProbe,
+  hoverSnapshot,
+  summarizeHover,
+} from "./ux-hover-census.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -157,6 +166,12 @@ figcaption{font-size:12px;color:#555;padding-top:6px;word-break:break-all}</styl
 // #1510-pinned value (h1-scale ≥ 20px computed; flood = ≥4 sibling .card
 // elements sharing a 24-char text prefix; firstData selector list fixed).
 const metricsRows = [];
+// #3489 deliverable 4: one row per registered HOVER_CAPTURES entry, desktop only.
+// Kept apart from metricsRows on purpose — a metrics row describes a ROUTE at a
+// VIEWPORT and `--baseline` diffs them pairwise, while a hover row describes an
+// AFFORDANCE and exists at one viewport only. Folding them together would put a
+// column in every mobile row that could never be filled.
+const hoverRows = [];
 // Dynamic patterns the census could NOT reach this run (#1544) — an unregistered
 // pattern, or a `follow` whose index rendered no detail link (a genuinely empty
 // table on the fresh/thin shapes). Reported in audit.md so the gap is visible
@@ -272,6 +287,13 @@ function writeAuditArtifacts(baselineDir) {
     );
     out.push("metrics.json");
   }
+  if (hoverRows.length) {
+    fs.writeFileSync(
+      path.join(SHOTS, "hover.json"),
+      JSON.stringify(hoverRows, null, 1)
+    );
+    out.push("hover.json");
+  }
   if (Object.keys(tapCosts).length) {
     fs.writeFileSync(
       path.join(SHOTS, "taps.json"),
@@ -279,7 +301,7 @@ function writeAuditArtifacts(baselineDir) {
     );
     out.push("taps.json");
   }
-  if (!out.length && !unresolvedDynamic.length) return;
+  if (!out.length && !unresolvedDynamic.length && !hoverRows.length) return;
 
   const mobile = metricsRows.filter((r) => r.viewport === "mobile");
   const rank = (key, n = 10) =>
@@ -338,6 +360,10 @@ function writeAuditArtifacts(baselineDir) {
   // firstData/height they cover BOTH viewports, because a control can run off a
   // 1280px desktop too.
   lines.push(...geometryAuditSections(metricsRows));
+  // #3489 deliverable 4: beside the geometry tables, above the page-level
+  // rankings, for the same reason — it names specific elements rather than a
+  // page-level number, and it is the only table here that points at a SHOT.
+  lines.push(...hoverAuditSections(hoverRows));
   if (mobile.length) {
     lines.push("## Worst first-data offsets (px, mobile)", "");
     lines.push("| route | firstData |", "|---|---|");
@@ -804,6 +830,137 @@ async function expandDisclosures(page, exp) {
   return opened;
 }
 
+
+// #3489 deliverable 4: HOVER CAPTURES.
+//
+// Runs ONCE, at the END of the desktop pass, after every route has had its default
+// shot. Two reasons it is a separate pass and not another step inside the route
+// loop, and the second is the one that would have bitten:
+//
+//   * A phone has no hover, so this must never run on the mobile pass. Deciding
+//     that once, at one call site, is a rule; deciding it per entry inside a loop
+//     that already carries a `tag` is an invitation to forget.
+//   * THE POINTER'S POSITION SURVIVES A NAVIGATION. `page.hover()` moves a real
+//     mouse, and it stays where it was left — through `page.goto`, into the next
+//     route, and into that route's DEFAULT shot. Hovering in the middle of the
+//     route loop would therefore paint a hover state into an unknown number of
+//     subsequent static captures, silently, and every one of them would look like
+//     an ordinary census shot. Running last means there is no later default shot
+//     left to contaminate.
+//
+// Each entry gets its own visit rather than riding the route's original one, which
+// costs one navigation per registered entry (two today) and keeps the default shot
+// and its metrics row untouched — the same contract the expansion pass keeps.
+async function captureHoverStates(page, tag) {
+  for (const entry of HOVER_CAPTURES) {
+    const row = { route: entry.route, label: entry.label, ruling: entry.ruling };
+    try {
+      await page.goto(`${BASE}${entry.route}`);
+      await page.waitForTimeout(1200);
+      // The alias guard, copied from the expansion pass for the same reason:
+      // without it a capture can silently document a different surface from the
+      // one it names. A hover shot filed under `/x` that is actually `/y` is worse
+      // than no shot, because the filename is the reader's only label.
+      const landedOn = new URL(page.url()).pathname;
+      const wanted = new URL(`${BASE}${entry.route}`).pathname;
+      if (landedOn !== wanted) {
+        log(
+          `BLIND SPOT hover ${entry.route} (${tag}): redirected to ${landedOn} — no hover capture taken`
+        );
+        hoverRows.push({ ...row, found: false, why: `redirected to ${landedOn}` });
+        continue;
+      }
+      if (entry.openFirst) {
+        const opener = page.locator(entry.openFirst).first();
+        if ((await opener.count()) > 0) {
+          await opener.click().catch(() => {});
+          await page.waitForTimeout(400);
+        }
+      }
+      const target = page.locator(entry.target).first();
+      if ((await target.count()) === 0) {
+        // AN ABSENT TARGET IS THE FAILURE THAT READS AS SUCCESS. A selector that
+        // matches nothing produces no shot and no finding, which is exactly what a
+        // surface with no hover state produces — so it is said out loud instead,
+        // in the same words DYNAMIC_ROUTES and the expansion pass use.
+        log(
+          `BLIND SPOT hover ${entry.route} (${tag}): \`${entry.target}\` matched nothing — ${entry.label} NOT captured`
+        );
+        hoverRows.push({ ...row, found: false, why: "hover target not on this route" });
+        continue;
+      }
+      await target.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+
+      const region = await page.evaluate(hoverRegionProbe, {
+        targetSelector: entry.target,
+        revealsSelector: entry.reveals ?? null,
+      });
+      const pageSize = await page.evaluate(() => ({
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+      }));
+      // Document coordinates, so `fullPage: true` + `clip` cuts the same region
+      // before and after even if the hover scrolls the page.
+      const clip = hoverClip([region.target, region.reveals], {
+        pad: HOVER_THRESHOLDS.regionPadPx,
+        pageWidth: pageSize.width,
+        pageHeight: pageSize.height,
+      });
+      const shotOpts = { fullPage: true, clip };
+      const before = await page.evaluate(hoverSnapshot, HOVER_THRESHOLDS);
+      const beforePixels = clip ? await page.screenshot(shotOpts) : null;
+
+      await target.hover();
+      await page.waitForTimeout(HOVER_THRESHOLDS.settleMs);
+
+      const after = await page.evaluate(hoverSnapshot, HOVER_THRESHOLDS);
+      const afterPixels = clip ? await page.screenshot(shotOpts) : null;
+      const summary = summarizeHover(
+        before,
+        after,
+        HOVER_THRESHOLDS,
+        !!(beforePixels && afterPixels && !beforePixels.equals(afterPixels))
+      );
+
+      if (!summary.changed) {
+        // A NO-OP IS REPORTED AND NOT PHOTOGRAPHED. The shot would be a
+        // byte-identical twin of the default capture — noise a reader cannot tell
+        // from the default without opening both, in a contact sheet already ~120
+        // frames long. The FACT is a real finding (a ruled hover affordance that
+        // stopped doing anything), so it keeps its row and its log line.
+        log(
+          `BLIND SPOT hover ${entry.route} (${tag}): ${entry.label} changed nothing rendered — shot skipped, row kept`
+        );
+        hoverRows.push({ ...row, found: true, ...summary });
+        continue;
+      }
+      const name = `page-${tag}-${routeSlug(entry.route)}-hover`;
+      await shot(page, name);
+      hoverRows.push({
+        ...row,
+        found: true,
+        ...summary,
+        shot: manifest[manifest.length - 1].file,
+      });
+      log(
+        `hover ${entry.route} (${tag}): ${entry.label} — ` +
+          `${summary.revealedTotal} revealed, ${summary.hiddenTotal} hidden, ` +
+          `${summary.movedTotal} moved, pixels ${summary.pixelsChanged ? "changed" : "identical"}`
+      );
+    } catch (err) {
+      log(
+        `FAILED hover ${entry.route} (${tag}): ${err.message.split("\n")[0]}`
+      );
+      hoverRows.push({ ...row, found: false, why: err.message.split("\n")[0] });
+    }
+  }
+  // Park the pointer before anything else uses this context. Belt and braces —
+  // this pass runs last — but a mouse left resting on a link is exactly the kind
+  // of state that turns a later addition into a mystery.
+  await page.mouse.move(0, 0);
+}
+
 async function pagesJourney(browser) {
   const appDir = path.join(process.cwd(), "app", "(app)");
   const routes = [];
@@ -963,6 +1120,11 @@ async function pagesJourney(browser) {
         log(`FAILED to shoot ${route} (${tag}): ${err.message.split("\n")[0]}`);
       }
     }
+    // #3489 deliverable 4: DESKTOP ONLY, and this is the single place that
+    // decides it. On the mobile pass a hover capture is a picture of a state no
+    // phone user can reach, sitting in the contact sheet looking like evidence —
+    // worse than no capture at all.
+    if (tag === "desktop") await captureHoverStates(page, tag);
     await ctx.close();
   }
 }
