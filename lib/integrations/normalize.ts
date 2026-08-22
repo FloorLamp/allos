@@ -960,8 +960,9 @@ export function planMetricSampleSupersede(
   // value as the first.
   const victims = new Map<number, string | null>();
   const leftStanding = new Set<number>();
-  // The incoming rows the in-push scan runs over — exactly the ones that clear the gate
-  // below, so the scan costs nothing on a push that carries no day buckets at all.
+  // The incoming rows the in-push scan runs over — the ones that clear the granularity
+  // gate below AND that pass C will actually write, so the scan costs nothing on a push
+  // that carries no day buckets at all and counts nothing that never lands.
   const dayBuckets: DayBucketRow[] = [];
   // The natural key of every stored row that lands in `leftStanding`, so the in-push scan
   // can tell a reading this push is UPDATING from a second reading it is adding. Keyed by
