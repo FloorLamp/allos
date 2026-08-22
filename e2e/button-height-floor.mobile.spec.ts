@@ -86,11 +86,13 @@ test.describe("the button family has one height at phone width (#3486)", () => {
       what: "the supplement add toggle (#3486: was min-h-10 min-w-10 …)",
       route: "/nutrition?tab=supplements",
       testId: "supplement-add-toggle",
+      label: "Add supplement",
     },
     {
       what: "the metric measurement toggle (#3486: was min-h-10 min-w-10 …)",
       route: "/trends/metric/weight",
       testId: "metric-measurement-toggle",
+      label: "Log Manually",
     },
   ];
 
@@ -99,6 +101,14 @@ test.describe("the button family has one height at phone width (#3486)", () => {
       await page.goto(site.route);
       const trigger = page.getByTestId(site.testId);
       await expect(trigger).toBeVisible();
+
+      // THE PRECONDITION, ASSERTED — the same one the wellness test makes, for
+      // the same reason. The defect only exists in the composition where the
+      // label is HIDDEN (`hidden sm:inline`), leaving a 16px icon as the whole
+      // content. At a viewport that shows the label the height is comfortable
+      // anyway and a green here would mean nothing, so prove we are in the
+      // icon-only case before measuring it.
+      await expect(trigger.getByText(site.label, { exact: true })).toBeHidden();
 
       const box = await trigger.boundingBox();
       expect(box).not.toBeNull();
