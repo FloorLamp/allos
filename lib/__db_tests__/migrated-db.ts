@@ -53,9 +53,20 @@ export function migratedDb(): Database.Database {
 
 /**
  * The real replay: baseline + every migration + boot tasks, into a fresh
- * `:memory:` database. Exported so the equivalence guard
- * (`migrated-db-parity.test.ts`) compares the snapshot against the thing it
- * stands in for, rather than against a second copy of itself.
+ * `:memory:` database.
+ *
+ * ONE CALLER OUTSIDE THIS MODULE, ON PURPOSE, AND IT MUST STAY ONE — read this
+ * before tidying it away. (`buildSnapshot` below is the in-module caller; it is
+ * how the snapshot gets made.) The single outside consumer is
+ * `./migrated-db-parity.test.ts`, which exists to prove the snapshot above still
+ * equals a genuine replay. That comparison only means
+ * anything if one side is the real chain: a guard that compared the snapshot
+ * against a second copy of ITSELF would agree perfectly while both drifted from
+ * the schema together, and would go green forever.
+ *
+ * So this is not debris and not an unfinished API. A SECOND caller is the thing to
+ * be suspicious of: a test reaching for it wants either the end state (use
+ * `migratedDb()`) or the chain itself (call `migrate()` directly and say why).
  */
 export function replayedDb(): Database.Database {
   const db = new Database(":memory:");
