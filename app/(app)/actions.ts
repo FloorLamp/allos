@@ -209,7 +209,14 @@ export async function markAttentionDose(
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
-  const outcome = markDoseTaken(profile.id, doseId, null, today(profile.id));
+  const outcome = markDoseTaken(
+    profile.id,
+    doseId,
+    null,
+    today(profile.id),
+    // The attention card's act-now confirm (#3087).
+    "dashboard-hero"
+  );
   revalidateRoute("/");
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");
@@ -232,7 +239,12 @@ export async function undoAttentionDose(
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
-  const outcome = undoDoseConfirm(profile.id, doseId, today(profile.id));
+  const outcome = undoDoseConfirm(
+    profile.id,
+    doseId,
+    today(profile.id),
+    "dashboard-hero"
+  );
   revalidateRoute("/");
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");
@@ -269,7 +281,13 @@ export async function logUsualRoutine(
     .filter((id) => Number.isInteger(id) && id > 0);
   if (groups.length === 0 && doseIds.length === 0)
     return { ok: false, error: "Nothing to log." };
-  const outcome = logUsualRoutineCore(profile.id, rawWindow, groups, doseIds);
+  const outcome = logUsualRoutineCore(
+    profile.id,
+    rawWindow,
+    groups,
+    doseIds,
+    "dashboard-hero"
+  );
   if (outcome.kind === "nothing-to-log")
     return { ok: false, error: "That's already logged." };
   // The follow-up offer, resolved AFTER the write and only when the bundle actually

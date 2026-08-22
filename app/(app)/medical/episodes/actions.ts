@@ -174,6 +174,7 @@ export async function updateEpisodeSymptomAction(
     symptom,
     Math.round(Number(formData.get("severity"))),
     date,
+    "page",
     String(formData.get("note") ?? "")
   );
   if (outcome.kind === "invalid")

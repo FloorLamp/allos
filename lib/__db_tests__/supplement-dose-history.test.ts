@@ -126,7 +126,8 @@ describe("supplement dose history — the ungated shared cores", () => {
       doseId,
       at(date, "08:30"),
       "800 mg",
-      true
+      true,
+      "page"
     );
     expect(logged).toEqual({ kind: "logged", date });
 
@@ -170,7 +171,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const date = shiftDateStr(today(p), -3);
     // A dose id that belongs to nothing.
     expect(
-      logHistoricalDose(p, itemId, 999_999, at(date, "09:00"), null, false)
+      logHistoricalDose(
+        p,
+        itemId,
+        999_999,
+        at(date, "09:00"),
+        null,
+        false,
+        "page"
+      )
     ).toEqual({ kind: "stale-dose" });
 
     // And another profile's dose is still invisible to this one.
@@ -183,7 +192,8 @@ describe("supplement dose history — the ungated shared cores", () => {
         foreign.doseId,
         at(date, "09:00"),
         null,
-        false
+        false,
+        "page"
       )
     ).toEqual({ kind: "stale-dose" });
   });
@@ -194,7 +204,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const date = shiftDateStr(today(p), -2);
 
     expect(
-      logHistoricalDose(p, itemId, doseId, at(date, "07:00"), null, true)
+      logHistoricalDose(
+        p,
+        itemId,
+        doseId,
+        at(date, "07:00"),
+        null,
+        true,
+        "page"
+      )
     ).toEqual({ kind: "logged", date });
     expect(onHand(itemId)).toBe(8);
 
@@ -211,7 +229,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p, { onHand: 10 });
     const date = shiftDateStr(today(p), -2);
-    logHistoricalDose(p, itemId, doseId, at(date, "07:00"), null, false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "07:00"),
+      null,
+      false,
+      "page"
+    );
     expect(onHand(itemId)).toBe(10);
 
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
@@ -224,7 +250,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p, { onHand: 10 });
     const date = shiftDateStr(today(p), -4);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "400 mg", true);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      "400 mg",
+      true,
+      "page"
+    );
     expect(onHand(itemId)).toBe(9);
 
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
@@ -263,7 +297,7 @@ describe("supplement dose history — the ungated shared cores", () => {
 
     const before = poolOnHand(supplyId)!;
     const date = shiftDateStr(today(p), -1);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), null, true);
+    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), null, true, "page");
     expect(poolOnHand(supplyId)).toBe(before - 3);
     expect(onHand(itemId)).toBeNull();
 
@@ -277,7 +311,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -6);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "400 mg", false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      "400 mg",
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
     // The schedule is retired and the item paused AFTER the dose was really taken.
@@ -298,7 +340,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     // Creating a NEW backfill against the retired dose is still refused — that one
     // asks to put a dose back on the schedule.
     expect(
-      logHistoricalDose(p, itemId, doseId, at(date, "08:00"), null, false)
+      logHistoricalDose(
+        p,
+        itemId,
+        doseId,
+        at(date, "08:00"),
+        null,
+        false,
+        "page"
+      )
     ).toEqual({ kind: "stale-dose" });
   });
 
@@ -308,7 +358,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const before = doseRow(doseId);
     const date = shiftDateStr(today(p), -5);
 
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "999 mg", true);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      "999 mg",
+      true,
+      "page"
+    );
     expect(doseRow(doseId)).toEqual(before);
 
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
@@ -329,7 +387,15 @@ describe("supplement dose history — the ungated shared cores", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -2);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "400 mg", false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      "400 mg",
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
     expect(
@@ -352,7 +418,8 @@ describe("supplement dose history — the ungated shared cores", () => {
       a.doseId,
       at(inWindow, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     logHistoricalDose(
       p,
@@ -360,9 +427,18 @@ describe("supplement dose history — the ungated shared cores", () => {
       b.doseId,
       at(inWindow, "09:00"),
       null,
-      false
+      false,
+      "page"
     );
-    logHistoricalDose(p, b.itemId, b.doseId, at(tooOld, "09:00"), null, false);
+    logHistoricalDose(
+      p,
+      b.itemId,
+      b.doseId,
+      at(tooOld, "09:00"),
+      null,
+      false,
+      "page"
+    );
 
     const since = shiftDateStr(today(p), -30);
     const map = getIntakeDoseHistoryForItems(p, [a.itemId, b.itemId], since);
@@ -415,7 +491,8 @@ describe("the cross-item dose ledger reader", () => {
       supp.doseId,
       at(older, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     logHistoricalDose(
       p,
@@ -423,7 +500,8 @@ describe("the cross-item dose ledger reader", () => {
       med.doseId,
       at(newer, "20:00"),
       null,
-      false
+      false,
+      "page"
     );
 
     const rows = getIntakeDoseHistoryAll(p, "0001-01-01");
@@ -439,9 +517,33 @@ describe("the cross-item dose ledger reader", () => {
     const a = seedSupplement(p);
     const b = seedSupplement(p);
     const day = shiftDateStr(today(p), -4);
-    logHistoricalDose(p, a.itemId, a.doseId, at(day, "07:00"), "111 mg", false);
-    logHistoricalDose(p, a.itemId, a.doseId, at(day, "19:00"), "222 mg", false);
-    logHistoricalDose(p, b.itemId, b.doseId, at(day, "08:00"), "333 mg", false);
+    logHistoricalDose(
+      p,
+      a.itemId,
+      a.doseId,
+      at(day, "07:00"),
+      "111 mg",
+      false,
+      "page"
+    );
+    logHistoricalDose(
+      p,
+      a.itemId,
+      a.doseId,
+      at(day, "19:00"),
+      "222 mg",
+      false,
+      "page"
+    );
+    logHistoricalDose(
+      p,
+      b.itemId,
+      b.doseId,
+      at(day, "08:00"),
+      "333 mg",
+      false,
+      "page"
+    );
 
     const panel = getIntakeDoseHistory(p, a.itemId, "0001-01-01");
     const ledger = getIntakeDoseHistoryAll(p, "0001-01-01", {
@@ -471,7 +573,8 @@ describe("the cross-item dose ledger reader", () => {
       supp.doseId,
       at(inWindow, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     logHistoricalDose(
       p,
@@ -479,7 +582,8 @@ describe("the cross-item dose ledger reader", () => {
       med.doseId,
       at(inWindow, "20:00"),
       null,
-      false
+      false,
+      "page"
     );
     logHistoricalDose(
       p,
@@ -487,7 +591,8 @@ describe("the cross-item dose ledger reader", () => {
       supp.doseId,
       at(tooOld, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     // A SKIP is adherence's business, not a record of what was taken.
     db.prepare(
@@ -519,7 +624,15 @@ describe("the cross-item dose ledger reader", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const day = shiftDateStr(today(p), -6);
-    logHistoricalDose(p, itemId, doseId, at(day, "08:00"), "400 mg", false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(day, "08:00"),
+      "400 mg",
+      false,
+      "page"
+    );
     // Retire the whole thing the way an edit does: the item goes inactive and its
     // schedule row is retired, so nothing about it is "current" any more.
     db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
@@ -545,7 +658,8 @@ describe("the cross-item dose ledger reader", () => {
       ours.doseId,
       at(day, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     logHistoricalDose(
       theirs,
@@ -553,7 +667,8 @@ describe("the cross-item dose ledger reader", () => {
       other.doseId,
       at(day, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
 
     const rows = getIntakeDoseHistoryAll(mine, "0001-01-01");
@@ -613,7 +728,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -4);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:30"), "400 mg", false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:30"),
+      "400 mg",
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
     updateHistoricalDose(p, itemId, logId, date, null, null);
     const before = logRow(logId);
@@ -634,7 +757,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -3);
-    logHistoricalDose(p, itemId, doseId, at(date, "09:00"), null, false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "09:00"),
+      null,
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
@@ -655,7 +786,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -5);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), "400 mg", false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      "400 mg",
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
     const before = logRow(logId);
 
@@ -673,7 +812,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);
     const date = shiftDateStr(today(p), -2);
-    logHistoricalDose(p, itemId, doseId, at(date, "08:00"), null, false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:00"),
+      null,
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
     const before = logRow(logId);
 
@@ -689,7 +836,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     // A fully past day, so no wall time here can trip the future guard whatever
     // real clock the test tier runs at.
     const date = shiftDateStr(today(p), -2);
-    logHistoricalDose(p, itemId, doseId, at(date, "10:00"), null, false);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "10:00"),
+      null,
+      false,
+      "page"
+    );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
     const before = getRedoseArmingState(p, itemId, date);
@@ -703,11 +858,27 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
 
     // A different event time is not a duplicate…
     expect(
-      logHistoricalDose(p, itemId, doseId, at(date, "10:01"), null, false)
+      logHistoricalDose(
+        p,
+        itemId,
+        doseId,
+        at(date, "10:01"),
+        null,
+        false,
+        "page"
+      )
     ).toEqual({ kind: "logged", date });
     // …while one at the stated event does collapse.
     expect(
-      logHistoricalDose(p, itemId, doseId, at(date, "14:00"), null, false)
+      logHistoricalDose(
+        p,
+        itemId,
+        doseId,
+        at(date, "14:00"),
+        null,
+        false,
+        "page"
+      )
     ).toEqual({ kind: "duplicate" });
 
     // Clearing the event makes the safety read fall back to immutable capture.
@@ -779,7 +950,9 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
   it("deleting today's dose log sends nothing", async () => {
     const { profileId, itemId, doseId, date } = escalationFixture();
     // The dose WAS taken and confirmed today, so nothing was ever chased.
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
     const logId = getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].id;
 
     // The user removes the entry — a bookkeeping correction, not a request to be
@@ -803,7 +976,9 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
 
   it("moving today's dose log onto another date sends nothing", async () => {
     const { profileId, itemId, doseId, date } = escalationFixture();
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
     const logId = getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].id;
 
     const earlier = shiftDateStr(date, -2);
@@ -834,7 +1009,9 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
 
   it("an amendment that stays on the same day leaves the marker alone", () => {
     const { profileId, itemId, doseId, date } = escalationFixture();
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
     const logId = getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].id;
 
     // Nothing was un-marked, so nothing is suppressed: the dose is still confirmed
@@ -861,7 +1038,8 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       doseId,
       at(threeDaysAgo, "08:00"),
       null,
-      false
+      false,
+      "page"
     );
     const logId = getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].id;
     deleteAdministrationLog(profileId, logId);
@@ -929,7 +1107,8 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
         doseId,
         at(day, "08:00"),
         null,
-        false
+        false,
+        "page"
       );
     }
     return itemId;
@@ -968,7 +1147,15 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
     seedLedger(p, 12);
     const med = seedMedication(p);
     const day = shiftDateStr(today(p), -1);
-    logHistoricalDose(p, med.itemId, med.doseId, at(day, "20:00"), null, false);
+    logHistoricalDose(
+      p,
+      med.itemId,
+      med.doseId,
+      at(day, "20:00"),
+      null,
+      false,
+      "page"
+    );
 
     const meds = getIntakeDoseLedgerPage(
       p,
@@ -998,7 +1185,8 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
       other.doseId,
       at(shiftDateStr(today(theirs), -1), "08:00"),
       null,
-      false
+      false,
+      "page"
     );
 
     const page = getIntakeDoseLedgerPage(mine, "0001-01-01", {}, 1, 10);

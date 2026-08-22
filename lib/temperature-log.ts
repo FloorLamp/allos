@@ -26,6 +26,7 @@
 // keys on value+unit), giving the fever curve — keyed by real instants now.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { round } from "./units";
 import { isRealIsoDate, utcInstant } from "./date";
 import { addCanonicalNames, reconcileFlags } from "./queries";
@@ -82,6 +83,10 @@ export function logTemperatureCore(
   rawValue: number | null | undefined,
   unit: TempUnit | string | null | undefined,
   date: string,
+  // Which surface took this reading (#3087) — required, no default, ahead of the
+  // optional stated time. The temperature ledger IS `medical_records` (one series
+  // with the ingested vitals, #482), so the stamp lands there beside `source`.
+  loggedVia: LoggedVia,
   time?: string | null
 ): TemperatureLogOutcome {
   if (!isRealIsoDate(date))
@@ -102,8 +107,8 @@ export function logTemperatureCore(
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, occurred_at, category, name, value, value_num, unit,
-            canonical_name, source, external_id, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, NULL)`
+            canonical_name, source, external_id, notes, logged_via)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, NULL, ?)`
       )
       .run(
         profileId,
@@ -114,7 +119,8 @@ export function logTemperatureCore(
         String(degF),
         degF,
         TEMP.unit,
-        TEMP.canonical
+        TEMP.canonical,
+        loggedVia
       );
     const id = Number(info.lastInsertRowid);
     addCanonicalNames([TEMP.canonical]);

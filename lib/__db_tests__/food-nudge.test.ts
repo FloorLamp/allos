@@ -25,8 +25,14 @@ beforeAll(() => {
   // boundaries → an 08:00Z tap is Morning. logFoodServingCore writes BOTH the food_daily_totals day
   // counter and the food_log_events ledger the slot count reads.
   for (let i = 0; i < 4; i++)
-    logFoodServingCore(p.profileId, "leafy_greens", t, `${t}T08:0${i}:00Z`);
-  logFoodServingCore(p.profileId, "fatty_fish", t, `${t}T08:30:00Z`);
+    logFoodServingCore(
+      p.profileId,
+      "leafy_greens",
+      t,
+      "page",
+      `${t}T08:0${i}:00Z`
+    );
+  logFoodServingCore(p.profileId, "fatty_fish", t, "page", `${t}T08:30:00Z`);
 });
 
 describe("buildFoodNudge", () => {
@@ -98,8 +104,14 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
     // Alcohol is the profile's single heaviest morning habit — it wins the frecency blend
     // outright, and nothing may take that away from it.
     for (let i = 0; i < 6; i++)
-      logFoodServingCore(c.profileId, "alcohol", ct, `${ct}T08:0${i}:00Z`);
-    logFoodServingCore(c.profileId, "berries", ct, `${ct}T08:30:00Z`);
+      logFoodServingCore(
+        c.profileId,
+        "alcohol",
+        ct,
+        "page",
+        `${ct}T08:0${i}:00Z`
+      );
+    logFoodServingCore(c.profileId, "berries", ct, "page", `${ct}T08:30:00Z`);
   });
 
   it("the top-usage capped group LEADS the visible keyboard, count intact", () => {

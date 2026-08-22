@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -54,13 +55,23 @@ export async function logPractice(
   const practice = String(formData.get("practice") ?? "").trim();
   if (!practice) return { kind: "invalid-date" };
   const date = String(formData.get("date") ?? "").trim() || today(profile.id);
-  const outcome = logPracticeSession(profile.id, practice, date, {
-    time: formData.has("time")
-      ? String(formData.get("time") ?? "").trim() || null
-      : undefined,
-    durationMin: optionalNumber(formData, "duration_min"),
-    notes: String(formData.get("notes") ?? "").trim() || null,
-  });
+  const outcome = logPracticeSession(
+    profile.id,
+    practice,
+    date,
+    // ONE ACTION, FOUR MOUNTINGS (#3087). LogPracticeButton renders on the Wellness
+    // page, on the dashboard practice card, in the quick-log sheet and behind the
+    // command palette — the server cannot tell them apart, so each mounting posts its
+    // own surface and the parse refuses anything outside the web subset.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+    {
+      time: formData.has("time")
+        ? String(formData.get("time") ?? "").trim() || null
+        : undefined,
+      durationMin: optionalNumber(formData, "duration_min"),
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    }
+  );
   if (outcome.kind === "logged") revalidatePracticeSurfaces();
   return outcome;
 }

@@ -55,7 +55,8 @@ function ctxFor(profileId: number): PersonaContext {
       );
     },
     reconcileFlags,
-    saveFitnessEntry,
+    saveFitnessEntry: (profileId, entry) =>
+      saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
     diffSituations,

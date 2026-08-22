@@ -92,6 +92,7 @@ function submit(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    loggedVia: "page",
     ...over,
   });
 }
@@ -308,6 +309,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
   it("shares one occurred_at across two measures recorded in one sitting", () => {
     const at = "2026-04-12T06:50:00Z";
     const a = recordReading(profileId, {
+      loggedVia: "page",
       name: "Body Fat Percentage",
       value: 19.1,
       unit: "%",
@@ -316,6 +318,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
       occurredAt: at,
     });
     const b = recordReading(profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 52,
       unit: "bpm",
@@ -352,6 +355,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
   it("updates a stated time even when the value is unchanged, and clears on null", () => {
     const write = (occurredAt: string | null | undefined) =>
       recordReading(profileId, {
+        loggedVia: "page",
         name: "Resting Heart Rate",
         value: 51,
         unit: "bpm",
@@ -384,6 +388,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
 
   it("#133: a source re-push cannot overwrite an edited row's stated time", () => {
     recordReading(profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 50,
       unit: "bpm",
@@ -397,6 +402,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
         WHERE profile_id = ? AND date = '2026-04-14' AND source = 'oura'`
     ).run(profileId);
     const outcome = recordReading(profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 55,
       unit: "bpm",
@@ -420,6 +426,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
 
   it("a source updating its own UN-edited row updates its stated time too", () => {
     recordReading(profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 50,
       unit: "bpm",
@@ -428,6 +435,7 @@ describe("the reading write core (recordReading) — find-then-write pinned", ()
       occurredAt: "2026-04-15T06:30:00Z",
     });
     recordReading(profileId, {
+      loggedVia: "page",
       name: "Resting Heart Rate",
       value: 51,
       unit: "bpm",
@@ -476,6 +484,7 @@ describe("what a refusal COSTS stays the caller's", () => {
       profileId,
       "berries",
       day,
+      "page",
       `${day}T09:00:00Z`,
       "Morning"
     );

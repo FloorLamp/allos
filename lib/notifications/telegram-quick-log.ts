@@ -153,6 +153,8 @@ export async function handlePrnLogTap(
   const outcome = logAdministration(
     profileId,
     token.itemId,
+    // The on-demand `/dose` list, not a proactive send (#3087).
+    "telegram-command",
     undefined,
     notifyMessageId
   );
@@ -274,7 +276,8 @@ export async function handleRedoseLogTap(
   const outcome = logRedoseWindowAdministration(
     profileId,
     token.itemId,
-    token.administrationId
+    token.administrationId,
+    "telegram-command"
   );
   if (outcome.kind === "stale-window") {
     const text =
@@ -352,9 +355,14 @@ export async function handlePracticeDoneTap(
     chatId != null && messageId != null
       ? messagePointerIdAt(profileId, chatId, messageId)
       : null;
+  // TWO SURFACES, ONE HANDLER (#3087). `pdone:` is a tap on the proactive pace nudge;
+  // `plog:` is a tap on the on-demand `/practice` list. The distinction already exists
+  // here for the correction ride-along, so provenance reads it rather than inventing a
+  // second, subtly different way to ask the same question.
   const outcome = logPracticeByTargetId(
     profileId,
     token.targetId,
+    messageKindIsPracticeNudge(cq.data) ? "telegram-nudge" : "telegram-command",
     notifyMessageId
   );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
@@ -610,7 +618,9 @@ export async function handleSymptomSeverity(
     profileId,
     token.slug,
     token.severity,
-    today(profileId)
+    today(profileId),
+    // The severity picker behind the `/symptom` command's grid.
+    "telegram-command"
   );
   if (outcome.kind === "invalid") {
     await answerCallbackQuery(cq.id, "Couldn't log that symptom.");
@@ -724,7 +734,10 @@ export async function handleTempReply(
     markedProfile,
     parsed.value,
     parsed.unit,
-    date
+    date,
+    // A free-text REPLY ("38.5"), not a button — the one path in this module that is
+    // typed rather than tapped (#877's vocabulary member).
+    "telegram-text"
   );
   if (outcome.kind === "invalid") {
     await sendTelegramMessage(
@@ -1060,6 +1073,8 @@ export async function handleWeightReply(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    // A free-text REPLY to the `/weight` prompt — typed, not tapped.
+    loggedVia: "telegram-text",
   });
   await sendTelegramMessage(
     chatId,

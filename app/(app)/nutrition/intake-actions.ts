@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { requireScope } from "@/lib/scope";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -1204,7 +1205,10 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
     profileId,
     doseId,
     today(profileId),
-    target
+    target,
+    // The tri-state check-off renders on the Nutrition/Medications pages and in the
+    // quick-log sheet's dose list, all posting THIS action.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   revalidateIntake();
   return doseStatusResult(outcome);
@@ -1254,7 +1258,9 @@ export async function logHistoricalDose(
     doseId,
     recordedAt,
     strOrNull(formData.get("amount")),
-    formData.get("adjust_supply") === "1"
+    formData.get("adjust_supply") === "1",
+    // A deliberate history backfill, filed from the medication page's own form.
+    "page"
   );
   if (outcome.kind === "logged") {
     recordAudit({
@@ -1378,7 +1384,8 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
     profile.id,
     doseId,
     date,
-    existing?.status === "taken" ? "clear" : "taken"
+    existing?.status === "taken" ? "clear" : "taken",
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   revalidateIntake();
   return doseStatusResult(outcome);

@@ -197,8 +197,8 @@ describe("the cadence ledger (#2034)", () => {
       "mobility",
       JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
     );
-    logPracticeSession(pid, "Sauna", newer);
-    logPracticeSession(pid, "Sauna", newer); // same day, DAY-distinct not summed
+    logPracticeSession(pid, "Sauna", newer, "page");
+    logPracticeSession(pid, "Sauna", newer, "page"); // same day, DAY-distinct not summed
 
     const ledger = getCadenceLedger(pid, {
       weeks: 2,
@@ -241,7 +241,7 @@ describe("the cadence ledger (#2034)", () => {
     const pid = newProfile("cl-adapters");
     makeTarget(pid, "practice", "Meditation", 3);
     for (const back of [17, 16, 10, 9, 8, 2, 1]) {
-      logPracticeSession(pid, "Meditation", dayBack(pid, back));
+      logPracticeSession(pid, "Meditation", dayBack(pid, back), "page");
     }
 
     const [progress] = getFrequencyTargetProgress(pid);
@@ -270,7 +270,7 @@ describe("the cadence ledger (#2034)", () => {
     const pid = newProfile("cl-range");
     makeTarget(pid, "practice", "Sauna", 2, 3);
     for (const back of [3, 2, 1])
-      logPracticeSession(pid, "Sauna", dayBack(pid, back));
+      logPracticeSession(pid, "Sauna", dayBack(pid, back), "page");
     const [entry] = getCadenceLedger(pid, {
       weeks: 1,
       includeCurrent: true,
@@ -380,7 +380,7 @@ describe("the cadence ledger (#2034)", () => {
       JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
     );
     logFood(pid, dayBack(pid, 1), "fatty_fish", 2);
-    logPracticeSession(pid, "Sauna", dayBack(pid, 1));
+    logPracticeSession(pid, "Sauna", dayBack(pid, 1), "page");
 
     const all = getFrequencyTargetProgress(pid);
     expect(all.map((p) => p.target.scope_kind).sort()).toEqual([
@@ -480,8 +480,8 @@ describe("the cadence ledger (#2034)", () => {
   it("never lets a FUTURE-dated log fill the in-progress week", () => {
     const pid = newProfile("cl-future");
     makeTarget(pid, "practice", "Sauna", 2);
-    logPracticeSession(pid, "Sauna", today(pid));
-    logPracticeSession(pid, "Sauna", shiftDateStr(today(pid), 2));
+    logPracticeSession(pid, "Sauna", today(pid), "page");
+    logPracticeSession(pid, "Sauna", shiftDateStr(today(pid), 2), "page");
     // Two rows, one countable day: a day that has not happened cannot mark a floor
     // met and silence its nudge.
     const [progress] = getFrequencyTargetProgress(pid);

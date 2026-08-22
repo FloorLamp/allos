@@ -11,6 +11,7 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { subjectActionLabel } from "@/lib/own-profile";
 
 // Inline weight quick-add for the dashboard weight presentation (#1042 phase 2).
@@ -82,6 +83,10 @@ export default function WeightQuickAdd({
       return;
     }
     try {
+      // This mounting IS the dashboard's own weigh-in widget (#3087) — the same
+      // action the Trends page's add form posts, which is exactly why the surface
+      // has to ride the post rather than be inferred server-side.
+      formData.set(LOGGED_VIA_FIELD, "dashboard-widget");
       await addBodyMetric(formData);
     } catch (err) {
       // Connection dropped mid-submit — queue instead of a false failure.

@@ -55,7 +55,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     logFood(p, anchor, "eggs", 1);
 
     // …then a 30 g shake is logged directly.
-    const out = addProteinGramsCore(p, anchor, 30);
+    const out = addProteinGramsCore(p, anchor, 30, "page");
     expect(out).toEqual({ kind: "logged", grams: 30 });
     expect(getProteinDailyGrams(p, anchor)).toBe(30);
 
@@ -78,7 +78,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     const p = newProfile("protein-loggedonly");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
-    addProteinGramsCore(p, anchor, 50);
+    addProteinGramsCore(p, anchor, 50, "page");
 
     const a = getProteinAdequacy(p);
     expect(a?.intake.basis).toBe("logged");
@@ -90,7 +90,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     const anchor = today(p);
     seedWeight(p, anchor, 80);
     logFood(p, anchor, "poultry", 1); // ~35 estimated
-    addProteinGramsCore(p, anchor, 30); // +30 logged → sum ~65
+    addProteinGramsCore(p, anchor, 30, "page"); // +30 logged → sum ~65
     // …but a measured 150 g/day from the integration wins.
     seedTrackedProtein(p, anchor, 150);
 
@@ -108,7 +108,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     const anchor = today(p);
     seedWeight(p, anchor, 80);
     logFood(p, anchor, "poultry", 1); // ~35 estimated (below-band floor)
-    addProteinGramsCore(p, anchor, 30); // → combined ~65
+    addProteinGramsCore(p, anchor, 30, "page"); // → combined ~65
 
     let a = getProteinAdequacy(p);
     expect(a?.intake.basis).toBe("combined");

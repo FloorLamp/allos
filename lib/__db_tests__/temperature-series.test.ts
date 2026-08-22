@@ -52,7 +52,7 @@ describe("manual + Health Connect body temperature → one series", () => {
   it("both sources coexist on one Body Temperature series with no dedup collision", () => {
     // Manual bedside reading (external_id NULL, source 'manual'), then a wearable push
     // the SAME day with a DIFFERENT value — distinct readings, not a duplicate.
-    const manual = logTemperatureCore(profile, 101.2, "F", D, "09:00");
+    const manual = logTemperatureCore(profile, 101.2, "F", D, "page", "09:00");
     expect(manual.kind).toBe("logged");
 
     const counts = ingestTemp(38.0, `${D}T14:00:00Z`); // 38.0 °C → 100.4 °F
@@ -148,7 +148,7 @@ describe("manual + Health Connect body temperature → one series", () => {
   });
 
   it("auto-detects a Celsius reading even when the posted selector is stale", () => {
-    const outcome = logTemperatureCore(profile, 37, "F", D, "22:00");
+    const outcome = logTemperatureCore(profile, 37, "F", D, "page", "22:00");
     expect(outcome).toMatchObject({ kind: "logged", degF: 98.6 });
     if (outcome.kind !== "logged") return;
     const stored = db

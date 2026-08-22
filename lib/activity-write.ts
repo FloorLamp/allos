@@ -17,6 +17,7 @@
 // commits or rolls back atomically with its idempotency-key record.
 
 import { db, today, writeTx } from "@/lib/db";
+import type { LoggedVia } from "./logged-via";
 import { sqlNow } from "@/lib/clock";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
@@ -145,7 +146,11 @@ function writeSets(
 export function saveActivityCore(
   profileId: number,
   formData: FormData,
-  fallbackUnits: { weightUnit: WeightUnit; distanceUnit: DistanceUnit }
+  fallbackUnits: { weightUnit: WeightUnit; distanceUnit: DistanceUnit },
+  // Which surface saved this session (#3087). Required, no default. This core both
+  // CREATES and EDITS — the stamp is written on the insert arm only, so re-saving an
+  // existing session from another surface never rewrites where it came from.
+  loggedVia: LoggedVia
 ): SaveActivityOutcome {
   const profile = { id: profileId };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
@@ -428,8 +433,8 @@ export function saveActivityCore(
       const res = db
         .prepare(
           `INSERT INTO activities
-             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id, created_at, logged_via)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           date,
@@ -446,7 +451,8 @@ export function saveActivityCore(
           equipmentId,
           estCalories,
           profile.id,
-          sqlNow()
+          sqlNow(),
+          loggedVia
         );
       activityId = Number(res.lastInsertRowid);
     }

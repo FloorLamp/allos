@@ -29,13 +29,19 @@ function newProfile(name: string): number {
 // rest (the completion decision only cares that each carries a fresh value).
 function completeBattery(profileId: number, date: string) {
   for (const def of batteryForAge(40)) {
-    saveFitnessEntry(profileId, {
-      date,
-      testKey: def.key,
-      value: def.key === "vo2max" ? 45 : def.lowerIsBetter ? 12 : 40,
-      liftName:
-        def.store.kind === "set" && !def.store.lift ? "Back Squat" : undefined,
-    });
+    saveFitnessEntry(
+      profileId,
+      {
+        date,
+        testKey: def.key,
+        value: def.key === "vo2max" ? 45 : def.lowerIsBetter ? 12 : 40,
+        liftName:
+          def.store.kind === "set" && !def.store.lift
+            ? "Back Squat"
+            : undefined,
+      },
+      "page"
+    );
   }
 }
 

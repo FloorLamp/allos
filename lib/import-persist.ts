@@ -1,4 +1,5 @@
 import { db, writeTx } from "./db";
+import { IMPORTED } from "./logged-via";
 import { sqlNow } from "./clock";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
 import { adoptSmokingStatusFromImport } from "./settings";
@@ -827,8 +828,8 @@ function insertImportRows(
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insMetric = db.prepare(
-    `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id)
-     VALUES (?,?,?,?,?,?)`
+    `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id, logged_via)
+     VALUES (?,?,?,?,?,?,?)`
   );
   // Which measures a date already has on any existing body_metrics row, so a
   // document row is dropped only when it adds nothing new (undeferredBodyMetrics).
@@ -906,8 +907,8 @@ function insertImportRows(
     `INSERT OR IGNORE INTO medical_records
        (date, occurred_at, category, name, value, value_num, unit, reference_range,
         notes, panel, flag, canonical_name, document_id, source, external_id,
-        provider_id, profile_id, loinc, result_status, fasting, specimen)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        provider_id, profile_id, loinc, result_status, fasting, specimen, logged_via)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
   // The per-item answers behind a folded screening-instrument score (#2321). Keyed on
@@ -1131,7 +1132,10 @@ function insertImportRows(
       w.body_fat_pct,
       w.resting_hr,
       docSource,
-      profileId
+      profileId,
+      // Extracted from a document, not tapped by anybody (#3087): `source` beside it
+      // holds `document:<id>`, which is the authoritative half of that pair.
+      IMPORTED
     );
     bodyMetricCount++;
   }
@@ -1213,7 +1217,8 @@ function insertImportRows(
       // column the CHECK would reject.
       normalizeResultStatus(r.result_status),
       parseFasting(r.fasting),
-      sanitizeSpecimen(r.specimen)
+      sanitizeSpecimen(r.specimen),
+      IMPORTED
     );
     if (info.changes > 0) {
       recCount++;

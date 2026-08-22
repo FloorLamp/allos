@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — taking BACK a dose confirm (#2642).
 //
 // `undoDoseConfirm` is the inverse behind the act→undo toast. It is deliberately
-// narrower than the tri-state's `setDoseStatusCore(…, "clear")`: an undo may remove only
+// narrower than the tri-state's `setDoseStatusCore(…, "clear", "page")`: an undo may remove only
 // the row the confirm it is undoing WROTE, so it re-derives the day's ledger under the
 // write lock and refuses the moment that is no longer what stands.
 //
@@ -85,17 +85,17 @@ describe("undoDoseConfirm is a complete, local inverse", () => {
   it("removes the row the confirm wrote, hands back the supply, and leaves the dose due", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
 
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
     expect(logRows(doseId, date)).toHaveLength(1);
     expect(onHand(itemId)).toBe(9);
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("undone");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("undone");
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
 
     // Due again, in the strongest sense available: the confirm is accepted afresh and
     // reports a NEW log, not "already-taken".
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
     expect(logRows(doseId, date)).toHaveLength(1);
     expect(onHand(itemId)).toBe(9);
   });
@@ -108,7 +108,7 @@ describe("undoDoseConfirm is a complete, local inverse", () => {
        VALUES (?, ?, ?, '2 caps', 'taken', 0)`
     ).run(doseId, itemId, date);
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("undone");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("undone");
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
   });
@@ -117,19 +117,19 @@ describe("undoDoseConfirm is a complete, local inverse", () => {
 describe("undoDoseConfirm re-derives before it writes", () => {
   it("refuses `not-taken` when nothing stands for the day", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("not-taken");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("not-taken");
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
   });
 
   it("refuses `changed` when the day was flipped to skipped in between, and keeps the skip", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
-    expect(setDoseStatusCore(profileId, doseId, date, "skipped")).toBe(
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "skipped", "page")).toBe(
       "skipped"
     );
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("changed");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("changed");
     const rows = logRows(doseId, date);
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("skipped");
@@ -139,7 +139,7 @@ describe("undoDoseConfirm re-derives before it writes", () => {
 
   it("refuses `changed` when a SECOND row landed on the same (dose, date) — the clear would take both", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
     // A PRN administration of the same dose on the same day: the one core's clear is a
     // DELETE by (dose_id, date), so a blind undo would delete this row too.
     db.prepare(
@@ -147,29 +147,29 @@ describe("undoDoseConfirm re-derives before it writes", () => {
        VALUES (?, ?, ?, '2 caps', 'taken', 1)`
     ).run(doseId, itemId, date);
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("changed");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("changed");
     expect(logRows(doseId, date)).toHaveLength(2);
     expect(onHand(itemId)).toBe(9);
   });
 
   it("refuses `stale-dose` once the dose has been retired, and keeps the row", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
     db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
       doseId
     );
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("stale-dose");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("stale-dose");
     expect(logRows(doseId, date)).toHaveLength(1);
     expect(onHand(itemId)).toBe(9);
   });
 
   it("refuses `stale-dose` while the parent item is paused, and keeps the row", () => {
     const { profileId, itemId, doseId, date } = seedTracked(10);
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
     db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
 
-    expect(undoDoseConfirm(profileId, doseId, date)).toBe("stale-dose");
+    expect(undoDoseConfirm(profileId, doseId, date, "page")).toBe("stale-dose");
     expect(logRows(doseId, date)).toHaveLength(1);
     expect(onHand(itemId)).toBe(9);
   });
@@ -180,12 +180,12 @@ describe("undoDoseConfirm is profile-scoped", () => {
     const owner = seedTracked(10);
     const stranger = seedProfileRow();
 
-    expect(markDoseTaken(owner.profileId, owner.doseId, null, owner.date)).toBe(
-      "logged"
-    );
+    expect(
+      markDoseTaken(owner.profileId, owner.doseId, null, owner.date, "page")
+    ).toBe("logged");
     // The parent-item join reads zero rows for the stranger, so the writer is never
     // reached and the answer is the same one an unknown dose gets.
-    expect(undoDoseConfirm(stranger, owner.doseId, owner.date)).toBe(
+    expect(undoDoseConfirm(stranger, owner.doseId, owner.date, "page")).toBe(
       "not-taken"
     );
     expect(logRows(owner.doseId, owner.date)).toHaveLength(1);

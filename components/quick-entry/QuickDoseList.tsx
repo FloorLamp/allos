@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { markTaken } from "@/app/(app)/upcoming/actions";
+import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import type { QuickEntryDose } from "@/app/(app)/quick-entry-actions";
 
 // The quick-entry overlay's DOSE form (issue #1468): doses whose declared slot
@@ -47,6 +48,9 @@ export default function QuickDoseList({
   async function confirm(dose: QuickEntryDose) {
     const fd = new FormData();
     fd.set("dose_id", String(dose.doseId));
+    // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
+    // action, so the sheet declares itself (#3087).
+    fd.set(LOGGED_VIA_FIELD, "quick-log");
     let result;
     try {
       result = await markTaken(fd);

@@ -93,7 +93,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     const date = today(p);
 
     // The write core derives the flag; the dispatch evaluates + sends immediately.
-    const outcome = logTemperatureCore(p, 104.5, "F", date, "14:00");
+    const outcome = logTemperatureCore(p, 104.5, "F", date, "page", "14:00");
     expect(outcome.kind).toBe("logged");
     const r1 = await dispatchTempRedFlagForReading(
       p,
@@ -108,7 +108,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
 
     // A second same-day crossing under the SAME rule → same dedupeKey → the marker
     // holds; no re-nag.
-    const second = logTemperatureCore(p, 104.8, "F", date, "16:00");
+    const second = logTemperatureCore(p, 104.8, "F", date, "page", "16:00");
     expect(second.kind).toBe("logged");
     await dispatchTempRedFlagForReading(p, 104.8);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -122,12 +122,12 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     const date = today(p);
 
     // Morning: a non-crossing reading — assessing now sends nothing (clean).
-    logTemperatureCore(p, 100.6, "F", date, "08:00");
+    logTemperatureCore(p, 100.6, "F", date, "page", "08:00");
     await dispatchTempRedFlagForReading(p, 100.6);
     expect(fetchMock).not.toHaveBeenCalled();
 
     // 2 PM: the fever spikes past the cited line — the push goes NOW, not tomorrow.
-    const spike = logTemperatureCore(p, 104.2, "F", date, "14:00");
+    const spike = logTemperatureCore(p, 104.2, "F", date, "page", "14:00");
     expect(spike.kind).toBe("logged");
     await dispatchTempRedFlagForReading(p, 104.2);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -138,7 +138,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     makeSick(p, 1);
     configureHA(p);
     const fetchMock = stubFetch();
-    logTemperatureCore(p, 99.1, "F", today(p), "09:00");
+    logTemperatureCore(p, 99.1, "F", today(p), "page", "09:00");
     await dispatchTempRedFlagForReading(p, 99.1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(
@@ -155,8 +155,8 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
 
     // Today's latest reading is mild; a 104.9 °F reading BACKFILLED to two days ago
     // is not the episode's latest, so the orchestrator derives no new finding.
-    logTemperatureCore(p, 100.2, "F", date, "09:00");
-    logTemperatureCore(p, 104.9, "F", shiftDateStr(date, -2), "21:00");
+    logTemperatureCore(p, 100.2, "F", date, "page", "09:00");
+    logTemperatureCore(p, 104.9, "F", shiftDateStr(date, -2), "page", "21:00");
     await dispatchTempRedFlagForReading(p, 104.9);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -165,7 +165,7 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     const p = newProfile("TrfNoEpisode");
     configureHA(p);
     const fetchMock = stubFetch();
-    logTemperatureCore(p, 105.0, "F", today(p), "10:00");
+    logTemperatureCore(p, 105.0, "F", today(p), "page", "10:00");
     await dispatchTempRedFlagForReading(p, 105.0);
     expect(fetchMock).not.toHaveBeenCalled();
   });

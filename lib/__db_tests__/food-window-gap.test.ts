@@ -35,8 +35,14 @@ function seedHabitualLogger(tag: string): SeededProfile {
   const t = today(p.profileId);
   for (let i = 1; i <= FOOD_WINDOW_HABIT_DAYS; i++) {
     const d = shiftDateStr(t, -i);
-    logFoodServingCore(p.profileId, "leafy_greens", d, `${d}T${MORNING}`);
-    logFoodServingCore(p.profileId, "fatty_fish", d, `${d}T${MIDDAY}`);
+    logFoodServingCore(
+      p.profileId,
+      "leafy_greens",
+      d,
+      "page",
+      `${d}T${MORNING}`
+    );
+    logFoodServingCore(p.profileId, "fatty_fish", d, "page", `${d}T${MIDDAY}`);
   }
   return p;
 }
@@ -48,10 +54,16 @@ describe("getLoggedFoodWindows", () => {
   beforeAll(() => {
     p = seedProfile("food-window-ledger");
     t = today(p.profileId);
-    logFoodServingCore(p.profileId, "leafy_greens", t, `${t}T${MORNING}`);
-    logFoodServingCore(p.profileId, "berries", t, `${t}T${MORNING}`);
+    logFoodServingCore(
+      p.profileId,
+      "leafy_greens",
+      t,
+      "page",
+      `${t}T${MORNING}`
+    );
+    logFoodServingCore(p.profileId, "berries", t, "page", `${t}T${MORNING}`);
     // A shake, under the reserved key — eating, and it must count.
-    addProteinGramsCore(p.profileId, t, 30, `${t}T${EVENING}`);
+    addProteinGramsCore(p.profileId, t, 30, "page", `${t}T${EVENING}`);
     // A stated eating time wins over the tap stamp, so this evening tap is a MIDDAY
     // serving — the same precedence every other food surface reads.
     const y = shiftDateStr(t, -1);
@@ -59,6 +71,7 @@ describe("getLoggedFoodWindows", () => {
       p.profileId,
       "nuts_seeds",
       y,
+      "page",
       `${y}T${EVENING}`,
       undefined,
       {
@@ -119,7 +132,13 @@ describe("buildFoodNudge — the empty-window clause", () => {
     // Dinner every evening for the whole evidence window, then a blank yesterday.
     for (let i = 2; i <= FOOD_WINDOW_HABIT_DAYS + 1; i++) {
       const d = shiftDateStr(t, -i);
-      logFoodServingCore(p.profileId, "leafy_greens", d, `${d}T${EVENING}`);
+      logFoodServingCore(
+        p.profileId,
+        "leafy_greens",
+        d,
+        "page",
+        `${d}T${EVENING}`
+      );
     }
     const msg = buildFoodNudge(p.profileId, "Morning", t, undefined, {
       now: at(t, MORNING),
@@ -140,7 +159,7 @@ describe("buildFoodNudge — the empty-window clause", () => {
     ).toContain("Nothing logged for Morning");
     // A backfilled breakfast — the "recovery clears it" property, with no stored state
     // to clear: a rebuild of the same message simply stops saying it.
-    logFoodServingCore(p.profileId, "berries", t, `${t}T${MORNING}`);
+    logFoodServingCore(p.profileId, "berries", t, "page", `${t}T${MORNING}`);
     expect(
       plainBody(
         buildFoodNudge(p.profileId, "Midday", t, undefined, { now })!.body
@@ -176,9 +195,21 @@ describe("buildFoodNudge — the empty-window clause", () => {
     // breakfast is missing is exactly what the habit gate exists to prevent.
     for (let i = 1; i <= FOOD_WINDOW_HABIT_DAYS; i++) {
       const d = shiftDateStr(t, -i);
-      logFoodServingCore(p.profileId, "fatty_fish", d, `${d}T${MIDDAY}`);
+      logFoodServingCore(
+        p.profileId,
+        "fatty_fish",
+        d,
+        "page",
+        `${d}T${MIDDAY}`
+      );
       if (i <= 2)
-        logFoodServingCore(p.profileId, "berries", d, `${d}T${MORNING}`);
+        logFoodServingCore(
+          p.profileId,
+          "berries",
+          d,
+          "page",
+          `${d}T${MORNING}`
+        );
     }
     const msg = buildFoodNudge(p.profileId, "Midday", t, undefined, {
       now: at(t, MIDDAY),

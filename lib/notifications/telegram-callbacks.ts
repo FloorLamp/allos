@@ -2,6 +2,7 @@
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
 
+import type { LoggedVia } from "../logged-via";
 import {
   getDoseCadenceLabel,
   markDoseTaken,
@@ -206,6 +207,12 @@ import {
 } from "./telegram-quick-log";
 import { GLYPH } from "./glyphs";
 
+// EVERY write in this module is a tap on a button this app SENT (#3087) — a dose
+// reminder, an escalation, a digest offer, the household round, the usual-routine
+// offer. The on-demand lists behind the slash commands live in telegram-quick-log.ts
+// and stamp `telegram-command` instead; a free-text intake stamps `telegram-text`.
+// Named once here so the three chat surfaces stay legibly distinct at every call site.
+const NUDGE: LoggedVia = "telegram-nudge";
 // The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
 // Gated on the outcome so the ordinary confirm path never pays for the lookup, and
 // centralized here so both tap sites answer an off-cadence log identically.
@@ -709,7 +716,8 @@ async function handleEscalationTap(
       profileId,
       esc.doseId,
       esc.itemId,
-      esc.date
+      esc.date,
+      NUDGE
     );
     await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome), {
       alert: tapAnswerNeedsDismissal(outcome, "skip"),
@@ -730,7 +738,13 @@ async function handleEscalationTap(
     // anywhere. Left unattributed, it behaves like a web one-tap — its correction row
     // rides the newest live dose message — which keeps the chat-side correction
     // reachable instead of burying it on a closed message.
-    const outcome = markDoseTaken(profileId, esc.doseId, esc.itemId, esc.date);
+    const outcome = markDoseTaken(
+      profileId,
+      esc.doseId,
+      esc.itemId,
+      esc.date,
+      NUDGE
+    );
     await answerCallbackQuery(
       cq.id,
       tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome)),
@@ -916,12 +930,13 @@ async function handleDoseTap(
           tap.doseId,
           tap.itemId,
           tap.date,
+          NUDGE,
           undefined,
           chatId != null && messageId != null
             ? messagePointerIdAt(profileId, chatId, messageId)
             : null
         )
-      : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date);
+      : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date, NUDGE);
   await answerCallbackQuery(
     cq.id,
     kind === "take"
@@ -1058,7 +1073,8 @@ async function handleHouseholdDoseTap(
     tap.memberProfileId,
     tap.doseId,
     tap.itemId,
-    tap.date
+    tap.date,
+    NUDGE
   );
   await answerCallbackQuery(
     cq.id,
@@ -1147,6 +1163,7 @@ async function handleAllTaken(
         e.dose.id,
         e.item.id,
         all.date,
+        NUDGE,
         undefined,
         notifyMessageId
       ) === "logged"
@@ -1275,6 +1292,7 @@ async function handleStackTaken(
         e.dose.id,
         e.item.id,
         stack.date,
+        NUDGE,
         undefined,
         notifyMessageId
       ) === "logged"
@@ -1409,6 +1427,7 @@ async function handleUsualRoutineTap(
     offer.window,
     offer.groups,
     offer.doseIds,
+    NUDGE,
     notifyMessageId
   );
   const wrote = outcome.kind === "logged";
@@ -1534,6 +1553,7 @@ async function handleFoodLog(
     profileId,
     food.group,
     food.date,
+    NUDGE,
     tapAt,
     undefined,
     { eatenAt: tapAt, source: "tap" },
@@ -1600,6 +1620,7 @@ async function handleFoodProtein(
     profileId,
     token.date,
     token.grams,
+    NUDGE,
     tapAt,
     undefined,
     { eatenAt: tapAt, source: "tap" },

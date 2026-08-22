@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
@@ -147,6 +148,9 @@ export async function logFoodServing(
     profile.id,
     fields.group,
     fields.date,
+    // The one-tap food bar renders on the Nutrition page, on the dashboard, and in the
+    // quick-log sheet, all posting THIS action — so the surface rides the post.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     undefined,
     fields.mealSlot,
     // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
@@ -268,7 +272,12 @@ export async function logUsualFood(
     .map((slug) => slug.trim())
     .filter(Boolean);
   if (named.length === 0) return formError("Nothing to log.");
-  const outcome = logUsualFoodCore(profile.id, rawWindow, named);
+  const outcome = logUsualFoodCore(
+    profile.id,
+    rawWindow,
+    named,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "nothing-to-log")
     return formError("Those servings are already logged.");
   const day = today(profile.id);
@@ -447,7 +456,12 @@ export async function addProteinGrams(
   const { profile } = await requireWriteAccess();
   const fields = parseProteinFields(formData, profile.id);
   if (!fields) return formError("Enter a protein amount in grams.");
-  const outcome = addProteinGramsCore(profile.id, fields.date, fields.grams);
+  const outcome = addProteinGramsCore(
+    profile.id,
+    fields.date,
+    fields.grams,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "invalid")
     return formError("Enter a protein amount between 1 and 300 grams.");
   revalidateRoute("/nutrition");

@@ -100,6 +100,7 @@ describe("getSegmentLogDays", () => {
         date: anchor,
         weight: "70",
         weightUnit: "kg",
+        loggedVia: "page",
         bodyFatPct: null,
         restingHr: null,
         notes: null,

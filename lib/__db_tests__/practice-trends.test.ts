@@ -187,8 +187,8 @@ describe("the Trends wellness lens read (#1632)", () => {
   it("leaves an UNTRACKED practice out — it has no range to be in", () => {
     const pid = makeProfile("lens-untracked");
     seedLedger(pid);
-    logPracticeSession(pid, "Journaling", dayBack(pid, 10));
-    logPracticeSession(pid, "Journaling", dayBack(pid, 17));
+    logPracticeSession(pid, "Journaling", dayBack(pid, 10), "page");
+    logPracticeSession(pid, "Journaling", dayBack(pid, 17), "page");
 
     const names = getPracticeTrends(pid, 4).map((p) => p.name);
     expect(names).toEqual([PRACTICE]);
@@ -232,7 +232,7 @@ describe("the Trends wellness lens read (#1632)", () => {
   it("keeps an untracked practice out of the digest too", () => {
     const pid = makeProfile("lens-digest-untracked");
     for (const back of [8, 15, 22, 29]) {
-      logPracticeSession(pid, "Breathwork", dayBack(pid, back));
+      logPracticeSession(pid, "Breathwork", dayBack(pid, back), "page");
     }
     expect(
       buildPracticeDigestSeries(

@@ -177,8 +177,8 @@ function seedReportedProfile(name: string): {
   ]);
   logLifts(pid, shiftDateStr(t, -3), ["Barbell Bench Press"]);
   logCardio(pid, shiftDateStr(t, -2), "Running");
-  logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -4));
-  logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -2));
+  logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -4), "page");
+  logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -2), "page");
 
   return { pid, backId, chestId, cardioId, practiceId };
 }

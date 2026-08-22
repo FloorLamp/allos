@@ -17,6 +17,7 @@
 // (scoop sizes repeat), so the quick-add can re-offer it next time.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { instantNow } from "./clock";
 import { proteinDayCounter } from "./day-counter-ledger-db";
 import { setProfileSetting } from "./settings";
@@ -60,6 +61,9 @@ export function addProteinGramsCore(
   profileId: number,
   date: string,
   grams: number,
+  // Which surface this add came from (#3087) — required, no default, ahead of the
+  // optional tail, exactly as logFoodServingCore takes it.
+  loggedVia: LoggedVia,
   // The tap instant (ISO-8601 UTC), appended to the food_log_events ledger under the
   // reserved __protein__ key (#1073) so the protein "+Xg" nudge button self-surfaces in the
   // slots the profile logs protein. Defaults to NOW — recorded_at is the TAP time, never
@@ -93,8 +97,8 @@ export function addProteinGramsCore(
     db.prepare(
       `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       PROTEIN_NUDGE_KEY,
@@ -103,7 +107,8 @@ export function addProteinGramsCore(
       mealSlot ?? null,
       time?.eatenAt ?? null,
       time?.source ?? null,
-      origin?.notifyMessageId ?? null
+      origin?.notifyMessageId ?? null,
+      loggedVia
     );
     return { kind: "logged", grams: total };
   });

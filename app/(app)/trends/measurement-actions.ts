@@ -93,6 +93,8 @@ export async function addMeasurements(
         occurredAtRaw === null
           ? undefined
           : String(occurredAtRaw).trim() || null,
+      // The measurements page's own sitting form.
+      loggedVia: "page",
     });
     wrote = body.wrote || wrote;
     // The gate's verdict, threaded out rather than re-derived (#2311): the core

@@ -57,19 +57,19 @@ describe("LH tests reuse medical_records", () => {
     const p = newProfile("ttc-lh");
     const d = today(p);
 
-    const first = logLhTestCore(p, d, "negative");
+    const first = logLhTestCore(p, d, "negative", "page");
     expect(first.kind).toBe("logged");
     if (first.kind === "logged") expect(first.counts.inserted).toBe(1);
 
     // Re-logging the same result writes nothing new and reports `unchanged`.
-    const again = logLhTestCore(p, d, "negative");
+    const again = logLhTestCore(p, d, "negative", "page");
     if (again.kind === "logged") {
       expect(again.counts.unchanged).toBe(1);
       expect(again.counts.inserted).toBe(0);
     }
 
     // A correction UPDATES the same row rather than minting a second one.
-    const corrected = logLhTestCore(p, d, "positive");
+    const corrected = logLhTestCore(p, d, "positive", "page");
     if (corrected.kind === "logged") expect(corrected.counts.updated).toBe(1);
 
     const rows = db
@@ -98,12 +98,12 @@ describe("LH tests reuse medical_records", () => {
   it("refuses to overwrite a hand-corrected (edit-locked) row", () => {
     const p = newProfile("ttc-lh-locked");
     const d = today(p);
-    logLhTestCore(p, d, "negative");
+    logLhTestCore(p, d, "negative", "page");
     db.prepare(
       `UPDATE medical_records SET edited = 1 WHERE profile_id = ? AND name = ?`
     ).run(p, LH_TEST_RECORD_NAME);
 
-    expect(logLhTestCore(p, d, "positive").kind).toBe("locked");
+    expect(logLhTestCore(p, d, "positive", "page").kind).toBe("locked");
     expect(listLhTests(p, WINDOW_START)[0].result).toBe("negative");
   });
 });
@@ -161,14 +161,14 @@ describe("cervical mucus reuses symptom_logs", () => {
     const p = newProfile("ttc-mucus");
     const d = today(p);
 
-    const first = logMucusCore(p, d, "creamy");
+    const first = logMucusCore(p, d, "creamy", "page");
     if (first.kind === "logged") expect(first.counts.inserted).toBe(1);
-    const same = logMucusCore(p, d, "creamy");
+    const same = logMucusCore(p, d, "creamy", "page");
     if (same.kind === "logged") expect(same.counts.unchanged).toBe(1);
 
     // An explicit correction may LOWER the ordinal — the observation is categorical, not a
     // day's worst severity.
-    const lowered = logMucusCore(p, d, "dry");
+    const lowered = logMucusCore(p, d, "dry", "page");
     if (lowered.kind === "logged") expect(lowered.counts.updated).toBe(1);
 
     const rows = db
@@ -207,7 +207,7 @@ describe("getTtcState — the assembled gather", () => {
   it("is entirely off until the user declares a start", () => {
     const p = newProfile("ttc-undeclared");
     seedRegularCycles(p, 20);
-    logMucusCore(p, today(p), "egg_white"); // an observation is NOT a declaration
+    logMucusCore(p, today(p), "egg_white", "page"); // an observation is NOT a declaration
     const s = getTtcState(p, today(p));
     expect(s.ttcStart).toBeNull();
     expect(s.active).toBe(false);
@@ -223,7 +223,7 @@ describe("getTtcState — the assembled gather", () => {
     expect(calendarOnly.active).toBe(true);
     expect(calendarOnly.window?.evidence).toBe("calendar");
 
-    logLhTestCore(p, today(p), "positive");
+    logLhTestCore(p, today(p), "positive", "page");
     const withSurge = getTtcState(p, today(p));
     expect(withSurge.window?.evidence).toBe("lh");
     expect(withSurge.todayLh).toBe("positive");
@@ -249,7 +249,7 @@ describe("getTtcState — the assembled gather", () => {
     seedRegularCycles(p, 20);
     const declared = shiftDateStr(today(p), -300);
     setTtcStart(p, declared);
-    logLhTestCore(p, today(p), "positive");
+    logLhTestCore(p, today(p), "positive", "page");
     setRiskAttributes(p, { ...EMPTY_RISK_ATTRIBUTES, pregnant: true });
 
     const s = getTtcState(p, today(p));

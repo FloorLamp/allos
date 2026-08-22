@@ -108,8 +108,8 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
   it("two same-day symptoms keep DISTINCT photo sets", () => {
     const p = newProfile("Photo Split");
     const date = "2026-05-04";
-    logSymptomCore(p, "rash", 2, date);
-    logSymptomCore(p, "cough", 3, date);
+    logSymptomCore(p, "rash", 2, date, "page");
+    logSymptomCore(p, "cough", 3, date, "page");
     const rashLog = logId(p, date, "rash");
     const coughLog = logId(p, date, "cough");
 
@@ -147,7 +147,7 @@ describe("symptom_photos.symptom_log_id — a photo resolves to its log", () => 
   it("a whole-day photo (no symptom) carries a NULL log link", () => {
     const p = newProfile("Day Photo");
     const date = "2026-05-05";
-    logSymptomCore(p, "fever", 2, date);
+    logSymptomCore(p, "fever", 2, date, "page");
     const res = attachSymptomPhotoCore(p, date, processedFixture("day"));
     expect(res.kind).toBe("attached");
     const row = getSymptomPhotosInRange(p, date, date)[0];
@@ -173,8 +173,8 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
     const p = newProfile("Episode Assoc");
     const start = "2026-03-03";
     const epId = createEpisodeRow(p, "Illness", start, null); // open
-    logSymptomCore(p, "cough", 3, "2026-03-04");
-    logSymptomCore(p, "fever", 2, "2026-03-05");
+    logSymptomCore(p, "cough", 3, "2026-03-04", "page");
+    logSymptomCore(p, "fever", 2, "2026-03-05", "page");
 
     expect(episodeIdOfLog(p, "2026-03-04", "cough")).toBe(epId);
     const symptoms = getEpisodeSymptomLogs(p, epId)
@@ -185,21 +185,21 @@ describe("symptom_logs.episode_id — open-episode association + reverse query",
 
   it("a symptom logged OUTSIDE any open episode carries no link", () => {
     const p = newProfile("Standalone Symptom");
-    logSymptomCore(p, "headache", 2, "2026-03-10");
+    logSymptomCore(p, "headache", 2, "2026-03-10", "page");
     expect(episodeIdOfLog(p, "2026-03-10", "headache")).toBeNull();
   });
 
   it("a CLOSED episode does not retro-claim a freshly logged symptom", () => {
     const p = newProfile("Closed Episode");
     createEpisodeRow(p, "Illness", "2026-02-01", "2026-02-08"); // closed
-    logSymptomCore(p, "cough", 2, "2026-02-05"); // inside the closed range
+    logSymptomCore(p, "cough", 2, "2026-02-05", "page"); // inside the closed range
     expect(episodeIdOfLog(p, "2026-02-05", "cough")).toBeNull();
   });
 
   it("detach nulls the link; re-attach sets it; a foreign episode id is rejected", () => {
     const p = newProfile("Detach");
     const epId = createEpisodeRow(p, "Illness", "2026-04-01", null);
-    logSymptomCore(p, "cough", 2, "2026-04-02");
+    logSymptomCore(p, "cough", 2, "2026-04-02", "page");
     expect(episodeIdOfLog(p, "2026-04-02", "cough")).toBe(epId);
 
     const detach = setSymptomEpisodeCore(p, "cough", "2026-04-02", null);
@@ -226,8 +226,8 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
   it("deleting an episode NULLs its symptoms' links but keeps the symptoms", () => {
     const p = newProfile("Episode Delete");
     const epId = createEpisodeRow(p, "Illness", "2026-06-01", null);
-    logSymptomCore(p, "cough", 3, "2026-06-02");
-    logSymptomCore(p, "fever", 2, "2026-06-03");
+    logSymptomCore(p, "cough", 3, "2026-06-02", "page");
+    logSymptomCore(p, "fever", 2, "2026-06-03", "page");
     expect(getEpisodeSymptomLogs(p, epId)).toHaveLength(2);
 
     expect(deleteEpisodeRow(p, epId)).toBe(true);
@@ -246,9 +246,9 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const keep = createEpisodeRow(p, "Illness", "2026-06-10", "2026-06-14");
     const drop = createEpisodeRow(p, "Illness", "2026-06-13", null);
     // Attach one symptom to each episode explicitly.
-    logSymptomCore(p, "cough", 2, "2026-06-11");
+    logSymptomCore(p, "cough", 2, "2026-06-11", "page");
     setSymptomEpisodeCore(p, "cough", "2026-06-11", keep);
-    logSymptomCore(p, "fever", 3, "2026-06-13");
+    logSymptomCore(p, "fever", 3, "2026-06-13", "page");
     setSymptomEpisodeCore(p, "fever", "2026-06-13", drop);
 
     expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
@@ -263,7 +263,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
   it("deleting a symptom log removes its photos (rows + files)", () => {
     const p = newProfile("Log Delete Photos");
     const date = "2026-07-01";
-    logSymptomCore(p, "rash", 2, date);
+    logSymptomCore(p, "rash", 2, date, "page");
     const rashLog = logId(p, date, "rash");
     attachSymptomPhotoCore(p, date, processedFixture("del-1"), "rash");
     attachSymptomPhotoCore(p, date, processedFixture("del-2"), "rash");
@@ -317,7 +317,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     // branch of the purge sweep. This is that kind, and this is that branch.
     const p = newProfile("Log Purge Photos");
     const date = "2026-07-05";
-    logSymptomCore(p, "rash", 3, date);
+    logSymptomCore(p, "rash", 3, date, "page");
     attachSymptomPhotoCore(p, date, processedFixture("purge-1"), "rash");
     const stored = (
       db
@@ -345,7 +345,7 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     const p = newProfile("Custom Symptom Photos");
     const date = "2026-07-02";
     // A custom (free-text) symptom name — clearly not a curated slug.
-    logSymptomCore(p, "weird tingling arm", 2, date);
+    logSymptomCore(p, "weird tingling arm", 2, date, "page");
     const oldLog = logId(p, date, "weird tingling arm");
     attachSymptomPhotoCore(
       p,
@@ -384,13 +384,13 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     // captured photos re-point at it instead of the whole restore dying on the index.
     const p = newProfile("Symptom Undo Collide");
     const date = "2026-07-07";
-    logSymptomCore(p, "cough", 2, date);
+    logSymptomCore(p, "cough", 2, date, "page");
     attachSymptomPhotoCore(p, date, processedFixture("collide-1"), "cough");
     const out = removeSymptomCore(p, "cough", date);
     const undoId = out.kind === "removed" ? out.undoId : null;
     expect(undoId).toBeGreaterThan(0);
 
-    logSymptomCore(p, "cough", 4, date);
+    logSymptomCore(p, "cough", 4, date, "page");
     expect(restoreDeletedRow(p, undoId!)).toBe(true);
     const live = logId(p, date, "cough");
     expect(

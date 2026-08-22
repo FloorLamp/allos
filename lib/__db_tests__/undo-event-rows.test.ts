@@ -78,7 +78,7 @@ describe("one practice session: delete → undo (#2038)", () => {
   it("restores the session with its facts intact and the weekly progress recomputed", () => {
     const profileId = seedProfileRow();
     const date = today(profileId);
-    const logged = logPracticeSession(profileId, "Breathwork", date);
+    const logged = logPracticeSession(profileId, "Breathwork", date, "page");
     expect(logged.kind).toBe("logged");
     const id = practiceSessions(profileId, "Breathwork")[0].id;
     // Give the session every field a correction could have set, so the restore is
@@ -120,9 +120,9 @@ describe("one practice session: delete → undo (#2038)", () => {
   it("deleting one session leaves the practice's OTHER sessions alone", () => {
     const profileId = seedProfileRow();
     const date = today(profileId);
-    logPracticeSession(profileId, "Sauna", date);
+    logPracticeSession(profileId, "Sauna", date, "page");
     const first = practiceSessions(profileId, "Sauna")[0].id;
-    logPracticeSession(profileId, "Sauna", date);
+    logPracticeSession(profileId, "Sauna", date, "page");
     expect(practiceSessions(profileId, "Sauna")).toHaveLength(2);
 
     const removed = deletePracticeSession(profileId, first);
@@ -137,7 +137,7 @@ describe("one practice session: delete → undo (#2038)", () => {
     const owner = seedProfileRow();
     const stranger = seedProfileRow();
     const date = today(owner);
-    logPracticeSession(owner, "Cold plunge", date);
+    logPracticeSession(owner, "Cold plunge", date, "page");
     const id = practiceSessions(owner, "Cold plunge")[0].id;
 
     expect(deletePracticeSession(stranger, id).kind).toBe("not-found");
@@ -209,9 +209,9 @@ describe("one food serving: delete → undo (#2038)", () => {
   it("restores the ledger row AND the day counter it decremented", () => {
     const profileId = seedProfileRow();
     const date = today(profileId);
-    logFoodServingCore(profileId, "other_vegetables", date);
-    logFoodServingCore(profileId, "other_vegetables", date);
-    logFoodServingCore(profileId, "other_vegetables", date);
+    logFoodServingCore(profileId, "other_vegetables", date, "page");
+    logFoodServingCore(profileId, "other_vegetables", date, "page");
+    logFoodServingCore(profileId, "other_vegetables", date, "page");
     expect(servings(profileId, date, "other_vegetables")).toBe(3);
     const ids = eventIds(profileId, date, "other_vegetables");
     expect(ids).toHaveLength(3);
@@ -237,7 +237,7 @@ describe("one food serving: delete → undo (#2038)", () => {
   it("re-creates the counter row when the deleted serving was the day's last", () => {
     const profileId = seedProfileRow();
     const date = today(profileId);
-    logFoodServingCore(profileId, "lean_fish", date);
+    logFoodServingCore(profileId, "lean_fish", date, "page");
     // A note on the day counter proves the RE-INSERT restores the snapshot, not just a
     // bare count.
     db.prepare(
@@ -272,14 +272,14 @@ describe("one food serving: delete → undo (#2038)", () => {
   it("folds into a counter the day regained between the delete and the undo", () => {
     const profileId = seedProfileRow();
     const date = today(profileId);
-    logFoodServingCore(profileId, "legumes", date);
+    logFoodServingCore(profileId, "legumes", date, "page");
     const [only] = eventIds(profileId, date, "legumes");
     const removed = deleteFoodLogEventCore(profileId, only);
     expect(removed.kind).toBe("deleted");
 
     // The user logs another legume serving before tapping Undo. The restore must give
     // back ONE serving on top of what stands, never reset the day to the snapshot.
-    logFoodServingCore(profileId, "legumes", date);
+    logFoodServingCore(profileId, "legumes", date, "page");
     expect(servings(profileId, date, "legumes")).toBe(1);
 
     if (removed.kind !== "deleted") return;
@@ -295,6 +295,7 @@ describe("one food serving: delete → undo (#2038)", () => {
       profileId,
       "whole_grains",
       date,
+      "page",
       `${date}T18:40:00.000Z`,
       "Evening",
       { eatenAt: `${date}T18:00:00.000Z`, source: "stated" as const }
@@ -328,7 +329,7 @@ describe("one food serving: delete → undo (#2038)", () => {
     const owner = seedProfileRow();
     const stranger = seedProfileRow();
     const date = today(owner);
-    logFoodServingCore(owner, "nuts_seeds", date);
+    logFoodServingCore(owner, "nuts_seeds", date, "page");
     const [only] = eventIds(owner, date, "nuts_seeds");
 
     expect(deleteFoodLogEventCore(stranger, only).kind).toBe("not-found");

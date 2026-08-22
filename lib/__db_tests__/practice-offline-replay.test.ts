@@ -60,7 +60,7 @@ describe("applyIntent — practice (#2908)", () => {
     // Captured offline…
     const intent = practiceIntent(p, date);
     // …and while the phone had no signal, the same day was logged elsewhere.
-    expect(logPracticeSession(p, PRACTICE, date).kind).toBe("logged");
+    expect(logPracticeSession(p, PRACTICE, date, "page").kind).toBe("logged");
     expect(getPracticeDayCount(p, PRACTICE, date)).toBe(1);
 
     // The replay reports DONE — the state the intent wanted is the state that stands,
@@ -74,7 +74,7 @@ describe("applyIntent — practice (#2908)", () => {
     const p = newProfile("practice-spelling");
     const date = today(p);
     const intent = practiceIntent(p, date);
-    expect(logPracticeSession(p, "sauna", date).kind).toBe("logged");
+    expect(logPracticeSession(p, "sauna", date, "page").kind).toBe("logged");
 
     expect(applyIntent(p, intent)).toEqual({ status: "done" });
     // One session for the day, under the spelling the other device used.

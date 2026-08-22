@@ -131,6 +131,7 @@ describe("the narrowed storage writers reject an unbranded number", () => {
       value: 118,
       unit: "mmHg",
       date: DAY,
+      loggedVia: "page",
     };
     expect(systolic.value).toBe(118);
   });

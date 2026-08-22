@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -68,7 +69,11 @@ export async function logUpcomingPractice(
   }
   const targetId = Number(formData.get("target_id"));
   if (!targetId) return { ok: false, error: "Couldn't find that practice." };
-  const outcome = logPracticeByTargetId(pid, targetId);
+  const outcome = logPracticeByTargetId(
+    pid,
+    targetId,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "logged") {
     revalidateRoute("/upcoming");
     revalidateRoute("/wellness");
@@ -124,7 +129,15 @@ export async function markTaken(formData: FormData): Promise<MarkTakenResult> {
   const pid = await gateItemProfile(formData);
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
-  const outcome = markDoseTaken(pid, doseId, null, today(pid));
+  const outcome = markDoseTaken(
+    pid,
+    doseId,
+    null,
+    today(pid),
+    // The Upcoming page's inline confirm AND the quick-log sheet's dose list both
+    // post this action, so the sheet declares itself and the page keeps the default.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");

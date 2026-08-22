@@ -61,6 +61,7 @@ function logServing(
     profileId,
     "nuts_seeds",
     today(profileId),
+    "page",
     at(minutesAgo),
     "Morning",
     statedAgo == null

@@ -759,7 +759,7 @@ describe("runEscalations orchestrator", () => {
 
     // The escalation's ⏭️ Skip performs markDoseSkipped — the SAME write the dose
     // reminder's own skip performs, so the ledger cannot tell the two apart.
-    const outcome = markDoseSkipped(p, doseId, null, date);
+    const outcome = markDoseSkipped(p, doseId, null, date, "page");
     expect(outcome).toBe("skipped");
     const row = db
       .prepare(

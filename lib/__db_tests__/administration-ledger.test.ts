@@ -259,8 +259,10 @@ describe("markDoseTaken — one-per-day preserved without the UNIQUE constraint 
         .run(itemId).lastInsertRowid
     );
     const date = today(profileId);
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe(
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
       "already-taken"
     );
     const rows = (
@@ -284,14 +286,16 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const r1 = logAdministration(
       profileId,
       itemId,
+      "page",
       new Date(Date.now() - 12 * 60_000)
     );
     const r2 = logAdministration(
       profileId,
       itemId,
+      "page",
       new Date(Date.now() - 6 * 60_000)
     );
-    const r3 = logAdministration(profileId, itemId); // now
+    const r3 = logAdministration(profileId, itemId, "page"); // now
     expect(r1.kind).toBe("logged");
     expect(r2.kind).toBe("logged");
     expect(r3.kind).toBe("logged");
@@ -302,8 +306,8 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
   it("collapses a double-tap (same given time within the window) to one row", () => {
     const { profileId, itemId } = seedPrnMed(10);
     const at = new Date(Date.now() - 30 * 60 * 1000);
-    const first = logAdministration(profileId, itemId, at);
-    const second = logAdministration(profileId, itemId, at); // immediate re-tap
+    const first = logAdministration(profileId, itemId, "page", at);
+    const second = logAdministration(profileId, itemId, "page", at); // immediate re-tap
     expect(first.kind).toBe("logged");
     expect(second.kind).toBe("duplicate");
     expect(adminRows(itemId)).toBe(1);
@@ -314,19 +318,28 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const { profileId, itemId } = seedPrnMed(10);
     // Retro: two hours ago → logged.
     expect(
-      logAdministration(profileId, itemId, new Date(Date.now() - 2 * 3600_000))
-        .kind
+      logAdministration(
+        profileId,
+        itemId,
+        "page",
+        new Date(Date.now() - 2 * 3600_000)
+      ).kind
     ).toBe("logged");
     // Far future (tomorrow) → invalid-time, nothing written.
     expect(
-      logAdministration(profileId, itemId, new Date(Date.now() + 26 * 3600_000))
-        .kind
+      logAdministration(
+        profileId,
+        itemId,
+        "page",
+        new Date(Date.now() + 26 * 3600_000)
+      ).kind
     ).toBe("invalid-time");
     // Far past (10 days ago, outside the window) → invalid-time.
     expect(
       logAdministration(
         profileId,
         itemId,
+        "page",
         new Date(Date.now() - 10 * 24 * 3600_000)
       ).kind
     ).toBe("invalid-time");
@@ -335,14 +348,16 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
   it("refuses a paused item and a non-existent item", () => {
     const { profileId, itemId } = seedPrnMed(10);
     db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
-    expect(logAdministration(profileId, itemId).kind).toBe("inactive");
-    expect(logAdministration(profileId, 999999).kind).toBe("stale-item");
+    expect(logAdministration(profileId, itemId, "page").kind).toBe("inactive");
+    expect(logAdministration(profileId, 999999, "page").kind).toBe(
+      "stale-item"
+    );
   });
 
   it("surfaces the PRN med in the quick-log read and day list with today's count", () => {
     const { profileId, itemId } = seedPrnMed(10);
     const date = today(profileId);
-    logAdministration(profileId, itemId); // now → always today's date
+    logAdministration(profileId, itemId, "page"); // now → always today's date
     const meds = getPrnMedicationsForQuickLog(profileId);
     const mine = meds.find((m) => m.id === itemId);
     expect(mine).toBeTruthy();
@@ -363,6 +378,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const first = logAdministration(
       profileId,
       itemId,
+      "page",
       new Date(Date.now() - 60 * 60_000)
     );
     expect(first.kind).toBe("logged");
@@ -371,7 +387,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
       "Chewable tablet (100 mg)",
       itemId
     );
-    const second = logAdministration(profileId, itemId);
+    const second = logAdministration(profileId, itemId, "page");
     expect(second.kind).toBe("logged");
 
     const products = db
@@ -419,7 +435,9 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
         .run(itemId).lastInsertRowid
     );
     const date = today(profileId);
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
 
     const history = getIntakeDoseHistory(profileId, itemId, "0001-01-01");
     expect(history).toHaveLength(1);
@@ -460,7 +478,9 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
         .run(itemId).lastInsertRowid
     );
     const date = today(profileId);
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
     expect(
       getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].product
     ).toBeNull();
@@ -509,9 +529,24 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
         .run(profileId).lastInsertRowid
     );
 
-    logAdministration(profileId, itemA, new Date(Date.now() - 30 * 60_000));
-    logAdministration(profileId, itemA, new Date(Date.now() - 6 * 60_000));
-    logAdministration(profileId, itemB, new Date(Date.now() - 12 * 60_000));
+    logAdministration(
+      profileId,
+      itemA,
+      "page",
+      new Date(Date.now() - 30 * 60_000)
+    );
+    logAdministration(
+      profileId,
+      itemA,
+      "page",
+      new Date(Date.now() - 6 * 60_000)
+    );
+    logAdministration(
+      profileId,
+      itemB,
+      "page",
+      new Date(Date.now() - 12 * 60_000)
+    );
 
     const date = today(profileId);
     const batch = getAdministrationsForItemsOnDate(
@@ -536,8 +571,8 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
   it("scopes to the acting profile — another profile's item never appears", () => {
     const { profileId: pA, itemId: itemA } = seedPrnMed(10);
     const { profileId: pB, itemId: itemB } = seedPrnMed(10);
-    logAdministration(pA, itemA);
-    logAdministration(pB, itemB);
+    logAdministration(pA, itemA, "page");
+    logAdministration(pB, itemB, "page");
     const date = today(pA);
     // Ask profile A for BOTH ids: only its own item resolves (JOIN filters by profile).
     const batch = getAdministrationsForItemsOnDate(pA, [itemA, itemB], date);

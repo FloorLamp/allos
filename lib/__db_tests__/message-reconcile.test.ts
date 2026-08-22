@@ -299,7 +299,9 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     await sendMorningReminder(pid);
 
     // The whole point: the write happens in the APP, nowhere near Telegram.
-    expect(markDoseTaken(pid, doseId, itemId, today(pid))).toBe("logged");
+    expect(markDoseTaken(pid, doseId, itemId, today(pid), "page")).toBe(
+      "logged"
+    );
     // …and until the tick runs, both chats still claim it is outstanding.
     expect(liveTokens(pid).filter((t) => t.startsWith("take:")).length).toBe(2);
 
@@ -317,7 +319,7 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     seedLoginTelegram(pid, "5551784");
     await sendMorningReminder(pid);
 
-    markDoseSkipped(pid, doseId, itemId, today(pid));
+    markDoseSkipped(pid, doseId, itemId, today(pid), "page");
     const out = await reconcileProfileMessages(pid);
     expect(out.closed).toBe(1);
   });
@@ -329,7 +331,7 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     seedLoginTelegram(pid, "5551785");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
     const out = await reconcileProfileMessages(pid);
 
     expect(out.edited).toBe(1);
@@ -409,7 +411,7 @@ describe("a PRN administration spends its redose window", () => {
       ],
     });
 
-    expect(logAdministration(pid, itemId).kind).toBe("logged");
+    expect(logAdministration(pid, itemId, "page").kind).toBe("logged");
     expect(redoseWindowState(pid, itemId, armingId)).toBe("superseded");
     editText.mockClear();
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
@@ -517,7 +519,7 @@ describe("idempotence — the rate-limit pin", () => {
     seedLoginTelegram(pid, "5551787");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
     await reconcileProfileMessages(pid);
     editKeyboard.mockClear();
     editText.mockClear();
@@ -615,7 +617,7 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
     expect((await reconcileProfileMessages(pid)).closed).toBe(0);
 
     // And the button is not decorative: the write core honors the tap, on D's ledger.
-    expect(markDoseTaken(pid, doseId, itemId, D)).toBe("logged");
+    expect(markDoseTaken(pid, doseId, itemId, D, "page")).toBe("logged");
 
     // Resolved for real now, so the message closes as HANDLED — not as out of date.
     // Since #2274 "handled" is the dose NAMED, in the domain's own word.
@@ -707,7 +709,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     const { itemId, doseId } = seedDose(pid, "Bella D3");
     seedLoginTelegram(pid, "5551885");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
     const before = liveMessagePointers(pid)[0];
 
     editText.mockRejectedValueOnce(transientFailure());
@@ -740,7 +742,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     seedDose(pid, "Bruno B");
     seedLoginTelegram(pid, "5551886");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
 
     editText.mockRejectedValueOnce(transientFailure());
     const first = await reconcileProfileMessages(pid);
@@ -766,7 +768,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     const { itemId, doseId } = seedDose(pid, "Lina D3");
     seedLoginTelegram(pid, "5551887");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
     editText.mockRejectedValueOnce(
       new TelegramApiError({
@@ -788,7 +790,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     const { itemId, doseId } = seedDose(pid, "Bo D3");
     seedLoginTelegram(pid, "5551888");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
     editText.mockRejectedValueOnce(
       new TelegramApiError({
@@ -812,7 +814,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     const { itemId, doseId } = seedDose(pid, "Bea D3");
     seedLoginTelegram(pid, "5551889");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
     editText.mockRejectedValueOnce(transientFailure());
     expect((await reconcileProfileMessages(pid)).deferred).toBe(1);
@@ -833,7 +835,7 @@ describe("dead pointers and retention", () => {
     const { itemId, doseId } = seedDose(pid, "Gil D3");
     seedLoginTelegram(pid, "5551789");
     await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
     // Telegram's answer for a message that no longer exists.
     editText.mockRejectedValueOnce(
@@ -894,7 +896,7 @@ describe("scope", () => {
     await sendMorningReminder(mine);
     await sendMorningReminder(theirs);
 
-    markDoseTaken(mine, m.doseId, m.itemId, today(mine));
+    markDoseTaken(mine, m.doseId, m.itemId, today(mine), "page");
     await reconcileProfileMessages(mine);
 
     expect(liveMessagePointers(mine)).toEqual([]);
@@ -944,7 +946,7 @@ describe("class 1 — the other state-claim families", () => {
     // Unresolved: the caregiver's chat is telling the truth, so nothing is touched.
     expect((await reconcileProfileMessages(pid)).edited).toBe(0);
 
-    markDoseTaken(pid, doseId, itemId, td);
+    markDoseTaken(pid, doseId, itemId, td, "page");
     const out = await reconcileProfileMessages(pid);
     expect(out.closed).toBe(1);
   });
@@ -980,7 +982,7 @@ describe("class 1 — the other state-claim families", () => {
     });
 
     // Ana's dose is confirmed in the app; Bo's is not.
-    markDoseTaken(wardA, a.doseId, a.itemId, td);
+    markDoseTaken(wardA, a.doseId, a.itemId, td, "page");
     const out = await reconcileProfileMessages(carer);
     expect(out.edited).toBe(1);
     expect(out.closed).toBe(0);
@@ -1072,7 +1074,14 @@ describe("class 2 — additive quick-log buttons", () => {
     expect(slug).not.toBeNull();
     // Explicit meal slot, so the serving lands in the window the nudge is scoped to
     // rather than wherever the run clock happens to fall.
-    logFoodServingCore(pid, slug!, td, new Date().toISOString(), "Morning");
+    logFoodServingCore(
+      pid,
+      slug!,
+      td,
+      "page",
+      new Date().toISOString(),
+      "Morning"
+    );
 
     const out = await reconcileProfileMessages(pid);
     expect(out.edited).toBe(1);
@@ -1113,7 +1122,14 @@ describe("class 2 — additive quick-log buttons", () => {
     // Now something the counts DO depend on changes, forcing a real re-render.
     const slug = canonicalFoodGroup("leafy greens");
     expect(slug).not.toBeNull();
-    logFoodServingCore(pid, slug!, td, new Date().toISOString(), "Morning");
+    logFoodServingCore(
+      pid,
+      slug!,
+      td,
+      "page",
+      new Date().toISOString(),
+      "Morning"
+    );
     expect((await reconcileProfileMessages(pid)).edited).toBe(1);
 
     // The re-render kept the 12-button expansion, and the pointer records it.
@@ -1146,7 +1162,7 @@ describe("concurrent reconcile passes edit each message exactly once", () => {
     await sendMorningReminder(pid);
     expect(liveMessagePointers(pid)).toHaveLength(2);
 
-    markDoseTaken(pid, doseId, itemId, today(pid));
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
     const [a, b] = await Promise.all([
       reconcileProfileMessages(pid),
@@ -1169,7 +1185,7 @@ describe("concurrent reconcile passes edit each message exactly once", () => {
     seedLoginTelegram(pid, "5551804");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
     const [x, y] = await Promise.all([
       reconcileProfileMessages(pid),
       reconcileProfileMessages(pid),
@@ -1274,7 +1290,9 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     // The pointer remembered it, which is what makes the close possible at all.
     expect(liveMessagePointers(pid)[0]?.title).toBe(title);
 
-    expect(markDoseTaken(pid, doseId, itemId, today(pid))).toBe("logged");
+    expect(markDoseTaken(pid, doseId, itemId, today(pid), "page")).toBe(
+      "logged"
+    );
     const out = await reconcileProfileMessages(pid);
 
     expect(out.closed).toBe(1);
@@ -1297,8 +1315,8 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     await sendAttributedReminder(a);
     await sendAttributedReminder(b);
 
-    markDoseTaken(a, ad.doseId, ad.itemId, today(a));
-    markDoseTaken(b, bd.doseId, bd.itemId, today(b));
+    markDoseTaken(a, ad.doseId, ad.itemId, today(a), "page");
+    markDoseTaken(b, bd.doseId, bd.itemId, today(b), "page");
     editText.mockClear();
     await reconcileProfileMessages(a);
     await reconcileProfileMessages(b);
@@ -1380,9 +1398,9 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     seedLoginTelegram(pid, "5552170");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
-    markDoseTaken(pid, b.doseId, b.itemId, today(pid));
-    markDoseSkipped(pid, c.doseId, c.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
+    markDoseTaken(pid, b.doseId, b.itemId, today(pid), "page");
+    markDoseSkipped(pid, c.doseId, c.itemId, today(pid), "page");
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const text = String(editText.mock.calls.at(-1)![2]);
@@ -1402,8 +1420,8 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     seedLoginTelegram(pid, "5552171");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
-    markDoseTaken(pid, b.doseId, b.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
+    markDoseTaken(pid, b.doseId, b.itemId, today(pid), "page");
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toMatch(
@@ -1427,10 +1445,10 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     await sendMorningReminder(pid);
 
     const date = today(pid);
-    markDoseTaken(pid, a.doseId, a.itemId, date);
-    markDoseTaken(pid, b.doseId, b.itemId, date);
-    markDoseTaken(pid, c.doseId, c.itemId, date);
-    markDoseSkipped(pid, d.doseId, d.itemId, date);
+    markDoseTaken(pid, a.doseId, a.itemId, date, "page");
+    markDoseTaken(pid, b.doseId, b.itemId, date, "page");
+    markDoseTaken(pid, c.doseId, c.itemId, date, "page");
+    markDoseSkipped(pid, d.doseId, d.itemId, date, "page");
     // 12:12 UTC is 08:12 in New York — the whole point of formatting in the profile's
     // zone rather than the host's. A and B share the displayed minute; C is later.
     stampDoseTakenAt(pid, a.doseId, `${date} 12:12:04`);
@@ -1462,8 +1480,8 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     await sendMorningReminder(pid);
 
     const date = today(pid);
-    markDoseTaken(pid, a.doseId, a.itemId, date);
-    markDoseTaken(pid, b.doseId, b.itemId, date);
+    markDoseTaken(pid, a.doseId, a.itemId, date, "page");
+    markDoseTaken(pid, b.doseId, b.itemId, date, "page");
     // Both rows keep TODAY as their adherence date. 03:50Z on that date is 23:50 the
     // PREVIOUS evening in New York — the shape a correction back across midnight leaves.
     stampDoseTakenAt(pid, a.doseId, `${date} 03:50:00`);
@@ -1487,7 +1505,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     await sendMorningReminder(pid);
 
     const date = today(pid);
-    markDoseTaken(pid, a.doseId, a.itemId, date);
+    markDoseTaken(pid, a.doseId, a.itemId, date, "page");
     stampDoseTakenAt(pid, a.doseId, `${date} 12:12:00`, null);
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
@@ -1505,14 +1523,14 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     seedLoginTelegram(pid, "5552172");
     await sendMorningReminder(pid);
 
-    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
     await reconcileProfileMessages(pid);
     const closingText = String(editText.mock.calls.at(-1)![2]);
     expect(closingText).toMatch(/Sana A taken \d\d:\d\d\.$/);
     expect(liveMessagePointers(pid)).toEqual([]);
 
     // Correct it in the app afterwards…
-    markDoseSkipped(pid, a.doseId, a.itemId, today(pid));
+    markDoseSkipped(pid, a.doseId, a.itemId, today(pid), "page");
     editText.mockClear();
     const again = await reconcileProfileMessages(pid);
     // …and nothing is examined, nothing is edited, and the chat still reads as it did.
@@ -1566,7 +1584,7 @@ describe("the morning digest's prose reconciles (#1913 item 4)", () => {
     editText.mockClear();
 
     // The user marks yesterday's dose in the app, hours after the digest landed.
-    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1), "page");
 
     const res = await reconcileProfileMessages(p);
     expect(res.edited).toBe(1);
@@ -1605,7 +1623,7 @@ describe("the morning digest's prose reconciles (#1913 item 4)", () => {
       shiftDateStr(today(p), -1),
       p
     );
-    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1), "page");
 
     const res = await reconcileProfileMessages(p);
     // The pointer is forgotten…
@@ -1622,7 +1640,7 @@ describe("the morning digest's prose reconciles (#1913 item 4)", () => {
     const { doseId, itemId } = seedYesterdayDose(p);
     await sendDigest(p, "Prose Sam");
     editText.mockClear();
-    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1));
+    markDoseTaken(p, doseId, itemId, shiftDateStr(today(p), -1), "page");
 
     const [a, b] = await Promise.all([
       reconcileProfileMessages(p),
@@ -1664,7 +1682,9 @@ describe("a failing rebuild cannot starve the rest of the sweep (#2070)", () => 
     editText.mockClear();
 
     // Resolved in the app: the reminder's button is now a lie…
-    expect(markDoseTaken(pid, doseId, itemId, today(pid))).toBe("logged");
+    expect(markDoseTaken(pid, doseId, itemId, today(pid), "page")).toBe(
+      "logged"
+    );
     // …and the digest cannot be rebuilt at all this tick.
     gatherState.throwFor = pid;
 
@@ -1691,7 +1711,7 @@ describe("a failing rebuild cannot starve the rest of the sweep (#2070)", () => 
     const { itemId, doseId } = seedDose(pid, "Rhea D3");
     await sendDigestFor(pid, "Retry Rhea");
     editText.mockClear();
-    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1));
+    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1), "page");
 
     gatherState.throwFor = pid;
     expect((await reconcileProfileMessages(pid)).failed).toBe(1);
@@ -1749,7 +1769,7 @@ describe("the digest rebuild is gated by a cheap pre-check (#2069)", () => {
     editText.mockClear();
     gatherState.calls = 0;
 
-    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1));
+    markDoseTaken(pid, doseId, itemId, shiftDateStr(today(pid), -1), "page");
 
     const res = await reconcileProfileMessages(pid);
     expect(gatherState.calls).toBe(1);
@@ -1832,7 +1852,7 @@ describe("the digest rebuild is gated by a cheap pre-check (#2069)", () => {
     const bystanderBefore = digestDependencyStamp(bystander);
     expect(before).toMatch(/^[0-9a-f]{32}$/);
 
-    markDoseTaken(subject, doseId, itemId, today(subject));
+    markDoseTaken(subject, doseId, itemId, today(subject), "page");
 
     expect(digestDependencyStamp(subject)).not.toBe(before);
     // Profile-scoped like every other statement in lib/: one subject's ledger write must
@@ -2167,8 +2187,8 @@ describe("household-round: the close is per MEMBER (#2275)", () => {
     seedLoginTelegram(receiver, "5552286");
     const adaDose = seedDose(ada, "Ada D3");
     const boDose = seedDose(bo, "Bo Iron");
-    markDoseTaken(ada, adaDose.doseId, adaDose.itemId, today(ada));
-    markDoseSkipped(bo, boDose.doseId, boDose.itemId, today(bo));
+    markDoseTaken(ada, adaDose.doseId, adaDose.itemId, today(ada), "page");
+    markDoseSkipped(bo, boDose.doseId, boDose.itemId, today(bo), "page");
     const d = today(receiver);
 
     const text = await closeTextFor(
@@ -2200,7 +2220,7 @@ describe("escalation: a caregiver's chat is named too (#2274)", () => {
     seedLoginTelegram(pid, "5552287");
     const { itemId, doseId } = seedDose(pid, "Esme D3");
     const d = today(pid);
-    markDoseTaken(pid, doseId, itemId, d);
+    markDoseTaken(pid, doseId, itemId, d, "page");
 
     const text = await closeTextFor(
       pid,
@@ -2238,8 +2258,8 @@ describe("the name lookup is profile-scoped (#2274)", () => {
     const bd = seedDose(b, "Ben Magnesium");
     seedLoginTelegram(a, shared);
     seedLoginTelegram(b, shared);
-    markDoseTaken(a, ad.doseId, ad.itemId, today(a));
-    markDoseTaken(b, bd.doseId, bd.itemId, today(b));
+    markDoseTaken(a, ad.doseId, ad.itemId, today(a), "page");
+    markDoseTaken(b, bd.doseId, bd.itemId, today(b), "page");
 
     const aText = await closeTextFor(
       a,
@@ -2427,7 +2447,7 @@ describe("the pointer follows a callback edit, not just a send", () => {
 
     // A serving logged elsewhere moves the button labels, which is what used to make the
     // sweep re-render — at the stale compact width.
-    logFoodServingCore(pid, canonicalFoodGroup("leafy_greens")!, date);
+    logFoodServingCore(pid, canonicalFoodGroup("leafy_greens")!, date, "page");
     await reconcileProfileMessages(pid);
     expect(countVisibleFoodButtons(liveKeyboard(pid))).toBe(expanded);
   });

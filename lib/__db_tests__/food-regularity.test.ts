@@ -298,10 +298,12 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     // logged" — a half-written set the user was told did not happen.
     refusal.groupKey = "fermented";
     try {
-      const outcome = logUsualFoodCore(profileId, "Morning", [
-        "berries",
-        "fermented",
-      ]);
+      const outcome = logUsualFoodCore(
+        profileId,
+        "Morning",
+        ["berries", "fermented"],
+        "page"
+      );
       expect(outcome).toEqual({ kind: "nothing-to-log" });
     } finally {
       refusal.groupKey = null;
@@ -321,10 +323,12 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
 
   it("writes the whole set once the refusal is gone", () => {
     const { profileId, anchor } = seedPair("usual-atomic-success");
-    const outcome = logUsualFoodCore(profileId, "Morning", [
-      "berries",
-      "fermented",
-    ]);
+    const outcome = logUsualFoodCore(
+      profileId,
+      "Morning",
+      ["berries", "fermented"],
+      "page"
+    );
 
     expect(outcome.kind).toBe("logged");
     expect(writtenToday(profileId, anchor)).toEqual({
@@ -341,7 +345,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     // there — this pins that the two paths agree on the observable outcome.
     const { profileId, anchor } = seedPair("usual-atomic-empty");
     expect(
-      logUsualFoodCore(profileId, "Morning", ["red_meat", "alcohol"])
+      logUsualFoodCore(profileId, "Morning", ["red_meat", "alcohol"], "page")
     ).toEqual({ kind: "nothing-to-log" });
     expect(writtenToday(profileId, anchor)).toEqual({
       counters: [],

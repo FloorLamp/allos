@@ -57,7 +57,7 @@ function seed(
   at: string,
   slot: "Morning" | "Midday" | "Evening"
 ): number {
-  logFoodServingCore(profileId, group, date, `${date}T${at}Z`, slot);
+  logFoodServingCore(profileId, group, date, "page", `${date}T${at}Z`, slot);
   const row = db
     .prepare(
       `SELECT id FROM food_log_events WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
@@ -240,7 +240,7 @@ describe("deleteFoodLogEventCore — typed refusals (#1963)", () => {
 
   it("refuses the reserved protein ranking event", () => {
     const { profileId, anchor } = makeProfile("food-delete-protein");
-    addProteinGramsCore(profileId, anchor, 25, `${anchor}T18:00:00Z`);
+    addProteinGramsCore(profileId, anchor, 25, "page", `${anchor}T18:00:00Z`);
     const [eventId] = ledgerIds(profileId);
 
     // Same refusal the correction path answers (#1951/#1934), for the same reason: the

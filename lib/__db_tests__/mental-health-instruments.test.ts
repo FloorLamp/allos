@@ -56,15 +56,19 @@ describe("recordInstrumentScore — the score is a biomarker reading, no flag", 
   it("stores the total as a canonical PHQ-9 medical_records row with value_num and no flag", () => {
     const p = newProfile("MH score");
     const td = today(p);
-    recordInstrumentScore(p, {
-      instrument: "PHQ-9",
-      date: td,
-      total: 8,
-      answers: [0, 1, 1, 1, 1, 1, 1, 1, 1].map((answer, itemIndex) => ({
-        itemIndex,
-        answer,
-      })),
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "PHQ-9",
+        date: td,
+        total: 8,
+        answers: [0, 1, 1, 1, 1, 1, 1, 1, 1].map((answer, itemIndex) => ({
+          itemIndex,
+          answer,
+        })),
+      },
+      "page"
+    );
 
     const row = db
       .prepare(
@@ -94,15 +98,19 @@ describe("recordInstrumentScore — the score is a biomarker reading, no flag", 
   it("stores per-item answers linked to the score, and clears them on score delete (cascade)", () => {
     const p = newProfile("MH items");
     const td = today(p);
-    const recordId = recordInstrumentScore(p, {
-      instrument: "PHQ-9",
-      date: td,
-      total: 3,
-      answers: Array.from({ length: 9 }, (_, itemIndex) => ({
-        itemIndex,
-        answer: itemIndex === 8 ? 3 : 0,
-      })),
-    });
+    const recordId = recordInstrumentScore(
+      p,
+      {
+        instrument: "PHQ-9",
+        date: td,
+        total: 3,
+        answers: Array.from({ length: 9 }, (_, itemIndex) => ({
+          itemIndex,
+          answer: itemIndex === 8 ? 3 : 0,
+        })),
+      },
+      "page"
+    );
     const before = db
       .prepare(
         "SELECT COUNT(*) AS n FROM instrument_responses WHERE profile_id = ?"
@@ -126,7 +134,11 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
   it("a severe PHQ-9 surfaces a care-tier crisis item that resists a blanket dismiss", () => {
     const p = newProfile("MH severe");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 24 });
+    recordInstrumentScore(
+      p,
+      { instrument: "PHQ-9", date: td, total: 24 },
+      "page"
+    );
 
     const items = collectUpcoming(p, td);
     const crisis = items.find((i) => i.domain === "mental-health");
@@ -151,15 +163,19 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
   it("a positive PHQ-9 item 9 escalates even when the total is not severe", () => {
     const p = newProfile("MH item9");
     const td = today(p);
-    recordInstrumentScore(p, {
-      instrument: "PHQ-9",
-      date: td,
-      total: 6, // mild total, but item 9 positive
-      answers: Array.from({ length: 9 }, (_, itemIndex) => ({
-        itemIndex,
-        answer: itemIndex === 8 ? 2 : 0,
-      })),
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "PHQ-9",
+        date: td,
+        total: 6, // mild total, but item 9 positive
+        answers: Array.from({ length: 9 }, (_, itemIndex) => ({
+          itemIndex,
+          answer: itemIndex === 8 ? 2 : 0,
+        })),
+      },
+      "page"
+    );
     const items = collectUpcoming(p, td);
     expect(items.some((i) => i.domain === "mental-health")).toBe(true);
   });
@@ -167,15 +183,19 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
   it("a minimal score with a clean item 9 does NOT escalate", () => {
     const p = newProfile("MH calm");
     const td = today(p);
-    recordInstrumentScore(p, {
-      instrument: "PHQ-9",
-      date: td,
-      total: 2,
-      answers: Array.from({ length: 9 }, (_, itemIndex) => ({
-        itemIndex,
-        answer: itemIndex === 0 ? 2 : 0,
-      })),
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "PHQ-9",
+        date: td,
+        total: 2,
+        answers: Array.from({ length: 9 }, (_, itemIndex) => ({
+          itemIndex,
+          answer: itemIndex === 0 ? 2 : 0,
+        })),
+      },
+      "page"
+    );
     expect(
       collectUpcoming(p, td).some((i) => i.domain === "mental-health")
     ).toBe(false);
@@ -183,11 +203,15 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
 
   it("the crisis line never reaches the Telegram digest (no crisis content on any channel)", () => {
     const p = newProfile("MH nopush");
-    recordInstrumentScore(p, {
-      instrument: "PHQ-9",
-      date: today(p),
-      total: 25,
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "PHQ-9",
+        date: today(p),
+        total: 25,
+      },
+      "page"
+    );
     // The merged morning digest (#1108) embeds the what's-due list as its Today
     // section, so the no-leak guard runs against the ACTUAL sent message. A crisis
     // mental-health finding is care-tier on the page/hero but is excluded from the
@@ -208,8 +232,16 @@ describe("screening satisfaction (#716)", () => {
     const p = newProfile("MH screen");
     setBirthdate(p, "1990-01-01");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 4 });
-    recordInstrumentScore(p, { instrument: "GAD-7", date: td, total: 3 });
+    recordInstrumentScore(
+      p,
+      { instrument: "PHQ-9", date: td, total: 4 },
+      "page"
+    );
+    recordInstrumentScore(
+      p,
+      { instrument: "GAD-7", date: td, total: 3 },
+      "page"
+    );
 
     const sats = getInferredPreventiveSatisfactions(p);
     expect(sats.some((s) => s.ruleKey === "depression_screening")).toBe(true);
@@ -221,8 +253,16 @@ describe("milestone exemption (#716) — never gamify a mental-health score", ()
   it("recording an instrument score creates no activities row and no milestone input", () => {
     const p = newProfile("MH exempt");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 12 });
-    recordInstrumentScore(p, { instrument: "GAD-7", date: td, total: 10 });
+    recordInstrumentScore(
+      p,
+      { instrument: "PHQ-9", date: td, total: 12 },
+      "page"
+    );
+    recordInstrumentScore(
+      p,
+      { instrument: "GAD-7", date: td, total: 10 },
+      "page"
+    );
 
     const activities = db
       .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")

@@ -75,7 +75,7 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(getNavRelevance(empty).wellness).toBe(false);
 
     const logsOnly = makeProfile("wellness-nav-logs");
-    logPracticeSession(logsOnly, "Meditation", "2026-06-17");
+    logPracticeSession(logsOnly, "Meditation", "2026-06-17", "page");
     expect(getNavRelevance(logsOnly).wellness).toBe(true);
 
     const targetOnly = makeProfile("wellness-nav-target");
@@ -88,7 +88,7 @@ describe("practice_logs store + range progress (#1259)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     const tid = practiceTarget(pid, "Meditation", 3, null);
-    logPracticeSession(pid, "Meditation", t);
+    logPracticeSession(pid, "Meditation", t, "page");
 
     expect(collectUpcoming(pid, t).map((item) => item.key)).toContain(
       `practice:${tid}`
@@ -129,9 +129,9 @@ describe("practice_logs store + range progress (#1259)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
 
-    const a = logPracticeSession(pid, "Red light therapy", t);
+    const a = logPracticeSession(pid, "Red light therapy", t, "page");
     expect(a).toEqual({ kind: "logged", count: 1, date: t });
-    const b = logPracticeSession(pid, "Red light therapy", t);
+    const b = logPracticeSession(pid, "Red light therapy", t, "page");
     expect(b).toEqual({ kind: "logged", count: 2, date: t });
 
     // Two real session rows for the day…
@@ -150,8 +150,8 @@ describe("practice_logs store + range progress (#1259)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     const tid = practiceTarget(pid, "Sauna", 3, 5);
-    logPracticeSession(pid, " sauna ", t);
-    logPracticeSession(pid, "SAUNA", shiftDateStr(t, -1));
+    logPracticeSession(pid, " sauna ", t, "page");
+    logPracticeSession(pid, "SAUNA", shiftDateStr(t, -1), "page");
 
     const progress = getFrequencyTargetProgress(pid).find(
       (p) => p.target.id === tid
@@ -185,9 +185,9 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(created.kind).toBe("saved");
     if (created.kind !== "saved") throw new Error("practice was not created");
 
-    logPracticeSession(pid, "Sauna", "2026-06-15");
-    logPracticeSession(pid, "Meditation", "2026-06-14");
-    logPracticeSession(pid, "Meditation", "2026-06-16");
+    logPracticeSession(pid, "Sauna", "2026-06-15", "page");
+    logPracticeSession(pid, "Meditation", "2026-06-14", "page");
+    logPracticeSession(pid, "Meditation", "2026-06-16", "page");
 
     expect(
       updateWellnessPractice(pid, created.targetId, "Meditation", 3, null)
@@ -211,7 +211,7 @@ describe("practice_logs store + range progress (#1259)", () => {
     const created = createWellnessPractice(pid, "sauna", 3, null);
     expect(created.kind).toBe("saved");
     if (created.kind !== "saved") throw new Error("practice was not created");
-    logPracticeSession(pid, " SAUNA ", "2026-06-16");
+    logPracticeSession(pid, " SAUNA ", "2026-06-16", "page");
 
     expect(
       updateWellnessPractice(pid, created.targetId, "Sauna", 3, null)
@@ -229,9 +229,9 @@ describe("practice_logs store + range progress (#1259)", () => {
 
   it("supports protocol-windowed and unbounded session history", () => {
     const pid = makeProfile("windowed-history");
-    logPracticeSession(pid, "Meditation", "2026-06-01");
-    logPracticeSession(pid, "Meditation", "2026-06-10");
-    logPracticeSession(pid, "Meditation", "2026-07-01");
+    logPracticeSession(pid, "Meditation", "2026-06-01", "page");
+    logPracticeSession(pid, "Meditation", "2026-06-10", "page");
+    logPracticeSession(pid, "Meditation", "2026-07-01", "page");
     expect(
       getPracticeSessions(pid, "Meditation", 50, {
         start: "2026-06-05",
@@ -248,8 +248,8 @@ describe("practice_logs store + range progress (#1259)", () => {
     const tid = practiceTarget(pid, "Sauna", 3, 5);
 
     // Below the floor → behind, not met, not at ceiling.
-    logPracticeSession(pid, "Sauna", t);
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -1));
+    logPracticeSession(pid, "Sauna", t, "page");
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -1), "page");
     let prog = getFrequencyTargetProgress(pid).find(
       (p) => p.target.id === tid
     )!;
@@ -258,13 +258,13 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(prog.per_week_max).toBe(5);
 
     // Reach the floor (3 distinct days) → met, still below the ceiling.
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -2));
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -2), "page");
     prog = getFrequencyTargetProgress(pid).find((p) => p.target.id === tid)!;
     expect(prog).toMatchObject({ count: 3, met: true, atCeiling: false });
 
     // Reach the ceiling (5 distinct days) → atCeiling (the "that's plenty" state).
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -3));
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -4));
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -3), "page");
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -4), "page");
     prog = getFrequencyTargetProgress(pid).find((p) => p.target.id === tid)!;
     expect(prog).toMatchObject({ count: 5, met: true, atCeiling: true });
   });
@@ -272,7 +272,7 @@ describe("practice_logs store + range progress (#1259)", () => {
   it("a logged session surfaces on the Timeline as its own 'practice' entry", () => {
     const pid = makeProfile("timeline");
     const t = today(pid);
-    logPracticeSession(pid, "Meditation", t, { durationMin: 15 });
+    logPracticeSession(pid, "Meditation", t, "page", { durationMin: 15 });
 
     const events = getTimelinePage(pid).events;
     const ev = events.find((e) => e.category === "practice");
@@ -302,7 +302,7 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     const tid = practiceTarget(pid, "Breathwork", 3, 5);
-    logPracticeSession(pid, "Breathwork", t); // 1/3 — behind
+    logPracticeSession(pid, "Breathwork", t, "page"); // 1/3 — behind
 
     const items = collectUpcoming(pid, t);
     const keys = items.map((i) => i.key);
@@ -321,7 +321,7 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     const tid = practiceTarget(pid, "Cold plunge", 3, null);
-    logPracticeSession(pid, "Cold plunge", t); // 1/3 — behind
+    logPracticeSession(pid, "Cold plunge", t, "page"); // 1/3 — behind
 
     // Behind → the builder gathers it and mints a Done button carrying ids only.
     expect(behindPractices(pid).map((b) => b.targetId)).toEqual([tid]);
@@ -351,9 +351,9 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     const t = today(pid);
     practiceTarget(pid, "Journaling", 3, 5);
     // 3 distinct days → floor met → nothing behind → no nudge.
-    logPracticeSession(pid, "Journaling", t);
-    logPracticeSession(pid, "Journaling", shiftDateStr(t, -1));
-    logPracticeSession(pid, "Journaling", shiftDateStr(t, -2));
+    logPracticeSession(pid, "Journaling", t, "page");
+    logPracticeSession(pid, "Journaling", shiftDateStr(t, -1), "page");
+    logPracticeSession(pid, "Journaling", shiftDateStr(t, -2), "page");
     expect(behindPractices(pid)).toEqual([]);
     expect(buildPracticeReminder(pid)).toBeNull();
   });
@@ -380,7 +380,7 @@ describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
     // Logged for months, then untracked: the card and the history stay (the page
     // aggregate still folds it in), but a quick surface offering it again would
     // quietly undo the untrack.
-    logPracticeSession(pid, "Journaling", t);
+    logPracticeSession(pid, "Journaling", t, "page");
 
     expect(getTrackedPractices(pid).map((p) => p.name)).toEqual(["Sauna"]);
     expect(getWellnessPractices(pid).map((p) => p.name)).toEqual([
@@ -394,9 +394,9 @@ describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
     setWeekMode(pid, "rolling");
     const t = today(pid);
     practiceTarget(pid, "Cold plunge", 3, null);
-    logPracticeSession(pid, "COLD PLUNGE", t);
-    logPracticeSession(pid, "cold  plunge", t); // same day, second session
-    logPracticeSession(pid, "Cold plunge", shiftDateStr(t, -2));
+    logPracticeSession(pid, "COLD PLUNGE", t, "page");
+    logPracticeSession(pid, "cold  plunge", t, "page"); // same day, second session
+    logPracticeSession(pid, "Cold plunge", shiftDateStr(t, -2), "page");
 
     const [row] = getTrackedPractices(pid);
     expect(row).toMatchObject({
@@ -417,7 +417,7 @@ describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
     const t = today(pid);
     practiceTarget(pid, "Sauna", 2, 3);
     for (const d of [0, -1, -2])
-      logPracticeSession(pid, "Sauna", shiftDateStr(t, d));
+      logPracticeSession(pid, "Sauna", shiftDateStr(t, d), "page");
 
     const [row] = getTrackedPractices(pid);
     expect(row).toMatchObject({ countThisWeek: 3, atCeiling: true });
@@ -471,7 +471,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     const pid = makeProfile("quick-time-stamp");
     const t = today(pid);
     // The one-tap shape: no `time` key at all.
-    expect(logPracticeSession(pid, "Sauna", t)).toMatchObject({
+    expect(logPracticeSession(pid, "Sauna", t, "page")).toMatchObject({
       kind: "logged",
     });
     expect(rows(pid)).toEqual([
@@ -484,16 +484,16 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     const t = today(pid);
     // The expanded form ALWAYS posts its time field; empty means "no instant", and
     // silently stamping one there would be the app inventing data the user declined.
-    logPracticeSession(pid, "Sauna", t, { time: null });
+    logPracticeSession(pid, "Sauna", t, "page", { time: null });
     // ...and a stated time still wins outright.
-    logPracticeSession(pid, "Sauna", t, { time: "06:30" });
+    logPracticeSession(pid, "Sauna", t, "page", { time: "06:30" });
     expect(rows(pid).map((r) => r.time)).toEqual([null, "06:30"]);
   });
 
   it("does not stamp a backdated correction — 'now' is not that day's instant", () => {
     const pid = makeProfile("quick-time-backdated");
     const t = today(pid);
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -3));
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -3), "page");
     expect(rows(pid).map((r) => r.time)).toEqual([null]);
   });
 
@@ -503,8 +503,8 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     const t = today(tapped);
     for (const back of [0, -7, -14]) {
       // The quick path states nothing; the modal states the same instant by hand.
-      logPracticeSession(tapped, "Breathwork", shiftDateStr(t, back));
-      logPracticeSession(typed, "Breathwork", shiftDateStr(t, back), {
+      logPracticeSession(tapped, "Breathwork", shiftDateStr(t, back), "page");
+      logPracticeSession(typed, "Breathwork", shiftDateStr(t, back), "page", {
         time: "07:05",
       });
     }
@@ -518,7 +518,9 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
   it("stamps the Telegram Done ✅ tap too — it was starving the nudge it feeds", () => {
     const pid = makeProfile("quick-time-telegram");
     const tid = practiceTarget(pid, "Red light therapy", 3, null);
-    expect(logPracticeByTargetId(pid, tid)).toMatchObject({ kind: "logged" });
+    expect(logPracticeByTargetId(pid, tid, "page")).toMatchObject({
+      kind: "logged",
+    });
     expect(rows(pid).map((r) => r.time)).toEqual(["07:05"]);
   });
 
@@ -532,19 +534,19 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBeNull();
 
     // Tap one: the user types 20 into the stepper and accepts it.
-    logPracticeSession(pid, "Sauna", t, { durationMin: 20 });
+    logPracticeSession(pid, "Sauna", t, "page", { durationMin: 20 });
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(20);
 
     // Tap two: the prefill arrives at 20, the user steps it to 25 and logs. The NEXT
     // prefill must be 25 — the value WRITTEN, not the one that was merely shown.
-    logPracticeSession(pid, "Sauna", t, { durationMin: 25 });
+    logPracticeSession(pid, "Sauna", t, "page", { durationMin: 25 });
     expect(rows(pid).map((r) => r.duration_min)).toEqual([20, 25]);
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(25);
 
     // Tap three: the user steps the stepper off the bottom and logs without one.
     // Blank stays blank — clearing is a decision the next prefill honours, not a
     // gap the last non-null value quietly fills back in.
-    logPracticeSession(pid, "Sauna", t, { durationMin: null });
+    logPracticeSession(pid, "Sauna", t, "page", { durationMin: null });
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBeNull();
   });
 
@@ -556,14 +558,16 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     practiceTarget(theirs, "Sauna", 3, null);
 
     // Another profile's longer session may not leak into mine.
-    logPracticeSession(theirs, "Sauna", t, { durationMin: 45 });
+    logPracticeSession(theirs, "Sauna", t, "page", { durationMin: 45 });
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBeNull();
 
     // Two stored spellings of ONE identity: the newest row wins, whichever it is
     // spelled as — the same fold the today-count uses.
-    logPracticeSession(mine, "sauna", shiftDateStr(t, -1), { durationMin: 12 });
+    logPracticeSession(mine, "sauna", shiftDateStr(t, -1), "page", {
+      durationMin: 12,
+    });
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(12);
-    logPracticeSession(mine, "Sauna", t, { durationMin: 18 });
+    logPracticeSession(mine, "Sauna", t, "page", { durationMin: 18 });
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(18);
   });
 
@@ -571,7 +575,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     const pid = makeProfile("quick-duration-card");
     const t = today(pid);
     practiceTarget(pid, "Sauna", 3, null);
-    logPracticeSession(pid, "Sauna", t, { durationMin: 30 });
+    logPracticeSession(pid, "Sauna", t, "page", { durationMin: 30 });
     // One question, one computation: the sheet and the card format the SAME pure
     // resolution, so the two surfaces cannot offer different defaults.
     expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(
