@@ -161,14 +161,58 @@ owner-ruled and ships with its guard (the guards-mandatory ruling recorded on
 ### 9. Machine text renders at the display boundary
 
 Stored machine forms never reach user-facing copy verbatim: dates render
-through the profile's display format prefs (never raw ISO — #3492; guard: the
-census rendered-text probe), units display-normalized (UCUM bracket stripping
-per #1018's equivalence — #3493), enum-ish values through label maps with the
-raw value as fallback (#3493). List joins never use a separator the joined
-names can contain (`summarizeNames` and template joins — #3496), and clinical
-names are never title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine;
-imported ALL-CAPS names are cleaned at the import boundary with the person
-confirming, never by a display casing pass — #3480).
+through the profile's display format prefs (never raw ISO — #3492, shipped),
+units display-normalized (UCUM bracket stripping per #1018's equivalence —
+#3493), enum-ish values through label maps with the raw value as fallback
+(#3493). List joins never use a separator the joined names can contain
+(`summarizeNames` and template joins — #3496), and clinical names are never
+title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported
+ALL-CAPS names are cleaned at the import boundary with the person confirming,
+never by a display casing pass — #3480).
+
+**Dates, as shipped (#3492).** There is one date boundary and it already
+existed: the display vocabulary in `lib/format-date.ts` — `formatLongDate`,
+`formatMonthDay`, `formatDateWithYear`, `formatTimestamp` — each taking the
+login's `DisplayFormatPrefs`. A new surface inherits it by asking for the prefs
+where prefs are resolved: `useFormatPrefs()` in a client component,
+`getDisplayFormatPrefs(login.id)` once at a server page's request boundary. A
+pure model that builds a sentence containing a day takes prefs as an argument
+and formats there (`lib/reading-date-line.ts`, `lib/glance-age.ts`); it never
+formats with a hardcoded locale and never prints `reading.date` as stored.
+
+The rule a day is rendered under is the profile-local DAY, not the instant it
+came from — an instant is projected to a day first (`zonedDateParts`), then
+formatted. Getting that backwards shifts dates by one for anyone off UTC, which
+is worse than an ugly ISO string.
+
+`iso` is one of the three `dateFormat` prefs a login may choose. A rendered
+`YYYY-MM-DD` is therefore a defect only when the reader did not ask for it —
+which is why the guard's premise is the default prefs, asserted rather than
+assumed.
+
+**Guards.** Two, over one rule (`lib/machine-date-census.ts`):
+
+- `lib/__tests__/machine-date-census.test.ts` — the rule can SEE every shape a
+  storage date reaches copy in (including the date half of a raw instant, which
+  the obvious `\b…\b` pattern cannot match at all), and stays QUIET on the
+  display vocabulary's own output and on 4-2-2 digit runs that are not dates.
+- `e2e/machine-date-census.spec.ts` — the same rule over RENDERED TEXT NODES on
+  six routes. Not a source scan: every offending site is computed (`{r.date}`),
+  so a source grep finds none of them while flagging comments, fixtures and
+  `<time datetime>` attributes that are the boundary working correctly. A text
+  node cannot be an attribute, so `<time datetime>`, `input[type=date]` values
+  and download filenames need no allowlist — they are excluded by mechanism.
+  Because it is an ABSENCE assertion it fails open, so it carries a census floor
+  per route, a named subject that must have rendered a date in the display
+  shape, and a synthetic offender planted in the live DOM that it must catch.
+  The one exemption (the import page's Debug disclosure, whose subject IS the
+  machine payload) is asserted together with the premise licensing it — that it
+  is a closed `<details>` a reader opts into.
+
+`lib/__tests__/date-locale-guard.test.ts` is the older, narrower sibling: it
+catches a call to a pref-taking formatter that omits the prefs, and an
+implicit-locale `toLocale*`. It cannot see a surface that calls no formatter at
+all — which is the whole of what #3492 found, and what the census probe adds.
 
 ### 10. Lead + fold
 

@@ -188,11 +188,14 @@ adopts the idiom rather than re-deriving a phone shape.
 
 `copy.md` is the owning doctrine (the eight rules + the copy-lint scan). The
 2026-08-21 additions registered there: the machine-text display boundary
-(prefs-formatted dates #3492, display-normalized units and labeled enums
-#3493, safe list joins #3496, no title-casing clinical names), lead+fold for
-intros and mechanisms (#3488, #3490, #3497), state honesty at low n (#3482,
+(prefs-formatted dates #3492 ✓ shipped, display-normalized units and labeled
+enums #3493, safe list joins #3496, no title-casing clinical names), lead+fold
+for intros and mechanisms (#3488, #3490, #3497), state honesty at low n (#3482,
 #3498), and tone semantics for verdict vs neutral text (#3500). Guards: the
-copy-lint scan plus the #3489 census text probes.
+copy-lint scan plus the #3489 census text probes — the first of which, the
+machine-date census, ships as `lib/machine-date-census.ts` (the rule),
+`lib/__tests__/machine-date-census.test.ts` (it can see, and stays quiet) and
+`e2e/machine-date-census.spec.ts` (the same rule over rendered text nodes).
 
 ## 7. Charts and data drawing
 
@@ -211,17 +214,17 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 
 ## 9. Enforcement
 
-| tier                                  | covers                                                                                                                                                                     | status                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466)                                        | shipped — the proven pattern |
-| Design-guard suite                    | chips, add-affordance labels, sheet titles, link tones — lands with each primitive per the guards ruling                                                                   | pending, per-issue           |
-| Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan, hover captures, cross-page consistency lane, dirty-profile shape, middle-state dials, post-merge mini-census | **ruled**                    |
-| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                         | #3446 ✓ shipped              |
+| tier                                  | covers                                                                                                                                                                                       | status                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466)                                                          | shipped — the proven pattern |
+| Design-guard suite                    | chips, add-affordance labels, sheet titles, link tones — lands with each primitive per the guards ruling                                                                                     | pending, per-issue           |
+| Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan (#3492 ✓ shipped), hover captures, cross-page consistency lane, dirty-profile shape, middle-state dials, post-merge mini-census | **ruled**                    |
+| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                                           | #3446 ✓ shipped              |
 
 ## Work map
 
 Build order (the umbrella issue tracks it): this registry → #3446 ✓ shipped →
-primitives (#3475, #3486, #3499 ✓ shipped, #3466 ✓ shipped, #3501, #3492) → idiom
+primitives (#3475, #3486, #3499 ✓ shipped, #3466 ✓ shipped, #3501, #3492 ✓ shipped) → idiom
 adopters (#3495, #3460 ✓ shipped, #3491, #3473, plus standing #3374/#3378/#3408) →
 copy cluster (#3488, #3490, #3480) → #3489's probes as the standing outer loop. Point bugs (#3459, #3478,
 #3481, #3493, #3496, #3497, #3498, #3500) ship independently and adopt the

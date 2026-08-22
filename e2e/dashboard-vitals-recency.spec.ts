@@ -7,6 +7,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
+import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll, settledClick } from "./helpers";
@@ -58,6 +59,16 @@ const DB_PATH = workerDbPath();
 const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 const TODAY = frozenNow().toISOString().slice(0, 10);
 const day = (back: number) => shiftDateStr(TODAY, -back);
+
+// What a CURRENT reading's provenance line reads: the day in the login's own date
+// format, never the stored one (#3492). The seeded logins set no `date_format`
+// override, so the resolved prefs are the defaults. Derived from the formatter
+// rather than hand-spelled because the auto-year rule means the string differs
+// inside and outside the current calendar year — but every assertion below pairs it
+// with `not.toHaveText(MACHINE_DATE)`, which cannot move with the formatter and is
+// the half that would catch the ISO fallback coming back.
+const shownDay = (iso: string) => formatLongDate(iso, DEFAULT_FORMAT_PREFS);
+const MACHINE_DATE = /\d{4}-\d{2}-\d{2}/;
 
 // Past the blood-pressure presentation floor (180 days) and comfortably INSIDE the year
 // at which the row goes dormant: the span the age label owns, and the one #2303 is about.
@@ -252,7 +263,8 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hr).toContainText("61");
     const hrAge = hrCandidate.getByTestId("vitals-latest-resting-hr-age");
-    await expect(hrAge).toHaveText(day(1));
+    await expect(hrAge).toHaveText(shownDay(day(1)));
+    await expect(hrAge).not.toHaveText(MACHINE_DATE);
     await expect(hrAge).not.toHaveAttribute("data-stale", "true");
     await expect(hr).toContainText("up versus previous resting heart rate");
 
@@ -350,9 +362,9 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     await expect(hrCandidate).toHaveAttribute("data-presence", "current");
     const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hr).toContainText("61");
-    await expect(
-      hrCandidate.getByTestId("vitals-latest-resting-hr-age")
-    ).toHaveText(day(1));
+    const hrAgeToken = hrCandidate.getByTestId("vitals-latest-resting-hr-age");
+    await expect(hrAgeToken).toHaveText(shownDay(day(1)));
+    await expect(hrAgeToken).not.toHaveText(MACHINE_DATE);
     await expect(hr).toContainText("up versus previous resting heart rate");
 
     // The write that ends the dormancy is still sitting beside the row (#1892).
@@ -394,7 +406,8 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     // Today's reading is inside the floor, so it carries a plain date rather than an
     // amber age — the row is all the way back, not merely un-collapsed.
     const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
-    await expect(bpAge).toHaveText(TODAY);
+    await expect(bpAge).toHaveText(shownDay(TODAY));
+    await expect(bpAge).not.toHaveText(MACHINE_DATE);
     await expect(bpAge).not.toHaveAttribute("data-stale", "true");
   } finally {
     await page.context().close();
