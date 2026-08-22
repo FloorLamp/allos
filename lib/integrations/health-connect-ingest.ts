@@ -16,6 +16,10 @@ import {
   type IngestCounts,
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
+import {
+  pushedDates,
+  reconcileRekeyedBodyMetrics,
+} from "./ingest-timezone-reconcile";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -123,9 +127,25 @@ export function ingestHealthConnectPayload(
   };
 
   try {
+    // Every date THIS PUSH writes, computed once over the whole push — the reconcile
+    // below must never delete a day a sibling chunk has already landed, and the chunk
+    // it is running in cannot see the others.
+    const bodyMetricDates = pushedDates(parsed.bodyMetrics);
     commitChunks(
       parsed.bodyMetrics,
-      (slice, sink) => upsertBodyMetrics(profileId, slice, source, sink),
+      (slice, sink) => {
+        // #3524: the profile's timezone may have moved since these readings were last
+        // pushed, and `body_metrics.date` is the profile-local day computed at INGEST —
+        // so the same instant now files on a different day and #608's duplicate appears.
+        // Delete the row this push is re-keying, and only that row, in the same
+        // transaction as the write that replaces it. Deliberately BEFORE the upsert:
+        // the whole slice is reconciled first, so a victim day cannot be one this slice
+        // has just written.
+        reconcileRekeyedBodyMetrics(profileId, slice, source, {
+          pushDates: bodyMetricDates,
+        });
+        return upsertBodyMetrics(profileId, slice, source, sink);
+      },
       (c) => {
         bodyMetrics = foldCounts([bodyMetrics, c]);
       }

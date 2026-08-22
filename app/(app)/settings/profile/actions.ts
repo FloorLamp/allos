@@ -66,7 +66,6 @@ import { parseHome } from "@/lib/home-location";
 import { parseSkinType } from "@/lib/uv-dose";
 import { parseProteinGoalLevel } from "@/lib/protein";
 import { reconcileFlags } from "@/lib/queries";
-import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
   WAKING_START_HOUR,
   WAKING_END_HOUR,
@@ -197,13 +196,14 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (tz && isValidTimezone(tz)) {
     const prevTz = getTimezone(profile.id);
     if (tz !== prevTz) {
+      // NOTHING IS DELETED HERE (#3524). Health Connect's `body_metrics.date` is a
+      // profile-local day computed at ingest, so a zone change does re-key what the
+      // next push carries (#608) — but this path used to answer that by deleting a
+      // trailing window of push-sourced rows and trusting the re-push to restore them,
+      // and the exporter re-sends one day rather than three. The re-key is reconciled
+      // at ingest now, against the reading instant that is actually being re-sent:
+      // lib/integrations/ingest-timezone-reconcile.ts.
       setTimezone(profile.id, tz);
-      // The ingest tables that store profile-LOCAL time computed at ingest
-      // (hr_minutes.ts and Health Connect body_metrics.date) re-key on a timezone
-      // change, so the next rolling-window push would duplicate ~48h of data under the
-      // shifted keys (#608). Sweep the current window's push-sourced rows so the next
-      // push repopulates them cleanly under the new keys.
-      sweepIngestWindowForTimezoneChange(profile.id);
     }
   }
 

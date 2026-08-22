@@ -677,12 +677,33 @@ export function parseHealthConnectPayload(
     bfN: number;
     rhrSum: number;
     rhrN: number;
+    // The LATEST contributing reading instant for this day, canonical UTC (#2205's
+    // `utcInstant` shape). Two jobs, one value (#3524):
+    //   • it is persisted as `body_metrics.occurred_at` — "when the day's reading was
+    //     actually taken" — which the column has carried for hand-entered rows since
+    //     #2235 and which no integration has ever written; and
+    //   • it is what the ingest reconcile asks the day arithmetic about, so the row a
+    //     re-push re-keys can be identified from the reading itself rather than from
+    //     switch history alone (#3428's resolver wants the same thing).
+    // LATEST rather than earliest, matching the aggregate it stamps: weight is
+    // last-reading-of-the-day-wins, so the latest instant is the one the stored weight
+    // came from. A day whose measures straddle midnight in a departed zone therefore
+    // reconciles on this instant only — stated as a known residue in
+    // lib/integrations/ingest-timezone-reconcile.ts.
+    latestMs: number | null;
   }
   const byDate = new Map<string, DayAgg>();
   const dayFor = (date: string): DayAgg => {
     let a = byDate.get(date);
     if (!a) {
-      a = { weight_kg: null, bfSum: 0, bfN: 0, rhrSum: 0, rhrN: 0 };
+      a = {
+        weight_kg: null,
+        bfSum: 0,
+        bfN: 0,
+        rhrSum: 0,
+        rhrN: 0,
+        latestMs: null,
+      };
       byDate.set(date, a);
     }
     return a;
@@ -698,11 +719,15 @@ export function parseHealthConnectPayload(
   // value would be its own bug), so we leave the normal last-wins merge in place. The
   // flag holds only the AVERAGED fields on the upsert; weight is last-of-day, unaffected.
   let earliestBodyMs: number | null = null;
-  const noteInstant = (iso: unknown) => {
+  // `date` is the day this instant was just attributed to, so the per-day latest is
+  // tracked in the same pass rather than in a second walk over the payload.
+  const noteInstant = (iso: unknown, date: string) => {
     if (typeof iso !== "string") return;
     const t = new Date(iso).getTime();
     if (Number.isNaN(t) || !inTimeWindow(t)) return;
     if (earliestBodyMs === null || t < earliestBodyMs) earliestBodyMs = t;
+    const a = dayFor(date);
+    if (a.latestMs === null || t > a.latestMs) a.latestMs = t;
   };
   for (const w of asArray(payload.weight)) {
     const p = parts(w.time, tz);
@@ -711,7 +736,7 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(w.time);
+    noteInstant(w.time, p.date);
     // Health Connect's Weight record is stated in KILOGRAMS (the field aliases read
     // above name it), so the canonical mint is the identity conversion — and it is
     // what makes the day aggregate carry a `Kg` all the way to the upsert (#2149).
@@ -727,7 +752,7 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(b.time);
+    noteInstant(b.time, p.date);
     const a = dayFor(p.date);
     a.bfSum += pct;
     a.bfN++;
@@ -742,7 +767,7 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(r.time);
+    noteInstant(r.time, p.date);
     const a = dayFor(p.date);
     a.rhrSum += bpm;
     a.rhrN++;
@@ -754,6 +779,9 @@ export function parseHealthConnectPayload(
       : null;
   out.bodyMetrics = [...byDate.entries()].map(([date, a]) => ({
     date,
+    ...(a.latestMs !== null
+      ? { measured_at: utcInstant(new Date(a.latestMs)) }
+      : {}),
     ...(partialDate !== null && date === partialDate
       ? { partial_day: true }
       : {}),
