@@ -792,8 +792,8 @@ option 2) splits it:
 - **A — `planMetricSampleSupersede`** (`lib/integrations/normalize.ts`). Read-only, over
   the PRE-PUSH store, over the WHOLE push, and **before `chunk()`**. Returns the stored
   row ids the push collapses and the overlaps it leaves standing.
-- **B — `applyMetricSampleSupersede`**. The deletes, once, inside the first chunk's
-  transaction.
+- **B — `applyMetricSampleSupersede`**. The deletes, once, inside the **last** chunk's
+  transaction, after that chunk's upserts (see the invariant below).
 - **C — `upsertMetricSamples`**. The upsert loop, with no supersede logic in it at all.
 
 The invariant that split buys is one line:
@@ -808,6 +808,35 @@ channels that could break them — which is the point, because the enumeration w
 twice. `lib/__db_tests__/hc-overlap-push-property.test.ts` is that line as a test: the
 same push, several orderings and chunk sizes including a one-row chunk, against a
 NON-EMPTY store, must leave byte-identical rows every time.
+
+**WHERE PASS B COMMITS, AND THE INVARIANT THAT DECIDES IT.** The line above is about the
+FINAL state. A chunked push also has states BETWEEN commits, and the first version of pass
+B got them wrong: it ran in the FIRST chunk's transaction, justified by "a crash between
+the deletes and the writes must not leave a day reading low with nothing in flight to
+restore it". That reason is right and the placement was not — it satisfies the reason only
+when the push is ONE chunk. Split it and the deletes commit with chunk 1, chunk 2 fails,
+and the day reads NOTHING where `main` still reads the old row (measured: 8000 → nothing).
+The owner corrected it (#3424, the ruling of 2026-08-22) and pinned the invariant instead:
+
+> At every commit point the store holds the OLD rows, or OLD + NEW, or NEW — **never
+> neither**. The mechanism may leave a day reading HIGH between commits; it must never
+> read LOWER than `main` would.
+
+So a victim is deleted only in a transaction that commits with or after every row of the
+push that replaces it. One chunk: the same transaction as the rows. Many chunks: chunks
+1…n−1 commit upserts only and the store transiently reads high — the visible double count
+— and the final chunk commits its upserts and the whole victim set together. A failure in
+chunk k leaves old + chunks<k: a double count, never a hole. The exporter re-carries the
+unacked rows on its next push (its failed deltas fold into the next one, measured on the
+08-21 DNS failures), pass A re-plans over that store, and that push collapses it. Pinned by
+the D1 cases in `lib/__db_tests__/hc-overlap-supersede-refutations.test.ts`.
+
+**The DELETE re-states the stamp pass A read** — `pushed_at IS ?`, NULL-safe — because
+three processes share one DB file. Pass A's read and pass B's DELETE can be separated by
+another push's committed writes, a window the last-chunk placement widens, and a row that
+push has since re-stamped must not be deleted on evidence that has expired. `IS` rather
+than `=`: the stamp is NULL on every pre-column row, and those are the rows this rule
+exists to collapse.
 
 **IT IS THE PRE-PASS, NOT THE SHARED STAMP, THAT MAKES A CHUNK SPLIT HARMLESS**, and this
 paragraph replaces the opposite claim. Rows of one push do share a stamp, so neither can
