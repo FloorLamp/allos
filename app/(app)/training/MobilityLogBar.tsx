@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useMemo, useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
@@ -57,6 +58,8 @@ export default function MobilityLogBar({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(initialMoves)
   );
+  // Which surface this mobility bar is on (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [duration, setDuration] = useState(
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
@@ -92,7 +95,7 @@ export default function MobilityLogBar({
       optimistic,
       commit: setSelected,
       write: () => {
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("move", slug);
         fd.set("date", today);
         return wasOn ? unlogMobilityMove(fd) : logMobilityMove(fd);
@@ -146,7 +149,7 @@ export default function MobilityLogBar({
   }
 
   async function saveDuration(raw: string) {
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     fd.set("date", today);
     fd.set("minutes", raw.trim());
     const res = await setMobilityDuration(fd);

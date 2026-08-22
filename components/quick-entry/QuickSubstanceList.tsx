@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -60,6 +61,9 @@ export default function QuickSubstanceList({
   substances: QuickSubstanceRow[];
 }) {
   const ledger = useOptimisticLedger("substance-unit");
+  // The quick-log sheet is this list's only mounting today, and it says so through
+  // the surface its host declares rather than by asserting it here (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
 
   async function log(key: string) {
@@ -67,7 +71,7 @@ export default function QuickSubstanceList({
     await ledger.tap({
       key,
       write: () => {
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("substance", key);
         return logSubstanceUnitAction(fd);
       },

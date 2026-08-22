@@ -26,7 +26,7 @@ import {
 } from "@/components/medications/dose-action-styles";
 import type { PracticeLogOutcome } from "@/lib/types";
 import { logPractice } from "@/app/(app)/wellness/actions";
-import { LOGGED_VIA_FIELD, type LoggedVia } from "@/lib/logged-via";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 // Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
 // TODAY through the shared write core and answers from its typed outcome — NEVER an
@@ -61,7 +61,6 @@ export default function LogPracticeButton({
   initialDetailsDate,
   detailsMinDate,
   detailsMaxDate,
-  loggedVia,
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -107,13 +106,15 @@ export default function LogPracticeButton({
   initialDetailsDate?: string;
   detailsMinDate?: string;
   detailsMaxDate?: string;
+}) {
   // WHICH SURFACE THIS MOUNTING IS (#3087). One component, four homes — the Wellness
   // card, the protocols row, the quick-log sheet and the backfill launcher — all
   // posting ONE Server Action, so only the mounting can say where a tap happened.
-  // Posted as a form field and re-checked server-side against the web subset; a
-  // mounting that says nothing falls back to `page`, which is what it was before.
-  loggedVia?: LoggedVia;
-}) {
+  // Read from the region rather than taken as a prop: a prop has to be passed at every
+  // one of those four call sites and is silent when it is not, which is the failure
+  // mode this column exists to avoid. Posted as a form field and re-checked
+  // server-side against the web subset.
+  const stampLoggedVia = useLoggedViaStamp();
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
@@ -250,8 +251,8 @@ export default function LogPracticeButton({
     await ledger.tap({
       write: () => {
         const fd = new FormData();
+        stampLoggedVia(fd);
         fd.set("practice", practice);
-        if (loggedVia) fd.set(LOGGED_VIA_FIELD, loggedVia);
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
         // No `time` field is set on any path here — its absence is what tells the
@@ -290,8 +291,8 @@ export default function LogPracticeButton({
     const form = event.currentTarget;
     setPending(true);
     const fd = new FormData(form);
+    stampLoggedVia(fd);
     fd.set("practice", practice);
-    if (loggedVia) fd.set(LOGGED_VIA_FIELD, loggedVia);
     try {
       const outcome = await logPractice(fd);
       report(outcome);

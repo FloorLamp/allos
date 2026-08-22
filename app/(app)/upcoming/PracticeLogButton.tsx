@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
@@ -13,11 +14,13 @@ export default function PracticeLogButton({
   profileId: number;
 }) {
   const toast = useToast();
+  // The Upcoming page's own row control — declared rather than inferred (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
 
   async function log() {
     setPending(true);
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     fd.set("target_id", String(targetId));
     fd.set("profile_id", String(profileId));
     try {

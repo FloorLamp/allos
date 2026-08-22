@@ -213,6 +213,7 @@ import {
 import CycleControlAtom from "@/components/dashboard/CycleControlAtom";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
+import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
@@ -2484,24 +2485,33 @@ async function renderDashboard(
       className="mx-auto"
       data-testid="dashboard-canvas"
     >
-      <DashboardPlacementCanvas
-        dateLabel={formatLongDate(on, formatPrefs)}
-        placements={dashboardPlacements}
-        candidateNodes={candidateNodes}
-        standingPresentations={standingPresentations}
-        aheadPresentations={aheadPresentations}
-        attentionBadgeCount={attentionBadgeCount}
-        illnessGroupNode={
-          placedIllnessCockpits.length > 0 ? (
-            <IllnessNowGroup
-              cockpits={placedIllnessCockpits}
-              initialCollapsedActive={illnessUi.collapsedActive}
-              initialOpenOtherKey={illnessUi.openOtherKey}
-              saveState={saveIllnessNowState}
-            />
-          ) : undefined
-        }
-      />
+      {/* THE DASHBOARD DECLARES ITSELF (#3087). Every logging control placed on this
+          canvas — the weigh-in widget, the symptom bar, the food bar, the "Log a
+          dose" card, the reading button — is the SAME component its domain page
+          mounts, posting the SAME Server Action. Without this the server reads all of
+          them as that page's own form, and `dashboard-widget` is produced by nothing.
+          The attention card's act-now confirms are separate actions of their own and
+          stamp `dashboard-hero` at the action; this covers the widget half. */}
+      <LoggedViaSurface value="dashboard-widget">
+        <DashboardPlacementCanvas
+          dateLabel={formatLongDate(on, formatPrefs)}
+          placements={dashboardPlacements}
+          candidateNodes={candidateNodes}
+          standingPresentations={standingPresentations}
+          aheadPresentations={aheadPresentations}
+          attentionBadgeCount={attentionBadgeCount}
+          illnessGroupNode={
+            placedIllnessCockpits.length > 0 ? (
+              <IllnessNowGroup
+                cockpits={placedIllnessCockpits}
+                initialCollapsedActive={illnessUi.collapsedActive}
+                initialOpenOtherKey={illnessUi.openOtherKey}
+                saveState={saveIllnessNowState}
+              />
+            ) : undefined
+          }
+        />
+      </LoggedViaSurface>
     </PageContainer>
   );
 }

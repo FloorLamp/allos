@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
@@ -45,6 +46,9 @@ export default function ProteinQuickAdd({
   // The profile's last-used amount (repeated scoop size), or null if never logged.
   lastPreset: number | null;
 }) {
+  // The surface this scoop control is mounted on (#3087): the Food tab's own row,
+  // or the quick-log sheet's ranked-in protein control.
+  const stampLoggedVia = useLoggedViaStamp();
   const [total, setTotal] = useState(initialGrams);
   const [amount, setAmount] = useState<string>(
     lastPreset != null ? String(lastPreset) : ""
@@ -114,7 +118,7 @@ export default function ProteinQuickAdd({
             ? { kind: "queued" }
             : { kind: "refused" };
         }
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("grams", String(grams));
         fd.set("date", today);
         return {

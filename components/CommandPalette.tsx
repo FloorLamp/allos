@@ -46,6 +46,8 @@ import {
 } from "@/app/(app)/search-actions";
 import { DOMAIN_LABEL, type RecordCitation } from "@/lib/record-qa";
 import NotesText from "@/components/NotesText";
+import { LoggedViaSurface } from "@/components/LoggedViaSurface";
+import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { refillMedication } from "@/app/(app)/medications/actions";
@@ -141,6 +143,10 @@ type PaletteItem =
   | { kind: "quicklog"; log: QuickLogCommand }
   | { kind: "action"; action: PaletteAction }
   | { kind: "hit"; hit: SearchHit };
+
+// The palette's own surface, named once so its declaration to descendants and the
+// stamp on its own posts cannot drift apart (#3087).
+const PALETTE_SURFACE: WebLoggedVia = "quick-log";
 
 export default function CommandPalette({
   profileName,
@@ -408,6 +414,7 @@ export default function CommandPalette({
       setCommitting(true);
       try {
         const fd = new FormData();
+        fd.set(LOGGED_VIA_FIELD, PALETTE_SURFACE);
         fd.set("id", String(action.entityId));
         if (action.kind === "log-dose") {
           const res = await logMedicationAdministration(fd);
@@ -516,77 +523,84 @@ export default function CommandPalette({
   });
 
   return (
-    <ModalShell
-      title="Search"
-      onClose={close}
-      initialFocusRef={inputRef}
-      // A RECORDED anatomy exception to the #2774 convergence, not a preference:
-      // the palette is a keyboard surface whose whole body is a virtualized
-      // result list under a search field. It has no bottom edge to flick toward
-      // at any width, and a phone sheet whose content is the software keyboard
-      // plus a scrolling list is the one shape the sheet idiom does not improve.
-      // #1469 scoped it out on the same grounds; the justification lives in
-      // lib/__tests__/overlay-motion-chokepoint.test.ts.
-      presentation="centered"
-      // ...BUT "NOT A SHEET" NEVER DEFENDED A CENTRED CARD (#3423). The
-      // exception above rules out the bottom edge, and that reasoning still
-      // holds at every width. What it does not license is a floating
-      // `max-h-[85dvh]` card inset by `p-4` on a 430px screen with the software
-      // keyboard taking most of what is left — a desktop dialog wearing a
-      // phone's worst-case viewport.
-      //
-      // Below `md` the palette becomes the phone idiom for its own content: a
-      // FULL-SCREEN SEARCH SURFACE, field at the top under a named Cancel,
-      // results filling everything beneath. From `md` up nothing moves. The
-      // shape is components/BottomSheet.tsx's — the same portal, scrim, focus
-      // trap, scroll lock and Escape seam this surface already had — so the
-      // phone presentation is not a new overlay to classify.
-      fullScreenBelowMd
-    >
-      <div className="mt-3 flex min-h-0 flex-1 flex-col">
-        <div className="relative">
-          <IconSearch
-            className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500 dark:text-slate-400"
-            stroke={1.75}
-          />
-          <input
-            ref={inputRef}
-            type="text"
-            role="combobox"
-            aria-expanded
-            aria-controls="command-palette-results"
-            aria-autocomplete="list"
-            aria-label="Search or run a command"
-            autoComplete="off"
-            // WHAT THE SOFTWARE KEYBOARD OFFERS, AND WHAT IT DOES TO THE QUERY
-            // (#3423). Without these the phone shows a generic "return" key over
-            // a search field and capitalises the first letter, so a typed
-            // `weight 82.5` reads back as `Weight 82.5`.
-            //
-            // Recorded because it invites a wrong fix: the capitalisation is an
-            // APPEARANCE bug and never a parse one. `parseQuickLog` in
-            // lib/palette-quick-log.ts lowercases the keyword and matches the
-            // unit case-insensitively, so the entry committed either way. Nobody
-            // should go "fix" the parser on the strength of this line.
-            enterKeyHint="search"
-            inputMode="search"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            value={query}
-            placeholder="Search, or try “weight 82.5”, “log workout”…"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onInputKeyDown}
-            className="input w-full pl-10"
-          />
-        </div>
-        <p className="mt-2 px-1 text-xs text-slate-500 dark:text-slate-400">
-          Searching{" "}
-          <span className="font-medium text-slate-700 dark:text-slate-300">
-            {profileName}
-          </span>
-          ’s data
-          {/* THE INSTRUCTION NAMES KEYS THE READER CAN PRESS, AND ONLY THOSE
+    // THE PALETTE IS A QUICK-LOG SURFACE (#3087), for its own writes and for anything
+    // it renders. It posts the same `logMedicationAdministration` the medications
+    // page's own form posts — and `paletteQuickLog`, twelve lines up, has always
+    // stamped `quick-log` — so declaring the region here keeps the palette's write
+    // paths saying one thing. The constant, rather than the hook, because a component
+    // is not inside the provider it renders.
+    <LoggedViaSurface value={PALETTE_SURFACE}>
+      <ModalShell
+        title="Search"
+        onClose={close}
+        initialFocusRef={inputRef}
+        // A RECORDED anatomy exception to the #2774 convergence, not a preference:
+        // the palette is a keyboard surface whose whole body is a virtualized
+        // result list under a search field. It has no bottom edge to flick toward
+        // at any width, and a phone sheet whose content is the software keyboard
+        // plus a scrolling list is the one shape the sheet idiom does not improve.
+        // #1469 scoped it out on the same grounds; the justification lives in
+        // lib/__tests__/overlay-motion-chokepoint.test.ts.
+        presentation="centered"
+        // ...BUT "NOT A SHEET" NEVER DEFENDED A CENTRED CARD (#3423). The
+        // exception above rules out the bottom edge, and that reasoning still
+        // holds at every width. What it does not license is a floating
+        // `max-h-[85dvh]` card inset by `p-4` on a 430px screen with the software
+        // keyboard taking most of what is left — a desktop dialog wearing a
+        // phone's worst-case viewport.
+        //
+        // Below `md` the palette becomes the phone idiom for its own content: a
+        // FULL-SCREEN SEARCH SURFACE, field at the top under a named Cancel,
+        // results filling everything beneath. From `md` up nothing moves. The
+        // shape is components/BottomSheet.tsx's — the same portal, scrim, focus
+        // trap, scroll lock and Escape seam this surface already had — so the
+        // phone presentation is not a new overlay to classify.
+        fullScreenBelowMd
+      >
+        <div className="mt-3 flex min-h-0 flex-1 flex-col">
+          <div className="relative">
+            <IconSearch
+              className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+              stroke={1.75}
+            />
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-expanded
+              aria-controls="command-palette-results"
+              aria-autocomplete="list"
+              aria-label="Search or run a command"
+              autoComplete="off"
+              // WHAT THE SOFTWARE KEYBOARD OFFERS, AND WHAT IT DOES TO THE QUERY
+              // (#3423). Without these the phone shows a generic "return" key over
+              // a search field and capitalises the first letter, so a typed
+              // `weight 82.5` reads back as `Weight 82.5`.
+              //
+              // Recorded because it invites a wrong fix: the capitalisation is an
+              // APPEARANCE bug and never a parse one. `parseQuickLog` in
+              // lib/palette-quick-log.ts lowercases the keyword and matches the
+              // unit case-insensitively, so the entry committed either way. Nobody
+              // should go "fix" the parser on the strength of this line.
+              enterKeyHint="search"
+              inputMode="search"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={query}
+              placeholder="Search, or try “weight 82.5”, “log workout”…"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onInputKeyDown}
+              className="input w-full pl-10"
+            />
+          </div>
+          <p className="mt-2 px-1 text-xs text-slate-500 dark:text-slate-400">
+            Searching{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-300">
+              {profileName}
+            </span>
+            ’s data
+            {/* THE INSTRUCTION NAMES KEYS THE READER CAN PRESS, AND ONLY THOSE
               (#3423). The scope half — whose data this searches — is a claim
               about the DATA and stays at every width; it is the only sentence on
               the surface that says the search is profile-scoped. The navigation
@@ -594,211 +608,214 @@ export default function CommandPalette({
               spellings of a HINT, not two copies of an action list: nothing here
               is a control, so #2305's one-authoring rule is not in play. The
               same shape components/SidebarContent.tsx already uses for its ⌘K. */}
-          <span className="hidden md:inline">
-            {" · arrows to move, Enter to run"}
-          </span>
-        </p>
+            <span className="hidden md:inline">
+              {" · arrows to move, Enter to run"}
+            </span>
+          </p>
 
-        <div
-          id="command-palette-results"
-          ref={listRef}
-          role="listbox"
-          aria-label="Results"
-          className="mt-3 min-h-0 flex-1 overflow-y-auto"
-        >
-          {/* Ask your records (#878, Phase 2) — grounded Q&A over the active profile's
+          <div
+            id="command-palette-results"
+            ref={listRef}
+            role="listbox"
+            aria-label="Results"
+            className="mt-3 min-h-0 flex-1 overflow-y-auto"
+          >
+            {/* Ask your records (#878, Phase 2) — grounded Q&A over the active profile's
               OWN rows. Pointer-only: a trigger to narrate a linked answer, and the
               answer panel. Never part of the arrow/Enter list. */}
-          {q !== "" && (
-            <div className="mb-2" data-testid="ask-records">
-              <div className="px-2 pb-1 pt-2 section-label">Ask</div>
-              <button
-                type="button"
-                onClick={() => void runAsk()}
-                disabled={asking}
-                data-testid="ask-records-trigger"
-                className={`${rowClass(false)} disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                <IconSparkles className="h-4 w-4 shrink-0 opacity-70" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    Ask about your records
-                  </span>
-                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {asking
-                      ? "Looking through your records…"
-                      : `Answer “${q}” from your own records`}
-                  </span>
-                </span>
-              </button>
-
-              {askError && (
-                <p className="mt-1 px-2 text-xs text-rose-600 dark:text-rose-400">
-                  {askError}
-                </p>
-              )}
-
-              {ask && (
-                <div
-                  data-testid="ask-records-panel"
-                  className="mt-1 rounded-lg border border-black/10 bg-slate-50 p-3 dark:border-white/10 dark:bg-ink-850"
+            {q !== "" && (
+              <div className="mb-2" data-testid="ask-records">
+                <div className="px-2 pb-1 pt-2 section-label">Ask</div>
+                <button
+                  type="button"
+                  onClick={() => void runAsk()}
+                  disabled={asking}
+                  data-testid="ask-records-trigger"
+                  className={`${rowClass(false)} disabled:cursor-not-allowed disabled:opacity-60`}
                 >
-                  <NotesText
-                    notes={ask.answer}
-                    as="div"
-                    data-testid="ask-records-answer"
-                    className="text-sm text-slate-700 dark:text-slate-200"
-                  />
-                  {ask.citations.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {ask.citations.map((c: RecordCitation) => (
-                        <li key={c.index}>
-                          <button
-                            type="button"
-                            onClick={() => go(c.href)}
-                            data-testid="ask-records-citation"
-                            className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
-                          >
-                            <span className="shrink-0 rounded-sm bg-slate-200 px-1 font-mono text-xs text-slate-600 dark:bg-ink-700 dark:text-slate-300">
-                              {c.index}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate">
-                              <span className="font-medium">{c.title}</span>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {" · "}
-                                {DOMAIN_LABEL[c.domain]}
-                                {c.date ? ` · ${c.date}` : ""}
-                              </span>
-                            </span>
-                            <IconArrowRight className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                  <IconSparkles className="h-4 w-4 shrink-0 opacity-70" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
+                      Ask about your records
+                    </span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                      {asking
+                        ? "Looking through your records…"
+                        : `Answer “${q}” from your own records`}
+                    </span>
+                  </span>
+                </button>
 
-          {/* Quick log — the inline `weight 82.5` fast path. */}
-          {quickLog && (
-            <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 section-label">Quick log</div>
-              <button
-                type="button"
-                role="option"
-                aria-selected={highlight === quickLogIdx}
-                data-idx={quickLogIdx}
-                data-testid="palette-quicklog"
-                disabled={!!quickLog.error || committing}
-                {...highlightOn(quickLogIdx)}
-                onClick={() => void commitQuickLog(quickLog)}
-                className={`${rowClass(highlight === quickLogIdx)} disabled:cursor-not-allowed`}
-              >
-                <IconBolt className="h-4 w-4 shrink-0 opacity-70" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    {quickLog.error ?? quickLog.label}
-                  </span>
-                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {quickLog.error ? (
-                      "Fix the value to log it"
-                    ) : committing ? (
-                      "Saving…"
-                    ) : (
-                      // THE COMMIT AFFORDANCE IS SHAPED LIKE THE GESTURE THAT
-                      // REACHES IT (#3423). "Enter to save" is a correct
-                      // instruction on a keyboard and a dead end on a phone,
-                      // where the row is a thing you tap. Same row, same commit
-                      // path, same `commitQuickLog` — only the verb changes.
-                      <>
-                        <span className="md:hidden">Tap to save</span>
-                        <span className="hidden md:inline">Enter to save</span>
-                      </>
-                    )}
-                  </span>
-                </span>
-                {highlight === quickLogIdx && !quickLog.error && (
-                  // The "↵" glyph draws where a Return key exists. It is a
-                  // PICTURE OF A KEY, so on a phone it points at hardware the
-                  // reader does not have — the row's own "Tap to save" is the
-                  // affordance there.
-                  <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
+                {askError && (
+                  <p className="mt-1 px-2 text-xs text-rose-600 dark:text-rose-400">
+                    {askError}
+                  </p>
                 )}
-              </button>
-            </div>
-          )}
 
-          {/* Create actions. */}
-          {actions.length > 0 && (
-            <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 section-label">Actions</div>
-              <ul>
-                {actions.map((action, i) => {
-                  const itemIdx = actionStart + i;
-                  const active = itemIdx === highlight;
-                  const Icon = ACTION_ICONS[action.icon];
-                  // The live-workout action renders the SHARED offer state (#1893):
-                  // while a session is running it reads "Resume workout", because
-                  // openLive reopens the docked session rather than resetting its
-                  // clock. Every other action's label is its own.
-                  const label =
-                    action.target.kind === "live"
-                      ? workoutOffer.label
-                      : action.label;
-                  return (
-                    <li key={action.id}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        data-idx={itemIdx}
-                        data-testid={`palette-action-${action.id}`}
-                        {...highlightOn(itemIdx)}
-                        onClick={() => runAction(action)}
-                        className={rowClass(active)}
-                      >
-                        <Icon className="h-4 w-4 shrink-0 opacity-70" />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {label}
-                        </span>
-                        {active && (
-                          <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+                {ask && (
+                  <div
+                    data-testid="ask-records-panel"
+                    className="mt-1 rounded-lg border border-black/10 bg-slate-50 p-3 dark:border-white/10 dark:bg-ink-850"
+                  >
+                    <NotesText
+                      notes={ask.answer}
+                      as="div"
+                      data-testid="ask-records-answer"
+                      className="text-sm text-slate-700 dark:text-slate-200"
+                    />
+                    {ask.citations.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {ask.citations.map((c: RecordCitation) => (
+                          <li key={c.index}>
+                            <button
+                              type="button"
+                              onClick={() => go(c.href)}
+                              data-testid="ask-records-citation"
+                              className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
+                            >
+                              <span className="shrink-0 rounded-sm bg-slate-200 px-1 font-mono text-xs text-slate-600 dark:bg-ink-700 dark:text-slate-300">
+                                {c.index}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                <span className="font-medium">{c.title}</span>
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {" · "}
+                                  {DOMAIN_LABEL[c.domain]}
+                                  {c.date ? ` · ${c.date}` : ""}
+                                </span>
+                              </span>
+                              <IconArrowRight className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Search results. */}
-          {q !== "" &&
-            (groups.length === 0 ? (
-              // Only show "no matches" once nothing else stands in for a result.
-              actions.length === 0 &&
-              !quickLog && (
-                <p className="px-1 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                  {loading ? "Searching…" : `No matches for “${q}”.`}
-                </p>
-              )
-            ) : (
-              <SearchResults
-                groups={groups}
-                base={actionStart + actions.length}
-                highlight={highlight}
-                highlightOn={highlightOn}
-                onPick={go}
-                onAction={runHitAction}
-                committing={committing}
-                rowClass={rowClass}
-              />
-            ))}
+            {/* Quick log — the inline `weight 82.5` fast path. */}
+            {quickLog && (
+              <div className="mb-2">
+                <div className="px-2 pb-1 pt-2 section-label">Quick log</div>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={highlight === quickLogIdx}
+                  data-idx={quickLogIdx}
+                  data-testid="palette-quicklog"
+                  disabled={!!quickLog.error || committing}
+                  {...highlightOn(quickLogIdx)}
+                  onClick={() => void commitQuickLog(quickLog)}
+                  className={`${rowClass(highlight === quickLogIdx)} disabled:cursor-not-allowed`}
+                >
+                  <IconBolt className="h-4 w-4 shrink-0 opacity-70" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
+                      {quickLog.error ?? quickLog.label}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                      {quickLog.error ? (
+                        "Fix the value to log it"
+                      ) : committing ? (
+                        "Saving…"
+                      ) : (
+                        // THE COMMIT AFFORDANCE IS SHAPED LIKE THE GESTURE THAT
+                        // REACHES IT (#3423). "Enter to save" is a correct
+                        // instruction on a keyboard and a dead end on a phone,
+                        // where the row is a thing you tap. Same row, same commit
+                        // path, same `commitQuickLog` — only the verb changes.
+                        <>
+                          <span className="md:hidden">Tap to save</span>
+                          <span className="hidden md:inline">
+                            Enter to save
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </span>
+                  {highlight === quickLogIdx && !quickLog.error && (
+                    // The "↵" glyph draws where a Return key exists. It is a
+                    // PICTURE OF A KEY, so on a phone it points at hardware the
+                    // reader does not have — the row's own "Tap to save" is the
+                    // affordance there.
+                    <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Create actions. */}
+            {actions.length > 0 && (
+              <div className="mb-2">
+                <div className="px-2 pb-1 pt-2 section-label">Actions</div>
+                <ul>
+                  {actions.map((action, i) => {
+                    const itemIdx = actionStart + i;
+                    const active = itemIdx === highlight;
+                    const Icon = ACTION_ICONS[action.icon];
+                    // The live-workout action renders the SHARED offer state (#1893):
+                    // while a session is running it reads "Resume workout", because
+                    // openLive reopens the docked session rather than resetting its
+                    // clock. Every other action's label is its own.
+                    const label =
+                      action.target.kind === "live"
+                        ? workoutOffer.label
+                        : action.label;
+                    return (
+                      <li key={action.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          data-idx={itemIdx}
+                          data-testid={`palette-action-${action.id}`}
+                          {...highlightOn(itemIdx)}
+                          onClick={() => runAction(action)}
+                          className={rowClass(active)}
+                        >
+                          <Icon className="h-4 w-4 shrink-0 opacity-70" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {label}
+                          </span>
+                          {active && (
+                            <IconCornerDownLeft className="hidden h-4 w-4 shrink-0 opacity-60 md:block" />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* Search results. */}
+            {q !== "" &&
+              (groups.length === 0 ? (
+                // Only show "no matches" once nothing else stands in for a result.
+                actions.length === 0 &&
+                !quickLog && (
+                  <p className="px-1 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                    {loading ? "Searching…" : `No matches for “${q}”.`}
+                  </p>
+                )
+              ) : (
+                <SearchResults
+                  groups={groups}
+                  base={actionStart + actions.length}
+                  highlight={highlight}
+                  highlightOn={highlightOn}
+                  onPick={go}
+                  onAction={runHitAction}
+                  committing={committing}
+                  rowClass={rowClass}
+                />
+              ))}
+          </div>
         </div>
-      </div>
-    </ModalShell>
+      </ModalShell>
+    </LoggedViaSurface>
   );
 }
 

@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useMemo, useState, useTransition } from "react";
 import {
@@ -177,6 +178,7 @@ export default function SymptomLogBar({
   const [intakeStaged, setIntakeStaged] = useState<SymptomTextMapping | null>(
     null
   );
+  const stampLoggedVia = useLoggedViaStamp();
   const [intakePending, setIntakePending] = useState(false);
   const [intakeError, setIntakeError] = useState<string | null>(null);
 
@@ -332,7 +334,11 @@ export default function SymptomLogBar({
   const withTarget = (fd: FormData): FormData => {
     if (profileId != null) fd.set("profileId", String(profileId));
     if (episodeId != null) fd.set("episodeId", String(episodeId));
-    return fd;
+    // WHICH SURFACE (#3087). This bar is mounted on the dashboard, on the Timeline,
+    // on the Cycles page and inside the illness cockpit's panels — one component,
+    // one action, four surfaces — so the mounting declares itself and the server
+    // stops reading every one of them as the symptom page's own form.
+    return stampLoggedVia(fd);
   };
 
   // The full universe of rows (curated catalog + any custom keys already logged, either

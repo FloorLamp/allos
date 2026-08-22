@@ -35,6 +35,7 @@ import {
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 
 export type MedicationAdministrationResult =
   { ok: true; outcome: "logged" | "duplicate" } | { ok: false; error: string };
@@ -269,8 +270,12 @@ export async function logMedicationAdministration(
   const outcome = logAdministration(
     profileId,
     id,
-    // The medications page's own "log a dose" form.
-    "page",
+    // THREE MOUNTINGS, ONE ACTION (#3087). The medications page's own "log a dose"
+    // form is only one of them: the command palette posts this, and so does
+    // `QuickLogPrnControl`, which is mounted on the DASHBOARD's medications panel and
+    // in the illness cockpit. `page` is this action's home, not the whole answer, so
+    // the surface rides the post like every other shared web write.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     given
   );
   revalidateRoute("/medications");

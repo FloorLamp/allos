@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useRef, useState } from "react";
 import type { WeightUnit } from "@/lib/settings";
@@ -11,7 +12,6 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
-import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { subjectActionLabel } from "@/lib/own-profile";
 
 // Inline weight quick-add for the dashboard weight presentation (#1042 phase 2).
@@ -41,6 +41,8 @@ export default function WeightQuickAdd({
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
+  // Which dashboard region this weigh-in widget sits in (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
 
   async function handle(formData: FormData) {
@@ -83,11 +85,11 @@ export default function WeightQuickAdd({
       return;
     }
     try {
-      // This mounting IS the dashboard's own weigh-in widget (#3087) — the same
-      // action the Trends page's add form posts, which is exactly why the surface
-      // has to ride the post rather than be inferred server-side.
-      formData.set(LOGGED_VIA_FIELD, "dashboard-widget");
-      await addBodyMetric(formData);
+      // The same action the Trends page's add form posts (#3087), which is exactly
+      // why the surface has to ride the post rather than be inferred server-side.
+      // The value comes from the region this widget is mounted in rather than being
+      // asserted here: the dashboard declares itself once, for every control on it.
+      await addBodyMetric(stampLoggedVia(formData));
     } catch (err) {
       // Connection dropped mid-submit — queue instead of a false failure.
       if (shouldQueueOffline(navigator.onLine !== false, err)) {

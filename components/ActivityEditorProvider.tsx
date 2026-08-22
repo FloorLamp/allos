@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import {
   createContext,
@@ -190,6 +191,9 @@ export default function ActivityEditorProvider({
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
   const [createDate, setCreateDate] = useState<string | null>(null);
+  // Which surface started this workout (#3087): the provider is mounted in the app
+  // shell, so a start from the quick-log sheet and one from a page differ only here.
+  const stampLoggedVia = useLoggedViaStamp();
   const [repeatNonce, setRepeatNonce] = useState(0);
   const router = useRouter();
   const requestCloseRef = useRef<
@@ -349,7 +353,7 @@ export default function ActivityEditorProvider({
       setRepeatNonce((n) => n + 1);
       setOpen(true);
 
-      const fd = new FormData();
+      const fd = stampLoggedVia(new FormData());
       fd.set("type", kind.type);
       fd.set("title", kind.title);
       void startWorkout(fd)
@@ -374,7 +378,7 @@ export default function ActivityEditorProvider({
           setLiveRowId(res.id);
         });
     },
-    []
+    [stampLoggedVia]
   );
 
   // REOPEN WHAT THE DEPLOY CLOSED (#2471). The tab reloaded ITSELF to take a new

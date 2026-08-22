@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
@@ -104,6 +105,9 @@ export default function DoseStatusControl({
   // `data-reduced-motion` on the root so the browser suite can prove the branch.
   const reduced = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reduced);
+  // Which surface this dose control is on (#3087): the Supplements page's row, the
+  // medications board, or a dashboard panel that renders the same control.
+  const stampLoggedVia = useLoggedViaStamp();
   const [settling, setSettling] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -166,7 +170,7 @@ export default function DoseStatusControl({
   async function submit(
     target: "taken" | "skipped" | "clear"
   ): Promise<"ok" | "refused" | "failed"> {
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     fd.set("dose_id", String(doseId));
     fd.set("status", target);
     // #858/#1373: target the row's own profile so a caregiver confirms a household
@@ -253,7 +257,7 @@ export default function DoseStatusControl({
         : "nothing";
     }
 
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     fd.set("dose_id", String(doseId));
     fd.set("status", target);
     try {

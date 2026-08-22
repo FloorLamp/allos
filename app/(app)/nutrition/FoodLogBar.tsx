@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
@@ -282,6 +283,10 @@ export default function FoodLogBar({
   // Whether the "earlier…" hours are revealed. The offer stays one tap deep: "now" is the
   // common answer and a dozen hours permanently on screen would bury it.
   const [earlierOpen, setEarlierOpen] = useState(false);
+  // WHICH SURFACE THIS BAR IS ON (#3087). The same component renders on the Food
+  // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
+  // them apart, so the mounting declares itself and this stamps every post with it.
+  const stampLoggedVia = useLoggedViaStamp();
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   // Optimistic daily totals and meal-slot counts live in the parent date context:
   // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
@@ -900,6 +905,7 @@ export default function FoodLogBar({
         // nothing about when anything was eaten.
         if (statedChoice && delta === 1)
           fd.set("occurred_at", eatingTimeChoiceValue(statedChoice));
+        stampLoggedVia(fd);
         return {
           kind: "wrote",
           outcome:
@@ -1057,7 +1063,7 @@ export default function FoodLogBar({
         // re-derives from fresh state, so this list is an upper bound on the write and
         // never an instruction to write outside the offer that currently stands.
         fd.set("groups", slugs.join(","));
-        return logUsualFood(fd);
+        return logUsualFood(stampLoggedVia(fd));
       },
       settle: (result) => {
         if (!result.ok) {

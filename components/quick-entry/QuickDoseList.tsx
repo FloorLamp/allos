@@ -1,11 +1,11 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { markTaken } from "@/app/(app)/upcoming/actions";
-import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import type { QuickEntryDose } from "@/app/(app)/quick-entry-actions";
 
 // The quick-entry overlay's DOSE form (issue #1468): doses whose declared slot
@@ -41,16 +41,18 @@ export default function QuickDoseList({
   const [resolved, setResolved] = useState<Set<number>>(() => new Set());
   // The last outcome per dose that did NOT resolve it — shown inline so the
   // reason the row is still there is legible without hunting for the toast.
+  // The surface this list is rendered in (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [notes, setNotes] = useState<Record<number, string>>({});
 
   const remaining = doses.filter((d) => !resolved.has(d.doseId));
 
   async function confirm(dose: QuickEntryDose) {
-    const fd = new FormData();
-    fd.set("dose_id", String(dose.doseId));
     // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
-    // action, so the sheet declares itself (#3087).
-    fd.set(LOGGED_VIA_FIELD, "quick-log");
+    // action, so the sheet declares itself (#3087). The value comes from the host
+    // region rather than being asserted here.
+    const fd = stampLoggedVia(new FormData());
+    fd.set("dose_id", String(dose.doseId));
     let result;
     try {
       result = await markTaken(fd);
