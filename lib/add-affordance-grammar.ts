@@ -86,8 +86,11 @@ export const HOUSINGS: readonly Housing[] = [
 export type CreateAffordance = {
   /** 1-based line of the opening tag. */
   line: number;
-  /** How it is spelled — see the four spellings above. */
-  kind: "button" | "entry-panel" | "link";
+  /**
+   * How it is spelled — see the spellings above. A `<Link>` has no `kind`
+   * because a link is a DOOR, governed by §4's door rule and not by this one.
+   */
+  kind: "button" | "entry-panel";
   /** The name a person reads or hears, as written in source. */
   label: string;
   /** The label's first word: `Add`, or a retired verb, and nothing else. */
@@ -464,7 +467,7 @@ export function findCreateAffordances(source: string): CreateAffordance[] {
       }
       found.push({
         line: lineOf(m.index),
-        kind: tagName === "Link" ? "link" : "button",
+        kind: "button",
         label: named.trim(),
         verb: leadingVerb(named)!,
         primary: isPrimary(tag) || tagName === "SubmitButton",
