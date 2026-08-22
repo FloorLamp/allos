@@ -3,6 +3,7 @@ import {
   isCleanerName,
   isImportedDocumentName,
   shoutingWords,
+  tallManWords,
 } from "@/lib/imported-name";
 
 // The imported-name predicate's own proof (#3480), in the
@@ -26,11 +27,15 @@ describe("isImportedDocumentName — the shapes portals actually export", () => 
     // The other common portal rendering: the whole line shouted.
     "LISINOPRIL 10MG TAB",
     "METFORMIN HCL ER 500 MG TABLET",
-    // One shouted word carrying most of the letters — the drug's own name shouted.
+    // One shouted WORD — the drug's own name shouted, six letters or more.
     "PREDNISONE 10 mg",
-    "HCTZ 25 mg",
     // A dose-form code beside a shouted brand.
     "EPIPEN 2-PAK",
+    // The dispensing-label shape with no word long enough to carry it alone: a
+    // name, a strength unit and a dose form, all abbreviated.
+    "HCTZ 25 MG TAB",
+    "ASA 81 MG TAB",
+    "VIT D 1000 IU CAP",
   ];
 
   for (const name of DOCUMENT_STRINGS) {
@@ -48,6 +53,40 @@ describe("isImportedDocumentName — the shapes portals actually export", () => 
     // Not just the verdict: a rule that reached `true` off "Cholecalciferol" or
     // off the digits would agree with this suite and disagree with reality.
     expect(shoutingWords(OBSERVED)).toEqual(["CALCIUM", "OR"]);
+  });
+});
+
+describe("isImportedDocumentName — Tall Man lettering", () => {
+  // THE REGISTER THIS FEATURE EXISTS FOR, and the one the first version of the rule
+  // was inverted against: every name below was QUIET under a rule that measured how
+  // much of the name shouts, because most of their letters are lower case. Tall Man
+  // lettering is the ISMP look-alike convention and standard Epic/Cerner
+  // medication-list output, so these are not an exotic corner — they are the
+  // commonest thing a portal sends.
+  const TALL_MAN: [string, string][] = [
+    ["amLODIPine Besylate 5 MG tablet", "amLODIPine"],
+    ["predniSONE 10 mg tablet", "predniSONE"],
+    ["traMADol HCl 50 mg", "traMADol"],
+    ["glipiZIDE 5 mg", "glipiZIDE"],
+    ["hydrOXYzine 25 mg", "hydrOXYzine"],
+  ];
+
+  for (const [name, token] of TALL_MAN) {
+    it(`sees ${JSON.stringify(name)}`, () => {
+      // The token, not only the verdict: "amLODIPine Besylate 5 MG tablet" would
+      // reach `true` off "MG" under a different rule, and that rule would then be
+      // blind to "glipiZIDE 5 mg", which shouts nothing at all.
+      expect(tallManWords(name)).toEqual([token]);
+      expect(isImportedDocumentName(name)).toBe(true);
+    });
+  }
+
+  it("does not read ordinary product spelling as Tall Man", () => {
+    // One interior capital is a spelling ("CoQ10", "EpiPen"); one preceding
+    // lower-case letter is the "mRNA"/"GoLYTELY" shape. Both floors are why the
+    // benign list below stays quiet.
+    for (const name of ["CoQ10", "EpiPen", "NaCl", "mRNA vaccine", "GoLYTELY"])
+      expect(tallManWords(name), name).toEqual([]);
   });
 });
 
@@ -71,6 +110,44 @@ describe("isImportedDocumentName — the names a person writes", () => {
     "EpiPen",
     "NSAIDs",
     "Vitamin B12",
+    // THE ABBREVIATION SHELF, and it is the reason the old share rule had to go: 17
+    // of these 19 ordinary supplement names fired under it, every one of them
+    // already the clearest form of its own name. A name that IS an abbreviation is
+    // not a name being shouted, and no amount of "how much of this shouts" can tell
+    // the two apart — the share of a bare acronym is 1.0 by construction.
+    "NAC",
+    "MSM",
+    "DHEA",
+    "GABA",
+    "TUDCA",
+    "PQQ",
+    "NMN",
+    "NR",
+    "BCAA",
+    "ALA",
+    "5-HTP",
+    "SAM-e",
+    "EPA/DHA",
+    "MCT oil",
+    "CBD oil",
+    "Omega-3 EPA DHA",
+    "Fish oil EPA DHA",
+    // The same abbreviations wearing a strength, which is how somebody writing one
+    // down actually writes it.
+    "DHEA 50 mg",
+    "TUDCA 500 mg",
+    "Vitamin K2 MK-7",
+    "Creatine HCl",
+    // THE DELIBERATE UNDER-MATCH, pinned so it is a decision and not a drift: a
+    // short brand shouted on its own is the SAME SHAPE as "DHEA 50 mg" and stays
+    // quiet. Missing an offer costs a person nothing; firing on their supplement
+    // shelf costs them every future offer. With a dose form on the end — the way
+    // portals usually write it — "HCTZ 25 MG TAB" is caught above.
+    "HCTZ 25 mg",
+    "ASA 81 mg",
+    // What RxNorm answers with, which `isCleanerName` must be able to accept.
+    "hydrochlorothiazide 25 MG oral tablet",
+    "amlodipine besylate 5 MG oral tablet",
     // Empty / whitespace: nothing to offer.
     "",
     "   ",
@@ -104,10 +181,15 @@ describe("the fixtures that already sit near this boundary", () => {
 
   it("does not light up on the e2e naming convention", () => {
     // THE CLOSE CALL, and it is worth pinning on its own. Every e2e fixture is
-    // prefixed "E2E ", which IS a shouted word — "E2E Loratadine" is quiet only
-    // because 3 of its 13 letters shout, under the 0.5 share. Lower that share and
-    // every seeded medication in the suite grows an offer card at once, in specs
-    // that assert on the import page's geometry and never mention names.
+    // prefixed "E2E ", which IS a shouted token: two letters, and it is the only
+    // one in the name. It stays quiet because two letters is an abbreviation
+    // rather than a shouted word and one abbreviation is not a dispensing label.
+    //
+    // (An earlier version of this comment said "3 of its 13 letters shout, under
+    // the 0.5 share". Both halves were wrong — the module's own letter count gives
+    // 2 of 12 — and the share rule they described has since been removed. The
+    // arithmetic is recorded here because a wrong number in the one place a future
+    // reader would trust it is worse than no number.)
     expect(shoutingWords("E2E Loratadine")).toEqual(["E2E"]);
     expect(isImportedDocumentName("E2E Loratadine")).toBe(false);
   });

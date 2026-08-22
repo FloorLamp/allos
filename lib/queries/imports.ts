@@ -795,6 +795,14 @@ export function getDocumentMedications(profileId: number, docId: number) {
 // the medication is now called. Without it the row would vanish at the moment of the
 // change and there would be nowhere on this page that records what happened.
 //
+// It is deliberately NOT scoped on `kind`, and that matters because the WRITE used to
+// be. A person can re-save an imported medication as a Supplement from the medication
+// form (`updateIntakeItem` writes `kind` straight from the form and leaves `source`
+// and `document_id` alone); when the write required `kind = 'medication'` and this
+// read did not, that row kept its offer card and lost the button behind it forever.
+// The two are now scoped identically — provenance, not classification — so every row
+// this returns is a row the write can reach.
+//
 // The underlying read's name order is kept, so the card lists in the same order as
 // the medications listing beside it.
 export function getDocumentImportedNameOffers(

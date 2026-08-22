@@ -14,9 +14,28 @@ import { serializeRxcuiIngredients } from "./rxnorm";
 //
 // WHAT IT MAY TOUCH, and the scoping is the safety argument rather than a detail:
 // one row, in the given profile, produced by the given document, in the extracted
-// set, of kind 'medication'. A hand-entered medication is unreachable from here at
-// any profile, under any id, which is why the offer cannot become the display pass
-// the doctrine rejects — there is no code path from it to a name somebody typed.
+// set, whose stored name is not blank. A hand-entered medication is unreachable from
+// here at any profile, under any id, which is why the offer cannot become the display
+// pass the doctrine rejects — there is no code path from it to a name somebody typed.
+//
+// IT IS EXACTLY WHAT THE OFFER LISTS, and it did not used to be. These statements
+// also required `kind = 'medication'` while the read that feeds the card
+// (lib/queries/imports.ts `getDocumentImportedNameOffers`) did not, so a person who
+// re-saved an imported medication as a Supplement — one shipped form, one select —
+// kept the offer card and lost the button behind it forever: "Couldn't rename that
+// medication." `kind` is the PERSON's classification of a row and they may change it
+// at any time; the row's PROVENANCE is `source = 'extracted'` plus `document_id`, and
+// provenance is what this boundary is scoped on. The import writes extracted intake
+// rows at one place only (lib/import-persist.ts) and always as kind 'medication', so
+// dropping the clause widens the reachable set by nothing except the rows somebody
+// deliberately reclassified — which are the rows the card was already offering.
+//
+// A BLANK STORED NAME is refused here rather than one layer up. `COALESCE` preserves
+// what the document said forever, so adopting over an empty name would write an empty
+// `source_name` that nothing can ever correct; and there is no document label to
+// preserve, which is the whole reason the write exists. Migration
+// 101-recover-blank-name-prescriptions is this tree's own record that blank extracted
+// names have existed.
 
 // The stored name of one imported medication, under exactly the scoping the write
 // below uses — the term an offer is built from. Returns null when the row is not
@@ -31,7 +50,7 @@ export function importedMedicationName(
     .prepare(
       `SELECT name FROM intake_items
         WHERE id = ? AND profile_id = ? AND document_id = ?
-          AND source = 'extracted' AND kind = 'medication'`
+          AND source = 'extracted' AND TRIM(name) <> ''`
     )
     .get(itemId, profileId, documentId) as { name: string } | undefined;
   return row?.name ?? null;
@@ -59,7 +78,7 @@ export function adoptImportedName(
     .prepare(
       `SELECT id, name FROM intake_items
         WHERE id = ? AND profile_id = ? AND document_id = ?
-          AND source = 'extracted' AND kind = 'medication'`
+          AND source = 'extracted' AND TRIM(name) <> ''`
     )
     .get(itemId, profileId, documentId) as
     { id: number; name: string } | undefined;
@@ -77,7 +96,7 @@ export function adoptImportedName(
               rxcui = ?,
               rxcui_ingredients = ?
         WHERE id = ? AND profile_id = ? AND document_id = ?
-          AND source = 'extracted' AND kind = 'medication'`
+          AND source = 'extracted' AND TRIM(name) <> ''`
     ).run(
       chosen,
       rxcui,

@@ -231,9 +231,19 @@ Three parts, and a new importer inherits the boundary by writing rows the same
 way any importer already does:
 
 - `lib/imported-name.ts` — the pure predicate. Does a stored name read as the
-  document's label? Two shouted words, or one shouted word carrying most of the
-  name's letters. Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
-  `"penicillin v potassium"`.
+  document's label? Three shapes, each a different one rather than more of the
+  same: a SHOUTED WORD (six or more upper-case letters in one token — no
+  abbreviation anybody uses as a medicine's name is that long), a DISPENSING
+  LABEL (two or more shouted tokens with one of four-plus letters, or three of
+  any length — a name plus a strength unit plus a dose form), and TALL MAN
+  LETTERING (`"amLODIPine"`, `"predniSONE"` — the ISMP convention and standard
+  Epic/Cerner output). Quiet on `"Vitamin D3 5000 IU"`, `"Metformin HCl ER"`,
+  `"penicillin v potassium"`, and on the whole abbreviation shelf — `"NAC"`,
+  `"DHEA"`, `"TUDCA"`, `"5-HTP"`, `"EPA/DHA"`, `"MCT oil"`. It deliberately
+  UNDER-matches a short brand shouted alone (`"ASA 81 mg"`, `"HCTZ 25 mg"`),
+  which is the same shape as `"DHEA 50 mg"` and cannot be separated from it
+  without a vocabulary of drug names: a missed offer costs nothing, an offer on
+  somebody's supplement shelf costs every future one.
 - `lib/queries/imports.ts` `getDocumentImportedNameOffers` — the SCOPE GATE, and
   the reason the offer cannot drift into the display pass this rule rejects. The
   predicate is only ever asked about rows an import wrote (`source =
@@ -241,8 +251,12 @@ way any importer already does:
   rows land in `intake_items` as `extracted` with a `document_id` is covered on
   the day it ships, with nothing to register.
 - `lib/imported-name-write.ts` — the one write. Scoped to profile + document +
-  extracted + medication, and `source_name` is written with `COALESCE`, so what
-  the DOCUMENT said is recorded once and never overwritten by a later rename.
+  extracted + a non-blank stored name — EXACTLY what the offer read lists, so
+  there is no row the card can show and the button cannot reach. It is not scoped
+  on `kind`: that is the person's classification and they may change it from the
+  medication form at any time, while provenance is what the boundary is about.
+  `source_name` is written with `COALESCE`, so what the DOCUMENT said is recorded
+  once and never overwritten by a later rename.
 
 Why not the cheap version: a casing pass at the display boundary cannot tell
 whether `"OR"` is a route abbreviation or a word in a product name, and it
@@ -275,6 +289,17 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
   hand-entered medication with the same shouting shape is never offered,
   accepting preserves the document's label through a second adoption, and the
   write refuses another profile's row, another document's row, and a manual row.
+  Each half of the scoping is asserted BY A ROW THAT DIFFERS ONLY IN THAT HALF —
+  the attack row shares the profile's document, the document's id and the
+  extracted source, so the clause under test is the only thing that can reject
+  it. A guard whose attack row is rejected by a neighbouring clause proves the
+  neighbour, not the subject.
+- `lib/__action_tests__/imported-name.actions.test.ts` — the RxNorm re-check.
+  An unreachable or disagreeing lookup REFUSES rather than renaming, and the row
+  is unchanged afterwards; nothing else in the tree observed that block.
+- `lib/__action_tests__/imported-names-card.render.test.ts` — the import review
+  page actually RENDERS the card. Deleting the render used to leave every tier
+  green and `eslint` at exit 0, so the feature could disappear silently.
 
 ### 10. Lead + fold
 

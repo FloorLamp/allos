@@ -71,6 +71,7 @@ import BackLink from "@/components/BackLink";
 import {
   buildImportTabs,
   resolveImportTab,
+  MEDICATIONS_TAB_KEY,
   visitItem,
   conditionItem,
   allergyItem,
@@ -349,7 +350,7 @@ export default async function ImportDetailPage(props: {
   // renamed from here. The read is what gates the offer to imported rows — a name
   // somebody typed is never examined (lib/queries/imports.ts).
   const importedNameRows =
-    activeTab?.key === "medications"
+    activeTab?.key === MEDICATIONS_TAB_KEY
       ? getDocumentImportedNameOffers(profile.id, id)
       : [];
 

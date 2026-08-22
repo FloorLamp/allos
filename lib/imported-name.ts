@@ -48,66 +48,110 @@ const EDGE_PUNCT_RE = /^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g;
 // shelf.
 const MIN_SHOUT_LETTERS = 2;
 
-// Two shouting words is the floor for "this is a document string". ONE is ordinary
-// in a name somebody would write down: "Vitamin D3 5000 IU", "Metformin HCl ER",
-// "EpiPen". Two or more is the portal's register, not a person's — and the floor is
-// the reason the predicate does not need an allow-list of acronyms, which would be a
-// second vocabulary to maintain beside the RxNorm one.
+// SHOUTING IS NOT ONE SIGNAL, AND THE FIRST VERSION OF THIS MODULE TREATED IT AS ONE.
+// It asked "how much of this name is upper-case", which cannot tell the drug's name
+// being SHOUTED ("PREDNISONE 10 mg") from a name that simply IS an abbreviation
+// ("NAC", "DHEA", "MCT oil"). Measured over 19 ordinary supplement names, that rule
+// fired on 17 of them — an offer on every one of which is noise, and noise is the
+// one thing this offer cannot afford: a prompt that fires on ordinary names gets
+// dismissed by habit, taking the real one with it. The three rules below replace it,
+// and each names a DIFFERENT shape rather than a different amount of the same one.
+
+// RULE 1 — A SHOUTED WORD. Six or more upper-case letters in one token is a word
+// being shouted, not an abbreviation being used: the longest abbreviation anybody
+// writes as a medicine's own name is five letters ("TUDCA"), while the shapes portals
+// export are full words — PREDNISONE, LISINOPRIL, METFORMIN, CALCIUM, EPIPEN,
+// TABLET. One is enough on its own.
+const SHOUTED_WORD_LETTERS = 6;
+
+// RULE 2 — A DISPENSING LABEL. Two or more shouted tokens, at least one of them four
+// letters or longer ("HCTZ 25 MG TAB"), or three or more of any length ("ASA 81 MG
+// TAB", "VIT D 1000 IU CAP"). A name plus a strength unit plus a dose form is a
+// pharmacy label; two SHORT abbreviations on their own are where the supplement shelf
+// lives ("EPA/DHA", "Omega-3 EPA DHA"), so two is not enough unless one of them is
+// long enough to be a word rather than an initialism.
+const SHOUTED_ABBREVIATION_LETTERS = 4;
 const MIN_SHOUTING_WORDS = 2;
+const MIN_SHOUTING_ABBREVIATIONS = 3;
 
-// The one-word exception, and it is a share rather than a count: a single shouting
-// word that is MOST of the name's letters means the drug's own name is shouted
-// ("PREDNISONE 10 mg", "HCTZ 25 mg"), which is the other shape portals export. The
-// share is measured in LETTERS, so the digits and units around it neither dilute nor
-// inflate it.
-const DOMINANT_SHOUT_SHARE = 0.5;
+// RULE 3 — TALL MAN LETTERING, and this is the one the first version was INVERTED
+// against. "amLODIPine", "predniSONE", "traMADol", "glipiZIDE", "hydrOXYzine": an
+// upper-case run inside an otherwise lower-case word, the ISMP convention for
+// look-alike drug names and standard Epic/Cerner medication-list output. It is the
+// single commonest register this feature exists for, and every one of those names was
+// QUIET under the old share rule because most of their letters are lower case.
+//
+// The shape is an upper-case run of two or more letters preceded by two or more
+// lower-case letters IN THE SAME TOKEN. Both floors are load-bearing: one upper-case
+// letter is ordinary product spelling ("CoQ10", "EpiPen", "NaCl"), and one PRECEDING
+// lower-case letter is the "mRNA"/"GoLYTELY" shape, which is a spelling rather than a
+// warning.
+//
+// KNOWN CLOSE CALL: trademark styling of the same shape fires — "MiraLAX", "HumaLOG".
+// That is the direction to be wrong in. A true answer buys an OFFER the person can
+// ignore, never a rewrite, and RxNorm's answer for those really is the plainer name.
+const TALL_MAN_RE = /[a-z]{2}[A-Z]{2,}/;
 
-function letterCount(word: string): number {
-  return (word.match(/[A-Za-z]/g) ?? []).length;
+// How many letters does this token shout? 0 when it does not shout at all. Digits and
+// punctuation inside the token are ignored, so "10MG" shouts on its "MG" and "B12"
+// shouts not at all (one letter).
+function shoutedLetters(word: string): number {
+  const letters = word.match(/[A-Za-z]/g) ?? [];
+  if (letters.length < MIN_SHOUT_LETTERS) return 0;
+  return letters.every((c) => c === c.toUpperCase()) ? letters.length : 0;
 }
 
-// Is this a shouted word? At least MIN_SHOUT_LETTERS letters, every one of them
-// uppercase. Digits and punctuation inside the word are ignored, so "10MG" shouts on
-// its "MG" and "B12" does not shout at all (one letter).
-function shouts(word: string): boolean {
-  const letters = word.match(/[A-Za-z]/g) ?? [];
-  return (
-    letters.length >= MIN_SHOUT_LETTERS &&
-    letters.every((c) => c === c.toUpperCase())
-  );
+function tokens(name: string): string[] {
+  return (name ?? "")
+    .split(WORD_SPLIT_RE)
+    .map((w) => w.replace(EDGE_PUNCT_RE, ""))
+    .filter((w) => w.length > 0);
 }
 
 // Every shouted word in a name, in source order. Exported for the guard, which
 // asserts on WHICH words a name shouts rather than only on the verdict — a predicate
 // that reached the right answer off the wrong words would otherwise pass.
 export function shoutingWords(name: string): string[] {
-  return (name ?? "")
-    .split(WORD_SPLIT_RE)
-    .map((w) => w.replace(EDGE_PUNCT_RE, ""))
-    .filter((w) => w.length > 0 && shouts(w));
+  return tokens(name).filter((w) => shoutedLetters(w) > 0);
+}
+
+// Every Tall Man token in a name, in source order — "amLODIPine" out of
+// "amLODIPine Besylate 5 MG tablet". Exported for the same reason as shoutingWords:
+// the guard pins which token carried the verdict, not only the verdict.
+export function tallManWords(name: string): string[] {
+  return tokens(name).filter((w) => TALL_MAN_RE.test(w));
 }
 
 // Does this stored name read as the SOURCE DOCUMENT's label rather than as a name?
 //
-// True on either shape portals actually export:
-//   • two or more shouted words ("Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)",
-//     "LISINOPRIL 10MG TAB");
-//   • one shouted word carrying most of the name's letters ("PREDNISONE 10 mg").
+// True on the three shapes portals actually export — a shouted word, a dispensing
+// label, or Tall Man lettering (see the rules above).
 //
-// False on every shape a person writes, including the ones that legitimately carry an
-// acronym: "Vitamin D3 5000 IU", "Metformin HCl ER", "Tylenol (acetaminophen)",
-// "penicillin v potassium", "CoQ10".
+// False on every shape a person writes, INCLUDING the ones that are an abbreviation
+// all the way through: "NAC", "DHEA", "TUDCA", "5-HTP", "EPA/DHA", "MCT oil",
+// "Vitamin D3 5000 IU", "Metformin HCl ER", "CoQ10".
+//
+// THE DELIBERATE UNDER-MATCH: a short brand shouted on its own — "ASA 81 mg",
+// "HCTZ 25 mg", "LASIX 40 mg" — stays quiet, because it is the same SHAPE as "DHEA
+// 50 mg" and "TUDCA 500 mg" and no rule can separate them without a vocabulary of
+// drug names. Missing an offer costs a person nothing; firing on their supplement
+// shelf costs them every future offer. The same strings with a dose form on the end
+// ("HCTZ 25 MG TAB") are caught by rule 2, which is how portals usually write them.
 //
 // A true answer is licence to OFFER a cleaner name, never to apply one.
 export function isImportedDocumentName(name: string): boolean {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return false;
-  const shouted = shoutingWords(trimmed);
-  if (shouted.length >= MIN_SHOUTING_WORDS) return true;
-  if (shouted.length === 0) return false;
-  const total = letterCount(trimmed);
-  if (total === 0) return false;
-  return letterCount(shouted[0]) / total >= DOMINANT_SHOUT_SHARE;
+  if (tallManWords(trimmed).length > 0) return true;
+  const shouted = tokens(trimmed)
+    .map(shoutedLetters)
+    .filter((n) => n > 0);
+  if (shouted.some((n) => n >= SHOUTED_WORD_LETTERS)) return true;
+  if (shouted.length >= MIN_SHOUTING_ABBREVIATIONS) return true;
+  return (
+    shouted.length >= MIN_SHOUTING_WORDS &&
+    shouted.some((n) => n >= SHOUTED_ABBREVIATION_LETTERS)
+  );
 }
 
 // Is `candidate` a usable replacement for `current`? The offer exists to REPLACE a

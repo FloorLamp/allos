@@ -98,6 +98,13 @@ export function usesAnalyteGrid(category: string | undefined | null): boolean {
   return category == null || !NON_ANALYTE_CATEGORIES.has(category);
 }
 
+// The Medications tab's key, as a value rather than a literal at each end. The import
+// detail page asks `activeTab?.key === MEDICATIONS_TAB_KEY` to decide whether to build
+// the imported-name offer rows (#3480); with a bare "medications" on both sides,
+// renaming the key here would silently stop that card from ever rendering and no gate
+// could see it.
+export const MEDICATIONS_TAB_KEY: ImportTabKind = "medications";
+
 export interface ImportTab {
   // The ?tab= SearchParam value; unique within a strip.
   key: string;
@@ -233,7 +240,7 @@ export function buildImportTabs(
   );
   add("dental-procedures", "Dental", counts.dentalProcedures);
   add("appointments", "Appointments", counts.appointments);
-  add("medications", "Medications", counts.medications);
+  add(MEDICATIONS_TAB_KEY, "Medications", counts.medications);
   add(
     "body",
     "Body metrics",

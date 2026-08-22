@@ -15,6 +15,16 @@
 //   • declining leaves the row exactly as the import wrote it;
 //   • another profile's row is unreachable from this profile's document.
 //
+// EACH HALF OF THE SCOPING IS ASSERTED BY A ROW THAT DIFFERS ONLY IN THAT HALF, and
+// that is not pedantry — it is the difference between a guard and a comment. The
+// first version of this file attacked `profile_id` with a row in a DIFFERENT
+// DOCUMENT, so `document_id` rejected it and the profile clause never ran: replacing
+// `profile_id = ?` with `? IS NOT NULL` in all three statements left this file 12/12
+// green while a cross-profile rename succeeded from the action tier. The scope gate
+// had the same hole in the other direction — its manual row carried no `document_id`
+// at all, so `AND source = 'extracted'` could be deleted outright with the whole pure
+// and DB tiers green. An attack row must be IDENTICAL on every other predicate.
+//
 // The RxNorm network step is the Server Action's, not this core's, so the
 // candidate/code pair arrives here as an argument — the same seam the DB tier uses
 // for every other network-fed write.
@@ -124,6 +134,38 @@ function typeMedication(profileId: number, name: string): number {
          VALUES (?, ?, 'medication', 'manual')`
       )
       .run(profileId, name).lastInsertRowid
+  );
+}
+
+// The SAME hand-entered row, but stamped with this document's id — the isolated
+// control for `AND source = 'extracted'`. Every other predicate the offer read and
+// the write apply matches: profile, document, kind, a non-blank name that the
+// predicate would say `true` about. `source` is the only thing left that can reject
+// it, so if the clause goes, this row starts being offered and renamed.
+//
+// The shape is reachable, not hypothetical: `document_id` is a plain column on
+// intake_items and rows have been re-pointed at documents by reassign and merge.
+function typeMedicationInDocument(
+  profileId: number,
+  documentId: number,
+  name: string
+): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, kind, source, document_id)
+         VALUES (?, ?, 'medication', 'manual', ?)`
+      )
+      .run(profileId, name, documentId).lastInsertRowid
+  );
+}
+
+// Re-save an imported medication as a Supplement — exactly what `updateIntakeItem`
+// writes when somebody changes the kind select on the medication form, which leaves
+// `source` and `document_id` alone.
+function reclassifyAsSupplement(itemId: number): void {
+  db.prepare("UPDATE intake_items SET kind = 'supplement' WHERE id = ?").run(
+    itemId
   );
 }
 
@@ -300,5 +342,121 @@ describe("declining, and what the write cannot reach", () => {
       adoptImportedName(p, docB, itemA, CLEAN_NAME, CLEAN_RXCUI, [])
     ).toEqual({ ok: false, reason: "not-found" });
     expect(medRows(p)[0].name).toBe(PORTAL_NAME);
+  });
+});
+
+describe("the scoping, one clause at a time", () => {
+  // Each case below builds an attack row that is IDENTICAL to a legitimate one on
+  // every predicate except the one under test. Delete that one clause and the case
+  // goes red; delete any other and it stays green, which is what makes it an
+  // observer of that clause rather than of its neighbours.
+
+  it("refuses another profile's row IN THAT PROFILE'S OWN DOCUMENT — profile_id alone", () => {
+    const mine = newProfile("profile clause mine");
+    const theirs = newProfile("profile clause theirs");
+    const theirDoc = newDocument(theirs);
+    importCcd(theirs, theirDoc, medsCcd(PORTAL_NAME));
+    const theirItem = medRows(theirs)[0].id;
+
+    // `theirDoc` and `theirItem` are BOTH passed, so document_id matches, source
+    // matches, the name is non-blank. Only `profile_id = ?` can say no — and both
+    // ids are small global integers a forged form could carry.
+    expect(importedMedicationName(mine, theirDoc, theirItem)).toBeNull();
+    expect(
+      adoptImportedName(mine, theirDoc, theirItem, CLEAN_NAME, CLEAN_RXCUI, [])
+    ).toEqual({ ok: false, reason: "not-found" });
+    expect(medRows(theirs)[0].name).toBe(PORTAL_NAME);
+    expect(medRows(theirs)[0].source_name).toBeNull();
+  });
+
+  it("never offers a typed row stamped with this document — source alone", () => {
+    const p = newProfile("scope clause read");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(PORTAL_NAME));
+    const typed = typeMedicationInDocument(p, doc, "HCTZ 25 MG TAB");
+    // The predicate WOULD say true about this string; the read must never ask it.
+    expect(isImportedDocumentName("HCTZ 25 MG TAB")).toBe(true);
+
+    const offers = getDocumentImportedNameOffers(p, doc);
+    expect(offers.map((o) => o.id)).not.toContain(typed);
+    expect(offers.map((o) => o.name)).toEqual([PORTAL_NAME]);
+  });
+
+  it("cannot rename a typed row stamped with this document — source alone", () => {
+    const p = newProfile("scope clause write");
+    const doc = newDocument(p);
+    const typed = typeMedicationInDocument(p, doc, "HCTZ 25 MG TAB");
+
+    expect(importedMedicationName(p, doc, typed)).toBeNull();
+    expect(
+      adoptImportedName(p, doc, typed, "Hydrochlorothiazide", "5487", [])
+    ).toEqual({ ok: false, reason: "not-found" });
+    expect(medRows(p).find((r) => r.id === typed)?.name).toBe("HCTZ 25 MG TAB");
+  });
+
+  it("refuses a blank imported name — nothing to preserve, and COALESCE is forever", () => {
+    const p = newProfile("blank name");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(PORTAL_NAME));
+    const itemId = medRows(p)[0].id;
+    db.prepare("UPDATE intake_items SET name = '' WHERE id = ?").run(itemId);
+
+    expect(importedMedicationName(p, doc, itemId)).toBeNull();
+    expect(
+      adoptImportedName(p, doc, itemId, CLEAN_NAME, CLEAN_RXCUI, [])
+    ).toEqual({ ok: false, reason: "not-found" });
+    // The refusal matters because `source_name` is written ONCE: an empty string
+    // there would be preserved by COALESCE for the life of the row.
+    expect(medRows(p)[0].source_name).toBeNull();
+  });
+});
+
+describe("a row somebody re-saved as a supplement", () => {
+  // THE ASYMMETRY THIS PR FIXES. The offer read has never filtered on `kind`; the
+  // write used to require `kind = 'medication'`. So one pass through the shipped
+  // medication form — change the kind select, save — left the card listing a row
+  // whose "Use this name" button could only ever answer "Couldn't rename that
+  // medication." The write is now scoped on provenance, like the read.
+  //
+  // These two cases are the observers for that decision. Re-add `AND kind =
+  // 'medication'` to lib/imported-name-write.ts and both go red.
+
+  it("is still offered, because the offer follows provenance not kind", () => {
+    const p = newProfile("supplement offered");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(PORTAL_NAME));
+    const itemId = medRows(p)[0].id;
+    reclassifyAsSupplement(itemId);
+
+    expect(getDocumentImportedNameOffers(p, doc).map((o) => o.name)).toEqual([
+      PORTAL_NAME,
+    ]);
+  });
+
+  it("can still be renamed, and keeps the document's label", () => {
+    const p = newProfile("supplement renamed");
+    const doc = newDocument(p);
+    importCcd(p, doc, medsCcd(PORTAL_NAME));
+    const itemId = medRows(p)[0].id;
+    reclassifyAsSupplement(itemId);
+
+    expect(importedMedicationName(p, doc, itemId)).toBe(PORTAL_NAME);
+    expect(
+      adoptImportedName(p, doc, itemId, CLEAN_NAME, CLEAN_RXCUI, [])
+    ).toEqual({ ok: true });
+
+    const row = medRows(p)[0];
+    expect(row.name).toBe(CLEAN_NAME);
+    expect(row.source_name).toBe(PORTAL_NAME);
+    // And the person's own classification is untouched by the rename.
+    expect(
+      (
+        db
+          .prepare("SELECT kind FROM intake_items WHERE id = ?")
+          .get(itemId) as {
+          kind: string;
+        }
+      ).kind
+    ).toBe("supplement");
   });
 });
