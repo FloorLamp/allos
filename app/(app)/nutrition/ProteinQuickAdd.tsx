@@ -187,6 +187,10 @@ export default function ProteinQuickAdd({
           g today
         </span>
       </div>
+      {/* 32px RENDERED, NOT 28 (#3486's reach). `.tap-target`'s `inset: -6px`
+          adds a fixed 12px, so it reaches #3514's 44px floor only from 32px up;
+          at `h-7` this pair was 40px effective while carrying the class that
+          claims the floor. lib/tap-floor-reach.ts holds the arithmetic. */}
       <button
         type="button"
         data-testid="protein-quickadd-undo"
@@ -194,7 +198,7 @@ export default function ProteinQuickAdd({
         title="Remove protein grams"
         disabled={!canSubmit || total <= 0}
         onClick={() => apply(-1)}
-        className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
+        className="tap-target flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
       >
         <IconMinus className="h-4 w-4" stroke={2} />
       </button>
@@ -223,7 +227,7 @@ export default function ProteinQuickAdd({
         title="Add protein grams"
         disabled={!canSubmit}
         onClick={() => apply(1)}
-        className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"
+        className="tap-target flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"
       >
         <IconPlus className="h-4 w-4" stroke={2} />
       </button>
