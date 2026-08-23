@@ -45,6 +45,7 @@ import {
   seedFromEnv,
 } from "./seed-rng";
 import { personaFromEnv } from "./seed-personas";
+import { LONG_NAMES } from "./seed-long-names";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -1223,6 +1224,28 @@ for (const [name, canonical, value, unit] of [
   );
 }
 
+// #2594 dial: textLength (#3631). ONE analyte carrying the full name a reference
+// lab actually prints, so the tables and pickers that render analyte names have a
+// value nothing in the app bounds. See scripts/seed-long-names.ts for why this is a
+// dial and not the baseline, and for the roster of families that still need one.
+if (DIALS.textLength === "long") {
+  medIds.push(
+    Number(
+      insMed.run(
+        daysAgo(30),
+        "lab",
+        LONG_NAMES.clinicalResult,
+        "38",
+        "ng/mL",
+        "30-100 ng/mL",
+        38,
+        LONG_NAMES.clinicalResult,
+        "Vitamin panel"
+      ).lastInsertRowid
+    )
+  );
+}
+
 // Derive clinical (high/low) and non-optimal flags from the canonical reference
 // + optimal bands, so seeded readings flag exactly like real imported ones.
 reconcileFlags(SEED_PROFILE_ID, medIds);
@@ -1557,6 +1580,33 @@ courseIns.run(
   "switched",
   "Switched to simvastatin"
 );
+
+// #2594 dial: textLength (#3631). THE class's canonical instance — one INACTIVE
+// portal-imported medication whose name is what a pharmacy portal really writes.
+// Inactive on purpose: the dose ledger's Item filter suffixes an inactive item
+// " (inactive)" (components/intake/DoseLedgerView.tsx), which is the widest option
+// #3478's select had to size against. With this planted, the geometry census can
+// express the unbounded-name overflow; without it, its longest medication label is
+// "Atorvastatin (inactive)" at 23 characters, which fits a phone at any width.
+if (DIALS.textLength === "long") {
+  const importedLongId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, notes, active, condition, obligation, kind, document_id, source)
+         VALUES (1, ?, 'Imported from the pharmacy portal', 0, 'daily', 'may', 'medication', NULL, 'extracted')`
+      )
+      .run(LONG_NAMES.intakeItem).lastInsertRowid
+  );
+  medDose.run(importedLongId, "500 mg", null, "any", 0);
+  courseIns.run(
+    importedLongId,
+    daysAgo(80),
+    daysAgo(30),
+    "completed_course",
+    "Imported course"
+  );
+}
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
 // NSAID) — a MAJOR bleeding-risk interaction that surfaces on the intake surfaces, the
@@ -1896,6 +1946,22 @@ condIns.run(
   null,
   "Diet + exercise managed"
 );
+
+// #2594 dial: textLength (#3631). One problem-list entry at the length a coded
+// import writes, so the chips and pickers that render condition names have a value
+// nothing in the app bounds. Resolved, so it never joins the active problem list the
+// baseline story is about — only the surfaces that render every condition.
+if (DIALS.textLength === "long") {
+  condIns.run(
+    LONG_NAMES.condition,
+    "I10",
+    "ICD-10",
+    "resolved",
+    "2018-02-05",
+    "2019-02-28",
+    "Imported problem list"
+  );
+}
 condIns.run(
   "Hyperlipidemia",
   "E78.5",
