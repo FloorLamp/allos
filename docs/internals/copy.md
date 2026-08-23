@@ -177,12 +177,15 @@ Y are high"). A comma was the separator until a phone review counted five
 analytes in a line naming three: "Lymphocytes, Relative" and "Neutrophils,
 Absolute" are single lab names, so the list contradicted the count beside it.
 
-Five sites join names this way and all five ask that module: the Results
-trajectory roster, the Training-watch muscle roster, the illness dose-lane
-roster, the food-suggestion and curated-supplement headlines, and the
-food-suggestion finding's "Because your …" detail. A sixth
-(`lib/food-limit-note.ts`) joins the same `triggeredBy` field and takes the same
-rule.
+Seven modules join names this way and all seven ask that module: the Results
+trajectory roster (`lib/trajectory-rollup.ts`), the Training-watch muscle roster
+(`lib/training-findings-rollup.ts`), the illness dose-lane roster
+(`lib/illness-episode-format.ts`), the food-suggestion headline
+(`lib/food-suggest.ts`), the curated-supplement headline
+(`components/CuratedSupplementSuggestions.tsx`), the food-suggestion finding's
+"Because your …" detail (`lib/rule-findings.ts`), and the food-limit tap note
+(`lib/food-limit-note.ts`). `git grep "from \"./summarize-names\""` is the
+census — membership is the IMPORT, not a spelling a source grep could miss.
 
 **Guard.** `lib/__tests__/summarize-names.test.ts` asserts the PROPERTY, not the
 string: splitting the rendered line on the separator must recover exactly the
