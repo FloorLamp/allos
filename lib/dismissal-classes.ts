@@ -637,6 +637,14 @@ export const NON_DISMISSAL_PREFIXES: readonly {
     what: "digest SERIES key namespace for a practice cadence (lib/trends-practices); the bus sees it only inside a `digest:` key",
   },
   {
+    prefix: "nutrition:",
+    what: "digest SERIES key namespace for protein and food-group movement (lib/trends-digest-series); the bus sees it only inside a `digest:` key",
+  },
+  {
+    prefix: "logging:",
+    what: "digest SERIES key namespace for food, dose, and weighing logging cadence (lib/trends-digest-series); the bus sees it only inside a `digest:` key",
+  },
+  {
     prefix: "document:",
     what: "provenance source tag on an imported row (lib/document-source)",
   },
