@@ -2704,6 +2704,40 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     its TEXT (toasts stack, so "the toast" is not a thing, and on an undo path
     the top card is the one the next assertion is about), click its `Dismiss`,
     then assert `toHaveCount(0)` before the next round trip.
+19. **A tap on a hydrated element with a live handler produces NO CLICK AT ALL,
+    intermittently, after a touch DRAG** (#3262). The tell is an empty click log
+    beside a perfect touch log: `touchstart touches:1`, `touchend touches:0`,
+    zero moves, `elementFromPoint` naming the element the tap was aimed at, the
+    element's `onClick` still committed on `__reactProps$`, and `page errors:
+[]`. Nothing in the page can see it, because the page is not where it
+    happens. **Chromium suppresses the tap gesture of the FIRST touch sequence
+    after a drag whose starting element forbade the drag's axis** — the raw
+    touch events and the touch-type PointerEvents still arrive, but no
+    `GestureTap` is made, so the renderer synthesises no `mousedown`, no
+    `mouseup` and no `click`. Measured on a standalone page with no React in it,
+    phone viewport, Chromium 1194: `touch-action: none` and `pan-x` on the
+    element the drag starts on lose the next tap 6/6; `pan-y`, `manipulation`
+    and `auto` lose 0/6. The debt is exactly one touch sequence and roughly
+    300 ms wide (lost at gaps 0–300 ms, recovered by 350–400 ms, second tap
+    always lands). This suite drives every sheet flick from a `touch-none` drag
+    handle (components/overlay/tokens.ts), so every flick incurs it.
+    **Fix: spend the sequence, do not wait it out.** `touchSwipe`/`touchSwipeFrom`
+    now end with `consumeSuppressedTap` — a `touchStart` immediately cancelled,
+    which is a complete sequence to the browser's arbitration and can never
+    produce a click by construction, and which every recognizer in the app
+    ignores because nothing moved. 23/24 taps lost without it, 0/24 with it, at
+    gaps of 14–103 ms. A sleep would have been a guess: the window is a
+    wall-clock timer in the BROWSER process that the page cannot observe, and a
+    starved runner outlasts any constant.
+    **The reproduction is committed**: `node scripts/tap-suppression-probe.mjs`
+    prints all three tables above in about a minute, on a page with no React and
+    no app in it. #3262 asked for a reproduction outside CI as the single most
+    valuable thing anyone could contribute; that is it, and it keeps these
+    numbers checkable instead of remembered.
+    **And this is why the throttling recipe found nothing** across five probe
+    rounds. `Emulation.setCPUThrottlingRate` slows the RENDERER; the timer that
+    closes this window is not in the renderer, and 20x moved it not at all. Before
+    reaching for the throttle, ask which process the suspect state lives in.
 
 **Two spec-authoring hazards worth their own note.**
 
