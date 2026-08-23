@@ -13,6 +13,10 @@
 //      items in the shared set, so a flagged HDL keeps one key and action verb.
 //   2. ONE within-band comparator — compareWithinBand (lib/upcoming.ts), shared
 //      with groupUpcoming, so the two surfaces order the same facts identically.
+//      buildAttentionModel emits the model ALREADY in that order, with the item key
+//      as a last-resort tiebreak so the rule is total (#3554) — see
+//      compareAttentionOrder below for why a surface must not inherit generator
+//      emission order by default.
 //   3. The Upcoming presentation groups the full model. Dashboard placement projects
 //      the same items into Now, Ahead, and Show everything without changing identity.
 //   4. `attentionBadgeItems` is the care-tier subset used only for the app badge;
@@ -213,9 +217,44 @@ function reviewToItem(count: number): UpcomingItem | null {
   };
 }
 
-// Assemble every signal into ONE flat item set — the model both surfaces render.
-// Order within a surface is decided by the grouping functions (each sorts with the
-// shared compareWithinBand), so this just concatenates deterministically.
+// THE ORDER OF THE ATTENTION MODEL (#3554). Total, stated here, and the only order
+// any consumer of the model may assume:
+//
+//     effective due date  →  risk priority (#517)  →  domain  →  dose-day slot
+//     (#297)  →  title  →  item key
+//
+// The first five keys are the shared compareWithinBand (lib/upcoming.ts) — the one
+// order the Upcoming page's bands already render in. The LAST key is what makes the
+// rule total: `key` is the item's stable identity and no two items in one model
+// share one, so no pair can tie. Without it, `Array.prototype.sort` is stable and
+// hands a tie straight back to the order the generators happened to emit in — which
+// is the whole defect, relocated rather than fixed.
+//
+// It matters because the dashboard reads this order as `sourceOrder`
+// (lib/dashboard-candidates/attention.ts), and the Now lane's ordinary tier ranks by
+// score then `sourceOrder` before cutting at NOW_CANDIDATE_CAP. Every owed `must`
+// dose scores identically, so the cut was decided by generator emission: collectUpcoming
+// concatenates its generators in source order and `doseItems` emits doses grouped by
+// ITEM, so one supplement's Midday AND Evening doses filled both Now slots while
+// another supplement's equally-owed Midday dose was absent — an Evening dose ranked
+// ahead of a Midday one, on cards printing the slot label that was supposed to explain
+// the order (#297/#2578, the Upcoming page's version of the same interleaving).
+function compareAttentionOrder(
+  a: UpcomingItem,
+  b: UpcomingItem,
+  today: string
+): number {
+  return (
+    compareWithinBand(a, b, today) ||
+    (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+  );
+}
+
+// Assemble every signal into ONE flat item set — the model both surfaces render —
+// in the ONE order stated above. The Upcoming page still groups and re-sorts with
+// the same comparator (groupAttentionForPage), so ordering here changes nothing it
+// renders; it gives the DASHBOARD, whose `sourceOrder` is this list's index, the
+// canonical order instead of raw generator emission (#3554).
 export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
   const items: UpcomingItem[] = [...input.upcoming];
   for (const b of input.flaggedBiomarkers)
@@ -228,7 +267,7 @@ export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
     items.push(integrationToItem(i));
   const review = reviewToItem(input.reviewCount);
   if (review) items.push(review);
-  return items;
+  return items.sort((a, b) => compareAttentionOrder(a, b, input.today));
 }
 
 // ---------------------------------------------------------------------------
