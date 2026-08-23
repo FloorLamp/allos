@@ -29,9 +29,10 @@
 //     the limit AND no larger than what the catalog says that product contains at its
 //     largest stated serving. Ten softgels of AREDS 2 is 400 mg of zinc — ten times the
 //     limit, five times anything its label states — and no formula designed that.
-//   * the sentence about the TOTAL is appended only when those contributions ARE the
-//     total, at servings the product itself states. Anything else in the stack and the
-//     note explains the product's share and says where the rest came from.
+//   * the sentence about the TOTAL is appended only when ONE such product IS the whole
+//     total, at a serving its own label states. Anything else in the number — another
+//     bottle, or a second row for the same one — and the note explains the product's
+//     share and says where the rest came from.
 //
 // A note that explained someone else's total would teach a person to dismiss a real
 // warning, which is #3156's failure mode wearing the other face.
