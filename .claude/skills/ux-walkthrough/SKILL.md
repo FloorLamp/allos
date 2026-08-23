@@ -81,6 +81,21 @@ to the shots for fast human review.
   record `landedOn` in their metrics row and an "Alias routes" table in
   `audit.md`, so byte-identical shots are attributable. The registry test pins
   routes and `data-testid`s, so a rename fails the unit tier, not the next run.
+- **Committed chrome baseline (#3390)**: `scripts/census-chrome-baseline.json`
+  records the shell's rendered geometry — rail width, gutters, reading-column
+  width, content offset, top-bar and dock heights, title box — for five routes at
+  both census viewports. It is the file #1510's "re-annotate the census baseline"
+  criterion always assumed existed; before it, `metrics.json` was a run artifact
+  and there was nothing in the tree to annotate. A `pages` run compares the
+  surfaces it recognises and prints a **Committed chrome baseline** table in
+  `audit.md`, naming any surface it did not reach so a scoped run cannot read as a
+  full one. That table is advisory. The file is ENFORCED by
+  `e2e/census-chrome-baseline.spec.ts` against the pinned e2e fixture, which is
+  also the ONLY thing that may write it: regenerate with
+  `npm run gen:census-baseline` and commit the diff — that diff IS the annotation.
+  Never hand-edit a number; `lib/__tests__/census-chrome-baseline.test.ts` checks
+  the file is still in the writer's canonical form, floors it per viewport, and
+  walks `app/(app)` to confirm every recorded route still exists.
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS` overrides.
 - If Playwright can't find its browser build (version-pinned cache miss), set
   `UX_CHROMIUM` to a Chromium binary — in Claude Code's remote environment that

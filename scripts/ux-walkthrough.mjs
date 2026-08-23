@@ -86,6 +86,14 @@ import {
   geometryProbe,
 } from "./ux-geometry-census.mjs";
 import {
+  BASELINE_FILE,
+  censusSurfaceKey,
+  chromeBaselineAuditSection,
+  chromeProbe,
+  compareChrome,
+  readCommittedBaseline,
+} from "./census-chrome-baseline.mjs";
+import {
   HOVER_THRESHOLDS,
   hoverAuditSections,
   measureHover,
@@ -178,6 +186,25 @@ const metricsRows = [];
 // AFFORDANCE and exists at one viewport only. Folding them together would put a
 // column in every mobile row that could never be filled.
 const hoverRows = [];
+// #3390 (folded into #3489): the committed chrome baseline, read once. The census
+// compares the surfaces it recognises and REPORTS the ones it did not reach, so a
+// scoped run cannot be mistaken for a full one. Advisory here on purpose — this is
+// a seeing tool, and the file is ENFORCED by e2e/census-chrome-baseline.spec.ts
+// against a pinned fixture. A missing or unreadable file degrades to a loud line
+// rather than taking the run down: a census that cannot run is worth less than a
+// census with one table missing.
+let chromeBaseline = null;
+try {
+  chromeBaseline = new Map(
+    readCommittedBaseline().surfaces.map((s) => [censusSurfaceKey(s), s])
+  );
+} catch (err) {
+  log(
+    `chrome baseline: ${BASELINE_FILE} unreadable (${err.message}) — no drift table this run`
+  );
+}
+const chromeCompared = [];
+
 // Dynamic patterns the census could NOT reach this run (#1544) — an unregistered
 // pattern, or a `follow` whose index rendered no detail link (a genuinely empty
 // table on the fresh/thin shapes). Reported in audit.md so the gap is visible
@@ -370,6 +397,15 @@ function writeAuditArtifacts(baselineDir) {
   // rankings, for the same reason — it names specific elements rather than a
   // page-level number, and it is the only table here that points at a SHOT.
   lines.push(...hoverAuditSections(hoverRows));
+  // #3390: the committed chrome baseline, beside the other two tables that name a
+  // specific element rather than a page-level number.
+  if (chromeBaseline) {
+    const seen = new Set(chromeCompared.map((c) => `${c.viewport} ${c.route}`));
+    const unreached = [...chromeBaseline.values()]
+      .map((s) => censusSurfaceKey(s))
+      .filter((k) => !seen.has(k));
+    lines.push(...chromeBaselineAuditSection(chromeCompared, unreached));
+  }
   if (mobile.length) {
     lines.push("## Worst first-data offsets (px, mobile)", "");
     lines.push("| route | firstData |", "|---|---|");
@@ -1075,6 +1111,26 @@ async function pagesJourney(browser) {
           ...m,
           ...g,
         });
+        // #3390: the chrome probe rides the SAME visit, and only on the surfaces
+        // the committed baseline actually records — measuring the other hundred
+        // would produce numbers with nothing to compare them to.
+        const chromeEntry = chromeBaseline?.get(`${tag} ${route}`);
+        if (chromeEntry) {
+          const c = await page.evaluate(chromeProbe, {});
+          const drift = compareChrome(chromeEntry, c);
+          chromeCompared.push({ route, viewport: tag, drift });
+          if (drift.length)
+            log(
+              `chrome baseline drift ${route} (${tag}): ` +
+                drift
+                  .map((d) =>
+                    d.kind === "moved"
+                      ? `${d.landmark} ${d.was}→${d.now}`
+                      : `${d.landmark} ${d.kind}`
+                  )
+                  .join(", ")
+            );
+        }
         if (g.clippedTotal || g.heightRowsTotal)
           log(
             `geometry ${route} (${tag}): ${g.clippedTotal} clipped, ${g.heightRowsTotal} mixed-height rows` +
