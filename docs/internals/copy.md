@@ -165,10 +165,29 @@ through the profile's display format prefs (never raw ISO — #3492, shipped),
 units display-normalized (UCUM bracket stripping per #1018's equivalence —
 #3493), enum-ish values through label maps with the raw value as fallback
 (#3493). List joins never use a separator the joined names can contain
-(`summarizeNames` and template joins — #3496), and clinical names are never
+(`summarizeNames` and template joins — #3496, shipped), and clinical names are never
 title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported
 ALL-CAPS names are cleaned at the import boundary with the person confirming,
 never by a display casing pass — #3480, shipped).
+
+**List joins, as shipped (#3496).** The separator is `NAME_JOIN_SEPARATOR`
+(`" · "`) in `lib/summarize-names.ts`, with `joinNames` for a roster and
+`joinNamesForSentence` for the two-name subject a headline reads aloud ("X and
+Y are high"). A comma was the separator until a phone review counted five
+analytes in a line naming three: "Lymphocytes, Relative" and "Neutrophils,
+Absolute" are single lab names, so the list contradicted the count beside it.
+
+Five sites join names this way and all five ask that module: the Results
+trajectory roster, the Training-watch muscle roster, the illness dose-lane
+roster, the food-suggestion and curated-supplement headlines, and the
+food-suggestion finding's "Because your …" detail. A sixth
+(`lib/food-limit-note.ts`) joins the same `triggeredBy` field and takes the same
+rule.
+
+**Guard.** `lib/__tests__/summarize-names.test.ts` asserts the PROPERTY, not the
+string: splitting the rendered line on the separator must recover exactly the
+names that went in, over the real comma-bearing LOINC names — so a future author
+who tidies the join back to `", "` fails there rather than on a snapshot.
 
 **Dates, as shipped (#3492).** There is one date boundary and it already
 existed: the display vocabulary in `lib/format-date.ts` — `formatLongDate`,
