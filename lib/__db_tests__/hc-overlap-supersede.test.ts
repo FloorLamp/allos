@@ -28,11 +28,7 @@ import { pushStampFor } from "@/lib/metric-window-overlap";
 import { emptyCounts } from "@/lib/integrations/sync-log";
 import { writeImportTombstone } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
-import {
-  planSupersede,
-  supersedeDateRange,
-  type MetricWindow,
-} from "@/lib/metric-window-overlap";
+import { planSupersede, type MetricWindow } from "@/lib/metric-window-overlap";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import type { ParsedPayload } from "@/lib/integrations/health-connect";
 
@@ -458,12 +454,17 @@ describe("what the rule must NEVER delete", () => {
   // it is reported as what it is.
   it("holds an EDIT-LOCKED overlapped row, and reports it as a day left double counting", () => {
     const p = freshProfile("LOCKED");
+    // BOTH ROWS ARE FILED UNDER ONE `date`, and that is load-bearing after #3424's
+    // cover-the-day ruling: a day reads high only when two rows SUM INTO IT, so a
+    // fixture whose two rows sat on different dates would be asserting a double count
+    // that does not exist. This is the prod shape — the stored bucket's `date` was
+    // computed under the OLD zone and the re-anchored bucket lands on the same label.
     upsert(
       p,
       [
         sample(
           "steps",
-          "2026-05-02",
+          "2026-05-01",
           "2026-05-01T15:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
@@ -787,7 +788,7 @@ describe("what the rule must NEVER delete", () => {
       [
         sample(
           "steps",
-          "2026-05-02",
+          "2026-05-01",
           "2026-05-01T15:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
@@ -795,7 +796,7 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
-    upsert(
+    const counts = upsert(
       p,
       [
         sample(
@@ -808,6 +809,11 @@ describe("what the rule must NEVER delete", () => {
       ],
       HC
     );
+    // A DELETE REALLY HAPPENED. An "and no tombstone was written" assertion over a push
+    // that superseded nothing passes for the wrong reason, and after #3424's
+    // cover-the-day ruling this fixture's two rows had drifted onto two dates — where
+    // there is nothing to collapse.
+    expect(counts.superseded).toBe(1);
     const tombstones = db
       .prepare(
         "SELECT COUNT(*) AS n FROM import_tombstones WHERE profile_id = ? AND target_table = 'metric_samples'"
@@ -818,10 +824,16 @@ describe("what the rule must NEVER delete", () => {
 });
 
 describe("the SQL narrowing agrees with the pure rule", () => {
-  // TWO ENCODINGS, PINNED — the planSyncEventPrune discipline. Ingest narrows
-  // candidates with SQL (indexed prefix + day radius + `started_at <> ?`) and decides
-  // with lib/metric-window-overlap.ts. If the narrowing ever excluded a row the
-  // predicate would have superseded, the rule would quietly stop working on that shape.
+  // TWO ENCODINGS, PINNED — the planSyncEventPrune discipline. Ingest narrows candidates
+  // with SQL (the indexed `(profile_id, metric, date)` prefix, plus the push-key
+  // exclusion) and decides with lib/metric-window-overlap.ts.
+  //
+  // THE `date` TERM IS IN BOTH, and after #3424's cover-the-day ruling it is a DELETE
+  // condition rather than a scan bound — so it must not live only in the SQL. This test
+  // is what says so: the pure rule is handed the WHOLE stored group, unnarrowed, and
+  // must reach the same victim set the narrowed call does. If the SQL were the only
+  // place the date was stated, `unnarrowed` here would supersede the zone-offset chain
+  // and the two would disagree.
   it("never narrows away a row the predicate would have superseded", () => {
     const p = freshProfile("PINNED");
     const stored: NormMetricSample[] = [];
@@ -858,8 +870,7 @@ describe("the SQL narrowing agrees with the pure rule", () => {
     const unnarrowed = planSupersede(withStamp, all);
 
     // What the SQL narrowing hands the rule.
-    const { from, to } = supersedeDateRange(incoming.date);
-    const narrowed = all.filter((r) => r.date >= from && r.date <= to);
+    const narrowed = all.filter((r) => r.date === incoming.date);
     const viaNarrowing = planSupersede(withStamp, narrowed);
 
     expect(viaNarrowing.supersede.map((r) => r.id)).toEqual(
@@ -880,12 +891,15 @@ describe("the SQL narrowing agrees with the pure rule", () => {
 describe("the accounting contract", () => {
   it("keeps `superseded` out of `received` — it is not a row the source sent", () => {
     const p = freshProfile("ACCOUNTING");
+    // One `date` for both rows — see the LOCKED case above. A supersede only ever
+    // happens within a date, so an accounting fixture spread over two of them would be
+    // asserting the arithmetic of a delete that no longer occurs.
     upsert(
       p,
       [
         sample(
           "steps",
-          "2026-05-02",
+          "2026-05-01",
           "2026-05-01T15:00:00Z",
           "2026-05-01T23:00:00Z",
           3000

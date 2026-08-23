@@ -31,7 +31,6 @@ import {
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
-  supersedeDateRange,
   windowsOverlap,
   type MetricWindow,
   type UnstampedEra,
@@ -535,12 +534,25 @@ export interface MetricSampleUpsertOptions {
 // the argument for "this is the last one" became a ten-row table. That is option 1 at
 // the guard level, over a construction that keeps producing them.
 //
-// THE OWNER CLOSED THE CLASS INSTEAD (#3424, the ruling of 2026-08-22T13:46Z):
+// THE OWNER CLOSED THE CLASS INSTEAD (#3424, the ruling of 2026-08-22T13:46Z), and then
+// FIXED ITS UNIT (the ruling of 2026-08-23T00:58Z, after round 10 refuted the first
+// spelling by emptying a day with it):
 //
 //     a stored day-bucket row of (profile, metric, source = HC, origin) is a victim iff,
-//     UNDER THE LOCK RIGHT NOW: it is overlapped by a row of the same group carrying
-//     THIS PUSH'S STAMP; its own stamp is older or NULL-in-era; `edited = 0`; its key is
-//     not one this push wrote. Delete exactly those, in the same transaction.
+//     UNDER THE LOCK RIGHT NOW: a row of the same group carrying THIS PUSH'S STAMP is
+//     FILED UNDER THE VICTIM'S OWN `date` and overlaps it; its own stamp is older or
+//     NULL-in-era; `edited = 0`; its key is not one this push wrote. Delete exactly
+//     those, in the same transaction.
+//
+// COVER THE DAY. The `date` term is the ruling and the rest of this comment is what it
+// replaced: overlap ALONE let the PREVIOUS day's re-anchored bucket justify a delete on
+// a day this push never replaced, because day buckets chain across days by the zone
+// offset — so a tombstoned or stale-retried replacement stopped its own row and the day
+// still went to ZERO. Overlap stays as a gate (it excludes the rollover pair and the
+// same-anchoring neighbours); the date carries the justification. The argument, the two
+// rejected alternatives and the loss this accepts are in lib/metric-window-overlap.ts's
+// header; what belongs HERE is that it costs one term on the query below and nothing
+// else — no payload, no second pass, no re-statement clause.
 //
 // NOTHING ABOUT THE PAYLOAD ENTERS THE PLAN. The justification for a delete is a row that
 // IS IN THE STORE WITH THIS PUSH'S STAMP — which is true precisely when pass C let it
@@ -549,7 +561,8 @@ export interface MetricSampleUpsertOptions {
 // stamp onto a row that could justify anything. So the four vetoes become STRUCTURALLY
 // VISIBLE without being enumerated:
 //
-//   • a suppressed replacement justifies nothing              (round 7)
+//   • a suppressed replacement justifies nothing ON ITS OWN DATE (round 7) — and under
+//     cover-the-day it justifies nothing on any OTHER date either, which is round 10
 //   • an edit-lock on a NARROW twin leaves no stamped DAY BUCKET overlapping the victim,
 //     so the wide bucket is not collapsed on the strength of a fifteen-minute row
 //                                                             (round 9b)
@@ -774,22 +787,41 @@ export interface SupersedeOutcome {
  *      `metadata.data_origin` share `origin = null`, where an overlap is two readings
  *      being summed. Neither may supersede. This is also the cost bound: an 11.5k-row
  *      `1m` push clears the gate nowhere and issues no candidate query at all.
- *   3. `AND pushed_at IS NOT ?` on the candidate query — "its key is not one this push
+ *   3. `AND date = ?` on the candidate query — COVER THE DAY. A stamped bucket may only
+ *      collapse rows filed under ITS OWN `date`, which is the unit `getMetricDailyTotals`
+ *      sums by and the unit a person reads. It is what makes "a date always keeps a
+ *      reading" structural: the justifier is itself a stored row on that date and can
+ *      never be a victim (clause 4 excludes it), so the day is left holding at least it.
+ *      Without this term the PREVIOUS day's re-anchored bucket — which overlaps this
+ *      day's stored row by the zone offset — justified deleting a row nothing replaced,
+ *      and the day went to zero (#3424 round 10).
+ *   4. `AND pushed_at IS NOT ?` on the candidate query — "its key is not one this push
  *      wrote", NULL-safely. Two rows of one push share a stamp, so neither can be the
  *      other's victim: a push carrying BOTH anchorings writes both and the day double
  *      counts visibly (ruling item 3), which `overlapsLeft` says out loud.
- *   4. `planSupersede` — the overlap as INSTANTS (never as strings: `started_at` is a
- *      documented `mixed`-shape column), the stored row's own day-bucket granularity,
- *      `pushOutranks` (the stamp comparison, with NULL read as UNKNOWN and the era
- *      markers as the only thing that licenses deleting one), and the #133 edit lock.
+ *   5. `planSupersede` — the `date` term again (the two-encodings discipline: SQL
+ *      narrows, lib/metric-window-overlap.ts decides), the overlap as INSTANTS (never as
+ *      strings: `started_at` is a documented `mixed`-shape column), the stored row's own
+ *      day-bucket granularity, `pushOutranks` (the stamp comparison, with NULL read as
+ *      UNKNOWN and the era markers as the only thing that licenses deleting one), and
+ *      the #133 edit lock.
  *
  * `overlapsLeft` IS COMPUTED FROM THE SAME QUERY, so it describes what happened rather
  * than being maintained beside it. Two terms:
  *
  *   • the candidates the predicate DECLINED — locked, not outranked, or cut at sub-daily
  *     granularity — as DISTINCT stored rows, because one stored row overlapped by two
- *     stamped buckets is one reading left double counting and counting pairs said 2. A
- *     row another stamped bucket collapses is pruned out: the collapse is the truth.
+ *     stamped buckets is one reading left double counting and counting pairs said 2.
+ *     ON THE VICTIM'S OWN `date`, and ONLY there: a stamped bucket overlapping a stored
+ *     row filed under a DIFFERENT date is the day-bucket chain, not a double count —
+ *     the two never sum into one day — so it is neither collapsed nor reported. The
+ *     `date` term therefore decides both halves of this function, which is why
+ *     `planSupersede` states it rather than leaving it to the SQL.
+ *     There is no prune of collapsed ids from this set: every reason a candidate is
+ *     declined is a fact about that stored row plus this push's one stamp, and all the
+ *     buckets that can see it share both the date and the stamp, so two of them cannot
+ *     disagree. The line that used to re-subtract them was unreachable and is gone
+ *     (`CLAUDE.md`: no defensive check for a condition control flow already proves).
  *   • the excess this push carries against ITSELF: a stamped day bucket overlapping an
  *     earlier-starting stamped day bucket FILED UNDER THE SAME `date`. No stored id can
  *     hold that shape, and the store-holds-neither push used to report nothing at all. It
@@ -860,16 +892,24 @@ export function supersedeMetricSampleOverlaps(
   // thing that licenses deleting a NULL-stamped row, read once because it never moves.
   const era: UnstampedEra | null = readUnstampedEra();
   // The stored rows a stamped bucket may supersede: same profile / metric / source /
-  // origin, inside the day radius, and NOT a row this push wrote. The overlap test itself
-  // is deliberately NOT in this SQL — `started_at` is a documented `mixed`-shape column,
-  // so string comparison would answer a different question than instants do. SQL narrows
-  // on the indexed (profile_id, metric, date) prefix; lib/metric-window-overlap.ts
-  // decides.
+  // origin, ON THE BUCKET'S OWN `date`, and NOT a row this push wrote. The overlap test
+  // itself is deliberately NOT in this SQL — `started_at` is a documented `mixed`-shape
+  // column, so string comparison would answer a different question than instants do. SQL
+  // narrows; lib/metric-window-overlap.ts decides, and it states the `date` term too —
+  // the narrowing must never be the only place a DELETE condition lives.
+  //
+  // MEASURED, because the previous version of this comment named an index the planner
+  // did not pick. Over a 64,800-row `metric_samples` with `ANALYZE` run, this resolves to
+  //     SEARCH metric_samples USING INDEX idx_metric_samples_md
+  //       (profile_id=? AND metric=? AND date=?)
+  // with NO temp b-tree: all three leading columns are pinned to equality, so the index
+  // hands back the group already in rowid order and `ORDER BY id` is free. The day-radius
+  // form this replaced pinned only two and paid `USE TEMP B-TREE FOR ORDER BY`.
   const findOverlaps = db.prepare(
     `SELECT id, date, started_at, ended_at, edited, pushed_at
        FROM metric_samples
       WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
-        AND date >= ? AND date <= ?
+        AND date = ?
         AND pushed_at IS NOT ?
       ORDER BY id`
   );
@@ -877,30 +917,18 @@ export function supersedeMetricSampleOverlaps(
   const victims = new Set<number>();
   const left = new Set<number>();
   for (const bucket of buckets) {
-    const { from, to } = supersedeDateRange(bucket.date);
     const candidates = findOverlaps.all(
       profileId,
       bucket.metric,
       source,
       bucket.origin,
-      from,
-      to,
+      bucket.date,
       pushedAt
     ) as MetricWindow[];
     const plan = planSupersede({ ...bucket, pushedAt }, candidates, era);
     for (const row of plan.left) left.add(row.id);
     for (const row of plan.supersede) victims.add(row.id);
   }
-  // THE TWO SETS ARE DISJOINT, AND THIS LINE IS WHAT MAKES THEM SO rather than an
-  // argument that they already are. Under the store-derived predicate every reason a
-  // candidate lands in `left` — sub-daily granularity, `pushOutranks`, the #133 lock — is
-  // a fact about THAT STORED ROW plus this push's one stamp, so two stamped buckets
-  // cannot disagree about it and this loop currently deletes nothing. It stays because
-  // the claim "the case cannot arise" is the one this PR got wrong twice: a reason that
-  // is a fact about the JUSTIFIER would reopen it, and a `Set.delete` over a handful of
-  // ids costs nothing next to being wrong about that a third time.
-  for (const id of victims) left.delete(id);
-
   // THE EXCESS THIS PUSH CARRIES AGAINST ITSELF. "Overlaps a row of this push that starts
   // earlier, under the same `date`" is the whole definition: in a pair exactly one row has
   // the later start, so a push carrying both anchorings of one day counts 1 — the same

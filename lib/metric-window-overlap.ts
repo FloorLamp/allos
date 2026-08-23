@@ -1,4 +1,4 @@
-import { shiftDateStr, utcInstant } from "./date";
+import { utcInstant } from "./date";
 import { isStaleMetricSnapshot } from "./metric-snapshot";
 import {
   DAY_BUCKET_METRICS,
@@ -184,30 +184,61 @@ import {
 // anchorings, both are written: a double count, visible in every total, said out loud in
 // Review, and collapsed by the next push with a newer stamp.
 //
-// IT IS LOSSY AT THE TRAILING EDGE OF THE ROLLING WINDOW - accepted, not overlooked.
-// "Incoming deletes what it overlaps" is exact in the interior of the window. At its
-// trailing edge it is not: an incoming re-anchored bucket that starts AFTER the stored
-// bucket it overlaps takes that bucket's leading hours, [stored.start, incoming.start),
-// with it, and those hours come back only if the exporter also re-sends the PREVIOUS
-// re-anchored bucket - which at the edge of a ~48h window it may not. Westward the
-// sliver is the old zone's midnight to the new zone's midnight: near-zero steps, a few
-// hours of BMR on total_kcal. EASTWARD IS THE BAD CASE - the first Tokyo bucket starts
-// 15:00Z, so it takes the New York row holding that New York MORNING, which lives only
-// in the previous day's Tokyo bucket. Inside the window that bucket arrives and the
-// morning is recounted; at the trailing edge it does not.
+// COVER THE DAY - THE UNIT OF THE RULE, AND THE THING TEN ROUNDS WERE SPENT FINDING
+// (#3424, the owner's ruling of 2026-08-23T00:58Z). A stored day bucket may be deleted
+// only when a bucket of the same (profile, metric, source, origin) LANDED IN THIS PUSH
+// ON THE VICTIM'S OWN `date` and overlaps it:
 //
-// There is NO THIRD OPTION once the source has re-anchored: the alternative to dropping
-// the sliver is double-counting it, which is the bug. So the loss is bounded, stated
-// here, and made visible - every superseded row is counted into the sync event's
-// `superseded` split so a person can see in Review that a delete happened. The ingest
-// also processes each batch in ascending started_at order, so within one push every
-// leading sliver that IS re-sent lands before the row it would otherwise be lost from.
+//     EXISTS (stamped row, same group, date = victim.date, overlapping)
+//
+// OVERLAP IS STILL A GATE - it is what excludes the rollover pair and the same-anchoring
+// neighbours. THE DATE IS WHAT CARRIES THE JUSTIFICATION. Both halves are load-bearing
+// and neither is sufficient:
+//
+//   * OVERLAP ALONE deletes a reading. Day buckets CHAIN ACROSS DAYS - the LA 08-19
+//     bucket [08-19 07:00Z, 08-20 07:00Z) overlaps the NY 08-20 bucket
+//     [08-20 04:00Z, 08-21 04:00Z) by three hours - so the PREVIOUS day's re-anchored
+//     bucket could justify deleting a row on a day this push never replaced. A tombstone
+//     or a #1101 stale-retry on the row that WOULD have replaced it did not stop that,
+//     because a different row of the same push overlapped the victim anyway, and the day
+//     went to ZERO. "A suppressed replacement justifies nothing" was true of the ROW and
+//     false of the PUSH.
+//   * COVER-THE-WINDOW (the union of this push's stamped windows must contain the
+//     victim's) never fires on the shape the exporter actually sends. Westward the new
+//     anchoring's bucket STARTS LATER than the old one's (LA 07:00Z vs NY 04:00Z);
+//     eastward it ENDS EARLIER (Tokyo 15:00Z vs NY 04:00Z next day). A single new bucket
+//     never covers an old one, and the union that would - two consecutive
+//     new-anchoring days - only ever arrives in a rollover push. Prod's four doubled
+//     pairs would stay doubled, and this rule would be inert on its own P1.
+//
+// WHAT THE DATE TERM BUYS, AS AN INVARIANT RATHER THAN A CASE LIST: A DATE ALWAYS KEEPS
+// A READING. A victim on date D is deleted only because a row filed under D landed in
+// this push; that row is in the store (the derivation reads it back from there) and can
+// never itself be a victim (rows carrying this push's stamp are excluded from the
+// candidate set). So D is left holding at least the row that justified the delete. The
+// mechanism cannot empty a day. That is structural, not a property of the fixtures, and
+// lib/__db_tests__/hc-overlap-supersede-refutations.test.ts asserts it around EVERY
+// attack in the file rather than at one example.
+//
+// WHAT IT ACCEPTS, AND THE ACCEPTANCE IS DELIBERATE: THE SWITCH DAY'S LEADING SLIVER.
+// A re-anchored bucket that starts AFTER the stored bucket it replaces takes that
+// bucket's leading hours, [stored.start, incoming.start), with it. Westward that sliver
+// is the old zone's midnight to the new zone's midnight - near-zero steps, a few hours
+// of BMR on total_kcal. Eastward it is a MORNING: the first Tokyo bucket starts 15:00Z,
+// so replacing the NY row on that date drops the NY morning. THE DAY KEEPS A READING, A
+// SMALLER ONE FOR THAT SPAN. That is the trade, in one sentence, and it is the sentence
+// docs/internals/integrations-sync.md carries.
+//
+// It is NOT claimed to be distinguishable in Review. `superseded: 1` reads the same for
+// a lossless interior collapse and for a sliver drop, and the rule no longer needs the
+// distinction: the failure that claim was excusing - a date left with nothing - can no
+// longer occur.
 //
 // IT FAILS TOWARD KEEPING ROWS. This path DELETES stored health data, so every
 // uncertainty resolves to "no supersede": an instant this module cannot read as an
 // unambiguous UTC instant, a window with no duration, a window at sub-daily
-// granularity, a metric that can nest, a push with no readable stamp, a candidate
-// outside the day radius. A false negative leaves a double count the next push fixes;
+// granularity, a metric that can nest, a push with no readable stamp, a candidate filed
+// under a different `date`. A false negative leaves a double count the next push fixes;
 // a false positive destroys a reading nobody can get back.
 
 /**
@@ -241,28 +272,6 @@ export { DAY_BUCKET_METRICS };
 /** Is this a metric whose Health Connect windows tile, so an overlap is an anomaly? */
 export function isDayBucketMetric(metric: string): boolean {
   return DAY_BUCKET_METRICS.has(metric);
-}
-
-// HOW FAR EITHER SIDE OF AN INCOMING ROW'S `date` A SUPERSEDABLE ROW CAN SIT, IN
-// PROFILE-LOCAL DAYS. The unit is days of the `date` column, not hours of the window.
-//
-// Derivation: a day bucket spans at most 24 h, and re-anchoring shifts its start by
-// at most the spread of real UTC offsets (-12:00 to +14:00, so 26 h). Two buckets that
-// overlap therefore start within ~26 h of each other, and `date` - computed from
-// `started_at` under the profile zone - can differ by at most 1. The radius is 2 to
-// leave one full day of slack for a stale `date` that a re-send has not yet rewritten.
-//
-// It is a BOUND ON THE SCAN, not part of the rule: a genuine overlap further out than
-// this is simply not superseded (see "fails toward keeping rows" above). Ingest spends
-// it on the (profile_id, metric, date) index instead of walking a metric's history.
-export const SUPERSEDE_DAY_RADIUS = 2;
-
-/** The inclusive `date` range a supersede candidate for `date` may sit in. */
-export function supersedeDateRange(date: string): { from: string; to: string } {
-  return {
-    from: shiftDateStr(date, -SUPERSEDE_DAY_RADIUS),
-    to: shiftDateStr(date, SUPERSEDE_DAY_RADIUS),
-  };
 }
 
 // An instant this rule is willing to compare, in epoch ms - or null when it is not.
@@ -483,16 +492,24 @@ export function pushStampFor(
  * ruling that moved it - it was always a statement about two windows and two stamps.
  *
  * `stored` is the candidate set for one (profile, metric, source, origin) group, already
- * narrowed to the day radius and with every row THIS push wrote excluded - the caller
- * (`supersedeMetricSampleOverlaps`) owns that exclusion, spelled `pushed_at IS NOT ?`,
- * and it is what keeps two rows of one push from being each other's victims. This
- * function just decides.
+ * narrowed to the incoming row's own `date` and with every row THIS push wrote excluded
+ * - the caller (`supersedeMetricSampleOverlaps`) owns that exclusion, spelled
+ * `pushed_at IS NOT ?`, and it is what keeps two rows of one push from being each
+ * other's victims. This function just decides.
  *
- * A stored row is superseded when ALL of these hold: the incoming window is a
- * day-bucket window of a tiling metric; the two overlap as instants; the STORED window
- * is itself a day-bucket window; the incoming PUSH outranks the one that wrote the
- * stored row (`pushOutranks`, which is where a NULL stamp is read as UNKNOWN rather
- * than as old); and the #133 lock does not protect it.
+ * THE `date` TERM IS STATED HERE TOO, and that is not a redundancy with the caller's
+ * SQL: it is the two-encodings discipline this module is built on. SQL NARROWS on the
+ * indexed prefix; THIS FILE DECIDES. A reader who widens the SQL - to report more, to
+ * chase an index - must not thereby widen what gets DELETED, and
+ * lib/__db_tests__/hc-overlap-supersede.test.ts pins the two encodings against each
+ * other on a store the narrowing genuinely narrows.
+ *
+ * A stored row is superseded when ALL of these hold: it is filed under the incoming
+ * row's own `date` (COVER THE DAY - see the header, and note it decides `left` as well
+ * as `supersede`); the incoming window is a day-bucket window of a tiling metric; the
+ * two overlap as instants; the STORED window is itself a day-bucket window; the incoming
+ * PUSH outranks the one that wrote the stored row (`pushOutranks`, which is where a NULL
+ * stamp is read as UNKNOWN rather than as old); and the #133 lock does not protect it.
  *
  * `locked` is every overlapped row the edit lock held out, reported rather than dropped.
  *
@@ -526,6 +543,8 @@ export function pushStampFor(
 export function planSupersede(
   incoming: {
     metric: string;
+    /** The profile-local day this row is filed under — the unit the rule protects. */
+    date: string;
     started_at: string;
     ended_at: string;
     pushedAt?: string | null;
@@ -547,6 +566,13 @@ export function planSupersede(
     incoming.ended_at
   );
   for (const row of stored) {
+    // COVER THE DAY, AND IT IS THE FIRST THING ASKED because everything below is about
+    // rows that are already on one date. A stored row may only be collapsed by a row
+    // filed under ITS OWN `date` — the unit `getMetricDailyTotals` sums by, and the unit
+    // a person reads. See the header: this is the whole of the ruling, and it is why the
+    // date-mismatched candidate is not counted in `left` either. Two rows on different
+    // dates never sum into one day, so the pair is not a double count to report.
+    if (row.date !== incoming.date) continue;
     if (
       !windowsOverlap(
         incoming.started_at,

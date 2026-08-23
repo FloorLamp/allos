@@ -19,7 +19,6 @@ import { describe, expect, it } from "vitest";
 import {
   DAY_BUCKET_METRICS,
   MAX_PUSH_CLOCK_SKEW_MS,
-  SUPERSEDE_DAY_RADIUS,
   compareWindowStarts,
   isDayBucketMetric,
   isDayBucketWindow,
@@ -27,7 +26,6 @@ import {
   planSupersede,
   pushOutranks,
   pushStampFor,
-  supersedeDateRange,
   windowsOverlap,
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
@@ -53,13 +51,20 @@ function win(
   return { id, date, started_at, ended_at, edited, pushed_at };
 }
 
-/** A day-bucket incoming row of a tiling metric, which is the only shape that acts. */
+/**
+ * A day-bucket incoming row of a tiling metric, which is the only shape that acts.
+ *
+ * `date` defaults to the one every `win()` above uses, so a case that is about the
+ * OVERLAP is not silently also a case about COVER THE DAY. The cases that are about the
+ * date pass it explicitly.
+ */
 function incoming(
   started_at: string,
   ended_at: string,
-  pushedAt: string | null = "2030-01-01T00:00:00Z"
+  pushedAt: string | null = "2030-01-01T00:00:00Z",
+  date = "2026-05-01"
 ) {
-  return { metric: "steps", started_at, ended_at, pushedAt };
+  return { metric: "steps", date, started_at, ended_at, pushedAt };
 }
 
 describe("windowsOverlap — half-open interval overlap on INSTANTS", () => {
@@ -184,6 +189,7 @@ describe("the DAY-BUCKET METRIC gate", () => {
     );
     const snack = {
       metric: "nutrition_kcal",
+      date: "2026-05-01",
       started_at: "2026-05-01T12:10:00Z",
       ended_at: "2026-05-01T12:20:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
@@ -198,6 +204,7 @@ describe("the DAY-BUCKET METRIC gate", () => {
     );
     const mealIn = {
       metric: "nutrition_kcal",
+      date: "2026-05-01",
       started_at: "2026-05-01T12:00:00Z",
       ended_at: "2026-05-01T13:00:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
@@ -216,6 +223,7 @@ describe("the DAY-BUCKET METRIC gate", () => {
     );
     const nightB = {
       metric: "sleep_min",
+      date: "2026-05-02",
       started_at: "2026-05-01T22:30:00Z",
       ended_at: "2026-05-02T06:30:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
@@ -576,6 +584,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
     );
     const minute = {
       metric: "steps",
+      date: "2026-05-01",
       started_at: "2026-05-01T07:00:00Z",
       ended_at: "2026-05-01T07:30:00Z",
       pushedAt: "2026-05-01T07:30:05Z",
@@ -596,6 +605,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
     );
     const deviceB = {
       metric: "steps",
+      date: "2026-05-01",
       started_at: "2026-05-01T10:00:30Z",
       ended_at: "2026-05-01T10:01:30Z",
       pushedAt: "2030-01-01T00:00:00Z",
@@ -614,6 +624,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
     );
     const snack = {
       metric: "nutrition_kcal",
+      date: "2026-05-01",
       started_at: "2026-05-01T12:10:00Z",
       ended_at: "2026-05-01T12:20:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
@@ -728,20 +739,112 @@ describe("isSupersedingWindow — the three preconditions, composed", () => {
   });
 });
 
-describe("supersedeDateRange — the scan bound, in profile-local days", () => {
-  it("spans SUPERSEDE_DAY_RADIUS days either side, inclusive", () => {
-    expect(SUPERSEDE_DAY_RADIUS).toBe(2);
-    expect(supersedeDateRange("2026-05-10")).toEqual({
-      from: "2026-05-08",
-      to: "2026-05-12",
-    });
+describe("COVER THE DAY — the `date` term (#3424, the ruling of 2026-08-23T00:58Z)", () => {
+  // WHAT IT REPLACED. The rule used to be "the newer row wins over whatever it
+  // OVERLAPS", with `date` only a scan bound (a ±2-day radius, deleted with this).
+  // Health Connect day buckets CHAIN across days by the zone offset, so the PREVIOUS
+  // day's re-anchored bucket overlaps this day's stored row — and could delete it even
+  // when nothing replaced that day. Round 10 walked a real profile to an EMPTY day
+  // through the shipped Data → Manage flow with exactly that.
+  //
+  // The unit is the day because the day is what a person reads: `getMetricDailyTotals`
+  // sums by `date`, so two rows on different dates never sum into one number.
+
+  /** The zone-offset chain: LA 08-19 [07:00Z, +24h) overlaps NY 08-20 [04:00Z, +24h). */
+  const nyAug20 = win(
+    1,
+    "2026-08-20",
+    "2026-08-20T04:00:00Z",
+    "2026-08-21T04:00:00Z",
+    0,
+    "2026-08-20T05:00:00Z"
+  );
+
+  it("declines a stamped bucket filed under the PREVIOUS day, though it overlaps", () => {
+    // MUTATION: drop the `row.date !== incoming.date` term and this supersedes — which
+    // is round 10's headline attack, and the day 08-20 goes to zero.
+    const laAug19 = incoming(
+      "2026-08-19T07:00:00Z",
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T12:00:00Z",
+      "2026-08-19"
+    );
+    expect(
+      windowsOverlap(
+        laAug19.started_at,
+        laAug19.ended_at,
+        nyAug20.started_at,
+        nyAug20.ended_at
+      )
+    ).toBe(true);
+    expect(planSupersede(laAug19, [nyAug20]).supersede).toEqual([]);
   });
 
-  it("crosses a month boundary correctly", () => {
-    expect(supersedeDateRange("2026-05-01")).toEqual({
-      from: "2026-04-29",
-      to: "2026-05-03",
-    });
+  it("does not COUNT that pair either — a chain is not a double count", () => {
+    // The two rows are filed under different dates, so no day reads high because of
+    // them and there is nothing for Review to say. MUTATION: route the date mismatch to
+    // `left` instead of skipping it, and every re-anchored push warns about a day that
+    // is correct.
+    const laAug19 = incoming(
+      "2026-08-19T07:00:00Z",
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T12:00:00Z",
+      "2026-08-19"
+    );
+    const plan = planSupersede(laAug19, [nyAug20]);
+    expect(plan.left).toEqual([]);
+    expect(plan.locked).toEqual([]);
+  });
+
+  it("collapses the SAME stored row from a bucket filed under ITS date — the control", () => {
+    // The prod pair: LA 08-20 [07:00Z, +24h) against NY 08-20 [04:00Z, +24h). Same
+    // date, overlapping, newer stamp — this is the delete the PR exists to make, and
+    // without it the test above passes for the wrong reason.
+    const laAug20 = incoming(
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T07:00:00Z",
+      "2026-08-21T12:00:00Z",
+      "2026-08-20"
+    );
+    expect(
+      planSupersede(laAug20, [nyAug20]).supersede.map((r) => r.id)
+    ).toEqual([1]);
+  });
+
+  it("still requires the OVERLAP — the date alone does not license a delete", () => {
+    // Two same-anchoring neighbours filed under one date (a rollover pair, or a day the
+    // exporter cut twice) are two readings, not an anomaly. MUTATION: replace the
+    // overlap test with the date test and this deletes a disjoint reading.
+    const morning = win(
+      2,
+      "2026-05-01",
+      "2026-05-01T00:00:00Z",
+      "2026-05-01T06:00:00Z",
+      0,
+      "2026-05-01T07:00:00Z"
+    );
+    const evening = incoming(
+      "2026-05-01T18:00:00Z",
+      "2026-05-02T00:00:00Z",
+      "2026-05-02T01:00:00Z"
+    );
+    expect(planSupersede(evening, [morning]).supersede).toEqual([]);
+    expect(planSupersede(evening, [morning]).left).toEqual([]);
+  });
+
+  it("leaves the day holding the row that justified the delete", () => {
+    // THE INVARIANT, at the level this module can state it: a victim's justifier is
+    // itself filed under the victim's date. So whatever this function returns, the date
+    // is not emptied — the caller has already excluded this push's own rows from the
+    // candidate set, so the justifier can never be in `supersede`.
+    const laAug20 = incoming(
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T07:00:00Z",
+      "2026-08-21T12:00:00Z",
+      "2026-08-20"
+    );
+    const plan = planSupersede(laAug20, [nyAug20]);
+    for (const row of plan.supersede) expect(row.date).toBe(laAug20.date);
   });
 });
 
