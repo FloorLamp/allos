@@ -265,7 +265,9 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 7, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Missed: Glycine (test) for 1 day, Magnesium (test) for 1 day",
+      // Both missed the same one day, so the run is stated once (#3487 item 3) —
+      // the digest renders the SAME shared formatter the household glance does.
+      "🔁 Missed for 1 day: Glycine (test), Magnesium (test)",
       "💊 Supplements: 7/9 taken",
     ]);
   });
