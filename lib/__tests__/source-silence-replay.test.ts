@@ -74,7 +74,7 @@ function weatherShapedHistory(
       updated: ok ? 16 : null,
       unchanged: ok ? 365 : null,
       written: ok ? 381 : null,
-      error: ok ? null : "weather fetch failed (503)",
+      error: ok ? null : "Couldn't reach Open-Meteo. Try again.",
     });
   }
   return out;
@@ -189,7 +189,7 @@ describe("the tolerance still catches a provider that genuinely stops", () => {
         updated: null,
         unchanged: null,
         written: null,
-        error: "weather fetch failed (503)",
+        error: "Couldn't reach Open-Meteo. Try again.",
       });
     }
     const { standings } = replay(history, WEATHER_TOLERANCE);

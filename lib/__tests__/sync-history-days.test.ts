@@ -168,11 +168,18 @@ describe("failures inside a day", () => {
 
   it("labels a collapsed failure run with its count-qualified shared reason", () => {
     // #1880 item 3's copy, moved here with the collapse it belongs to.
-    expect(repeatedRunReason(2, "weather fetch failed (503)")).toBe(
-      "weather fetch failed (503) — both runs"
+    //
+    // THE REASON IS A WHOLE SENTENCE NOW, and the composition is pinned rather than
+    // paraphrased so the shape is reviewable: since #3592 (a network throw) and
+    // #3618 (a failing status) every recorded reason is house copy ending in a
+    // period, and the count qualifier still attaches with an em dash after it. The
+    // partial rung has read this way since #3007, whose warning is also a full
+    // sentence — so this is the shape the collapse has, not one this fixture invents.
+    expect(repeatedRunReason(2, "Couldn't reach Open-Meteo. Try again.")).toBe(
+      "Couldn't reach Open-Meteo. Try again. — both runs"
     );
-    expect(repeatedRunReason(4, "weather fetch failed (503)")).toBe(
-      "weather fetch failed (503) — all 4 runs"
+    expect(repeatedRunReason(4, "Couldn't reach Open-Meteo. Try again.")).toBe(
+      "Couldn't reach Open-Meteo. Try again. — all 4 runs"
     );
     expect(repeatedRunReason(2, null)).toBeNull();
   });

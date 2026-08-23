@@ -271,9 +271,16 @@ describe("two providers through the one runner", () => {
 
     const ouraEv = getLatestSyncEvent(p, "oura")!;
     expect(ouraEv.ok).toBe(0);
-    expect(String(ouraEv.error)).toContain("500");
-    // A transient failure must never tear down the connection (#326).
+    // The recorded line still IDENTIFIES this failure and this provider — which is
+    // all `toContain("500")` was ever doing here — and since #3618 it does it in
+    // house copy: a 5xx is the other end not answering, so the reader gets the same
+    // sentence a network throw gets, and no status reaches them.
+    expect(ouraEv.error).toBe("Couldn't reach Oura. Try again.");
+    expect(String(ouraEv.error)).not.toMatch(/\d/);
+    // A transient failure must never tear down the connection (#326), and the
+    // sentence agrees with the state: no reconnect is asked for.
     expect(getConnection(p, "oura")?.status).toBe("connected");
+    expect(String(ouraEv.error)).not.toContain("Reconnect");
     // …and the cursor is untouched, so the next run re-fetches the whole window.
     expect(getOuraCursor(p)).toBeNull();
 

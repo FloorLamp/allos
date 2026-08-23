@@ -147,7 +147,7 @@ function runs(fails: number, oks: number): SyncEventFacts[] {
   const out: SyncEventFacts[] = [];
   let id = 100;
   for (let i = 0; i < fails; i++)
-    out.push(ev({ id: id--, ok: 0, error: "weather fetch failed (503)" }));
+    out.push(ev({ id: id--, ok: 0, error: "Couldn't reach Open-Meteo. Try again." }));
   for (let i = 0; i < oks; i++) out.push(ev({ id: id--, inserted: 1 }));
   return out;
 }
@@ -485,7 +485,7 @@ describe("runWindowNorm", () => {
 
   it("skips windowless failures when picking the norm", () => {
     const events = [
-      ev({ id: 5, ok: 0, error: "weather fetch failed (503)" }),
+      ev({ id: 5, ok: 0, error: "Couldn't reach Open-Meteo. Try again." }),
       ev({ id: 4, inserted: 1, ...win }),
     ];
     expect(runWindowNorm(events)).toBe("2026-07-18 → 2026-08-07");

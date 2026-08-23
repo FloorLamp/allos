@@ -17,7 +17,12 @@ import { workerDbPath, frozenSyncInstant } from "./worker-env";
 
 const PROFILE_ID = 1;
 const PROVIDER = "weather";
-const ERR = "weather fetch failed (503)";
+// The line the producer actually records since #3618: a 5xx from Open-Meteo is the
+// other end not answering, so a reader gets house copy and no status. Opaque to what
+// this spec measures (that ONE failing source renders once per surface, and that the
+// collapsed run carries its count-qualified reason) — but a seed that spelled a
+// retired string would be showing a reviewer copy the app can no longer produce.
+const ERR = "Couldn't reach Open-Meteo. Try again.";
 // Weather's declared silence tolerance: 12 polls × its hourly cadence.
 const TOLERANCE_HOURS = 12;
 // Weather's blurb opening — the pitch a COMPACT card must no longer carry.

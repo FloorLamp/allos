@@ -53,7 +53,10 @@ function syncEvent(
   ).run(profileId, sourceId, at, ok, ok ? 1 : null, error);
 }
 
-const ERR = "weather fetch failed (503)";
+// The producer's own line since #3618 (house copy, no status) — an OPAQUE payload
+// here, but one the app can still write, so the fixture does not preserve a string
+// the tree retired.
+const ERR = "Couldn't reach Open-Meteo. Try again.";
 // Weather's resolved silence tolerance: 12 polls × its declared hourly cadence.
 const WEATHER_TOLERANCE_HOURS = 12;
 

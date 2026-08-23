@@ -175,7 +175,7 @@ export interface DigestSyncIssue {
   //
   // The old field was the item's `detail`, and `${title} — ${detail}` silently assumed
   // that detail was a cause fragment. That held for the integration producer ("Weather &
-  // UV sync needs attention — weather fetch failed (503)") and was never stated, so the
+  // UV sync needs attention — Couldn't reach Open-Meteo. Try again.") and was never
   // portal producer wrote to a different contract: `syncRequestCopy`'s detail is a
   // COMPLETE SENTENCE that re-contains the title ("tbh has never been checked — run the
   // portal tool on your computer."), and joined it read imperative → em dash → subject
@@ -387,7 +387,7 @@ export function buildUpcomingDigest(
   // ONE ENTRY PER NAMED-LINE ITEM (#1913 items 2 and 5). A named-line domain used to be
   // counted in its band AND named below it, so a single 503 arrived twice in one message
   // — "📝 Today: Weather & UV sync needs attention" over "🔌 Weather & UV sync needs
-  // attention — weather fetch failed (503)" — which is the #1880 one-surface disease
+  // attention — Couldn't reach Open-Meteo. Try again." — the #1880 one-surface disease
   // inside the digest.
   //
   // The merge is keyed on NAMED_LINE_DOMAINS rather than on the weather standing,

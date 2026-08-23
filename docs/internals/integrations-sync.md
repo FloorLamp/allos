@@ -2130,3 +2130,100 @@ the bedtime reminder's derived paused state (`wearReminderPausedNote`) beside th
 toggle rather than implying tonight's send. The toggle itself is untouched — the
 pause is presentation of derived state, never a stored flag, the shape #1668
 shipped for the mood check-in's auto-pause.
+
+---
+
+## What a broken sync SAYS, and the two things a new provider must check (#3618)
+
+A person meets a source's failure as one line: the red line on the integration
+card, the `Sync now` toast, and the morning digest's
+`🔌 <source> sync needs attention — <line>` all render the same
+`integration_sync_events.error`. So that column is user-facing copy, held to
+`docs/internals/copy.md`, and there is exactly one of it.
+
+**It used to be jargon.** `Oura /v2/usercollection/sleep request failed (401)`,
+`Withings /measure request failed (601)`, `weather fetch failed (503)`. Each
+named an HTTP path, an HTTP status, or a vendor error number, and none of it was
+something a person could act on. An expired token — the most common sync failure
+there is — has an obvious answer that line never gave.
+
+**The vocabulary, keyed on what the status MEANS.** `lib/integrations/sync-failure-copy.ts`,
+the authored-copy sibling of `lib/user-error-copy.ts`'s caught-text translation
+(#3198 / #3592). Three answers, because there are three things a person can do:
+
+| Situation                                | Line                                                      | Why                                                     |
+| ---------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| The connection is `needs_reauth`         | `Your <name> connection expired. Reconnect to resume syncing.` | Reconnecting is the whole of what a person can do.  |
+| Status `0` or `>= 500`                   | `Couldn't reach <service>. Try again.`                     | No answer, or the other end said it was broken.         |
+| Anything else                            | `Couldn't <doing>.`                                        | Deterministic — retrying changes nothing, so it is not offered. |
+
+The middle two share `lib/user-error-copy.ts`'s sentence bank through
+`houseErrorSentence`, deliberately: a 503 answered by Oura and an `ECONNRESET`
+while reaching Oura are one event to a reader, and they arrive on the card from
+two different modules. A second bank would drift.
+
+**The reconnect line is chosen by the RUNNER, from recorded state — not from a
+status.** `lib/integrations/pull-sync.ts` reads
+`getConnection(...)?.status === "needs_reauth"` in the same failure exit that sets
+it. Two reasons, and both are load-bearing:
+
+- A status alone cannot answer "does this source even have a connection to
+  re-authorize?". `isAuthRefreshFailure(400)` is TRUE with no body — correct for a
+  token refresh, and wrong for keyless Open-Meteo, which answers 400 for a bad
+  parameter.
+- `needs_reauth` is what every reconnect affordance already keys on: the notice
+  on each source's page, and `ConnectedSources`' `Reconnect <name> →` link. Asking
+  the same question means the sentence can never send a person to a control the
+  app did not render.
+
+Both doors into that state are covered by asking it: a revoked Oura personal
+access token arrives as a 401 on the DATA PULL, and a dead Strava/Withings refresh
+token is caught by the REFRESH PATH, which marks the connection and throws before
+any pull happens. A status test at either door would see only its own half.
+`lib/__db_tests__/connection-reauth.test.ts` drives both.
+
+**The status is not lost — it is an operator's fact.** Every source logs
+`{ path, status }` through `log.error` at the failing exit, and the weather hourly
+half logs the vendor's own rejection sentence there too (#3007's diagnostic, moved
+off the card in #3618). That is the same split `lib/medical-pipeline.ts` makes
+eleven times.
+
+**`Sync now` toasts the line verbatim.** The `"Sync failed: "` prefix came off with
+this change and could not come off before it: `Sync failed: Oura /v2/… request
+failed (401)` is unreadable without the prefix, while
+`Sync failed: Couldn't reach Strava. Try again.` doubles up on the house sentence.
+The failure framing rides `SyncNowResult.status`, which `components/SyncNowButton.tsx`
+renders as `tone: "error"`.
+
+### A new provider inherits the copy, and must CHECK two things
+
+Adding a source to the registry gets the vocabulary for free — call
+`syncFailureCopy(status, { doing, service })` at the failing-status exit and
+`userErrorCopy(err, …)` at the throw, with ONE declared `{ doing, service }` spent
+by both. Two things it does NOT get for free:
+
+1. **How the provider spells its id key.** `ID_KEY_NAMES` in
+   `lib/integrations/json-big-ids.ts` is **enumerated, not a broad pattern**, and
+   that is deliberate (#3593): widening it to "anything ending in id" would sweep
+   up `valid`, `android`, `deviceid` and `paid`, and lean on the precision gate
+   never firing for them — which is the weakest kind of safe. The cost of
+   enumerating is that **a provider whose id key is not in the list is silently not
+   protected**. Withings' `grpid` was missed for exactly this reason: the
+   pre-existing `[A-Za-z0-9]+_id` half never matched it, because there is no
+   underscore. Wiring `parseJsonPreservingIds` in without noticing would have been
+   a no-op on the only id-bearing field Withings has, reported as a fix.
+
+   So: read the provider's schema, find the field whose value reaches
+   `external_id`, and check its spelling is in `ID_KEY_NAMES`. An id documented as
+   `int64` also needs its MAPPER reading it as a string — `num(rec.grpid)` would
+   return null on a preserved big id and **skip the whole group**, trading a silent
+   collision for silent data loss. `groupIdOf` in `withings.ts` and `externalIdOf`
+   in `strava.ts` are the two shapes to copy. `lib/__tests__/provider-id-precision.test.ts`
+   carries the audit as assertions, and asserts the neighbours stay silent.
+
+2. **Whether the source has a connection at all.** A keyless source (weather) has
+   no token to expire and no connection row to flip, so it can never reach the
+   reconnect branch — which is why that branch lives at the runner and not in the
+   status vocabulary. A source that resolves credentials through its own refresh
+   path leaves `PullFailure.status` unset on purpose, because that path already
+   owns the `needs_reauth` transition.

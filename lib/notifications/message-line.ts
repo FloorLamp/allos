@@ -81,7 +81,7 @@ export interface MessageLineParts<T> {
   // clause, always first, always unpunctuated. And a qualifier smuggled INTO a head is
   // exactly what lib/__tests__/message-line.test.ts fails a registered module for.
   head: T;
-  // A short CAUSE FRAGMENT explaining the head — "weather fetch failed (503)", "never
+  // A short CAUSE FRAGMENT explaining the head — "Couldn't reach Open-Meteo.", "never
   // checked". Rendered FIRST, introduced by the em dash.
   //
   // THE CONTRACT IS THE FIELD'S WHOLE REASON FOR EXISTING (#1913 item 6). A fragment,

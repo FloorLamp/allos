@@ -606,19 +606,43 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
       );
     });
 
-    it("the HOURLY fetch reports it as well", async () => {
-      stubTotalFailure("Parameter 'hourly' has an invalid value");
-      const res = await openMeteoFetch(
-        40.7,
-        -74,
-        "2026-08-03",
-        "2026-08-23",
-        "America/New_York"
-      );
-      expect(res.ok).toBe(false);
-      expect(res.error).toBe(
-        "weather fetch failed (400): Parameter 'hourly' has an invalid value"
-      );
+    // THE HOURLY HALF MOVED HOUSE (#3618), and this case moved with it rather than
+    // being deleted. Its `error` is the RUN's failure line — the red line on the
+    // integration card, the "Sync now" toast, the digest — so it is now house copy
+    // that names no status and no parameter. #3007's guarantee is unchanged and is
+    // still what is asserted here: the host's own sentence is not DROPPED, it is
+    // logged. Both halves are asserted, because either one alone passes for the
+    // wrong reason — copy with no log is #3007 reverted, a log with the old copy is
+    // #3618 never done.
+    it("the HOURLY fetch keeps the host's sentence — in the log, not on the card", async () => {
+      const logged: string[] = [];
+      const spy = vi
+        .spyOn(console, "error")
+        .mockImplementation((...args: unknown[]) => {
+          logged.push(args.map(String).join(" "));
+        });
+      try {
+        stubTotalFailure("Parameter 'hourly' has an invalid value");
+        const res = await openMeteoFetch(
+          40.7,
+          -74,
+          "2026-08-03",
+          "2026-08-23",
+          "America/New_York"
+        );
+        expect(res.ok).toBe(false);
+        // The reader's half: a house sentence, no status, no upstream body.
+        expect(res.error).toBe("Couldn't refresh the weather forecast.");
+        expect(res.error).not.toMatch(/\d/);
+        expect(res.error).not.toContain("hourly");
+        // The operator's half: the status AND the vendor's sentence, both there.
+        const line = logged.join("\n");
+        expect(line).toContain("weather hourly fetch failed");
+        expect(line).toContain("400");
+        expect(line).toContain("Parameter 'hourly' has an invalid value");
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 });

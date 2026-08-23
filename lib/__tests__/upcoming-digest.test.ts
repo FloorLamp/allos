@@ -273,9 +273,9 @@ describe("summarizeBand — a per-domain phrase replaces its count", () => {
 
 // ---- One entry per named-line item (#1913 items 2, 5, 6, 7, 8) -------------
 //
-// The reported message carried the SAME 503 twice: "📝 Today: Weather & UV sync needs
-// attention" (the band count, which #1819 item 5 had already turned into a name) over
-// "🔌 Weather & UV sync needs attention — weather fetch failed (503)". The merge is keyed
+// The reported message carried the SAME failure twice: "📝 Today: Weather & UV sync
+// needs attention" (the band count, which #1819 item 5 had already turned into a name)
+// over "🔌 Weather & UV sync needs attention — <reason>". The merge is keyed
 // on the named-line DOMAINS rather than on the weather standing, because both members of
 // that set were counted and named — a weather-shaped fix would have left the portal
 // double-mentioning the moment it closed.
@@ -299,7 +299,7 @@ describe("named-line domains merge their band entry into the named line (#1913)"
         groupOf([
           namedLineItem(domain, {
             title: "Weather & UV sync needs attention",
-            because: "weather fetch failed (503)",
+            because: "Couldn't reach Open-Meteo. Try again.",
           }),
         ])
       )!;

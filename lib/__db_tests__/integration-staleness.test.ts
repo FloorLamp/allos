@@ -108,7 +108,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     const p = newProfile("NeverSynced");
     connect(p, "oura");
     // Rows exist, but none of them succeeded — a setup problem, not a stopped sync.
-    syncEvent(p, "oura", 9 * DAYS, 0, "Oura request failed (500)");
+    syncEvent(p, "oura", 9 * DAYS, 0, "Couldn't reach Oura. Try again.");
     expect(staleIssues(p)).toEqual([]);
   });
 
@@ -200,9 +200,11 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     const p = newProfile("FlapNoAttention");
     connect(p, "strava");
     syncEvent(p, "strava", 4);
-    syncEvent(p, "strava", 3, 0, "Strava request failed (503)");
-    syncEvent(p, "strava", 2, 0, "Strava request failed (503)");
-    syncEvent(p, "strava", 1, 0, "Strava request failed (503)");
+    // Opaque to this test's subject (the flap rule); spelled as the producer writes
+    // it since #3618 so the fixture does not carry a retired string.
+    syncEvent(p, "strava", 3, 0, "Couldn't reach Strava. Try again.");
+    syncEvent(p, "strava", 2, 0, "Couldn't reach Strava. Try again.");
+    syncEvent(p, "strava", 1, 0, "Couldn't reach Strava. Try again.");
     expect(getIntegrationAttention(p)).toEqual([]);
     expect(getImportIssues(p)).toEqual([]);
   });

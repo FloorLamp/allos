@@ -184,10 +184,17 @@ export function integrationToItem(i: AttentionIntegration): UpcomingItem {
       ? `${i.sourceName} sync has stopped`
       : `${i.sourceName} sync needs attention`,
     detail,
-    // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6). This producer's
-    // detail already IS one — the recorded error text ("weather fetch failed (503)"), or
-    // the observation behind a quiet stop — so the field is declared rather than derived,
-    // and the rendered line is unchanged from what it printed before.
+    // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6), and this
+    // producer declares its detail as one rather than deriving a second description
+    // (#221). What that detail IS has moved under it: the recorded error text used to
+    // be a fragment naming a status ("weather fetch failed (503)"), and since #3592
+    // and #3618 every recorded reason is a whole house sentence — "Couldn't reach
+    // Open-Meteo. Try again.", "Your Oura connection expired. Reconnect to resume
+    // syncing." So the rendered line is now head — SENTENCE rather than head —
+    // fragment. That is a live question about this slot's contract, recorded here
+    // rather than settled by a producer: the alternative is a second, shorter
+    // sentence written only for the digest, which is the duplication #221 and #1685
+    // both closed.
     because: detail,
     // Match the CTA's promise: known, connectable sources go straight to their
     // setup page. Unknown/planned sources safely fall back to Review.

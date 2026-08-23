@@ -785,15 +785,18 @@ describe("buildDigest — the named data-plumbing line", () => {
         band("today", "Today", [
           item("integration", {
             title: "Weather & UV sync needs attention",
-            detail: "weather fetch failed (503)",
-            because: "weather fetch failed (503)",
+            // The producer's own line since #3618 — house copy, no status. What this
+            // case measures is the LINE's grammar (one glyph, one head, one em-dash
+            // cause, exactly once), which the reason's content does not touch.
+            detail: "Couldn't reach Open-Meteo. Try again.",
+            because: "Couldn't reach Open-Meteo. Try again.",
             dueText: "Reconnect",
           }),
         ]),
       ],
     });
     expect(lines).toEqual([
-      "🔌 Weather & UV sync needs attention — weather fetch failed (503)",
+      "🔌 Weather & UV sync needs attention — Couldn't reach Open-Meteo. Try again.",
     ]);
   });
 

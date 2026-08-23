@@ -561,7 +561,9 @@ const SEND_SLEEP_SOURCE = "oura";
 // fixture the clock cannot make flaky.
 const SEND_BROKEN_PROVIDER = "weather";
 const SEND_TOLERANCE_HOURS = 12;
-const SEND_SYNC_ERROR = "weather fetch failed (503)";
+// Opaque to this test's subject (query counting), but kept as a line the producer
+// can actually write since #3618.
+const SEND_SYNC_ERROR = "Couldn't reach Open-Meteo. Try again.";
 
 //   • the sleep-session window scan — issued by readSleepSessions ONLY on the
 //     row-capped path, i.e. only by getSleepSessions (#2283). The since/range readers

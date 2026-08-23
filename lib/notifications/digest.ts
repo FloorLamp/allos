@@ -611,7 +611,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     //
     // The grammar is title — cause · deadline:
     //
-    //   🔌 Weather & UV sync needs attention — weather fetch failed (503)
+    //   🔌 Weather & UV sync needs attention — Couldn't reach Open-Meteo. Try again.
     //   🙋 Run the portal tool for tbh — never checked · expires in 6 days
     //
     // The glyph says WHO ACTS (item 8) and comes from the domain's declaration, not from

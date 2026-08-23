@@ -206,19 +206,27 @@ describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)
       .join("\n");
   };
 
+  // THE RECORDED FAILURE LINE, as the producer actually writes it since #3618: a 5xx
+  // from Open-Meteo is the other end not answering, and the reader gets a house
+  // sentence rather than "weather fetch failed (503)". The fixture tracks the producer
+  // so the digest's own guard stops depicting the jargon the digest is not allowed to
+  // carry — and "Open-Meteo" is the discriminator the "503" used to be: a token that
+  // appears in the rendered text ONLY if the recorded reason reached it.
+  const WEATHER_SYNC_ERROR = "Couldn't reach Open-Meteo. Try again.";
+
   it("says nothing about an INTERMITTENT source — a failure with a success beside it", () => {
     const p = newProfile("DigestFlap");
     connect(p, "weather");
     // A success two hours ago and three failures since. Under the retired rule this
     // read "Sync failing" and reached the digest; the data is plainly arriving.
     syncEvent(p, "weather", 2);
-    syncEvent(p, "weather", 1, 0, "weather fetch failed (503)");
-    syncEvent(p, "weather", 0.5, 0, "weather fetch failed (503)");
-    syncEvent(p, "weather", 0.2, 0, "weather fetch failed (503)");
+    syncEvent(p, "weather", 1, 0, WEATHER_SYNC_ERROR);
+    syncEvent(p, "weather", 0.5, 0, WEATHER_SYNC_ERROR);
+    syncEvent(p, "weather", 0.2, 0, WEATHER_SYNC_ERROR);
     seedActivityYesterday(p);
 
     const text = digestText(p, "DigestFlap");
-    expect(text).not.toContain("503");
+    expect(text).not.toContain("Open-Meteo");
     expect(text).not.toContain("🔌");
     expect(text).not.toContain("sync issue");
   });
@@ -229,12 +237,12 @@ describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)
     // No success inside weather's 12-hour tolerance — the escalation rule.
     syncEvent(p, "weather", 20);
     for (const h of [2, 1, 0])
-      syncEvent(p, "weather", h, 0, "weather fetch failed (503)");
+      syncEvent(p, "weather", h, 0, WEATHER_SYNC_ERROR);
     seedActivityYesterday(p);
 
     const text = digestText(p, "DigestFailing");
     expect(text).toContain("🔌");
-    expect(text).toContain("503");
+    expect(text).toContain("Open-Meteo");
     // ONE entry, not a band count and a named line saying the same thing (item 5).
     expect(text.match(/sync needs attention/g)).toHaveLength(1);
     expect(text).not.toContain("sync issue");
