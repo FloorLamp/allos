@@ -28,6 +28,25 @@
 // model they walk away with is "I logged out" — on a device they may be handing back.
 // That is the half that is indefensible independent of how narrow the window is.
 //
+// ── WHICH SURFACE THAT WINDOW IS ON: `md` AND UP, AND NOT A PHONE ─────────────────────
+//
+// Written down because the first version of this file framed the stake as a phone, and a
+// phone is the one viewport it does not describe. The Log out control reaches the SERVER
+// HTML from exactly one place: the desktop sidebar in app/(app)/layout.tsx, whose
+// `<aside>` is `hidden … md:flex`. Below `md` that aside is `display:none`, so there is
+// nothing there to tap. The mobile drawer renders the same SidebarContent, but through a
+// `createPortal` gated on `drawer.mounted` (components/MobileNav.tsx) — client state that
+// is false on the first render — so the drawer is in no server HTML at all, and opening
+// it already requires the bundle. e2e/smoke.mobile.spec.ts pins that the drawer is the
+// only route to Log out on a phone.
+//
+// So below `md` there is no pre-hydration tap to queue, and the phone's version of "I
+// tapped Log out and nothing happened" is a DIFFERENT defect with a different shape: not
+// a tap that was swallowed, but a control that is unreachable until the bundle lands,
+// behind a hamburger that is equally unreachable. Nothing here addresses that, and
+// nothing here should pretend to. e2e/logout-pre-hydration.spec.ts runs at the default
+// desktop viewport for exactly this reason.
+//
 // ── WHAT THIS DOES INSTEAD (owner ruling, 2026-08-22) ─────────────────────────────────
 //
 // QUEUE THE TAP AND SHOW A PENDING STATE. One capture-phase listener, registered from the
@@ -41,8 +60,9 @@
 // the server-side destroy, with the wipe re-thought as recoverable and completed on the
 // next load) is the only option that restores the guarantee the other forms have, and it
 // was considered and declined for now. ACCEPTED RESIDUAL, stated so the next reader does
-// not think this closes the window: if the device is pocketed before hydration completes,
-// the queued logout still never fires. The window is NARROWED, not closed.
+// not think this closes the window: if the device is put down or handed over before
+// hydration completes, the queued logout still never fires. The window is NARROWED, not
+// closed.
 //
 // ── WHY A LISTENER AND NOT A MutationObserver ─────────────────────────────────────────
 //

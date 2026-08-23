@@ -15,9 +15,18 @@ import { LOGOUT_TAPPED_ATTR } from "@/lib/logout-tap";
 // right and stands — what it cost was this control's fallback, and nothing was put back.
 //
 // So a tap in that window did NOTHING AT ALL: no submit, no POST, no navigation, and no
-// error either. On a shared or borrowed device that is a person tapping Log out, seeing
-// nothing happen, and handing the phone over still signed in. It is also #3400: three CI
+// error either. On a shared or borrowed machine that is a person clicking Log out, seeing
+// nothing happen, and walking away from it still signed in. It is also #3400: three CI
 // reds whose only symptom was a bare `waitForURL` timeout naming nothing.
+//
+// THIS RUNS AT THE DEFAULT DESKTOP VIEWPORT ON PURPOSE, and that is the whole scope of
+// the defect rather than a convenience. The Log out control is in the server HTML only
+// inside the desktop sidebar (`app/(app)/layout.tsx`, `<aside … hidden … md:flex>`);
+// below `md` that aside is `display:none` and the mobile drawer is a `createPortal`
+// gated on client state (`components/MobileNav.tsx`), so on a phone there is no Log out
+// to tap until the bundle has landed anyway. See lib/logout-tap.ts for why the phone's
+// version of this is a different defect. A `mobile`-project twin of this spec would not
+// be broader coverage; it would assert a window that does not exist.
 //
 // WHY THIS SPEC EXISTS AT ALL, given #3513 already landed `settledClick` on the
 // emergency-card call site. That was an INSTRUMENT — it closes the window for one spec so
