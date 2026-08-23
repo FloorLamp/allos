@@ -35,6 +35,7 @@ function base(over: Partial<IntakeFactInput> = {}): IntakeFactInput {
     quantityOnHand: "",
     stopDate: "",
     ingredientCount: 0,
+    purposeSummary: "",
     notes: "",
     rules: [],
     itemNames: new Map(),

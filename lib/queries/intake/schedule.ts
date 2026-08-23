@@ -16,6 +16,10 @@ import {
   parseItemIngredients,
   type IntakeItemIngredient,
 } from "../../intake-ingredients";
+import {
+  parseItemPurposes,
+  type IntakeItemPurpose,
+} from "../../intake-purposes";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
 // Nutrition nav entry's visibility for an infant profile (#746): the food-group
@@ -156,6 +160,20 @@ export const getIntakeIngredients = snapshotCached(
   (profileId: number) => String(profileId),
   getIntakeIngredientsUncached
 );
+
+// Purpose links (#2857) for one profile's items, decoded from the same item read the
+// composition rides on. Same arrangement, same reason: the rows are projected on
+// getIntakeItems, so this costs no statement of its own.
+export function getIntakePurposesByItem(
+  profileId: number
+): Map<number, IntakeItemPurpose[]> {
+  const out = new Map<number, IntakeItemPurpose[]>();
+  for (const item of getIntakeItems(profileId)) {
+    const rows = parseItemPurposes(item.purposes_json);
+    if (rows.length > 0) out.set(item.id, rows);
+  }
+  return out;
+}
 
 // The same rows grouped by item_id — the shape every consumer actually uses.
 export function getIntakeIngredientsByItem(

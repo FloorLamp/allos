@@ -7,6 +7,8 @@ import {
   getIntakeLogsInRange,
   getIntakePairs,
   getIntakeIngredientsByItem,
+  getIntakePurposesByItem,
+  getUsedCanonicalNames,
   getRefillRates,
   getPoolChips,
   findLinkableSupply,
@@ -496,6 +498,15 @@ export default async function SupplementsTab({
   // Label composition (#2856), for the "What's in this" line on each card and for the
   // edit form's repeater. One profile-scoped read for the whole page, indexed by item.
   const ingredientsBySupp = getIntakeIngredientsByItem(profile.id);
+  // Purpose links (#2857), for the edit form's "What you take it for" control. Rides on
+  // the same item read the composition does, so it costs no extra statement. The
+  // pickers behind it read the profile's own conditions and the biomarker names it
+  // actually has results for — a reason names something the person has seen.
+  const purposesBySupp = getIntakePurposesByItem(profile.id);
+  const purposeConditions = getConditions(profile.id, { status: "active" }).map(
+    (c) => ({ id: c.id, name: c.name })
+  );
+  const purposeBiomarkers = getUsedCanonicalNames(profile.id);
   // Filtered through the findings bus (#435): a keep-apart warning the profile has
   // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
   // dedupeKey. `suppressions`/`todayStr` are resolved above.
@@ -685,6 +696,9 @@ export default async function SupplementsTab({
         pgxVariants={pgxVariants}
         pairs={pairsFor(it.supplement.id)}
         ingredients={ingredientsBySupp.get(it.supplement.id) ?? []}
+        purposes={purposesBySupp.get(it.supplement.id) ?? []}
+        purposeConditions={purposeConditions}
+        purposeBiomarkers={purposeBiomarkers}
         isTaken={isTaken}
         isSkipped={isSkipped}
         strip={stripFor(it.supplement)}
@@ -1250,6 +1264,8 @@ export default async function SupplementsTab({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AddSupplementModal
                         initialSupply={initialSupply}
+                        purposeConditions={purposeConditions}
+                        purposeBiomarkers={purposeBiomarkers}
                         allIntakeItems={intakeItems}
                         stackItems={stackItems}
                         pgxVariants={pgxVariants}

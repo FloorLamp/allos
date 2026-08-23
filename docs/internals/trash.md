@@ -132,13 +132,13 @@ the medical passport deleted for good. `allergy`, `condition`, `immunization`,
 `skin-lesion` and `visit` close that inversion. What each capture carries beyond
 its root row:
 
-| Kind           | Children                                                | Reconciled links                | Side effects NOT inverted                       |
-| -------------- | ------------------------------------------------------- | ------------------------------- | ----------------------------------------------- |
-| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider     | —                                               |
+| Kind           | Children                                                | Reconciled links                | Side effects NOT inverted                                                                              |
+| -------------- | ------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider     | —                                                                                                      |
 | `condition`    | —                                                       | document / visit                | `intake_items.indication_condition_id` null-out; `intake_item_purposes` condition rows removed (#2857) |
-| `immunization` | —                                                       | visit / provider                | `sweepImmunizationDismissals` (#376)            |
-| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider     | `care_plan_items` follow-up links (#700)        |
-| `visit`        | —                                                       | document / clinician / facility | every inbound `encounter_id` (#288/#1050/#1053) |
+| `immunization` | —                                                       | visit / provider                | `sweepImmunizationDismissals` (#376)                                                                   |
+| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider     | `care_plan_items` follow-up links (#700)                                                               |
+| `visit`        | —                                                       | document / clinician / facility | every inbound `encounter_id` (#288/#1050/#1053)                                                        |
 
 **`medical_documents` is the one root of the issue's six that is still NOT
 undoable.** A document delete is not one row: it is the file, the extracted rows

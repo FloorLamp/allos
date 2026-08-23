@@ -17,6 +17,8 @@ export default function AddSupplementModal({
   pgxVariants,
   initialSupply = null,
   activityScheduleAvailable = true,
+  purposeConditions = [],
+  purposeBiomarkers = [],
 }: {
   allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
@@ -25,6 +27,9 @@ export default function AddSupplementModal({
   // already showing the seeded form rather than making the user find Add again.
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
+  // Picker sources for the "What you take it for" control (#2857).
+  purposeConditions?: { id: number; name: string }[];
+  purposeBiomarkers?: string[];
 }) {
   const [open, setOpen] = useState(initialSupply != null);
 
@@ -63,6 +68,8 @@ export default function AddSupplementModal({
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               initialSupply={initialSupply}
+              conditions={purposeConditions}
+              biomarkers={purposeBiomarkers}
               activityScheduleAvailable={activityScheduleAvailable}
               onDone={() => setOpen(false)}
             />

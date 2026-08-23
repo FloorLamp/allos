@@ -53,6 +53,13 @@ import {
 import { listSharedSupplyOptions } from "@/app/(app)/supplies/actions";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
+import PurposesEditor from "@/components/intake/PurposesEditor";
+import {
+  purposeToDraft,
+  purposeLabel,
+  type IntakeItemPurpose,
+  type PurposeDraft,
+} from "@/lib/intake-purposes";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
   medicationBrandOptions,
@@ -157,6 +164,8 @@ export default function IntakeItemForm({
   kind: lockedKind = null,
   doses: initialDoses,
   ingredients: initialIngredients = [],
+  purposes: initialPurposes = [],
+  biomarkers = [],
   retiredDoses = [],
   allIntakeItems = [],
   conditions = [],
@@ -179,6 +188,11 @@ export default function IntakeItemForm({
   kind?: IntakeItemKind | null;
   doses?: IntakeDose[];
   ingredients?: IntakeItemIngredient[];
+  // Declared purpose links (#2857), seeding the "What you take it for" control on edit.
+  purposes?: IntakeItemPurpose[];
+  // Canonical biomarker names this profile has results for (getUsedCanonicalNames) —
+  // the biomarker purpose's picker source. Empty ⇒ that row does not render.
+  biomarkers?: string[];
   retiredDoses?: IntakeDose[];
   allIntakeItems?: { id: number; name: string }[];
   conditions?: { id: number; name: string }[];
@@ -346,6 +360,33 @@ export default function IntakeItemForm({
   );
   const [ingredientSeedNote, setIngredientSeedNote] = useState<string | null>(
     null
+  );
+  const [purposes, setPurposes] = useState<PurposeDraft[]>(() =>
+    initialPurposes
+      .map(purposeToDraft)
+      .filter((d): d is PurposeDraft => d != null)
+  );
+  // The declared purposes as one phrase for the fact chip. Built HERE because only the
+  // form holds the live condition names — a purpose row stores the id (#203).
+  const purposeSummary = useMemo(
+    () =>
+      purposes
+        .map((d) =>
+          purposeLabel(
+            {
+              kind: d.kind,
+              goal_key: d.kind === "goal" ? d.goalKey : null,
+              biomarker_key: d.kind === "biomarker" ? d.biomarkerKey : null,
+              direction: d.kind === "biomarker" ? (d.direction ?? null) : null,
+            },
+            d.kind === "condition"
+              ? (conditions.find((c) => c.id === d.conditionId)?.name ?? null)
+              : null
+          )
+        )
+        .filter((l): l is string => !!l)
+        .join(" · "),
+    [purposes, conditions]
   );
   const [doses, setDoses] = useState<DoseState[]>(
     initialDoses && initialDoses.length
@@ -710,6 +751,7 @@ export default function IntakeItemForm({
       })),
       pairs: ruleFields.pairs,
       ingredients,
+      purposes,
       notes,
       rxcui: rx.rxcui,
       rxcuiIngredients: rx.rxcuiIngredients ?? [],
@@ -750,6 +792,7 @@ export default function IntakeItemForm({
       cadence,
       doses,
       ingredients,
+      purposes,
       notes,
       rx.rxcui,
       rx.rxcuiIngredients,
@@ -805,6 +848,7 @@ export default function IntakeItemForm({
     quantityOnHand,
     stopDate: endDate,
     ingredientCount: ingredients.filter((g) => g.name.trim()).length,
+    purposeSummary,
     notes,
     rules,
     itemNames,
@@ -855,6 +899,7 @@ export default function IntakeItemForm({
       setCadence(v.cadence);
       setDoses(v.doses);
       setIngredients(v.ingredients);
+      setPurposes(v.purposes);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
     },
@@ -989,6 +1034,7 @@ export default function IntakeItemForm({
     () => ingredients.map((g) => g.name.trim()).filter((n) => n.length > 0),
     [ingredients]
   );
+
 
   return (
     <form
@@ -1750,6 +1796,19 @@ export default function IntakeItemForm({
               />
             )}
           </div>
+        );
+
+      case "purpose":
+        return (
+          <PurposesEditor
+            rows={purposes}
+            setRows={setPurposes}
+            name={name}
+            ingredientNames={ingredientNames}
+            conditions={conditions}
+            biomarkers={biomarkers}
+            fid={fid}
+          />
         );
 
       case "notes":

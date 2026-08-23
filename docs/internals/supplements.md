@@ -808,6 +808,39 @@ gather), and the interaction / PGx / UL warnings fire identically for a `may`
 member. Adherence fractions re-scope to must+should for free — a `may` item has no
 occurrences, so it cannot drag an honest number down.
 
+**Purpose links: the structured "why" (#2857).** `intake_item_purposes` (migration
+`20260823-intake-item-purposes`) is a child of `intake_items` — no `profile_id`, scoped
+and deleted through `item_id`, the `intake_item_ingredients` shape. Medications had the
+indication link (#1052); a supplement's reason lived in `notes` as prose no engine could
+read ("taken for eye health"; "25-OH-D is 29 ng/mL, flagged LOW"). Many rows per item —
+an omega-3 is heart AND joints — in three kinds, exactly one target per row (a schema
+CHECK): a **goal** key from the closed vocabulary in `lib/intake-purposes.ts`
+(`GOAL_PURPOSES`), a **condition** by id, or a **biomarker** by canonical name under
+`COLLATE NOCASE` — the identity `saved_items` and the `biomarker:` dismissal keys
+already use — with an OPTIONAL `low`/`high` direction. Direction-agnostic on purpose:
+low 25-OH-D leading to D3 and high LDL/ApoB leading to psyllium (#2754) are both real
+starts, and a model that spoke only deficiency-repletion could not say the second.
+Ids and keys, never display names (#203), so a purpose survives a rename.
+
+Declared only, suggested at most (#559/#1505/#798): the control posts what the person
+tapped, and `suggestGoalPurposes` OFFERS the eye-health goal when the label carries
+lutein/zeaxanthin/astaxanthin — composition readable at all only since #2856 — through
+the shared `tokenContains`, never a second vocabulary. Nothing is back-filled and
+nothing is read out of `notes`. The rows ride on the item read as `purposes_json`
+(`getIntakePurposesByItem`), post as `purposes` through `intakeItemFormData`, reconcile
+delete-and-reinsert on save (absent field = unchanged; empty array = cleared), export as
+the `intake_item_purposes` dataset with the condition resolved to its live NAME, and are
+captured/restored with the item by `undo-delete`. `condition_id` carries NO
+`ON DELETE` — the `indication_condition_id` shape — so its detach is explicit in
+`lib/undo-delete-db.ts` beside the sibling clinical null-outs; the row is REMOVED (a
+purpose with no condition is not a purpose, and the CHECK refuses it) and, like every
+sibling detach, is not restored on undo. Recorded in `docs/internals/trash.md`.
+Rendering a purpose on the item row, grouping a stack by goal, and putting a
+biomarker-linked item beside its retest nudge are follow-ups #2857 names as separate
+issues; the surface here is the declaration, on the SUPPLEMENT form only — a medication
+already states its reason through the #1052 indication picker, and whether the two
+controls should merge is an open question rather than a settled one.
+
 **A catalogued product that is above a limit ON PURPOSE says so (#3156).** A
 `SupplementCatalogEntry` may carry `aboveUpperLimit: [{ nutrient, reason }]` — a DRI
 nutrient key and one plain sentence. `PreserVision AREDS 2` is the shipped case: 40 mg

@@ -6,6 +6,7 @@ import {
   ingredientLine,
   type IntakeItemIngredient,
 } from "@/lib/intake-ingredients";
+import type { IntakeItemPurpose } from "@/lib/intake-purposes";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
@@ -57,6 +58,9 @@ export default function EditableSupplementRow({
   pgxVariants,
   pairs,
   ingredients = [],
+  purposes = [],
+  purposeConditions = [],
+  purposeBiomarkers = [],
   isTaken,
   isSkipped,
   strip,
@@ -82,6 +86,10 @@ export default function EditableSupplementRow({
   // This item's label composition (#2856): the "What's in this" disclosure below and
   // the edit form's repeater. Empty for the ordinary single-substance item.
   ingredients?: IntakeItemIngredient[];
+  // Purpose links and their picker sources (#2857), passed straight to the edit form.
+  purposes?: IntakeItemPurpose[];
+  purposeConditions?: { id: number; name: string }[];
+  purposeBiomarkers?: string[];
   isTaken: boolean;
   isSkipped: boolean;
   strip: AdherenceDot[];
@@ -429,6 +437,9 @@ export default function EditableSupplementRow({
               item={s}
               doses={doses}
               ingredients={ingredients}
+              purposes={purposes}
+              conditions={purposeConditions}
+              biomarkers={purposeBiomarkers}
               retiredDoses={retiredDoses}
               allIntakeItems={allIntakeItems}
               stackItems={stackItems}

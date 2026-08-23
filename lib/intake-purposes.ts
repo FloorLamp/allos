@@ -93,7 +93,11 @@ export interface IntakeItemPurpose {
 export type PurposeDraft =
   | { kind: "goal"; goalKey: string }
   | { kind: "condition"; conditionId: number }
-  | { kind: "biomarker"; biomarkerKey: string; direction?: PurposeDirection | null };
+  | {
+      kind: "biomarker";
+      biomarkerKey: string;
+      direction?: PurposeDirection | null;
+    };
 
 // What the write path stores for one purpose row.
 export interface PurposeWrite {
@@ -186,7 +190,10 @@ export function normalizePurposeDrafts(
 // the live one; an id whose condition has since gone returns null rather than a
 // dangling "For: ".
 export function purposeLabel(
-  p: Pick<IntakeItemPurpose, "kind" | "goal_key" | "biomarker_key" | "direction">,
+  p: Pick<
+    IntakeItemPurpose,
+    "kind" | "goal_key" | "biomarker_key" | "direction"
+  >,
   conditionName?: string | null
 ): string | null {
   if (p.kind === "goal") {
