@@ -220,7 +220,11 @@ export function seedIntegrationSyncEvents(): void {
     null,
     null,
     null, // raw_ref
-    "Strava rate limit reached (429): daily quota exhausted"
+    // A line the app can actually WRITE since #3618 — house copy, no status — and
+    // distinct from the newest failure's below, which is what lets the assertion
+    // name the history row. (A real rate limit truncates rather than failing, so the
+    // 429 this fixture used to spell was never a reason the runner could record.)
+    "Couldn't reach Strava. Try again."
   );
 
   // Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
@@ -300,7 +304,11 @@ export function seedIntegrationSyncEvents(): void {
     null,
     null,
     null, // raw_ref
-    "Strava token refresh failed (401): unauthorized"
+    // Strava's connection is `connected` in this seed, so its newest failure must
+    // NOT ask for a reconnect: the sentence and the state are one decision (#3618),
+    // and a card that says reconnect is a card with the control beside it. This is
+    // what a refresh that threw without a definitive auth verdict records.
+    "Couldn't connect to Strava."
   );
 
   // Issue #294: a source that was CONNECTED and later removed keeps showing its
@@ -364,7 +372,10 @@ export function seedIntegrationSyncEvents(): void {
     null,
     null,
     null, // raw_ref
-    "Withings token refresh failed (401)"
+    // Withings IS `needs_reauth` above, so this is the line the runner writes for it
+    // (#3618) — the reconnect ask, rendered beside the "Needs reconnect" badge and
+    // the Reconnect link this fixture exists to show.
+    "Your Withings connection expired. Reconnect to resume syncing."
   );
 }
 

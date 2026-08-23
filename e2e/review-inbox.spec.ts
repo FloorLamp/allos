@@ -38,7 +38,7 @@ test.describe("Data → Review import inbox", () => {
       "Sync failing"
     );
     await expect(
-      stravaCard.getByText(/Strava token refresh failed/)
+      stravaCard.getByText(/Couldn't connect to Strava\./)
     ).toBeVisible();
     await expect(
       stravaCard.getByTestId("source-consequence-strava")
@@ -53,7 +53,7 @@ test.describe("Data → Review import inbox", () => {
     // the whole Review surface — the #1772 disease (attention row + source card
     // restating the same 401 with different buttons) stays dead. (Scoped to
     // Strava's own message: the seeded Withings card has a 401 of its own.)
-    await expect(review.getByText(/Strava token refresh failed/)).toHaveCount(
+    await expect(review.getByText(/Couldn't connect to Strava\./)).toHaveCount(
       1
     );
     // And the escalated source is NOT listed again under Connected sources.
@@ -237,14 +237,18 @@ test.describe("Data → Review import inbox", () => {
 
     // The newest Strava event is a failure — its reason shows, as it always did.
     await expect(
-      history.getByText(/Strava token refresh failed \(401\)/)
+      history.getByText(/Couldn't connect to Strava\./)
     ).toBeVisible();
     // And the OLDER failure, which is not the latest event, states its own distinct
     // reason too. That row used to render a bare "Sync failed" with no explanation
     // anywhere in the UI.
     await expect(
-      history.getByText(/rate limit reached \(429\): daily quota exhausted/)
+      history.getByText(/Couldn't reach Strava\. Try again\./)
     ).toBeVisible();
+    // Since #3618 neither reason names an HTTP status, a path or a vendor code —
+    // this is that guarantee read off the RENDERED history, not off a producer.
+    await expect(history).not.toContainText("(401)");
+    await expect(history).not.toContainText("(429)");
   });
 
   test("a dead-token source shows a 'Needs reconnect' card, distinct from 'Not connected' (issue #326)", async ({
@@ -265,6 +269,13 @@ test.describe("Data → Review import inbox", () => {
     });
     await expect(reconnect).toBeVisible();
     await expect(reconnect).toHaveAttribute("href", "/integrations/withings");
+    // And the RECORDED LINE agrees with the badge and the link (#3618): the card
+    // asks for the one thing a person can do, beside the control that does it.
+    await expect(
+      withings.getByText(
+        "Your Withings connection expired. Reconnect to resume syncing."
+      )
+    ).toBeVisible();
     await expect(
       withings.getByRole("button", { name: "Sync now" })
     ).toHaveCount(0);
