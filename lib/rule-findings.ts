@@ -1686,7 +1686,7 @@ const RIGHTSIZE_ACTION: Record<
   practice: { href: PRACTICES_HREF, label: "Open practices" },
   training: {
     href: "/training?tab=goals" as AppRoute,
-    label: "Open weekly routine",
+    label: "Open weekly targets",
   },
   food: { href: nutritionTabHref("food"), label: "Open weekly habits" },
 };

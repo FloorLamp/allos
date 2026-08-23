@@ -326,10 +326,10 @@ delete/end reverses that situation activation. A protocol can also reference the
 **recovery gear** it studies (which sauna / plunge, linking to its Equipment
 detail) and declare a **practice** to track — an activity type **or a food
 group** (#580, e.g. "fatty fish 2×/week" for an omega-3 protocol) × N/week —
-whose **adherence** is the same weekly-count your Weekly routine targets use (so
+whose **adherence** is the same weekly-count your Weekly targets use (so
 "sauna 4×/week" shows "2 / 4 this week"), plus a usage-during-window tally ("23
 sessions · last 3 days ago") over the protocol's dates; the practice reuses a
-matching weekly routine target if you already have one, or creates one it cleans
+matching weekly target if you already have one, or creates one it cleans
 up on delete. The experiment list adds a compact day-density heatmap bounded to
 the most recent 53 weeks while its session and active-day summary still covers
 the complete protocol window. A recently ended protocol can resume the same run;

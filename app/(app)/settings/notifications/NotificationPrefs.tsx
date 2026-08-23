@@ -976,7 +976,7 @@ export default function NotificationPrefs({
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     {e.kind === "workout"
-                      ? `Sent on the usual training schedule — ${workoutSummary} — when behind on the weekly routine.`
+                      ? `Sent on the usual training schedule — ${workoutSummary} — when behind on the weekly targets.`
                       : e.blurb}
                   </p>
                   {slotGap(e) && (

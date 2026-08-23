@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import type { FrequencyScopeKind } from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { WeeklyTargets, type WeeklyTarget } from "@/components/WeeklyTargets";
+import Collapse from "@/components/Collapse";
 import SubmitButton from "@/components/SubmitButton";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -45,6 +47,8 @@ function optionsFor(
   }));
 }
 
+const FORM_PANEL_ID = "frequency-target-form";
+
 const DEFAULT_KIND: FrequencyScopeKind = "region";
 const defaultValue = (kind: FrequencyScopeKind, strength = true) =>
   optionsFor(kind, strength)[0].value;
@@ -52,6 +56,23 @@ const defaultValue = (kind: FrequencyScopeKind, strength = true) =>
 // Chips + editor for weekly frequency targets. Clicking a chip loads it into the
 // form for editing (and reveals a Delete button); there's one target per scope,
 // so saving an existing scope updates its cadence rather than adding a duplicate.
+//
+// THE ENTRY FORM FOLDS (#3474 item 2, the #1497 rare-cadence rule). Setting a weekly
+// frequency target is a few-times-ever act, and this card is the first thing the Plan
+// tab shows on a phone — two selects, a number field and a primary submit standing open
+// on every visit is exactly the class #1497 banned. The CHIPS stay standing; only the
+// form folds.
+//
+// Deliberately NOT <AddEntryPanel>, for two reasons, and both are structural:
+//   1. That primitive draws a `.card` around itself when open, and this form lives
+//      INSIDE the Weekly targets card — a card in a card, which the container grammar
+//      forbids (docs/internals/design-system.md §2).
+//   2. Its `open` is uncontrolled by design ("the INITIAL state only, never a
+//      controlled value"), and selecting a target chip must OPEN this form with that
+//      target loaded — the editing affordance #3474 preserves word for word.
+// So this is a route-local disclosure over the same shared <Collapse>, which keeps the
+// folded controls out of the tab order and the accessibility tree while hidden — the
+// same shape and the same reason as TtcOffDisclosure (#2583).
 export default function FrequencyTargets({
   items,
   strengthTrainingAvailable = true,
@@ -71,12 +92,17 @@ export default function FrequencyTargets({
   );
   const [perWeek, setPerWeek] = useState("2");
   const [error, setError] = useState<string | null>(null);
+  // The fold (#3474 item 2). Closed on arrival; opened by the "Add target" toggle or
+  // by selecting a chip to edit, and closed again by a save, a delete or a deselect —
+  // every path that leaves the form with nothing left to say.
+  const [formOpen, setFormOpen] = useState(false);
 
   function reset() {
     setSelectedId(null);
     setKind(initialKind);
     setValue(defaultValue(initialKind, strengthTrainingAvailable));
     setPerWeek("2");
+    setFormOpen(false);
   }
 
   function selectTarget(t: WeeklyTarget) {
@@ -87,6 +113,7 @@ export default function FrequencyTargets({
     setKind(item.scopeKind);
     setValue(item.scopeValue);
     setPerWeek(String(item.perWeek));
+    setFormOpen(true);
   }
 
   function changeKind(k: FrequencyScopeKind) {
@@ -101,17 +128,17 @@ export default function FrequencyTargets({
       await createFrequencyTarget(fd);
     } catch {
       // Keep the form and its selections intact; surface the failure inline.
-      setError("Couldn't save this routine. Try again.");
+      setError("Couldn't save this target. Try again.");
       return;
     }
-    toast(updating ? "Routine updated" : "Routine added");
+    toast(updating ? "Target updated" : "Target added");
     reset();
   }
 
   async function remove() {
     if (selectedId == null) return;
     const ok = await confirm({
-      title: "Delete routine",
+      title: "Delete target",
       message: "Delete this weekly frequency target? This can’t be undone.",
       confirmLabel: "Delete",
       danger: true,
@@ -123,10 +150,10 @@ export default function FrequencyTargets({
     try {
       await deleteFrequencyTarget(fd);
     } catch {
-      setError("Couldn't delete this routine. Try again.");
+      setError("Couldn't delete this target. Try again.");
       return;
     }
-    toast("Routine deleted");
+    toast("Target deleted");
     reset();
   }
 
@@ -141,7 +168,36 @@ export default function FrequencyTargets({
           />
         </div>
       )}
-      <form action={save} className="mt-3 flex flex-wrap items-end gap-3">
+      <button
+        type="button"
+        data-testid="frequency-target-toggle"
+        aria-expanded={formOpen}
+        aria-controls={FORM_PANEL_ID}
+        onClick={() => (formOpen ? reset() : setFormOpen(true))}
+        className={
+          formOpen
+            ? "mt-3 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
+            : "btn-ghost mt-3 text-sm"
+        }
+      >
+        {formOpen ? (
+          <>
+            <span>{selectedId == null ? "Add target" : "Update target"}</span>
+            <IconChevronDown
+              className="h-4 w-4 shrink-0 rotate-180 transition-transform"
+              aria-hidden="true"
+            />
+          </>
+        ) : (
+          <>
+            <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />
+            Add target
+          </>
+        )}
+      </button>
+      <Collapse open={formOpen}>
+        <div id={FORM_PANEL_ID} className="pt-3">
+      <form action={save} className="flex flex-wrap items-end gap-3">
         {/* When editing, carry the row id so the action updates it in place —
             including a scope change — instead of inserting a duplicate. */}
         {selectedId != null && (
@@ -191,9 +247,12 @@ export default function FrequencyTargets({
             className="input w-24"
           />
         </div>
-        <SubmitButton pendingLabel="Saving…">
-          {selectedId == null ? "Add target" : "Update target"}
-        </SubmitButton>
+        {/* Plain form grammar ("Save"), not a second "Add target" (#3474 item 2).
+            The DISCLOSURE above is the card's create affordance and carries that
+            name; two controls answering to it inside one card is a duplicate
+            accessible name, and the one the user reaches first would be the wrong
+            one. Same split CycleForm already ships under its own fold. */}
+        <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
         {selectedId != null && (
           <button
             type="button"
@@ -204,6 +263,8 @@ export default function FrequencyTargets({
           </button>
         )}
       </form>
+        </div>
+      </Collapse>
       {error && (
         <p
           role="alert"

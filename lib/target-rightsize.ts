@@ -119,7 +119,7 @@ const DOMAIN_STOP_TEXT: Record<RightSizeDomain, string> = {
   practice:
     "Keeping logs only drops the weekly goal and its reminders; every logged session stays in your history.",
   training:
-    "Stopping tracking removes the weekly routine; every logged session stays in your history.",
+    "Stopping tracking removes the weekly target; every logged session stays in your history.",
   food: "Stopping tracking removes the weekly habit; your food log stays exactly as it is.",
 };
 

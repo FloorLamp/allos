@@ -350,12 +350,12 @@ export default function ProfileForm({
         </select>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The first day of the week for calendars and the weekly cardio chart —
-          and, on a calendar week (below), where the weekly routine resets.
+          and, on a calendar week (below), where the weekly targets reset.
         </p>
       </div>
 
       <div className="border-t border-black/5 pt-5 dark:border-white/10">
-        <label className="label">Weekly routine counts</label>
+        <label className="label">Weekly targets count</label>
         <select
           value={weekMode}
           onChange={(e) => {
@@ -377,8 +377,8 @@ export default function ProfileForm({
         </select>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {weekMode === "rolling"
-            ? "Your weekly routine and week summary count the last 7 days, so they never reset to empty — the window always ends today."
-            : "Your weekly routine and week summary reset on your week-start day, so a fresh week begins with empty counters."}
+            ? "Your weekly targets and week summary count the last 7 days, so they never reset to empty — the window always ends today."
+            : "Your weekly targets and week summary reset on your week-start day, so a fresh week begins with empty counters."}
         </p>
       </div>
 

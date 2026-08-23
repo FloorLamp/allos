@@ -19,7 +19,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 // check below fails closed until it does.
 const CHIP_DATA_BUILDERS = [
   "components/dashboard/ProgressAtoms.tsx", // dashboard Goals-and-habits
-  "app/(app)/training/OverviewSection.tsx", // Training weekly routine
+  "app/(app)/training/OverviewSection.tsx", // Training weekly targets
   "app/(app)/training/PlanSection.tsx", // Plan's FrequencyTargets items (#2892)
 ];
 
