@@ -23,12 +23,9 @@ Reach for `migrate()` or `runMigrations()` only when the chain is the question:
 a migration's own `up()`, replay safety, a partial apply to some version, or
 what a boot task does on a first boot. Those tests are why the chain still runs.
 
-Never slice `MIGRATIONS` by position to build a historical database. "All but
-the newest" means "before X" for exactly one day, and then silently rebuilds the
-future into the "before" database while still passing (#3565). `migrationsBefore`
-throws on a name it cannot find, and
-`lib/__tests__/migration-historical-fixture-scan.test.ts` fails the tier on a
-positional slice.
+Never slice `MIGRATIONS` by position: "all but the newest" means "before X" for
+one day, then silently rebuilds the future into the "before" database while
+still passing (#3565). `migration-historical-fixture-scan.test.ts` fails on it.
 
 `./migrated-db-parity.test.ts` holds the snapshot to a real replay — same
 schema, same version, same seeded rows — and proves the copies are independent.

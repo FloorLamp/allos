@@ -6,9 +6,7 @@ import { up } from "@/lib/migrations/versions/20260814-medical-category-residue"
 function beforeRetirement(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const migration of migrationsBefore(
-    "20260814-medical-category-residue"
-  ))
+  for (const migration of migrationsBefore("20260814-medical-category-residue"))
     migration.up(mem);
   return mem;
 }

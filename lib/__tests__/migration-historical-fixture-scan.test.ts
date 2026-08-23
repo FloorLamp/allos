@@ -81,7 +81,8 @@ describe("historical-shape fixtures slice by name, not by array position", () =>
       for (const file of walk(path.join(ROOT, dir))) {
         const rel = path.relative(ROOT, file).split(path.sep).join("/");
         if (rel === SELF || rel in ALLOWED) continue;
-        if (slicesByPosition(fs.readFileSync(file, "utf8"))) offenders.push(rel);
+        if (slicesByPosition(fs.readFileSync(file, "utf8")))
+          offenders.push(rel);
       }
     }
     expect(
@@ -90,7 +91,7 @@ describe("historical-shape fixtures slice by name, not by array position", () =>
         "database. Position is not identity: the slice means what its author " +
         "intended on exactly one day, then silently rebuilds the future into " +
         "the 'before' database and keeps passing. Use " +
-        "`migrationsBefore(\"<migration name>\")` from " +
+        '`migrationsBefore("<migration name>")` from ' +
         `@/lib/migrations/versions instead:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
@@ -100,9 +101,10 @@ describe("historical-shape fixtures slice by name, not by array position", () =>
     // entry no longer matches, delete the entry — do not leave the exemption.
     for (const rel of Object.keys(ALLOWED)) {
       const full = path.join(ROOT, rel);
-      expect(fs.existsSync(full), `${rel} (${ALLOWED[rel]}) no longer exists`).toBe(
-        true
-      );
+      expect(
+        fs.existsSync(full),
+        `${rel} (${ALLOWED[rel]}) no longer exists`
+      ).toBe(true);
       expect(
         slicesByPosition(fs.readFileSync(full, "utf8")),
         `${rel} no longer slices by position — remove its allowlist entry`
