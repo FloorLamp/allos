@@ -97,6 +97,11 @@ const ALLOWED: Record<string, string> = {
   // — the point is that a pending set exists, not which migration it is.
   "lib/__db_tests__/migration-snapshot.test.ts":
     "needs a database one behind the build, not one before a named migration",
+  // Walks EVERY prefix in turn, so no slice stands in for a named migration —
+  // the loop's subject is "each body over the state that body produced", which
+  // is a positional question by construction (#3590).
+  "scripts/migration-replay-census.ts":
+    "re-applies each migration over its own output, visiting every prefix",
 };
 
 // `(?<!\w)` keeps NUMBERED_MIGRATIONS.slice(...) out — it is the sanctioned
