@@ -1086,8 +1086,9 @@ and no reason has to be enumerated anywhere. Two terms:
   outranked (a stamp older than the stored row's, or a NULL stored stamp with no proof it
   predates the column), or cut at sub-daily granularity. Distinct rows and not (stamped,
   stored) pairs: two stamped buckets declining over one stored row is one reading left
-  double counting, and the pair count said two. A row another stamped bucket collapses is
-  pruned out — the collapse is the truth.
+  double counting, and the pair count said two. Only on the victim's own `date`: a
+  stamped bucket overlapping a stored row filed under a DIFFERENT date is the day-bucket
+  chain, not a double count, so it is neither collapsed nor reported.
 - **The excess the push carries against ITSELF**: a stamped day bucket overlapping an
   earlier-starting stamped day bucket **filed under the same `date`**. No stored id can
   hold that shape — a push carrying both anchorings of a day the store held NEITHER row of
@@ -1102,7 +1103,8 @@ high over a store where exactly one does. The payload-side plan suppressed it by
 different route (the pair touched a natural key already named in `leftStanding`); on this
 side of the ruling the stored rows carry the stamp and are never candidates, so the `date`
 is what carries it. Measured on the property suite's mixed-anchoring scenario: 2 without,
-1 with.
+1 with. The same `date` term now governs the DELETE as well — see "cover the day" below —
+so one clause decides both what is collapsed and what is counted.
 
 **IT NEEDS NO DEDUPE, WHICH IS ONE THING THE STORE-DERIVED SHAPE GIVES BACK** (#3438). The
 payload-side count had to collapse a push's rows to one per natural key by hand, because
@@ -1132,20 +1134,56 @@ that would mean one indexed range query per minute bucket, ~11.5k for a single `
 and within the push it would mean comparing every minute bucket against every other. That
 lookup is not made in either direction.
 
-**The trailing edge is LOSSY, and that is the accepted trade.** "Incoming deletes
-what it overlaps" is exact in the interior of the rolling window and lossy at its
-trailing edge: an incoming re-anchored bucket that starts AFTER the stored bucket it
-overlaps takes that bucket's leading hours, `[stored.start, incoming.start)`, with it.
-Those hours come back only if the exporter also re-sends the PREVIOUS re-anchored
-bucket, which at the edge of a ~48h window it may not. Westward the sliver is the old
-zone's midnight to the new zone's midnight — near-zero steps, a few hours of BMR on
-`total_kcal`. Eastward it is worse: the first Tokyo bucket starts `15:00Z`, so it
-takes the New York row holding that New York MORNING, which lives only in the previous
-day's Tokyo bucket. Inside the window that bucket arrives and the morning is
-recounted; at the trailing edge it does not. There is no third option once the source
-has re-anchored — the alternative to dropping the sliver is double-counting it — so
-the loss is bounded, stated, and visible in Review through the `superseded` count
-rather than discovered later.
+**A delete must COVER THE DAY, and that is the unit the whole rule turns on** (#3424,
+the owner's ruling of 2026-08-23). A stored day bucket may be collapsed only when a
+bucket of the same `(profile, metric, source, origin)` **landed in this push on the
+victim's own `date`** and overlaps it. Overlap stays a gate — it is what excludes the
+rollover pair and the same-anchoring neighbours — and the date carries the
+justification.
+
+The rule was "whatever it overlaps" for ten review rounds, and that emptied days.
+Health Connect day buckets CHAIN across days by the zone offset: the LA `08-19` bucket
+`[08-19 07:00Z, 08-20 07:00Z)` meets the NY `08-20` bucket `[08-20 04:00Z, 08-21
+04:00Z)` for three hours. So the PREVIOUS day's re-anchored bucket could justify
+deleting a row on a day this push never replaced — even when the row that WOULD have
+replaced it was refused by a tombstone or by #1101's stale-retry rule. "A suppressed
+replacement justifies nothing" was true of the row and false of the push. Three
+different doors reached the same end state, all on successful pushes, with
+`superseded: 1`, no overlaps left standing and no warning.
+
+**The invariant it buys: a date always keeps a reading.** A victim on date `D` is
+deleted only because a row filed under `D` landed in this push; that row is in the
+store, and it can never itself be a victim, because rows carrying this push's stamp are
+excluded from the candidate set. So `D` is left holding at least the row that justified
+the delete. That is structural rather than a property of the fixtures, and
+`lib/__db_tests__/hc-overlap-supersede-refutations.test.ts` asserts it around **every**
+attack in the file.
+
+Requiring the push to COVER the victim's window instead was weighed and rejected: it
+never fires on the shape the exporter actually sends. Westward the new anchoring's
+bucket starts LATER than the old one's (LA `07:00Z` vs NY `04:00Z`); eastward it ends
+EARLIER (Tokyo `15:00Z` vs NY `04:00Z` the next day). A single new bucket never contains
+an old one, so nothing would have collapsed — including prod's four doubled pairs.
+
+**What it accepts: the switch day's leading sliver.** A re-anchored bucket that starts
+AFTER the stored bucket it replaces takes that bucket's leading hours,
+`[stored.start, incoming.start)`, with it. Westward that is the old zone's midnight to
+the new zone's midnight — near-zero steps, a few hours of BMR on `total_kcal`. Eastward
+it is a morning: the first Tokyo bucket starts `15:00Z`, so replacing the New York row
+on that date drops the New York morning. **The day keeps a reading, a smaller one for
+that span.**
+
+That loss is not claimed to be distinguishable in Review. `superseded: 1` reads the same
+for a lossless interior collapse and for a sliver drop, and the rule no longer needs the
+distinction — the failure that claim was excusing, a date left with nothing, can no
+longer occur.
+
+**And a stored row whose `date` no longer matches is simply kept.** `metric_samples.date`
+is computed under the PROFILE's zone at ingest and is never recomputed except by a
+re-send of the same natural key. Across a date-line move the old anchoring's rows can
+therefore sit under a date label the traveller has left behind — they are not collapsed,
+because nothing landed there, and they are not reported either, because two rows on
+different dates never sum into one day.
 
 **INGEST ONLY, AND THERE IS NO HISTORICAL REPAIR.** The migration is two `ADD COLUMN`s and
 two `settings` writes, and touches no row (`MAX(id)` on an INTEGER PRIMARY KEY is a seek,

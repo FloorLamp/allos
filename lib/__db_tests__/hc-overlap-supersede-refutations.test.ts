@@ -62,6 +62,61 @@ function stored(profile: number, metric: string) {
   }[];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE INVARIANT THE COVER-THE-DAY RULING IS BUILT ON, ASSERTED OVER EVERY ATTACK IN
+// THIS FILE (#3424, the ruling of 2026-08-23T00:58Z).
+//
+//     A DATE KEEPS A READING. No profile-local day that held a reading before a push
+//     holds nothing after it.
+//
+// It is not one more example, and that is why it lives here rather than in a test of
+// its own: round 10 emptied a day through THREE different doors — a tombstoned
+// replacement, a #1101 stale retry, and the eastward trailing edge — and each looked
+// like a different bug. They are one bug, and it is the one the `date` term closes:
+// a victim on date D is deleted only because a row filed under D landed in this push,
+// that row is in the store, and it can never itself be a victim (the candidate query
+// excludes this push's own rows). So D is left holding at least the row that justified
+// the delete.
+//
+// EVERY DOOR INTO THE INGEST IN THIS FILE GOES THROUGH `guarded`, so a case added later
+// is covered without anyone remembering to cover it. MUTATION: drop the `date` term
+// from `supersedeMetricSampleOverlaps`'s candidate query, or from `planSupersede`, and
+// the three round-10 drivers below go red HERE as well as on their own assertions.
+//
+// A PUSH THAT THROWS IS NOT CHECKED, deliberately: the transaction rolled back, there is
+// nothing this could observe, and an assertion raised out of a `finally` would replace
+// the error the chunk-failure cases exist to catch. Those cases assert the stronger
+// commit-point invariant themselves (D1, below).
+
+/** Every (metric, date) total this profile reads right now, with the zeroes dropped. */
+function dayTotals(profile: number): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT metric, date, SUM(value) AS total FROM metric_samples
+        WHERE profile_id = ? GROUP BY metric, date`
+    )
+    .all(profile) as { metric: string; date: string; total: number }[];
+  return new Map(
+    rows
+      .filter((r) => r.total !== 0)
+      .map((r) => [`${r.metric} ${r.date}`, r.total])
+  );
+}
+
+/** Run one push and assert it emptied no date. */
+function guarded<T>(profile: number, run: () => T): T {
+  const before = dayTotals(profile);
+  const out = run();
+  const after = dayTotals(profile);
+  for (const [key, total] of before) {
+    expect(
+      after.has(key),
+      `A DATE LOST ITS LAST READING: ${key} read ${total} before this push and reads nothing after it.`
+    ).toBe(true);
+  }
+  return out;
+}
+
 function rowCount(profile: number, metric: string): number {
   return (
     db
@@ -99,10 +154,12 @@ function upsert(
   pushSeq += 1;
   // The three passes the ingest runs, not `upsertMetricSamples` alone — the supersede
   // does not live in the upsert loop any more (#3424, owner ruling option 2).
-  return pushMetricSamples(profile, rows, source, sink, {
-    pushedAt: stampFor(pushSeq),
-    ...options,
-  });
+  return guarded(profile, () =>
+    pushMetricSamples(profile, rows, source, sink, {
+      pushedAt: stampFor(pushSeq),
+      ...options,
+    })
+  );
 }
 function push(
   profile: number,
@@ -116,7 +173,7 @@ function push(
     "UTC"
   );
   lastParsedDetails = parsed.details;
-  return ingestHealthConnectPayload(profile, parsed);
+  return guarded(profile, () => ingestHealthConnectPayload(profile, parsed));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +214,7 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
     // record deleting the current 2400 one. Both halves of that are now impossible: the
     // rows of one push share a stamp so neither can supersede the other, and there is no
     // within-push ranking left to depend on which chunk a row landed in.
-    // MUTATION: let a row supersede another of the same push (relax `pushIsNewer` to
+    // MUTATION: let a row supersede another of the same push (relax `pushOutranks` to
     // `>=`) and which of these two survives becomes a function of the chunk split.
     const p = freshProfile("R1-CHUNK");
     const result = push(
@@ -641,18 +698,22 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
         },
       ],
     });
-    ingestHealthConnectPayload(
-      p,
-      parseHealthConnectPayload(
-        body("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000),
-        "UTC"
+    guarded(p, () =>
+      ingestHealthConnectPayload(
+        p,
+        parseHealthConnectPayload(
+          body("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000),
+          "UTC"
+        )
       )
     );
-    const second = ingestHealthConnectPayload(
-      p,
-      parseHealthConnectPayload(
-        body("2026-05-01T10:00:00Z", "2026-05-01T22:00:00Z", 3500),
-        "UTC"
+    const second = guarded(p, () =>
+      ingestHealthConnectPayload(
+        p,
+        parseHealthConnectPayload(
+          body("2026-05-01T10:00:00Z", "2026-05-01T22:00:00Z", 3500),
+          "UTC"
+        )
       )
     );
     expect(second.split.superseded).toBe(0);
@@ -673,7 +734,7 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
   const unstamped = (body: Record<string, unknown>) => {
     const parsed = parseHealthConnectPayload(body, "UTC");
     lastParsedDetails = parsed.details;
-    return ingestHealthConnectPayload(p0(), parsed);
+    return guarded(p0(), () => ingestHealthConnectPayload(p0(), parsed));
   };
   let profile = 0;
   const p0 = () => profile;
@@ -874,7 +935,7 @@ describe("R4 — a byte-identical replay of a pre-switch push", () => {
   const T2 = "2026-05-02T01:00:05Z";
 
   it("DELETES NOTHING — the converged row survives the replay", () => {
-    // MUTATION: drop `pushIsNewer` from planSupersede and the replay deletes the 3500
+    // MUTATION: drop `pushOutranks` from planSupersede and the replay deletes the 3500
     // row. That is the loss this guard exists for.
     const p = freshProfile("R4-REPLAY");
     push(p, TOKYO, T1);
@@ -1161,7 +1222,9 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
   ) {
     const parsed = parseHealthConnectPayload({ ...body, timestamp }, "UTC");
     lastParsedDetails = parsed.details;
-    return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+    return guarded(p, () =>
+      ingestHealthConnectPayload(p, parsed, HC, chunkSize)
+    );
   }
 
   it("leaves the OLD row plus the committed chunks when chunk 2 of 3 fails", () => {
@@ -1282,7 +1345,9 @@ describe("R7 — a row pass C will not write plans no delete", () => {
       "UTC"
     );
     lastParsedDetails = parsed.details;
-    return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+    return guarded(p, () =>
+      ingestHealthConnectPayload(p, parsed, HC, chunkSize)
+    );
   }
 
   it("keeps the stored row when a TOMBSTONE stops the row that would replace it", () => {
@@ -1409,9 +1474,11 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // and collapsed by a landing one, and `leftStanding.delete(victim)` was the arbiter.
     // The store-derived predicate never sees an incoming row: every reason a candidate is
     // declined is a fact about that stored row plus this push's one stamp, so no two
-    // stamped buckets can disagree. The prune stays as the thing that MAKES the sets
-    // disjoint (see `supersedeMetricSampleOverlaps`), but no mutation of it goes red here
-    // any more — what this case discriminates now is the lock and the collapse.
+    // stamped buckets can disagree — and after #3424's cover-the-day ruling they also
+    // share the `date`, which narrows it further. The prune is DELETED (`CLAUDE.md`: no
+    // defensive check for a condition control flow already proves; the owner ruled on it
+    // for this PR after a lens confirmed it dead). What this case discriminates now is
+    // the lock and the collapse.
     //
     // MUTATION: drop the `if (row.edited)` branch in `planSupersede` and the
     // hand-corrected 8500 goes with the 8000.
@@ -1455,10 +1522,16 @@ describe("R7 — a row pass C will not write plans no delete", () => {
   it("still collapses the stored row when a row of the SAME push DOES land", () => {
     // A VETOED ROW DECLINES A DELETE; IT DOES NOT VETO THE PUSH. The re-anchored bucket
     // here is tombstoned and lands nowhere, but a second bucket of the same push does
-    // land, does overlap the stored row and does outrank it — so the collapse happens and
-    // the day is left reading right. MUTATION: skip the whole PUSH when any row is
-    // vetoed, or hoist the veto to a `return emptySupersedePlan()`, and the stored row
-    // survives beside the new one with the day reading 16100.
+    // land, does overlap the stored row, is filed under the stored row's own `date` and
+    // does outrank it — so the collapse happens and the day is left reading right.
+    // MUTATION: skip the whole PUSH when any row is vetoed, and the stored row survives
+    // beside the new one with the day reading 16100.
+    //
+    // AND THIS IS THE CONTROL FOR THE COVER-THE-DAY RULING (R10, below). What licenses
+    // the delete here is a landed bucket ON 05-01, the victim's date. Round 10's attack
+    // is the same shape with the landing bucket on the PREVIOUS date, where it licenses
+    // nothing — so if this case ever stopped collapsing, the `date` term would have been
+    // widened past what the ruling asks for.
     const p = freshProfile("R7-MIXED");
     pushAt(
       p,
@@ -1549,7 +1622,9 @@ describe("R8/R9 — the victim set is derived from the store, under the lock", (
       "UTC"
     );
     lastParsedDetails = parsed.details;
-    return ingestHealthConnectPayload(p, parsed, HC, chunkSize);
+    return guarded(p, () =>
+      ingestHealthConnectPayload(p, parsed, HC, chunkSize)
+    );
   }
 
   /** A write that commits with the chunk that inserts `onStart`, and only that chunk. */
@@ -1834,7 +1909,7 @@ describe("R8b — a push carrying one natural key twice", () => {
       "UTC"
     );
     lastParsedDetails = parsed.details;
-    return ingestHealthConnectPayload(p, parsed, HC, 2);
+    return guarded(p, () => ingestHealthConnectPayload(p, parsed, HC, 2));
   }
   const A = steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9000);
 
@@ -1883,6 +1958,237 @@ describe("R8b — a push carrying one natural key twice", () => {
     );
     expect(stored(p, "steps").map((r) => r.value)).toEqual([8000, 9000]);
     expect(warningsOf(null)).toContain(overlapsLeftWarning(1));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R10 — the three drivers that emptied a day under OVERLAP ALONE.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R10 — a day bucket may only be collapsed on its OWN date", () => {
+  // THE REFUTATION, AND IT BROKE THREE WAYS AT ONCE. The store-derived predicate closed
+  // the veto class: only a row this push actually WROTE can justify a delete, so a
+  // tombstoned, edit-locked, mis-routed or stale-retried row justifies nothing. That is
+  // true of the ROW and false of the PUSH — because Health Connect day buckets CHAIN
+  // ACROSS DAYS. The re-anchored bucket for the PREVIOUS local day overlaps this day's
+  // stored bucket by the zone offset (LA 04-30 [04-30 07:00Z, 05-01 07:00Z) meets NY
+  // 05-01 [05-01 04:00Z, 05-02 04:00Z) for three hours), so a push whose replacement for
+  // 05-01 was refused still carried something that overlapped 05-01's stored row — and
+  // deleted it. The day went to ZERO, permanently, on a SUCCESSFUL push, with
+  // `superseded: 1`, `overlapsLeft: 0` and `warnings: []`.
+  //
+  // THE RULING (#3424, 2026-08-23T00:58Z): cover the DAY. A stored bucket may be deleted
+  // only when a stamped bucket of the same group landed ON THE VICTIM'S OWN `date` and
+  // overlaps it. Overlap stays a gate — it is what excludes the rollover pair and the
+  // same-anchoring neighbours — and the date carries the justification.
+  //
+  // MUTATION for all three cases: drop `AND date = ?` from the candidate query in
+  // `supersedeMetricSampleOverlaps`, or the `row.date !== incoming.date` term from
+  // `planSupersede`. Each restores exactly one of these drivers, and the `guarded`
+  // property above goes red beside the case's own assertions.
+  //
+  // COVER-THE-WINDOW WAS THE OTHER CANDIDATE AND IT WAS REJECTED, which these fixtures
+  // also show: no single re-anchored bucket ever CONTAINS the one it replaces —
+  // westward it starts later (07:00Z vs 04:00Z), eastward it ends earlier — so a
+  // coverage rule would have collapsed nothing here, nor on prod's four doubled pairs.
+
+  function pushAt(
+    p: number,
+    records: unknown[],
+    timestamp: string,
+    chunkSize = 2
+  ) {
+    const parsed = parseHealthConnectPayload(
+      { app_version: "1.9.14", steps: records, timestamp },
+      "UTC"
+    );
+    lastParsedDetails = parsed.details;
+    return guarded(p, () =>
+      ingestHealthConnectPayload(p, parsed, HC, chunkSize)
+    );
+  }
+
+  /** What Trends reads for one profile-local day. */
+  function totalFor(p: number, date: string): number {
+    return (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(value), 0) AS total FROM metric_samples
+              WHERE profile_id = ? AND metric = 'steps' AND date = ?`
+        )
+        .get(p, date) as { total: number }
+    ).total;
+  }
+
+  /** New York's local day D, as the exporter cuts it. */
+  const ny = (day: string, next: string, count: number) =>
+    steps(`${day}T04:00:00Z`, `${next}T04:00:00Z`, count);
+  /** Los Angeles's local day D. */
+  const la = (day: string, next: string, count: number) =>
+    steps(`${day}T07:00:00Z`, `${next}T07:00:00Z`, count);
+
+  it("DRIVER 1 — keeps the day when a TOMBSTONE refused its replacement", () => {
+    // The lens's reproduction, step for step, through the real parse + ingest path.
+    const p = freshProfile("R10-TOMBSTONE");
+    // 1. New York, stamped.
+    pushAt(
+      p,
+      [
+        ny("2026-04-30", "2026-05-01", 5000),
+        ny("2026-05-01", "2026-05-02", 11609),
+      ],
+      "2026-05-02T06:00:00Z"
+    );
+    expect(totalFor(p, "2026-05-01")).toBe(11609);
+
+    // 2. The user flies west and the first post-switch push states no readable
+    //    timestamp — this PR's own "a stampless push supersedes nothing" shape. Both
+    //    anchorings are now stored and 05-01 reads high, which is the designed state.
+    const stampless = parseHealthConnectPayload(
+      { app_version: "1.9.14", steps: [la("2026-05-01", "2026-05-02", 11721)] },
+      "UTC"
+    );
+    lastParsedDetails = stampless.details;
+    guarded(p, () => ingestHealthConnectPayload(p, stampless, HC, 2));
+    expect(totalFor(p, "2026-05-01")).toBe(23330);
+
+    // 3. The user deletes the re-anchored duplicate in Data → Manage, which writes the
+    //    #508 tombstone on that exact natural key.
+    db.prepare(
+      "DELETE FROM metric_samples WHERE profile_id = ? AND started_at = ?"
+    ).run(p, "2026-05-01T07:00:00Z");
+    writeImportTombstone(
+      p,
+      "metric_samples",
+      metricSampleTombstoneKey("steps", HC, ORIGIN, "2026-05-01T07:00:00Z")
+    );
+    expect(totalFor(p, "2026-05-01")).toBe(11609);
+
+    // 4. The next rolling-window push, stamped, carrying BOTH re-anchored buckets. The
+    //    05-01 one is refused by the tombstone; the 04-30 one lands and overlaps the
+    //    stored NY 05-01 row by three hours. Under overlap alone that deleted it.
+    const result = pushAt(
+      p,
+      [
+        la("2026-04-30", "2026-05-01", 5200),
+        la("2026-05-01", "2026-05-02", 11721),
+      ],
+      "2026-05-02T08:00:00Z"
+    );
+    expect(result.split.suppressed).toBe(1);
+    // 05-01 STANDS. This is the assertion round 10 was refuted on.
+    expect(totalFor(p, "2026-05-01")).toBe(11609);
+    // And the delete the rule DOES make still happens, on the date that was replaced —
+    // otherwise this passes by superseding nothing at all.
+    expect(result.split.superseded).toBe(1);
+    expect(totalFor(p, "2026-04-30")).toBe(5200);
+  });
+
+  it("DRIVER 2 — keeps the day when a #1101 STALE RETRY refused its replacement", () => {
+    // The same end state through a different veto, which is why the fix cannot be a
+    // clause about tombstones. The exporter retries an older snapshot of the NY 05-01
+    // bucket — same natural key, an EARLIER `ended_at` — so `isStaleMetricSnapshot`
+    // refuses it and the stored row keeps its older stamp. The push's OTHER row, the
+    // re-anchored 04-30 bucket, lands and overlaps 05-01 by three hours.
+    const p = freshProfile("R10-STALE-RETRY");
+    pushAt(
+      p,
+      [
+        ny("2026-04-30", "2026-05-01", 5000),
+        steps("2026-05-01T04:00:00Z", "2026-05-01T20:00:00Z", 11609),
+      ],
+      "2026-05-02T06:00:00Z"
+    );
+    expect(totalFor(p, "2026-05-01")).toBe(11609);
+
+    const result = pushAt(
+      p,
+      [
+        la("2026-04-30", "2026-05-01", 5200),
+        // The delayed retry: same key, an end EIGHT HOURS earlier than what is stored.
+        steps("2026-05-01T04:00:00Z", "2026-05-01T12:00:00Z", 8000),
+      ],
+      "2026-05-02T08:00:00Z"
+    );
+    // The retry was refused, so it wrote no stamp and justifies nothing…
+    expect(result.split.unchanged).toBe(1);
+    // …and nothing else may justify a delete on 05-01 either, which is the ruling.
+    expect(totalFor(p, "2026-05-01")).toBe(11609);
+    expect(result.split.superseded).toBe(1);
+    expect(totalFor(p, "2026-04-30")).toBe(5200);
+  });
+
+  it("DRIVER 3 — keeps the day at the EASTWARD trailing edge, on a clean push", () => {
+    // No veto at all here: every row lands, the push succeeds, and under overlap alone a
+    // day still emptied. An ordinary LA → NY move re-cuts each local day three hours
+    // EARLIER in UTC, so the NY bucket for 08-19 reaches back into LA's 08-18 — and the
+    // exporter's rolling window does not reach far enough back to re-send an 08-18
+    // bucket under the new anchoring.
+    //
+    // Measured by the lens at round 10's head:
+    //     SEEDED [08-17:7000, 08-18:9000, 08-19:10000]
+    //     AFTER  [08-17:7000, 08-19:10500, 08-20:8800, 08-21:3000]   superseded: 2
+    // 08-18's 9000 was gone, with `warnings: []`.
+    const p = freshProfile("R10-EASTWARD");
+    pushAt(
+      p,
+      [
+        la("2026-08-17", "2026-08-18", 7000),
+        la("2026-08-18", "2026-08-19", 9000),
+        la("2026-08-19", "2026-08-20", 10000),
+      ],
+      "2026-08-20T06:00:00Z",
+      3
+    );
+    expect(totalFor(p, "2026-08-18")).toBe(9000);
+
+    const result = pushAt(
+      p,
+      [
+        ny("2026-08-19", "2026-08-20", 10500),
+        ny("2026-08-20", "2026-08-21", 8800),
+        steps("2026-08-21T04:00:00Z", "2026-08-21T14:00:00Z", 3000),
+      ],
+      "2026-08-21T15:00:00Z",
+      3
+    );
+    // ONE delete, not two: the 08-19 bucket collapses 08-19's stored row and stops there.
+    expect(result.split.superseded).toBe(1);
+    expect(totalFor(p, "2026-08-18")).toBe(9000);
+    expect(stored(p, "steps").map((r) => `${r.started_at} ${r.value}`)).toEqual(
+      [
+        "2026-08-17T07:00:00Z 7000",
+        "2026-08-18T07:00:00Z 9000",
+        "2026-08-19T04:00:00Z 10500",
+        "2026-08-20T04:00:00Z 8800",
+        "2026-08-21T04:00:00Z 3000",
+      ]
+    );
+    // WHAT IS NOT SAID, and it is the accepted trade rather than an oversight. The kept
+    // LA 08-18 row and the new NY 08-19 row genuinely overlap for three hours — but they
+    // are filed under DIFFERENT dates, so no day total reads high and there is nothing
+    // for Review to name. Reporting it would warn about two days that are both correct.
+    expect(warningsOf(result)).toEqual([]);
+  });
+
+  it("and the switch day's leading sliver is DROPPED — the loss, stated", () => {
+    // THE ACCEPTED LOSS, in the tree rather than only in the docs. When the date IS
+    // replaced, the replacement's leading hours go with it: the LA 08-19 bucket starts
+    // 07:00Z and the NY 08-19 row it replaces started 04:00Z, so 04:00Z–07:00Z of NY's
+    // 08-19 morning is not in the surviving row. The day keeps a reading — a SMALLER one
+    // for that span. That is the trade the ruling accepts, and it is why a coverage rule
+    // was considered at all.
+    const p = freshProfile("R10-SLIVER");
+    pushAt(p, [ny("2026-08-19", "2026-08-20", 10000)], "2026-08-20T06:00:00Z");
+    const result = pushAt(
+      p,
+      [la("2026-08-19", "2026-08-20", 9400)],
+      "2026-08-20T09:00:00Z"
+    );
+    expect(result.split.superseded).toBe(1);
+    // Lower than it read before, and NOT zero. The invariant is that the date keeps a
+    // reading, not that it keeps every hour.
+    expect(totalFor(p, "2026-08-19")).toBe(9400);
   });
 });
 
