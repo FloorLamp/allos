@@ -293,26 +293,7 @@ export default async function TrendMetricDetailPage(props: {
 
   const { login, profile } = await requireSession();
 
-  // Calm carries the check-in card's own relevance gate (#1313/#1408). A profile the
-  // scale was never offered to has no Calm surface AT ALL — not an empty one — so a
-  // typed or shared `/trends/metric/calm` reads exactly like any unknown metric. The
-  // copy deliberately names nothing: the scale simply appears or doesn't, and this
-  // page may no more explain its absence than the card may.
-  if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
-    return (
-      <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" className="" />
-        <PageHeader title="Metric" />
-        <EmptyState message="Unknown metric." />
-      </PageContainer>
-    );
-  }
-
   const meta = TREND_METRIC_META[kind];
-  const weightUnit = getUnitPrefs(login.id).weightUnit;
-  const formatPrefs = getDisplayFormatPrefs(login.id);
-  const unit = resolveTrendMetricUnit(meta, weightUnit);
-  const todayStr = today(profile.id);
   const savedMetricId = savedMetricIdForTrendSlug(kind);
   const starred = isItemSaved(profile.id, "trend-metric", savedMetricId);
   const starAction = (
@@ -324,6 +305,39 @@ export default async function TrendMetricDetailPage(props: {
     />
   );
 
+  // Calm carries the check-in card's own relevance gate (#1313/#1408). A profile the
+  // scale was never offered to has no Calm surface AT ALL — not an empty one — so a
+  // typed or shared `/trends/metric/calm` reads exactly like any unknown metric. The
+  // copy deliberately names nothing: the scale simply appears or doesn't, and this
+  // page may no more explain its absence than the card may.
+  if (kind === "calm" && !isAnxietyScaleRelevant(profile.id) && !starred) {
+    return (
+      <PageContainer width="reading" className="space-y-4">
+        <BackLink href="/trends#body" label="Back to Body" className="" />
+        <PageHeader title="Metric" />
+        <EmptyState message="Unknown metric." />
+      </PageContainer>
+    );
+  }
+
+  // A relevance gate may hide a metric from the census, but it must never strand
+  // an existing save now that the separate Starred grid is gone (#3387). A profile
+  // that already saved Calm keeps the detail-page ★ long enough to remove it; no
+  // chart or input is exposed behind the gate.
+  if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
+    return (
+      <PageContainer width="reading" className="space-y-4">
+        <BackLink href="/trends#body" label="Back to Body" className="" />
+        <PageHeader title={meta.title} action={starAction} />
+        <EmptyState message="This metric isn’t available for this profile." />
+      </PageContainer>
+    );
+  }
+
+  const weightUnit = getUnitPrefs(login.id).weightUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const unit = resolveTrendMetricUnit(meta, weightUnit);
+  const todayStr = today(profile.id);
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   // Same window rule as the hub (#1485 G): 90D by default, an explicit ?from/?to
