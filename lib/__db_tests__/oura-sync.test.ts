@@ -99,6 +99,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(first.acts).toEqual({
       inserted: 1,
@@ -106,6 +107,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(first.body).toEqual({
       inserted: 1,
@@ -113,6 +115,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // Re-push the same rolling window → every row dedups on its natural key.
@@ -123,6 +126,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 7,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(second.acts).toEqual({
       inserted: 0,
@@ -130,6 +134,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(second.body).toEqual({
       inserted: 0,
@@ -137,6 +142,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // The workout landed with the right source + external id and grouping component.
@@ -184,6 +190,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     const stored = db
       .prepare(
@@ -205,6 +212,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     const bm = db
       .prepare(
@@ -241,6 +249,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const stored = db
       .prepare(
@@ -258,6 +267,7 @@ describe("Oura sync upsert/dedup", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -327,6 +337,7 @@ describe("Oura vendor daily scores upsert/dedup (#1069)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const second = applyScores();
     expect(second).toEqual({
@@ -335,6 +346,7 @@ describe("Oura vendor daily scores upsert/dedup (#1069)", () => {
       unchanged: 4,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -387,6 +399,7 @@ describe("Oura vendor daily scores upsert/dedup (#1069)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(getOuraScores(scoreProfile).sleep?.latest).toBe(70);
   });

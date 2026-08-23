@@ -197,6 +197,69 @@ export const FINE_GRAINED_ROWS_PER_DAY = 8;
 // wide. A daily-stored additive metric arriving in windows an hour or narrower is
 // therefore a fine-grained setting regardless of how few rows the push carried.
 export const SUB_DAILY_WINDOW_MAX_MIN = 60;
+
+// THE METRICS WHOSE WINDOWS TILE BY CONSTRUCTION — the only ones #3424's overlap
+// supersede may delete a row of. Exactly the FINE_GRAINED_CHECK data types above,
+// expressed as the METRIC names the parser emits, and exactly the four #3424's prod
+// table caught double counting.
+//
+// It lives here rather than beside the rule because it is a fact about the EXPORTER's
+// data types, which is this file's subject; lib/metric-window-overlap.ts re-exports it
+// for the rule's readers. Nutrition, hydration and sleep are absent on purpose — the
+// parser emits those on each record's own real window, so they nest legitimately.
+export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
+  "steps",
+  "distance_km",
+  "active_kcal",
+  "total_kcal",
+]);
+
+// A DOUBLE COUNT THIS PUSH COULD NOT COLLAPSE, said out loud.
+//
+// #3424's supersede declines whenever it cannot establish that the incoming row is
+// newer: the push stated no `timestamp`, the clock bound refused the one it stated, a
+// phone whose clock went BACKWARDS stamps every push in the past, the stored row has no
+// stamp and no proof it predates the column, the stored bucket was cut at sub-daily
+// granularity, or the #133 lock protects it. It also declines BY RULE on a push that
+// carries both anchorings of one day: two rows of one push share a stamp, so neither
+// ranks the other and both are written (#3424 ruling item 3). They all leave the same
+// thing behind — two day buckets summing into one day — and the person reading their
+// totals does not care which.
+//
+// So the line is emitted from what HAPPENED (the count of day buckets left double
+// counting, stored ones and this push's own) rather than from a guess made at parse
+// time. The version this replaces gated on `pushedAt === null` and was wrong in BOTH
+// directions: it fired for a stampless push whose windows the rule could never have
+// acted on, and stayed silent when the clock bound rejected a stamp that was present and
+// readable. Its text was wrong too — it said totals "may read high", which is right for a
+// declined supersede and was NOT right for the within-push case it also covered, where
+// the day read low.
+//
+// AND IT NO LONGER PROMISES THE NEXT PUSH WILL FIX IT. It used to end "they collapse on
+// the next push that carries a later timestamp", which is true of most of the causes
+// above and false of one: a stored bucket cut within an hour of the old zone's midnight
+// is below the granularity gate, so no later push may collapse it — permanently, since
+// nothing widens a row already in the table. Saying "most" is the honest shape — telling
+// someone their total will fix itself when it will not is worse than not mentioning it.
+export function overlapsLeftWarning(count: number): string {
+  // READINGS, NOT DAILY TOTALS. The number handed in is DISTINCT ROWS the plan left
+  // double counting, and two of them can fall in ONE profile-local day — so the earlier
+  // wording ("2 daily totals") named a unit the count does not measure and could report
+  // two days wrong when one is. The rows are what is counted, so the rows are what this
+  // says; the days they land in is what it says about them.
+  const readings = count === 1 ? "1 reading" : `${count} readings`;
+  // AND IT NO LONGER NAMES A CAUSE. It used to say "from before a timezone change",
+  // which is one of the causes and not the others: a `daily` device and a `1m` device
+  // that both set no `metadata.data_origin` share a supersede group and overlap with no
+  // timezone change anywhere, and a push carrying both anchorings of one day counts its
+  // own second row. What the person can act on is the SYMPTOM, so that is what this
+  // states; the cause is not knowable from the count and was wrong when guessed.
+  return (
+    `${readings} overlap other readings on the same day and were not replaced by this ` +
+    "push, so those days count some activity twice and read HIGH. Most clear on the " +
+    "next push that carries a later timestamp."
+  );
+}
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
 // the hint. Two independent short windows in one batch is the fine-grained shape. (The
@@ -338,6 +401,19 @@ export interface ParsedPayload {
   vitals: NormVital[];
   skipped: number;
   details: HealthConnectSyncDetails;
+  // THE EXPORTER'S OWN STAMP ON THIS PUSH (`payload.timestamp`), as an absolute
+  // instant, or null when the payload states none this module can read.
+  //
+  // It is the only thing in a push that says WHEN the push happened, and #3424's
+  // overlap-supersede needs exactly that: a rule that decides freshness from arrival
+  // order lets an ordinary exporter RETRY delete the row that superseded it, and lets
+  // one chunk of a push delete another chunk's row. Stored per row on
+  // `metric_samples.pushed_at`, so a replay carries the same stamp as the push it
+  // replays and is therefore not newer than what it would delete.
+  //
+  // Zone-qualified or nothing: a bare local date-time would resolve against the
+  // SERVER's zone, which must never decide whether a health row is deleted.
+  pushedAt: string | null;
 }
 
 export interface HealthConnectOriginChoice {
@@ -642,6 +718,15 @@ function secondsBetween(start?: string, end?: string): number | null {
   return (b - a) / 1000;
 }
 
+// The exporter stamps every push with a top-level `timestamp`. Read it as an ABSOLUTE
+// instant or not at all: an offset-less spelling resolves against the process zone, and
+// a delete decision that moves with where the server runs is not a decision (#3424).
+function payloadPushInstant(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw)) return null;
+  return Number.isFinite(Date.parse(raw)) ? raw : null;
+}
+
 export function parseHealthConnectPayload(
   body: unknown,
   tz: string
@@ -654,10 +739,14 @@ export function parseHealthConnectPayload(
     vitals: [],
     skipped: 0,
     details: { warnings: [], origins: [] },
+    pushedAt: null,
   };
   if (!body || typeof body !== "object") {
     return out;
   }
+  out.pushedAt = payloadPushInstant(
+    (body as Record<string, unknown>).timestamp
+  );
   const payload = body as Record<string, unknown>;
 
   // Records of a type the parser has no home for are dropped but COUNTED (issue #419)

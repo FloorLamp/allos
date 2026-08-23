@@ -27,6 +27,16 @@ import {
   metricSampleTombstoneKey,
 } from "./tombstone-keys";
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
+import {
+  compareWindowStarts,
+  isSupersedingWindow,
+  planSupersede,
+  windowsOverlap,
+  type MetricWindow,
+  type UnstampedEra,
+} from "@/lib/metric-window-overlap";
+import { readUnstampedEra } from "./unstamped-era";
+import { HEALTH_CONNECT_ID } from "./health-connect";
 import { streamKeysPlacedIn } from "@/lib/reading-placement";
 
 // Source-agnostic record shapes. Every integration parses its own payload into
@@ -462,35 +472,572 @@ const BODY_METRIC_COMPARE_COLS: string[] = [
 export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
   streamKeysPlacedIn("body_metrics");
 
+// THE SOURCE WHOSE INTERVAL ROWS SUPERSEDE WHAT THEY OVERLAP (#3424).
+//
+// Health Connect is the ONE source whose day-buckets re-anchor under the app's feet:
+// the exporter follows the DEVICE zone, so a timezone change re-cuts "today" and the
+// re-anchored record arrives with a start the natural key has never seen (see
+// lib/metric-window-overlap.ts for the whole mechanism). Withings, Oura, Strava and
+// the Fitbit takeout attribute each reading on their own clock and re-send the same
+// key, and manual readings are the user's own rows — none of them may ever have a row
+// deleted by this path, which is why the rule is gated on the source id rather than on
+// a shape test that a future source could accidentally match.
+const OVERLAP_SUPERSEDE_SOURCE = HEALTH_CONNECT_ID;
+
 // Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
 // (or two origins inside Health Connect) each keep their own row. `ended_at` is
 // deliberately mutable: daily cumulative exporter snapshots keep a stable start
 // while their end advances to the push moment (#1101).
 //
+// AND, FOR HEALTH CONNECT ONLY, the stored rows a push's windows overlap are DELETED
+// AFTER it is written (#3424). That is what the start-keyed idempotency of #1101 cannot
+// do: a moving END overwrites its own key, a moving START mints a new one and leaves the
+// old row summing into the same profile-local day. Edit-locked rows survive it,
+// tombstoned rows stay dead, and point readings are untouched.
+//
+// THAT DELETE DOES NOT HAPPEN IN THIS FUNCTION. The victim set is derived from the STORE,
+// in the LAST chunk's transaction and after that chunk's upserts have run, by
+// `supersedeMetricSampleOverlaps` below — whose header carries the argument. All this
+// function does for the rule is write `pushed_at`, which is what makes a row of this push
+// visible to that derivation.
+//
 // Guard: body fat % and resting HR belong in body_metrics, not
 // here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
 // programming error (a parser mis-routing a body metric into the samples path), so
 // it is skipped and NOT counted rather than re-splitting the measure across two
 // tables.
+export interface MetricSampleUpsertOptions {
+  /**
+   * The exporter's stamp on this push (`ParsedPayload.pushedAt`). Stored on every row
+   * written and required before any row may supersede another (#3424): without it the
+   * rule falls back on arrival order, which an exporter retry defeats.
+   */
+  pushedAt?: string | null;
+}
+
+// ── THE OVERLAP-SUPERSEDE, IN TWO PHASES (#3424) ──────────────────────────────────
+//
+// C  upsertMetricSamples            the upsert loop, with no supersede in it at all
+// B  supersedeMetricSampleOverlaps  the victim set DERIVED FROM THE STORE and deleted —
+//                                   inside the LAST chunk's IMMEDIATE transaction,
+//                                   AFTER that chunk's upserts have run
+//
+// THERE IS NO PASS A ANY MORE, AND ITS ABSENCE IS THE FIX. Nine adversarial rounds paid
+// for that sentence, so it is worth saying what was there and why it went.
+//
+// The rule used to run per row inside the upsert loop: find the overlaps, delete them,
+// upsert. That loop has TWO mutation paths — the per-row DELETE and the per-key
+// ON CONFLICT — and one pre-image read, `found`, the natural-key twin #1101's moving-END
+// merge needs, so a delete for one row changed what a LATER row of the same push read.
+// Rounds 1 and 5 reached that through two different doors and measured the same push
+// storing 11609 or 22609 depending only on where the chunk boundary fell.
+//
+// The first ruling (#3424, option 2) answered it with a read-only PLAN over the payload,
+// computed before any row was written. That killed rounds 1/2/3/5 structurally. It also
+// created a new class, and rounds 7, 8 and 9 are all of it:
+//
+//     pass A reads a fact, pass B acts on it later, and in between a veto fires
+//     (tombstone, edit-lock) or a writer moves the fact (`updateReadingAt`).
+//
+// Round 7 was the in-process version — a fact pass A never asked (the #508 tombstone
+// refused the row whose landing licensed a delete, and the day went to ZERO). Rounds 8
+// and 9 were the cross-process version — a fact pass A DID ask and a writer moved
+// (Data → Manage deleting the replacement; the trends detail page's per-row Edit arming
+// `edited` on the victim). Each fix was another re-statement clause in the DELETE, and
+// the argument for "this is the last one" became a ten-row table. That is option 1 at
+// the guard level, over a construction that keeps producing them.
+//
+// THE OWNER CLOSED THE CLASS INSTEAD (#3424, the ruling of 2026-08-22T13:46Z), and then
+// FIXED ITS UNIT (the ruling of 2026-08-23T00:58Z, after round 10 refuted the first
+// spelling by emptying a day with it):
+//
+//     a stored day-bucket row of (profile, metric, source = HC, origin) is a victim iff,
+//     UNDER THE LOCK RIGHT NOW: a row of the same group carrying THIS PUSH'S STAMP is
+//     FILED UNDER THE VICTIM'S OWN `date` and overlaps it; its own stamp is older or
+//     NULL-in-era; `edited = 0`; its key is not one this push wrote. Delete exactly
+//     those, in the same transaction.
+//
+// COVER THE DAY. The `date` term is the ruling and the rest of this comment is what it
+// replaced: overlap ALONE let the PREVIOUS day's re-anchored bucket justify a delete on
+// a day this push never replaced, because day buckets chain across days by the zone
+// offset — so a tombstoned or stale-retried replacement stopped its own row and the day
+// still went to ZERO. Overlap stays as a gate (it excludes the rollover pair and the
+// same-anchoring neighbours); the date carries the justification. The argument, the two
+// rejected alternatives and the loss this accepts are in lib/metric-window-overlap.ts's
+// header; what belongs HERE is that it costs one term on the query below and nothing
+// else — no payload, no second pass, no re-statement clause.
+//
+// NOTHING ABOUT THE PAYLOAD ENTERS THE PLAN. The justification for a delete is a row that
+// IS IN THE STORE WITH THIS PUSH'S STAMP — which is true precisely when pass C let it
+// land, because every upsert that runs sets `pushed_at` to the stamp (`unchanged`
+// included) and a tombstoned, mis-routed, edit-locked or stale-retry row never gets the
+// stamp onto a row that could justify anything. So the four vetoes become STRUCTURALLY
+// VISIBLE without being enumerated:
+//
+//   • a suppressed replacement justifies nothing ON ITS OWN DATE (round 7) — and under
+//     cover-the-day it justifies nothing on any OTHER date either, which is round 10
+//   • an edit-lock on a NARROW twin leaves no stamped DAY BUCKET overlapping the victim,
+//     so the wide bucket is not collapsed on the strength of a fifteen-minute row
+//                                                             (round 9b)
+//   • `edited`, `pushed_at` and the overlap are read UNDER THE LOCK, where `writeTx` is
+//     `.immediate()` and no other writer can move them        (rounds 8, 9a)
+//
+// A FIFTH VETO COSTS NOTHING HERE, which is the property that matters rather than the
+// four instances: this file never asks why a row was refused, only whether the store
+// holds it with this push's stamp. Adding a veto still costs a `MetricSampleVeto` member
+// and its `VETO_TALLY` entry, because Review has to say what happened to the row.
+//
+// WHAT THE CLASS-CLOSING COSTS, AND IT IS PAID DELIBERATELY. A push EVERY row of which is
+// vetoed stamps nothing, so it derives no victims — right — and also reports no overlaps
+// left standing, where the payload-side plan used to report the vetoed row's stored twin.
+// The store may genuinely hold two overlapping rows there. Naming them means asking "do
+// two STORED rows overlap each other", which is a different scan with a different unit,
+// would change the Review line on every push rather than on this one, and is the question
+// this file has always declined (see `supersedeMetricSampleOverlaps`). A push that landed
+// nothing says nothing.
+//
+// THE CORRECTNESS ARGUMENT IS THEN TWO LINES:
+//
+//     final store = (store after ⊕ upserts) − victims
+//     victims     = a pure function of THE STORE, read in the transaction that deletes it
+//
+// Order- and chunk-independence hold BY CONSTRUCTION: the predicate never sees a row
+// order, a chunk boundary, or a payload. lib/__db_tests__/hc-overlap-push-property.test.ts
+// is that as a test — the same push, several orderings and chunk sizes including a 1-row
+// chunk, against a NON-EMPTY store, must leave byte-identical rows every time.
+//
+// AND ONE MORE INVARIANT, ABOUT THE COMMITS RATHER THAN THE ORDER (#3424, the ruling of
+// 2026-08-22T05:46Z). The line above is about the FINAL state; a chunked push also has
+// states in between, and an earlier round put the deletes in the FIRST chunk's
+// transaction: chunk 2 failing left the day reading NOTHING where `main` still read the
+// old rows. So:
+//
+//     at every commit point the store holds the OLD rows, or OLD + NEW, or NEW —
+//     NEVER NEITHER. A day may read HIGH between commits; it must never read LOWER
+//     than `main` would.
+//
+// The derivation and the deletes therefore run in the LAST chunk's transaction, after its
+// upserts. One chunk: the same transaction as the rows. Many chunks: chunks 1…n−1 commit
+// upserts only and the store transiently reads high (old + new, the visible double
+// count), and the final chunk commits its upserts and the whole victim set together. A
+// failure in chunk k leaves old + chunks<k: a double count, never a hole. Rows landed by
+// chunks 1…n−1 carry the stamp and are committed, so the final transaction sees the whole
+// push; a concurrent LATER push has a LATER stamp and justifies only its own deletes.
+//
+// The ascending-`started_at` sort survives as deterministic write order and NOTHING MORE.
+// It does no work here and must not be described as what makes the store correct.
+
+// ── PASS C'S FOUR VETOES (#3438) ──────────────────────────────────────────────────
+//
+// Pass C holds four UNILATERAL vetoes over what gets written:
+//
+//   body-metric  a measure that belongs in body_metrics, mis-routed here by a parser
+//   tombstone    #508's re-import tombstone — the user deleted this exact reading
+//   edit-lock    #133's lock — the stored twin is hand-corrected and wins
+//   stale-retry  #1101's moving-END rule — the stored twin holds the newer snapshot
+//
+// They are stated ONCE, here, so the upsert loop tests four conditions in one place and
+// the accounting each branch owns lives in `VETO_TALLY`. A fifth veto means adding a
+// member to `MetricSampleVeto` — a compile error at `VETO_TALLY`, a `Record` over the
+// union, until its accounting is stated — and adding its condition to `metricSampleVeto`,
+// which is the ONLY place pass C may decline a row: the upsert loop has no other
+// `continue`.
+//
+// THE SUPERSEDE NO LONGER CONSULTS THEM, and that is not an omission. It asks the store
+// what carries this push's stamp, which is exactly the set of rows no veto stopped — see
+// the header above. Round 7 refuted the version that consulted them at plan time, and
+// rounds 8 and 9 refuted the re-statement clauses that consulting them made necessary.
+export type MetricSampleVeto =
+  "body-metric" | "tombstone" | "edit-lock" | "stale-retry";
+
+/** The stored row under an incoming row's ON CONFLICT natural key — pass C's `found`. */
+interface MetricSampleTwin {
+  id: number;
+  value: number;
+  date: string;
+  ended_at: string;
+  edited: number;
+  activity_external_id: string | null;
+}
+
+/**
+ * What each veto does to the counts a person reads in Review.
+ *
+ * A `Record` over the union rather than a switch, so a fifth veto does not COMPILE until
+ * it has said what Review shows for it.
+ */
+const VETO_TALLY: Record<MetricSampleVeto, (counts: UpsertCounts) => void> = {
+  // NOT COUNTED, deliberately. A parser mis-routing a body metric into the samples path
+  // is a programming error rather than a disposition; counting it would re-split the
+  // measure across two tables in Review as well as in the store.
+  "body-metric": () => {},
+  tombstone: (counts) => {
+    counts.suppressed++;
+  },
+  // Its OWN split (#659), like the body-metrics and vitals paths: a lock hold is not an
+  // ordinary no-op re-send, so it stays visible in Review rather than hidden inside
+  // `unchanged`.
+  "edit-lock": (counts) => {
+    counts.edited++;
+  },
+  "stale-retry": (counts) => {
+    tallyUpsert(counts, classifyUpsert(true, true));
+  },
+};
+
+interface MetricSampleVetoes {
+  /** The stored row under this incoming row's natural key, or undefined. */
+  twin(r: NormMetricSample): MetricSampleTwin | undefined;
+  /** Why pass C will refuse to write this row, or null when it will write it. */
+  veto(
+    r: NormMetricSample,
+    twin: MetricSampleTwin | undefined
+  ): MetricSampleVeto | null;
+}
+
+/**
+ * The veto set for one (profile, source), prepared once per push.
+ *
+ * The tombstone set and the twin statement are read ONCE for the batch, so the upsert
+ * loop pays for them per push rather than per row.
+ */
+function metricSampleVetoes(
+  profileId: number,
+  source: string
+): MetricSampleVetoes {
+  // The pre-image read on the ON CONFLICT natural key. `id` is carried so an update's
+  // provenance row (#1333) names the existing row rather than relying on lastInsertRowid
+  // (unreliable for an ON CONFLICT DO UPDATE).
+  const find = db.prepare(
+    "SELECT id, value, date, ended_at, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND started_at = ?"
+  );
+  // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
+  // re-inserted by the rolling window. Loaded once for the batch.
+  const tombstoned = loadImportTombstones(profileId, "metric_samples");
+  return {
+    twin: (r) =>
+      find.get(profileId, r.metric, source, r.origin ?? null, r.started_at) as
+        MetricSampleTwin | undefined,
+    veto: (r, twin) => {
+      // These belong in body_metrics (via upsertBodyMetrics); never let them land in
+      // metric_samples and re-split the measure across two tables.
+      if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) return "body-metric";
+      // No live row AND a tombstone for this natural key: the resurrecting insert is
+      // refused, so this row lands nowhere at all.
+      if (
+        !twin &&
+        tombstoned.has(
+          metricSampleTombstoneKey(
+            r.metric,
+            source,
+            r.origin ?? null,
+            r.started_at
+          )
+        )
+      )
+        return "tombstone";
+      // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
+      // detail-page readings table's per-row Edit. A hand-corrected sample survives every
+      // later re-push of the rolling window — the same contract activities /
+      // body_metrics / medical_records have had since #133.
+      if (twin && isEditLocked(twin.edited)) return "edit-lock";
+      // A delayed retry of an older cumulative snapshot must never roll a newer
+      // day-so-far value backward — #1101's moving-END rule, for the natural-key twin and
+      // NOTHING ELSE. The natural key intentionally omits `ended_at`, so freshness is an
+      // explicit part of the runtime merge rule (#1101 review).
+      //
+      // IT IS NOT A GATE ON THE SUPERSEDE, and #3424 took it out of that job for good:
+      // `isStaleMetricSnapshot` compares `ended_at`, the comparison
+      // lib/metric-window-overlap.ts's header spends a page explaining cannot decide
+      // which of two ANCHORINGS is current, and as a gate it was STRICT so a
+      // byte-identical replay walked straight through it. What it decides here is
+      // whether THIS ROW lands — and that decision is all the supersede needs, because a
+      // row that does not land is never stamped and so justifies no delete.
+      if (twin && isStaleMetricSnapshot(twin.ended_at, r.ended_at))
+        return "stale-retry";
+      return null;
+    },
+  };
+}
+
+/** One row this push wrote, read back from the store inside the deleting transaction. */
+interface StampedDayBucket extends MetricWindow {
+  metric: string;
+  origin: string | null;
+}
+
+/** What the supersede did, for the counts a person reads in Review. */
+export interface SupersedeOutcome {
+  /** Stored rows this push collapsed — `counts.superseded`. */
+  removed: number;
+  /**
+   * Day buckets still reading HIGH once this push finished, as DISTINCT readings:
+   * stored rows the predicate declined, plus the excess this push carries against
+   * ITSELF. The reason does not matter to the person reading their totals.
+   */
+  overlapsLeft: number;
+}
+
+/**
+ * THE VICTIM SET, DERIVED FROM THE STORE, UNDER THE LOCK, AND DELETED IN THE SAME
+ * TRANSACTION (#3424, the owner's ruling of 2026-08-22T13:46Z).
+ *
+ * CALLED ONCE PER PUSH, INSIDE THE LAST CHUNK'S `writeTx` AND AFTER THAT CHUNK'S UPSERTS.
+ * `writeTx` is `.immediate()`, so between the first read here and the last DELETE no
+ * other process can commit anything: every fact the predicate rests on is read in the
+ * transaction that acts on it. That is the whole of what closes rounds 7, 8 and 9 — see
+ * the header above, which also records what the payload-side plan used to do instead.
+ *
+ * THE PREDICATE, AND WHERE EACH CLAUSE LIVES.
+ *
+ *   1. `WHERE pushed_at = ?` on the FIRST query — THE ROWS THIS PUSH WROTE. Every upsert
+ *      that runs stamps the row, `unchanged` re-sends included; a row a veto stopped is
+ *      not stamped and so justifies nothing. Rows landed by chunks 1…n−1 are committed
+ *      and carry the stamp too, so one query sees the whole push.
+ *   2. `isSupersedingWindow` on each of them — the METRIC list and the GRANULARITY gate.
+ *      Nutrition and sleep nest legitimately and never tile; the same four metrics arrive
+ *      as MINUTE buckets at a `1m`/`15m` exporter setting and two devices that set no
+ *      `metadata.data_origin` share `origin = null`, where an overlap is two readings
+ *      being summed. Neither may supersede. This is also the cost bound: an 11.5k-row
+ *      `1m` push clears the gate nowhere and issues no candidate query at all.
+ *   3. `AND date = ?` on the candidate query — COVER THE DAY. A stamped bucket may only
+ *      collapse rows filed under ITS OWN `date`, which is the unit `getMetricDailyTotals`
+ *      sums by and the unit a person reads. It is what makes "a date always keeps a
+ *      reading" structural: the justifier is itself a stored row on that date and can
+ *      never be a victim (clause 4 excludes it), so the day is left holding at least it.
+ *      Without this term the PREVIOUS day's re-anchored bucket — which overlaps this
+ *      day's stored row by the zone offset — justified deleting a row nothing replaced,
+ *      and the day went to zero (#3424 round 10).
+ *   4. `AND pushed_at IS NOT ?` on the candidate query — "its key is not one this push
+ *      wrote", NULL-safely. Two rows of one push share a stamp, so neither can be the
+ *      other's victim: a push carrying BOTH anchorings writes both and the day double
+ *      counts visibly (ruling item 3), which `overlapsLeft` says out loud.
+ *   5. `planSupersede` — the `date` term again (the two-encodings discipline: SQL
+ *      narrows, lib/metric-window-overlap.ts decides), the overlap as INSTANTS (never as
+ *      strings: `started_at` is a documented `mixed`-shape column), the stored row's own
+ *      day-bucket granularity, `pushOutranks` (the stamp comparison, with NULL read as
+ *      UNKNOWN and the era markers as the only thing that licenses deleting one), and
+ *      the #133 edit lock.
+ *
+ * `overlapsLeft` IS COMPUTED FROM THE SAME QUERY, so it describes what happened rather
+ * than being maintained beside it. Two terms:
+ *
+ *   • the candidates the predicate DECLINED — locked, not outranked, or cut at sub-daily
+ *     granularity — as DISTINCT stored rows, because one stored row overlapped by two
+ *     stamped buckets is one reading left double counting and counting pairs said 2.
+ *     ON THE VICTIM'S OWN `date`, and ONLY there: a stamped bucket overlapping a stored
+ *     row filed under a DIFFERENT date is the day-bucket chain, not a double count —
+ *     the two never sum into one day — so it is neither collapsed nor reported. The
+ *     `date` term therefore decides both halves of this function, which is why
+ *     `planSupersede` states it rather than leaving it to the SQL.
+ *     There is no prune of collapsed ids from this set: every reason a candidate is
+ *     declined is a fact about that stored row plus this push's one stamp, and all the
+ *     buckets that can see it share both the date and the stamp, so two of them cannot
+ *     disagree. The line that used to re-subtract them was unreachable and is gone
+ *     (`CLAUDE.md`: no defensive check for a condition control flow already proves).
+ *   • the excess this push carries against ITSELF: a stamped day bucket overlapping an
+ *     earlier-starting stamped day bucket FILED UNDER THE SAME `date`. No stored id can
+ *     hold that shape, and the store-holds-neither push used to report nothing at all. It
+ *     needs no dedupe on this side of the ruling — the store holds ONE row per natural
+ *     key, so a record sent twice is one row and says nothing (round 8b).
+ *
+ * THE ONE DOUBLE COUNT NOBODY MENTIONS, left deliberately and in writing: two STORED rows
+ * that overlap each other under a push that stamped nothing near them. Asking "do two
+ * stored rows overlap each other" is a different scan with a different unit (excess
+ * readings per cluster, not distinct rows this push touched), it would change the Review
+ * line on every push rather than on this one, and `main` is silent on it too.
+ *
+ * THE DELETE IS BY ID AND RE-STATES `profile_id`, redundantly and on purpose: every id
+ * came out of the profile-scoped candidate SELECT above. A barrier nothing observes is a
+ * barrier a refactor deletes as noise — so the check that holds it is
+ * lib/__tests__/profile-scoping.test.ts, the repo's own owned-table census, which reads
+ * this LITERAL and fails when the clause is not there. That is also why the SQL is not
+ * hoisted to a named constant: the census can only read a statement written inline.
+ *
+ * WHAT THAT CENSUS COVERS, EXACTLY, because "held by a test" reads wider than it is.
+ * Measured, four runs:
+ *
+ *   • REMOVE the clause: the census reds — its "no owned-table statement missing
+ *     profile_id" case — and the whole db tier stays green, 6624 passed.
+ *   • REWRITE it as a literal-preserving tautology, `(profile_id = ? OR 1 = 1)`: NOTHING
+ *     anywhere reds — census 15/15 green, db tier 6624/6624 green.
+ *
+ * So the census is a TEXT ratchet against the clause going MISSING, not a behavioural
+ * observation of it doing work — and it cannot be one on its own, because with the
+ * candidate SELECT correct every id handed here already belongs to the profile.
+ *
+ * IT IS STILL THE SECOND BARRIER, AND THAT MUCH IS OBSERVED. Neutralise the candidate
+ * SELECT's own `profile_id` the same way and 14 tests red — but R5 ("keeps another
+ * profile's overlapping row of the same metric and origin",
+ * lib/__db_tests__/hc-overlap-supersede-refutations.test.ts) is NOT one of them: the
+ * leaked id reaches this DELETE and this DELETE refuses it. Neutralise BOTH and R5 reds.
+ * The first query's `profile_id` reds 20 under the same tautology. Two barriers, each
+ * standing in for the other's failure.
+ *
+ * IT CARRIES NO `pushed_at IS ?` OR `EXISTS` RE-STATEMENT, and their absence is the
+ * ruling rather than an oversight. Those clauses existed because the plan was read in one
+ * transaction and applied in another; here there is no interval to defend, and a clause
+ * that can never fire is a clause the next reader defends.
+ *
+ * The deletes are sync-internal — they write no re-import tombstone, because the source
+ * is expected to keep sending the span under its current anchoring. (The #608 timezone
+ * sweep's deletes were the precedent for that; #3551 replaced the sweep itself with
+ * lib/integrations/ingest-timezone-reconcile.ts, which re-keys a measure rather than
+ * deleting a row, so the precedent is now history rather than a neighbour.)
+ */
+export function supersedeMetricSampleOverlaps(
+  profileId: number,
+  source: string,
+  pushedAt: string | null
+): SupersedeOutcome {
+  // Health Connect is the ONE source whose day buckets re-anchor under the app's feet,
+  // and a push that states no readable instant stamps nothing — so it wrote no row that
+  // could justify a delete, and there is nothing in the store for this to read.
+  if (source !== OVERLAP_SUPERSEDE_SOURCE || pushedAt === null)
+    return { removed: 0, overlapsLeft: 0 };
+
+  // THE ROWS THIS PUSH WROTE, asked of the store rather than remembered from the payload.
+  // Indexed by `idx_metric_samples_pushed` (20260822-hc-pushed-at-index) — without it
+  // this is a scan of the profile's whole `metric_samples` history on every push.
+  const stamped = db
+    .prepare(
+      `SELECT id, metric, origin, date, started_at, ended_at, edited, pushed_at
+         FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND pushed_at = ?
+        ORDER BY id`
+    )
+    .all(profileId, source, pushedAt) as StampedDayBucket[];
+  // Only the ones the rule may act on at all: a tiling metric, cut at day-bucket
+  // granularity.
+  //
+  // THIS FILTER IS A COST BOUND, AND `planSupersede` IS THE SAFETY ONE. Dropping it
+  // deletes nothing extra — `planSupersede` asks `isSupersedingWindow` of the incoming
+  // window itself and routes anything below the gate to `left` rather than `supersede`.
+  // What it buys is the candidate query: an 11.5k-row `1m` push clears the gate NOWHERE,
+  // so it issues one indexed lookup and stops, instead of ~11.5k range queries. The one
+  // thing it costs is a report — a fine-grained incoming row landing on a stored day
+  // bucket is a day reading high and is deliberately not named, for exactly that cost.
+  // Pinned by "says nothing when a `1m` push lands on a stored day bucket".
+  const buckets = stamped.filter((row) =>
+    isSupersedingWindow(row.metric, row.started_at, row.ended_at)
+  );
+  if (buckets.length === 0) return { removed: 0, overlapsLeft: 0 };
+
+  // WHEN `pushed_at` STARTED BEING WRITTEN, AND WHAT WAS ALREADY IN THE TABLE. The only
+  // thing that licenses deleting a NULL-stamped row, read once because it never moves.
+  const era: UnstampedEra | null = readUnstampedEra();
+  // The stored rows a stamped bucket may supersede: same profile / metric / source /
+  // origin, ON THE BUCKET'S OWN `date`, and NOT a row this push wrote. The overlap test
+  // itself is deliberately NOT in this SQL — `started_at` is a documented `mixed`-shape
+  // column, so string comparison would answer a different question than instants do. SQL
+  // narrows; lib/metric-window-overlap.ts decides, and it states the `date` term too —
+  // the narrowing must never be the only place a DELETE condition lives.
+  //
+  // MEASURED, because the previous version of this comment named an index the planner
+  // did not pick. Over a 64,800-row `metric_samples` with `ANALYZE` run, this resolves to
+  //     SEARCH metric_samples USING INDEX idx_metric_samples_md
+  //       (profile_id=? AND metric=? AND date=?)
+  // with NO temp b-tree: all three leading columns are pinned to equality, so the index
+  // hands back the group already in rowid order and `ORDER BY id` is free. The day-radius
+  // form this replaced pinned only two and paid `USE TEMP B-TREE FOR ORDER BY`.
+  const findOverlaps = db.prepare(
+    `SELECT id, date, started_at, ended_at, edited, pushed_at
+       FROM metric_samples
+      WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ?
+        AND date = ?
+        AND pushed_at IS NOT ?
+      ORDER BY id`
+  );
+
+  const victims = new Set<number>();
+  const left = new Set<number>();
+  for (const bucket of buckets) {
+    const candidates = findOverlaps.all(
+      profileId,
+      bucket.metric,
+      source,
+      bucket.origin,
+      bucket.date,
+      pushedAt
+    ) as MetricWindow[];
+    const plan = planSupersede({ ...bucket, pushedAt }, candidates, era);
+    for (const row of plan.left) left.add(row.id);
+    for (const row of plan.supersede) victims.add(row.id);
+  }
+  // THE EXCESS THIS PUSH CARRIES AGAINST ITSELF. "Overlaps a row of this push that starts
+  // earlier, under the same `date`" is the whole definition: in a pair exactly one row has
+  // the later start, so a push carrying both anchorings of one day counts 1 — the same
+  // number the store-holds-one configuration reports for the same symptom, where the stale
+  // row is a stored one. It is not saying which row is wrong; two rows of one push share a
+  // stamp, so nothing ranks them, and choosing is what cost a reading twice.
+  //
+  // THE `date` IS PART OF THE GROUP, AND WITHOUT IT THIS OVER-REPORTS. `getMetricDailyTotals`
+  // sums by `date`, so two rows make a day read high exactly when they are filed under the
+  // same one. A re-anchored push CHAINS across days — the LA 08-19 bucket
+  // [08-19 07:00Z, 08-20 07:00Z) overlaps the NY 08-20 bucket [08-20 04:00Z, 08-21 04:00Z)
+  // by three hours — and counting that pair says two days read high over a store where
+  // exactly one does. The payload-side plan suppressed it by a different route (the pair
+  // touched a natural key already named in `leftStanding`); on this side of the ruling the
+  // stored rows carry the stamp and are never candidates, so the `date` is what carries it.
+  // Measured on the property suite's mixed-anchoring scenario: 2 without, 1 with, one day
+  // actually double counting.
+  const groups = new Map<string, StampedDayBucket[]>();
+  for (const row of buckets) {
+    const key = JSON.stringify([row.metric, row.origin, row.date]);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  let inPushDoubleCounts = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) =>
+      compareWindowStarts(a.started_at, b.started_at)
+    );
+    for (let i = 1; i < sorted.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (
+          windowsOverlap(
+            sorted[j].started_at,
+            sorted[j].ended_at,
+            sorted[i].started_at,
+            sorted[i].ended_at
+          )
+        ) {
+          inPushDoubleCounts++;
+          break;
+        }
+      }
+    }
+  }
+
+  const dropOverlap = db.prepare(
+    "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+  );
+  let removed = 0;
+  for (const id of victims) removed += dropOverlap.run(id, profileId).changes;
+  return { removed, overlapsLeft: left.size + inPushDoubleCounts };
+}
+
 export function upsertMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
   source: string,
-  sink?: SyncRowSink
+  sink?: SyncRowSink,
+  options: MetricSampleUpsertOptions = {}
 ): UpsertCounts {
-  // Pre-image on the natural key the ON CONFLICT below merges on, so a re-send of
-  // the rolling window that lands the same value/date is counted unchanged rather
-  // than a write (info.changes can't see that the values matched). `id` is carried so
-  // an update's provenance row (#1333) names the existing row rather than relying on
-  // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
-  const find = db.prepare(
-    "SELECT id, value, date, ended_at, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND started_at = ?"
-  );
+  // The pre-image on the natural key the ON CONFLICT below merges on, and the four
+  // vetoes read against it (#3438). A re-send of the rolling window that lands the same
+  // value/date is counted unchanged rather than a write (info.changes can't see that the
+  // values matched) — and is still STAMPED, which is what lets an `unchanged` re-send
+  // justify a supersede exactly as an insert does.
+  const vetoes = metricSampleVetoes(profileId, source);
   const stmt = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, started_at, ended_at, value, activity_external_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value,
+        activity_external_id, pushed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value,
        date = excluded.date,
@@ -498,65 +1045,72 @@ export function upsertMetricSamples(
        activity_external_id = COALESCE(
          excluded.activity_external_id,
          metric_samples.activity_external_id
-       )`
+       ),
+       -- The stamp of the push that last WROTE this row. COALESCE so a caller with no
+       -- stamp (every non-Health-Connect source) cannot blank one that a stamped push
+       -- already set, which would re-open the row to a replay.
+       pushed_at = COALESCE(excluded.pushed_at, metric_samples.pushed_at)`
   );
-  // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
-  // re-inserted by the rolling window. Loaded once for the batch.
-  const tombstoned = loadImportTombstones(profileId, "metric_samples");
   const counts = emptyCounts();
-  for (const r of rows) {
-    if (BODY_METRIC_SAMPLE_MEASURES.includes(r.metric)) {
-      // These belong in body_metrics (via upsertBodyMetrics); never let them land
-      // in metric_samples and re-split the measure across two tables.
-      continue;
-    }
-    const found = find.get(
-      profileId,
-      r.metric,
-      source,
-      r.origin ?? null,
-      r.started_at
-    ) as
-      | {
-          id: number;
-          value: number;
-          date: string;
-          ended_at: string;
-          edited: number;
-          activity_external_id: string | null;
-        }
-      | undefined;
-    // No live row AND a tombstone for this natural key: skip the resurrecting insert.
-    if (
-      !found &&
-      tombstoned.has(
-        metricSampleTombstoneKey(
-          r.metric,
-          source,
-          r.origin ?? null,
-          r.started_at
+
+  // ── PASS C, AND ONLY PASS C (#3424) ───────────────────────────────────────────
+  //
+  // THERE IS NO SUPERSEDE IN THIS LOOP, and that is the change nine adversarial rounds
+  // bought. It used to find the overlaps and DELETE them per row, right here, next to the
+  // `found` pre-image read that #1101's moving-END merge needs — so one row of a push
+  // could invalidate what a LATER row of the same push observed. Reached through arrival
+  // order (round 1) and through the natural-key twin lookup (round 5); one defect, two
+  // doors. The comment that used to stand here argued that an equal stamp made a chunk
+  // split harmless. That was right about the stamp channel and wrong to claim the
+  // universal: rows of one push cannot be each other's VICTIMS, which says nothing about
+  // what the twin lookup returns.
+  //
+  // The deletes now run ONCE, in `supersedeMetricSampleOverlaps`, inside the LAST chunk's
+  // transaction and AFTER this loop has run in it — so nothing this loop reads can have
+  // been moved by a delete, in any chunk, with no exclusion set to get right. Every
+  // `found`, `staleRetry`, lock decision and disposition below is what it would be with
+  // no supersede at all.
+  //
+  // What is left of the rule in this function is one column: `pushed_at`, the stamp the
+  // exporter stated on this push, written onto every row it stores so a LATER push can
+  // rank itself against them. A caller with no stamp writes NULL and COALESCE keeps
+  // whatever a stamped push already set, so a non-Health-Connect source cannot blank one.
+  const pushedAt =
+    source === OVERLAP_SUPERSEDE_SOURCE ? (options.pushedAt ?? null) : null;
+  // ASCENDING started_at — DETERMINISTIC WRITE ORDER, and nothing more.
+  //
+  // #3424 asks for it under the trailing-edge heading, and it used to be load-bearing:
+  // when a row of a push could supersede another row of the SAME push, which one arrived
+  // first decided what survived. It cannot any more, and NOT because of the stamp — the
+  // deletes do not happen here at all. It is kept because a stable write order makes
+  // `metric_samples.id` follow the day, which is worth having for anyone reading the
+  // table by hand, and because it costs one sort of a batch already in memory. It is NOT
+  // what makes the store correct, and the test that pins it asserts insertion ORDER for
+  // that reason.
+  const ordered =
+    source === OVERLAP_SUPERSEDE_SOURCE
+      ? [...rows].sort((a, b) =>
+          compareWindowStarts(a.started_at, b.started_at)
         )
-      )
-    ) {
-      counts.suppressed++;
-      continue;
-    }
-    // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
-    // detail-page readings table's per-row Edit. A hand-corrected sample survives
-    // every later re-push of the rolling window, counted `unchanged` — the same
-    // contract activities / body_metrics / medical_records have had since #133.
-    if (found && isEditLocked(found.edited)) {
-      // Its OWN split (#659), like the body-metrics and vitals paths above: a lock
-      // hold is not an ordinary no-op re-send, so it stays visible in Review rather
-      // than hidden inside `unchanged`.
-      counts.edited++;
-      continue;
-    }
-    // A delayed retry of an older cumulative snapshot must never roll a newer
-    // day-so-far value backward. The natural key intentionally omits ended_at, so
-    // freshness is an explicit part of the runtime merge rule (#1101 review).
-    if (found && isStaleMetricSnapshot(found.ended_at, r.ended_at)) {
-      tallyUpsert(counts, classifyUpsert(true, true));
+      : rows;
+
+  for (const r of ordered) {
+    const found = vetoes.twin(r);
+    // THE FOUR VETOES, AND THE ONLY PLACE THIS LOOP MAY DECLINE A ROW (#3438). They used
+    // to stand here as four inline conditions; they are stated once in
+    // `metricSampleVetoes` so the accounting lives in `VETO_TALLY`, a `Record` over the
+    // union, and a fifth veto does not compile until it says what Review shows.
+    //
+    // A VETOED ROW IS NOT STAMPED, and that one fact is the whole of how the supersede
+    // honours these. It never asks why a row was refused — it asks the store what carries
+    // this push's stamp, and a row that landed nowhere is not in that set. A fifth veto
+    // costs the supersede no edit at all.
+    //
+    // The reads behind them see a store no delete has touched: the supersede runs after
+    // this loop, in the last chunk's transaction.
+    const veto = vetoes.veto(r, found);
+    if (veto !== null) {
+      VETO_TALLY[veto](counts);
       continue;
     }
     const info = stmt.run(
@@ -568,7 +1122,8 @@ export function upsertMetricSamples(
       r.started_at,
       r.ended_at,
       r.value,
-      r.activity_external_id ?? null
+      r.activity_external_id ?? null,
+      pushedAt
     );
     const equal =
       !!found &&

@@ -271,6 +271,7 @@ function expiredHealthConnectIssue(
     unchanged: null,
     suppressed: null,
     edited: null,
+    superseded: null,
     skipped: null,
     raw_ref: null,
     error:
@@ -390,6 +391,7 @@ function syntheticStaleIssue(
     unchanged: null,
     suppressed: null,
     edited: null,
+    superseded: null,
     skipped: null,
     raw_ref: null,
     error: staleSyncDetail(def?.name ?? sourceId, s),

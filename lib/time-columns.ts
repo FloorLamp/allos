@@ -1129,6 +1129,13 @@ export const TIME_COLUMNS = {
       convention: "mixed",
       note: "The same two shapes as started_at, and equal to it for an instantaneous reading.",
     },
+    {
+      column: "pushed_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "canonical",
+      note: "WHEN THE PUSH THAT WROTE THIS ROW HAPPENED, as the payload itself states it (#3424) — never when the reading was taken, which is started_at. Health Connect only; NULL on every other source and on every row written before 20260821-hc-overlap-supersede. It holds the exporter's own `payload.timestamp` and NOTHING derived from the rows themselves — a byte-identical replay therefore carries the same value as the push it replays and cannot out-rank it. An earlier cut fell back to the furthest-forward `ended_at` in the push and was measured LOSING a reading: an end belongs to the reading, not to the push, and a re-anchored completed day ends earlier than the still-filling row it corrects. NULL when the push stated nothing readable, or when the stated instant was further ahead of the server clock than MAX_PUSH_CLOCK_SKEW_MS, and a NULL stamp supersedes nothing. CANONICAL rather than mixed, unlike its started_at/ended_at neighbours: the writer parses whichever of those two it picked and re-serializes through utcInstant, so a new column is not born holding two shapes. It also refuses an offset-less spelling outright, because a delete decision must not move with the server's zone. The supersede compares it as an instant; nothing else reads it.",
+    },
   ],
   milestones: [
     {

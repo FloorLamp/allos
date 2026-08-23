@@ -212,6 +212,8 @@ import { migration as mUnstrandHuskMilestones } from "./20260819-unstrand-husk-m
 import { migration as mNiggles } from "./20260819-niggles";
 import { migration as mNotifyOffers } from "./20260819-notify-offers";
 import { migration as mRpeColumnOptIn } from "./20260820-rpe-column-opt-in";
+import { migration as mHcOverlapSupersede } from "./20260821-hc-overlap-supersede";
+import { migration as mHcPushedAtIndex } from "./20260822-hc-pushed-at-index";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -433,6 +435,8 @@ export const MIGRATIONS: Migration[] = [
   mNiggles,
   mNotifyOffers,
   mRpeColumnOptIn,
+  mHcOverlapSupersede,
+  mHcPushedAtIndex,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

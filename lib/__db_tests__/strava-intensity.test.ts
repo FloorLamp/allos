@@ -71,6 +71,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const row = storedRow(ride.external_id);
@@ -94,6 +95,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const row = storedRow(ride.external_id);
@@ -114,6 +116,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow(ride.external_id).intensity).toBe("easy");
 
@@ -124,6 +127,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // Athlete revises the RPE up to a harder band → intensity updates (row un-edited).
@@ -139,6 +143,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(storedRow(harder.external_id).intensity).toBe("hard");
   });
@@ -156,6 +161,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     // The user re-rates the session in-app (or via the #1122 Telegram buttons):
@@ -178,6 +184,7 @@ describe("Strava perceived_exertion → activities.intensity (#1125)", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
 
     const row = storedRow(ride.external_id);

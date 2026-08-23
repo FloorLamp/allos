@@ -197,7 +197,8 @@ function getAttendedImportSyncEvents(
   return db
     .prepare(
       `SELECT id, source_id, at, ok, window_start, window_end,
-              inserted, updated, unchanged, written, suppressed, edited, skipped,
+              inserted, updated, unchanged, written, suppressed, edited,
+              superseded, skipped,
               error, raw_ref
          FROM integration_sync_events
         WHERE profile_id = ? AND source_id IN (${ATTENDED_SOURCE_PLACEHOLDERS})
