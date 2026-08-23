@@ -90,6 +90,7 @@ import {
   seedPrnLedger,
   seedLowSupply,
   seedDrugAllergyCrosscheck,
+  seedDoseLedgerPhone,
   seedPrnCounter,
   seedSafetyCoverage,
   seedUpcomingAggregate,
@@ -203,6 +204,7 @@ seedNavGating();
 seedLegacyCelsius();
 seedPreventiveSatisfaction();
 seedDrugAllergyCrosscheck();
+seedDoseLedgerPhone();
 seedPrnCounter();
 seedSafetyCoverage();
 seedHaConfig();

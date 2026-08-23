@@ -23,6 +23,7 @@ import { isOnDemand } from "@/lib/intake-schedule";
 import {
   DOSE_LEDGER_KIND_FILTERS,
   DOSE_LEDGER_KIND_LABELS,
+  doseLedgerEmptyNote,
   doseLedgerQueryKind,
   doseLedgerWindowNote,
   resolveDoseLedgerKind,
@@ -86,7 +87,8 @@ export default function DoseLedgerView({
 }) {
   const todayStr = today(profileId);
   const tz = getTimezone(profileId);
-  const { timeFormat } = getDisplayFormatPrefs(loginId);
+  const formatPrefs = getDisplayFormatPrefs(loginId);
+  const { timeFormat } = formatPrefs;
 
   const range: DateRange = resolveDoseLedgerRange(
     normalizeTimelineRange(
@@ -302,7 +304,13 @@ export default function DoseLedgerView({
           maxDate={todayStr}
           defaultTime={defaultTime}
           defaultItemId={itemId}
-          note={doseLedgerWindowNote(range)}
+          note={doseLedgerWindowNote(range, formatPrefs, todayStr)}
+          emptyNote={doseLedgerEmptyNote(
+            range,
+            kindFilter,
+            formatPrefs,
+            todayStr
+          )}
         />
         {/* A LINK pager: the page rides the URL, so what it turns is the read.
             Every other control here (kind, item, range) drops the page — a

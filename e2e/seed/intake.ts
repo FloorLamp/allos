@@ -23,6 +23,10 @@ import {
   SUPPLY_PARENT_EDIT_MED,
   E2E_LOGIN_DRUG_ALLERGY,
   DRUG_ALLERGY_PROFILE,
+  E2E_LOGIN_DOSE_LEDGER_PHONE,
+  DOSE_LEDGER_PHONE_PROFILE,
+  DOSE_LEDGER_PHONE_IMPORTED_MED,
+  DOSE_LEDGER_PHONE_ACTIVE_MED,
   E2E_LOGIN_PRN_FAMILY,
   PRN_FAMILY_PROFILE,
   E2E_LOGIN_COVERAGE,
@@ -335,6 +339,54 @@ export function seedDrugAllergyCrosscheck(): void {
   seedMemberLogin(E2E_LOGIN_DRUG_ALLERGY, drugAllergyId, "write");
   console.log(
     `e2e: seeded drug-allergy cross-check fixture — profile ${drugAllergyId} (${DRUG_ALLERGY_PROFILE}) (#1029)`
+  );
+}
+
+// ── The dose ledger at phone width ──
+export function seedDoseLedgerPhone(): void {
+  // ── Dose ledger phone-width fixture (#3478) ──────────────────────────────────
+  // A dedicated adult profile whose medication catalog carries ONE portal-imported
+  // name of realistic length ("Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)"),
+  // INACTIVE so the ledger's item filter suffixes it " (inactive)" — the widest
+  // option the control has to size against — plus one ordinary active medication
+  // with a live dose so the "Log past dose" launcher renders.
+  //
+  // NO intake_item_logs, deliberately: the ledger must be EMPTY, which is the state
+  // #3478 item 3's element order and kind-named copy describe. Idempotent hard-clear
+  // for a reused server. Synthetic, no PHI.
+  const ledgerPhoneId = adultFixtureProfileId(DOSE_LEDGER_PHONE_PROFILE);
+  db.prepare(
+    `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(ledgerPhoneId);
+  db.prepare(
+    `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(ledgerPhoneId);
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(
+    ledgerPhoneId
+  );
+  db.prepare(
+    `INSERT INTO intake_items
+       (profile_id, name, active, kind, condition, obligation, source)
+     VALUES (?, ?, 0, 'medication', 'daily', 'may', 'extracted')`
+  ).run(ledgerPhoneId, DOSE_LEDGER_PHONE_IMPORTED_MED);
+  const ledgerPhoneActiveId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should')`
+      )
+      .run(ledgerPhoneId, DOSE_LEDGER_PHONE_ACTIVE_MED).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '10 mg', 'Morning', 'any', 0)`
+  ).run(ledgerPhoneActiveId);
+  seedMemberLogin(E2E_LOGIN_DOSE_LEDGER_PHONE, ledgerPhoneId, "write");
+  console.log(
+    `e2e: seeded dose-ledger phone-width fixture — profile ${ledgerPhoneId} (${DOSE_LEDGER_PHONE_PROFILE}) (#3478)`
   );
 }
 

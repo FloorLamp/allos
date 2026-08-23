@@ -109,3 +109,24 @@ export const UPCOMING_AGG_APPOINTMENT_SOON_DAYS = 3;
 export const E2E_LOGIN_OFFLINE_SNAPSHOTS = "e2e_offline_snapshots";
 export const OFFLINE_SNAPSHOTS_PROFILE = "Offline Snapshots (e2e)";
 export const OFFLINE_SNAPSHOTS_MED = "Offline Snapshot Med (e2e)";
+
+// #3478 — the dose ledger at phone width. A member granted a dedicated ADULT
+// profile whose medication catalog contains ONE portal-imported name of the length
+// the owner's phone review actually carried, plus one ordinary active medication
+// with a live dose so the ledger's "Log past dose" launcher renders. The profile
+// has NO confirmed doses, so its ledger is EMPTY — which is the state item 3's
+// element order and kind-named copy are about, and the state a shared profile could
+// never guarantee. Dedicated on purpose (#868): a 55-character medication name on a
+// shared profile would widen controls under every neighbouring spec's assertions.
+// Read-only in its spec, so it stays repeat-safe. Synthetic, no PHI.
+export const E2E_LOGIN_DOSE_LEDGER_PHONE = "e2e_dose_ledger_phone";
+export const DOSE_LEDGER_PHONE_PROFILE = "Dose Ledger Phone (e2e)";
+// The imported name itself. Its LENGTH is the fixture — the spec asserts that this
+// option's natural width still exceeds the phone viewport before it believes any
+// verdict about the control, so a shortened name fails loudly here instead of
+// passing over a page that could not have been wrong.
+export const DOSE_LEDGER_PHONE_IMPORTED_MED =
+  "Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR) (e2e)";
+// An ordinary active medication with a live dose row: without one the ledger renders
+// no launcher at all, and item 3's ordering assertion would have nothing to order.
+export const DOSE_LEDGER_PHONE_ACTIVE_MED = "Ledger Phone Med (e2e)";
