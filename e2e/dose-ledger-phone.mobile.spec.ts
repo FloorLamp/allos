@@ -6,6 +6,7 @@ import {
   E2E_LOGIN_DOSE_LEDGER_PHONE,
   E2E_MEMBER_PASSWORD,
   DOSE_LEDGER_PHONE_IMPORTED_MED,
+  DOSE_LEDGER_PHONE_ACTIVE_MED,
 } from "./fixture-logins";
 import { machineDateHits } from "@/lib/machine-date-census";
 
@@ -214,6 +215,122 @@ test.describe("the dose ledger at phone width (#3478)", () => {
     // profile never renders.
     const text = (await emptyState.textContent()) ?? "";
     expect(machineDateHits(text), text).toEqual([]);
+
+    await page.context().close();
+  });
+  // ── THE SIBLING CONTROL, #3631's "cheap once this lands" ────────────────────────
+  //
+  // `IntakeRulesEditor`'s "Other item" select (components/intake/IntakeRulesEditor.tsx)
+  // is the SAME SHAPE as the ledger filter above — a `w-auto` select whose options are
+  // item names nobody chose — and it was fixed alongside #3478 with the same one class.
+  // It was pinned BY INSPECTION ONLY, because reaching it means driving to a
+  // medication's edit form and adding a keep-apart rule with two items present.
+  //
+  // WHAT MADE IT CHEAP, said honestly because #3631 asks: NOT the census corpus this
+  // change adds — the census photographs resting states and cannot drive a form, so no
+  // seed value reaches this control. It was #3478's OWN fixture: `seedDoseLedgerPhone`
+  // already gives this profile exactly two items, the 55-character imported one and one
+  // ordinary active one, so the active med's rule editor offers a single "other" whose
+  // name is the long one. Plus `?action=edit`, which opens the form without driving an
+  // overflow menu. Two navigations and two clicks, and no write — the rule row is
+  // client state and is never saved, so this stays as read-only and repeat-safe as its
+  // neighbours above.
+  test("the rules editor's Other item select is laid out inside the viewport too (#3631)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DOSE_LEDGER_PHONE,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // The active medication's own page, opened straight into the editor.
+    await page.goto("/medications");
+    const href = await page
+      .locator(`a[href^="/medications/"]`, {
+        hasText: DOSE_LEDGER_PHONE_ACTIVE_MED,
+      })
+      .first()
+      .getAttribute("href");
+    expect(href, "the active medication's card did not render a link").toBeTruthy();
+    await page.goto(`${href}?action=edit`);
+
+    // Add a keep-apart rule: the sentence whose blank is the Other item select.
+    await page.getByTestId("intake-add-rule").click();
+    await page.getByTestId("intake-rule-add-keep-apart").click();
+
+    const select = page.getByLabel("Other item");
+    // WAIT FOR THE CONTENT THIS MEASURES. A select rendered with no options fits any
+    // viewport, and empty is the state that flatters an overflow assertion (#3384).
+    await expect(
+      select.locator("option", { hasText: DOSE_LEDGER_PHONE_IMPORTED_MED })
+    ).toHaveCount(1);
+
+    const g = await select.evaluate((el) => {
+      const s = el as HTMLSelectElement;
+      // The natural width — what the widest option asks for with the flex content
+      // floor still in place — measured off-canvas, exactly as the ledger filter above.
+      const probe = s.cloneNode(true) as HTMLSelectElement;
+      probe.style.position = "absolute";
+      probe.style.left = "-10000px";
+      probe.style.top = "0";
+      probe.style.visibility = "hidden";
+      probe.style.minWidth = "auto";
+      probe.style.maxWidth = "none";
+      probe.style.width = "auto";
+      probe.style.textOverflow = "clip";
+      document.body.appendChild(probe);
+      const naturalWidth = probe.getBoundingClientRect().width;
+      probe.remove();
+      const r = s.getBoundingClientRect();
+      const main = document.querySelector("main");
+      // THE ANCESTOR CHAIN, kept rather than deleted once it had done its job. A
+      // failure here reads "the select is 119px too wide" and says nothing about
+      // WHICH box refused to shrink — and the answer was two levels above the select
+      // both times it was measured. A reviewer will reach for this as scaffolding;
+      // it is what makes the next red self-describing (#2774).
+      const chain: string[] = [];
+      for (
+        let p: HTMLElement | null = s;
+        p && p !== document.body;
+        p = p.parentElement
+      ) {
+        const cs = getComputedStyle(p);
+        chain.push(
+          `${p.tagName.toLowerCase()}${p.dataset.testid ? `[${p.dataset.testid}]` : ""} ` +
+            `w=${Math.round(p.getBoundingClientRect().width)} ` +
+            `min-w=${cs.minWidth} display=${cs.display}`
+        );
+      }
+      return {
+        viewportWidth: document.documentElement.clientWidth,
+        right: r.left + window.scrollX + r.width,
+        width: r.width,
+        naturalWidth,
+        chain,
+        mainScrollWidth: main?.scrollWidth ?? 0,
+        mainClientWidth: main?.clientWidth ?? 0,
+      };
+    });
+
+    // THE PREMISE BEFORE THE VERDICT, same as above: without an option whose natural
+    // width exceeds the phone, everything below is true of a control that could not
+    // have been wrong.
+    expect(
+      g.naturalWidth,
+      `the Other item select's widest option asks for only ${Math.round(g.naturalWidth)}px ` +
+        `in a ${g.viewportWidth}px viewport, so this spec is measuring a control that ` +
+        `could not overflow. Lengthen DOSE_LEDGER_PHONE_IMPORTED_MED in e2e/logins/intake.ts.`
+    ).toBeGreaterThan(g.viewportWidth);
+
+    expect(
+      Math.round(g.right),
+      `the Other item select's right edge is ${Math.round(g.right)} in a ` +
+        `${g.viewportWidth}px viewport (width ${Math.round(g.width)}, natural ` +
+        `${Math.round(g.naturalWidth)}). Ancestors, outward:\n${g.chain.join("\n")}`
+    ).toBeLessThanOrEqual(g.viewportWidth);
+
+    // And not traded for the page overflowing sideways inside the clipping shell.
+    expect(g.mainScrollWidth).toBeLessThanOrEqual(g.mainClientWidth + 1);
 
     await page.context().close();
   });
