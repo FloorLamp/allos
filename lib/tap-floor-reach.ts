@@ -956,9 +956,9 @@ export type ClassText =
   | { readable: false; name: string };
 
 /**
- * The class text a browser would actually see — or a refusal naming what stopped
- * it. Throws `UnreadableControlError` when the text IS reachable from this file
- * and this scan still cannot read it.
+ * The class text a browser would actually see — or a refusal naming the identifier
+ * that stopped it. Throws `UnreadableControlError` only when the expression cannot
+ * be PARSED at all; see the section header on why those are the two outcomes.
  */
 function readClassText(
   expression: string,
