@@ -1,3 +1,9 @@
+// Covers the #2883 instant-column rename PAIR: 20260815-substance-recorded-at
+// and 20260815-metric-sample-instants, in registry order. The before-database
+// stops ahead of the FIRST of the two, which is the migration this file is named
+// for — it used to be called `migration-20260815-time-grain-names`, a name no
+// migration has ever had, which read exactly like the #3565 defect it is not.
+
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
@@ -5,9 +11,6 @@ import { migrationsBefore } from "@/lib/migrations/versions";
 
 function beforeRenames(): Database.Database {
   const db = new Database(":memory:");
-  // "20260815-substance-recorded-at" is the FIRST of the two renames this file
-  // covers, so the before-database is built ahead of that one, not ahead of the
-  // migration the filename names.
   runMigrations(db, migrationsBefore("20260815-substance-recorded-at"));
   db.prepare("INSERT INTO profiles(id, name) VALUES (1, 'Time grains')").run();
   return db;
