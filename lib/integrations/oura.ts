@@ -271,6 +271,13 @@ export function mapOuraWorkout(
 ): { activity: NormActivity; samples: NormMetricSample[] } | null {
   if (!w || typeof w !== "object") return null;
   const rec = w as Record<string, unknown>;
+  // STRING-ONLY, AND AUDITED (#3593). This is the only Oura id this app stores, and
+  // every id-shaped field in Oura's published v2 schema is `"type": "string"` — so
+  // unlike Strava's int64 effort ids there is nothing here for a double to round,
+  // and `ouraGet` keeps a plain `res.json()`. If Oura ever contradicted its schema
+  // and sent a number, this read returns null and the record becomes a counted SKIP
+  // rather than a silently rounded external id. See
+  // lib/__tests__/provider-id-precision.test.ts.
   const id = str(rec.id);
   const startDt = str(rec.start_datetime);
   const start = localParts(startDt);

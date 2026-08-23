@@ -1,5 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { parseJsonPreservingIds } from "./json-big-ids";
 import { addCanonicalNames, reconcileFlags } from "@/lib/queries";
 import {
   WITHINGS_ID,
@@ -70,7 +71,16 @@ async function withingsPost(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false, status: res.status };
-    const json = (await res.json()) as Record<string, unknown>;
+    // NOT `res.json()`. Withings documents `measuregrps[].grpid` — the id this app
+    // stores as `withings:<grpid>:<analyte>` — as `type: integer, format: int64`,
+    // so nothing in the contract keeps it under 2^53 and an ordinary parse would
+    // round it before the mapper ever saw it (#3593, the defect #3194 measured on
+    // Strava). The digits are preserved in the response TEXT; see json-big-ids.ts,
+    // whose key list carries Withings' `grpid` spelling for exactly this reason.
+    const json = parseJsonPreservingIds(await res.text()) as Record<
+      string,
+      unknown
+    >;
     // Withings wraps everything in { status, body }; status 0 = success. An error
     // (bad/expired token, rate limit) rides in the envelope with HTTP 200, so the
     // envelope status is authoritative.

@@ -69,6 +69,15 @@ describe("quoteUnsafeIntegerIds", () => {
     );
   });
 
+  it("covers Withings' `grpid`, which the *_id half does not reach (#3593)", () => {
+    // No underscore, so `[A-Za-z0-9]+_id` never matched it — and it is the one
+    // Withings id that reaches storage. Enumerated in ID_KEY_NAMES for that reason.
+    const text = `{"grpid":5586822735000123456,"date":1717530817}`;
+    expect(quoteUnsafeIntegerIds(text)).toBe(
+      `{"grpid":"5586822735000123456","date":1717530817}`
+    );
+  });
+
   it("covers *_id keys too, so the stored raw payload is faithful as well", () => {
     const text = `{"activity_id":${EFFORT_A},"start_index":12}`;
     expect(quoteUnsafeIntegerIds(text)).toBe(
@@ -86,6 +95,13 @@ describe("quoteUnsafeIntegerIds", () => {
       `{"name":"ride 3502836819860123456"}`,
       `{"latlng":[38.5,-120.2]}`,
       `{"upload_id_str":"3502836819860123456"}`,
+      // The neighbours the Withings `grpid` spelling could have dragged in (#3593)
+      // if the key list had been widened to "anything ending in id" instead of
+      // enumerated. Each is a real key on a real payload.
+      `{"valid":3502836819860123456}`,
+      `{"android":3502836819860123456}`,
+      `{"deviceid":"d3502836819860123456"}`,
+      `{"grpids":3502836819860123456}`,
     ];
     for (const text of benign) expect(quoteUnsafeIntegerIds(text)).toBe(text);
   });
