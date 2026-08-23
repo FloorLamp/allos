@@ -808,6 +808,30 @@ gather), and the interaction / PGx / UL warnings fire identically for a `may`
 member. Adherence fractions re-scope to must+should for free — a `may` item has no
 occurrences, so it cannot drag an honest number down.
 
+**A catalogued product that is above a limit ON PURPOSE says so (#3156).** A
+`SupplementCatalogEntry` may carry `aboveUpperLimit: [{ nutrient, reason }]` — a DRI
+nutrient key and one plain sentence. `PreserVision AREDS 2` is the shipped case: 40 mg
+zinc per softgel over a two-softgel serving is 80 mg against an adult UL of 40 mg, so
+seeding the product and taking it as directed warns you about the product Allos itself
+prefilled. The owner ruling keeps that warning — AREDS 2 genuinely exceeds the zinc UL
+by design, and that is a real thing to know — and requires it to state why, because a
+generic exceedance on the app's own seeded serving reads like a bug, and "looks like a
+bug" is how a real warning gets ignored. `lib/supplement-catalog-ul.ts` is the
+catalog × UL join (neither `lib/dri.ts` nor `lib/supplement-catalog.ts` may import the
+other): `formulationUlNote` resolves the sentence for the nutrient and the CONTRIBUTING
+products only, `getDietaryLimitWarnings` computes it once beside the #657 condition
+caveat so the Supplements tab and the Upcoming finding cannot disagree, and
+`ulWarningDetail` places it BEFORE the clinician close. The note EXPLAINS the number
+and never shrinks it — same total, same limit, same close — and product identity is an
+exact name match, so a renamed or look-alike item gets the ordinary generic warning.
+`catalogUlExceedances` is the computed reverse-lookup behind
+`lib/__tests__/catalog-ul-notes.test.ts`, which binds it both ways: an entry that trips
+a UL at one of its own stated servings must carry a reason, and a reason must name a
+nutrient its entry really trips. (Ruling 1 of the same issue — the seeded per-unit
+amounts stay transcribed from typical labels, NOT held to the cited-source standard and
+NOT marked unverified — is a deliberate no-op with its accepted cost stated on the
+issue.)
+
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the
 test harness moved to the production ledger-gated startup path. Current storage has

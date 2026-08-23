@@ -1158,7 +1158,11 @@ export default async function SupplementsTab({
                   testid={`ul-warning-${w.key}`}
                   tone="amber"
                   title={ulWarningTitle(w)}
-                  detail={ulWarningDetail(w, w.conditionCaveat)}
+                  detail={ulWarningDetail(
+                    w,
+                    w.conditionCaveat,
+                    w.formulationNote
+                  )}
                   evidence={`From: ${ulWarningEvidence(w)}`}
                   dismissKey={dietaryLimitSignalKey(w.key)}
                   dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
