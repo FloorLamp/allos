@@ -254,9 +254,12 @@ describe("runExtraction failure honesty (issue #675)", () => {
       errorMatch: /truncated/i,
     },
     {
+      // #3198: the row still says the extraction failed and still says WHY in the
+      // terms a person can act on — it just no longer quotes the SDK's own string
+      // at them. `extraction_error` is rendered on the documents list.
       name: "a plain connection error from the SDK",
       client: () => fakeClient(new Error("connection reset")),
-      errorMatch: /connection reset/i,
+      errorMatch: /couldn't reach the AI\. Try again\./i,
     },
     {
       name: "a mapped APIError (HTTP 429 rate limit)",

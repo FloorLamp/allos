@@ -19,7 +19,11 @@ import {
   disconnectStravaAction,
 } from "./actions";
 import StravaBackfillButton from "./StravaBackfillButton";
-import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
+import StravaRecheckButton from "./StravaRecheckButton";
+import {
+  countAnsweredNoneStravaSessions,
+  countMissingStravaSessionDetails,
+} from "@/lib/integrations/strava-sync";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
@@ -52,6 +56,12 @@ export default async function StravaPage(props: {
   const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   const missingRideDetails = connected
     ? countMissingStravaSessionDetails(profile.id)
+    : 0;
+  // Sessions Strava has already answered "nothing" for (#3037). They are no longer
+  // backfill candidates — that is what lets the badge above reach zero — so the
+  // way back to them is this explicit, person-chosen re-ask.
+  const answeredNoneSessions = connected
+    ? countAnsweredNoneStravaSessions(profile.id)
     : 0;
   // The refresh token died/was revoked (issue #326): show an actionable notice above
   // the reconnect form instead of leaving the user with a silent, forever-failing sync.
@@ -119,6 +129,7 @@ export default async function StravaPage(props: {
                 <>
                   <SyncNowButton sourceId="strava" />
                   <StravaBackfillButton missing={missingRideDetails} />
+                  <StravaRecheckButton answeredNone={answeredNoneSessions} />
                   <form action={disconnectStravaAction}>
                     <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
                       Disconnect

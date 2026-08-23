@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { utcInstant } from "@/lib/date";
 import { db, writeTx } from "@/lib/db";
 import { getTimezone } from "@/lib/settings";
 import {
@@ -33,6 +34,7 @@ import {
   type StravaRequestBudget,
 } from "./strava-rate-limit";
 import { backfillFetchVerdict } from "./backfill-outcome";
+import { parseJsonPreservingIds } from "./json-big-ids";
 
 // Whether a failed `/streams` response settles the question for THIS activity in
 // the AUTOMATIC sync, where the answer is persisted as an empty telemetry row and
@@ -108,7 +110,11 @@ async function stravaGet(
     budget.observe(res.headers);
     if (res.status === 429) budget.markRateLimited();
     if (!res.ok) return { ok: false, status: res.status };
-    return { ok: true, json: await res.json() };
+    // NOT `res.json()`. Strava's effort and lap ids are int64 (~3.5e18) and a
+    // double cannot hold them, so an ordinary parse rounds every one of them
+    // before this app ever sees it (#3194). The ids are preserved in the response
+    // TEXT and reach the mapper as exact digit strings; see json-big-ids.ts.
+    return { ok: true, json: parseJsonPreservingIds(await res.text()) };
   } catch (err) {
     // A network THROW (DNS failure, ECONNRESET, TLS error, or the timeout above)
     // rejects `fetch`. Convert it to a non-ok result — the same shape Withings'
@@ -188,7 +194,7 @@ const stravaSpec: PullSpec<
     let skipped = 0;
     let truncated = false;
     let newestStart = cursor;
-    const snapshotAt = new Date().toISOString();
+    const snapshotAt = utcInstant();
     const clientId = getStravaConfig(profileId).clientId ?? "unconfigured";
     const budget = createStravaRequestBudget(clientId, maxRequests);
     let athlete: unknown = null;
@@ -258,6 +264,23 @@ const stravaSpec: PullSpec<
         // unless the source might still have streams we have never asked for.
         if (imported && (!recorded || answered)) {
           raw.push(summary);
+          // A HAND-ENTERED session is answered without asking — `manual: true` IS
+          // the source saying it has no telemetry — so record that answer here,
+          // at zero requests (#3037). Without this the fast path skips the
+          // session before any write, it never gains a telemetry row, and it
+          // matches the backfill candidate predicate forever: the badge cannot
+          // reach zero and each run spends two requests re-learning nothing.
+          // Idempotent — once the answer is stored the upsert is a no-op.
+          if (!recorded) {
+            activityTelemetry.push({
+              external_id: externalId,
+              streams: {},
+              ftp_w: null,
+              heart_rate_zones: null,
+              power_zones: null,
+              snapshot_at: snapshotAt,
+            });
+          }
           // The trailing rescan must still carry late Strava edits through the
           // ordinary edit-lock-aware upsert. Only skip the expensive detail and
           // stream calls for a row whose supplemental artifacts are complete.
@@ -391,6 +414,26 @@ interface StravaBackfillCandidate {
 function stravaBackfillCandidates(
   profileId: number
 ): StravaBackfillCandidate[] {
+  // Every Strava session, not just the rides (#2870 step 4) — but only the ones
+  // the source has NOT ANSWERED for (#3037, owner ruling 2026-08-16).
+  //
+  // The predicate used to match any empty `streams_json`, which a HAND-ENTERED
+  // session matches forever: the source has nothing to give and says so on every
+  // ask. So `countMissingStravaSessionDetails` reported 400 on a profile with 400
+  // of them, the badge could never reach zero, and each user-triggered run spent
+  // two requests per session re-learning "nothing" — ~800 against Strava's
+  // 1000/day read ceiling. `activity_telemetry.answer` is what the source said, so
+  // this can now ask the question it always meant: has anyone asked yet?
+  //
+  // A row with `answer IS NULL` and no streams is a session written BEFORE that
+  // column existed. It is deliberately still a candidate: pre-#3034 the sync wrote
+  // an empty row on a transient failure and on a 403, so an empty row is not
+  // evidence of an answer. Those get asked once more under the corrected rules and
+  // classify themselves, then leave the set for good.
+  //
+  // Reversibility is not lost, it moves — a session answered `none` is re-asked
+  // when a PERSON asks for it (`recheckStravaAnsweredSessions`), which is exactly
+  // the condition backfill-outcome.ts says makes the re-ask affordable.
   const rows = db
     .prepare(
       `SELECT a.external_id, a.type, a.title, a.components
@@ -401,21 +444,55 @@ function stravaBackfillCandidates(
           AND t.source = 'strava'
         WHERE a.profile_id = ?
           AND a.source = 'strava'
-          AND (t.activity_id IS NULL OR t.streams_json IS NULL OR t.streams_json = '{}')
+          AND (t.activity_id IS NULL
+               OR (t.answer IS NULL
+                   AND (t.streams_json IS NULL OR t.streams_json = '{}')))
         ORDER BY a.date DESC, a.start_time DESC, a.id DESC`
     )
     .all(profileId) as StravaBackfillCandidate[];
-  // Every Strava session, not just the rides (#2870 step 4). The candidate
-  // predicate above is unchanged and deliberately still matches an EMPTY
-  // telemetry row: unlike the automatic sync, this job runs only when a person
-  // asks for it, and re-asking is what picks up a ride made public again or an
-  // upload the source has since finished processing (see backfill-outcome.ts on
-  // why no give-up marker is stored).
   return rows;
 }
 
 export function countMissingStravaSessionDetails(profileId: number): number {
   return stravaBackfillCandidates(profileId).length;
+}
+
+// Sessions the source has already answered `none` for — hand-entered, indoor, or
+// with no recorded streams. Not candidates; the count exists so the page can offer
+// the re-check below only when there is something to re-check.
+export function countAnsweredNoneStravaSessions(profileId: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n
+         FROM activity_telemetry t
+         JOIN activities a
+           ON a.id = t.activity_id AND a.profile_id = t.profile_id
+        WHERE t.profile_id = ? AND t.source = 'strava' AND t.answer = 'none'`
+    )
+    .get(profileId) as { n: number };
+  return row.n;
+}
+
+// THE EXPLICIT RE-ASK (#3037). `backfill-outcome.ts` argues at length against a
+// persisted give-up marker, because re-asking is what recovers a ride made public
+// again, a token re-authorized with `activity:read_all`, or an upload the source
+// has since finished processing. The owner's ruling keeps that property and pays
+// for it deliberately instead of on every run: forgetting the stored `none` puts
+// those sessions back in the candidate set, and a person decides when.
+//
+// It forgets ONLY `none`. An answered-with-streams session is not re-asked — there
+// is nothing to recover — and a NULL answer is already a candidate.
+export function recheckStravaAnsweredSessions(profileId: number): number {
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE activity_telemetry
+              SET answer = NULL
+            WHERE profile_id = ? AND source = 'strava' AND answer = 'none'`
+        )
+        .run(profileId).changes
+  );
 }
 
 export interface StravaBackfillResult {
@@ -471,7 +548,7 @@ export async function runStravaDetailsBackfill(
 
   const clientId = getStravaConfig(profileId).clientId ?? "unconfigured";
   const budget = createStravaRequestBudget(clientId, maxRequests);
-  const snapshotAt = new Date().toISOString();
+  const snapshotAt = utcInstant();
   let backfilled = 0;
   let failed = 0;
   let unavailable = 0;
@@ -555,15 +632,33 @@ export async function runStravaDetailsBackfill(
       snapshotAt
     );
     const hasStreams = Object.keys(artifacts.telemetry.streams).length > 0;
-    writeTx(() => {
-      upsertActivityTelemetry(profileId, [artifacts.telemetry], STRAVA_ID);
-      replaceActivityLaps(profileId, artifacts.laps, STRAVA_ID, [
-        candidate.external_id,
-      ]);
-      replaceSegmentEfforts(profileId, artifacts.segmentEfforts, STRAVA_ID, [
-        candidate.external_id,
-      ]);
-    });
+    // PER-CANDIDATE CONTAINMENT (#3194). A 208-ride sweep must never be hostage to
+    // ride 49: this write used to run bare, so one payload SQLite refused aborted
+    // the whole job, left the remaining ~160 rides unfetched, and did it again on
+    // every retry because the candidate order is stable. The ride is counted into
+    // `failed` — visible on the card, still a candidate next run — and the sweep
+    // carries on. The raw cause goes to the operator log, never to the card
+    // (#3198).
+    try {
+      writeTx(() => {
+        upsertActivityTelemetry(profileId, [artifacts.telemetry], STRAVA_ID);
+        replaceActivityLaps(profileId, artifacts.laps, STRAVA_ID, [
+          candidate.external_id,
+        ]);
+        replaceSegmentEfforts(profileId, artifacts.segmentEfforts, STRAVA_ID, [
+          candidate.external_id,
+        ]);
+      });
+    } catch (err) {
+      log.error("strava backfill write failed for one candidate", {
+        profileId,
+        externalId: candidate.external_id,
+        err: String(err),
+      });
+      failed++;
+      reportProgress();
+      continue;
+    }
     if (hasStreams) backfilled++;
     // Both calls returned 200 and the ride still carries no telemetry — an indoor or
     // manually-entered ride. This used to count as a failure, so the row matched the

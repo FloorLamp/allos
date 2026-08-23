@@ -11,7 +11,11 @@ import {
   setStravaCredentials,
   setStravaTokens,
 } from "@/lib/integrations/connections";
-import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
+import {
+  countAnsweredNoneStravaSessions,
+  countMissingStravaSessionDetails,
+  recheckStravaAnsweredSessions,
+} from "@/lib/integrations/strava-sync";
 import { resetStravaRateLimitState } from "@/lib/integrations/strava-rate-limit";
 import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
 
@@ -229,11 +233,20 @@ describe("integration backfill jobs", () => {
       await runIntegrationBackfillJob(profileId, "strava", "ride-details")
     ).toMatchObject({ status: "completed", failed_items: 1, error: null });
 
-    // The verdict is NOT persisted, on purpose: the ride is still counted as missing
-    // details, and a later run that finds streams — an upload Strava has since
-    // processed, a re-authorized token — backfills it normally. That reversibility is
-    // what buys the two requests an explicit retry spends.
+    // The answer IS persisted now (#3037, owner ruling 2026-08-16): the source said
+    // "nothing", so the ride stops being a candidate and the badge reaches zero.
+    // Before this, a hand-entered or indoor session matched the predicate forever
+    // and every run spent two requests re-learning nothing.
+    expect(countMissingStravaSessionDetails(profileId)).toBe(0);
+    expect(countAnsweredNoneStravaSessions(profileId)).toBe(1);
+
+    // Reversibility is kept, and paid for deliberately rather than on every run: a
+    // PERSON asks, the stored `none` is forgotten, and the ride is a candidate
+    // again — which is how an upload Strava has since processed, or a re-authorized
+    // token, is still picked up.
+    expect(recheckStravaAnsweredSessions(profileId)).toBe(1);
     expect(countMissingStravaSessionDetails(profileId)).toBe(1);
+    expect(countAnsweredNoneStravaSessions(profileId)).toBe(0);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: unknown) => {
@@ -390,7 +403,7 @@ describe("integration backfill jobs", () => {
     }
   });
 
-  it("stores a REDACTED error when the runner throws (#2820)", async () => {
+  it("stores HOUSE COPY, not the thrown message, when the runner throws (#2820, #3198)", async () => {
     // The catch-all is for an UNEXPECTED exception escaping the runner. The token
     // refresh is the one un-wrapped fetch on this path, so an expired token plus a
     // throwing fetch reproduces it faithfully rather than by stubbing internals.
@@ -430,7 +443,16 @@ describe("integration backfill jobs", () => {
       )
       .get(profileId) as { error: string | null };
     expect(stored.error).not.toContain("word7digit3");
-    expect(stored.error).toContain("access_token=***");
+    // #2820 asked whether the SECRET survived and answered it with redaction.
+    // #3198 asks what a PERSON reads and answers it one step earlier: the column
+    // never receives the thrown text at all, so neither the credential nor the
+    // request URL nor the SQLite vocabulary can be in it.
+    expect(stored.error).not.toContain("access_token");
+    expect(stored.error).not.toContain("strava.test");
+    // The generic sentence, because a bare "POST … failed" carries no errno the
+    // classifier can read as transient — and guessing "Try again." at a failure
+    // that may be permanent is the direction copy.md rule 1 rules out.
+    expect(stored.error).toBe("Couldn't finish this backfill.");
   });
 
   it("pauses only crash-stranded jobs for automatic recovery", () => {

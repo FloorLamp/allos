@@ -17,6 +17,7 @@ import {
   queueIntegrationBackfill,
   runIntegrationBackfillJob,
 } from "@/lib/integrations/backfill-jobs";
+import { recheckStravaAnsweredSessions } from "@/lib/integrations/strava-sync";
 import { createLogger } from "@/lib/log";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
@@ -109,5 +110,24 @@ export async function backfillStravaRideDetails(): Promise<StravaBackfillActionR
   return {
     status: "done",
     message: "Ride detail backfill started. Progress and ETA are shown below.",
+  };
+}
+
+// Forget what Strava answered for the sessions it said had nothing, so the next
+// backfill asks about them again (#3037). A person chooses this; nothing does it
+// automatically. That is the whole trade the owner's ruling makes — the badge can
+// reach zero because the answer is stored, and a session made public again, or one
+// whose streams finished processing, is still recoverable on request.
+export async function recheckStravaEmptySessions(): Promise<StravaBackfillActionResult> {
+  const { profile } = await requireWriteAccess();
+  const cleared = recheckStravaAnsweredSessions(profile.id);
+  revalidateRoute("/integrations/strava");
+  revalidateRoute("/data");
+  return {
+    status: "done",
+    message:
+      cleared === 0
+        ? "No sessions to re-check."
+        : `${cleared} session${cleared === 1 ? "" : "s"} queued for another look. Run the backfill to ask Strava again.`,
   };
 }

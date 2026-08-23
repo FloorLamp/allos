@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import {
@@ -59,9 +60,16 @@ export async function updateProviderAction(
     });
   } catch (err) {
     // updateProviderIdentity throws a FRIENDLY domain error the user needs to see
-    // (an identity clash → "…merge the duplicates instead."), so surface it; the
-    // fallback string just drops the banned "Could not" verb (#945).
-    return { error: err instanceof Error ? err.message : "Couldn't save." };
+    // (an identity clash → "…merge the duplicates instead."), and marks it a
+    // UserFacingError so it can be told apart from everything else that can be
+    // thrown here. Before #3198 this surfaced ANY caught message, so a constraint
+    // string or a TypeError became the form's error text; now only the authored
+    // sentence passes through and the rest is classified.
+    log.error("provider identity update failed", {
+      id,
+      err: err instanceof Error ? err : String(err),
+    });
+    return { error: userErrorCopy(err, { doing: "save this provider" }) };
   }
   // Audit the GLOBAL identity edit (issue #655): who edited which shared provider.
   recordAudit({

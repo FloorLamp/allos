@@ -20,25 +20,35 @@
 // PURE (no db, no fs) so it sits in the unit tier beside the directory's other
 // pure/impure splits (raw-log-format.ts vs raw-log.ts, sync-log.ts vs connections.ts).
 
-import { capDetail, redactSecrets } from "@/lib/error-log-format";
+import { capDetail } from "@/lib/error-log-format";
+import { userErrorCopy } from "@/lib/user-error-copy";
 
 // The stored error is one line on a progress card, not a stack dump, so it is bounded
 // well below error-log's 4000-char detail cap: a runaway upstream message must not turn
 // the card into a wall of text.
 export const MAX_BACKFILL_ERROR_CHARS = 300;
 
-// The redacted, bounded form of a caught backfill error — what may be persisted.
+// #3198 CHANGED WHAT THIS RETURNS. It used to hand back the raw redacted
+// `err.message`, and the card rendered it — which is how
+// `UNIQUE constraint failed: activity_segment_efforts.profile_id, …source,
+// …external_id` came to sit on the owner's settings page for a week. Redaction
+// answered the SECRETS question (#2820) and was never going to answer the
+// comprehensibility one: this column is read by a person tracking their health, and
+// SQLite vocabulary is not something they can do anything with.
 //
-// Returns NULL rather than an empty or whitespace-only string when the error says
-// nothing (an `Error("")`, a thrown `undefined`, a message that redacts away): the
-// column is nullable and the card already renders its own sentence for a `failed` job
-// with no error text, so a blank red line never reaches the page and the house copy
-// stays spelled in exactly one place.
-export function backfillErrorMessage(err: unknown): string | null {
-  const raw = err instanceof Error ? err.message : String(err);
-  const redacted = capDetail(
-    redactSecrets(raw).trim(),
+// So the classifier decides the sentence and the raw cause goes to `log.error`,
+// which the runner already calls two lines above the write that uses this. The cap
+// stays: house copy is short, but the authored family passes a thrower's own
+// sentence through and that has no length rule of its own.
+//
+// It no longer returns null. It used to, because a redacted-away message left an
+// empty string and a blank red line on the card; the classifier always produces a
+// sentence, so that branch became unreachable and saying so is better than keeping
+// dead code around. The column stays nullable — a job that did not fail through the
+// catch-all still has no error text, and the card keeps its own fallback for it.
+export function backfillErrorMessage(err: unknown): string {
+  return capDetail(
+    userErrorCopy(err, { doing: "finish this backfill" }).trim(),
     MAX_BACKFILL_ERROR_CHARS
   );
-  return redacted === "" ? null : redacted;
 }
