@@ -15,8 +15,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { installFixtureProfileSpace } from "./fixture-profile-space";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-db-test-"));
+const tmpDir = makeTmpDir("db-test");
 process.env.ALLOS_DB_PATH = path.join(tmpDir, "test.db");
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 

@@ -5,11 +5,10 @@
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 const originalCwd = process.cwd();
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-notify-clear-"));
+const tmpDir = makeTmpDir("notify-clear");
 process.chdir(tmpDir);
 
 const { revalidatePath } = await import("next/cache");

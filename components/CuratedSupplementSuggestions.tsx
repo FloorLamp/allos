@@ -4,6 +4,7 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import { NOTICE_TONE } from "@/components/Notice";
+import { joinNamesForSentence } from "@/lib/summarize-names";
 import { FOOD_TIMING_HINTS } from "@/lib/intake-schedule";
 import type {
   CuratedSupplementSuggestion,
@@ -57,8 +58,11 @@ export default function CuratedSupplementSuggestions({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-emerald-900 dark:text-emerald-100">
                     {/* The side word follows the entry's declared trigger (#2754):
-                        the lipids soluble-fiber entry fires on a HIGH flag. */}
-                    {reasons.join(", ")} {reasons.length > 1 ? "are" : "is"}{" "}
+                        the lipids soluble-fiber entry fires on a HIGH flag. The
+                        NAMES take the shared join, never a comma — "Lymphocytes,
+                        Relative" is one name (#3496; copy.md §9). */}
+                    {joinNamesForSentence(reasons)}{" "}
+                    {reasons.length > 1 ? "are" : "is"}{" "}
                     {s.side === "high" ? "HIGH." : "LOW."} Options to consider:
                   </p>
                   <span

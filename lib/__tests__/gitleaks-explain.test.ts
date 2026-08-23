@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -12,6 +11,7 @@ import {
   explainCommit,
   explainReport,
 } from "../../scripts/gitleaks-explain.mjs";
+import { makeTmpDir } from "./tmp-dir";
 
 // Guard for the gitleaks failure explainer (#2949), in the repo's source-scan
 // idiom — filesystem only, no DB, no network.
@@ -232,7 +232,7 @@ describe("the gitleaks scan range (#2969)", () => {
     .map((l) => l.replace(/^ {10}/, ""))
     .join("\n");
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gitleaks-range-"));
+  const tmp = makeTmpDir("gitleaks-range");
   const sh = (args: string[]) =>
     spawnSync("git", args, { cwd: tmp, encoding: "utf8" });
   sh(["init", "-q", "-b", "main"]);

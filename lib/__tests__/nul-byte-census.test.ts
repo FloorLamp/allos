@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { makeTmpDir } from "./tmp-dir";
 
 // A LITERAL NUL IN A SOURCE FILE MAKES THAT FILE INVISIBLE TO A DEFAULT GREP (#3206).
 //
@@ -112,7 +112,7 @@ describe("the NUL-byte census", () => {
 describe("the census's reach", () => {
   // A green census over a tree that happens to comply proves nothing about what the
   // census can SEE, so it is run over files written to break it.
-  const dir = mkdtempSync(path.join(os.tmpdir(), "nul-census-"));
+  const dir = makeTmpDir("nul-census");
   const write = (name: string, content: string): string => {
     const file = path.join(dir, name);
     writeFileSync(file, content);
