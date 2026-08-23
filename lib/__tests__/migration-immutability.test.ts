@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,14 +12,20 @@ import {
   MANIFEST_REL,
   NAMED_FILE_RE,
   REGISTRY_REL,
+  VERSIONS_DIR,
   buildManifest,
   generateManifest,
   migrationFilesOnDisk,
+  parseManifest,
   readManifest,
   registryOrder,
+  resolveShippedReference,
+  runManifestCli,
   serializeManifest,
   sha256OfMigration,
 } from "../migrations/manifest-source";
+import { MIGRATIONS } from "../migrations/versions";
+import type { ShippedReference } from "../migrations/manifest-source";
 
 // Immutability guard for shipped migrations (issue #119). A shipped migration file
 // is APPEND-ONLY: once released it is frozen, and a bug is fixed by appending a
@@ -85,6 +92,55 @@ describe("migration immutability — hash manifest", () => {
         `it, and do not "fix" this by re-sorting the registry, which would reorder ` +
         `the migrations themselves.`
     ).toEqual(registryOrder());
+  });
+
+  // THE TEXT PARSE IS CHECKED AGAINST THE ARRAY THAT ACTUALLY RUNS.
+  //
+  // `registryOrder()` reads index.ts as TEXT, for a good reason (it must work on a
+  // tree whose registry names a file that does not exist, where an import throws
+  // before it can report). The safety argument written for it covered ONE
+  // direction: an entry the matcher MISSES turns into a loud "present in versions/
+  // but not registered" from `assertRegistryMatchesDisk`.
+  //
+  // It said nothing about the other direction, and the other direction is silent.
+  // Block-comment one entry of the array while leaving its import in place — how
+  // anyone would temporarily disable a migration — and `ENTRY_RE` still matches the
+  // aliased line inside the comment. The text parse then reports 219 where
+  // `MIGRATIONS` holds 218: the migration STOPS RUNNING on every fresh database,
+  // the manifest still lists it, and the registry-order case above compares the
+  // manifest to `registryOrder()`, so both are wrong in the same way and agree.
+  // Measured before this case existed: the immutability suite, the db-tier runner
+  // suite and eslint were all green on that tree.
+  //
+  // Comparing the parse to the IMPORTED array closes it, and makes the whole
+  // text-parser class self-checking — any future divergence between what the
+  // parser sees and what Node imports fails here, whatever caused it.
+  //
+  // THE COMPARISON GOES THROUGH THE MODULES, not through the filenames, because
+  // a migration's `name` is NOT its filename: `044-episode-share-links.ts` is
+  // named `043-episode-share-links` and `148-retire-run-milestones.ts` is named
+  // `retire-run-milestones`. Both are shipped and neither can be renamed. So the
+  // parse is resolved the same way Node resolves it — import each file the parser
+  // named, in the order it named them, and ask each module what its migration is
+  // called. That is a stronger statement than a filename comparison anyway: it
+  // says the array holds exactly these modules in exactly this order.
+  it("parses index.ts into exactly the array Node imports from it", async () => {
+    const parsed = await Promise.all(
+      registryOrder().map(async (file) => {
+        const mod = (await import(
+          /* @vite-ignore */ path.join(VERSIONS_DIR, file)
+        )) as { migration: { name: string } };
+        return mod.migration.name;
+      })
+    );
+    expect(
+      parsed,
+      `${REGISTRY_REL} reads as one list of migrations when parsed as TEXT and a ` +
+        `DIFFERENT list when imported. The imported array is the one that runs, so ` +
+        `whatever the text parser is seeing that Node is not — a commented-out ` +
+        `entry, a conditional push, a re-export — a migration is either running ` +
+        `unmanifested or manifested without running.`
+    ).toEqual(MIGRATIONS.map((m) => m.name));
   });
 
   // THE WHOLE FILE, BYTE FOR BYTE, against what the writer produces. The cases above
@@ -312,7 +368,15 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
   const SECOND = "20260802-second.ts";
   const REGISTERED = [FIRST, SECOND];
 
-  /** A corpus whose manifest is written and agrees with the bytes: shipped. */
+  /**
+   * A corpus whose manifest is written and agrees with the bytes, AND whose
+   * hashes are then declared to be what main carries.
+   *
+   * The second half is the part that used to be implicit and wrong. "Already
+   * shipped" is now a fact about git, so a test that wants to exercise the
+   * refusal has to SAY what shipped — and passing it in is exactly what stops the
+   * working-tree manifest from being the answer.
+   */
   const shipped = () => {
     const c = corpus(
       {
@@ -321,10 +385,20 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
       },
       REGISTERED
     );
-    const seed = generateManifest(c);
+    const nothingShipped: ShippedReference = {
+      manifest: {},
+      source: "a corpus with no history",
+    };
+    const seed = generateManifest({ ...c, shipped: nothingShipped });
     expect(seed.wrote).toBe(true);
     expect(seed.exitCode).toBe(0);
-    return c;
+    // Nothing was on main, so seeding the manifest is not a rehash — which is
+    // also the "brand-new repo" case, and it must not refuse.
+    expect(seed.rehashed).toEqual([]);
+    return {
+      ...c,
+      shipped: { manifest: seed.manifest, source: "main, in this test" },
+    };
   };
 
   const editShipped = (versionsDir: string) =>
@@ -372,7 +446,7 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     const result = generateManifest({ ...c, check: true });
     expect(result.exitCode).toBe(1);
     expect(result.wrote).toBe(false);
-    expect(result.error).toContain("ALREADY-SHIPPED");
+    expect(result.error).toContain("already on main");
     // NOT the stale-manifest advice. `--check` could always tell that the file
     // disagreed with the bytes; what it used to say was "run the generator and
     // commit the result", and following that advice was the laundering.
@@ -387,7 +461,7 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     expect(result.exitCode).toBe(1);
     expect(result.wrote).toBe(false);
     // And for the rehash reason, not incidentally because the file is also stale.
-    expect(result.error).toContain("ALREADY-SHIPPED");
+    expect(result.error).toContain("already on main");
     fs.rmSync(c.versionsDir, { recursive: true, force: true });
   });
 

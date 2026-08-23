@@ -23,11 +23,15 @@
  *   - It REFUSES a tree where index.ts and versions/ disagree. A migration in one
  *     and not the other is a conflict resolved wrong, and mid-conflict is exactly
  *     when this script runs.
- *   - It REFUSES to rewrite an already-shipped hash and exits non-zero, in both
- *     modes, unless `--allow-rehash` says to. That is the same accident from the
- *     other side: a conflict resolved by editing the wrong side used to leave the
- *     manifest mismatched and CI red, and a remedy that rehashes silently would
- *     turn it into a fresh, correct-looking hash.
+ *   - It REFUSES to rewrite a hash that is already ON MAIN and exits non-zero, in
+ *     both modes, unless `--allow-rehash` says to. "Already on main" is read from
+ *     git — the manifest as of the merge-base with origin/main — not from the
+ *     checked-in file, which `rm` used to erase along with the refusal.
+ *   - Editing a migration YOUR OWN BRANCH added is not that, and says nothing.
+ *
+ * The flags work with `--` in front of them, as npm requires. `--check` also
+ * works without it (npm hides it in the environment, where this reads it);
+ * `--allow-rehash` deliberately does not.
  *
  * The hash, the file set, the ordering and the refusals all live in
  * lib/migrations/manifest-source.ts, which the immutability guard imports too. This
@@ -35,13 +39,13 @@
  * is a second source of truth for the one thing the guard exists to check. The body
  * here is argv, printing and an exit code — everything testable is next door.
  */
-import { generateManifest } from "../lib/migrations/manifest-source";
+import { runManifestCli } from "../lib/migrations/manifest-source";
 
-const result = generateManifest({
-  check: process.argv.includes("--check"),
-  allowRehash: process.argv.includes("--allow-rehash"),
+const result = runManifestCli({
+  argv: process.argv.slice(2),
+  env: process.env,
 });
 
-console.log(result.report);
-if (result.error) console.error(result.error);
+if (result.stdout) console.log(result.stdout);
+if (result.stderr) console.error(result.stderr);
 process.exit(result.exitCode);
