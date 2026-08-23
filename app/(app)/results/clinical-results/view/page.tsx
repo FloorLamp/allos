@@ -88,6 +88,7 @@ import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
 import { resultSeriesKey } from "@/lib/saved-items";
 import ScrollFade from "@/components/ScrollFade";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import BackLink from "@/components/BackLink";
 import {
   FitnessPercentileCard,
@@ -986,8 +987,19 @@ export default async function ClinicalResultDetailPage(props: {
         <h2 className="px-5 pt-5 font-semibold text-slate-800 dark:text-slate-100">
           Clinical results
         </h2>
+        {/* THE SHARED RESPONSIVE TABLE, not a hand-rolled one (#3497 item 2).
+            This was a hand-rolled table element, nowrap, inside a fade, so the
+            card branch below `sm` never existed here at any width and
+            the Source column clipped to "Sou…" behind the fade on a phone. Adopting
+            `ResponsiveTable` inherits that branch — and inherits #3457's breakpoint
+            fix whenever it lands — the same way the catalog table on the sibling
+            surface already does. Desktop is unchanged: same cells, same columns,
+            same order. */}
         <ScrollFade className="mt-3">
-          <table className="w-full whitespace-nowrap">
+          <ResponsiveTable
+            className="w-full"
+            data-testid="clinical-result-history-table"
+          >
             <thead>
               <tr className="border-b border-black/5 dark:border-white/10">
                 <th className="th">Date</th>
@@ -1005,8 +1017,12 @@ export default async function ClinicalResultDetailPage(props: {
                     key={r.id}
                     className="border-b border-black/5 dark:border-white/10"
                   >
-                    <td className="td whitespace-nowrap">{day(r.date)}</td>
-                    <td className="td" data-basis={basis.kind}>
+                    {/* Every row here is the SAME analyte, so the day is the
+                        row's identity — the card's title. */}
+                    <Td slot="title" className="whitespace-nowrap">
+                      {day(r.date)}
+                    </Td>
+                    <Td slot="value" data-basis={basis.kind}>
                       {/* The severity word visibly, not only in the accessibility
                         tree (#1220/#2315): this list intermixes out-of-range and
                         above-optimal readings of the same analyte, so red-vs-amber
@@ -1043,11 +1059,16 @@ export default async function ClinicalResultDetailPage(props: {
                           {revisionSummary(rev)}
                         </div>
                       ))}
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
+                    </Td>
+                    <Td
+                      slot="meta"
+                      label="Lab reference"
+                      empty={!r.reference_range}
+                      className="text-slate-500 dark:text-slate-400"
+                    >
                       {r.reference_range ?? "—"}
-                    </td>
-                    <td className="td">
+                    </Td>
+                    <Td slot="meta" label="Source">
                       {r.derived ? (
                         <span
                           className="text-slate-500 dark:text-slate-400"
@@ -1067,15 +1088,19 @@ export default async function ClinicalResultDetailPage(props: {
                           Manual entry
                         </span>
                       )}
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
+                    </Td>
+                    <Td
+                      slot="meta"
+                      label="Reported as"
+                      className="text-slate-500 dark:text-slate-400"
+                    >
                       {r.name}
-                    </td>
+                    </Td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </ScrollFade>
       </div>
     </div>

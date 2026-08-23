@@ -254,3 +254,31 @@ export function studyDisplayLabel(s: {
   if (region) parts.push(region);
   return parts.join(" ");
 }
+
+// THE SECTION LABEL IS NOT PART OF THE IMPRESSION (#3498 item 3).
+//
+// A radiology extract regularly carries its own section heading into the field:
+// "OVERALL IMPRESSION: Findings suggestive of a left breast…". On the study list the
+// impression is a one-line subtitle under a row that ALREADY says what the field is,
+// so the heading spends the only line the finding has — the phone review met a row
+// that clamped to "OVERALL IMPRESSION: Findings suggestive of a left breast…" and
+// cut exactly where the clinical payload begins.
+//
+// This strips a LEADING section label and nothing else. It does not summarise, does
+// not truncate, and does not touch a label that appears mid-text (a second section
+// inside a multi-section impression is content, and dropping it would change what the
+// report says). The stored value is untouched — the study form still shows and edits
+// the record as imported (#3480's posture: the record keeps the source string, the
+// display shows the clean one).
+const IMPRESSION_SECTION_LABEL =
+  /^\s*(?:overall\s+)?impression\s*(?:\/\s*conclusion\s*)?[:\-–—]\s*/i;
+
+export function impressionDisplayText(
+  impression: string | null | undefined
+): string | null {
+  if (!impression) return null;
+  const stripped = impression.replace(IMPRESSION_SECTION_LABEL, "").trim();
+  // A field that was ONLY the label says nothing; render no subtitle rather than an
+  // empty one.
+  return stripped.length > 0 ? stripped : null;
+}

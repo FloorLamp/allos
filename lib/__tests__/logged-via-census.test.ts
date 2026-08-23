@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { LEDGERS_WITH_LOGGED_VIA } from "@/lib/logged-via";
+import { makeTmpDir } from "./tmp-dir";
 
 // THE USER-WRITE LEDGER CENSUS (#3087).
 //
@@ -400,7 +400,7 @@ describe("the census's reach", () => {
   // that decides which files are looked at at all — completely unexercised. An
   // adversarial lens caught exactly that shape on another guard this session.
   function corpus(files: Record<string, string>): string {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "logged-via-census-"));
+    const root = makeTmpDir("logged-via-census");
     for (const [rel, body] of Object.entries(files)) {
       const abs = path.join(root, rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });

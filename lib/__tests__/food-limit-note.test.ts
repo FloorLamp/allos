@@ -386,6 +386,12 @@ describe("a pattern is never joined to a biomarker (#2397/#2572)", () => {
       "./food-drug-ledger",
       "./food-groups",
       "./food-suggest",
+      // A pure string join (#3496) — the shared rule that a list of NAMES is never
+      // separated by a character a name can contain. It reads nothing, derives
+      // nothing, and cannot supply a reading, a flag or a range, which is the
+      // property this census is about. Listed rather than pattern-exempted so the
+      // next addition still has to be argued for here.
+      "./summarize-names",
     ]);
   });
 

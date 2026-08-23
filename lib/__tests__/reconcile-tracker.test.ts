@@ -24,6 +24,7 @@ import {
   checkDocsContracts,
   checkLabelHygiene,
   checkLineCitation,
+  decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
   parseStatedPriority,
@@ -770,6 +771,59 @@ describe("label removal — the only label op", () => {
       expect.objectContaining({ kind: "no-domain" })
     );
     expect(planLabelRemovals([stranded])).toEqual([]);
+  });
+});
+
+describe("a domain add may only fill a gap", () => {
+  it("fills a gap", () => {
+    expect(
+      decideDomainAdd(issue({ number: 1, labels: ["bug", "P2"] }), "wellness")
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses to re-classify an issue that already carries a domain", () => {
+    expect(
+      decideDomainAdd(issue({ number: 1, labels: ["bug", "db"] }), "wellness")
+    ).toEqual({
+      ok: false,
+      refusal: "already-classified",
+      detail: "carries db; re-classifying is not this routine's call",
+    });
+  });
+
+  it("counts a label THIS RUN already added as carried (#3122)", () => {
+    // The defect: two adds for one issue judged against one pre-loop snapshot.
+    // The snapshot is identical in both calls below — what differs is only what
+    // the run has already decided, which is the state a re-read cannot supply in
+    // a dry run because a dry run performs no write for it to read back.
+    const gap = issue({ number: 1, labels: ["bug", "P2"] });
+    expect(decideDomainAdd(gap, "wellness", []).ok).toBe(true);
+    expect(decideDomainAdd(gap, "training", ["wellness"])).toEqual({
+      ok: false,
+      refusal: "already-classified",
+      detail: "carries wellness; re-classifying is not this routine's call",
+    });
+  });
+
+  it("ignores non-domain labels already added this run", () => {
+    // Only the domain axis closes the gap; a priority label added elsewhere in
+    // the same run must not make a domain add look like a re-classification.
+    expect(
+      decideDomainAdd(issue({ number: 1, labels: ["bug"] }), "wellness", ["P2"])
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses a label off the domain axis, and a closed issue", () => {
+    expect(decideDomainAdd(issue({ number: 1, labels: [] }), "P1").ok).toBe(
+      false
+    );
+    expect(
+      decideDomainAdd(issue({ number: 1, labels: [], state: "closed" }), "db")
+    ).toEqual({
+      ok: false,
+      refusal: "issue-closed",
+      detail: "the issue is closed",
+    });
   });
 });
 

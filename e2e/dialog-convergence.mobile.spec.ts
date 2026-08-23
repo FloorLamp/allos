@@ -157,17 +157,30 @@ async function tapScrim(page: Page): Promise<void> {
 // would have made the whole thing an artefact of synthetic input that no real
 // hand can produce.
 //
-// IT IS NOT. CI returned, on a run where the click went missing:
-//
-//   touchstart touches:1 moves:0    <- the flick presses
-//   touchend   touches:0 moves:10   <- the flick lifts, every finger up
-//   touchstart touches:1 moves:10   <- the TAP presses: ONE finger
-//   touchend   touches:0 moves:10   <- the tap lifts cleanly, having not moved
+// IT IS NOT. CI returned, on a run where the click went missing, a flick that
+// lifted to `touches: 0` BEFORE the tap pressed at `touches: 1`, with zero moves
+// on the tap and a clean lift.
 //
 // A well-formed, stationary, single-finger tap on a hydrated element carrying a
 // live committed handler — and no click anywhere on `document`. So the missing
-// click is real browser behaviour, not the driver, and the surviving unknown is
-// recorded in #3262 rather than guessed at again.
+// click was real browser behaviour, not the driver.
+//
+// WHAT IT WAS, since #3262 closed: the flick starts on the sheet's drag handle,
+// which is `touch-none`, and Chromium suppresses the tap gesture of the next
+// touch sequence after a drag it was forbidden that axis for. The touch events
+// keep flowing — which is why this log looked so clean — while the click is
+// never made at all. `consumeSuppressedTap` in e2e/helpers.ts spends that one
+// sequence at the end of every drag; the measurements are there.
+//
+// SO THE LOG NOW READS SIX ENTRIES, not four, and the two in the middle are
+// ours on purpose:
+//
+//   touchstart touches:1 moves:0    <- the flick presses
+//   touchend   touches:0 moves:10   <- the flick lifts, every finger up
+//   touchstart touches:1 moves:10   <- the drag's debt, dispatched by the helper
+//   touchcancel touches:0 moves:10  <- cancelled, so it can never be a click
+//   touchstart touches:1 moves:10   <- the TAP presses: ONE finger
+//   touchend   touches:0 moves:10   <- the tap lifts cleanly, having not moved
 //
 // The log stays because it is what makes a future red self-describing: it is
 // carried into the failure message of the test below, so the next person to see
@@ -180,6 +193,11 @@ async function installTouchLog(page: Page): Promise<void> {
     // Moves are counted, not listed: ten steps per swipe would bury the two
     // readings that matter (the flick's lift, and the tap's press).
     let moves = 0;
+    // The GAP is the quantity #3262 turned out to be about, so the receipt
+    // states it. `performance.now()` and not a clock read: this is an interval
+    // between two events in one page, which is what a monotonic timer is for,
+    // and the suite's frozen-instant rule is about STORED timestamps.
+    let prev = 0;
     document.addEventListener(
       "touchmove",
       () => {
@@ -192,6 +210,7 @@ async function installTouchLog(page: Page): Promise<void> {
         type,
         (event) => {
           const touch = event as TouchEvent;
+          const at = performance.now();
           log.push({
             type,
             // `touches` is every finger currently down INCLUDING this one, so a
@@ -200,7 +219,14 @@ async function installTouchLog(page: Page): Promise<void> {
             touches: touch.touches.length,
             changed: touch.changedTouches.length,
             movesSoFar: moves,
+            // Milliseconds since the previous touch event. A tap whose press
+            // lands within ~300ms of the preceding drag's lift is inside
+            // Chromium's suppression window (see consumeSuppressedTap in
+            // e2e/helpers.ts) — that number is the difference between a click
+            // and no click at all.
+            sincePrevMs: prev ? Math.round(at - prev) : 0,
           });
+          prev = at;
         },
         { capture: true, passive: true }
       );
@@ -473,19 +499,19 @@ test("a refused flick does not disarm the surface — the next flick still asks"
   await expect(dialog).toHaveCount(0);
 });
 
-test("a scrim tap after a refused flick never silently discards the form", async ({
+test("a scrim tap after a refused flick asks again, and never silently discards the form", async ({
   page,
 }) => {
   test.slow();
-  // THE SEQUENCE THAT FAILED IN CI, kept — and narrowed to the claim that is
-  // ours to make (#2774/#3262).
+  // THE SEQUENCE THAT FAILED IN CI, and the mechanism that was making it fail
+  // (#2774/#3255/#3262).
   //
-  // ── What this used to assert, and why it no longer does ───────────────────
+  // ── The assertion this test lost, and got back ────────────────────────────
   //
-  // It asserted that the scrim tap raises the confirm. That assertion depends on
-  // the BROWSER dispatching a click from this tap, and five rounds of
-  // instrumented CI runs established that it intermittently does not. The
-  // eliminations, each by evidence rather than reasoning:
+  // It used to assert that the scrim tap raises the confirm. #3255 had to drop
+  // that, because the tap intermittently produced NO CLICK AT ALL and five
+  // rounds of instrumented CI runs could not say why. Three candidates were
+  // closed by evidence at the time, and all three stay closed:
   //
   //   * OUR REACT CODE — eliminated. At the tap the backdrop carried a live
   //     committed `onClick` (read off `__reactProps$`), no page error was
@@ -501,26 +527,25 @@ test("a scrim tap after a refused flick never silently discards the form", async
   //     a well-formed stationary single-finger tap, not finger #2 of a gesture
   //     the page still thought was running.
   //
-  // What remains: the browser receives a well-formed tap on a hydrated element
-  // with a live handler and produces no click — INTERMITTENTLY, and under load.
-  // The same commit had this spec pass on the light `e2e-changed` run and fail
-  // on a loaded full-suite shard, so it is load-dependent, and any single run
-  // (green or red) is one sample that proves nothing on its own.
+  // #3262 found the fourth, and it is not in the page at all. Chromium
+  // SUPPRESSES THE TAP GESTURE OF THE FIRST TOUCH SEQUENCE AFTER A DRAG whose
+  // starting element forbade the drag's axis — and this sheet's drag handle is
+  // `touch-none` precisely so the panel's own scroller cannot steal the flick.
+  // The touch events keep flowing, the PointerEvents keep flowing, and no
+  // `mousedown`/`mouseup`/`click` is ever made, so nothing in the page can see
+  // it. It reproduces on a standalone page with no React in it, 23/24, and the
+  // window is ~300 ms wide; the second tap always lands. The whole measurement
+  // is at `consumeSuppressedTap` in e2e/helpers.ts, which now spends that one
+  // sequence at the end of every drag this suite drives.
   //
-  // The consequence that BOUNDS it, and the reason shipping is defensible: there
-  // is no data loss, ever. Every red showed the dialog still mounted and the
-  // form still dirty — the failure is a swallowed tap, and the next one works.
+  // So the tap below is no longer the first touch sequence after the flick, the
+  // click arrives every time, and the assertion comes back. It is restored on
+  // the mechanism, not on a green run: this test was red 5/5 on the tree without
+  // that helper change and green 5/5 with it.
   //
-  // So this test keeps the sequence and asserts the half that is ours: a tap
-  // that the surface may or may not receive must NEVER cost the user their
-  // typing. That the scrim tap raises the confirm at all is still pinned, from a
-  // standing start, by "a scrim tap on a dirty form asks first too" above — a
-  // test that is green on CI. What this one adds is that the refusal round-trip
-  // does not turn a swallowed tap into a DISCARD.
-  //
-  // This was narrowed on evidence, not trimmed to go green. #3262 carries the
-  // full record. Do not re-add an assertion on the click without new evidence
-  // about the browser's arbitration.
+  // THE SAFETY PROPERTY BELOW STAYS UNCONDITIONAL ANYWAY. It is what the whole
+  // chain exists for, it costs nothing to keep, and it is the one claim that
+  // must hold whatever any browser decides about arbitration.
   await page.goto("/records/history/visits");
   await expect(page.getByTestId("visits-upcoming")).toBeVisible();
 
@@ -626,6 +651,20 @@ test("a scrim tap after a refused flick never silently discards the form", async
       ).length,
     };
   });
+
+  // THE ASSERTION #3255 HAD TO GIVE UP, BACK ON ITS MECHANISM (#3262). A refusal
+  // must not disarm the surface: the scrim tap that follows one is still guarded,
+  // so it asks again rather than discarding or doing nothing. The readings above
+  // are carried into the failure message, so a red here arrives with the touch
+  // trace and the click log attached — if the tap is ever swallowed again, the
+  // `touches`/`clicks` lines say so directly instead of leaving the next person
+  // to re-run the whole elimination.
+  await expect(
+    confirm,
+    `a scrim tap after a refused flick must ask again (onClick before the tap: ${handlerBefore}; page errors: ${JSON.stringify(
+      pageErrors
+    )}; at that moment: ${JSON.stringify(atTap)})`
+  ).toBeVisible();
 
   // THE SAFETY PROPERTY, AT FULL STRENGTH AND UNCONDITIONAL. Whether or not the
   // browser dispatched the click, the dialog must still be standing and the

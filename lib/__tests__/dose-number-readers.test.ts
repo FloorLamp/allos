@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -21,6 +20,7 @@ import {
   recoverableCandidates,
   preFixDoseReading,
 } from "../dose-amount-census";
+import { makeTmpDir } from "./tmp-dir";
 
 // EVERY READER OF A WRITTEN NUMBER AGAINST A DOSE UNIT (#3444).
 //
@@ -763,7 +763,7 @@ describe("the census's reach", () => {
   // A green sweep over a complying tree says NOTHING about what the sweep can see, so
   // it is run over sources written to break it — and over the benign neighbours it must
   // stay silent on, since a guard that cries wolf on shipped code gets deleted.
-  const dir = mkdtempSync(path.join(os.tmpdir(), "dose-scan-census-"));
+  const dir = makeTmpDir("dose-scan-census");
   const scan = (name: string, content: string): string[] => {
     writeFileSync(path.join(dir, name), content);
     return unanchoredDoseScans(

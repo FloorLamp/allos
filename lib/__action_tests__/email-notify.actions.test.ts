@@ -7,7 +7,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import {
@@ -22,6 +21,7 @@ import {
 } from "@/lib/settings";
 import { db } from "@/lib/db";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -35,10 +35,7 @@ beforeEach(() => {
     user: "",
     from: "allos@example.com",
   });
-  captureFile = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), "allos-email-actions-")),
-    "mailbox.jsonl"
-  );
+  captureFile = path.join(makeTmpDir("email-actions"), "mailbox.jsonl");
   process.env.EMAIL_TEST_CAPTURE = captureFile;
 });
 

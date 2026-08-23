@@ -6,6 +6,7 @@ import {
   modalityLabel,
   lateralityLabel,
   studyDisplayLabel,
+  impressionDisplayText,
 } from "../imaging-study";
 
 // Pure coercion + label logic for structured imaging studies (#702). These map a
@@ -198,5 +199,59 @@ describe("studyDisplayLabel", () => {
 
   it("falls back to the modality alone with no region", () => {
     expect(studyDisplayLabel(base)).toBe("MRI");
+  });
+});
+
+describe("impressionDisplayText — the finding, not its heading (#3498 item 3)", () => {
+  it("strips the leading section label the extract carried in", () => {
+    // The exact row the phone review met: the label spent the whole clamped line
+    // and the clinical payload was what got cut.
+    expect(
+      impressionDisplayText(
+        "OVERALL IMPRESSION: Findings suggestive of a left breast lesion."
+      )
+    ).toBe("Findings suggestive of a left breast lesion.");
+  });
+
+  it("takes the shapes an extract actually writes", () => {
+    for (const raw of [
+      "IMPRESSION: No acute finding.",
+      "Impression: No acute finding.",
+      "impression - No acute finding.",
+      "  OVERALL IMPRESSION:   No acute finding.",
+      "IMPRESSION/CONCLUSION: No acute finding.",
+    ])
+      expect(impressionDisplayText(raw), raw).toBe("No acute finding.");
+  });
+
+  it("leaves a label that is not at the START alone", () => {
+    // A second section inside a multi-section impression is CONTENT. Dropping it
+    // would change what the report says, which is not a display decision.
+    const two = "No acute finding. IMPRESSION: stable since prior.";
+    expect(impressionDisplayText(two)).toBe(two);
+  });
+
+  it("never invents an empty subtitle", () => {
+    expect(impressionDisplayText(null)).toBeNull();
+    expect(impressionDisplayText("")).toBeNull();
+    expect(impressionDisplayText("   ")).toBeNull();
+    // A field that was ONLY the label says nothing.
+    expect(impressionDisplayText("IMPRESSION:")).toBeNull();
+  });
+
+  it("stays QUIET on an ordinary impression", () => {
+    // The guard that cried wolf on every normal row would be deleted in a week.
+    const plain = "Mild degenerative change at L4-L5.";
+    expect(impressionDisplayText(plain)).toBe(plain);
+    // And on a word that merely CONTAINS the label.
+    expect(impressionDisplayText("Impressions are unchanged.")).toBe(
+      "Impressions are unchanged."
+    );
+  });
+
+  it("does not touch what is stored — it is a display read", () => {
+    const stored = "OVERALL IMPRESSION: Findings suggestive of a lesion.";
+    impressionDisplayText(stored);
+    expect(stored).toBe("OVERALL IMPRESSION: Findings suggestive of a lesion.");
   });
 });

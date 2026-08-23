@@ -6,10 +6,9 @@
 
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { makeTmpDir } from "./tmp-dir";
 
-process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), "allos-ai-log-")));
+process.chdir(makeTmpDir("ai-log"));
 process.env.LOG_LEVEL = "error"; // silence the stdout echo of each event
 
 const { recordAiEvent, readAiEvents, AI_LOG_PATH } = await import("../ai-log");

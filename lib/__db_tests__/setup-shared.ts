@@ -21,6 +21,7 @@ import path from "node:path";
 import { templateDbPath } from "./shared-template";
 import { resetTelegramSpies } from "./telegram-spies";
 import { installFixtureProfileSpace } from "./fixture-profile-space";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
@@ -60,7 +61,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 // Fresh throwaway database for one test file, copied from the pre-migrated
 // template. Returns the directory holding it so the caller can drop it later.
 function seedDatabase(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-db-shared-"));
+  const dir = makeTmpDir("db-shared");
   const dbPath = path.join(dir, "test.db");
   fs.copyFileSync(templateDbPath(), dbPath);
   process.env.ALLOS_DB_PATH = dbPath;
