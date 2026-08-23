@@ -36,6 +36,22 @@ const ACTIVE = [
 ];
 
 describe("portBaseCollision", () => {
+  it("does not let a dispatch collide with ITSELF, which is what a reprint is", () => {
+    // `brief` reprints a LIVE dispatch with its own stored base, so the roster it is
+    // checked against contains it. Without the exclusion every reprint refuses — and
+    // that is not hypothetical: it is what this guard did the first time it fired for
+    // real, hours after it shipped, against `brief intake-purposes-and-catalog`. A
+    // guard whose first genuine firing is a false positive against a legitimate
+    // operation gets routed around within the hour, which is worse than not having it.
+    expect(
+      portBaseCollision(7600, ACTIVE, "ride-detail-and-leftovers")
+    ).toBeNull();
+    // …and it still catches a DIFFERENT dispatch on that band.
+    expect(portBaseCollision(7600, ACTIVE, "some-other-branch")).toBe(
+      "port base 7600 is already held by the active dispatch ride-detail-and-leftovers"
+    );
+  });
+
   it("names the dispatch already holding the band, not just that one does", () => {
     // The message is the whole value of the refusal: an orchestrator who is told
     // "7600 is taken" still has to go and find out by whom before it can act.
