@@ -265,6 +265,27 @@ These are not review taste; each retired a green that meant nothing.
   because the window was reading the author's own comment EXPLAINING the edit and
   quoting what it removed. The defence is not skepticism about the number—it is
   asking what the check was matching on, and opening the file.
+- **A `MUTATION:` note is prose, and nothing runs it.** "Change X and this case
+  goes red" is how a reader learns what a case holds — and a note that was
+  measured reads exactly like one that was guessed. Round 11 of #3424 ran all 23
+  notes in one file: **14 were wrong.** Two claimed either of two changes would
+  red a case (one killed nothing, the other killed a test not among the three
+  named); SEVEN named a mutation that kills nothing in the tier the note sits in
+  (adding `nutrition_kcal` to `DAY_BUCKET_METRICS` leaves the whole db tier green
+  while the pure tier reds three); three were true of every possible output.
+  So a note states two things: that it was **Measured**, and **where** — the tier
+  or spec the reds appear in. The tier half is the one that failed seven times out
+  of fourteen, because "this goes red" without a tier cannot be checked by reading.
+  A case with **no killing mutation** (over-determined: two independent barriers,
+  each sufficient) says exactly that, as a measured verdict — do not delete the
+  case and do not invent a mutation that kills nothing.
+  `lib/__tests__/mutation-note-census.test.ts` freezes the non-conforming notes per
+  file and lets the counts only shrink. It checks the SHAPE, not the truth: a note
+  claiming "Measured: 5 red in the db tier" passes whether or not anyone ran it.
+  No mutation-testing harness was built and none should be — 50 notes is 50 source
+  edits and two tier runs apiece, and a guard that expensive gets turned off, which
+  is worse than a convention nobody wrote down.
+
 - **`act()` is not a promise, and `.then()` on it returns `undefined`.** React's
   `act` returns a bare thenable — a plain object with a `then` method — so
   `return act(…).then(cb)` returns `undefined`, the runner awaits nothing, and
