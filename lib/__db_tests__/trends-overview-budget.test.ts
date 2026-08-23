@@ -15,36 +15,9 @@ import {
   buildPracticeDigestSeries,
 } from "@/lib/trends-series";
 import { getFindingSuppressions } from "@/lib/queries";
+import { setActingSession } from "../__action_tests__/session-state";
 
-const session = vi.hoisted(() => ({
-  loginId: 0,
-  profile: null as null | {
-    id: number;
-    name: string;
-    photo_path: string | null;
-    photo_version: number;
-  },
-}));
-
-vi.mock("@/lib/auth", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/auth")>();
-  return {
-    ...actual,
-    requireSession: async () => {
-      if (!session.profile) throw new Error("Trends budget session not set");
-      return {
-        login: {
-          id: session.loginId,
-          username: "trends-budget",
-          role: "admin" as const,
-        },
-        profile: session.profile,
-        access: "write" as const,
-        deviceSessionKey: "trends-budget-device",
-      };
-    },
-  };
-});
+let loginId = 0;
 
 const RANGE_DAYS = 62;
 const PRIOR_ROUTE_BASELINE = 32;
@@ -131,7 +104,7 @@ async function countStatements(
 
 describe("Trends Overview digest query budget (#3397)", () => {
   beforeAll(() => {
-    session.loginId = (
+    loginId = (
       db
         .prepare(
           "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
@@ -154,17 +127,29 @@ describe("Trends Overview digest query budget (#3397)", () => {
 
     const prior = await countStatements(() => {
       const on = today(priorId);
-      buildDigestSeries(priorId, session.loginId, priorRange);
+      buildDigestSeries(priorId, loginId, priorRange);
       buildPracticeDigestSeries(priorId, priorRange, on);
       getFindingSuppressions(priorId);
     });
 
-    session.profile = {
-      id: currentId,
-      name: "Trends budget current",
-      photo_path: null,
-      photo_version: 0,
-    };
+    // The DB tier installs one shared auth seam whose calls delegate to this
+    // mutable acting-session state. Steering that seam keeps this spec in the
+    // shared module registry while the component still crosses requireSession.
+    setActingSession({
+      login: {
+        id: loginId,
+        username: "trends-budget",
+        role: "admin",
+      },
+      profile: {
+        id: currentId,
+        name: "Trends budget current",
+        photo_path: null,
+        photo_version: 0,
+      },
+      access: "write",
+      deviceSessionKey: "trends-budget-device",
+    });
     const { default: TrendingDigest } =
       await import("../../app/(app)/trends/TrendingDigest");
     const current = await countStatements(async () => {

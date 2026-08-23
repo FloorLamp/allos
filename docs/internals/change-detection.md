@@ -18,8 +18,9 @@ The existing `LOGGABLE_DOMAINS` axis is censused by
 exact subdomain scope, exported owner symbol, and surfaces, or carry a non-empty
 argued absence. This matters for broad rows: pipeline silence covers blood pressure
 and resting heart rate, not every vital, and temperature has no silence detector.
-The substance weekly-cap transition is owned by
-`dashboard-reading-promotions.weeklyTargetStateChanged`. TypeScript makes a missing
+Substance is an argued absence: its cap-direction targets never enter the
+floor-direction progress rollup that feeds Dashboard weekly-target transitions, and
+no existing cap surface promotes a cross-window change. TypeScript makes a missing
 row a compile error; the source guard checks that every named owner symbol remains a
 real export rather than merely accepting an existing file.
 

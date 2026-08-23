@@ -58,7 +58,7 @@ describe("change-detection registry (#3397)", () => {
     }
   });
 
-  it("states the narrow dormancy and weekly-target ownership boundaries", () => {
+  it("states the narrow dormancy and reachable-production boundaries", () => {
     const vitals = CHANGE_DETECTION_DOMAIN_CENSUS.vitals;
     expect(
       vitals.detectors.find((entry) => entry.kind === "pipeline-silence")?.scope
@@ -71,11 +71,9 @@ describe("change-detection registry (#3397)", () => {
     expect(
       CHANGE_DETECTION_DOMAIN_CENSUS.temperature.exclusions
     ).toContainEqual(expect.objectContaining({ kind: "pipeline-silence" }));
-    expect(CHANGE_DETECTION_DOMAIN_CENSUS.substance.detectors).toContainEqual(
-      expect.objectContaining({
-        ownerModule: "lib/dashboard-reading-promotions.ts",
-        ownerSymbol: "weeklyTargetStateChanged",
-      })
-    );
+    const substance = CHANGE_DETECTION_DOMAIN_CENSUS.substance;
+    expect(isArguedExclusion(substance)).toBe(true);
+    expect(substance.reason).toContain("cap-direction");
+    expect(substance.reason).toContain("floor-direction");
   });
 });
