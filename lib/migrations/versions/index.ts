@@ -214,6 +214,7 @@ import { migration as mNotifyOffers } from "./20260819-notify-offers";
 import { migration as mRpeColumnOptIn } from "./20260820-rpe-column-opt-in";
 import { migration as mHcOverlapSupersede } from "./20260821-hc-overlap-supersede";
 import { migration as mHcPushedAtIndex } from "./20260822-hc-pushed-at-index";
+import { migration as mIntakeSourceName } from "./20260822-intake-source-name";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -437,6 +438,7 @@ export const MIGRATIONS: Migration[] = [
   mRpeColumnOptIn,
   mHcOverlapSupersede,
   mHcPushedAtIndex,
+  mIntakeSourceName,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

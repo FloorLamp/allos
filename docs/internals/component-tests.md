@@ -34,6 +34,20 @@ otherwise be pinned by a browser.** The two first customers are the shape:
   purpose, so a browser spec could only fake it; a test that supplies the awaited
   callback opens it exactly.
 
+- `components/__tests__/imported-name-offer.test.tsx` — the #3480 offer's own
+  DOM. This one sits closest to the "does this page paint" line below, so the
+  distinction is worth stating: the claim is not that a page renders, it is that
+  **one client component's markup carries a specific guarantee** — the document's
+  wording, a control that accepts a replacement, and the kept label afterwards.
+  The component is `"use client"` with no Server/Client boundary inside it, so
+  jsdom renders what a browser renders; the server-tier render test beside it can
+  only see the element's props, and three deletions inside the component passed
+  every tier before this file existed. It also drives the two ways the accept can
+  FAIL — a Server Action that rejects and one that returns an error — which is a
+  second thing this tier is uniquely for: what a person is told when a write does
+  not happen lives entirely in the client handler, and a stub that only ever
+  answers `{ok: true}` observes neither branch.
+
 **Do not reach for it to test logic that could have been a pure function.** The
 #1210 reasoning below is why: a component tier invites leaving load-bearing logic
 _in_ the component, and the extraction discipline is worth more than the

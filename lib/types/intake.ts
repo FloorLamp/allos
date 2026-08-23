@@ -166,6 +166,12 @@ export interface IntakeItem {
   // the (profile, document_id, source='extracted') set, never a manual row.
   document_id: number | null;
   source: string | null;
+  // The name the SOURCE DOCUMENT gave this item, kept when the person accepted a
+  // standardized name in its place at import review (#3480, migration
+  // 20260822-intake-source-name). NULL — nearly every row — means the stored `name`
+  // is the one that came in or was typed. Renders as source detail under the
+  // medication's name; never a heading, and never a second source for one.
+  source_name: string | null;
   // The prescribing provider — a medication links to the shared
   // GLOBAL registry via provider_id; provider_name is joined for display. NULL for
   // supplements and unlinked medications. Under #1051 semantics decision (a) this is
