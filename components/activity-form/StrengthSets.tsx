@@ -1676,7 +1676,7 @@ export default function StrengthSets({
             }
             className={`-mx-2 -my-2 px-2 py-2 text-xs font-medium ${
               canAddSet
-                ? "text-brand-600 hover:underline dark:text-brand-400"
+                ? "text-link"
                 : "cursor-not-allowed text-slate-300 dark:text-slate-600"
             }`}
           >

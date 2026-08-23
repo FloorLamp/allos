@@ -97,7 +97,7 @@ export default async function TrainingPage(props: {
           <Link
             href="/equipment"
             data-testid="training-equipment-link"
-            className="hidden shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline md:inline-flex dark:text-brand-400"
+            className="hidden shrink-0 items-center py-1 text-sm text-link md:inline-flex"
           >
             Equipment
           </Link>

@@ -737,7 +737,7 @@ export default function LineChartCard({
           ·{" "}
           <Link
             href={dataSectionHref("review")}
-            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-link"
             data-testid="chart-trailing-outage-link"
           >
             Data → Review

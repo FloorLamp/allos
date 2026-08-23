@@ -68,19 +68,13 @@ function SourceAction({ source }: { source: ConnectedSource }) {
   }
   if (!source.connected && href) {
     return (
-      <Link
-        href={href}
-        className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-      >
+      <Link href={href} className="text-sm text-link">
         Reconnect {source.name} →
       </Link>
     );
   }
   return href ? (
-    <Link
-      href={href}
-      className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-    >
+    <Link href={href} className="text-sm text-link">
       Open {source.name} settings →
     </Link>
   ) : null;
@@ -114,7 +108,7 @@ function AttentionCard({
             {href && source.history.length > 0 && (
               <Link
                 href={href}
-                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                className="text-xs text-link"
                 data-testid={`source-history-link-${source.id}`}
               >
                 Full sync history →

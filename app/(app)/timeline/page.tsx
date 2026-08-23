@@ -955,7 +955,7 @@ export default async function TimelinePage(props: {
           <Link
             href="/retrospective"
             data-testid="timeline-retrospective-link"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex items-center gap-1.5 text-sm text-link"
           >
             <IconConfetti className="h-4 w-4" stroke={1.75} />
             Year in review

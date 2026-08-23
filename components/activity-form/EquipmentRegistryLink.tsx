@@ -27,7 +27,7 @@ export default function EquipmentRegistryLink({
         event.preventDefault();
         void leaveFor("/equipment");
       }}
-      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+      className="text-xs text-link"
     >
       {children}
     </Link>

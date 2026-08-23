@@ -56,10 +56,7 @@ export default function QuickCyclePanel({
       {!open && !state.canStart && !state.canReopen && !state.suspension && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Starting a period is a few weeks away. Add one with dates on the{" "}
-          <Link
-            href="/medical/cycles"
-            className="text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href="/medical/cycles" className="text-link">
             Cycle page
           </Link>{" "}
           if you need to.

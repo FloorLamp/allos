@@ -55,7 +55,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
             {row.href && (
               <Link
                 href={row.href}
-                className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                className="mt-2 inline-block text-sm text-link"
               >
                 {row.sourceName} sync history →
               </Link>

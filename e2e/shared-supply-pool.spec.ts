@@ -288,15 +288,18 @@ test.describe("shared supply pools", () => {
       // not visible.
       await expect(medDoor).toBeVisible();
       await expect(page.getByTestId("medication-list")).toBeVisible();
-      expect(
-        await medDoor.evaluate((node) =>
-          Boolean(
-            document
-              .querySelector('[data-testid="medication-list"]')
-              ?.contains(node)
-          )
-        )
-      ).toBe(true);
+      // AND THE CONTAINMENT ITSELF RETRIES, which the two waits above cannot buy.
+      // They prove each side is on screen at some moment; the read that followed
+      // them was a SINGLE `evaluate`, so a relocation still in flight between the
+      // second wait and that call answered FALSE about correct markup. It failed
+      // that way once on CI (PR #3617, `e2e (9)`) while passing 5/5 locally, which
+      // is the signature of a window narrow enough that only a loaded box opens it.
+      // Scoping the locator to the list asks the SAME question through a retrying
+      // expect, so the answer is about the settled DOM instead of about the moment
+      // it was taken.
+      await expect(
+        page.getByTestId("medication-list").getByTestId("shared-supplies-link")
+      ).toBeVisible();
       // A count, not a bare label — this login's two profiles draw from the three
       // bottles this spec owns. Asserted as a PATTERN, never an exact number: other
       // specs' bottles are orphan-visible to everyone and exact-counting shared seed

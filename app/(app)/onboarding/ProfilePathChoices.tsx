@@ -100,7 +100,7 @@ export default function ProfilePathChoices({
         >
           <SubmitButton
             pendingLabel="Leaving setup…"
-            className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex items-center gap-1 text-sm text-link"
           >
             Set up later, take me to my dashboard
             <IconArrowRight className="h-4 w-4" aria-hidden="true" />

@@ -64,7 +64,7 @@ export default async function SetPasswordPage(props: {
               </p>
               <a
                 href="/forgot-password"
-                className="block text-center text-xs text-brand-600 hover:underline dark:text-brand-400"
+                className="block text-center text-xs text-link"
               >
                 Request a new link
               </a>

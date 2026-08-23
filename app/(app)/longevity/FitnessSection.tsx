@@ -42,7 +42,7 @@ export default async function FitnessSection({
         </h2>
         <Link
           href="/training/fitness-check"
-          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="text-sm text-link"
           data-testid="longevity-run-check"
         >
           Run a fitness check

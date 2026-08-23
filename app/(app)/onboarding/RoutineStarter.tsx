@@ -112,10 +112,7 @@ export default function RoutineStarter({
             <IconCheck className="h-4 w-4" aria-hidden="true" />
             {activeRoutineName} is active
           </span>
-          <Link
-            href="/training?tab=routines"
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href="/training?tab=routines" className="text-xs text-link">
             Manage routines
           </Link>
         </div>

@@ -175,7 +175,7 @@ export default function ReviewInbox({
                     {href && (
                       <Link
                         href={href}
-                        className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                        className="mt-2 inline-block text-sm text-link"
                       >
                         Check {sourceName(ev.source_id)} settings →
                       </Link>

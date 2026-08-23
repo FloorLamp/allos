@@ -51,7 +51,7 @@ export default function PillarStat({
       {linkLabel && (
         <Link
           href={pillar.href}
-          className="mt-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="mt-1 text-xs text-link"
           data-testid={`longevity-pillar-${pillar.key}-link`}
         >
           {linkLabel}

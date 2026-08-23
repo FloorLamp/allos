@@ -35,7 +35,7 @@ export default function RecapLineAtom({
           <Link
             href="/retrospective"
             data-testid="weekly-recap-retrospective-link"
-            className="text-xs text-brand-600 hover:underline dark:text-brand-400"
+            className="text-xs text-link"
           >
             See your year
           </Link>
