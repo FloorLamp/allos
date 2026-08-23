@@ -1,12 +1,13 @@
 import Link from "next/link";
-import EventLedgerFrame from "@/components/ledger/EventLedgerFrame";
+import EventLedgerFrame, {
+  type EventLedgerChipOption,
+} from "@/components/ledger/EventLedgerFrame";
 import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
 import DoseLedgerRows from "@/components/intake/DoseLedgerRows";
 import type {
   DoseLedgerEntry,
   DoseLedgerItem,
 } from "@/components/intake/dose-ledger-entry";
-import type { FilterPillOption } from "@/components/FilterPills";
 import { today } from "@/lib/db";
 import {
   getIntakeDoseLedgerPage,
@@ -198,7 +199,7 @@ export default function DoseLedgerMount({
   // per-item panels seed it.
   const defaultTime = zonedDateParts(tz, new Date()).hhmm;
 
-  const kindOptions: FilterPillOption<DoseLedgerKindFilter>[] =
+  const kindOptions: EventLedgerChipOption<DoseLedgerKindFilter>[] =
     DOSE_LEDGER_KIND_FILTERS.map((value) => ({
       value,
       label: DOSE_LEDGER_KIND_LABELS[value],

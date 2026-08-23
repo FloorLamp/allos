@@ -39,9 +39,17 @@ import type { DateRange } from "@/lib/timeline-format";
 // get to name the frame's internals: two ledgers whose pagers answered to different
 // ids would be two frames again as far as any spec or census is concerned.
 
+/**
+ * One chip on the frame's narrowing axis. Re-exported rather than left to the mounts
+ * to import from `@/components/FilterPills`: the frame owns which primitive draws its
+ * chips, and a mount reaching past it for that type is the first step to a mount that
+ * renders the chips itself.
+ */
+export type EventLedgerChipOption<K extends string> = FilterPillOption<K>;
+
 /** The chip axis: one narrowing question with a closed vocabulary, as links. */
 export interface EventLedgerChipAxis<K extends string> {
-  options: readonly FilterPillOption<K>[];
+  options: readonly EventLedgerChipOption<K>[];
   value: K;
   /** Names the control for assistive tech, e.g. "Filter dose history by kind". */
   label: string;
