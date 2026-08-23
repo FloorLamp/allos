@@ -2151,11 +2151,11 @@ there is — has an obvious answer that line never gave.
 the authored-copy sibling of `lib/user-error-copy.ts`'s caught-text translation
 (#3198 / #3592). Three answers, because there are three things a person can do:
 
-| Situation                                | Line                                                      | Why                                                     |
-| ---------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| The connection is `needs_reauth`         | `Your <name> connection expired. Reconnect to resume syncing.` | Reconnecting is the whole of what a person can do.  |
-| Status `0` or `>= 500`                   | `Couldn't reach <service>. Try again.`                     | No answer, or the other end said it was broken.         |
-| Anything else                            | `Couldn't <doing>.`                                        | Deterministic — retrying changes nothing, so it is not offered. |
+| Situation                        | Line                                                           | Why                                                             |
+| -------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| The connection is `needs_reauth` | `Your <name> connection expired. Reconnect to resume syncing.` | Reconnecting is the whole of what a person can do.              |
+| Status `0` or `>= 500`           | `Couldn't reach <service>. Try again.`                         | No answer, or the other end said it was broken.                 |
+| Anything else                    | `Couldn't <doing>.`                                            | Deterministic — retrying changes nothing, so it is not offered. |
 
 The middle two share `lib/user-error-copy.ts`'s sentence bank through
 `houseErrorSentence`, deliberately: a 503 answered by Oura and an `ECONNRESET`

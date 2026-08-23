@@ -147,7 +147,9 @@ function runs(fails: number, oks: number): SyncEventFacts[] {
   const out: SyncEventFacts[] = [];
   let id = 100;
   for (let i = 0; i < fails; i++)
-    out.push(ev({ id: id--, ok: 0, error: "Couldn't reach Open-Meteo. Try again." }));
+    out.push(
+      ev({ id: id--, ok: 0, error: "Couldn't reach Open-Meteo. Try again." })
+    );
   for (let i = 0; i < oks; i++) out.push(ev({ id: id--, inserted: 1 }));
   return out;
 }

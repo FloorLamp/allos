@@ -59,9 +59,9 @@ describe("the sentences", () => {
   });
 
   it("falls back to the verb phrase when no third party is named", () => {
-    expect(syncFailureCopy(503, { doing: "refresh the weather forecast" })).toBe(
-      "Couldn't refresh the weather forecast. Try again."
-    );
+    expect(
+      syncFailureCopy(503, { doing: "refresh the weather forecast" })
+    ).toBe("Couldn't refresh the weather forecast. Try again.");
   });
 
   it("spends the SAME sentence a thrown network error already earned (#3592)", () => {

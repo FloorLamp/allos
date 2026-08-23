@@ -18,10 +18,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { syncNow } from "@/app/(app)/integrations/sync-actions";
-import {
-  setOuraToken,
-  getConnection,
-} from "@/lib/integrations/connections";
+import { setOuraToken, getConnection } from "@/lib/integrations/connections";
 import { getLatestSyncEvent } from "@/lib/queries";
 import { actAs, createLogin, createProfile } from "./harness";
 
@@ -44,7 +41,9 @@ afterEach(() => {
 describe("the Sync now toast", () => {
   it("is the recorded line verbatim — no prefix in front of a house sentence", async () => {
     setOuraToken(profileId, "live-token");
-    fetchMock.mockResolvedValue(new Response("upstream error", { status: 503 }));
+    fetchMock.mockResolvedValue(
+      new Response("upstream error", { status: 503 })
+    );
 
     const res = await syncNow("oura");
 

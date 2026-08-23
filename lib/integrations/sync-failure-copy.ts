@@ -58,10 +58,7 @@ export function syncFailureFamily(status: number): SyncFailureFamily {
 // The house sentence for a source that answered a failing status. Takes the same
 // context `userErrorCopy` takes, so a source declares its verb phrase and its
 // third-party name ONCE and both its throw branch and its status branch spend it.
-export function syncFailureCopy(
-  status: number,
-  ctx: UserErrorContext
-): string {
+export function syncFailureCopy(status: number, ctx: UserErrorContext): string {
   // `refused` spends the bank's no-advice sentence rather than its `write` one. A
   // 4xx on a pull IS usually our request being wrong, and "It's a bug on our side."
   // would be the kinder line — but this classifier reads two status dialects and a
