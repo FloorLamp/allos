@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cellInkChipNote,
   cellInkNote,
   channelReadiness,
   columnLiveness,
@@ -7,6 +8,7 @@ import {
   deadColumnNotes,
   isColumnReady,
   matrixCellInk,
+  type CellInk,
   type ChannelFacts,
   type ChannelReadiness,
   type DeadColumn,
@@ -122,6 +124,104 @@ describe("matrixCellInk", () => {
     expect(cellInkNote("ghost")).toBe("kept, waiting on this channel's setup");
     expect(cellInkNote("live")).toBeNull();
     expect(cellInkNote("off")).toBeNull();
+  });
+
+  // #3495. The phone shape prints the state BESIDE the control instead of leaving it
+  // to the legend box, so the chip carries its own short spelling of the same fact.
+  it("prints the ghost as one visible word for the phone chip", () => {
+    expect(cellInkChipNote("ghost")).toBe("kept");
+    expect(cellInkChipNote("live")).toBeNull();
+    expect(cellInkChipNote("off")).toBeNull();
+  });
+
+  // THE EXPECTATION TABLE IS THE GUARD, AND IT IS KEYED BY THE UNION.
+  //
+  // This started life as `const inks: CellInk[] = ["live", "ghost", "off"]`, and that
+  // array could not do the job its own comment claimed. `CellInk[]` accepts a SUBSET,
+  // so widening the union never touched it: adding a `"blocked"` ink to `CellInk` and
+  // to `cellInkNote` alone — the exact failure the comment called impossible — left
+  // this file at 23 passed, the whole pure tier green and `npm run typecheck` at exit
+  // 0 (measured on this branch before the fix). A guard over a mandatory-review file
+  // that cannot see the case its own comment names is worse than no comment.
+  //
+  // A `Record<CellInk, …>` cannot be satisfied by a subset. Adding a fourth LITERAL
+  // member is a TYPE error right here — TS2741, "Property 'blocked' is missing" —
+  // before a single test runs.
+  //
+  // THAT, AND ONLY THAT, IS WHAT THIS TABLE CLOSES. `Record` sees literal widening; it
+  // does not see a union that ABSORBS `string`. Write `CellInk` as `"live" | "ghost" |
+  // "off" | (string & {})` and the `Record` degrades to an index signature, which a
+  // three-key object satisfies — so this table goes quietly green, and so does
+  // `INK_CLASS: Record<CellInk, string>` in NotificationPrefs.tsx, which degrades
+  // identically. Measured with this repo's own tsc: `Record<Lit4, string>` over four
+  // literals is TS2741, `Record<Wide, string>` over the `(string & {})` union is no
+  // error at all, and on this branch the widened union plus a `"blocked"` branch in
+  // `cellInkNote` left `npm run typecheck` at exit 0 and the whole pure tier green.
+  //
+  // Nothing here guards against that, deliberately: `(string & {})` is an idiom this
+  // tree uses on purpose (lib/__tests__/revalidate-route.test.ts documents Next's own
+  // `Route` collapsing to it), so a guard against it would be a guard against a
+  // legitimate move. The claim to hold this table to is the narrow one — a fourth
+  // literal ink cannot be added without this file failing to compile.
+  const INK_EXPECTATIONS: Record<
+    CellInk,
+    { note: string | null; chip: string | null }
+  > = {
+    live: { note: null, chip: null },
+    ghost: { note: "kept, waiting on this channel's setup", chip: "kept" },
+    off: { note: null, chip: null },
+  };
+  const ALL_INKS = Object.keys(INK_EXPECTATIONS) as CellInk[];
+
+  it("says exactly this for every ink in the union, not just the ones listed here", () => {
+    expect(
+      ALL_INKS.map((i) => [i, cellInkNote(i), cellInkChipNote(i)]),
+      "an ink's two spellings drifted from the table this file holds them to"
+    ).toEqual(
+      ALL_INKS.map((i) => [
+        i,
+        INK_EXPECTATIONS[i].note,
+        INK_EXPECTATIONS[i].chip,
+      ])
+    );
+  });
+
+  // THE TWO SPELLINGS ARE ONE DECISION. A chip that stayed silent about a state the
+  // accessible name discloses (or the reverse) would put the phone reader and the
+  // screen-reader reader on different pages — the exact split #2565 part B closed
+  // between the grid's ink and its words.
+  it("is non-null for exactly the inks cellInkNote is non-null for", () => {
+    expect(
+      ALL_INKS.map((i) => cellInkChipNote(i) !== null),
+      "cellInkChipNote and cellInkNote disagree about which ink has something to say"
+    ).toEqual(ALL_INKS.map((i) => cellInkNote(i) !== null));
+  });
+
+  // WCAG 2.5.3 (Label in Name, Level A), held in the pure tier as a string property.
+  //
+  // On the phone shape the chip is a VISIBLE label on a checkbox whose accessible
+  // name ends in `cellInkNote`. The name is one string at every width, so the visible
+  // text has to be a SUBSTRING of it — otherwise a speech-input user saying what they
+  // can see cannot reach the control. The chip note being a leading substring of the
+  // full note is half of that property; the other half (the chip uses the same
+  // channel label the name does) is composed in TSX and asserted off the real DOM in
+  // e2e/notification-matrix-phone.mobile.spec.ts.
+  it("says nothing in the chip that the accessible name does not already say", () => {
+    for (const ink of ALL_INKS) {
+      const chip = cellInkChipNote(ink);
+      if (chip === null) continue;
+      const note = cellInkNote(ink);
+      expect(
+        note,
+        `the ${ink} chip says "${chip}" while the accessible name says nothing`
+      ).not.toBeNull();
+      expect(
+        note?.startsWith(chip),
+        `the ${ink} chip's visible "${chip}" is not the start of the accessible ` +
+          `name's "${note}" — a checkbox whose visible label is absent from its ` +
+          `accessible name fails WCAG 2.5.3 (Label in Name, Level A)`
+      ).toBe(true);
+    }
   });
 });
 

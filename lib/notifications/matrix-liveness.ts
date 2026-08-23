@@ -173,6 +173,44 @@ export function cellInkNote(ink: CellInk): string | null {
   return ink === "ghost" ? "kept, waiting on this channel's setup" : null;
 }
 
+// The same fact, SHORTENED, printed BESIDE the control on the phone shape (#3495).
+//
+// Below the card-mode boundary the matrix stops being a grid under four headers and
+// each kind's channels become labeled chips, so the legend box is no longer the only
+// place a reader can learn what a faded tick means — the chip says it in place. The
+// whole of `cellInkNote` cannot go there: it is an accessible-name SUFFIX, read after
+// "Refill nudges to Home Assistant", and a visible chip saying "kept, waiting on this
+// channel's setup" would be four times the width of the control it annotates on a
+// 390px row.
+//
+// SO IT IS A PREFIX OF `cellInkNote`, NOT A SECOND WORDING — and that is WCAG 2.5.3
+// (Label in Name, Level A), not tidiness. On the phone shape the chip is a VISIBLE
+// label on a checkbox whose accessible name is `<kind> to <channel> — <cellInkNote>`.
+// 2.5.3 requires the accessible name to CONTAIN the visible label text, so that a
+// speech-input user can say what they can see. An accessible name is one string at
+// every width, so the only way to satisfy that without degrading what a desktop
+// screen-reader user hears is for the visible text to be a substring of the name the
+// control already had. It is, by two rules together:
+//
+//   * the chip renders `<channel label> — <cellInkChipNote>`, using the SAME channel
+//     label the accessible name uses (not the column's 2-letter short form); and
+//   * this string is a leading substring of `cellInkNote`'s — "kept" against
+//     "kept, waiting on this channel's setup".
+//
+// "kept" is also the word the legend box uses ("A faded tick is kept — it sends once
+// that channel is set up"), so the chip, the legend and the accessible name are one
+// vocabulary rather than three.
+//
+// Held to `cellInkNote` by lib/__tests__/matrix-liveness.test.ts — non-null for
+// exactly the same inks, AND a prefix of it — over an expectation table keyed by
+// `CellInk`, so a fourth ink is a TYPE error there rather than a silently unchecked
+// case. The rendered end of the claim (visible chip text ⊆ accessible name, off the
+// real DOM at 390px) is asserted in e2e/notification-matrix-phone.mobile.spec.ts,
+// because the string is composed in TSX.
+export function cellInkChipNote(ink: CellInk): string | null {
+  return ink === "ghost" ? "kept" : null;
+}
+
 function andList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   if (items.length === 2) return `${items[0]} and ${items[1]}`;

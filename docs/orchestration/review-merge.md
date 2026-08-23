@@ -37,6 +37,11 @@
   defect in what the previous fix had just built—a memory that expired with the
   runs, then a memory attached to a row that was not a document.
 
+## What a lens looks for, and how verification lies
+
+`docs/internals/verification-failure-modes.md` carries both, each with the
+instance that bought it. Read it before writing a guard or dispatching a lens.
+
 ## Migrations
 
 - Applied migrations are keyed by name; numbered migrations 001–185 are closed.
@@ -56,6 +61,13 @@
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
+- **Check what a merge would CLOSE, with the full keyword set.** Run
+  `node scripts/orchestration/closing-keywords.mjs <pr>`; exit 3 means something
+  closes. It reads all ten keywords from the body AND every commit — the natural
+  three miss the rest, and a missed keyword reads as safe (failure modes).
+- **Require the PR body rewritten in the same push as a rewrite.**
+  `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
+  body aims the next lens at deleted code (failure modes).
 - Verify linked issues closed, then clean the worktree and local branch.
 
 ## Merge queue
