@@ -8,6 +8,8 @@ import {
   doseSourceNote,
   doseExclusionNote,
   describesAnyStudy,
+  doseSplitIsRedundant,
+  doseScopeCountLabel,
   type DoseBreakdown,
 } from "@/lib/radiation-dose";
 import { studyDisplayLabel } from "@/lib/imaging-study";
@@ -57,6 +59,12 @@ export default function RadiationDoseCard({
   const estimated = isCombinedEstimated(allRecords);
   const background = backgroundEquivalentLabel(allRecords);
   const lensTotal = combinedMsv(lens);
+  // A split that splits nothing is three statements of one number (#3498 item 2).
+  // The decision is lib/radiation-dose's, over the figures as PRINTED — this card
+  // only renders the answer, so the sub-lines cannot come back on one surface and
+  // not another.
+  const splitRedundant = doseSplitIsRedundant(breakdown);
+  const scopeCount = doseScopeCountLabel(allRecords);
 
   return (
     <div
@@ -76,10 +84,23 @@ export default function RadiationDoseCard({
             {estimated ? "≈ " : ""}
             {formatScopeMsv(allRecords, total)}
           </span>
-          {estimated && (
-            <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              includes estimates
+          {/* The collapsed context (#3498 item 2): the half of the split lines that
+              was NOT a restatement of the headline — how many studies, and what
+              they came in as. It replaces the chip too, since "1 estimated study"
+              already says the figure includes an estimate. */}
+          {splitRedundant && scopeCount ? (
+            <span
+              data-testid="radiation-dose-context"
+              className="text-sm text-slate-600 dark:text-slate-300"
+            >
+              · {scopeCount}
             </span>
+          ) : (
+            estimated && (
+              <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                includes estimates
+              </span>
+            )
           )}
         </div>
       ) : (
@@ -104,7 +125,7 @@ export default function RadiationDoseCard({
         </p>
       )}
 
-      {hasTotal && (
+      {hasTotal && !splitRedundant && (
         <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
           {allRecords.recordedCount > 0 && (
             <div>
@@ -162,7 +183,7 @@ export default function RadiationDoseCard({
         >
           <span className="group-open:hidden">
             {contributions.length > 0
-              ? "What this adds up"
+              ? "What this adds up to"
               : "Why nothing counted"}
           </span>
           <span className="hidden group-open:inline">Hide the studies</span>

@@ -676,14 +676,14 @@ describe("doseLaneRoster (#2612)", () => {
 
   it("names each medication once, with its dose count", () => {
     expect(doseLaneRoster([med("Ibuprofen", 5), med("Iron", 2)])).toBe(
-      "Ibuprofen ×5, Iron ×2"
+      "Ibuprofen ×5 · Iron ×2"
     );
   });
 
   it("orders by dose count so the truncated tail drops the least-used", () => {
     expect(
       doseLaneRoster([med("Iron", 2), med("Ibuprofen", 5), med("Whey", 3)])
-    ).toBe("Ibuprofen ×5, Whey ×3, Iron ×2");
+    ).toBe("Ibuprofen ×5 · Whey ×3 · Iron ×2");
   });
 
   it("counts the rest rather than growing — 28 doses across 6 items is one line", () => {
@@ -697,7 +697,7 @@ describe("doseLaneRoster (#2612)", () => {
     ];
     // Ties break by NAME, so the same stack always prints the same line.
     expect(doseLaneRoster(stack)).toBe(
-      "Calcium ×5, Creatine ×5, Ibuprofen ×5 and 3 more"
+      "Calcium ×5 · Creatine ×5 · Ibuprofen ×5 and 3 more"
     );
   });
 

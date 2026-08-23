@@ -498,6 +498,57 @@ export function formatScopeMsv(cum: CumulativeDose, msv: number): string {
   return `${trimZeros(msv.toFixed(Math.min(20, cum.decimals)))} mSv`;
 }
 
+// THE SPLIT ONLY EARNS ITS LINES WHEN IT SPLITS SOMETHING (#3498 item 2).
+//
+// The card states an all-records headline, then a Recorded/Estimated split, then a
+// trailing-3-year lens. With ONE estimated study every one of those is the same
+// number: "≈ 0.4 mSv", "Estimated: 0.4 mSv (1 study)", "Last 3 years: ≈ 0.4 mSv" —
+// a stat block asserting more structure than its n supports (the #3482 class). The
+// reader is asked to compare three figures that cannot differ.
+//
+// So the DECISION lives here, beside the arithmetic it is about, rather than as a
+// conditional in the card: does the split, or the lens, print a figure the headline
+// has not already printed? It is stated over the PRINTED strings because "states
+// the figure twice" is a claim about what a reader sees, and formatScopeMsv is
+// where a figure becomes visible.
+//
+// It generalises past n=1 on purpose: a record of five studies that are all
+// estimates and all inside the window has the same three identical figures, and
+// the same nothing to compare.
+function scopeFigure(cum: CumulativeDose): string {
+  return `${isCombinedEstimated(cum) ? "≈ " : ""}${formatScopeMsv(cum, combinedMsv(cum))}`;
+}
+
+export function doseSplitIsRedundant<S extends DoseStudyInput>(
+  breakdown: DoseBreakdown<S>
+): boolean {
+  const all = breakdown.allRecords;
+  if (!all.hasAnyDose) return false;
+  // Both sides populated means the two sub-lines are genuinely parts of a whole.
+  if (all.recordedCount > 0 && all.estimatedCount > 0) return false;
+  // The one populated side sums to the headline by construction; assert it rather
+  // than assume it, since that is the property the collapse is claiming.
+  const side = all.recordedCount > 0 ? all.recordedMsv : all.estimatedMsv;
+  if (formatScopeMsv(all, side) !== formatScopeMsv(all, combinedMsv(all)))
+    return false;
+  // A lens that reaches a different figure is the one comparison worth drawing.
+  if (breakdown.window.windowYears == null) return true;
+  return scopeFigure(breakdown.window) === scopeFigure(all);
+}
+
+// "1 estimated study" / "4 recorded studies" — the clause the headline carries when
+// the split collapses into it. Null when there is nothing to count.
+//
+// The word is the SOURCE the studies came in as, not a verdict about them: it is the
+// same distinction the split lines drew, kept because it is the half of those lines
+// that was not a restatement of the total.
+export function doseScopeCountLabel(cum: CumulativeDose): string | null {
+  const recorded = cum.recordedCount > 0;
+  const count = recorded ? cum.recordedCount : cum.estimatedCount;
+  if (count === 0) return null;
+  return `${count} ${recorded ? "recorded" : "estimated"} ${count === 1 ? "study" : "studies"}`;
+}
+
 // The INFORMATIONAL framing line under the cumulative total. Deliberately calm and
 // non-alarmist (no "too much", no threshold). For a CHILD profile it mirrors the tone
 // the app already applies to age-gated / pediatric surfaces (#150, #489): radiation

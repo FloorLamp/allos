@@ -93,11 +93,20 @@ export default function MedicalFilters({
 
   return (
     <div
-      className="section-seam mb-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-between"
+      className="section-seam mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 sm:flex-nowrap sm:items-start sm:justify-between sm:gap-3"
       data-testid="medical-filters"
     >
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4">
-        <ObservationSearch q={q} />
+      {/* ONE TOOLBAR, NOT A BAND ABOVE ONE (#3496 item 2). The add action used to be
+          a sibling of this group on its own row — a lone right-aligned primary with
+          an empty left half, costing ~150px before the first result. It now sits in
+          the SAME row as the search field and the Filters trigger.
+          THE SAME IDIOM THE FACETS BELOW USE, INVERTED. Below `sm` this wrapper is
+          `display: contents`, so its children become items of the toolbar row
+          directly and the action can stand beside them; at `sm` it becomes the flex
+          column it always was and the desktop layout is byte-identical. One authored
+          set of controls, one DOM, CSS decides what the wrapper is at each width. */}
+      <div className="contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center sm:gap-4">
+        <ObservationSearch q={q} shareRow />
 
         {/* Phone-only trigger: at `sm` and up the group is always open, so the
             control that opens it has nothing left to do. */}
@@ -123,7 +132,7 @@ export default function MedicalFilters({
           data-open={open ? "true" : "false"}
           className={`${
             open
-              ? "flex w-full basis-full flex-wrap items-center gap-x-4 gap-y-2"
+              ? "order-2 flex w-full basis-full flex-wrap items-center gap-x-4 gap-y-2"
               : "hidden"
           } sm:contents`}
         >
@@ -153,8 +162,13 @@ export default function MedicalFilters({
           {sortControl}
         </div>
       </div>
+      {/* `order-1` keeps the action on the toolbar's FIRST line below `sm`, ahead of
+          the opened facet group (which claims a full row of its own). At `sm` the
+          ordering is off and this is the right-hand column it has always been. */}
       {action ? (
-        <div className="shrink-0 self-end sm:self-start">{action}</div>
+        <div className="order-1 shrink-0 sm:order-none sm:self-start">
+          {action}
+        </div>
       ) : null}
     </div>
   );

@@ -12,6 +12,7 @@
 // caption it rides alongside can never disagree ("one question, one computation").
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
+import { joinNamesForSentence } from "./summarize-names";
 import { travelExcusalResolver } from "./travel-excusal";
 import {
   getStrengthByExercise,
@@ -991,8 +992,11 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
   const because =
     s.triggeredBy.length > 0
       ? // The trigger side rides on the suggestion (#2754): the soluble-fiber ADD is
-        // high-triggered, so the side may not be derived from the verb.
-        `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} ${s.side}`
+        // high-triggered, so the side may not be derived from the verb. The NAMES
+        // are joined by the shared rule, never by a comma — a lab name carries its
+        // own ("Lymphocytes, Relative"), and a comma join makes two triggers read
+        // as four (#3496; docs/internals/copy.md §9).
+        `Because your ${joinNamesForSentence(s.triggeredBy)} ${s.triggeredBy.length > 1 ? "are" : "is"} ${s.side}`
       : reduce
         ? "Foods to reduce"
         : "Food sources";

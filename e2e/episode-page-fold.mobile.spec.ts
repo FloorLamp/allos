@@ -328,11 +328,16 @@ test.describe("an active episode page on a phone (#2612)", () => {
       // never one entry per administration. `summarizeNames` spells three names, so
       // the caption cannot grow past four segments however many doses (or
       // medications) the window holds.
+      //
+      // SPLIT ON THE SEPARATOR THE ROSTER ACTUALLY USES (#3496). This counted
+      // COMMAS, and the roster stopped using them — a medication name may contain
+      // one, which is why. Left alone the split would have found a single segment
+      // in every caption and gone green while measuring nothing.
       const caption = page.getByTestId("fever-chart-doses");
       await expect(caption).toBeVisible();
       const captionText = (await caption.innerText()).trim();
       expect(captionText.startsWith("Doses:")).toBe(true);
-      expect(captionText.split(",").length).toBeLessThanOrEqual(3);
+      expect(captionText.split(" · ").length).toBeLessThanOrEqual(3);
       // A dose count, not a wall of clocks: no "HH:MM" anywhere in the legend.
       expect(captionText).not.toMatch(/\d{1,2}:\d{2}/);
       expect(captionText).toMatch(/×\d+/);
