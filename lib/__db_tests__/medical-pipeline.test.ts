@@ -151,6 +151,38 @@ describe("medical-pipeline: ingestMedicalUpload validation", () => {
   });
 });
 
+// #3198: `medical_documents.extraction_error` is rendered verbatim on the import
+// page, so the DETERMINISTIC (no-AI) health-record path must put house copy there
+// too. lib/health-record-doc.ts was the eighth write site of that column and the
+// only one the first pass left writing a caught error's own text — including the
+// operator-facing `Clearing imported <table> rows for document <id> failed:
+// <SQLite>` that lib/import-persist.ts throws on purpose (#1808).
+describe("medical-pipeline: health-record import failure copy (#3198)", () => {
+  it("records house copy, not the caught message, when the parse throws", async () => {
+    const { login, profile } = seedActor();
+    // Sniffs as a FHIR bundle (`{` + `"resourceType":"Bundle"`) and then fails to
+    // parse, so it reaches persistHealthRecordDoc's catch — the route a truncated
+    // portal download takes. Under 1MB, so the import runs inline.
+    const broken = `{"resourceType":"Bundle","type":"collection","entry":[`;
+    const file = new File([Buffer.from(broken)], "export.json", {
+      type: "application/fhir+json",
+    });
+    await ingestMedicalUpload(login.id, profile.id, file);
+
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed");
+    // The house sentence for an unclassified failure. Before the fix this column
+    // held the parser's own "Invalid FHIR bundle (could not parse JSON)."
+    expect(rows[0].error).toBe("Couldn't import this file.");
+    // And nothing from the layer below reaches the page: no table name, no SQLite
+    // vocabulary, no stack fragment.
+    expect(rows[0].error ?? "").not.toMatch(
+      /SQLITE|constraint failed|Clearing imported|medical_records|\bat \w+ \(/i
+    );
+  });
+});
+
 describe("medical-pipeline: reprocess read helpers", () => {
   it("computeReprocessAllCost reports an empty cost for a profile with no documents", () => {
     const { profile } = seedActor();

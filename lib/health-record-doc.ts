@@ -13,6 +13,7 @@ import {
   distinguishVitaminDIsoform,
 } from "./canonical-name";
 import { createLogger } from "./log";
+import { userErrorCopy } from "./user-error-copy";
 
 const log = createLogger("health-import");
 
@@ -79,7 +80,23 @@ export function persistHealthRecordDoc(
     );
     outcome = persistDocumentImport(profileId, docId, input);
   } catch (e) {
-    const error = e instanceof Error ? e.message : "Could not import the file.";
+    log.error("health-record import failed", { docId, err: e });
+    // `extraction_error` is rendered verbatim on the document page, so it carries
+    // house copy and the raw cause stays in the log above (#3198). This is the
+    // SECOND sink for lib/import-persist.ts's footprint-clear throw — a
+    // `Clearing imported <table> rows for document <id> failed: <SQLite>` written
+    // for an operator (#1808) — alongside medical-pipeline's failCrashed. It used
+    // to reach a person here with the internal table name and the SQLite text
+    // intact.
+    //
+    // The cost, stated because it is real: the format parsers (CdaError, FhirError,
+    // SmartHealthCardError, ZipIndexError) throw sentences that WERE written for a
+    // reader — "Invalid FHIR bundle (could not parse JSON)." — and those now flatten
+    // to the generic line too, because nothing in the caught value distinguishes
+    // them from the persist half's SQLite text. Marking those four classes
+    // `UserFacingError` would keep them; that is a repo-wide copy decision affecting
+    // six other userErrorCopy sites, so it is raised rather than taken here.
+    const error = userErrorCopy(e, { doing: "import this file" });
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(error, docId, profileId);
