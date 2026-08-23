@@ -265,6 +265,24 @@ These are not review taste; each retired a green that meant nothing.
   because the window was reading the author's own comment EXPLAINING the edit and
   quoting what it removed. The defence is not skepticism about the number—it is
   asking what the check was matching on, and opening the file.
+- **`act()` is not a promise, and `.then()` on it returns `undefined`.** React's
+  `act` returns a bare thenable — a plain object with a `then` method — so
+  `return act(…).then(cb)` returns `undefined`, the runner awaits nothing, and
+  whatever `cb` throws lands outside the case. One test in
+  `components/__tests__/imported-name-offer.test.tsx` was written that way among
+  twelve awaiting siblings, and with the component stubbed to render nothing it
+  reported GREEN while the other twelve went red (#3578). Adding a positive
+  assertion did not fix it — the plumbing around the assertion was the bug, which
+  is what no amount of care in writing the assertion can reach.
+  Measured across the tree at the same time: 21 `.then()` call sites in 16 test
+  files, a throw planted in every callback, 19 red the run. The 2 that did not are
+  promises the tests deliberately never settle. So `.then()` on a REAL promise is
+  fine, and the rule worth enforcing is the narrow one:
+  `lib/__tests__/awaited-act-census.test.ts` requires every React `act(` to be
+  `await`ed. No lint rule in this repo covers it — the effective config for a test
+  file carries 67 rules, none promise-related, and `no-floating-promises` inspects
+  expression statements, so the `return` form is invisible to it even when enabled.
+
 - **A comment can generate a real rule.** Tailwind's content scanner reads source
   as text, so a class name in an English sentence compiles to CSS: `.min-h-9`
   shipped because a comment mentioned it (#3523), and deleting the sentence

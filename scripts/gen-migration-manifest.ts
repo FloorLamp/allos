@@ -54,8 +54,7 @@ const removed = Object.keys(previous).filter((f) => !(f in manifest));
 const rehashed = Object.keys(manifest).filter(
   (f) => f in previous && previous[f] !== manifest[f]
 );
-const unchanged =
-  Object.keys(manifest).length - added.length - rehashed.length;
+const unchanged = Object.keys(manifest).length - added.length - rehashed.length;
 
 const lines = [
   `${Object.keys(manifest).length} migrations hashed from disk, in registry order.`,
