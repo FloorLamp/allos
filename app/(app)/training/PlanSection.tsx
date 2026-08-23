@@ -12,7 +12,9 @@ import RoutinesSection from "./RoutinesSection";
 import GoalsSection from "./GoalsSection";
 
 // The Plan tab (#2892): Routines and Goals folded into one planning surface.
-// Order is the planning story — the weekly-routine targets first (this card is
+// Order is the planning story — the Weekly targets card first (#3474 renamed it
+// from "Weekly routine": the section below is "Routines", a different model, and one
+// word for two things on one screen is what the rename closes; this card is
 // their ONE editing home; the chips that render on Overview and the Log strip
 // link here), then structured routines, then outcome goals, then the equipment
 // registry's door. The retired `?tab=routines` / `?tab=goals` names resolve to
@@ -46,14 +48,14 @@ export default async function PlanSection() {
         className="card scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
       >
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-          Weekly routine
+          Weekly targets
         </h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           “Hit X at least N times per week.” Counts distinct training days{" "}
           {weekMode === "rolling"
             ? "over the last 7 days"
             : "in the current week"}
-          . Click a routine to edit it.
+          . Click a target to edit it.
         </p>
         <FrequencyTargets
           strengthTrainingAvailable={strengthTrainingAvailable}

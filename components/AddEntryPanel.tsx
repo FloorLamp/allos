@@ -54,6 +54,7 @@ export default function AddEntryPanel({
   toggleTestId,
   dense = false,
   presentation = "inline",
+  housed = false,
   children,
 }: {
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
@@ -76,6 +77,13 @@ export default function AddEntryPanel({
   // Rare-entry forms in hub rails use a modal so opening one never pushes the
   // list away. Inline remains available for compact, in-context disclosures.
   presentation?: "inline" | "modal";
+  // Draw the panel's container while COLLAPSED as well as open (#3482 item 2). Off by
+  // default — the collapsed affordance is a bare button everywhere it sits at the foot
+  // of a page, which is most mounts, and a frame around one button costs more than it
+  // buys there. On, for a panel that sits mid-scroll on a page whose every other block
+  // is a card, where the bare row is what breaks the container grammar. Inline only:
+  // the modal presentation has no collapsed body to house.
+  housed?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -132,8 +140,10 @@ export default function AddEntryPanel({
       data-testid={testId}
       data-open={open ? "true" : "false"}
       // Collapsed it is a bare affordance, not a card: a bordered box holding one
-      // button would give most of the block back and then charge for the frame.
-      className={open ? `card ${gap}` : gap}
+      // button would give most of the block back and then charge for the frame —
+      // unless the call site is `housed`, where the row's neighbours are all cards and
+      // the bare affordance is the thing that reads wrong (see the prop).
+      className={open ? `card ${gap}` : housed ? `card-quiet ${gap}` : gap}
     >
       <button
         type="button"

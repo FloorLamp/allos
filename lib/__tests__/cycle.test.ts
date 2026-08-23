@@ -8,6 +8,8 @@ import {
   periodOnDate,
   isFlowLevel,
   isStaleOpenPeriod,
+  CYCLE_STATS_MIN_SAMPLES,
+  FORECAST_MIN_CYCLES,
   LUTEAL_PHASE_DAYS,
   MAX_PLAUSIBLE_PERIOD_DAYS,
   type CyclePeriod,
@@ -310,6 +312,62 @@ describe("cycleStats", () => {
     const s = cycleStats(irr);
     expect(s.variabilityDays).toBeGreaterThan(7);
     expect(s.regularity).toBe("irregular");
+  });
+});
+
+// ---- The one length threshold, and what hangs off it (#3482 item 1) --------
+//
+// /medical/cycles used to render Average / Shortest / Longest / Variability whenever
+// there was at least ONE completed cycle. With one interval those are the same number
+// three times plus "Variability 0 d" — an assertion of perfect regularity derived from
+// a single data point, printed between two cards that were both already refusing to
+// claim anything ("a projection needs at least 3 completed cycles"; "Log a few cycles
+// to see whether they're regular").
+//
+// The fix reuses the threshold the regularity verdict already answers rather than
+// inventing a second one, and THIS is the pin that keeps that true: the tiles' gate on
+// the page is `stats.regularity !== "insufficient"`, so the cases below are the gate.
+describe("CYCLE_STATS_MIN_SAMPLES — the tiles' gate is the regularity verdict (#3482)", () => {
+  // Starts 28 days apart, so `n` periods yield `n - 1` completed cycles.
+  const periodsYielding = (cycles: number): CyclePeriod[] =>
+    Array.from({ length: cycles + 1 }, (_, i) => {
+      const start = new Date(Date.UTC(2026, 0, 1) + i * 28 * 86400000);
+      const end = new Date(start.getTime() + 4 * 86400000);
+      return period(
+        i + 1,
+        start.toISOString().slice(0, 10),
+        end.toISOString().slice(0, 10)
+      );
+    });
+
+  it("the forecast and the length stats share ONE constant, not two equal numbers", () => {
+    // Not a tautology check: before #3482 these were two literal 3s in one file, and
+    // the comment on the second asked the reader to keep them equal by hand.
+    expect(FORECAST_MIN_CYCLES).toBe(CYCLE_STATS_MIN_SAMPLES);
+  });
+
+  it("is insufficient at every count BELOW the threshold — including the one-cycle profile", () => {
+    for (let n = 0; n < CYCLE_STATS_MIN_SAMPLES; n++) {
+      const stats = cycleStats(periodsYielding(n));
+      expect(stats.cycleCount, `${n} completed cycles`).toBe(n);
+      expect(stats.regularity, `${n} completed cycles`).toBe("insufficient");
+    }
+  });
+
+  it("judges from the threshold up", () => {
+    const stats = cycleStats(periodsYielding(CYCLE_STATS_MIN_SAMPLES));
+    expect(stats.cycleCount).toBe(CYCLE_STATS_MIN_SAMPLES);
+    expect(stats.regularity).not.toBe("insufficient");
+  });
+
+  it("a ONE-cycle profile still computes a zero spread — which is why the gate is on the verdict, not on the number", () => {
+    // The numbers themselves are not wrong; `variabilityDays` over one sample is
+    // genuinely 0. What was wrong was PRINTING it as a measured statistic. Pinning
+    // this keeps anyone from "fixing" the model instead of the presentation.
+    const stats = cycleStats(periodsYielding(1));
+    expect(stats.variabilityDays).toBe(0);
+    expect(stats.meanLength).toBe(stats.minLength);
+    expect(stats.regularity).toBe("insufficient");
   });
 });
 

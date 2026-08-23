@@ -31,13 +31,13 @@ async function toneOf(el: Locator): Promise<string> {
   return tone!;
 }
 
-test("Training weekly routine chips are pace-coloured, rose-free, and sky-free (#780)", async ({
+test("Training weekly target chips are pace-coloured, rose-free, and sky-free (#780)", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");
   const main = page.getByRole("main");
   // Overview is the chips' one render home (#2892); the seed plants 4 weekly
-  // frequency targets, so the Weekly routine renders every one (met + partial).
+  // frequency targets, so the Weekly targets card renders every one (met + partial).
   const chips = main.getByTestId("weekly-target-chip");
   await expect(chips.first()).toBeVisible(); // first-ok: asserts the weekly-target chips render at all (count asserted next) — order-agnostic
   const n = await chips.count();

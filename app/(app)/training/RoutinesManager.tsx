@@ -173,8 +173,12 @@ export default function RoutinesManager({
         </div>
       </div>
 
+      {/* The state, and nothing else (#3474 item 3). The subtitle one screen-height
+          above already says "Adopt a template or build your own", and the two buttons
+          that do it sit directly between the two — the box used to repeat the
+          instruction a reader had just been given. */}
       {routines.length === 0 ? (
-        <EmptyState message="No routines yet. Adopt a template or build a custom routine to set your weekly training plan." />
+        <EmptyState message="No routines yet." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {routines.map((r) => {

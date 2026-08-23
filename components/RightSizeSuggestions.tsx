@@ -33,7 +33,7 @@ import RightSizeSuggestionRow from "./RightSizeSuggestionRow";
 
 const DOMAIN_HEADING: Record<RightSizeDomain, string> = {
   practice: "Weekly goal check",
-  training: "Weekly routine check",
+  training: "Weekly targets check",
   food: "Weekly habit check",
 };
 

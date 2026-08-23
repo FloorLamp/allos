@@ -84,6 +84,23 @@ export type DataQualityGapKey =
   | "risk-attributes"
   | "dose-amount-unreadable";
 
+// Every gap key, so a sweep over the family can be EXHAUSTIVE rather than over
+// whichever keys a fixture happened to trip. Typed against the union above, so a new
+// key that is not added here is a build error rather than a silently unswept member.
+export const DATA_QUALITY_GAP_KEYS = [
+  "birthdate",
+  "sex",
+  "reproductive-status",
+  "pediatric-height",
+  "smoking-status",
+  "med-rxcui",
+  "prescriber-link",
+  "phenoage-inputs",
+  "failed-extractions",
+  "risk-attributes",
+  "dose-amount-unreadable",
+] as const satisfies readonly DataQualityGapKey[];
+
 // One structural gap. `leverage` is the COUNT of consumers this fix unblocks — it
 // drives ranking (birthdate first, ~6 engines), and it is exactly the number of
 // consumers named in `whyLine`, so the rank and the copy can never disagree.
@@ -419,7 +436,14 @@ export function householdDataQualityLine(
 }
 
 // A terse noun for the compact household list ("birthdate", "sex", …).
-function shortGapNoun(key: DataQualityGapKey): string {
+//
+// LAY WORDS ONLY (#3487 item 4). This map renders on a caregiver's household glance —
+// "4 data gaps — RxNorm codes, prescriber links, …" put a drug-terminology standard's
+// name in front of a person who is looking at their family, against the project's
+// regular-people rule. The gap KEYS and the detection behind them are unchanged; only
+// what a reader is shown is. The full `label`/`detail` of each gap (the finding row's
+// own copy) still names RxNorm where naming it is the instruction.
+export function shortGapNoun(key: DataQualityGapKey): string {
   switch (key) {
     case "birthdate":
       return "birthdate";
@@ -432,9 +456,9 @@ function shortGapNoun(key: DataQualityGapKey): string {
     case "smoking-status":
       return "smoking status";
     case "med-rxcui":
-      return "RxNorm codes";
+      return "medication details";
     case "prescriber-link":
-      return "prescriber links";
+      return "prescriber info";
     case "phenoage-inputs":
       return "bio-age labs";
     case "failed-extractions":

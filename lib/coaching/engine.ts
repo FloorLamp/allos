@@ -970,7 +970,7 @@ const ON_TRACK: Recommendation = {
   kind: "ontrack",
   title: "You're on track",
   detail:
-    "You've hit your weekly routine — an easy session or a rest day are both fine.",
+    "You've hit your weekly targets — an easy session or a rest day are both fine.",
   tone: "positive",
 };
 
@@ -979,7 +979,7 @@ const EMPTY_STATE: Recommendation = {
   kind: "setup",
   title: "Start tracking to get coaching",
   detail:
-    "Log an activity or set a weekly routine and you'll get a focused suggestion here each day.",
+    "Log an activity or set a weekly target and you'll get a focused suggestion here each day.",
   tone: "neutral",
   actionHref: "/training",
   actionLabel: "Log activity",
