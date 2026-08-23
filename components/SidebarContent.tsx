@@ -185,6 +185,30 @@ export default function SidebarContent({
     try {
       await wipeDeviceForSignOut();
       logoutFormRef.current?.requestSubmit();
+      // AND THE GUARD IS RELEASED THE INSTANT THE SUBMIT IS ISSUED — deliberately
+      // narrow, because the wide version reintroduces #3515's own harm. It exists
+      // to stop the effect and the onClick both firing for ONE tap, and that window
+      // is exactly the async wipe above; once `requestSubmit()` has been issued
+      // there is no second caller left to collide with.
+      //
+      // Held any longer, it is held FOREVER on the case this app is about. Its only
+      // other releases are in the two catches, and `submitLogout`'s cannot run while
+      // the POST is outstanding — "a link that accepts the connection and then stops
+      // carrying it sits for the browser's own connect/read timeout, which is
+      // minutes" (components/device-wipe.ts). So an unanswered logout would latch
+      // the control shut: every retry swallowed behind a spinner that says "working
+      // on it" indefinitely, on a device whose PHI is already wiped and whose write
+      // gate is already shut, with the session still alive and no escape but a
+      // reload. That is the silence #3515 exists to remove, wearing the costume of
+      // the fix for it.
+      //
+      // A LATER TAP RE-SUBMITTING IS CORRECT, and is what main does: four taps in a
+      // dead zone are four attempts, and any one of them can land when signal
+      // returns. Re-wiping costs nothing — `clearQueue` is idempotent and the gate
+      // is already closed. `logoutPending` deliberately STAYS true: the attempt is
+      // still open and the control should still say so.
+      // Pinned by components/__tests__/logout-retry.test.tsx.
+      logoutStarted.current = false;
     } catch (err) {
       // Nothing is in flight any more, so stop claiming otherwise — and drop the
       // boot script's marker too, since it is the other half of the same claim and
