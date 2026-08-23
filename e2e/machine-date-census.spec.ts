@@ -129,6 +129,26 @@ const ROUTES: CensusRoute[] = [
     subject: "td[data-card='meta']",
   },
   {
+    // #3478 item 2: the dose ledger's window note read "Showing confirmed doses
+    // from 2026-05-24 to 2026-08-21" — `doseLedgerWindowNote` interpolated
+    // `range.from`/`range.to` verbatim, on a page whose every row date already
+    // crossed the display boundary. The route opens pre-filtered to medications and
+    // the shared seed's admin profile has confirmed medication doses inside the
+    // default 90-day window, so the POPULATED note is what renders here; the empty
+    // state's sentence (which carries the same bounds) is pinned by
+    // e2e/dose-ledger-phone.mobile.spec.ts on its own dedicated fixture.
+    path: "/medications/dose-history",
+    why: "The dose ledger's window note — 'Showing confirmed doses from … to …' (#3478 item 2).",
+    // MEASURED 2026-08-23 under the shared seed: 88 rendered text nodes populated
+    // (the parity fixture's 14 daily taken-logs plus the PRN fixture's two, all
+    // inside the default 90-day window), and 20 for the same route pointed at a
+    // window with no doses in it — the EMPTY state, which is what this route's
+    // failure-to-render actually looks like rather than a blank page. 40 is above
+    // twice the empty state and under half the populated one.
+    minTextNodes: 40,
+    subject: '[data-testid="dose-ledger-window-note"]',
+  },
+  {
     // #3491 item 3: the Trash row printed `entry.date` in its headline and
     // `deletedAt.slice(0, 10)` in its subtitle — TWO machine dates per row, on a
     // surface where the date is the only thing distinguishing one untitled
