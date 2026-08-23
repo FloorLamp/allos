@@ -54,6 +54,7 @@ export interface SupplementalDigestInputs {
   foodServings: { date: string; group: string; servings: number }[];
   foodDates: string[];
   doseDates: string[];
+  weighingDates: string[];
 }
 
 const datesFor = (
@@ -83,9 +84,10 @@ export function supplementalDigestInputs(
   range: DateRange
 ): SupplementalDigestInputs {
   const trackedRows = rows.flatMap((row) =>
-    row.kind === "protein-tracked" && row.date && row.value != null
+    row.kind === "macro-tracked" && row.key && row.date && row.value != null
       ? [
           {
+            metric: row.key,
             date: row.date,
             source: row.source,
             origin: row.origin,
@@ -94,23 +96,22 @@ export function supplementalDigestInputs(
         ]
       : []
   );
-  const originSelected = pickRowsOneOriginPerSourceDay(
-    trackedRows,
-    (row) => row.date,
-    (row) => row.source,
-    (row) => row.origin,
-    (row) => row.value
+  const priority = parseMetricSourcePriority(
+    rows.find((row) => row.kind === "source-priority")?.key
   );
-  const tracked = pickOneSourcePerDay(
-    originSelected,
-    resolveMetricSources(
-      "protein_g",
-      parseMetricSourcePriority(
-        rows.find((row) => row.kind === "source-priority")?.key
+  const trackedFor = (metric: string) => {
+    const candidates = trackedRows.filter((row) => row.metric === metric);
+    return pickOneSourcePerDay(
+      pickRowsOneOriginPerSourceDay(
+        candidates,
+        (row) => row.date,
+        (row) => row.source,
+        (row) => row.origin,
+        (row) => row.value
       ),
-      SOURCE_PREFERENCE
-    )
-  ).sort((a, b) => a.date.localeCompare(b.date));
+      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
+    ).sort((a, b) => a.date.localeCompare(b.date));
+  };
   const logged = rows.flatMap((row) =>
     row.kind === "protein-logged" && row.date && row.value != null
       ? [{ date: row.date, value: row.value }]
@@ -118,10 +119,10 @@ export function supplementalDigestInputs(
   );
   const proteinDays = filterSeriesByRange(
     buildMacroFiberSeries({
-      protein: mergeProteinSources(tracked, logged),
-      carbs: [],
-      fat: [],
-      fiber: [],
+      protein: mergeProteinSources(trackedFor("protein_g"), logged),
+      carbs: trackedFor("carbs_g"),
+      fat: trackedFor("fat_g"),
+      fiber: trackedFor("fiber_g"),
     }).map((day) => ({ date: day.date, value: day.protein })),
     range
   );
@@ -166,6 +167,7 @@ export function supplementalDigestInputs(
     ),
     foodDates: datesFor(rows, "food-serving"),
     doseDates: datesFor(rows, "dose-log"),
+    weighingDates: datesFor(rows, "weight-log"),
   };
 }
 

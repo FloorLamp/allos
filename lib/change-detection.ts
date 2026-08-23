@@ -24,16 +24,19 @@ export type ChangeDetectionKind = (typeof CHANGE_DETECTION_KINDS)[number];
 
 export interface ChangeDetectionKindDeclaration {
   readonly ownerModule: `lib/${string}.ts`;
+  readonly ownerSymbol: string;
   readonly surfaces: readonly string[];
 }
 
 export const CHANGE_DETECTION_KIND_REGISTRY = {
   "series-magnitude": {
     ownerModule: "lib/trends-digest.ts",
+    ownerSymbol: "summarizeTrends",
     surfaces: ["Trends digest", "Trends tile badges"],
   },
   "versus-baseline": {
     ownerModule: "lib/sleep-summary.ts",
+    ownerSymbol: "lastNightSummary",
     surfaces: [
       "Dashboard sleep row",
       "Morning digest",
@@ -43,6 +46,7 @@ export const CHANGE_DETECTION_KIND_REGISTRY = {
   },
   "streak-lapse": {
     ownerModule: "lib/intake-deltas.ts",
+    ownerSymbol: "classifyIntakeDeltas",
     surfaces: [
       "Telegram digest",
       "Weekly recap",
@@ -52,10 +56,12 @@ export const CHANGE_DETECTION_KIND_REGISTRY = {
   },
   "verdict-transition": {
     ownerModule: "lib/dashboard-reading-promotions.ts",
+    ownerSymbol: "DASHBOARD_READING_PROMOTIONS",
     surfaces: ["Dashboard Now"],
   },
   "pipeline-silence": {
     ownerModule: "lib/domain-dormancy.ts",
+    ownerSymbol: "dormancyState",
     surfaces: ["Dashboard dormant-domain rows"],
   },
 } as const satisfies Record<
@@ -63,57 +69,157 @@ export const CHANGE_DETECTION_KIND_REGISTRY = {
   ChangeDetectionKindDeclaration
 >;
 
-export interface DomainChangeDetection {
-  readonly kinds: readonly ChangeDetectionKind[];
-  readonly ownerModules: readonly `lib/${string}.ts`[];
+export interface DomainDetectorDeclaration {
+  readonly kind: ChangeDetectionKind;
+  readonly ownerModule: `lib/${string}.ts`;
+  readonly ownerSymbol: string;
+  // The exact subdomain this detector covers. A broad census row may not imply
+  // that one narrow detector (for example BP dormancy) covers all of "vitals".
+  readonly scope: string;
   readonly surfaces: readonly string[];
+}
+
+export interface DomainDetectorExclusion {
+  readonly kind: ChangeDetectionKind;
+  readonly scope: string;
+  readonly reason: string;
+}
+
+export interface DomainChangeDetection {
+  readonly detectors: readonly DomainDetectorDeclaration[];
+  readonly exclusions?: readonly DomainDetectorExclusion[];
 }
 
 // A domain may use more than one of the five kinds. The row still describes rather
 // than dispatches: detector modules remain independent and keep their own inputs.
 export const CHANGE_DETECTION_DOMAIN_CENSUS = {
   activity: {
-    kinds: ["series-magnitude"],
-    ownerModules: ["lib/trends-digest.ts"],
-    surfaces: ["Trends digest", "Trends tile badges"],
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Activity-derived numeric series represented in Trends",
+        surfaces: ["Trends digest", "Trends tile badges"],
+      },
+    ],
   },
   food: {
-    kinds: ["series-magnitude"],
-    ownerModules: ["lib/trends-digest-series.ts"],
-    surfaces: ["Trends digest"],
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Protein, food-group servings, and food logging cadence",
+        surfaces: ["Trends digest"],
+      },
+    ],
   },
   dose: {
-    kinds: ["streak-lapse", "series-magnitude"],
-    ownerModules: ["lib/intake-deltas.ts", "lib/trends-digest-series.ts"],
-    surfaces: ["Recap channels", "Trends digest"],
+    detectors: [
+      {
+        kind: "streak-lapse",
+        ownerModule: "lib/intake-deltas.ts",
+        ownerSymbol: "classifyIntakeDeltas",
+        scope: "Confirmed-dose taken streaks and lapses",
+        surfaces: ["Recap channels"],
+      },
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Confirmed-dose logging cadence",
+        surfaces: ["Trends digest"],
+      },
+    ],
   },
   weight: {
-    kinds: ["series-magnitude", "pipeline-silence"],
-    ownerModules: ["lib/trends-digest.ts", "lib/domain-dormancy.ts"],
-    surfaces: ["Trends digest", "Trends tile badges", "Dashboard"],
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Weight values and weighing cadence",
+        surfaces: ["Trends digest", "Trends tile badges"],
+      },
+      {
+        kind: "pipeline-silence",
+        ownerModule: "lib/domain-dormancy.ts",
+        ownerSymbol: "dormancyState",
+        scope: "The weight DormancyDomain member",
+        surfaces: ["Dashboard dormant-domain row"],
+      },
+    ],
   },
   vitals: {
-    kinds: ["series-magnitude", "verdict-transition", "pipeline-silence"],
-    ownerModules: [
-      "lib/trends-digest.ts",
-      "lib/dashboard-reading-promotions.ts",
-      "lib/domain-dormancy.ts",
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Vital numeric series represented in Trends",
+        surfaces: ["Trends digest", "Trends tile badges"],
+      },
+      {
+        kind: "verdict-transition",
+        ownerModule: "lib/dashboard-reading-promotions.ts",
+        ownerSymbol: "clinicalResultBecameNotable",
+        scope: "Stored clinical-result flags for vital analytes",
+        surfaces: ["Dashboard Now"],
+      },
+      {
+        kind: "pipeline-silence",
+        ownerModule: "lib/domain-dormancy.ts",
+        ownerSymbol: "dormancyState",
+        scope: "Blood pressure and resting heart rate only",
+        surfaces: ["Dashboard dormant-domain rows"],
+      },
     ],
-    surfaces: ["Trends", "Dashboard Now", "Dashboard"],
+    exclusions: [
+      {
+        kind: "pipeline-silence",
+        scope: "All other vital quantities",
+        reason:
+          "domain-dormancy declares only blood-pressure and resting-hr; other vital rows keep their own presentation/freshness behavior.",
+      },
+    ],
   },
   temperature: {
-    kinds: ["series-magnitude", "verdict-transition", "pipeline-silence"],
-    ownerModules: [
-      "lib/trends-digest.ts",
-      "lib/dashboard-reading-promotions.ts",
-      "lib/domain-dormancy.ts",
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Temperature numeric series represented in Trends",
+        surfaces: ["Trends digest", "Trends tile badges"],
+      },
+      {
+        kind: "verdict-transition",
+        ownerModule: "lib/dashboard-reading-promotions.ts",
+        ownerSymbol: "clinicalResultBecameNotable",
+        scope: "Stored clinical-result flags for temperature analytes",
+        surfaces: ["Dashboard Now"],
+      },
     ],
-    surfaces: ["Trends", "Dashboard Now", "Dashboard"],
+    exclusions: [
+      {
+        kind: "pipeline-silence",
+        scope: "Temperature logging",
+        reason:
+          "Temperature is not a domain-dormancy member; no window-bounded temperature surface has declared a silence verdict.",
+      },
+    ],
   },
   practice: {
-    kinds: ["series-magnitude"],
-    ownerModules: ["lib/trends-digest-series.ts"],
-    surfaces: ["Trends digest"],
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Tracked-practice completed-week cadence",
+        surfaces: ["Trends digest"],
+      },
+    ],
   },
   period: arguedExclusion(
     "Cycle logs have phase/status presentation, but no accepted change detector; this row keeps that absence explicit until the domain defines what change means."
@@ -122,17 +228,29 @@ export const CHANGE_DETECTION_DOMAIN_CENSUS = {
     "Stool logs are individual categorical observations; no cross-window change verdict has been owner-defined."
   ),
   mood: {
-    kinds: ["series-magnitude"],
-    ownerModules: ["lib/trends-digest.ts"],
-    surfaces: ["Trends tile badges"],
+    detectors: [
+      {
+        kind: "series-magnitude",
+        ownerModule: "lib/trends-digest.ts",
+        ownerSymbol: "summarizeTrends",
+        scope: "Mood numeric series represented in Trends",
+        surfaces: ["Trends tile badges"],
+      },
+    ],
   },
   symptom: arguedExclusion(
     "Symptoms are presented in episode context; a generic cross-episode movement verdict would erase that context."
   ),
   substance: {
-    kinds: ["verdict-transition"],
-    ownerModules: ["lib/frequency-targets.ts"],
-    surfaces: ["Weekly cap status"],
+    detectors: [
+      {
+        kind: "verdict-transition",
+        ownerModule: "lib/dashboard-reading-promotions.ts",
+        ownerSymbol: "weeklyTargetStateChanged",
+        scope: "Substance weekly-cap semantic state",
+        surfaces: ["Dashboard Now"],
+      },
+    ],
   },
   document: arguedExclusion(
     "A document is a container that produces domain records, not a measured series or arrival pipeline with its own change verdict."

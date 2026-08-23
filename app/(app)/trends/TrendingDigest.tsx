@@ -60,9 +60,6 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   // gather and supplies all supplemental stored facts (#3397). The builders below
   // are pure, and composing them does not fan the digest out across ledgers.
   const gathered = supplementalDigestInputs(digestRows, weeks, range);
-  const weightPoints =
-    standardSeries.find((candidate) => candidate.key === "metric:weight")
-      ?.points ?? [];
   const series = [
     ...standardSeries,
     ...buildPracticeDigestSeriesFromInputs(gathered.practiceTargets),
@@ -71,7 +68,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
       windows: weeks,
       foodDates: gathered.foodDates,
       doseDates: gathered.doseDates,
-      weighingDates: weightPoints.map((point) => point.date),
+      weighingDates: gathered.weighingDates,
     }),
   ];
   // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by

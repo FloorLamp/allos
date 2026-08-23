@@ -13,10 +13,11 @@ export type TrendsDigestGatherKind =
   | "practice-target"
   | "source-priority"
   | "practice-log"
-  | "protein-tracked"
+  | "macro-tracked"
   | "protein-logged"
   | "food-serving"
-  | "dose-log";
+  | "dose-log"
+  | "weight-log";
 
 export interface TrendsDigestGatherRow {
   kind: TrendsDigestGatherKind;
@@ -28,10 +29,10 @@ export interface TrendsDigestGatherRow {
   origin: string | null;
 }
 
-// The per-ledger bounds constrain the union's event rows. Tracked protein deliberately keeps
-// getMetricDailyTotals' latest-180-DATES rule before the caller applies its display
-// range, so the digest's protein points are the Nutrition chart's points rather than
-// a second all-time interpretation of the same store.
+// The per-ledger bounds constrain the union's event rows. Each tracked macro/fiber
+// metric deliberately keeps getMetricDailyTotals' latest-180-DATES rule before the
+// caller applies its display range, so the digest's protein axis is the Nutrition
+// chart's axis rather than a second all-time interpretation of the same store.
 export function getTrendsDigestGather(
   profileId: number,
   bounds: {
@@ -44,13 +45,18 @@ export function getTrendsDigestGather(
 ): TrendsDigestGatherRow[] {
   return db
     .prepare(
-      `WITH recent_protein_dates AS (
-         SELECT date
-           FROM metric_samples
-          WHERE profile_id = ? AND metric = 'protein_g'
-          GROUP BY date
-          ORDER BY date DESC
-          LIMIT 180
+      `WITH ranked_macro_dates AS (
+         SELECT metric, date,
+                ROW_NUMBER() OVER (PARTITION BY metric ORDER BY date DESC) AS recency
+           FROM (
+             SELECT metric, date
+               FROM metric_samples
+              WHERE profile_id = ?
+                AND metric IN ('protein_g', 'carbs_g', 'fat_g', 'fiber_g')
+              GROUP BY metric, date
+           )
+       ), recent_macro_dates AS (
+         SELECT metric, date FROM ranked_macro_dates WHERE recency <= 180
        )
        SELECT 'practice-target' AS kind,
               ft.scope_value AS key,
@@ -84,12 +90,13 @@ export function getTrendsDigestGather(
          FROM practice_logs
         WHERE profile_id = ? AND date >= ? AND date <= ?
        UNION ALL
-       SELECT 'protein-tracked', NULL, ms.date, SUM(ms.value), NULL,
+       SELECT 'macro-tracked', ms.metric, ms.date, SUM(ms.value), NULL,
               ms.source, ms.origin
          FROM metric_samples ms
-         JOIN recent_protein_dates recent ON recent.date = ms.date
-        WHERE ms.profile_id = ? AND ms.metric = 'protein_g'
-        GROUP BY ms.date, ms.source, ms.origin
+         JOIN recent_macro_dates recent
+           ON recent.metric = ms.metric AND recent.date = ms.date
+        WHERE ms.profile_id = ?
+        GROUP BY ms.metric, ms.date, ms.source, ms.origin
        UNION ALL
        SELECT 'protein-logged', NULL, date, grams, NULL, NULL, NULL
          FROM protein_daily_totals
@@ -102,8 +109,14 @@ export function getTrendsDigestGather(
        SELECT 'dose-log', NULL, l.date, 1, NULL, NULL, NULL
          FROM intake_item_logs l
          JOIN intake_items i ON i.id = l.item_id
-        WHERE i.profile_id = ? AND l.date >= ? AND l.date <= ?
-          AND l.status = 'taken' AND l.item_id IS NOT NULL`
+       WHERE i.profile_id = ? AND l.date >= ? AND l.date <= ?
+          AND l.status = 'taken' AND l.item_id IS NOT NULL
+       UNION ALL
+       SELECT 'weight-log', NULL, date, 1, NULL, NULL, NULL
+         FROM body_metrics
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+          AND weight_kg IS NOT NULL
+        GROUP BY date`
     )
     .all(
       profileId,
@@ -121,6 +134,9 @@ export function getTrendsDigestGather(
       bounds.to,
       profileId,
       bounds.doseFrom,
+      bounds.to,
+      profileId,
+      bounds.practiceFrom,
       bounds.to
     ) as TrendsDigestGatherRow[];
 }

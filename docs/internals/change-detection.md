@@ -15,9 +15,13 @@ but does not dispatch any detector. The authoritative code registry is
 
 The existing `LOGGABLE_DOMAINS` axis is censused by
 `CHANGE_DETECTION_DOMAIN_CENSUS`. Every logging domain must name its detector kind,
-owner module, and surfaces, or carry a non-empty argued absence. TypeScript makes a
-missing row a compile error; the source guard checks that named owners and arguments
-remain real.
+exact subdomain scope, exported owner symbol, and surfaces, or carry a non-empty
+argued absence. This matters for broad rows: pipeline silence covers blood pressure
+and resting heart rate, not every vital, and temperature has no silence detector.
+The substance weekly-cap transition is owned by
+`dashboard-reading-promotions.weeklyTargetStateChanged`. TypeScript makes a missing
+row a compile error; the source guard checks that every named owner symbol remains a
+real export rather than merely accepting an existing file.
 
 ## Digest-only series
 

@@ -18,6 +18,7 @@ import {
 } from "@/lib/trends-digest-series";
 import { summarizeTrends } from "@/lib/trends-digest";
 import { practiceIdentity } from "@/lib/practice";
+import { getMacroFiberDays } from "@/lib/queries";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -42,6 +43,26 @@ function seedProtein(profileId: number, values: readonly number[]): void {
        VALUES (?, ?, ?)`
     ).run(profileId, date, grams);
   });
+}
+
+function seedTrackedMetric(
+  profileId: number,
+  metric: string,
+  date: string,
+  value: number
+): void {
+  db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'health-connect', ?, ?, ?, ?, ?)`
+  ).run(
+    profileId,
+    metric,
+    date,
+    `${date}T08:00:00Z`,
+    `${date}T08:00:00Z`,
+    value
+  );
 }
 
 function seedFoodDay(profileId: number, date: string, servings = 1): void {
@@ -140,6 +161,42 @@ describe("supplemental Trends digest gather (#3397)", () => {
     );
   });
 
+  it("uses the Nutrition chart's zero-filled protein axis", () => {
+    const id = profile("digest macro date axis");
+    for (let back = 8; back >= 5; back--) {
+      seedTrackedMetric(id, "protein_g", dateBack(id, back), 100);
+    }
+    for (let back = 4; back >= 1; back--) {
+      seedTrackedMetric(id, "carbs_g", dateBack(id, back), 200);
+    }
+
+    const range = { from: dateBack(id, 8), to: dateBack(id, 1) };
+    const windows = cadenceWindows(id, {
+      weeks: 4,
+      includeCurrent: false,
+      asOf: range.to,
+    });
+    const rows = getTrendsDigestGather(
+      id,
+      digestGatherBounds(range, windows, today(id))
+    );
+    const gathered = supplementalDigestInputs(rows, windows, range);
+    expect(gathered.proteinDays).toEqual(
+      getMacroFiberDays(id, range).map((day) => ({
+        date: day.date,
+        value: day.protein,
+      }))
+    );
+    expect(gathered.proteinDays.map((day) => day.value)).toEqual([
+      100, 100, 100, 100, 0, 0, 0, 0,
+    ]);
+    expect(
+      summarizeTrends(buildNutritionDigestSeries(gathered)).map(
+        (item) => item.key
+      )
+    ).toContain("nutrition:protein");
+  });
+
   it("keeps the tracked-practice cadence behavior on the batched path", () => {
     const id = profile("digest practice batched");
     const name = "Digest sauna";
@@ -220,12 +277,7 @@ describe("supplemental Trends digest gather (#3397)", () => {
         windows: movedInput.windows,
         foodDates: movedInput.gathered.foodDates,
         doseDates: movedInput.gathered.doseDates,
-        weighingDates: db
-          .prepare(
-            "SELECT date FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL"
-          )
-          .all(moved)
-          .map((row) => (row as { date: string }).date),
+        weighingDates: movedInput.gathered.weighingDates,
       })
     );
     expect(movedItems.map((item) => item.key).sort()).toEqual([
@@ -241,12 +293,41 @@ describe("supplemental Trends digest gather (#3397)", () => {
           windows: steadyInput.windows,
           foodDates: steadyInput.gathered.foodDates,
           doseDates: steadyInput.gathered.doseDates,
-          weighingDates: db
-            .prepare(
-              "SELECT date FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL"
-            )
-            .all(steady)
-            .map((row) => (row as { date: string }).date),
+          weighingDates: steadyInput.gathered.weighingDates,
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps steady weekly weighing quiet on a short selected range", () => {
+    const id = profile("digest weighing short range");
+    const windows = cadenceWindows(id, {
+      weeks: 4,
+      includeCurrent: false,
+      asOf: today(id),
+    });
+    for (const window of windows) {
+      db.prepare(
+        "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 80)"
+      ).run(id, window.start);
+    }
+
+    const range = { from: dateBack(id, 7), to: today(id) };
+    const gathered = supplementalDigestInputs(
+      getTrendsDigestGather(id, digestGatherBounds(range, windows, today(id))),
+      windows,
+      range
+    );
+    expect(gathered.weighingDates).toEqual(
+      windows.map((window) => window.start)
+    );
+    expect(
+      summarizeTrends(
+        buildLoggingCadenceDigestSeries({
+          windows,
+          foodDates: [],
+          doseDates: [],
+          weighingDates: gathered.weighingDates,
         })
       )
     ).toEqual([]);
@@ -258,6 +339,9 @@ describe("supplemental Trends digest gather (#3397)", () => {
     seedProtein(own, [90, 90]);
     seedProtein(other, [10, 10]);
     seedFoodDay(other, dateBack(other, 2), 7);
+    db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 70)"
+    ).run(other, dateBack(other, 2));
 
     const realPrepare = db.prepare.bind(db);
     let executions = 0;
@@ -287,5 +371,6 @@ describe("supplemental Trends digest gather (#3397)", () => {
     expect(executions).toBe(1);
     expect(rows.filter((row) => row.kind === "protein-logged")).toHaveLength(2);
     expect(rows.some((row) => row.kind === "food-serving")).toBe(false);
+    expect(rows.some((row) => row.kind === "weight-log")).toBe(false);
   });
 });
