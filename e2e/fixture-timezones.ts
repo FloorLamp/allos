@@ -128,6 +128,14 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
     kind: "run-pin",
     why: "This spec-owned profile follows the run's pinned timezone so its seeded historical days are the exact days the card ages against.",
   },
+  "trash-east": {
+    kind: "own-zone",
+    why: "Data \u2192 Trash prints the profile-local day of a delete INSTANT, which is only observable where the local day and the UTC day differ \u2014 and a pin-following profile can never differ, because the pin puts local time at 13:mm precisely so the two agree. This profile sits at UTC+13 so a capture stamped at 11:30 UTC has already rolled into the next local day.",
+  },
+  "trash-west": {
+    kind: "own-zone",
+    why: "The other direction of the same fixture: at UTC\u221212 the same 11:30 UTC capture has not yet left the previous local day, so one planted instant renders three different days across west, UTC and east. It is also the bin e2e/trash.spec.ts empties, which is why it must be a profile nothing else writes to (#3547).",
+  },
   "trends-day-gaps": {
     kind: "run-pin",
     why: "This spec-owned profile follows the run's pinned timezone so every absolute sample lands on the chart day named by the fixture.",
