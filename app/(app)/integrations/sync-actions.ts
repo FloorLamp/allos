@@ -121,10 +121,25 @@ export async function syncNow(id: IntegrationId): Promise<SyncNowResult> {
   try {
     const res = await runner.run(profile.id);
     if ("error" in res && typeof res.error === "string") {
+      // NO "Sync failed: " PREFIX (#3618), and it came out with the same change
+      // that reworded the HTTP branch — never before it.
+      //
+      // The prefix existed because `res.error` used to be a fragment naming a path
+      // and a status: "Sync failed: Oura /v2/usercollection/sleep request failed
+      // (401)" is unreadable without it. Since #3592 the throw branch already
+      // returned a whole house sentence, so the prefix had started doubling up
+      // ("Sync failed: Couldn't reach Strava. Try again."); since #3618 EVERY
+      // branch does, so it doubles up on all of them. Removing it while the HTTP
+      // branch still read that way would have made the toast worse, which is why
+      // the two halves are one change.
+      //
+      // The failure framing is not lost with it: the toast is rendered with
+      // `tone: "error"` (components/SyncNowButton.tsx) off the `status` field
+      // below, which is where that framing belongs.
       const message =
         res.error === "not connected"
           ? `Connect ${def.name} first, then sync.`
-          : `Sync failed: ${res.error}`;
+          : res.error;
       log.error("sync-now failed", { sourceId: id, error: res.error });
       return { status: "error", message };
     }

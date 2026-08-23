@@ -1,5 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { syncFailureCopy } from "./sync-failure-copy";
 import { parseJsonPreservingIds } from "./json-big-ids";
 import { addCanonicalNames, reconcileFlags } from "@/lib/queries";
 import {
@@ -42,6 +43,14 @@ const { timeoutMs, maxPages, rescanDays, backfillDays } =
 // Withings signals over-quota either as HTTP 429 (the shared rule) or the envelope
 // status 601 with HTTP 200 — its own dialect of the same "slow down".
 const RATE_LIMIT_STATUSES = [601];
+
+// What this source is DOING and WHO it reaches, declared once (#3618) — spent by both
+// failure doors, the throw branch through `userErrorCopy` and the failing-status
+// branch through `syncFailureCopy`.
+const WITHINGS_FAILURE = {
+  doing: "sync your Withings data",
+  service: "Withings",
+} as const;
 
 export interface WithingsSyncResult {
   bodyMetrics: number;
@@ -94,7 +103,7 @@ async function withingsPost(
   } catch (err) {
     // Network error / timeout / DNS. WHICH request failed goes to the log with the
     // raw cause; `error` carries the house sentence, because it is rendered on the
-    // integration card and in the "Sync failed: …" toast (#3592).
+    // integration card and toasted verbatim by "Sync now" (#3592).
     log.error("Withings request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -102,10 +111,7 @@ async function withingsPost(
     return {
       ok: false,
       status: 0,
-      error: userErrorCopy(err, {
-        doing: "sync your Withings data",
-        service: "Withings",
-      }),
+      error: userErrorCopy(err, WITHINGS_FAILURE),
     };
   }
 }
@@ -148,15 +154,22 @@ async function fetchPages(
     if (!res.ok) {
       if (pageOutcome(res.status, RATE_LIMIT_STATUSES) === "truncate")
         return { items, timezone, updatetime, truncated: true };
+      // THE PATH AND THE STATUS ARE FOR AN OPERATOR (#3618) — and here the status
+      // is Withings' own envelope code, whose meaning lives in Withings' docs and
+      // nowhere a person will look. Logged rather than dropped.
+      if (!res.error) {
+        log.error("Withings request failed", { path, status: res.status });
+      }
       return {
         items,
         timezone,
         updatetime,
         truncated: false,
-        // withingsPost only sets `error` for a network throw, where it is already
-        // the house sentence (#3592) — and where this line's alternative would be
-        // the meaningless "(0)". An HTTP/envelope status keeps the authored line.
-        error: res.error ?? `Withings ${path} request failed (${res.status})`,
+        // withingsPost only sets `error` for a network THROW, where it is already
+        // the house sentence the throw's own family earned (#3592). A FAILING
+        // status takes the status-keyed house sentence (#3618): this line used to
+        // read "Withings /measure request failed (601)" on the integration card.
+        error: res.error ?? syncFailureCopy(res.status, WITHINGS_FAILURE),
       };
     }
     const body = res.body;

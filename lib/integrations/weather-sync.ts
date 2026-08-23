@@ -1,5 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { syncFailureCopy } from "./sync-failure-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
@@ -137,8 +138,14 @@ export async function runWeatherSync(
     timezone
   );
   if (!res.ok) {
+    // The default source always authors its own house sentence (open-meteo.ts); this
+    // fallback covers an INJECTED WeatherSource that returns none. Source-agnostic
+    // on purpose — it names no third party, because it does not know one (#3618).
     const error =
-      res.error ?? `weather fetch failed (${res.status ?? "unknown"})`;
+      res.error ??
+      syncFailureCopy(res.status ?? 0, {
+        doing: "refresh the weather forecast",
+      });
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,
@@ -153,7 +160,7 @@ export async function runWeatherSync(
     counts = upsertUvHours(home.lat, home.lng, res.rows, source.id);
   } catch (err) {
     // The UV cache write refused (a constraint, a locked DB). Its SQLite vocabulary
-    // is for an operator; the card and the "Sync failed: …" toast get the house
+    // is for an operator; the card and the "Sync now" toast get the house
     // sentence (#3592).
     log.error("weather UV upsert failed", {
       profile: profileId,

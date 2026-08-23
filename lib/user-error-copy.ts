@@ -110,6 +110,21 @@ export function userErrorCopy(err: unknown, ctx: UserErrorContext): string {
     const authored = redactSecrets((err as Error).message).trim();
     if (authored) return authored;
   }
+  return houseErrorSentence(family === "authored" ? "unknown" : family, ctx);
+}
+
+// THE SENTENCE BANK, split out of userErrorCopy (#3618) so the STATUS-keyed sibling
+// — lib/integrations/sync-failure-copy.ts — spends these same sentences instead of a
+// second set that drifts. A thrown ECONNRESET reaching Oura and a 503 answered by
+// Oura are one thing to a reader, and the two paths that produce them are in
+// different modules; sharing the bank is what stops them reading as two things.
+//
+// `authored` is deliberately not a member: that family's text comes from the
+// thrower, not from here.
+export function houseErrorSentence(
+  family: Exclude<UserErrorFamily, "authored">,
+  ctx: UserErrorContext
+): string {
   switch (family) {
     case "upstream":
       return ctx.service

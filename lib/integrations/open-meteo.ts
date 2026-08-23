@@ -15,8 +15,18 @@
 
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { syncFailureCopy } from "./sync-failure-copy";
 
 const log = createLogger("open-meteo");
+
+// What this source is DOING and WHO it reaches, declared once (#3618). Open-Meteo is
+// KEYLESS, so its failures are never a connection problem — there is no token to
+// expire and no connection row to flip, which is why the reconnect sentence lives at
+// the pull runner and cannot reach this source.
+const WEATHER_FAILURE = {
+  doing: "refresh the weather forecast",
+  service: "Open-Meteo",
+} as const;
 
 // One hour of the cached series (local wall-clock hour for the location's timezone, so
 // it crosses directly with the local-time daylight/activity windows). Any field may be
@@ -459,26 +469,33 @@ export async function openMeteoFetch(
     const res = await fetch(`${base}?${qs.toString()}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok)
+    if (!res.ok) {
+      // #3007 PUT THE HOST'S OWN SENTENCE HERE, AND #3618 MOVES IT TO THE LOG.
+      // The hourly half's failure IS the run's failure, so this string is the red
+      // line on the integration card, the "Sync now" toast and the digest — and
+      // "weather fetch failed (503): Squid error: unable to forward to the origin"
+      // is a status and an upstream body, neither of which a person can act on.
+      // #3007's value was always diagnostic, so it goes where diagnostics go.
+      log.error("weather hourly fetch failed", {
+        endpoint,
+        status: res.status,
+        reason: await failureReason(res),
+      });
       return {
         ok: false,
         rows: [],
         status: res.status,
-        // The host's own sentence, not just the number (#3007): the hourly half's
-        // failure is the run's failure, so it is the line Review shows.
-        error: fetchFailureLine("weather fetch", {
-          status: res.status,
-          reason: await failureReason(res),
-        }),
+        error: syncFailureCopy(res.status, WEATHER_FAILURE),
       };
+    }
     const rows = parseOpenMeteoHourly(await res.json());
     return { ok: true, rows };
   } catch (err) {
     // A network throw (DNS, TLS, the timeout above). THIS `error` IS THE RUN'S
     // FAILURE LINE — weather-sync writes it to `integration_sync_events.error`, the
-    // integration card renders it in red, and "Sync now" shows it as
-    // "Sync failed: …". So the raw cause goes to the log and the column gets the
-    // house sentence (#3592).
+    // integration card renders it in red, and "Sync now" toasts it verbatim (the
+    // prefix came off in #3618). So the raw cause goes to the log and the column
+    // gets the house sentence (#3592).
     log.error("weather hourly fetch failed", {
       endpoint,
       err: err instanceof Error ? err.message : String(err),
@@ -487,10 +504,7 @@ export async function openMeteoFetch(
       ok: false,
       rows: [],
       status: 0,
-      error: userErrorCopy(err, {
-        doing: "refresh the weather forecast",
-        service: "Open-Meteo",
-      }),
+      error: userErrorCopy(err, WEATHER_FAILURE),
     };
   }
 }

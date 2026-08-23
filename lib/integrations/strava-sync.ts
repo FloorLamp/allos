@@ -15,6 +15,7 @@ import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import { pullPaging } from "./registry";
 import { isPullRateLimited, DAY_SECONDS } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
+import { syncFailureCopy } from "./sync-failure-copy";
 import type {
   NormActivity,
   NormActivityRoute,
@@ -65,6 +66,14 @@ function streamFinallyAbsent(status: number): boolean {
 // and Withings.
 
 const log = createLogger("strava-sync");
+
+// What this source is DOING and WHO it reaches, declared once (#3618) — spent by both
+// failure doors, the throw branch through `userErrorCopy` and the failing-status
+// branch through `syncFailureCopy`.
+const STRAVA_FAILURE = {
+  doing: "sync your Strava activities",
+  service: "Strava",
+} as const;
 
 const API = "https://www.strava.com/api/v3";
 const PER_PAGE = 200;
@@ -127,7 +136,7 @@ async function stravaGet(
     // text and end up rendered — "Strava activities request failed: ECONNRESET" on
     // the integration card. WHICH request failed is what an operator reads, so the
     // path goes to `log.error` with the raw cause; `error` carries the house sentence
-    // the card and the "Sync failed: …" toast show a person.
+    // the card and the "Sync now" toast show a person.
     log.error("Strava request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -135,10 +144,7 @@ async function stravaGet(
     return {
       ok: false,
       status: 0,
-      error: userErrorCopy(err, {
-        doing: "sync your Strava activities",
-        service: "Strava",
-      }),
+      error: userErrorCopy(err, STRAVA_FAILURE),
     };
   }
 }
@@ -245,10 +251,19 @@ const stravaSpec: PullSpec<
         // logged the path and the real cause and put HOUSE COPY on `error` (#3592).
         // It is passed through unprefixed: prefixing it would rebuild the raw-text
         // sentence this change removed.
+        //
+        // A FAILING STATUS now takes the status-keyed house sentence too (#3618) —
+        // this line used to read "Strava activities request failed (401)". The
+        // status is for an operator and goes to the log.
+        if (!listRes.error) {
+          log.error("Strava request failed", {
+            path: "/athlete/activities",
+            status: listRes.status,
+          });
+        }
         return {
           error:
-            listRes.error ??
-            `Strava activities request failed (${listRes.status})`,
+            listRes.error ?? syncFailureCopy(listRes.status, STRAVA_FAILURE),
         };
       }
       const list = Array.isArray(listRes.json)

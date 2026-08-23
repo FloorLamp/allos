@@ -3,12 +3,14 @@ import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
 import type { IntegrationId } from "@/lib/types";
 import {
+  getConnection,
   markConnectionNeedsReauth,
   recordSync,
   recordSyncEvent,
   recordSyncRows,
 } from "./connections";
 import { isAuthRefreshFailure } from "./auth-failure";
+import { reconnectCopy } from "./sync-failure-copy";
 import {
   dateWindow,
   emptyCounts,
@@ -190,23 +192,41 @@ export async function runPullSync<
   // The source's display name, so the house sentence names what a person recognises
   // ("Couldn't reach Strava.") rather than the registry id.
   const name = getIntegration(spec.id)?.name ?? spec.id;
+  // THE ONE PLACE THE RECONNECT SENTENCE IS CHOSEN (#3618), and it reads the app's
+  // OWN RECORDED STATE rather than re-deciding from a status.
+  //
+  // Both halves of "the token died" arrive here by different doors: a dead refresh
+  // token is caught by the refresh path, which marks the connection and throws
+  // (connections.ts), and a revoked Oura personal access token arrives as a 401 on
+  // the data pull, marked below. A status test at either door would see only its own
+  // half; `needs_reauth` is what both write, so asking it covers both and cannot
+  // drift from them.
+  //
+  // It is also EXACTLY the state every reconnect affordance keys on — the notice on
+  // each source page, and ConnectedSources' "Reconnect <name> →" — so this sentence
+  // can never send a person to a control that is not on screen. A source with no
+  // connection row at all (keyless weather) never gets it, which is why the branch
+  // is here and not in the status-keyed vocabulary.
+  const failureCopy = (fallback: string) =>
+    getConnection(profileId, spec.id)?.status === "needs_reauth"
+      ? reconnectCopy(name)
+      : fallback;
   let token: TToken | null;
   try {
     token = await spec.authorize(profileId);
   } catch (err) {
     // HOUSE COPY ON THE COLUMN, RAW CAUSE IN THE LOG (#3592). This string is written
     // to `integration_sync_events.error`, which the integration card renders in red,
-    // and it is also returned to `syncNow`, which renders it as "Sync failed: …".
+    // and it is also returned to `syncNow`, which toasts it verbatim (#3618).
     // Both readers are the person tracking their health; the refresh's own text
     // ("fetch failed", a 400 body) is for an operator and belongs in the error log.
     log.error("authorize failed", {
       sourceId: spec.id,
       err: err instanceof Error ? err.message : String(err),
     });
-    const message = userErrorCopy(err, {
-      doing: `connect to ${name}`,
-      service: name,
-    });
+    const message = failureCopy(
+      userErrorCopy(err, { doing: `connect to ${name}`, service: name })
+    );
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
   }
@@ -219,8 +239,10 @@ export async function runPullSync<
     if (outcome.status != null && isAuthRefreshFailure(outcome.status)) {
       markConnectionNeedsReauth(profileId, spec.id);
     }
-    recordSyncEvent(profileId, spec.id, { ok: false, error: outcome.error });
-    return { error: outcome.error };
+    // Marked FIRST, then read: this run's own 401 is what the sentence is about.
+    const message = failureCopy(outcome.error);
+    recordSyncEvent(profileId, spec.id, { ok: false, error: message });
+    return { error: message };
   }
 
   const { batch, raw, skipped, truncated } = outcome;
@@ -305,7 +327,7 @@ export async function runPullSync<
     // Same rule as the authorize catch above: the SQLite vocabulary a failed write
     // throws ("UNIQUE constraint failed: activities.profile_id, …") is exactly the
     // text #3198 stopped rendering to people. It goes to the log; the column and the
-    // "Sync failed: …" toast get the classifier's sentence.
+    // "Sync now" toast get the classifier's sentence.
     log.error("sync write failed", {
       sourceId: spec.id,
       err: err instanceof Error ? err.message : String(err),

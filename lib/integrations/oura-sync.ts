@@ -1,5 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { syncFailureCopy } from "./sync-failure-copy";
 import {
   OURA_ID,
   getOuraToken,
@@ -32,6 +33,11 @@ import type {
 // ("Mirrors strava-sync.ts"); withings-sync.ts said the same about this file.
 
 const log = createLogger("oura-sync");
+
+// What this source is DOING and WHO it reaches, declared once (#3618). Both failure
+// doors spend it: the throw branch through `userErrorCopy`, the failing-status branch
+// through `syncFailureCopy`. Two spellings here would be two sentences for one event.
+const OURA_FAILURE = { doing: "sync your Oura data", service: "Oura" } as const;
 
 const BASE = "https://api.ouraring.com";
 const { timeoutMs, maxPages, rescanDays, backfillDays } = pullPaging(OURA_ID);
@@ -68,8 +74,8 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
     // runner records a failed sync event and returns gracefully instead of throwing.
     //
     // WHICH request failed goes to the log with the raw cause; `error` carries the
-    // house sentence, because it is rendered on the integration card and in the
-    // "Sync failed: …" toast (#3592).
+    // house sentence, because it is rendered on the integration card and toasted
+    // verbatim by "Sync now" (#3592; the toast's prefix came off in #3618).
     log.error("Oura request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -77,10 +83,7 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
     return {
       ok: false,
       status: 0,
-      error: userErrorCopy(err, {
-        doing: "sync your Oura data",
-        service: "Oura",
-      }),
+      error: userErrorCopy(err, OURA_FAILURE),
     };
   }
 }
@@ -135,13 +138,25 @@ async function fetchPages(
     if (!res.ok) {
       if (pageOutcome(res.status) === "truncate")
         return { items, truncated: true };
+      // THE PATH AND THE STATUS ARE FOR AN OPERATOR (#3618). They left the card
+      // when the line below became house copy, so they are logged here — the move
+      // lib/medical-pipeline.ts makes eleven times — rather than dropped.
+      if (!res.error) {
+        log.error("Oura request failed", { path, status: res.status });
+      }
       return {
         items,
         truncated: false,
-        // ouraGet only sets `error` for a network throw, where it is already the
-        // house sentence (#3592) — and where this line's alternative would be the
-        // meaningless "(0)". An HTTP status keeps the authored line that names it.
-        error: res.error ?? `Oura ${path} request failed (${res.status})`,
+        // ouraGet only sets `error` for a network THROW, where it is already the
+        // house sentence the throw's own family earned (#3592). A FAILING STATUS
+        // takes the status-keyed house sentence (#3618): this line used to read
+        // "Oura /v2/usercollection/sleep request failed (401)" on the integration
+        // card, which named a path and a number and told a person nothing they
+        // could act on. WHICH path and WHICH status are what an operator reads, so
+        // they go to log.error above — and the status still travels to the runner
+        // on the field below, where a 401 becomes "reconnect" because that is the
+        // only place that knows the connection was flipped.
+        error: res.error ?? syncFailureCopy(res.status, OURA_FAILURE),
         status: res.status,
       };
     }
