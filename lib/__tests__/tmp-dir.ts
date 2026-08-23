@@ -17,23 +17,31 @@
 // (b) a guard REQUIRES every site to use — `./tmp-dir-census.test.ts` fails the
 // build on a raw `mkdtempSync` under a test directory.
 //
-// TWO DEFENCES, AND THE ORDER MATTERS.
+// ONE DEFENCE, DELIBERATELY: A SWEEP AT CREATION TIME. Before making a directory
+// we unlink the `/tmp/allos-*` entries that are older than any live run could be.
+// A teardown hook — `afterAll`, or `process.on("exit")` — cannot run in a process
+// that was KILLED, and on this box that is the normal way a run ends: agents
+// hitting a 10-minute tool cap mid-`agent-gates.sh`, a foreground Bash call timing
+// out at 2 minutes and killing `npm run test` mid-flight, contention kills,
+// container restarts. Sweeping reclaims those by CONSTRUCTION, with no cooperation
+// from the process that leaked them.
 //
-//   1. A SWEEP AT CREATION TIME, which is the load-bearing one. An `afterAll`
-//      hook — or the exit hook below — cannot run in a process that was KILLED,
-//      and on this box that is the normal way a run ends: agents hitting a
-//      10-minute tool cap mid-`agent-gates.sh`, a foreground Bash call timing out
-//      at 2 minutes and killing `npm run test` mid-flight, contention kills,
-//      container restarts. Sweeping stale siblings before we create our own
-//      reclaims those by CONSTRUCTION, with no cooperation from the process that
-//      leaked them.
-//   2. A best-effort unlink of this process's own directories at exit, so a
-//      cleanly-exiting run nets zero rather than waiting out the staleness
-//      threshold. This is the nicety; the sweep is the guarantee.
+// AND A `process.on("exit")` UNLINK WAS TRIED AND REMOVED, so nobody adds it back
+// believing it helps. Measured 2026-08-23: a one-test probe file created a
+// directory through this helper and the directory SURVIVED the run. Both unit
+// tiers run on pooled workers (`pool: "threads"` / `"forks"`), and the pool
+// terminates a worker rather than letting it exit, so the handler never fires.
+// A second mechanism that works only when the first was not needed is not a
+// second mechanism; it is a comment that lies.
+//
+// THE RESIDUAL, STATED: the steady state is up to one staleness window's worth of
+// directories rather than zero — roughly 300 on this container, ~100 MB, against
+// the 19,221 and 24 GB #3248 measured. It is self-limiting, which unbounded growth
+// was not, and it is exactly what #3248 proposed.
 //
 // Nothing here changes the `afterAll`/rolling-discard logic in the db-tier setup
-// files. That logic is correct for the exits it can see, and #3248 explicitly put
-// it out of scope.
+// files. That logic is correct for the exits it can see, it keeps the largest
+// prefix near zero within a run, and #3248 explicitly put it out of scope.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -64,11 +72,6 @@ export const STALE_AFTER_MS = 60 * 60 * 1000;
 // in /tmp) and nothing it would reclaim on a second pass could have aged past the
 // threshold during a single test run.
 let swept = false;
-
-// This process's own directories, unlinked at exit. Not a Set: order does not
-// matter and the list is short.
-const mine: string[] = [];
-let exitHookInstalled = false;
 
 /**
  * Unlink every `/tmp/allos-*` entry (file or directory) whose mtime is older than
@@ -127,21 +130,6 @@ function sweepOnce(): void {
   }
 }
 
-function installExitHook(): void {
-  if (exitHookInstalled) return;
-  exitHookInstalled = true;
-  process.on("exit", () => {
-    for (const dir of mine) {
-      try {
-        fs.rmSync(dir, { recursive: true, force: true });
-      } catch {
-        // Best effort by definition — we are inside an exit handler. The sweep
-        // above is what actually guarantees the directory goes away.
-      }
-    }
-  });
-}
-
 /**
  * Make a throwaway temp directory for a test, named `/tmp/allos-<label>-XXXXXX`.
  *
@@ -158,10 +146,7 @@ export function makeTmpDir(label: string): string {
     );
   }
   sweepOnce();
-  installExitHook();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${TMP_PREFIX}${label}-`));
-  mine.push(dir);
-  return dir;
+  return fs.mkdtempSync(path.join(os.tmpdir(), `${TMP_PREFIX}${label}-`));
 }
 
 // ---------------------------------------------------------------------------

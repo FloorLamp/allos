@@ -157,8 +157,10 @@ describe("the census's reach", () => {
 });
 
 describe("the stale sweep", () => {
-  // The sweep is the half that survives a KILLED process, which is how runs end on
-  // this box, so it gets a real filesystem rather than a mock.
+  // The sweep is the WHOLE mechanism — the one thing that survives a killed
+  // process, which is how runs end on this box — so it gets a real filesystem
+  // rather than a mock, and both of its bounds are exercised: what it reclaims and
+  // what it must not touch.
   it("reclaims entries past the threshold and leaves live ones alone", () => {
     const root = makeTmpDir("tmp-sweep-corpus");
     const now = Date.now();
