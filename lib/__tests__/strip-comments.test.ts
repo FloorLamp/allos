@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { stripComments } from "./strip-comments";
+import { disagreements } from "./strip-comments-oracle";
+import { stringLiterals } from "./source-literals";
 
 // THE SCANNER THE REPOSITORY CENSUSES READ SOURCE THROUGH (#3087).
 //
@@ -137,6 +139,174 @@ describe("what it strips and what it must not", () => {
       expect(out.split("\n"), rel).toHaveLength(src.split("\n").length);
     }
   });
+});
+
+// ── THE HEURISTIC, WITH ITS FAILURE CASES BESIDE IT (#3581) ─────────────────────
+//
+// Deciding whether a `/` opens a regex literal or divides is undecidable without a
+// parser, and sixteen modules read source through this scanner. "It is a heuristic"
+// is not worth writing down on its own; WHICH INPUTS and in WHICH DIRECTION is.
+//
+// The oracle is a real TypeScript parse — `lib/__tests__/strip-comments-oracle.ts`,
+// committed so the next person re-runs the measurement instead of re-deriving it.
+// These are the inputs it disagreed on, authored so a change in any of them is a red
+// rather than a discovery.
+describe("the regex-vs-division heuristic, and what it gets wrong", () => {
+  const OTPAUTH_JSX_TEXT = "app/(app)/settings/TwoFactorSettings.tsx";
+
+  describe("decided by the grammar, so fixed rather than recorded", () => {
+    it("divides after a postfix `++` and blanks the comment behind it", () => {
+      // `+` is a regex preceder because it usually is one. After `i++` it is not —
+      // `i++ /re/` is not a program — and reading it as one walked into the trailing
+      // sentence and handed it to every guard as code.
+      const src = "const r = i++ / 2; // the ratio\nconst kept = 1;\n";
+      const out = stripComments(src);
+      expect(lineOf(out, 1)).toBe("const r = i++ / 2;             ");
+      expect(lineOf(out, 2)).toBe("const kept = 1;");
+    });
+
+    it("divides after a postfix `--`, block comment included", () => {
+      const src = "const r = i-- / 2; /* the ratio */\nconst kept = 1;\n";
+      const out = stripComments(src);
+      expect(out).not.toContain("the ratio");
+      expect(lineOf(out, 2)).toBe("const kept = 1;");
+    });
+
+    it("divides after a PROPERTY named like a keyword", () => {
+      // `in` opens a regex; `obj.in` is a value and divides. The identifier lookback
+      // has to see the `.` in front of it or every keyword-shaped property name is a
+      // false regex opener.
+      const src = "const r = obj.in / 2; // half\nconst kept = 1;\n";
+      const out = stripComments(src);
+      expect(lineOf(out, 1)).toBe("const r = obj.in / 2;        ");
+      expect(lineOf(out, 2)).toBe("const kept = 1;");
+    });
+
+    it("still opens a regex after the BARE keyword", () => {
+      // The stays-quiet half: narrowing the identifier rule must not cost the real one.
+      const src =
+        "for (const m of /a\\/\\/b/.exec(s) ?? []) { } // note\nconst kept = 1;\n";
+      const out = stripComments(src);
+      expect(lineOf(out, 1)).toBe(
+        "for (const m of /a\\/\\/b/.exec(s) ?? []) { }        "
+      );
+      expect(lineOf(out, 2)).toBe("const kept = 1;");
+    });
+  });
+
+  describe("still wrong, and pinned so it cannot change unnoticed", () => {
+    // BOTH OVER-BLANK, which is the silent direction — a guard stops seeing real code
+    // and reports a pass. Recorded rather than fixed, with the reason on each.
+    it("walks into a regex opening after `}` and blanks the rest of the line", () => {
+      // `}` cannot join REGEX_PRECEDERS: `<Foo a={1} />` puts a `/` right after one,
+      // and reading THAT as a regex opener swallows the JSX comment behind it — the
+      // trade this scanner already made, deliberately, and the JSX test above pins.
+      // So a statement-initial regex whose class holds `//` is walked into as code.
+      const src = "function f() {}\n/[//]/.test(s);\nconst kept = 1;\n";
+      const out = stripComments(src);
+      expect(lineOf(out, 2)).toBe("/[             ");
+      // Bounded to its own line: the damage does not reach the next statement.
+      expect(lineOf(out, 3)).toBe("const kept = 1;");
+    });
+
+    it("walks into a regex opening after `)` and can blank to the next `*/`", () => {
+      // `)` cannot join it either: `(a + b) / c; // note` is ordinary division, and
+      // treating that `/` as an opener would walk into every such trailing comment.
+      // This is the worse of the two — a `/*` in the class runs to the next `*/`.
+      const src = [
+        "if (x) /[/*]/.test(s);",
+        "const kept = 1;",
+        "/* a real block comment */",
+        "const tail = 2;",
+      ].join("\n");
+      const out = stripComments(src);
+      expect(lineOf(out, 2)).toBe("               ");
+      expect(lineOf(out, 4)).toBe("const tail = 2;");
+    });
+
+    it("reads a `//` in JSX TEXT as a line comment", () => {
+      // NOT the regex heuristic — this scanner has no JSX-children state, so ordinary
+      // rendered copy that contains a scheme reads as a comment. One live instance in
+      // the tree, frozen by name below.
+      const src = "const a = (\n  <p>otpauth:// URI (paste it)</p>\n);\n";
+      const out = stripComments(src);
+      expect(lineOf(out, 2)).toBe("  <p>otpauth:                     ");
+    });
+  });
+
+  it("the oracle SEES a disagreement, and stays quiet on agreement", () => {
+    // A frozen list of one is only worth having if the instrument that produced it
+    // can report a second. Both directions authored, because the census below
+    // asserts on both.
+    expect(
+      disagreements("x.tsx", "const a = <p>otpauth:// URI</p>;\n").overBlanked
+        .length
+    ).toBeGreaterThan(0);
+    expect(
+      disagreements("x.ts", "const r = /\\/\\//; // note\nconst kept = 1;\n")
+    ).toEqual({ underBlanked: [], overBlanked: [] });
+  });
+
+  /**
+   * A full TypeScript PARSE of every tracked source file, which is the point — the
+   * oracle is only an oracle because it is the real thing. Measured on this box:
+   * 12s of wall clock for 4,954 files, against vitest's 15s default. The ceiling is
+   * bounding PARSE TIME UNDER CONTENTION (up to five agents share four cores here),
+   * not waiting for anything to appear, so it is generous safely: this is a presence
+   * assertion about a list, and a longer wait cannot invent a disagreement.
+   */
+  const ORACLE_SWEEP_MS = 120_000;
+
+  it(
+    "disagrees with a real TypeScript parse on exactly the files named here",
+    () => {
+      // THE MEASUREMENT, not an argument. Every character this scanner blanks is
+      // compared with every character the compiler calls comment trivia, over the whole
+      // tracked corpus. `underBlanked` is a false finding; `overBlanked` is a false
+      // pass, and the frozen list is the second kind — so it can only shrink, and a new
+      // one is a red on the day it is written rather than a silence.
+      const files = execFileSync(
+        "git",
+        ["ls-files", "-z", "--", "lib", "app", "components", "e2e", "scripts"],
+        { cwd: REPO, maxBuffer: 128 * 1024 * 1024 }
+      )
+        .toString("utf8")
+        .split("\0")
+        .filter((f) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f));
+      // A corpus floor before the verdict: a walk that stops reaching the tree reports
+      // that the scanner agrees with the compiler everywhere, which is the reassuring
+      // direction and the one that fails open.
+      expect(files.length).toBeGreaterThanOrEqual(4000);
+
+      const under: string[] = [];
+      const over: string[] = [];
+      for (const rel of files) {
+        const d = disagreements(
+          rel,
+          fs.readFileSync(path.join(REPO, rel), "utf8")
+        );
+        if (d.underBlanked.length) under.push(rel);
+        if (d.overBlanked.length) over.push(rel);
+      }
+      expect(
+        under,
+        "This scanner left a COMMENT as code. That is a false finding — noise a guard " +
+          "reports and somebody investigates — but it is still a disagreement with the " +
+          "compiler, and nothing in the tree had one. Run " +
+          "`npx tsx lib/__tests__/strip-comments-oracle.ts lib app components e2e scripts`."
+      ).toEqual([]);
+      expect(
+        over,
+        "This scanner blanked real CODE. That is the silent direction: a guard reading " +
+          "through it cannot see the source and reports a pass it never took (#3087 " +
+          "hid 1,244 lines of ActivityForm.tsx that way). The one entry below is JSX " +
+          "text containing `otpauth://`, which this scanner reads as a line comment — " +
+          "recorded in strip-comments.ts. If your file is new here, it is a defect, " +
+          "not a line to add."
+      ).toEqual([OTPAUTH_JSX_TEXT]);
+    },
+    ORACLE_SWEEP_MS
+  );
 });
 
 describe("the four spans the old stripper deleted", () => {
@@ -320,6 +490,54 @@ describe("the four spans the old stripper deleted", () => {
 // makes the same move for its own construct. A guard that fired on the
 // documentation explaining it would teach the next author to stop writing the
 // documentation (#3509).
+// ── THE SECOND SCANNER IS RETIRED ONTO THIS ONE (#3581) ─────────────────────────
+//
+// `lib/__tests__/source-literals.ts` was the other hand-rolled comment scanner in
+// this directory — the opposite projection (it EXTRACTS literal content and discards
+// code) but the same comment problem, and the same blindness: no regex state, so a
+// regex ending `\//` put a `//` in front of it and the rest of that line stopped
+// being read. Two scanners over one language with one blind spot is the shape that
+// gets fixed in one and not the other.
+//
+// The projection stays its own; only the comment half moved. Measured at conversion:
+// 67 of 4,954 tracked files yield a different literal set — and ZERO of the 38 files
+// `GLYPH_MODULES` declares and ZERO of the 14 `MESSAGE_LINE_MODULES` declares, which
+// are the only corpora its two readers walk. Verdict-preserving by proof for both,
+// with the blind spot closed for whoever reads it next.
+describe("the literal extractor reads through the shared scanner (#3581)", () => {
+  it("sees the literals a regex ending in `\\//` used to hide", () => {
+    // Verbatim the shape in lib/user-agent-label.ts, where the browser matcher table
+    // pairs a regex with its label: the old walker read `\//i, "Edge"]` as a line
+    // comment and dropped ELEVEN real labels in that one file.
+    const src = [
+      "const BROWSERS: readonly [RegExp, string][] = [",
+      '  [/\\bEdgA?\\/|\\bEdge\\//i, "Edge"],',
+      '  [/\\bOPR\\/|\\bOpera\\//i, "Opera"],',
+      "];",
+    ].join("\n");
+    expect(stringLiterals(src).map((l) => l.text)).toEqual(["Edge", "Opera"]);
+  });
+
+  it("still drops a literal that only exists inside a comment", () => {
+    // The stays-quiet half: the whole reason either scanner strips comments.
+    const src = [
+      '// The label is "Edge" when the UA carries EdgA.',
+      '/* and "Opera" when it carries OPR */',
+      'const label = "Chrome";',
+    ].join("\n");
+    expect(stringLiterals(src).map((l) => l.text)).toEqual(["Chrome"]);
+  });
+
+  it("keeps reporting the line a literal starts on", () => {
+    // Blanking in place is what makes the retirement free: a literal three lines
+    // below a block comment is still on line 5, not line 2.
+    const src = ["/*", " * a", " * block", " */", 'const a = "x";'].join("\n");
+    expect(stringLiterals(src)).toEqual([
+      { text: "x", line: 5, kind: "quoted" },
+    ]);
+  });
+});
+
 describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
   const CENSUS_ROOTS = ["lib", "components", "app", "e2e", "scripts"];
 
