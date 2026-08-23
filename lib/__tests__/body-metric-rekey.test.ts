@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  SWITCH_LOOKBACK_DAYS,
   departedZones,
   rekeyedDaysFor,
   type DepartedZone,
@@ -169,55 +168,50 @@ describe("rekeyedDaysFor: sub-hour offsets and DST", () => {
 });
 
 describe("departedZones: which zones the reconcile may consider at all", () => {
-  const now = new Date("2026-08-22T12:00:00Z");
   const sw = (at: string, from: string, to: string): TimezoneSwitch => ({
     at,
     from,
     to,
   });
 
-  it("keeps the `from` of each switch inside the lookback, newest first", () => {
-    const out = departedZones(
-      [
-        sw("2026-08-21T02:11:41Z", "America/New_York", "America/Los_Angeles"),
-        sw("2026-08-22T01:43:58Z", "America/Los_Angeles", "Pacific/Honolulu"),
-      ],
-      now
-    );
+  it("keeps the `from` of every recorded switch, newest first", () => {
+    const out = departedZones([
+      sw("2026-08-21T02:11:41Z", "America/New_York", "America/Los_Angeles"),
+      sw("2026-08-22T01:43:58Z", "America/Los_Angeles", "Pacific/Honolulu"),
+    ]);
     expect(out.map((d) => d.zone)).toEqual([
       "America/Los_Angeles",
       "America/New_York",
     ]);
   });
 
-  it("drops a switch older than the lookback", () => {
-    const out = departedZones(
-      [sw("2026-08-01T00:00:00Z", "Asia/Tokyo", "America/New_York")],
-      now
+  // THERE IS NO DAY-RANGE LOOKBACK, and this is the test that says so rather than the
+  // absence of one. An earlier draft dropped switches older than three days — the old
+  // `SWEEP_DAYS` number wearing a new hat. It constrained nothing that
+  // `switchedAt > readingAt` does not already constrain, and the owner ruled it out
+  // (#3524, 2026-08-23). An old switch stays in the list; what stops it reaching a
+  // recent reading is the predicate above, which is exact.
+  it("keeps a switch from months ago rather than windowing it out", () => {
+    const out = departedZones([
+      sw("2026-01-04T00:00:00Z", "Asia/Tokyo", "America/New_York"),
+    ]);
+    expect(out.map((d) => d.zone)).toEqual(["Asia/Tokyo"]);
+    // …and it cannot touch a reading taken after it, which is the actual protection.
+    expect(rekeyedDaysFor(at("2026-08-20T09:30:00Z"), "2026-08-20", out)).toEqual(
+      []
     );
-    expect(out).toEqual([]);
-    // …and the boundary is where it says it is: one hour inside the window is kept.
-    const edge = new Date(
-      now.getTime() - SWITCH_LOOKBACK_DAYS * 86_400_000 + 3_600_000
-    ).toISOString();
-    expect(
-      departedZones([sw(edge, "Asia/Tokyo", "America/New_York")], now)
-    ).toHaveLength(1);
   });
 
   it("drops a corrupt record rather than failing the push", () => {
-    const out = departedZones(
-      [
-        sw("not-an-instant", "America/New_York", "America/Los_Angeles"),
-        sw("2026-08-22T01:00:00Z", "Not/AZone", "Pacific/Honolulu"),
-        sw("2026-08-22T02:00:00Z", "America/Los_Angeles", "Pacific/Honolulu"),
-      ],
-      now
-    );
+    const out = departedZones([
+      sw("not-an-instant", "America/New_York", "America/Los_Angeles"),
+      sw("2026-08-22T01:00:00Z", "Not/AZone", "Pacific/Honolulu"),
+      sw("2026-08-22T02:00:00Z", "America/Los_Angeles", "Pacific/Honolulu"),
+    ]);
     expect(out.map((d) => d.zone)).toEqual(["America/Los_Angeles"]);
   });
 
   it("has an empty history for a profile that has never switched", () => {
-    expect(departedZones([], now)).toEqual([]);
+    expect(departedZones([])).toEqual([]);
   });
 });

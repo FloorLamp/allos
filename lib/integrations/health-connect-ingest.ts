@@ -17,7 +17,7 @@ import {
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
 import {
-  pushedDates,
+  pushedMeasures,
   reconcileRekeyedBodyMetrics,
 } from "./ingest-timezone-reconcile";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
@@ -127,24 +127,25 @@ export function ingestHealthConnectPayload(
   };
 
   try {
-    // Every date THIS PUSH writes, computed once over the whole push — the reconcile
-    // below must never delete a day a sibling chunk has already landed, and the chunk
-    // it is running in cannot see the others.
-    const bodyMetricDates = pushedDates(parsed.bodyMetrics);
+    // Every (date, measure) THIS PUSH writes, computed once over the whole push — the
+    // reconcile below must never null a measure a sibling chunk has already landed, and
+    // the chunk it is running in cannot see the others.
+    const bodyMetricPairs = pushedMeasures(parsed.bodyMetrics);
     commitChunks(
       parsed.bodyMetrics,
       (slice, sink) => {
         // #3524: the profile's timezone may have moved since these readings were last
         // pushed, and `body_metrics.date` is the profile-local day computed at INGEST —
         // so the same instant now files on a different day and #608's duplicate appears.
-        // Delete the row this push is re-keying, and only that row, in the same
-        // transaction as the write that replaces it. Deliberately BEFORE the upsert:
-        // the whole slice is reconciled first, so a victim day cannot be one this slice
-        // has just written.
+        // Withdraw the old key of each measure this push re-keyed, in the same
+        // transaction as the write that replaces it. Deliberately AFTER the upsert: the
+        // reconcile's own rule is that a measure's old key is withdrawn only if the
+        // measure LANDED under the new one, and only the write can answer that.
+        const counts = upsertBodyMetrics(profileId, slice, source, sink);
         reconcileRekeyedBodyMetrics(profileId, slice, source, {
-          pushDates: bodyMetricDates,
+          pushed: bodyMetricPairs,
         });
-        return upsertBodyMetrics(profileId, slice, source, sink);
+        return counts;
       },
       (c) => {
         bodyMetrics = foldCounts([bodyMetrics, c]);

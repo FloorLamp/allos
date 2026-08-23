@@ -47,8 +47,16 @@ const OUT_OF_SCOPE = ["lib/__db_tests__/", "lib/__action_tests__/"];
 
 interface Finding {
   file: string;
+  // The WHOLE statement, whitespace-normalized — not a fixed-length prefix of it. The
+  // allowlist matches on this EXACTLY (see `allowed`), so the text below is what a
+  // reviewer signed off on rather than its first hundred characters.
   sql: string;
 }
+
+// A statement runs to the end of the string literal it is written in, or to the first
+// `;` inside it, whichever comes first. Capped so a pathological file cannot put an
+// unbounded string in an assertion message.
+const MAX_SQL = 300;
 
 // Comments blanked, so a sentence ABOUT a delete is not a delete. `lib/stateful-writes.ts`
 // and `lib/cycle-store.ts` both discuss `DELETE FROM ${root.table}` in prose, correctly,
@@ -142,12 +150,18 @@ export function scanFile(rel: string, src: string): Finding[] {
     let j = (m.index ?? 0) - 1;
     while (j >= 0 && /\s/.test(text[j])) j--;
     if (j >= 0 && !STATEMENT_START.includes(text[j])) continue;
+    const opener = j >= 0 ? text[j] : "";
+    const rest = text.slice(m.index);
+    let end = Math.min(rest.length, MAX_SQL);
+    // The closing quote of the literal the SQL is written in…
+    const close = "`\"'".includes(opener) ? rest.indexOf(opener) : -1;
+    if (close >= 0 && close < end) end = close;
+    // …or the end of this statement inside it, for a multi-statement `exec`.
+    const semi = rest.indexOf(";");
+    if (semi >= 0 && semi < end) end = semi;
     out.push({
       file: rel,
-      sql: text
-        .slice(m.index, (m.index ?? 0) + 100)
-        .replace(/\s+/g, " ")
-        .trim(),
+      sql: rest.slice(0, end).replace(/\s+/g, " ").trim(),
     });
   }
   return out;
@@ -157,114 +171,131 @@ export function scanFile(rel: string, src: string): Finding[] {
 // reviewed answer to "can this statement's table be body_metrics?" — `false` means the
 // interpolated table is drawn from a registry that does not contain it, and the entry
 // names the registry so the claim is checkable.
+//
+// `sql` IS THE WHOLE STATEMENT AND IT IS MATCHED EXACTLY. It was a PREFIX until the
+// owner ruled otherwise (#3524, 2026-08-23), and the prefix made this guard blind at
+// precisely the point of it: the entry for the reconcile read `"DELETE FROM
+// body_metrics"`, so the removed blind sweep, replanted IN THAT MODULE, was found by the
+// scan and then silently allowed. The prefix was also quietly covering a delete nobody
+// had listed — `manage-actions.ts` has TWO, and one entry matched both. Exact matching
+// means a statement that changes at all comes back for review, which is the cost and
+// also the whole mechanism.
 const ALLOW: {
   file: string;
-  includes: string;
+  sql: string;
   reaches: boolean;
   trigger: string;
 }[] = [
   {
     file: "lib/integrations/ingest-timezone-reconcile.ts",
-    includes: "DELETE FROM body_metrics",
+    sql: "DELETE FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?",
     reaches: true,
     trigger:
-      "A HEALTH CONNECT PUSH, never a zone change. The only delete in this tree that a timezone has anything to do with, and the direction is the point: it fires when a push re-sends a reading whose stored day was computed under a zone the profile has since left, and it removes the row THAT INSTANT is already sitting on. A switch with no re-push deletes nothing; a day the exporter does not re-send is never named. #3524.",
+      "A HEALTH CONNECT PUSH, never a zone change, and only after the measure it is withdrawing has landed on its new day. It removes a row this push emptied: the re-keyed measure has already been nulled on it and no other measure was left. A switch with no re-push changes nothing; a day the exporter does not re-send is never named. #3524.",
   },
   {
     file: "app/(app)/data/review-actions.ts",
-    includes: "DELETE FROM body_metrics WHERE id = ?",
+    sql: "DELETE FROM body_metrics WHERE id = ? AND profile_id = ?",
     reaches: true,
     trigger:
       "A PERSON, on one row they are looking at, in the Review resolver — the discard half of the import-review affordance.",
   },
   {
     file: "app/(app)/data/manage-actions.ts",
-    includes: "DELETE FROM ${resolved.table}",
+    sql: "DELETE FROM ${resolved.table} WHERE id IN (${placeholders}) AND profile_id = ?",
     reaches: true,
     trigger:
-      "A PERSON, in Data → Manage, on rows or a whole dataset they selected. The table comes from the dataset registry (lib/export.ts), where `body_metrics` is a registered dataset.",
+      "A PERSON, in Data → Manage, on rows they selected. The table comes from the dataset registry (lib/export.ts), where `body_metrics` is a registered dataset.",
+  },
+  {
+    file: "app/(app)/data/manage-actions.ts",
+    sql: "DELETE FROM ${resolved.table} WHERE profile_id = ?",
+    reaches: true,
+    trigger:
+      "The same person in the same place, clearing a WHOLE dataset rather than a selection. Same registry. Listed separately because the allowlist matches statements exactly, and this one was riding on its neighbour's prefix.",
   },
   {
     file: "lib/import-persist.ts",
-    includes: "DELETE FROM ${t.table}",
+    sql: "DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
     reaches: true,
     trigger:
       "A PERSON undoing an IMPORT. The table comes from IMPORT_FOOTPRINT_TABLES (lib/import-footprint.ts), which registers `body_metrics`; the delete is scoped to that import's footprint.",
   },
   {
     file: "lib/undo-delete-db.ts",
-    includes: "DELETE FROM ${root.table}",
+    sql: "DELETE FROM ${root.table} WHERE id = ? AND profile_id = ?",
     reaches: true,
     trigger:
       "A PERSON, undoing their own delete. The table comes from the undo registry (lib/undo-delete.ts), where `body_metrics` is a registered owned table.",
   },
   {
     file: "lib/undo-delete-db.ts",
-    includes: "DELETE FROM ${child.table}",
+    sql: "DELETE FROM ${child.table} WHERE id = ? AND profile_id = ?",
     reaches: true,
     trigger:
       "The same registry and the same person's undo, restoring the child rows that hang off the root row above it.",
   },
   {
     file: "lib/profile-delete.ts",
-    includes: "DELETE FROM ${child.table}",
+    sql: "DELETE FROM ${child.table} WHERE ${cond.sql}",
     reaches: true,
     trigger:
       "A PERSON deleting a whole PROFILE. Every profile-owned table is erased, `body_metrics` among them.",
   },
   {
     file: "lib/profile-delete.ts",
-    includes: "DELETE FROM ${t}",
+    sql: "DELETE FROM ${t} WHERE profile_id = ?",
     reaches: true,
     trigger:
       "The same person deleting the same profile, sweeping the tables that carry a profile_id of their own rather than reaching it through a parent.",
   },
   {
     file: "lib/migrations/cascade-delete.ts",
-    includes: "DELETE FROM ${q(table)} AS t0",
+    sql: "DELETE FROM ${q(table)} AS t0 WHERE ${root.sql}",
     reaches: true,
     trigger:
       "The generic FK cascade a caller above it asked for — it deletes whatever table it is handed, and its callers are the erasure and undo paths already listed.",
   },
   {
     file: "lib/migrations/cascade-delete.ts",
-    includes: "DELETE FROM ${q(link.table)}",
+    sql: "DELETE FROM ${q(link.table)} AS ${alias} WHERE ${childPredicate.sql}",
     reaches: true,
     trigger:
       "The same cascade the erasure and undo paths invoke, deleting the link rows that join the row being removed to its children.",
   },
   {
     file: "lib/migrations/cascade-delete.ts",
-    includes: "DELETE FROM ${q(table)} WHERE ${notNull}",
+    sql: "DELETE FROM ${q(table)} WHERE ${notNull} AND NOT EXISTS",
     reaches: true,
     trigger:
       "The same cascade again, its trailing pass over rows whose only parent has just been removed and which nothing can reach any more.",
   },
   {
     file: "lib/migrations/versions/002-edit-lock-flags.ts",
-    includes: "DELETE FROM body_metrics",
+    sql: "DELETE FROM body_metrics WHERE source IS NOT NULL AND id NOT IN ( SELECT MIN(id) FROM body_metrics WHERE source IS NOT NULL GROUP BY profile_id, date, source )",
     reaches: true,
     trigger:
       "A SHIPPED MIGRATION, once: the dedupe that let (profile_id, date, source) become a UNIQUE index. Frozen by the hash manifest and cannot run again.",
   },
   {
     file: "lib/day-counter-ledger.ts",
-    includes: "DELETE FROM ${spec.table}",
+    sql: "DELETE FROM ${spec.table} WHERE ${where} AND ${spec.amountColumn} <= 0",
     reaches: false,
     trigger:
       "A day counter falling to zero. The table comes from DAY_COUNTER_SPECS, whose three entries are food_daily_totals, substance_daily_totals and protein_daily_totals — no reading store is reachable.",
   },
   {
     file: "lib/assessment-reclass-db.ts",
-    includes: "DELETE FROM ${definitionTable}",
+    sql: "DELETE FROM ${definitionTable} WHERE name = ? COLLATE NOCASE AND source = 'ai'",
     reaches: false,
     trigger:
       "An AI-authored definition being reclassified away. `definitionTable` is a clinical DEFINITION table, never a reading store.",
   },
 ];
 
+// EXACT, never a prefix — see the note above the list.
 const allowed = (f: Finding) =>
-  ALLOW.some((a) => f.file === a.file && f.sql.startsWith(a.includes));
+  ALLOW.some((a) => f.file === a.file && f.sql === a.sql);
 
 describe("no production module deletes body_metrics on a timezone change (#3524)", () => {
   const files = sourceFiles();
@@ -322,15 +353,25 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
   // over the `hr_minutes` half of the same defect. A guard that made those illegal would
   // force the tree to forget why the sweep went, which is the one thing worth keeping
   // about it.
+  //
+  // AND IT DOES NOT BLANK THE WHOLE TREE TO ASK. An earlier draft mapped every source
+  // through `blankComments` and held the results, which cost 3.2 s idle against this
+  // tier's 15 s ceiling and timed out 6/6 on a loaded box — a guard that fails when the
+  // machine is busy is a guard that gets quarantined. The names below cannot appear in a
+  // blanked file without appearing in the raw one, so the raw text is the filter and only
+  // the handful of files that mention the sweep at all pay for the lexer.
   it("no source file CALLS or IMPORTS the deleted sweep", () => {
-    const hits = files
-      .map((f) => ({ rel: relPath(f), src: blankComments(readSource(f)) }))
-      .filter(
-        (f) =>
-          f.src.includes("sweepIngestWindowForTimezoneChange") ||
-          f.src.includes("integrations/ingest-timezone-sweep")
-      )
-      .map((f) => f.rel);
+    const NAMES = [
+      "sweepIngestWindowForTimezoneChange",
+      "integrations/ingest-timezone-sweep",
+    ];
+    const hits: string[] = [];
+    for (const f of files) {
+      const raw = readSource(f);
+      if (!NAMES.some((n) => raw.includes(n))) continue;
+      const code = blankComments(raw);
+      if (NAMES.some((n) => code.includes(n))) hits.push(relPath(f));
+    }
     expect(hits).toEqual([]);
   });
 
@@ -393,6 +434,40 @@ describe("the scan can see, and knows when to stay quiet", () => {
         `db.prepare("delete from body_metrics WHERE profile_id = ?").run(p);`
       )
     ).toHaveLength(1);
+  });
+
+  // THE EVASION THE PREFIX ALLOWED, and the reason the match is exact. The allowlist
+  // entry for the reconcile used to be the PREFIX `"DELETE FROM body_metrics"`, so the
+  // blind sweep this whole issue removed — replanted in the reconcile's own module, the
+  // one place it would look at home — was found by the scan and then silently allowed.
+  it("FLAGS a blind sweep replanted in the RECONCILE's own module", () => {
+    const planted = `db.prepare(\`DELETE FROM body_metrics WHERE profile_id = ? AND date >= ?\`).run(p, cutoff);`;
+    const found = scanFile(
+      "lib/integrations/ingest-timezone-reconcile.ts",
+      planted
+    );
+    expect(found).toHaveLength(1);
+    expect(allowed(found[0])).toBe(false);
+    // …while the statement that module really runs is allowed, so this is exactness and
+    // not a file-level ban.
+    const real = scanFile(
+      "lib/integrations/ingest-timezone-reconcile.ts",
+      `db.prepare(\`DELETE FROM body_metrics
+          WHERE profile_id = ? AND date = ? AND source IS ?\`);`
+    );
+    expect(real).toHaveLength(1);
+    expect(allowed(real[0])).toBe(true);
+  });
+
+  it("FLAGS a statement that merely EXTENDS an allowlisted one", () => {
+    // The other half of "exact, not a prefix": appending a clause is a new statement and
+    // comes back for review.
+    const found = scanFile(
+      "lib/integrations/ingest-timezone-reconcile.ts",
+      `db.prepare("DELETE FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? OR 1 = 1");`
+    );
+    expect(found).toHaveLength(1);
+    expect(allowed(found[0])).toBe(false);
   });
 
   it("FLAGS the same statement inside a file that IS allowlisted, when the SQL differs", () => {

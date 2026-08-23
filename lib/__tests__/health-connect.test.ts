@@ -92,20 +92,21 @@ describe("parseHealthConnectPayload — body metrics", () => {
     });
     // The oldest day of a multi-day window is flagged partial (#606); it only guards
     // the averaged fields on upsert, so weight is unaffected (still last-of-day wins).
-    // `measured_at` is the LATEST instant that contributed to each day, which is also
-    // the instant the winning weight came from. It is what the ingest reconcile asks the
-    // day arithmetic about and what lands in `body_metrics.occurred_at` (#3524).
+    // Each measure carries ITS OWN instant (#3524) — here the instant of the weight
+    // that won its day, not of the day's latest reading of any kind. The ingest reconcile
+    // asks the day arithmetic one measure at a time, so a stamp that belonged to a
+    // different measure would re-key the wrong thing.
     expect(out.bodyMetrics).toEqual([
       {
         date: "2026-06-15",
         partial_day: true,
         weight_kg: 81,
-        measured_at: "2026-06-15T20:00:00Z",
+        weight_at: "2026-06-15T20:00:00Z",
       },
       {
         date: "2026-06-16",
         weight_kg: 82,
-        measured_at: "2026-06-16T08:00:00Z",
+        weight_at: "2026-06-16T08:00:00Z",
       },
     ]);
   });
@@ -134,8 +135,13 @@ describe("parseHealthConnectPayload — body metrics", () => {
         weight_kg: 80,
         body_fat_pct: 18.5,
         resting_hr: 59,
-        // Three readings, one row, and the stamp is the latest of the three.
-        measured_at: "2026-06-15T08:00:00Z",
+        // Three readings, one row, THREE stamps. The 07:00 weigh-in keeps 07:00 — the
+        // conflation this replaces would have called it 08:00, which is how an earlier
+        // draft of the reconcile came to destroy a weigh-in while re-keying a
+        // resting-HR reading (#3524).
+        weight_at: "2026-06-15T07:00:00Z",
+        body_fat_at: "2026-06-15T08:00:00Z",
+        resting_hr_at: "2026-06-15T08:00:00Z",
       },
     ]);
     expect(
@@ -158,7 +164,10 @@ describe("parseHealthConnectPayload — body metrics", () => {
         date: "2026-06-16",
         body_fat_pct: 20,
         resting_hr: 62,
-        measured_at: "2026-06-16T08:00:00Z",
+        body_fat_at: "2026-06-16T08:00:00Z",
+        // The LATEST reading that contributed to the average, for the two measures that
+        // ARE averaged — the day's resting HR is 06:00 and 07:00 folded together.
+        resting_hr_at: "2026-06-16T07:00:00Z",
       },
     ]);
   });
@@ -191,7 +200,7 @@ describe("parseHealthConnectPayload — body metrics", () => {
       {
         date: "2026-06-16",
         resting_hr: 62,
-        measured_at: "2026-06-16T21:00:00Z",
+        resting_hr_at: "2026-06-16T21:00:00Z",
       },
     ]);
   });
@@ -892,7 +901,7 @@ describe("parseHealthConnectPayload — timezone attribution", () => {
       {
         date: "2026-06-16",
         weight_kg: 80,
-        measured_at: "2026-06-15T23:30:00Z",
+        weight_at: "2026-06-15T23:30:00Z",
       },
     ]);
     expect(tokyo.activities[0].date).toBe("2026-06-16");
@@ -904,7 +913,7 @@ describe("parseHealthConnectPayload — timezone attribution", () => {
       {
         date: "2026-06-15",
         weight_kg: 80,
-        measured_at: "2026-06-15T23:30:00Z",
+        weight_at: "2026-06-15T23:30:00Z",
       },
     ]);
     expect(ny.activities[0].date).toBe("2026-06-15");
@@ -955,7 +964,7 @@ describe("parseHealthConnectPayload — plausibility bounds (#132)", () => {
       {
         date: "2026-06-16",
         weight_kg: 80,
-        measured_at: "2026-06-16T08:00:00Z",
+        weight_at: "2026-06-16T08:00:00Z",
       },
     ]);
     expect(out.skipped).toBe(1);

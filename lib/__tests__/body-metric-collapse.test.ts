@@ -23,16 +23,8 @@ describe("collapseBodyMetricsByDate (#605)", () => {
   it("keeps the latest reading regardless of input order", () => {
     const forward = collapseBodyMetricsByDate([early, late]);
     const reverse = collapseBodyMetricsByDate([late, early]);
-    // `measured_at` survives the collapse as the LATEST instant in the group — it is
-    // the instant the winning weight came from, and `upsertBodyMetrics` persists it as
-    // `body_metrics.occurred_at` (#3524). Dropping it here was invisible while nothing
-    // persisted it.
     expect(forward).toEqual([
-      {
-        date: "2024-05-01",
-        weight_kg: toKg(76.1, "kg"),
-        measured_at: "2024-05-01T22:00:00Z",
-      },
+      { date: "2024-05-01", weight_kg: toKg(76.1, "kg") },
     ]);
     // Order-independent: the newest-first order Withings returns yields the same value.
     expect(reverse).toEqual(forward);
@@ -62,7 +54,6 @@ describe("collapseBodyMetricsByDate (#605)", () => {
         weight_kg: toKg(79.5, "kg"),
         body_fat_pct: 18,
         resting_hr: 55,
-        measured_at: "2024-05-02T21:00:00Z",
       },
     ]);
   });
