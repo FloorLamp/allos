@@ -88,6 +88,16 @@ export const TREND_METRIC_SLUGS = [
 ] as const;
 export type TrendMetricSlug = (typeof TREND_METRIC_SLUGS)[number];
 
+// Turn the Body census's gathered series into registry order. Requiring a complete
+// Record is the compile-time half of the census contract: adding a registered metric
+// cannot leave the sole census/picker unaware of it, as peak flow and waist once
+// were after the duplicate Starred grid retired (#3387).
+export function trendMetricCensusEntries<T>(
+  seriesBySlug: Record<TrendMetricSlug, T>
+): Array<[TrendMetricSlug, T]> {
+  return TREND_METRIC_SLUGS.map((slug) => [slug, seriesBySlug[slug]]);
+}
+
 // Which quick-add form the detail page offers (null → an integration-synced metric
 // with no manual entry, e.g. steps/HR/BMI). Since #1486 there is exactly ONE manual
 // form — the combined "Log measurements" — so this is a boolean-shaped union kept as

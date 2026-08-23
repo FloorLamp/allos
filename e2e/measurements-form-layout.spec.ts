@@ -279,7 +279,7 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
   test.slow();
   clearTodayManualBodyRow();
   try {
-    await page.goto("/trends");
+    await page.goto("/trends?view=tiles");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
@@ -361,7 +361,7 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
     const { zone } = pinnedTimezone(frozenNow().toISOString());
     expect(frozenLocalHHMM(zone).slice(0, 2)).toBe("13");
 
-    await page.goto("/trends");
+    await page.goto("/trends?view=tiles");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();

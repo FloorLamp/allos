@@ -21,8 +21,9 @@ import { expandTrendsContext } from "./trends-chrome";
 //   • The bar rides the shell chrome. A sticky strip that did NOT hide with the
 //     navbar would permanently spend the band F just reclaimed.
 //   • The heading is gone below `sm` but still in the accessibility tree.
-//   • The first chart sits inside the arc's ~400px target — the number the whole
-//     wave is measured against.
+//   • The first Overview content sits inside the arc's ~400px target, and the first
+//     census chart remains in the initial viewport after #3387 put the conditional
+//     movers digest ahead of it.
 //
 // Fixture (#868 hygiene): READ-ONLY over the shared seed. Every test navigates and
 // toggles client state; nothing is written and no shared-seed row is exact-counted,
@@ -350,14 +351,19 @@ test.describe("the heading band is given up below sm (F)", () => {
     await expect(page.getByText("Your analytics lens —")).toBeHidden();
   });
 
-  test("the first chart clears the wave's ~400px target", async ({ page }) => {
+  test("the first Overview content clears the wave's ~400px target", async ({
+    page,
+  }) => {
     // The arc's acceptance number (#1485). Measured, not asserted qualitatively:
     // the point of F is a specific band of chrome, and a regression that quietly
     // re-adds 130px would still pass "the tile is in the viewport".
     await page.goto("/trends");
+    const overviewLead = page.getByTestId("trending-digest");
+    await expect(overviewLead).toBeVisible();
+    const leadBox = await overviewLead.boundingBox();
     const tile = firstBodyTile(page); // first-ok: the census's topmost tile IS the measurement's subject
     await expect(tile).toBeVisible();
-    const box = await tile.boundingBox();
+    const tileBox = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px
     // this wave started from.
     //
@@ -365,10 +371,11 @@ test.describe("the heading band is given up below sm (F)", () => {
     // OTHER assertion a band above the content moves, and 130px of banner would
     // push a 300px offset to 430 without naming what arrived.
     expect(
-      box!.y,
-      `first chart offset on Trends → Overview; ` +
-        (await bandStory(page.getByTestId("shell-chrome"), tile))
+      leadBox!.y,
+      `first content offset on Trends → Overview; ` +
+        (await bandStory(page.getByTestId("shell-chrome"), overviewLead))
     ).toBeLessThan(430);
+    expect(tileBox!.y).toBeLessThan(844);
     await expect(tile).toBeInViewport();
   });
 });

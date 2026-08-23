@@ -50,6 +50,8 @@ import {
 import { dispWeight, fmtWeight, round } from "@/lib/units";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
+import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
 import { ordinalPercentile } from "@/lib/growth-format";
@@ -72,6 +74,7 @@ import {
   buildTrendMetricTile,
   savedMetricIdForTrendSlug,
   stableEmptyLast,
+  trendMetricCensusEntries,
   type TrendMetricSlug,
   type TrendMetricTile,
   type CheckInMetricSlug,
@@ -287,6 +290,14 @@ export default async function BodySection({
       value: Math.round(d.value),
     })
   );
+  const peakFlowAll = getMetricDailyTotals(
+    profile.id,
+    PEAK_FLOW_METRIC,
+    ALL_ROWS
+  ).map((d) => ({
+    date: d.date,
+    value: Math.round(d.value),
+  }));
   const stepsAll = getMetricDailyTotals(profile.id, "steps", ALL_ROWS).map(
     (r) => ({
       date: r.date,
@@ -317,6 +328,7 @@ export default async function BodySection({
   const spo2Chart = filterSeriesByRange(spo2All, range);
   const respiratoryChart = filterSeriesByRange(respiratoryAll, range);
   const hrvChart = filterSeriesByRange(hrvAll, range);
+  const peakFlowChart = filterSeriesByRange(peakFlowAll, range);
   const skinTempChart = filterSeriesByRange(skinTempAll, range);
 
   // Age drives chart MEMBERSHIP: for a growth-tracked profile the tab charts height
@@ -392,6 +404,15 @@ export default async function BodySection({
     value: round(r.value, 1),
   }));
   const headCircChart = filterSeriesByRange(headCircAll, range);
+  const waistCircAll = getMetricDailyTotals(
+    profile.id,
+    WAIST_CIRC_METRIC,
+    ALL_ROWS
+  ).map((r) => ({
+    date: r.date,
+    value: round(r.value, 1),
+  }));
+  const waistCircChart = filterSeriesByRange(waistCircAll, range);
 
   // Event annotations (medication start/stop, appointments, situation changes)
   // windowed to the shared range — ONE set drives every chart in BOTH sections via
@@ -557,6 +578,17 @@ export default async function BodySection({
       data: hrvChart,
       unit: " ms",
       color: chartSeries.amber,
+    });
+  }
+  if (peakFlowAll.length > 0) {
+    vitalsCharts.push({
+      key: "peak-flow",
+      testid: "vitals-peak-flow",
+      detailHref: metricDetailHref("peak-flow"),
+      title: TREND_METRIC_META["peak-flow"].title,
+      data: peakFlowChart,
+      unit: TREND_METRIC_META["peak-flow"].unit,
+      color: TREND_METRIC_META["peak-flow"].color,
     });
   }
   if (skinTempAll.length > 0) {
@@ -799,9 +831,22 @@ export default async function BodySection({
   // growth-tracked profile the life-stage signal lifts height/head-circ above
   // weight there, which is the pediatric layout the plan used to encode
   // positionally.
-  const compositionCharts: TrendChartSpec[] = plan.keys
-    .filter((k) => k !== "resting_hr")
-    .map((k) => chartByKey[k]);
+  const compositionCharts: TrendChartSpec[] = [
+    ...plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
+    ...(waistCircAll.length > 0
+      ? [
+          {
+            key: "waist-circ",
+            testid: "body-chart-waist-circ",
+            detailHref: metricDetailHref("waist-circ"),
+            title: TREND_METRIC_META["waist-circ"].title,
+            data: waistCircChart,
+            unit: TREND_METRIC_META["waist-circ"].unit,
+            color: TREND_METRIC_META["waist-circ"].color,
+          },
+        ]
+      : []),
+  ];
 
   // Pediatric growth percentiles — returns null unless the profile has a known sex +
   // birthdate and is in chart range. Age-based, so it isn't windowed by the shared
@@ -1446,33 +1491,35 @@ export default async function BodySection({
   // `view=tiles` and `view=all` are two renderings of one metric set — not two
   // different sets. Body fat is dropped for a growth-tracked profile (matching the
   // charts/history); every other metric self-gates on presence.
-  const tileSeries: Array<[TrendMetricSlug, Point[]]> = [
-    ["systolic", systolicAll],
-    ["diastolic", diastolicAll],
-    ["spo2", spo2All],
-    ["respiratory-rate", respiratoryAll],
-    ["resting-hr", restingHrAll],
-    ["hrv", hrvAll],
-    ["skin-temp", skinTempAll],
-    ["temperature", temperatureAll],
-    ["weight", weightAll],
-    ["body-fat", bodyFatAll],
-    ["height", heightAll],
-    ["head-circ", headCircAll],
-    ["sun", sun],
-    ["steps", stepsAll],
-    ["active-calories", activeCaloriesAll],
-    ["hr", hrAll],
-    ["bmi", bmiAll],
-    ["lean-mass", leanMassAll],
-    ["bone-mass", boneMassAll],
-    ["bmr", bmrAll],
-    ["hydration", hydrationAll],
-    ["calories", caloriesAll],
-    ["mood", moodAll],
-    ["energy", energyAll],
-    ["calm", calmAll],
-  ];
+  const tileSeries = trendMetricCensusEntries<Point[]>({
+    systolic: systolicAll,
+    diastolic: diastolicAll,
+    spo2: spo2All,
+    "respiratory-rate": respiratoryAll,
+    hrv: hrvAll,
+    "peak-flow": peakFlowAll,
+    temperature: temperatureAll,
+    "skin-temp": skinTempAll,
+    weight: weightAll,
+    "body-fat": bodyFatAll,
+    "resting-hr": restingHrAll,
+    height: heightAll,
+    "head-circ": headCircAll,
+    "waist-circ": waistCircAll,
+    sun,
+    steps: stepsAll,
+    "active-calories": activeCaloriesAll,
+    hr: hrAll,
+    bmi: bmiAll,
+    "lean-mass": leanMassAll,
+    "bone-mass": boneMassAll,
+    bmr: bmrAll,
+    hydration: hydrationAll,
+    calories: caloriesAll,
+    mood: moodAll,
+    energy: energyAll,
+    calm: calmAll,
+  });
   const savedCards = new Set(pins);
   const plannedComposition = new Set<TrendMetricSlug>(
     plan.keys.flatMap((key) =>

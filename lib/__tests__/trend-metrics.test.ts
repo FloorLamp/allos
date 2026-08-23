@@ -14,6 +14,7 @@ import {
   collapseCoincidentPeriods,
   seriesCoverageNote,
   trendMetricChartScale,
+  trendMetricCensusEntries,
   type OrderableTile,
 } from "@/lib/trend-metrics";
 
@@ -26,6 +27,17 @@ describe("TREND_METRIC_META registry", () => {
       const meta = TREND_METRIC_META[slug];
       expect(meta.slug).toBe(slug);
     }
+  });
+
+  it("drives the complete Body census from the registered metric set (#3387)", () => {
+    const gathered = Object.fromEntries(
+      TREND_METRIC_SLUGS.map((slug) => [slug, slug])
+    ) as Record<(typeof TREND_METRIC_SLUGS)[number], string>;
+    const census = trendMetricCensusEntries(gathered);
+
+    expect(census.map(([slug]) => slug)).toEqual(TREND_METRIC_SLUGS);
+    expect(census).toContainEqual(["peak-flow", "peak-flow"]);
+    expect(census).toContainEqual(["waist-circ", "waist-circ"]);
   });
 
   it("only weight carries the login weight-unit suffix; others are static", () => {
