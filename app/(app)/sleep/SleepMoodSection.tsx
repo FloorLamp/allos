@@ -13,7 +13,7 @@ import { HISTORY_PAGE_SIZE, pageCount as countPages } from "@/lib/pagination";
 import ScatterChartCard from "@/components/ScatterChartCard";
 import ScrollFade from "@/components/ScrollFade";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
-import { CARD_MODE_ONLY } from "@/lib/card-row";
+import { CARD_MODE_ONLY, CARD_MODE_TABLE_ONLY } from "@/lib/card-row";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -270,9 +270,10 @@ export default function SleepMoodSection({
                         >
                           {/* The short date is the CARD's date: below the
                               card-mode boundary the row is a standalone card and
-                              a long date would eat the line. Its `hidden sm:inline`
-                              twin is the table's. CARD_MODE_ONLY (lib/card-row.ts)
-                              so the card half inherits the boundary (#3457). */}
+                              a long date would eat the line. The table's twin is
+                              the other half of the SAME fold, so both take the
+                              boundary from lib/card-row.ts — CARD_MODE_ONLY below
+                              it, CARD_MODE_TABLE_ONLY above (#3457, #3620). */}
                           <span
                             className={CARD_MODE_ONLY}
                             data-testid="sleep-history-date-short"
@@ -280,7 +281,7 @@ export default function SleepMoodSection({
                             {formatMonthDay(row.date, formatPrefs)}
                           </span>
                           <span
-                            className="hidden sm:inline"
+                            className={CARD_MODE_TABLE_ONLY.inline}
                             data-testid="sleep-history-date-long"
                           >
                             {formatLongDate(row.date, formatPrefs)}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // Static consistency guard for the sidebar ↔ App-Router routes, in the same
 // "pure" spirit as profile-scoping.test.ts: it reads the repo's own source as
@@ -105,13 +106,6 @@ const DUE_SIGNAL_SOURCES = [
   ["lib", "preventive-concept-map.ts"],
   ["lib", "care-plan-upcoming.ts"],
 ].map((parts) => path.join(REPO, ...parts));
-
-// Strip comments so a route mentioned in prose (e.g. "the old `/medical` target
-// was removed") doesn't register as a link target. Coarse but sufficient here:
-// none of the scanned sources embed `//` or `/*` inside string literals.
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 // Every `/`-rooted string literal (double-quoted or template) in a due-signal
 // source, reduced to its static path: query/hash and template expressions are

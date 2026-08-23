@@ -32,6 +32,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ONE_TAP_AFFORDANCES } from "@/lib/one-tap";
 import { REPO, relPath } from "./sql-scan";
+import { stripComments } from "./strip-comments";
 
 // The tap surfaces live in components/ and app/ — a wider net than sql-scan's
 // server-side sourceFiles(), because one-tap affordances are client components.
@@ -57,10 +58,6 @@ function tapSurfaceFiles(): string[] {
     // The hook's own definition is not a call site.
     return rel !== "components/useOptimisticLedger.ts";
   });
-}
-
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
 interface CallSite {

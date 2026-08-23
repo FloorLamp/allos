@@ -22,11 +22,11 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { buildRepoIndex } from "./reconcile-repo-index";
 import {
   gatherEvidence,
   renderReport,
   resolveRunConfig,
-  type RepoIndex,
   type ReconcileWatermark,
   type RunConfig,
   type TrackerIssue,
@@ -74,41 +74,6 @@ function ghGetAll(config: RunConfig, pathAndQuery: string): unknown[] {
     if (batch.length < 100) break;
   }
   return out;
-}
-
-/**
- * The repository as data. Contents are read lazily and memoized: a sweep opens
- * a few hundred of ~3,000 tracked files, and reading them all up front is
- * seconds of work for nothing.
- */
-function buildRepoIndex(root: string): RepoIndex {
-  const files = execFileSync("git", ["ls-files"], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split("\n")
-    .filter(Boolean);
-  const cache = new Map<string, string | null>();
-  return {
-    files,
-    read(file: string): string | null {
-      const hit = cache.get(file);
-      if (hit !== undefined) return hit;
-      let text: string | null = null;
-      try {
-        const stat = fs.statSync(path.join(root, file));
-        // A binary blob has nothing to anchor and would only slow the scan.
-        if (stat.isFile() && stat.size < 4 * 1024 * 1024) {
-          text = fs.readFileSync(path.join(root, file), "utf8");
-        }
-      } catch {
-        text = null;
-      }
-      cache.set(file, text);
-      return text;
-    },
-  };
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // Static hygiene guard for the e2e suite (issue #868, fix a) — the #448 /
 // telegram-chokepoint source-scan pattern applied to Playwright specs. It reads
@@ -656,6 +657,38 @@ function countMatches(text: string, re: RegExp): number {
   return (text.match(re) ?? []).length;
 }
 
+/**
+ * The text a frequency count is taken over: escape-marked lines dropped, then
+ * comments BLANKED (#3621).
+ *
+ * MARKER FIRST, COMMENTS SECOND, AND THE ORDER IS THE WHOLE POINT. The
+ * `first-ok:`/`topass-ok:` escape lives IN a comment, so blanking before filtering
+ * would delete the escape and re-flag every reviewed line.
+ *
+ * WHY BLANK AT ALL. These are counts over raw text, so a sentence EXPLAINING a
+ * banned call counted as one: a spec that documents why it reaches for `.first()`
+ * was itself an unmarked offender, and the fix everyone reaches for is to reword
+ * the prose — which is the wrong fix twice over (#3621). Blanked in place rather
+ * than deleted, so counts stay comparable and any line number derived from this
+ * text still points at the real line. It lives INSIDE the scanner, not at the call
+ * site, so the next pattern added here cannot forget it.
+ *
+ * STRING LITERALS SURVIVE, deliberately. A locator built from a string is a call
+ * site, not prose.
+ */
+export function hygieneScanText(
+  text: string,
+  excludeLineMarker?: string
+): string {
+  const kept = excludeLineMarker
+    ? text
+        .split("\n")
+        .filter((line) => !line.includes(excludeLineMarker))
+        .join("\n")
+    : text;
+  return stripComments(kept);
+}
+
 function checkPattern(
   label: string,
   re: RegExp,
@@ -678,14 +711,10 @@ function checkPattern(
       `see docs/internals/e2e-hygiene.md.`;
 
   for (const { name, text } of files) {
-    const marker = opts?.excludeLineMarker;
-    const scanText = marker
-      ? text
-          .split("\n")
-          .filter((line) => !line.includes(marker))
-          .join("\n")
-      : text;
-    const count = countMatches(scanText, re);
+    const count = countMatches(
+      hygieneScanText(text, opts?.excludeLineMarker),
+      re
+    );
     const allowed = allow[name] ?? 0;
     seen.add(name);
     if (count > allowed) {
@@ -713,6 +742,67 @@ function checkPattern(
 
   expect(violations, violations.join("\n")).toEqual([]);
 }
+
+// ── WHAT THE FREQUENCY COUNTS CAN AND CANNOT SEE (#3621) ────────────────────
+//
+// Every count above is green over a tree that already complies, which says nothing
+// about what it can see. These run the preparation step over sources authored to
+// break it — the offender, the prose that must NOT be one, the reviewed escape, and
+// the string literal that must still count.
+//
+// PROSE WAS THE LIVE DEFECT AND IT FAILED TOWARD RED, which is why it stayed latent:
+// a spec explaining why it reached for a banned call became an unmarked offender,
+// and the obvious fix — rewording the sentence — is one this repo has correctly
+// refused twice. Handed to the function rather than planted in `e2e/`, because that
+// directory is the corpus this same file walks and several other guards walk it too.
+describe("the hygiene counts read code, not prose (#3621)", () => {
+  const count = (text: string, marker?: string): number =>
+    countMatches(hygieneScanText(text, marker), FIRST_RE);
+
+  it("counts a real call", () => {
+    expect(count('await page.getByRole("row").first().click();\n')).toBe(1);
+  });
+
+  it("does not count a line comment explaining one", () => {
+    expect(
+      count(
+        "// The list is spec-owned, so .first() would be safe here — we still\n" +
+          "// target the planted marker instead.\n" +
+          'await page.getByTestId("planted-row").click();\n'
+      )
+    ).toBe(0);
+  });
+
+  it("does not count a block comment or a JSDoc explaining one", () => {
+    expect(
+      count(
+        "/**\n * Why not .first(): the surface is seeded by two profiles.\n */\n" +
+          'await page.getByTestId("planted-row").click();\n'
+      )
+    ).toBe(0);
+  });
+
+  it("still honours the reviewed same-line escape", () => {
+    expect(
+      count(
+        "await owned.first().click(); // first-ok: fixture planted in this spec\n",
+        "first-ok:"
+      )
+    ).toBe(0);
+  });
+
+  it("still counts one inside a string, which is a call site and not prose", () => {
+    // The scanner preserves string and template contents verbatim; a locator
+    // assembled as text is still a locator.
+    expect(count('const sel = "row.first()";\n')).toBe(1);
+  });
+
+  it("counts a call that a comment shares a line with", () => {
+    expect(
+      count("await rows.first().click(); // the fold is spec-owned\n")
+    ).toBe(1);
+  });
+});
 
 describe("e2e suite hygiene guard (issue #868)", () => {
   it('no NEW waitForLoadState("networkidle") in an e2e/*.ts (use e2e/helpers.ts)', () => {

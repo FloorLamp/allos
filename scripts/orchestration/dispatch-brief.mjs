@@ -246,17 +246,26 @@ const RESERVED_PORT_REASON = (base) =>
 // ledger; nothing complained, and the two would have shared a range had the first
 // lane's agent still been alive. A caller who supplies the answer never asks the
 // question — so ask it of the answer.
-export function portBaseCollision(base, active) {
-  const clash = active.find((d) => d.portBase === base);
+// `ignoreBranch` is the dispatch being built, and it is not optional. `brief`
+// REPRINTS a live dispatch with its own stored base, so without this a reprint
+// collides with itself and refuses — which is what happened the first time this
+// guard fired for real (2026-08-23, `brief intake-purposes-and-catalog`). A guard
+// whose first genuine firing is a false positive against a legitimate operation is
+// the shape that gets routed around within the hour, so the exclusion lives in the
+// predicate rather than at one call site.
+export function portBaseCollision(base, active, ignoreBranch) {
+  const clash = active.find(
+    (d) => d.portBase === base && d.branch !== ignoreBranch
+  );
   return clash
     ? `port base ${base} is already held by the active dispatch ${clash.branch}`
     : null;
 }
 
-function allocatePortBase(active) {
+function allocatePortBase(active, opts = {}) {
   for (let base = 5400; base < 9000; base += 200) {
     if (RESERVED_PORT_REASON(base)) continue;
-    if (!portBaseCollision(base, active)) return base;
+    if (!portBaseCollision(base, active, opts.branch)) return base;
   }
   throw new Error(
     "no free E2E port range — close finished dispatches with `done <branch>`"
@@ -290,14 +299,15 @@ function buildBrief(opts) {
       `${reserved}. Drop --port-base to let the allocator pick, or choose one outside that band.`
     );
   }
-  const collision = opts.portBase && portBaseCollision(opts.portBase, active);
+  const collision =
+    opts.portBase && portBaseCollision(opts.portBase, active, opts.branch);
   if (collision) {
     throw new Error(
       `${collision}. Drop --port-base to let the allocator pick, or close that ` +
-        `dispatch first with \`done ${opts.portBase && active.find((d) => d.portBase === opts.portBase).branch}\`.`
+        `dispatch first with \`done ${active.find((d) => d.portBase === opts.portBase && d.branch !== opts.branch).branch}\`.`
     );
   }
-  const portBase = opts.portBase ?? allocatePortBase(active);
+  const portBase = opts.portBase ?? allocatePortBase(active, opts);
 
   // A WORKTREE PATH BELONGS TO ONE DISPATCH, FOREVER — retired ones included.
   // Reusing a retired dispatch's path couples two lanes to one directory, and the
