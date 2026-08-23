@@ -292,14 +292,18 @@ describe("summarizeTrends — news admission (#3389)", () => {
     });
   });
 
-  it("rejects a steady multi-month slope even when its endpoint move clears 5%", () => {
-    const steady = valueSeries(
-      "steady",
-      [100, 102, 104, 106, 108, 110, 112, 114]
-    );
-    expect(robustSeriesSummary(steady)?.material).toBe(true);
-    expect(summarizeTrends([steady])).toEqual([]);
-  });
+  it.each([4, 5, 6, 7, 8, 9, 10, 12])(
+    "rejects a steady slope at %i points even when its endpoint move is material",
+    (count) => {
+      const steady = valueSeries(
+        `steady-${count}`,
+        Array.from({ length: count }, (_, i) => 100 + i * 2),
+        { minPctChange: 0.01 }
+      );
+      expect(robustSeriesSummary(steady)?.material).toBe(true);
+      expect(summarizeTrends([steady])).toEqual([]);
+    }
+  );
 
   it("admits a within-window sign flip and names the changed behavior", () => {
     const flipped = valueSeries(
@@ -363,9 +367,39 @@ describe("summarizeTrends — stored notability verdict (#3389)", () => {
       ).toBe(true);
       expect(item.rangeShift).toBe("out-of-range");
       expect(item.admissionReason).toBe("range-crossing");
+      expect(item.storedFlagTone).toBe("warn");
       expect(item.text).toContain(label);
     }
   );
+
+  it.each(["non-optimal", "reported-high"])(
+    "admits an equal-value normal→%s transition without inventing a direction",
+    (lastFlag) => {
+      const unchanged = series("result:Example", 90, 90, {
+        label: "Example",
+        endpointFlags: { first: "normal", last: lastFlag },
+      });
+      const [item] = summarizeTrends([unchanged]);
+
+      expect(robustSeriesSummary(unchanged)?.direction).toBe("flat");
+      expect(item).toMatchObject({
+        direction: "flat",
+        rangeShift: "out-of-range",
+        admissionReason: "range-crossing",
+        storedFlagTone: "warn",
+      });
+      expect(item.text).not.toMatch(/[↑↓]/);
+    }
+  );
+
+  it("keeps an app out-of-range stored transition in the bad tone tier", () => {
+    const [item] = summarizeTrends([
+      series("result:Example", 90, 110, {
+        endpointFlags: { first: "normal", last: "high" },
+      }),
+    ]);
+    expect(item.storedFlagTone).toBe("bad");
+  });
 
   it("does not invent a crossing from plain bounds when stored flags stay non-notable", () => {
     const normal = series("result:Example", 90, 110, {

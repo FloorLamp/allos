@@ -137,6 +137,12 @@ describe("trendItemToFinding", () => {
     });
   });
 
+  it("gives a directionless stored transition its own stable dismissal key", () => {
+    expect(digestDedupeKey({ key: "result:LDL", direction: "flat" })).toBe(
+      "digest:result:LDL:flat"
+    );
+  });
+
   it("marks a return into range as positive, a plain move as neutral", () => {
     expect(
       trendItemToFinding({

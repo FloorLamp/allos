@@ -33,7 +33,7 @@ const ALLOWLIST = new Map<string, string>([
     "NOTICE_TONE 'slate' tone — the Notice primitive's tone map (tinted-tone family)",
   ],
   [
-    "app/(app)/trends/TrendingDigest.tsx",
+    "components/TrendDigestChip.tsx",
     "neutral trend-chip tone — sibling to the rose/emerald tinted tones in the same tone map",
   ],
   // (The Results → Clinical results trajectory watch used to carry its own copy of the

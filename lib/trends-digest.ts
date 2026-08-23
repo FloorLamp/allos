@@ -17,9 +17,12 @@
 import {
   daysBetween,
   flagLabel,
+  flagTone,
   isNotableFlag,
   referenceStatus,
+  type FlagTone,
 } from "./reference-range";
+import { clinicalResultBecameNotable } from "./dashboard-reading-promotions";
 import {
   median,
   medianAbsoluteDeviation,
@@ -28,10 +31,10 @@ import {
 } from "./robust-stats";
 import { round } from "./units";
 
-// A level shift must exceed four times the noisier half's MAD. Four is the exact
-// ratio between the half medians and within-half MAD of a steady linear ramp, so
-// the strict comparison rejects a months-long steady slope while admitting a step
-// between two otherwise stable levels.
+// After removing the steady slope already present inside both halves, a level
+// shift must exceed four times the noisier half's MAD. The strict comparison
+// admits a step between otherwise stable levels while rejecting ordinary residual
+// variation; detrending is what makes that answer independent of sample count.
 export const DIGEST_DISPERSION_MULTIPLIER = 4;
 
 // A same-direction behavior change must at least double the fitted slope, and the
@@ -74,7 +77,9 @@ export type TrendAdmissionReason =
 export interface TrendItem {
   key: string;
   label: string;
-  direction: "up" | "down";
+  // A stored clinical verdict can change while the recorded numeric value stays
+  // equal. That is still news, but it has no honest numeric arrow.
+  direction: "up" | "down" | "flat";
   // Robust endpoint VALUES (#37): the median of the first k / last k readings, not
   // the literal first/last points. For 2–3 point series these are the raw
   // first/last values.
@@ -88,6 +93,11 @@ export interface TrendItem {
   count: number;
   rangeShift: RangeShift;
   admissionReason: TrendAdmissionReason;
+  // The source-of-truth tone of the latest STORED clinical flag. This stays
+  // separate from `rangeShift`: the latter ranks a newly notable result, while
+  // this distinguishes an app out-of-range verdict (`bad`) from an optimal-band
+  // or lab-reported verdict (`warn`) at the display boundary.
+  storedFlagTone?: FlagTone;
   // Where the LATEST value sits vs the range ("above" / "below" / "in"), when a
   // range was supplied — drives the "into high/low range" phrasing.
   lastStatus: "above" | "below" | "in" | "unknown";
@@ -150,6 +160,7 @@ interface DigestShift {
   shift: RangeShift;
   lastStatus: TrendItem["lastStatus"];
   storedFlag: string | null | undefined;
+  storedFlagTone: FlagTone | undefined;
 }
 
 // Stored clinical flags are already the shared domain verdict used by dashboard
@@ -168,6 +179,7 @@ function classifyDigestShift(
     return {
       ...classifyShift(first, last, series.range),
       storedFlag: undefined,
+      storedFlagTone: undefined,
     };
   }
 
@@ -183,14 +195,14 @@ function classifyDigestShift(
           ? "unknown"
           : "in";
   return {
-    shift:
-      !firstNotable && lastNotable
-        ? "out-of-range"
-        : firstNotable && !lastNotable
-          ? "into-range"
-          : null,
+    shift: clinicalResultBecameNotable(flag, series.endpointFlags.first)
+      ? "out-of-range"
+      : firstNotable && !lastNotable
+        ? "into-range"
+        : null,
     lastStatus,
     storedFlag: flag,
+    storedFlagTone: flagTone(flag),
   };
 }
 
@@ -223,16 +235,38 @@ function halfDispersion(
 }
 
 function dispersionShift(
-  leading: readonly { value: number }[],
-  trailing: readonly { value: number }[]
+  leading: readonly { date: string; value: number }[],
+  trailing: readonly { date: string; value: number }[]
 ): boolean {
   if (leading.length === 0 || trailing.length === 0) return false;
-  const change = Math.abs(
+  const observedChange =
     median(trailing.map(({ value }) => value)) -
-      median(leading.map(({ value }) => value))
-  );
+    median(leading.map(({ value }) => value));
+
+  // Remove the slope already present INSIDE both halves before asking whether
+  // their levels differ. A raw half-median gap grows with sample count even for
+  // a perfectly steady ramp (8 points happened to equal the 4×MAD floor; 10
+  // points exceeded it). The median of the two within-half Theil–Sen slopes is
+  // deliberately used instead of a fit over the whole window: cross-half pairs
+  // contain the very step this gate is meant to detect and would fit it away.
+  const leadingSlope = theilSenSlopePerDay(leading);
+  const trailingSlope = theilSenSlopePerDay(trailing);
+  let expectedChange = 0;
+  if (leadingSlope != null && trailingSlope != null) {
+    const origin = leading[0].date;
+    const leadingCenter = median(
+      leading.map(({ date }) => daysBetween(origin, date))
+    );
+    const trailingCenter = median(
+      trailing.map(({ date }) => daysBetween(origin, date))
+    );
+    expectedChange =
+      median([leadingSlope, trailingSlope]) * (trailingCenter - leadingCenter);
+  }
+  const detrendedChange = Math.abs(observedChange - expectedChange);
   return (
-    change > DIGEST_DISPERSION_MULTIPLIER * halfDispersion(leading, trailing)
+    detrendedChange >
+    DIGEST_DISPERSION_MULTIPLIER * halfDispersion(leading, trailing)
   );
 }
 
@@ -289,12 +323,13 @@ function buildText(
   verdict: NewsVerdict,
   storedFlag: string | null | undefined
 ): string {
-  const arrow = item.direction === "up" ? "↑" : "↓";
+  const arrow =
+    item.direction === "up" ? "↑" : item.direction === "down" ? "↓" : null;
   const mag =
     item.pctChange != null
       ? `${Math.round(Math.abs(item.pctChange) * 100)}%`
       : `${round(Math.abs(item.absChange), 1)}${unitSuffix}`;
-  const base = `${item.label} ${arrow} ${mag}`;
+  const base = arrow ? `${item.label} ${arrow} ${mag}` : item.label;
   if (item.rangeShift === "out-of-range") {
     if (storedFlag !== undefined) {
       return `${base} — ${flagLabel(storedFlag).toLowerCase()}`;
@@ -401,20 +436,20 @@ export function summarizeTrends(
     // Shared robust-endpoint core (#398): the SAME summary the Overview tile badge
     // renders, so the chip and the tile agree on first/last/delta and materiality.
     const summary = robustSeriesSummary(s, globalMinPct);
-    if (!summary || summary.direction === "flat") continue;
+    if (!summary) continue;
     const { first, last, absChange, pctChange } = summary;
-    const { shift, lastStatus, storedFlag } = classifyDigestShift(
-      first,
-      last,
-      s
-    );
+    const { shift, lastStatus, storedFlag, storedFlagTone } =
+      classifyDigestShift(first, last, s);
+    // A flat numeric summary stays flat for the shared TrendMiniCard. The digest
+    // only makes an exception when the stored clinical verdict itself crossed.
+    if (summary.direction === "flat" && shift == null) continue;
     // A stored notability transition is itself the shared clinical materiality
     // verdict. Otherwise preserve robustSeriesSummary's existing threshold gate.
     if (!summary.material && shift == null) continue;
     const verdict = newsVerdict(pts, shift);
     if (!verdict) continue;
 
-    const direction: "up" | "down" = absChange > 0 ? "up" : "down";
+    const direction = summary.direction;
     const days = daysBetween(pts[0].date, pts[pts.length - 1].date);
     const magnitude = scoreOf(pctChange, shift);
     const core: Omit<TrendItem, "text"> = {
@@ -429,6 +464,7 @@ export function summarizeTrends(
       count: pts.length,
       rangeShift: shift,
       admissionReason: verdict.reason,
+      storedFlagTone,
       lastStatus,
       magnitude,
     };

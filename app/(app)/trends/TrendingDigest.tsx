@@ -1,9 +1,5 @@
 import Link from "next/link";
-import {
-  IconArrowDownRight,
-  IconArrowUpRight,
-  IconX,
-} from "@tabler/icons-react";
+import { IconX } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -18,6 +14,7 @@ import { dismissDigest } from "./actions";
 import DigestOverflow from "./DigestOverflow";
 import { PRACTICE_DIGEST_PREFIX } from "@/lib/trends-practices";
 import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
+import TrendDigestChip from "@/components/TrendDigestChip";
 
 // How many ranked movers render inline before the "show all N" disclosure (#1455).
 const LEAD_CHIPS = 3;
@@ -65,30 +62,9 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
     return null;
   };
 
-  // A range crossing is what matters clinically, so color those; otherwise the
-  // chip is neutral (up/down alone isn't inherently good or bad across metrics).
-  const toneClass = (item: TrendItem): string => {
-    if (item.rangeShift === "out-of-range")
-      return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300";
-    if (item.rangeShift === "into-range")
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300";
-    return "border-slate-200 bg-surface text-slate-700 dark:border-white/10 dark:text-slate-200";
-  };
-
   const renderChip = (item: TrendItem) => {
     const href = hrefFor(item);
-    const Arrow =
-      item.direction === "up" ? IconArrowUpRight : IconArrowDownRight;
-    const inner = (
-      <span
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${toneClass(
-          item
-        )}`}
-      >
-        <Arrow className="h-3.5 w-3.5 shrink-0" stroke={2} />
-        {item.text}
-      </span>
-    );
+    const inner = <TrendDigestChip item={item} />;
     return (
       <span key={item.key} className="inline-flex items-center gap-1">
         {href ? (
