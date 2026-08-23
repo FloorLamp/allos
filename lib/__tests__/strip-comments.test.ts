@@ -379,8 +379,20 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/user-error-copy-census.ts",
   ] as const;
 
-  /** This census must quote the construct in order to look for it. */
-  const SELF = "lib/__tests__/strip-comments.test.ts";
+  /**
+   * The files that must hold the construct AS CODE in order to do their job, so
+   * comment-blanking cannot excuse them and they are named instead.
+   *
+   * This census quotes the retired pair in order to look for it.
+   * `scripts/strip-comments-equivalence.ts` RUNS it — that is the whole point of
+   * the instrument: it applies the old stripper and the new one to the same corpus
+   * and reports where they disagree, which is what makes a conversion a
+   * measurement (#3621). Two entries, both argued rather than tolerated.
+   */
+  const QUOTES_THE_CONSTRUCT = new Set([
+    "lib/__tests__/strip-comments.test.ts",
+    "scripts/strip-comments-equivalence.ts",
+  ]);
 
   const sources = (): { rel: string; code: string }[] =>
     execFileSync("git", ["ls-files", "-z", "--", ...CENSUS_ROOTS], {
@@ -401,7 +413,8 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     files
       .filter(
         ({ rel, code }) =>
-          rel !== SELF && HAND_ROLLED.some(([re]) => re.test(code))
+          !QUOTES_THE_CONSTRUCT.has(rel) &&
+          HAND_ROLLED.some(([re]) => re.test(code))
       )
       .map((f) => f.rel)
       .sort();

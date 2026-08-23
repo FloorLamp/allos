@@ -588,8 +588,9 @@ describe("card-mode boundary (#3457)", () => {
         restatements,
         "A card-mode consumer spells the boundary itself instead of importing it. " +
           "That is the second copy of a number that has to agree with " +
-          "app/globals.css and with every AC — import CARD_MODE_ONLY or " +
-          "CARD_MODE_ROW_STACK from lib/card-row.ts (#3457). Only the card-mode " +
+          "app/globals.css and with every AC — import CARD_MODE_ONLY, " +
+          "CARD_MODE_TABLE_ONLY or CARD_MODE_ROW_STACK from lib/card-row.ts " +
+          "(#3457, #3620). Only the card-mode " +
           "tier's own utilities are forbidden here: an unrelated responsive class " +
           "at any tier is styling and this guard says nothing about it (#3552).\n" +
           restatements.join("\n")
