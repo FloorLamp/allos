@@ -1,0 +1,168 @@
+{
+  "note": "Rendered chrome geometry, in CSS pixels, recorded by e2e/census-chrome-baseline.spec.ts. Regenerate with `npm run gen:census-baseline` and commit the diff — never hand-edit a number.",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 900
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "surfaces": [
+    {
+      "route": "/",
+      "viewport": "desktop",
+      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
+      "route": "/nutrition?tab=supplements",
+      "viewport": "desktop",
+      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
+      "route": "/settings",
+      "viewport": "desktop",
+      "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
+      "route": "/trends/metric/weight",
+      "viewport": "desktop",
+      "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
+      "route": "/wellness",
+      "viewport": "desktop",
+      "why": "A plain index page under the default gutters: the shell with nothing overriding it.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
+      "route": "/",
+      "viewport": "mobile",
+      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358
+      }
+    },
+    {
+      "route": "/nutrition?tab=supplements",
+      "viewport": "mobile",
+      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
+      "landmarks": {
+        "shellChromeHeight": 107,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 123,
+        "contentWidth": 358
+      }
+    },
+    {
+      "route": "/settings",
+      "viewport": "mobile",
+      "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358,
+        "pageTitleHeight": 28
+      }
+    },
+    {
+      "route": "/trends/metric/weight",
+      "viewport": "mobile",
+      "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358,
+        "pageTitleHeight": 28
+      }
+    },
+    {
+      "route": "/wellness",
+      "viewport": "mobile",
+      "why": "A plain index page under the default gutters: the shell with nothing overriding it.",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358,
+        "pageTitleHeight": 28
+      }
+    }
+  ]
+}

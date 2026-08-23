@@ -62,6 +62,7 @@
     "prepare": "husky",
     "gen:time-columns": "tsx scripts/gen-time-column-index.ts",
     "gen:e2e-durations": "tsx scripts/gen-e2e-durations.ts",
+    "gen:census-baseline": "CENSUS_BASELINE_REFRESH=1 playwright test census-chrome-baseline --workers=1",
     "gen:condition-training-considerations": "tsx scripts/gen-condition-training-considerations.ts"
   },
   "lint-staged": {
