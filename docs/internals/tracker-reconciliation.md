@@ -9,8 +9,8 @@ dependency an issue body states is a fact with an expiry date that nobody
 stamps. This is the loop that re-checks them.
 
 It is **factual reconciliation only**. It never closes an issue, never edits
-owner prose beyond factual status markers / cross-refs / path refreshes, and
-never changes scope or a decision. Judgment calls are FLAGGED, not made.
+owner prose beyond factual status markers / cross-refs / path refreshes /
+symbol refreshes, and never changes scope or a decision. Judgment calls are FLAGGED, not made.
 
 ## The pieces
 
@@ -18,7 +18,8 @@ never changes scope or a decision. Judgment calls are FLAGGED, not made.
 | ------------------------------------------------- | -------------------------------------------------------------------------- |
 | `scripts/orchestration/reconcile-tracker-core.ts` | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
 | `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock, watermark.   |
-| `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, three kinds wide, refuses by default.   |
+| `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, four kinds wide, refuses by default.    |
+| `scripts/orchestration/reconcile-repo-index.ts`   | The tracked-file list and lazy reads, shared by the scan and the applier.  |
 | `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
 | `scripts/orchestration/reconcile-labels.ts`       | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
 | `.claude/skills/reconcile-tracker/SKILL.md`       | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
@@ -152,10 +153,22 @@ is the majority and would bury the first.
   Absent ⇒ skip and flag. Present twice ⇒ skip and flag. No fuzzy fallback. A
   drifted anchor mangling owner prose is strictly worse than doing nothing, so
   the refusal is the feature, and it is tested directly.
-- **Three patch kinds, shape-checked.** `status-marker` moves between markers;
+- **Four patch kinds, shape-checked.** `status-marker` moves between markers;
   `cross-ref` may only APPEND a bounded `(see #N)` parenthetical, so it cannot
-  delete; `path-refresh` replacement must itself parse as a path. Naming the
+  delete; `path-refresh` replacement must itself parse as a path;
+  `symbol-refresh` must be a backticked identifier on both sides. Naming the
   right kind is not enough to smuggle a rewrite through.
+- **A symbol-refresh also asks the tree** (#3619). The other three kinds are
+  decidable from the body alone; a rename is a claim about `main`. So the kind
+  takes a resolver — the same `symbolExists` over the same `RepoIndex` the scan
+  used — and refuses three ways: without a resolver at all, when the
+  replacement does not resolve either (a rename to a name that also does not
+  exist), and when the OLD name still resolves (nothing expired, so there is
+  nothing to refresh). The backticks are the other half: a patch can only land
+  inside an inline code span, so a sentence *discussing* the rename is
+  unreachable by construction. A body that cites the symbol twice — once in
+  Refs and once inside a ruling, which is #3472's shape — refuses under the
+  anchor contract rather than making a stale decision read as validated.
 - **No close capability in the granted toolchain.** Not "the prompt says not
   to" — that is the same theatre as gating a Server Action in the UI only
   (#1279/#2107). The skill's `allowed-tools` grants no `issue_write`, no

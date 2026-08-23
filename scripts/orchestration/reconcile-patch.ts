@@ -5,11 +5,11 @@
 // being the worst thing in the repository: owner prose is not recoverable from
 // a diff nobody reads, and an issue is the only place some decisions are
 // written down. So the patcher is built to REFUSE. Its default answer is no,
-// its vocabulary is three kinds wide, and every kind is shape-constrained so
+// its vocabulary is four kinds wide, and every kind is shape-constrained so
 // that a malformed patch cannot express a prose edit even if someone asks for
 // one.
 //
-// Three rules, each enforced structurally rather than by review:
+// Four rules, each enforced structurally rather than by review:
 //
 //   1. ASSERTION-ANCHORED. A patch names the exact text it expects to find. Not
 //      found ⇒ the body drifted under us ⇒ SKIP and FLAG. Found more than once
@@ -18,15 +18,25 @@
 //      A drifted anchor mangling prose is strictly worse than a routine that
 //      does nothing at all, so the refusal is the feature.
 //
-//   2. THREE KINDS, NOTHING ELSE. `status-marker`, `cross-ref`, `path-refresh`
-//      — the factual-reconciliation vocabulary #865 allows. Scope, decisions,
-//      wording and judgment are out of range by TYPE, not by instruction.
+//   2. FOUR KINDS, NOTHING ELSE. `status-marker`, `cross-ref`, `path-refresh`,
+//      `symbol-refresh` — the factual-reconciliation vocabulary #865 allows.
+//      Scope, decisions, wording and judgment are out of range by TYPE, not by
+//      instruction.
 //
 //   3. THE REPLACEMENT'S SHAPE IS CHECKED, not just its content. A path-refresh
 //      replacement must parse as a path; a cross-ref replacement must CONTAIN
 //      the anchor verbatim (so it can only ever add, never delete); a status
-//      marker replacement must come from the marker vocabulary. Getting the
-//      kind right is therefore not enough to smuggle a rewrite through it.
+//      marker replacement must come from the marker vocabulary; a symbol-refresh
+//      must be a backticked identifier on BOTH sides. Getting the kind right is
+//      therefore not enough to smuggle a rewrite through it.
+//
+//   4. A SYMBOL-REFRESH ALSO ASKS THE TREE (#3619). The other three kinds are
+//      decidable from the body alone. A rename is not: "`a` is now called `b`"
+//      is a claim about main, and a plan that renames one absent name to another
+//      absent name is a typo the body cannot detect. So the kind takes a
+//      resolver and refuses without one — fail-closed, because a symbol-refresh
+//      applied with nothing to check against is exactly the patch that reads as
+//      verified and is not.
 //
 // What this module cannot do is as important as what it can. There is no issue
 // state here, no labels, no comments, no HTTP. It maps a body string to a body
@@ -34,7 +44,7 @@
 // `.claude/skills/reconcile-tracker/SKILL.md` and the capability scan in
 // `lib/__tests__/reconcile-tracker.test.ts`.
 
-/** The complete edit vocabulary. Adding a fourth is a product decision. */
+/** The complete edit vocabulary. Adding a FIFTH is a product decision. */
 export const PATCH_KINDS = [
   // A checkbox or roadmap glyph flipped to match shipped reality.
   "status-marker",
@@ -42,6 +52,8 @@ export const PATCH_KINDS = [
   "cross-ref",
   // A file path or `path:line` citation refreshed to where the file now is.
   "path-refresh",
+  // A backticked identifier citation refreshed to the name that replaced it.
+  "symbol-refresh",
 ] as const;
 
 export type PatchKind = (typeof PATCH_KINDS)[number];
@@ -56,6 +68,22 @@ export interface AnchoredPatch {
   reason: string;
 }
 
+/**
+ * What the tree says about an identifier. A `symbol-refresh` is the only kind
+ * whose correctness is not decidable from the issue body, so it is handed this
+ * rather than reaching for the filesystem itself — the module stays a pure
+ * body-to-body map and the caller stays the one holding the checkout.
+ *
+ * `scripts/orchestration/reconcile-apply.ts` builds it from the same
+ * `RepoIndex` + `symbolExists` pair the SCAN half uses, so the two halves
+ * cannot answer "does this name exist on main" differently.
+ */
+export type SymbolResolver = (symbol: string) => boolean;
+
+export interface PatchOptions {
+  resolveSymbol?: SymbolResolver;
+}
+
 export type PatchOutcome =
   | { ok: true; body: string }
   | { ok: false; refusal: PatchRefusal; detail: string };
@@ -66,7 +94,8 @@ export type PatchRefusal =
   | "empty-anchor"
   | "no-change"
   | "unknown-kind"
-  | "shape-rejected";
+  | "shape-rejected"
+  | "symbol-unresolvable";
 
 /**
  * The status markers a `status-marker` patch may write. Both directions are
@@ -96,6 +125,30 @@ const PATH_REFRESH_SHAPE =
   /^[A-Za-z0-9_@.\-/[\]()]+\.(?:ts|tsx|mjs|cjs|js|jsx|md|json|yml|yaml|sql|sh|css)(?::\d+(?:-\d+)?)?$/;
 
 /**
+ * A `symbol-refresh` anchor and replacement are BACKTICKED identifiers, and the
+ * backticks are the guardrail rather than punctuation.
+ *
+ * The blast radius of a symbol is wider than a path's: an identifier turns up in
+ * prose that is ABOUT the rename ("we renamed it during review"), and in a
+ * ruling, where a silent rewrite would make a stale decision read as validated.
+ * Requiring the delimiters means the patch can only ever land inside an inline
+ * code span — a CITATION — and a bare mention in a sentence is untouchable by
+ * construction. It also does most of the anchor-ambiguity work for free: a body
+ * that cites the same symbol twice refuses under rule 1 rather than guessing.
+ *
+ * The identifier itself is deliberately narrow — a JS identifier, or a dotted /
+ * `#`-qualified member path. Anything with a space, a paren or a slash in it is
+ * a phrase or a path, and belongs to a different kind or to a human.
+ */
+const SYMBOL_REFRESH_SHAPE =
+  /^`[A-Za-z_$][A-Za-z0-9_$]*(?:[.#][A-Za-z_$][A-Za-z0-9_$]*)*`$/;
+
+/** The identifier inside a `symbol-refresh` span, without its backticks. */
+function symbolOf(span: string): string {
+  return span.slice(1, -1);
+}
+
+/**
  * Apply one patch, or explain why not.
  *
  * The success path is `body.split(anchor).join(replacement)` under a proven
@@ -105,7 +158,8 @@ const PATH_REFRESH_SHAPE =
  */
 export function applyAnchoredPatch(
   body: string,
-  patch: AnchoredPatch
+  patch: AnchoredPatch,
+  options: PatchOptions = {}
 ): PatchOutcome {
   if (!(PATCH_KINDS as readonly string[]).includes(patch.kind)) {
     return {
@@ -147,6 +201,10 @@ export function applyAnchoredPatch(
   if (shape !== null) {
     return { ok: false, refusal: "shape-rejected", detail: shape };
   }
+  const unresolvable = checkAgainstTree(patch, options);
+  if (unresolvable !== null) {
+    return { ok: false, refusal: "symbol-unresolvable", detail: unresolvable };
+  }
   return { ok: true, body: body.replace(patch.anchor, patch.replacement) };
 }
 
@@ -182,7 +240,49 @@ function checkShape(patch: AnchoredPatch): string | null {
       }
       return null;
     }
+    case "symbol-refresh": {
+      if (!SYMBOL_REFRESH_SHAPE.test(patch.anchor)) {
+        return `a symbol-refresh anchor must be a backticked identifier, got ${JSON.stringify(patch.anchor)}`;
+      }
+      if (!SYMBOL_REFRESH_SHAPE.test(patch.replacement)) {
+        return `a symbol-refresh replacement must be a backticked identifier, got ${JSON.stringify(patch.replacement)}`;
+      }
+      return null;
+    }
   }
+}
+
+/**
+ * null ⇒ the tree agrees with the rename this patch describes.
+ *
+ * BOTH DIRECTIONS ARE CHECKED, and the second one is the one that catches a
+ * typo. A `symbol-refresh` asserts two facts about main: the old name is gone
+ * (that is what made it drift) and the new name is there (that is what makes it
+ * a repair). Checking only the second would let a scan re-run rewrite a citation
+ * that never expired; checking only the first is #3619's own example — a rename
+ * to a name that also does not exist, applied and reported as a success.
+ */
+function checkAgainstTree(
+  patch: AnchoredPatch,
+  options: PatchOptions
+): string | null {
+  if (patch.kind !== "symbol-refresh") return null;
+  const resolve = options.resolveSymbol;
+  if (!resolve) {
+    return (
+      "a symbol-refresh asserts a rename against main and no resolver was " +
+      "supplied; there is nothing to check it against"
+    );
+  }
+  const from = symbolOf(patch.anchor);
+  const to = symbolOf(patch.replacement);
+  if (!resolve(to)) {
+    return `\`${to}\` does not resolve anywhere on main either — this renames one absent name to another`;
+  }
+  if (resolve(from)) {
+    return `\`${from}\` still exists on main, so the citation has not expired and there is nothing to refresh`;
+  }
+  return null;
 }
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -212,12 +312,13 @@ export interface PatchPlanEntry {
  */
 export function applyPatchPlan(
   body: string,
-  patches: readonly AnchoredPatch[]
+  patches: readonly AnchoredPatch[],
+  options: PatchOptions = {}
 ): { body: string; entries: PatchPlanEntry[] } {
   let current = body;
   const entries: PatchPlanEntry[] = [];
   for (const patch of patches) {
-    const outcome = applyAnchoredPatch(current, patch);
+    const outcome = applyAnchoredPatch(current, patch, options);
     if (outcome.ok) current = outcome.body;
     entries.push({ patch, outcome });
   }
