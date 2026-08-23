@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import {
+  chartsSettled,
   expectPlotContentInsidePlot,
   followLink,
   hydratedClick,
@@ -144,15 +145,17 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
 
     // …and the movers sit BELOW the plot, not inside it (#3233). This fixture is
     // the one that reproduces the spill: two labeled lanes means the gains list is
-    // non-empty, which is the second of the three siblings that used to share the
-    // 256px plot box — the third being the "Training → Analyze" caption. Measured
-    // on the branch that fixes it: est-1RM plot scrollHeight 256 vs clientHeight
-    // 256; on origin/main the same box read 415 vs 256, and the 159px surplus is
-    // what painted over the PR-rate card's header.
+    // non-empty, which was the second of the three siblings sharing the 256px plot
+    // box — the third being the "Training → Analyze" caption. Measured on
+    // origin/main with the same probe: scrollHeight 796 against clientHeight 256,
+    // so 540px of content painted out of the card and over the PR-rate card below.
     //
-    // The wait above is what licenses the measurement: `movers` is visible and its
-    // rows are counted, so the content this asserts about is really there — an
-    // empty region fits any box (#3384) and would have passed for the wrong reason.
+    // `chartsSettled` is what licenses the measurement (#3384): the plot's own
+    // child is a lazily-imported recharts chunk, and a box measured before it
+    // lands is a box with fewer children than the defect needs — measured on
+    // origin/main WITHOUT this wait the same read was 524px against 256, because
+    // only the list and the caption had mounted.
+    await chartsSettled(page, trend);
     await expectPlotContentInsidePlot(page);
 
     await page.close();

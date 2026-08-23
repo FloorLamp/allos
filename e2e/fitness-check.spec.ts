@@ -140,12 +140,14 @@ function seedNearComplete(exceptKey: string): void {
 const GRID_COLUMNS_DESKTOP = 4;
 
 // The narrowest a tile may be at the 1280px project viewport, in CSS px. This is
-// a FLOOR on the page's width policy, not a pin on a tile: nested containers put
-// the 4-col board inside a 768px `reading` measure and produced ~170px tiles
-// (#3234); one container produces DESKTOP_TILE_MEASURED. The floor sits between
-// the two with room on both sides, so a padding or gap revision does not fail it
-// and a re-nested container cannot pass it.
-const DESKTOP_TILE_FLOOR = 999999;
+// a FLOOR on the page's width policy, not a pin on a tile. Both sides were
+// measured with the probe below at the 1280px project viewport: the nested
+// containers put the 4-col board inside a 768px `reading` measure and produced
+// 183px tiles, with 11 of the 13 titles overlapping their chip; one container
+// produces 241px and zero overlaps. 210 sits between the two with ~27px of room
+// on each side, so a padding or gap revision does not fail it and a re-nested
+// container cannot pass it.
+const DESKTOP_TILE_FLOOR = 210;
 
 test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
   test("renders the heat grid, auto-counts synced/logged values, records a test, shows a delta", async ({
@@ -294,8 +296,11 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
   // pass, at both widths the 2026-08-19 census shot.
   async function tileHeaderGeometry(page: Page) {
     return page.evaluate(() => {
+      // `button[...]`, not a bare prefix match: the tile's own header spans are
+      // `fitness-tile-title` / `fitness-tile-domain`, which share the prefix. The
+      // tile is the only BUTTON in that namespace.
       const tiles = Array.from(
-        document.querySelectorAll('[data-testid^="fitness-tile-"]')
+        document.querySelectorAll('button[data-testid^="fitness-tile-"]')
       );
       const collisions: string[] = [];
       let narrowest = Infinity;
@@ -357,11 +362,9 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     const desktop = await tileHeaderGeometry(page);
     expect(desktop.tiles).toBe(tileCount);
     expect(desktop.collisions, desktop.collisions.join("\n")).toEqual([]);
-    // The width the un-nesting bought, stated as the number it is about. Measured
-    // on this branch at the 1280px project viewport: DESKTOP_TILE_MEASURED px per
-    // tile against the 170px the nested `reading` container produced. The floor is
-    // deliberately well under the measurement and well over the defect — it is
-    // asking "is this the 4-col board or the squeezed one", not pinning a pixel.
+    // The width the un-nesting bought — see DESKTOP_TILE_FLOOR for both measured
+    // sides. This asks "is this the 4-col board or the squeezed one", and does not
+    // pin a pixel.
     expect(desktop.narrowest).toBeGreaterThan(DESKTOP_TILE_FLOOR);
 
     // …and the phone, the census's other width. Two columns here, and the chip
