@@ -2,10 +2,7 @@ import Link from "next/link";
 import { IconX } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import {
-  buildDigestSeries,
-  buildPracticeDigestSeries,
-} from "@/lib/trends-series";
+import { buildDigestSeries } from "@/lib/trends-series";
 import { summarizeTrends, type TrendItem } from "@/lib/trends-digest";
 import { getFindingSuppressions } from "@/lib/queries";
 import { activeByKey, digestDedupeKey } from "@/lib/findings";
@@ -13,6 +10,16 @@ import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
 import DigestOverflow from "./DigestOverflow";
 import { PRACTICE_DIGEST_PREFIX } from "@/lib/trends-practices";
+import { practiceTrendWindow } from "@/lib/trends-practices";
+import { cadenceWindows } from "@/lib/queries/cadence-ledger";
+import { getTrendsDigestGather } from "@/lib/queries/trends-digest";
+import {
+  buildLoggingCadenceDigestSeries,
+  buildNutritionDigestSeries,
+  buildPracticeDigestSeriesFromInputs,
+  digestGatherBounds,
+  supplementalDigestInputs,
+} from "@/lib/trends-digest-series";
 import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
 import TrendDigestChip from "@/components/TrendDigestChip";
 
@@ -40,9 +47,32 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   // days-per-week really changed is a candidate like any other. Its series carries no
   // reference range on purpose, so the chip stays neutral — a coaching-tier signal
   // does not get a crossing colour (see buildPracticeDigestSeries).
+  const standardSeries = buildDigestSeries(profile.id, login.id, range);
+  const practiceWindow = practiceTrendWindow(range, todayStr);
+  const weeks = cadenceWindows(profile.id, {
+    weeks: practiceWindow.weeks,
+    includeCurrent: false,
+    asOf: practiceWindow.asOf,
+  });
+  const bounds = digestGatherBounds(range, weeks, todayStr);
+  const digestRows = getTrendsDigestGather(profile.id, bounds);
+  // ONE profile-scoped statement replaces the former practice-target/history
+  // gather and supplies all supplemental stored facts (#3397). The builders below
+  // are pure, and composing them does not fan the digest out across ledgers.
+  const gathered = supplementalDigestInputs(digestRows, weeks, range);
+  const weightPoints =
+    standardSeries.find((candidate) => candidate.key === "metric:weight")
+      ?.points ?? [];
   const series = [
-    ...buildDigestSeries(profile.id, login.id, range),
-    ...buildPracticeDigestSeries(profile.id, range, todayStr),
+    ...standardSeries,
+    ...buildPracticeDigestSeriesFromInputs(gathered.practiceTargets),
+    ...buildNutritionDigestSeries(gathered),
+    ...buildLoggingCadenceDigestSeries({
+      windows: weeks,
+      foodDates: gathered.foodDates,
+      doseDates: gathered.doseDates,
+      weighingDates: weightPoints.map((point) => point.date),
+    }),
   ];
   // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by
   // series + direction sticks while that same-direction trend persists.
