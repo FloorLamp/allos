@@ -2652,6 +2652,11 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     gaps of 14–103 ms. A sleep would have been a guess: the window is a
     wall-clock timer in the BROWSER process that the page cannot observe, and a
     starved runner outlasts any constant.
+    **The reproduction is committed**: `node scripts/tap-suppression-probe.mjs`
+    prints all three tables above in about a minute, on a page with no React and
+    no app in it. #3262 asked for a reproduction outside CI as the single most
+    valuable thing anyone could contribute; that is it, and it keeps these
+    numbers checkable instead of remembered.
     **And this is why the throttling recipe found nothing** across five probe
     rounds. `Emulation.setCPUThrottlingRate` slows the RENDERER; the timer that
     closes this window is not in the renderer, and 20x moved it not at all. Before

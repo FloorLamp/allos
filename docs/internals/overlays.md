@@ -393,7 +393,8 @@ behaves the same way (it forbids the same axis); `pan-y`, `manipulation` and
 `auto` do not, and all three would give the scroller back the drag. No JS can
 see the suppression or clear it, so the app cannot work around it — the e2e
 suite spends the sequence deliberately instead (`consumeSuppressedTap` in
-`e2e/helpers.ts`, which carries the measurements).
+`e2e/helpers.ts`, which carries the measurements). Re-derive any of this with
+`node scripts/tap-suppression-probe.mjs`.
 
 **Every gesture has a control path.** The drawer keeps its hamburger, the sheet
 its backdrop tap and Escape, the activity handle is itself a button, and the

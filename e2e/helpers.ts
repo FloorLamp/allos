@@ -2675,6 +2675,8 @@ async function dragToEnd(
 //   manipulation (permits it)                        lost 0/6
 //   auto                                             lost 0/6
 //
+// Re-run it yourself: `node scripts/tap-suppression-probe.mjs`.
+//
 // So it is not a fling, not a scroll, and not multi-touch: it is the browser's
 // tap arbitration for a gesture it was told it may not have. The sheet's drag
 // handle is `touch-none` on purpose (components/overlay/tokens.ts — the panel's
