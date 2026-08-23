@@ -50,6 +50,7 @@
 // existed, as if each row had been tapped by hand.
 
 import { today } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import type { FoodSlot } from "./food-slot";
 import { markDoseTaken } from "./queries/intake/adherence";
@@ -94,6 +95,9 @@ export function logUsualRoutineCore(
   window: FoodSlot,
   namedGroups: readonly string[],
   namedDoseIds: readonly number[],
+  // Which surface ran the composed one-tap (#3087). Both halves — the food servings
+  // and the doses — stamp the SAME value, because one tap is one tap.
+  loggedVia: LoggedVia,
   // WHICH MESSAGE'S TAP THIS IS (#2264/#2460). Both halves stamp it, through the same
   // origin paths `handleFoodLog` and `handleDoseTap` use — so one composed tap is
   // attributed exactly as the individual taps it replaces would have been. The
@@ -104,7 +108,7 @@ export function logUsualRoutineCore(
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
-      ? logUsualFoodCore(profileId, window, namedGroups, undefined, {
+      ? logUsualFoodCore(profileId, window, namedGroups, loggedVia, undefined, {
           notifyMessageId,
         })
       : ({ kind: "nothing-to-log" } as const);
@@ -133,6 +137,7 @@ export function logUsualRoutineCore(
         doseId,
         offered.itemId,
         date,
+        loggedVia,
         undefined,
         notifyMessageId
       ),

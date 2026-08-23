@@ -380,7 +380,7 @@ describe("#1602 — an off-day confirm logs, and says that it was off-day", () =
     });
     const doseId = seedDose(itemId, createdAt);
 
-    const outcome = markDoseTaken(p, doseId, itemId, day);
+    const outcome = markDoseTaken(p, doseId, itemId, day, "page");
     expect(outcome).toBe("logged-off-day");
 
     // The LOG IS WRITTEN — you record reality. The outcome changes the answer, never
@@ -406,7 +406,7 @@ describe("#1602 — an off-day confirm logs, and says that it was off-day", () =
       cadenceWeekdays: String(dow),
     });
     const onDoseId = seedDose(on.itemId, on.createdAt);
-    expect(markDoseTaken(p, onDoseId, on.itemId, day)).toBe("logged");
+    expect(markDoseTaken(p, onDoseId, on.itemId, day, "page")).toBe("logged");
   });
 
   it("scopes the cadence lookup to the profile — another profile's dose reads null", () => {

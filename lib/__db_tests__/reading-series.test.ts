@@ -246,17 +246,23 @@ describe("the migration-free guarantee", () => {
   // columns are exactly what they were — the pin that makes "no schema change"
   // a build failure rather than a claim in a PR body.
   //
-  // EDITED ONCE, DELIBERATELY, by #2237 (#2205 phase 2 wave 1): migration 165 adds a
-  // nullable `occurred_at` to body_metrics and medical_records. That is a real schema
-  // change and this pin's one legitimate edit path — it is the announcement, not an
-  // obstacle.
-  //
-  // EDITED A SECOND TIME by #3424: `20260821-hc-overlap-supersede` adds a nullable
-  // `metric_samples.pushed_at`, the instant the exporter stamped on the push that wrote
-  // the row. The store is still tall and still metric/value — the column carries no
-  // reading, and no read path in phase 1 touches it. It exists so the Health Connect
-  // overlap-supersede can decide freshness from what the PAYLOAD states instead of from
-  // arrival order, which an ordinary exporter retry defeats.
+  // EDITED THREE TIMES, DELIBERATELY, and each edit is this pin working rather
+  // than this pin being in the way:
+  //   • #2237 (#2205 phase 2 wave 1): migration 165 adds a nullable `occurred_at`
+  //     to body_metrics and medical_records. A real schema change, and this pin's
+  //     legitimate edit path — the announcement, not an obstacle.
+  //   • #3424: `20260821-hc-overlap-supersede` adds a nullable
+  //     `metric_samples.pushed_at`, the instant the exporter stamped on the push
+  //     that wrote the row. The store is still tall and still metric/value — the
+  //     column carries no reading, and no read path in phase 1 touches it. It
+  //     exists so the Health Connect overlap-supersede can decide freshness from
+  //     what the PAYLOAD states instead of from arrival order, which an ordinary
+  //     exporter retry defeats.
+  //   • #3087: migration 20260822 adds a nullable `logged_via` — WHICH SURFACE a
+  //     person logged from — to body_metrics and medical_records. Additive and
+  //     nullable like the others, so "unrestructured" still holds; nothing moved,
+  //     nothing was migrated onto it. `metric_samples` does not get it: it is
+  //     outside #3087's first tranche.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -268,6 +274,7 @@ describe("the migration-free guarantee", () => {
       "date",
       "edited",
       "id",
+      "logged_via",
       "notes",
       "occurred_at",
       "profile_id",
@@ -296,8 +303,9 @@ describe("the migration-free guarantee", () => {
 
   it("leaves medical_records unrestructured — it is the clinical record", () => {
     // The highest-stakes table in the app (#1808's FK map, tombstones, undo,
-    // export, the passport). Phase 1 reads from it and restructures nothing; the
-    // only column it has gained since is migration 165's additive `occurred_at`.
+    // export, the passport). Phase 1 reads from it and restructures nothing; the two
+    // columns it has gained since are migration 165's additive `occurred_at` and
+    // #3087's additive `logged_via`.
     expect(columns("medical_records")).toEqual([
       "canonical_name",
       "category",
@@ -310,6 +318,7 @@ describe("the migration-free guarantee", () => {
       "fasting",
       "flag",
       "id",
+      "logged_via",
       "loinc",
       "name",
       "notes",

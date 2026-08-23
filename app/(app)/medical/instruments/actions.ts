@@ -99,13 +99,11 @@ export async function recordInstrumentAction(
     total = t;
   }
 
-  const id = recordInstrumentScore(profile.id, {
-    instrument,
-    date,
-    total,
-    answers,
-    notes,
-  });
+  const id = recordInstrumentScore(
+    profile.id,
+    { instrument, date, total, answers, notes },
+    "page"
+  );
   // The core's life-stage gate (#2107). Unreachable from here today — `isInstrument`
   // above narrows this action to the mental-health family, which is never adult-only
   // — but the typed outcome is rendered rather than assumed.

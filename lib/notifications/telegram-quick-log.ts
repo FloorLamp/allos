@@ -153,6 +153,22 @@ export async function handlePrnLogTap(
   const outcome = logAdministration(
     profileId,
     token.itemId,
+    // WHICH KEYBOARD MINTED THIS BUTTON (#3087). `prn:` is deliberately SHARED — the
+    // on-demand `/dose` list and the digest / dose-reminder "+ Doses" expansion both
+    // mint it, so there is one administration-logging path on Telegram rather than two
+    // that could drift. That sharing is exactly why the handler cannot spell a literal:
+    // the `/dose` list is a reply to something the user typed, the offer tail rides a
+    // message this app sent unbidden, and those are the two ends of the axis #3087
+    // exists to measure.
+    //
+    // The discriminator is the KEYBOARD, and it is the same one `rebuildOfferListWithChips`
+    // has always used thirty lines below — an expanded offer list is the only keyboard
+    // that carries a collapse token. Asked through ONE predicate so the stamp and the
+    // rebuild can never answer differently, and it works on keyboards minted before this
+    // change, which a token marker could not.
+    isExpandedOfferKeyboard(cq.message?.reply_markup?.inline_keyboard)
+      ? "telegram-nudge"
+      : "telegram-command",
     undefined,
     notifyMessageId
   );
@@ -182,6 +198,29 @@ export async function handlePrnLogTap(
   }
 }
 
+// IS THIS KEYBOARD THE DIGEST'S EXPANDED OFFER LIST, rather than the `/dose` command's?
+//
+// `prn:` tokens are minted by both, on purpose (one administration path on Telegram), so
+// the button cannot say which it is. The KEYBOARD can: an expanded offer list is the only
+// keyboard that carries a collapse token — `expandedOfferActions` appends "Collapse" to
+// every list it renders, and `/dose` has never had one to collapse.
+//
+// TWO CALLERS ASK THIS ONE QUESTION: the provenance stamp (#3087), and the chip rebuild
+// (#2443) that must not borrow a `/dose` message's keyboard. They were one inline `.some()`
+// in the rebuild; naming it is what stops a second, subtly different spelling appearing
+// beside it — the same reasoning as `messageKindIsPracticeNudge` above.
+export function isExpandedOfferKeyboard(
+  rows: readonly (readonly { callback_data?: string }[])[] | undefined
+): boolean {
+  return (rows ?? []).some((row) =>
+    row.some(
+      (btn) =>
+        typeof btn.callback_data === "string" &&
+        btn.callback_data.startsWith(`${OFFER_COLLAPSE_PREFIX}:`)
+    )
+  );
+}
+
 // Redraw the digest's EXPANDED offer list after one of its items was logged, carrying
 // the correction chips for the tap that just landed.
 //
@@ -196,15 +235,9 @@ async function rebuildOfferListWithChips(
   messageId: number,
   cq: TelegramCallbackQuery
 ): Promise<void> {
-  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  const isOfferList = rows.some((row) =>
-    row.some(
-      (btn) =>
-        typeof btn.callback_data === "string" &&
-        btn.callback_data.startsWith(`${OFFER_COLLAPSE_PREFIX}:`)
-    )
-  );
-  if (!isOfferList) return;
+  if (!isExpandedOfferKeyboard(cq.message?.reply_markup?.inline_keyboard)) {
+    return;
+  }
   const date = today(profileId);
   const now = clockNow();
   const tz = getTimezone(profileId);
@@ -274,7 +307,13 @@ export async function handleRedoseLogTap(
   const outcome = logRedoseWindowAdministration(
     profileId,
     token.itemId,
-    token.administrationId
+    token.administrationId,
+    // A PROACTIVE SEND (#3087). `redose:` is minted in exactly one place —
+    // lib/notifications/redose.ts, the safety-tier dispatch that tells someone their
+    // redose window has opened — and nothing the user typed asked for it. It is a tap
+    // on a button this app sent, which is what `telegram-nudge` means; the `/dose`
+    // command's reusable list is the `prn:` token above, not this one.
+    "telegram-nudge"
   );
   if (outcome.kind === "stale-window") {
     const text =
@@ -352,9 +391,14 @@ export async function handlePracticeDoneTap(
     chatId != null && messageId != null
       ? messagePointerIdAt(profileId, chatId, messageId)
       : null;
+  // TWO SURFACES, ONE HANDLER (#3087). `pdone:` is a tap on the proactive pace nudge;
+  // `plog:` is a tap on the on-demand `/practice` list. The distinction already exists
+  // here for the correction ride-along, so provenance reads it rather than inventing a
+  // second, subtly different way to ask the same question.
   const outcome = logPracticeByTargetId(
     profileId,
     token.targetId,
+    messageKindIsPracticeNudge(cq.data) ? "telegram-nudge" : "telegram-command",
     notifyMessageId
   );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
@@ -610,7 +654,9 @@ export async function handleSymptomSeverity(
     profileId,
     token.slug,
     token.severity,
-    today(profileId)
+    today(profileId),
+    // The severity picker behind the `/symptom` command's grid.
+    "telegram-command"
   );
   if (outcome.kind === "invalid") {
     await answerCallbackQuery(cq.id, "Couldn't log that symptom.");
@@ -724,7 +770,10 @@ export async function handleTempReply(
     markedProfile,
     parsed.value,
     parsed.unit,
-    date
+    date,
+    // A free-text REPLY ("38.5"), not a button — the one path in this module that is
+    // typed rather than tapped (#877's vocabulary member).
+    "telegram-text"
   );
   if (outcome.kind === "invalid") {
     await sendTelegramMessage(
@@ -883,7 +932,17 @@ export async function handleFoodCommand(
 
   const skipped: string[] = [];
   for (const pid of profileIds) {
-    const built = buildFoodNudge(pid, currentFoodSlot(pid), today(pid));
+    // THE MINT SITE, AND THE ONLY PLACE THAT KNOWS (#3087). This is a REPLY to a
+    // slash command, but it re-renders `buildFoodNudge` — the same builder, the same
+    // `food:` tokens, the same keyboard the tick sends unbidden — so nothing about the
+    // delivered message distinguishes the two. Marking the tokens here is what carries
+    // the answer through the round trip to `handleFoodLog`, which used to stamp the
+    // module-level `telegram-nudge` on every one of these taps and so inverted the
+    // exact nudge-vs-command axis #3087 exists to measure.
+    const built = withChatOrigin(
+      buildFoodNudge(pid, currentFoodSlot(pid), today(pid)),
+      "telegram-command"
+    );
     // Null is the life-stage gate (an infant logs no food groups, #591) — answered
     // honestly below rather than with an empty keyboard.
     if (!built) {
@@ -1060,6 +1119,8 @@ export async function handleWeightReply(
     bodyFatPct: null,
     restingHr: null,
     notes: null,
+    // A free-text REPLY to the `/weight` prompt — typed, not tapped.
+    loggedVia: "telegram-text",
   });
   await sendTelegramMessage(
     chatId,
@@ -1331,6 +1392,7 @@ import { getProfileNameById } from "../profile-summary-load";
 import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
+import { withChatOrigin } from "./chat-origin";
 import { currentFoodSlot } from "../queries";
 import {
   buildPracticeCorrectionRebuild,

@@ -70,9 +70,24 @@ function adminIds(itemId: number): number[] {
 // Three administrations spaced well outside the double-tap dedup window, all in the
 // recent past (so the #614 window guard accepts them and each is a distinct row).
 function logThree(profileId: number, itemId: number) {
-  logAdministration(profileId, itemId, new Date(Date.now() - 30 * 60_000));
-  logAdministration(profileId, itemId, new Date(Date.now() - 20 * 60_000));
-  logAdministration(profileId, itemId, new Date(Date.now() - 10 * 60_000));
+  logAdministration(
+    profileId,
+    itemId,
+    "page",
+    new Date(Date.now() - 30 * 60_000)
+  );
+  logAdministration(
+    profileId,
+    itemId,
+    "page",
+    new Date(Date.now() - 20 * 60_000)
+  );
+  logAdministration(
+    profileId,
+    itemId,
+    "page",
+    new Date(Date.now() - 10 * 60_000)
+  );
 }
 
 describe("deleteAdministrationLog / restoreAdministrationLog — window + supply round-trip", () => {
@@ -154,6 +169,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     logAdministration(
       b.profileId,
       b.itemId,
+      "page",
       new Date(Date.now() - 15 * 60_000)
     );
     const bLogId = adminIds(b.itemId)[0];

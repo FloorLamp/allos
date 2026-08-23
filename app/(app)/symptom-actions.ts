@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
@@ -108,6 +109,9 @@ export async function logSymptom(
     symptom,
     parseSeverity(formData),
     parseDate(formData, profileId),
+    // The symptom bar renders on the dashboard, on its own page and in the quick-log
+    // sheet, all posting THIS action — so the surface rides the post.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     String(formData.get("note") ?? ""),
     episodeTarget.kind === "valid" ? episodeTarget.episodeId : undefined
   );
@@ -128,6 +132,7 @@ export async function editSymptom(
     symptom,
     parseSeverity(formData),
     parseDate(formData, profile.id),
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     String(formData.get("note") ?? "")
   );
   if (outcome.kind === "invalid")
@@ -338,6 +343,7 @@ export async function logTemperature(
     Number.isFinite(rawValue) ? rawValue : null,
     unit,
     date,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     time
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };

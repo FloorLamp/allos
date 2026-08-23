@@ -109,7 +109,9 @@ describe("the tri-state walks through the lib core (#2039)", () => {
     const { profileId, itemId, doseId, date } = seedTracked();
 
     // clear → taken: one row, the amount snapshotted, supply consumed once.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
     expect(logRows(doseId, date)).toEqual([
       {
         amount: "2 caps",
@@ -122,7 +124,7 @@ describe("the tri-state walks through the lib core (#2039)", () => {
 
     // taken → skipped: the SAME row flips, the amount is dropped (nothing was
     // consumed) and the decrement is given back.
-    expect(setDoseStatusCore(profileId, doseId, date, "skipped")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "skipped", "page")).toBe(
       "skipped"
     );
     const skipped = logRows(doseId, date);
@@ -132,27 +134,35 @@ describe("the tri-state walks through the lib core (#2039)", () => {
     expect(onHand(itemId)).toBe(10);
 
     // skipped → clear: the row goes, supply is untouched (a skip never moved it).
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("cleared");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
+      "cleared"
+    );
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
 
     // clear → taken again: consumed once more, never double-counted.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
     expect(onHand(itemId)).toBe(9);
 
     // taken → clear: the log is removed and the decrement returned.
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("cleared");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
+      "cleared"
+    );
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
   });
 
   it("answers 'unchanged' for a target the dose already stands at, writing nothing", () => {
     const { profileId, itemId, doseId, date } = seedTracked();
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
       "unchanged"
     );
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
       "unchanged"
     );
     // One row, one decrement — an idempotent repeat must not re-consume supply.
@@ -165,7 +175,7 @@ describe("the tri-state walks through the lib core (#2039)", () => {
     db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
       doseId
     );
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
       "stale-dose"
     );
     expect(logRows(doseId, date)).toEqual([]);
@@ -173,7 +183,7 @@ describe("the tri-state walks through the lib core (#2039)", () => {
 
     const other = seedTracked();
     expect(
-      setDoseStatusCore(profileId, other.doseId, other.date, "taken")
+      setDoseStatusCore(profileId, other.doseId, other.date, "taken", "page")
     ).toBe("stale-dose");
     expect(logRows(other.doseId, other.date)).toEqual([]);
   });
@@ -185,21 +195,25 @@ describe("the paused-item divergence is gone (#2039)", () => {
 
     // The twin in the Server Action module never read `active`, so this wrote a taken
     // row and burned a unit of supply for an item the user had deliberately paused.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
       "inactive"
     );
-    expect(setDoseStatusCore(profileId, doseId, date, "skipped")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "skipped", "page")).toBe(
       "inactive"
     );
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
       "inactive"
     );
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
 
     // The one-way resolvers answer identically — one core, one refusal.
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("inactive");
-    expect(markDoseSkipped(profileId, doseId, null, date)).toBe("inactive");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe(
+      "inactive"
+    );
+    expect(markDoseSkipped(profileId, doseId, null, date, "page")).toBe(
+      "inactive"
+    );
     expect(logRows(doseId, date)).toEqual([]);
   });
 });
@@ -207,8 +221,10 @@ describe("the paused-item divergence is gone (#2039)", () => {
 describe("the one-way resolvers keep the #232/#280 contract through the core", () => {
   it("markDoseTaken inserts once, snapshots the amount and reports already-taken after", () => {
     const { profileId, itemId, doseId, date } = seedTracked();
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("logged");
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe("already-taken");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe(
+      "already-taken"
+    );
     const rows = logRows(doseId, date);
     expect(rows).toHaveLength(1);
     expect(rows[0].amount).toBe("2 caps");
@@ -218,9 +234,11 @@ describe("the one-way resolvers keep the #232/#280 contract through the core", (
 
   it("a one-way tap NEVER overwrites the other action's log, and never moves supply", () => {
     const { profileId, itemId, doseId, date } = seedTracked();
-    expect(markDoseSkipped(profileId, doseId, null, date)).toBe("skipped");
+    expect(markDoseSkipped(profileId, doseId, null, date, "page")).toBe(
+      "skipped"
+    );
     // ✅ on a dose meanwhile marked skipped: the skip stands and is reported.
-    expect(markDoseTaken(profileId, doseId, null, date)).toBe(
+    expect(markDoseTaken(profileId, doseId, null, date, "page")).toBe(
       "already-skipped"
     );
     expect(logRows(doseId, date)[0].status).toBe("skipped");
@@ -228,19 +246,23 @@ describe("the one-way resolvers keep the #232/#280 contract through the core", (
 
     // The explicit web set is the ONLY path that may flip it — that is the whole
     // difference between the two intents over the one core.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
     expect(logRows(doseId, date)[0].status).toBe("taken");
     expect(onHand(itemId)).toBe(9);
   });
 
   it("refuses a callback token whose item id contradicts the dose's own", () => {
     const { profileId, doseId, date, itemId } = seedTracked();
-    expect(markDoseTaken(profileId, doseId, itemId + 999, date)).toBe(
+    expect(markDoseTaken(profileId, doseId, itemId + 999, date, "page")).toBe(
       "stale-dose"
     );
     expect(logRows(doseId, date)).toEqual([]);
     // The dose's OWN item id is accepted.
-    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(markDoseTaken(profileId, doseId, itemId, date, "page")).toBe(
+      "logged"
+    );
   });
 });
 
@@ -255,7 +277,9 @@ describe("supply crossings read the ledger row's own supply_adjusted (#2039)", (
        VALUES (?,?,?,?, 'taken', 0)`
     ).run(doseId, itemId, date, "2 caps");
 
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("cleared");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
+      "cleared"
+    );
     expect(logRows(doseId, date)).toEqual([]);
     expect(onHand(itemId)).toBe(10);
   });
@@ -267,24 +291,32 @@ describe("supply crossings read the ledger row's own supply_adjusted (#2039)", (
        VALUES (?,?,?,?, 'taken', 0)`
     ).run(doseId, itemId, date, "2 caps");
 
-    expect(setDoseStatusCore(profileId, doseId, date, "skipped")).toBe(
+    expect(setDoseStatusCore(profileId, doseId, date, "skipped", "page")).toBe(
       "skipped"
     );
     expect(onHand(itemId)).toBe(10);
     // …and flipping it back to taken consumes once and records that it did, so the
     // NEXT clear is symmetric again.
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
     expect(onHand(itemId)).toBe(9);
     expect(logRows(doseId, date)[0].supply_adjusted).toBe(1);
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("cleared");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
+      "cleared"
+    );
     expect(onHand(itemId)).toBe(10);
   });
 
   it("an untracked item (no on-hand count) resolves normally and stays untracked", () => {
     const { profileId, itemId, doseId, date } = seedTracked({ qty: null });
-    expect(setDoseStatusCore(profileId, doseId, date, "taken")).toBe("logged");
+    expect(setDoseStatusCore(profileId, doseId, date, "taken", "page")).toBe(
+      "logged"
+    );
     expect(onHand(itemId)).toBeNull();
-    expect(setDoseStatusCore(profileId, doseId, date, "clear")).toBe("cleared");
+    expect(setDoseStatusCore(profileId, doseId, date, "clear", "page")).toBe(
+      "cleared"
+    );
     expect(onHand(itemId)).toBeNull();
   });
 });

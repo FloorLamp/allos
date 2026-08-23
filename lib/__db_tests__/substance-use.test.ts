@@ -106,12 +106,16 @@ describe("recordInstrumentScore (substance) — a biomarker reading, no flag, no
   it("stores an AUDIT-C total with 0..4 per-item answers, banded, unflagged", () => {
     const p = newProfile("SU audit-c");
     const td = today(p);
-    recordInstrumentScore(p, {
-      instrument: "AUDIT-C",
-      date: td,
-      total: 9,
-      answers: [4, 2, 3].map((answer, itemIndex) => ({ itemIndex, answer })),
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "AUDIT-C",
+        date: td,
+        total: 9,
+        answers: [4, 2, 3].map((answer, itemIndex) => ({ itemIndex, answer })),
+      },
+      "page"
+    );
 
     const row = db
       .prepare(
@@ -144,8 +148,16 @@ describe("recordInstrumentScore (substance) — a biomarker reading, no flag, no
   it("a severe substance score NEVER surfaces a crisis item on Upcoming (#996 is explicit-only)", () => {
     const p = newProfile("SU no-crisis");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "AUDIT", date: td, total: 32 });
-    recordInstrumentScore(p, { instrument: "DAST-10", date: td, total: 10 });
+    recordInstrumentScore(
+      p,
+      { instrument: "AUDIT", date: td, total: 32 },
+      "page"
+    );
+    recordInstrumentScore(
+      p,
+      { instrument: "DAST-10", date: td, total: 10 },
+      "page"
+    );
     const items = collectUpcoming(p, td);
     expect(items.some((i) => i.domain === "mental-health")).toBe(false);
     expect(items.some((i) => i.key.startsWith(SUBSTANCE_USE_PREFIX))).toBe(
@@ -159,8 +171,16 @@ describe("screening satisfaction (#998)", () => {
     const p = newProfile("SU screen");
     setBirthdate(p, "1990-01-01");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "AUDIT-C", date: td, total: 2 });
-    recordInstrumentScore(p, { instrument: "DAST-10", date: td, total: 0 });
+    recordInstrumentScore(
+      p,
+      { instrument: "AUDIT-C", date: td, total: 2 },
+      "page"
+    );
+    recordInstrumentScore(
+      p,
+      { instrument: "DAST-10", date: td, total: 0 },
+      "page"
+    );
 
     const sats = getInferredPreventiveSatisfactions(p);
     expect(sats.some((s) => s.ruleKey === "alcohol_screening")).toBe(true);
@@ -170,11 +190,15 @@ describe("screening satisfaction (#998)", () => {
   it("an AUDIT total also satisfies alcohol_screening but never the drug screening", () => {
     const p = newProfile("SU screen audit");
     setBirthdate(p, "1985-06-15");
-    recordInstrumentScore(p, {
-      instrument: "AUDIT",
-      date: today(p),
-      total: 5,
-    });
+    recordInstrumentScore(
+      p,
+      {
+        instrument: "AUDIT",
+        date: today(p),
+        total: 5,
+      },
+      "page"
+    );
     const sats = getInferredPreventiveSatisfactions(p);
     expect(sats.some((s) => s.ruleKey === "alcohol_screening")).toBe(true);
     expect(sats.some((s) => s.ruleKey === "drug_use_screening")).toBe(false);
@@ -283,9 +307,13 @@ describe("no gamification (#998) — structural exemption + copy guard", () => {
   it("scores and drink logs create no activities row and no milestone input", () => {
     const p = newProfile("SU exempt");
     const td = today(p);
-    recordInstrumentScore(p, { instrument: "AUDIT-C", date: td, total: 4 });
-    logFoodServingCore(p, "alcohol", td);
-    logFoodServingCore(p, "alcohol", td);
+    recordInstrumentScore(
+      p,
+      { instrument: "AUDIT-C", date: td, total: 4 },
+      "page"
+    );
+    logFoodServingCore(p, "alcohol", td, "page");
+    logFoodServingCore(p, "alcohol", td, "page");
 
     const activities = db
       .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
@@ -579,18 +607,29 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
   it("keeps the latest taps when an edit shrinks the day", () => {
     const p = newProfile("SU trim oldest");
     const date = "2026-03-14";
-    const added = addSubstanceDailyTotalCore(p, "alcohol", {
-      date,
-      amount: 4,
-    });
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      {
+        date,
+        amount: 4,
+      },
+      "page"
+    );
     if (added.kind !== "added") throw new Error("history entry was not added");
     stampTapHours(p, date, [18, 19, 20, 21]);
 
     expect(
-      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
-        date,
-        amount: 2,
-      })
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        added.id,
+        {
+          date,
+          amount: 2,
+        },
+        "page"
+      )
     ).toEqual({ kind: "updated", id: added.id });
 
     // The two EARLIEST taps are gone; the 20:00/21:00 pair — including the day's
@@ -612,18 +651,29 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     const p = newProfile("SU trim oldest moved");
     const from = "2026-03-14";
     const to = "2026-03-15";
-    const added = addSubstanceDailyTotalCore(p, "alcohol", {
-      date: from,
-      amount: 3,
-    });
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      {
+        date: from,
+        amount: 3,
+      },
+      "page"
+    );
     if (added.kind !== "added") throw new Error("history entry was not added");
     stampTapHours(p, from, [17, 18, 19]);
 
     expect(
-      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
-        date: to,
-        amount: 1,
-      })
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        added.id,
+        {
+          date: to,
+          amount: 1,
+        },
+        "page"
+      )
     ).toEqual({ kind: "updated", id: added.id });
 
     expect(tapHours(p, from)).toEqual([]);
@@ -633,18 +683,29 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
   it("still APPENDS when a correction raises the day, leaving the existing taps alone", () => {
     const p = newProfile("SU trim grow");
     const date = "2026-03-14";
-    const added = addSubstanceDailyTotalCore(p, "alcohol", {
-      date,
-      amount: 2,
-    });
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      {
+        date,
+        amount: 2,
+      },
+      "page"
+    );
     if (added.kind !== "added") throw new Error("history entry was not added");
     stampTapHours(p, date, [18, 19]);
 
     expect(
-      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
-        date,
-        amount: 4,
-      })
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        added.id,
+        {
+          date,
+          amount: 4,
+        },
+        "page"
+      )
     ).toEqual({ kind: "updated", id: added.id });
 
     const hours = tapHours(p, date);
@@ -733,7 +794,7 @@ describe("custom substances (#3279)", () => {
     // Alcohol's ledger is food_daily_totals (#860/#944), so its presence has to be
     // asked of the OTHER store — a scan of substance_daily_totals alone would report
     // a drinker as tracking nothing.
-    logFoodServingCore(p, "alcohol", day);
+    logFoodServingCore(p, "alcohol", day, "page");
     expect(getLoggedSubstanceKeys(p)).toEqual([
       "alcohol",
       "nicotine",
@@ -757,11 +818,16 @@ describe("custom substances (#3279)", () => {
   it("carries a custom substance through history correction like the curated three", () => {
     const p = newProfile("SU custom history");
     const date = shiftDateStr(today(p), -3);
-    const added = addSubstanceDailyTotalCore(p, "  Energy drinks ", {
-      date,
-      amount: 2,
-      notes: "two cans",
-    });
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "  Energy drinks ",
+      {
+        date,
+        amount: 2,
+        notes: "two cans",
+      },
+      "page"
+    );
     if (added.kind !== "added")
       throw new Error("custom history entry not added");
 
@@ -781,10 +847,16 @@ describe("custom substances (#3279)", () => {
     ]);
 
     expect(
-      updateSubstanceDailyTotalCore(p, "Energy drinks", added.id, {
-        date,
-        amount: 5,
-      })
+      updateSubstanceDailyTotalCore(
+        p,
+        "Energy drinks",
+        added.id,
+        {
+          date,
+          amount: 5,
+        },
+        "page"
+      )
     ).toEqual({ kind: "updated", id: added.id });
     // The correction flows through the shared cadence ledger, so the trend sees it —
     // the row's day may be in the current week or the previous one depending on where

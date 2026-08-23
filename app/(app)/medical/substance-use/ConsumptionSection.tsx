@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState, type FormEvent } from "react";
 import DateField from "@/components/DateField";
@@ -76,6 +77,9 @@ export default function ConsumptionSection({
   // the week figure re-renders from the action's revalidation — so the cooldown IS its
   // feedback design (#2007 layer 1), which is exactly what the registry records.
   const ledger = useOptimisticLedger("substance-unit");
+  // The Records page's own consumption section — declared, not assumed (#3087):
+  // `QuickSubstanceList` posts the same action from the quick-log sheet.
+  const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
@@ -84,7 +88,7 @@ export default function ConsumptionSection({
   const [capInput, setCapInput] = useState(cap != null ? String(cap) : "");
 
   function withSubstance(extra?: Record<string, string>): FormData {
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     fd.set("substance", substance);
     for (const [key, value] of Object.entries(extra ?? {})) fd.set(key, value);
     return fd;

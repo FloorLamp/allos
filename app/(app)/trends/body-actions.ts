@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { captureDelete } from "@/lib/undo-delete-db";
@@ -32,6 +33,9 @@ export async function addBodyMetric(formData: FormData) {
     bodyFatPct: strOrNull(formData.get("body_fat_pct")),
     restingHr: strOrNull(formData.get("resting_hr")),
     notes: strOrNull(formData.get("notes")),
+    // The dashboard's weigh-in widget and the Trends page's own add form post THIS
+    // action, so the mounting declares itself and the page keeps the default (#3087).
+    loggedVia: parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
   });
   // Only revalidate when a row actually landed — a rejected input is a no-op.
   if (!wrote) return;

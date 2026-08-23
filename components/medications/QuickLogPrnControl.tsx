@@ -16,6 +16,7 @@ import {
 import { medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
 import { statedHhmm } from "@/lib/stated-time";
 
@@ -79,6 +80,10 @@ export default function QuickLogPrnControl({
 }) {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
+  // WHICH SURFACE THIS PRN CONTROL IS ON (#3087). It mounts on the medications
+  // page's card, on the dashboard's own 'Log a dose' card and inside the illness
+  // cockpit — three regions, one action, and only the region knows which.
+  const stampLoggedVia = useLoggedViaStamp();
   const [open, setOpen] = useState(false);
   // The earlier-dose pair (#2236): the day is fixed to today (the action resolves
   // the wall time against the profile's today), the time starts UNSTATED — the
@@ -96,7 +101,7 @@ export default function QuickLogPrnControl({
     await ledger.tap({
       key: offset,
       write: () => {
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
         if (customTime) fd.set("time", customTime);

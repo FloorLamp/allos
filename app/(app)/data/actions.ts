@@ -1,5 +1,6 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
+import { IMPORTED } from "@/lib/logged-via";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
@@ -470,8 +471,8 @@ export async function commitWorkouts(
   // first-seen instant and subtracts it from a seam-derived now.
   const insertActivity = db.prepare(
     `INSERT INTO activities
-       (date, type, title, notes, intensity, start_time, end_time, duration_min, profile_id, created_at)
-     VALUES (?, 'strength', ?, ?, ?, ?, ?, ?, ?, ?)`
+       (date, type, title, notes, intensity, start_time, end_time, duration_min, profile_id, created_at, logged_via)
+     VALUES (?, 'strength', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertSet = db.prepare(
     `INSERT INTO exercise_sets
@@ -504,7 +505,9 @@ export async function commitWorkouts(
           activityClockHHMM(w.end_time),
           w.duration_min ?? null,
           profile.id,
-          sqlNow()
+          sqlNow(),
+          // A bulk training-log IMPORT, not a session anybody tapped (#3087).
+          IMPORTED
         ).lastInsertRowid
       );
       const counters: Record<string, number> = {};

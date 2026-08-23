@@ -15,6 +15,7 @@
 // authoritative value lives in the natural store; the snapshot never competes with it.
 
 import { db, writeTx } from "@/lib/db";
+import type { LoggedVia } from "./logged-via";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import {
@@ -84,7 +85,8 @@ function ensureAssessmentActivity(
   profileId: number,
   assessmentId: number,
   date: string,
-  currentActivityId: number | null
+  currentActivityId: number | null,
+  loggedVia: LoggedVia
 ): number {
   if (currentActivityId != null) return currentActivityId;
   // `created_at` is BOUND from the clock seam rather than left to the column's own
@@ -92,9 +94,9 @@ function ensureAssessmentActivity(
   // back to, and presence subtracts it from a seam-derived now.
   const info = db
     .prepare(
-      "INSERT INTO activities (date, type, title, profile_id, created_at) VALUES (?, 'strength', 'Fitness check', ?, ?)"
+      "INSERT INTO activities (date, type, title, profile_id, created_at, logged_via) VALUES (?, 'strength', 'Fitness check', ?, ?, ?)"
     )
-    .run(date, profileId, sqlNow());
+    .run(date, profileId, sqlNow(), loggedVia);
   const activityId = Number(info.lastInsertRowid);
   db.prepare(
     "UPDATE fitness_assessments SET activity_id = ? WHERE id = ? AND profile_id = ?"
@@ -109,7 +111,10 @@ function ensureAssessmentActivity(
 // still updates so completion/deltas stay correct.
 export function saveFitnessEntry(
   profileId: number,
-  input: FitnessEntryInput
+  input: FitnessEntryInput,
+  // The surface running the battery (#3087). A set-based test creates the assessment's
+  // `activities` row on first use, and that row is a user-write like any other.
+  loggedVia: LoggedVia
 ): FitnessEntryOutcome {
   if (!isRealIsoDate(input.date)) return { ok: false, error: "invalid date" };
   const def = fitnessTest(input.testKey);
@@ -154,6 +159,7 @@ export function saveFitnessEntry(
         unit: def.unit,
         date: input.date,
         source: "manual",
+        loggedVia,
         ...(store.kind === "vital" ? { category: store.category } : {}),
       });
       if (!outcome.ok) return { ok: false, error: "unknown test" };
@@ -165,7 +171,8 @@ export function saveFitnessEntry(
         profileId,
         session.id,
         input.date,
-        session.activityId
+        session.activityId,
+        loggedVia
       );
       // Replace this exercise's set in place (re-entry corrects, never stacks).
       db.prepare(

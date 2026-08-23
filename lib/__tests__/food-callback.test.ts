@@ -21,7 +21,10 @@ import {
 } from "@/lib/notifications/food-format";
 
 describe("parseFoodLogCallback", () => {
-  it("parses a well-formed token", () => {
+  it("parses a well-formed token, reading an UNMARKED one as the nudge", () => {
+    // The origin marker (#3087) is an optional segment of its own. A token without
+    // one is a keyboard minted before it shipped, and the proactive nudge is what
+    // almost all of those are — see lib/notifications/chat-origin.ts.
     expect(
       parseFoodLogCallback("food:5:Midday:2026-07-13:leafy_greens")
     ).toEqual({
@@ -29,7 +32,25 @@ describe("parseFoodLogCallback", () => {
       window: "Midday",
       date: "2026-07-13",
       group: "leafy_greens",
+      origin: "telegram-nudge",
     });
+  });
+
+  it("carries the MINT SITE's origin through the round trip (#3087)", () => {
+    // `/food` re-renders the nudge's own builder, so this marker is the only thing
+    // that distinguishes a slash-command tap from a proactive one at the handler.
+    expect(
+      parseFoodLogCallback("food:c:5:Midday:2026-07-13:leafy_greens")?.origin
+    ).toBe("telegram-command");
+    expect(
+      parseFoodLogCallback("food:n:5:Midday:2026-07-13:leafy_greens")?.origin
+    ).toBe("telegram-nudge");
+    // The slug is still the greedy tail, marker or not.
+    expect(
+      parseFoodLogCallback("food:c:5:Midday:2026-07-13:leafy_greens")?.group
+    ).toBe("leafy_greens");
+    // An unknown marker letter is not a token this app ever minted.
+    expect(parseFoodLogCallback("food:z:5:Midday:2026-07-13:x")).toBeNull();
   });
 
   it("rejects a bad window, missing fields, or the wrong prefix", () => {
@@ -42,7 +63,7 @@ describe("parseFoodLogCallback", () => {
 });
 
 describe("parseFoodProteinCallback (#1073)", () => {
-  it("parses a well-formed token", () => {
+  it("parses a well-formed token, with the same optional origin marker", () => {
     expect(
       parseFoodProteinCallback("foodprotein:5:Evening:2026-07-13:30")
     ).toEqual({
@@ -50,7 +71,11 @@ describe("parseFoodProteinCallback (#1073)", () => {
       window: "Evening",
       date: "2026-07-13",
       grams: 30,
+      origin: "telegram-nudge",
     });
+    expect(
+      parseFoodProteinCallback("foodprotein:c:5:Evening:2026-07-13:30")?.origin
+    ).toBe("telegram-command");
   });
   it("rejects a bad window, non-numeric/zero grams, or a food-log token", () => {
     expect(

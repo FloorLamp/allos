@@ -64,19 +64,19 @@ describe("situations illness_type flag (#799)", () => {
 describe("symptom log write + read", () => {
   it("keeps a day's WORST severity on re-log; an edit may lower it", () => {
     const p = newProfile("worst");
-    logSymptomCore(p, "cough", 2, "2026-07-01");
-    logSymptomCore(p, "cough", 4, "2026-07-01");
-    logSymptomCore(p, "cough", 1, "2026-07-01"); // does not lower
+    logSymptomCore(p, "cough", 2, "2026-07-01", "page");
+    logSymptomCore(p, "cough", 4, "2026-07-01", "page");
+    logSymptomCore(p, "cough", 1, "2026-07-01", "page"); // does not lower
     expect(getSymptomSeveritiesOnDate(p, "2026-07-01").cough).toBe(4);
 
-    setSymptomSeverityCore(p, "cough", 1, "2026-07-01"); // explicit edit lowers
+    setSymptomSeverityCore(p, "cough", 1, "2026-07-01", "page"); // explicit edit lowers
     expect(getSymptomSeveritiesOnDate(p, "2026-07-01").cough).toBe(1);
   });
 
   it("stores a custom name inline and lists it as a custom vocabulary entry", () => {
     const p = newProfile("custom");
-    logSymptomCore(p, "Migraine", 3, "2026-07-01");
-    logSymptomCore(p, "cough", 2, "2026-07-01");
+    logSymptomCore(p, "Migraine", 3, "2026-07-01", "page");
+    logSymptomCore(p, "cough", 2, "2026-07-01", "page");
     const day = getSymptomsOnDate(p, "2026-07-01");
     expect(day.map((d) => d.symptom).sort()).toEqual(["Migraine", "cough"]);
     expect(getCustomSymptomNames(p)).toEqual(["Migraine"]);

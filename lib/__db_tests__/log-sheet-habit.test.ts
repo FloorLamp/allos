@@ -100,6 +100,7 @@ describe("getSegmentLogDays", () => {
         date: anchor,
         weight: "70",
         weightUnit: "kg",
+        loggedVia: "page",
         bodyFatPct: null,
         restingHr: null,
         notes: null,
@@ -112,10 +113,15 @@ describe("getSegmentLogDays", () => {
       })
     ).toBe(true);
     expect(
-      insertVitals(profileId, shiftDateStr(anchor, -1), {
-        systolic: "118",
-        diastolic: "74",
-      }).wrote
+      insertVitals(
+        profileId,
+        shiftDateStr(anchor, -1),
+        {
+          systolic: "118",
+          diastolic: "74",
+        },
+        "page"
+      ).wrote
     ).toBe(true);
     createCycleRow(profileId, shiftDateStr(anchor, -2), null, null, null);
     // The vitals sitting really is `source = 'manual'` in the store — the fact the

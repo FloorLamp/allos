@@ -1,6 +1,11 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type WebLoggedVia,
+} from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -150,13 +155,11 @@ export async function recordSubstanceInstrumentAction(
     total = t;
   }
 
-  const id = recordInstrumentScore(profile.id, {
-    instrument,
-    date,
-    total,
-    answers,
-    notes,
-  });
+  const id = recordInstrumentScore(
+    profile.id,
+    { instrument, date, total, answers, notes },
+    "page"
+  );
   // The core now carries the same life-stage gate this action opened with (#2107),
   // so the refusal is rendered rather than assumed away — the action's own check
   // above is defense in depth over it, not the only copy.
@@ -181,7 +184,15 @@ export async function logSubstanceUnitAction(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
-  return logOneUnit(profile.id, substance);
+  return logOneUnit(profile.id, substance, webOrigin(formData));
+}
+
+// The surface this post came from, defaulting to the substance page's own form when
+// the client says nothing (an older build, or a form that never learned to declare
+// itself). The parse refuses anything outside the web subset, so a forged field cannot
+// dress a browser tap up as a Telegram one.
+function webOrigin(formData: FormData): WebLoggedVia {
+  return parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
 }
 
 // The split-ledger dispatch, factored out so the keyed tap above and the NAMED tap
@@ -189,11 +200,19 @@ export async function logSubstanceUnitAction(
 // never a second way to do it.
 function logOneUnit(
   profileId: number,
-  substance: SubstanceKey
+  substance: SubstanceKey,
+  // The mounting surface, read off the post (#3087): the substance row is offered on
+  // its own page AND in the quick-log sheet, so the action cannot know which it is.
+  loggedVia: WebLoggedVia
 ): SubstanceLogResult {
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
+      ? logFoodServingCore(
+          profileId,
+          ALCOHOL_FOOD_GROUP,
+          today(profileId),
+          loggedVia
+        )
       : logSubstanceUnitCore(profileId, substance, today(profileId));
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
@@ -249,7 +268,7 @@ export async function trackSubstanceUseAction(
     profileVocabulary("substance", profile.id)
   );
   if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
-  const logged = logOneUnit(profile.id, name.key);
+  const logged = logOneUnit(profile.id, name.key, webOrigin(formData));
   if (!logged.ok) return logged;
   return {
     ok: true,
@@ -333,7 +352,8 @@ export async function addSubstanceDailyTotalAction(
   const outcome = addSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
-    parsed
+    parsed,
+    "page"
   );
   if (outcome.kind === "added") revalidateSubstanceUse();
   return outcome;
@@ -352,7 +372,8 @@ export async function updateSubstanceDailyTotalAction(
     profile.id,
     parsed.substance,
     id,
-    parsed
+    parsed,
+    "page"
   );
   if (outcome.kind === "updated") revalidateSubstanceUse();
   return outcome;

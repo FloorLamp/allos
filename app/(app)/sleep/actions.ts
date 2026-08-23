@@ -66,9 +66,14 @@ export async function saveSleepMoodEntry(
     // refusal here (#2363). `wrote` is the whole of its answer.
     if (
       hasSleep &&
-      !insertVitals(profile.id, date, {
-        sleepHours,
-      }).wrote
+      !insertVitals(
+        profile.id,
+        date,
+        { sleepHours },
+        // The Sleep page's own form. ONLINE — this action runs on a live request; the
+        // offline queue's replay is the only caller of this core that is a replay.
+        "page"
+      ).wrote
     ) {
       throw new Error("Validated sleep entry was not written");
     }

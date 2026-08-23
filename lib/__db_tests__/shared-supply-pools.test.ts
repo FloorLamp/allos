@@ -178,11 +178,23 @@ describe("pooled decrement — every taker draws from ONE count", () => {
 
     // The SAME write core every dose-log path routes through.
     expect(
-      markDoseTaken(alice.profileId, a.doseId, null, today(alice.profileId))
+      markDoseTaken(
+        alice.profileId,
+        a.doseId,
+        null,
+        today(alice.profileId),
+        "page"
+      )
     ).toBe("logged");
     expect(poolQty(supplyId)).toBe(98);
     expect(
-      markDoseTaken(bruno.profileId, b.doseId, null, today(bruno.profileId))
+      markDoseTaken(
+        bruno.profileId,
+        b.doseId,
+        null,
+        today(bruno.profileId),
+        "page"
+      )
     ).toBe("logged");
     expect(poolQty(supplyId)).toBe(97);
 
@@ -229,7 +241,13 @@ describe("pooled decrement — every taker draws from ONE count", () => {
   it("leaves an UNLINKED item on its own private counter (nothing changes by default)", () => {
     const solo = addItem(alice.profileId, "POOLA Solo Med", 1, 9);
     expect(
-      markDoseTaken(alice.profileId, solo.doseId, null, today(alice.profileId))
+      markDoseTaken(
+        alice.profileId,
+        solo.doseId,
+        null,
+        today(alice.profileId),
+        "page"
+      )
     ).toBe("logged");
     expect(itemQty(solo.itemId)).toBe(8);
   });
@@ -329,7 +347,13 @@ describe("pool-level compare-and-set (#467)", () => {
     // A caregiver opens the cabinet form; it loads 30.
     const loaded = 30;
     // Meanwhile, another member's confirm decrements the pool to 29.
-    markDoseTaken(alice.profileId, a.doseId, null, today(alice.profileId));
+    markDoseTaken(
+      alice.profileId,
+      a.doseId,
+      null,
+      today(alice.profileId),
+      "page"
+    );
     expect(poolQty(supplyId)).toBe(29);
 
     // Saving an unrelated tweak submits the untouched 30 — which must NOT be written.

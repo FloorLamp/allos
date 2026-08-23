@@ -266,11 +266,14 @@ describe("/food on demand (#1895)", () => {
     expect(msg.kind).toBe("food");
     const tokens = (msg.actions ?? []).map((a) => a.data ?? "");
     expect(tokens.length).toBeGreaterThan(0);
-    // The send renderer's own token shape: food:<pid>:<window>:<date>:<group>.
+    // The send renderer's own token shape, with the ORIGIN MARKER this reply mints
+    // (#3087): food:c:<pid>:<window>:<date>:<group>. `c` is what tells `handleFoodLog`
+    // that a tap on this keyboard is a slash-command tap and not a nudge tap — the two
+    // are otherwise byte-identical, because `/food` re-renders the nudge's own builder.
     expect(
       tokens.some((t) =>
         new RegExp(
-          `^food:${p.profileId}:(Morning|Midday|Evening):${today(p.profileId)}:`
+          `^food:c:${p.profileId}:(Morning|Midday|Evening):${today(p.profileId)}:`
         ).test(t)
       )
     ).toBe(true);
@@ -512,7 +515,9 @@ describe("a multi-profile chat never guesses (#1995)", () => {
       const msg = call[1] as { actions?: { data?: string }[] };
       const owners = new Set(
         (msg.actions ?? [])
-          .map((a) => a.data?.split(":")[1])
+          // Field 1 is the origin marker on a `/food` token (#3087); the profile id
+          // is the first ALL-DIGITS field, which is what this is asking about.
+          .map((a) => a.data?.split(":").find((f) => /^\d+$/.test(f)))
           .filter((x): x is string => x != null)
       );
       // Exactly one profile's tokens per message.

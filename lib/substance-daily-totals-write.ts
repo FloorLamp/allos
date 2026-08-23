@@ -11,6 +11,7 @@
 // a custom substance "like the curated three" with no branch of its own.
 
 import { instantNow } from "./clock";
+import type { LoggedVia } from "./logged-via";
 import { db, today, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
@@ -47,16 +48,17 @@ function normalizedNotes(notes: string | null | undefined): string | null {
 function appendAlcoholEvents(
   profileId: number,
   date: string,
-  amount: number
+  amount: number,
+  loggedVia: LoggedVia
 ): void {
   const loggedAt = instantNow();
   const insert = db.prepare(
     `INSERT INTO food_log_events
-       (profile_id, group_key, date, recorded_at, meal_slot)
-     VALUES (?, ?, ?, ?, NULL)`
+       (profile_id, group_key, date, recorded_at, meal_slot, logged_via)
+     VALUES (?, ?, ?, ?, NULL, ?)`
   );
   for (let index = 0; index < amount; index += 1) {
-    insert.run(profileId, ALCOHOL_FOOD_GROUP, date, loggedAt);
+    insert.run(profileId, ALCOHOL_FOOD_GROUP, date, loggedAt, loggedVia);
   }
 }
 
@@ -64,7 +66,8 @@ function reconcileAlcoholEvents(
   profileId: number,
   fromDate: string,
   toDate: string,
-  amount: number
+  amount: number,
+  loggedVia: LoggedVia
 ): void {
   if (fromDate !== toDate) {
     db.prepare(
@@ -93,14 +96,17 @@ function reconcileAlcoholEvents(
       remove.run(row.id, profileId);
     }
   } else if (ids.length < amount) {
-    appendAlcoholEvents(profileId, toDate, amount - ids.length);
+    appendAlcoholEvents(profileId, toDate, amount - ids.length, loggedVia);
   }
 }
 
 export function addSubstanceDailyTotalCore(
   profileId: number,
   substanceInput: string,
-  input: { date: string; amount: number; notes?: string | null }
+  input: { date: string; amount: number; notes?: string | null },
+  // Which surface filed this entry (#3087). Alcohol rides `food_log_events`, so its
+  // per-unit rows carry provenance exactly as a serving tap does.
+  loggedVia: LoggedVia
 ): SubstanceHistoryMutationOutcome {
   const substance = resolveSubstanceKey(substanceInput);
   if (substance === null) return { kind: "unknown-substance" };
@@ -125,7 +131,7 @@ export function addSubstanceDailyTotalCore(
            VALUES (?, ?, ?, ?, ?)`
         )
         .run(profileId, input.date, ALCOHOL_FOOD_GROUP, input.amount, notes);
-      appendAlcoholEvents(profileId, input.date, input.amount);
+      appendAlcoholEvents(profileId, input.date, input.amount, loggedVia);
       return { kind: "added" as const, id: Number(info.lastInsertRowid) };
     }
 
@@ -151,7 +157,12 @@ export function updateSubstanceDailyTotalCore(
   profileId: number,
   substanceInput: string,
   id: number,
-  input: { date: string; amount: number; notes?: string | null }
+  input: { date: string; amount: number; notes?: string | null },
+  // A correction that GROWS the day appends per-unit `food_log_events` rows that did
+  // not exist before, and a row created here is created here — so the surface making
+  // the correction is required, and stamps only the rows it actually creates. The rows
+  // that survive the reconcile keep the provenance they were born with.
+  loggedVia: LoggedVia
 ): SubstanceHistoryMutationOutcome {
   const substance = resolveSubstanceKey(substanceInput);
   if (substance === null) return { kind: "unknown-substance" };
@@ -180,7 +191,13 @@ export function updateSubstanceDailyTotalCore(
         `UPDATE food_daily_totals SET date = ?, servings = ?, notes = ?
          WHERE id = ? AND profile_id = ? AND group_key = ?`
       ).run(input.date, input.amount, notes, id, profileId, ALCOHOL_FOOD_GROUP);
-      reconcileAlcoholEvents(profileId, row.date, input.date, input.amount);
+      reconcileAlcoholEvents(
+        profileId,
+        row.date,
+        input.date,
+        input.amount,
+        loggedVia
+      );
       return { kind: "updated" as const, id };
     }
 

@@ -24,6 +24,7 @@
 // IS the real clock, so the values are byte-identical to what SQLite would write.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { sqlNow } from "./clock";
 import { parseComponents, type ActivityComponent } from "./types";
 import { canonicalMobilityMove, mobilityMoveName } from "./mobility-moves";
@@ -111,7 +112,8 @@ export function readMobilitySession(
 export function logMobilityMoveCore(
   profileId: number,
   rawSlug: string,
-  date: string
+  date: string,
+  loggedVia: LoggedVia
 ): MobilityLogOutcome {
   const slug = canonicalMobilityMove(rawSlug);
   if (slug === null) return { kind: "unknown-move" };
@@ -128,9 +130,9 @@ export function logMobilityMoveCore(
       return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
     }
     db.prepare(
-      `INSERT INTO activities (date, type, title, components, profile_id, created_at)
-       VALUES (?, 'mobility', ?, ?, ?, ?)`
-    ).run(date, MOBILITY_TITLE, json, profileId, sqlNow());
+      `INSERT INTO activities (date, type, title, components, profile_id, created_at, logged_via)
+       VALUES (?, 'mobility', ?, ?, ?, ?, ?)`
+    ).run(date, MOBILITY_TITLE, json, profileId, sqlNow(), loggedVia);
     return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
   });
 }
@@ -170,7 +172,8 @@ export function unlogMobilityMoveCore(
 export function setMobilityDurationCore(
   profileId: number,
   date: string,
-  minutes: number | null
+  minutes: number | null,
+  loggedVia: LoggedVia
 ): MobilitySession {
   const dur = minutes != null && minutes > 0 ? Math.round(minutes) : null;
   return writeTx(() => {
@@ -178,9 +181,9 @@ export function setMobilityDurationCore(
     if (!row) {
       if (dur === null) return sessionOf(undefined);
       db.prepare(
-        `INSERT INTO activities (date, type, title, components, duration_min, profile_id, created_at)
-         VALUES (?, 'mobility', ?, '[]', ?, ?, ?)`
-      ).run(date, MOBILITY_TITLE, dur, profileId, sqlNow());
+        `INSERT INTO activities (date, type, title, components, duration_min, profile_id, created_at, logged_via)
+         VALUES (?, 'mobility', ?, '[]', ?, ?, ?, ?)`
+      ).run(date, MOBILITY_TITLE, dur, profileId, sqlNow(), loggedVia);
       return sessionOf(dayRow(profileId, date));
     }
     if (dur === null && movesOf(row).length === 0) {

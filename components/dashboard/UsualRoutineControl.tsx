@@ -1,6 +1,7 @@
 "use client";
 
 import { IconPlus } from "@tabler/icons-react";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -42,6 +43,12 @@ export default function UsualRoutineControl({
   subjectName,
 }: UsualRoutineControlProps) {
   const toast = useToast();
+  // WHICH SURFACE THIS MOUNTING IS (#3087). This control is rendered TWICE — as the
+  // dashboard's usual-routine atom and as the phone dock's raised puck inside the
+  // quick-log sheet — and the two are one component posting one action, so the region
+  // it is mounted in is the only thing that can tell them apart. It is on neither
+  // attention card, which is what `dashboard-hero` means.
+  const stampLoggedVia = useLoggedViaStamp();
   const ledger = useOptimisticLedger("routine-usual");
   const groups = food.map((f) => f.slug);
   const doseIds = doses.map((d) => d.id);
@@ -56,7 +63,7 @@ export default function UsualRoutineControl({
   function run() {
     void ledger.tap<UsualRoutineResult>({
       write: async () => {
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("meal_slot", window);
         // The names the BUTTON named. The core intersects both lists with the bundle
         // it re-derives from fresh state, so neither is an instruction to write

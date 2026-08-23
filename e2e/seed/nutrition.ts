@@ -195,11 +195,12 @@ export function seedNutritionTrio(): void {
   db.prepare(`DELETE FROM fitness_assessments WHERE profile_id = ?`).run(
     fitnessId
   );
-  saveFitnessEntry(fitnessId, {
-    date: shiftDateStr(today(fitnessId), -100),
-    testKey: "grip",
-    value: 44,
-  });
+  saveFitnessEntry(
+    fitnessId,
+    { date: shiftDateStr(today(fitnessId), -100), testKey: "grip", value: 44 },
+    // A seeded fixture standing in for a page form (#3087).
+    "page"
+  );
   // #1129 ambient auto-count fixtures — natural-store readings the check NEVER recorded, so
   // the grid lights up tiles as measured-with-provenance without a check session: a SYNCED
   // VO2 Max (medical_records, source 'oura'), a scale body-fat/resting-HR + a bodyweight

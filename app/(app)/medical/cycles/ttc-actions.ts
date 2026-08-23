@@ -62,7 +62,7 @@ export async function logLhTestAction(
   if (!isLhResult(result)) {
     return { ok: false, error: "Record the test as positive or negative." };
   }
-  const outcome = logLhTestCore(profile.id, today(profile.id), result);
+  const outcome = logLhTestCore(profile.id, today(profile.id), result, "page");
   if (outcome.kind === "locked") return { ok: false, error: LOCKED_ERROR };
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
   revalidateTtc();
@@ -101,7 +101,7 @@ export async function logMucusAction(
   if (!isMucusQuality(quality)) {
     return { ok: false, error: "Pick a cervical-mucus observation." };
   }
-  const outcome = logMucusCore(profile.id, today(profile.id), quality);
+  const outcome = logMucusCore(profile.id, today(profile.id), quality, "page");
   if (outcome.kind === "locked") return { ok: false, error: LOCKED_ERROR };
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
   revalidateTtc();

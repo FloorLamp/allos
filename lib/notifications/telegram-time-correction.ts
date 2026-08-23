@@ -80,6 +80,7 @@ import {
 } from "./correction-rows";
 import { plainBody } from "./rich-text";
 import { buildFoodNudge } from "./food";
+import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
 import { slotSessionForKeyboard } from "./intake";
@@ -254,21 +255,30 @@ function foodRebuild(
     for (const btn of row) {
       const d = btn.callback_data;
       if (typeof d !== "string") continue;
+      // The token may carry an origin marker in a segment of its own (#3087), so the
+      // window is found by ASKING which field is a window rather than by counting to
+      // one — a fixed index silently read the profile id the day the marker landed.
       const f = d.split(":");
       if (f[0] !== "food" && f[0] !== "foodprotein") continue;
-      if (FOOD_NUDGE_WINDOWS.includes(f[2] as FoodNudgeWindow)) {
-        window = f[2] as FoodNudgeWindow;
-        date = f[3] ?? null;
+      const at = f.findIndex((seg) =>
+        FOOD_NUDGE_WINDOWS.includes(seg as FoodNudgeWindow)
+      );
+      if (at > 0) {
+        window = f[at] as FoodNudgeWindow;
+        date = f[at + 1] ?? null;
       }
     }
   }
   if (!window || !date) return null;
-  return buildFoodNudge(
-    profileId,
-    window,
-    date,
-    countVisibleFoodButtons(rows) || undefined,
-    { now, ref, ...(picker ? { picker, pickerLevel } : {}) }
+  return withChatOrigin(
+    buildFoodNudge(
+      profileId,
+      window,
+      date,
+      countVisibleFoodButtons(rows) || undefined,
+      { now, ref, ...(picker ? { picker, pickerLevel } : {}) }
+    ),
+    keyboardChatOrigin(rows)
   );
 }
 

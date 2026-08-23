@@ -357,6 +357,7 @@ describe("'Show less' collapse (#1807)", () => {
       p.profileId,
       "leafy_greens",
       t,
+      "page",
       new Date().toISOString(),
       "Midday"
     );

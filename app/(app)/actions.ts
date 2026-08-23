@@ -24,6 +24,7 @@ import type {
   DoseUndoResult,
 } from "@/lib/dose-outcome-text";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
+import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { getActiveFastCached } from "@/lib/queries/fasting";
 import { promptsEndOfFast } from "@/lib/fasting";
@@ -209,7 +210,14 @@ export async function markAttentionDose(
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
-  const outcome = markDoseTaken(profile.id, doseId, null, today(profile.id));
+  const outcome = markDoseTaken(
+    profile.id,
+    doseId,
+    null,
+    today(profile.id),
+    // The attention card's act-now confirm (#3087).
+    "dashboard-hero"
+  );
   revalidateRoute("/");
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");
@@ -232,7 +240,12 @@ export async function undoAttentionDose(
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
-  const outcome = undoDoseConfirm(profile.id, doseId, today(profile.id));
+  const outcome = undoDoseConfirm(
+    profile.id,
+    doseId,
+    today(profile.id),
+    "dashboard-hero"
+  );
   revalidateRoute("/");
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");
@@ -269,7 +282,20 @@ export async function logUsualRoutine(
     .filter((id) => Number.isInteger(id) && id > 0);
   if (groups.length === 0 && doseIds.length === 0)
     return { ok: false, error: "Nothing to log." };
-  const outcome = logUsualRoutineCore(profile.id, rawWindow, groups, doseIds);
+  const outcome = logUsualRoutineCore(
+    profile.id,
+    rawWindow,
+    groups,
+    doseIds,
+    // READ, NOT NAMED (#3087). This control is not on the attention card: it is the
+    // dashboard's usual-routine atom AND the phone dock's raised puck in the quick-log
+    // sheet, one component posting this one action from two regions. A literal here
+    // would record `dashboard-hero` for both — the flagship one-tap's food rows and
+    // dose rows, on a surface it was never mounted on. The two mountings that reach
+    // this each declare their region; `page` is the honest fallback for a third that
+    // does not, exactly as it is everywhere else.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "nothing-to-log")
     return { ok: false, error: "That's already logged." };
   // The follow-up offer, resolved AFTER the write and only when the bundle actually

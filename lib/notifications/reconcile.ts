@@ -90,6 +90,7 @@ import {
   type IntakeSendSlot,
 } from "./intake-format";
 import { buildFoodNudge } from "./food";
+import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { now as clockNow } from "../clock";
 import { correctionTokenAnchor } from "../correction-time";
 import {
@@ -767,9 +768,16 @@ const food: FamilyReconciler = {
     for (const t of tokens) {
       const f = fields(t);
       if (f[0] !== "food" && f[0] !== "foodprotein") continue;
-      const window = f[2] as FoodNudgeWindow;
-      const date = f[3];
-      if (!FOOD_NUDGE_WINDOWS.includes(window) || !date) continue;
+      // The window is found by ASKING which field is one, never by counting to two:
+      // the token may carry an origin marker in a segment of its own (#3087), and a
+      // fixed index would silently read the profile id instead.
+      const at = f.findIndex((seg) =>
+        FOOD_NUDGE_WINDOWS.includes(seg as FoodNudgeWindow)
+      );
+      if (at <= 0) continue;
+      const window = f[at] as FoodNudgeWindow;
+      const date = f[at + 1];
+      if (!date) continue;
       const visibleCount = countVisibleFoodButtons(p.keyboard) || undefined;
       const now = clockNow();
       const ref = { chatId: p.chatId, messageId: p.messageId };
@@ -788,11 +796,16 @@ const food: FamilyReconciler = {
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)
           : undefined;
-      return buildFoodNudge(profileId, window, date, visibleCount, {
-        now,
-        ref,
-        ...(picker ? { picker } : {}),
-      });
+      // Preserves whichever keyboard minted this message (#3087): the tick's own
+      // send, or a `/food` reply. `tokens` is the live keyboard's own token list.
+      return withChatOrigin(
+        buildFoodNudge(profileId, window, date, visibleCount, {
+          now,
+          ref,
+          ...(picker ? { picker } : {}),
+        }),
+        keyboardChatOrigin([tokens.map((t) => ({ callback_data: t }))])
+      );
     }
     return null;
   },

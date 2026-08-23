@@ -38,7 +38,7 @@ function newProfile(name: string): number {
 // so a null here is a genuine failure and should stop the test rather than be threaded
 // through every assertion.
 function recordScore(profileId: number, input: RecordInstrumentInput): number {
-  const id = recordInstrumentScore(profileId, input);
+  const id = recordInstrumentScore(profileId, input, "page");
   if (id == null) throw new Error("recordInstrumentScore unexpectedly refused");
   return id;
 }

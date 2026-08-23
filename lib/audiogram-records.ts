@@ -25,6 +25,7 @@
 //                      the domain identity audiogramSeriesKey.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { reconcileFlags } from "./queries/medical";
 import { cleanupOrphanBiomarkerKeyedState } from "./queries/upcoming/suppressions";
 import {
@@ -219,6 +220,11 @@ export type AudiogramOrigin = "manual" | "sync";
 export function recordAudiogram(
   profileId: number,
   input: RecordAudiogramInput,
+  // Which surface recorded this audiogram (#3087). Required, no default — and
+  // deliberately NOT folded into the `origin` argument beside it, which answers a
+  // different question (manual entry vs a document import's extraction) and whose
+  // vocabulary is its own.
+  loggedVia: LoggedVia,
   origin: AudiogramOrigin = "manual"
 ): RecordAudiogramOutcome {
   const thresholds = input.thresholds.filter((t) => Number.isFinite(t.dbHl));
@@ -237,8 +243,8 @@ export function recordAudiogram(
     const ins = db.prepare(
       `INSERT INTO medical_records
          (profile_id, date, category, name, value, value_num, unit,
-          reference_range, notes, canonical_name, panel, source)
-       VALUES (?, ?, 'vitals', ?, ?, ?, ?, ?, ?, ?, ?, 'Audiogram')`
+          reference_range, notes, canonical_name, panel, source, logged_via)
+       VALUES (?, ?, 'vitals', ?, ?, ?, ?, ?, ?, ?, ?, 'Audiogram', ?)`
     );
     const upd = db.prepare(
       `UPDATE medical_records
@@ -292,7 +298,8 @@ export function recordAudiogram(
           AUDIOGRAM_REFERENCE_RANGE,
           notes,
           canonical,
-          AUDIOGRAM_PANEL
+          AUDIOGRAM_PANEL,
+          loggedVia
         );
         recordIds.push(Number(info.lastInsertRowid));
       } else {

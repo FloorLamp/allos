@@ -464,9 +464,9 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
       return messagePointerIdAt(pid, chatId, messageId)!;
     });
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targets[0], messageRows[0]);
+    logPracticeByTargetId(pid, targets[0], "page", messageRows[0]);
     setNow("2026-08-05T12:05:00Z");
-    logPracticeByTargetId(pid, targets[1], messageRows[1]);
+    logPracticeByTargetId(pid, targets[1], "page", messageRows[1]);
     const logs = db
       .prepare(
         "SELECT id, time FROM practice_logs WHERE profile_id = ? ORDER BY id"
@@ -557,7 +557,7 @@ describe("the binding is re-checked at tap time (#3092 follow-up)", () => {
     });
     // …and a WEB one-tap logs another dose five minutes after the chat confirm —
     // honestly unattributed, and never shown on message A.
-    markDoseTaken(pid, web.doseId, web.itemId, date);
+    markDoseTaken(pid, web.doseId, web.itemId, date, "page");
     const webLog = doseLogs(pid)[1];
     expect(webLog.messageRef).toBeNull();
     stampDoseTap(webLog.id, "2026-08-05T05:40:00Z");
@@ -704,7 +704,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
       keyboard: messageKeyboard(reminderB),
       title: reminderB.title,
     });
-    markDoseTaken(pid, web.doseId, web.itemId, date);
+    markDoseTaken(pid, web.doseId, web.itemId, date, "page");
     stampDoseTap(doseLogs(pid)[1].id, "2026-08-05T05:40:00Z");
     setNow("2026-08-05T05:45:00Z");
 
@@ -806,7 +806,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     });
     const messageRow = messagePointerIdAt(pid, chatId, 4410)!;
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targetId, messageRow);
+    logPracticeByTargetId(pid, targetId, "page", messageRow);
     const logId = (
       db
         .prepare(

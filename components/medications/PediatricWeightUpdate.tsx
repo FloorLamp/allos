@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import { IconScale } from "@tabler/icons-react";
@@ -29,6 +30,8 @@ export default function PediatricWeightUpdate({
   const [open, setOpen] = useState(initiallyOpen);
   const [weight, setWeight] = useState("");
   const [date, setDate] = useState(context.today);
+  // The dosing-weight update, on whichever surface renders the item form (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +51,7 @@ export default function PediatricWeightUpdate({
       return;
     }
 
-    const formData = new FormData();
+    const formData = stampLoggedVia(new FormData());
     formData.set("date", date);
     formData.set("weight", weight);
     formData.set("weight_unit", context.weightUnit);

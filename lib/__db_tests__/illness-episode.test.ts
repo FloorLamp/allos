@@ -109,14 +109,14 @@ function logAdmin(
 // A closed 5-day episode 2026-06-01 .. 2026-06-05 (inclusive end_date = 2026-06-05).
 function seedFiveDayEpisode(profileId: number) {
   // Symptoms: cough all five days (easing), fever peaking mid-episode, one custom.
-  logSymptomCore(profileId, "cough", 3, "2026-06-01");
-  logSymptomCore(profileId, "fever", 2, "2026-06-01");
-  logSymptomCore(profileId, "fever", 4, "2026-06-02");
-  logSymptomCore(profileId, "cough", 3, "2026-06-02");
-  logSymptomCore(profileId, "cough", 2, "2026-06-03", "loosening up");
-  logSymptomCore(profileId, "Sinus headache", 2, "2026-06-03");
-  logSymptomCore(profileId, "cough", 2, "2026-06-04");
-  logSymptomCore(profileId, "cough", 1, "2026-06-05");
+  logSymptomCore(profileId, "cough", 3, "2026-06-01", "page");
+  logSymptomCore(profileId, "fever", 2, "2026-06-01", "page");
+  logSymptomCore(profileId, "fever", 4, "2026-06-02", "page");
+  logSymptomCore(profileId, "cough", 3, "2026-06-02", "page");
+  logSymptomCore(profileId, "cough", 2, "2026-06-03", "page", "loosening up");
+  logSymptomCore(profileId, "Sinus headache", 2, "2026-06-03", "page");
+  logSymptomCore(profileId, "cough", 2, "2026-06-04", "page");
+  logSymptomCore(profileId, "cough", 1, "2026-06-05", "page");
 
   // Fever curve: rises to a peak on 06-02, then trends down. >99°F flags 'high'.
   logTemp(profileId, "2026-06-01", "09:00", 99.6);
@@ -376,7 +376,7 @@ function makeCurrentlySick(p: number) {
     `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(p, start);
-  logSymptomCore(p, "cough", 2, today(p));
+  logSymptomCore(p, "cough", 2, today(p), "page");
   logTemp(p, today(p), "08:00", 101.3);
 }
 

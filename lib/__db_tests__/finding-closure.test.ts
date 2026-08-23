@@ -54,11 +54,15 @@ describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
       (pid, todayISO) =>
         closureFindingSnapshot(pid, [FITNESS_CHECK_PREFIX], todayISO),
       () =>
-        saveFitnessEntry(profileId, {
-          date: anchor,
-          testKey: "grip",
-          value: 45,
-        })
+        saveFitnessEntry(
+          profileId,
+          {
+            date: anchor,
+            testKey: "grip",
+            value: 45,
+          },
+          "page"
+        )
     );
     expect(cleared.map((f) => f.dedupeKey)).toEqual([
       fitnessCheckSignalKey(last),
@@ -75,11 +79,15 @@ describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
       (pid, todayISO) =>
         closureFindingSnapshot(pid, [FITNESS_CHECK_PREFIX], todayISO),
       () =>
-        saveFitnessEntry(profileId, {
-          date: anchor,
-          testKey: "grip",
-          value: 45,
-        })
+        saveFitnessEntry(
+          profileId,
+          {
+            date: anchor,
+            testKey: "grip",
+            value: 45,
+          },
+          "page"
+        )
     );
     expect(cleared).toEqual([]);
   });
@@ -102,11 +110,15 @@ describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
       (pid, todayISO) =>
         closureFindingSnapshot(pid, [FITNESS_CHECK_PREFIX], todayISO),
       () =>
-        saveFitnessEntry(profileId, {
-          date: anchor,
-          testKey: "grip",
-          value: 45,
-        })
+        saveFitnessEntry(
+          profileId,
+          {
+            date: anchor,
+            testKey: "grip",
+            value: 45,
+          },
+          "page"
+        )
     );
     expect(cleared).toEqual([]);
   });

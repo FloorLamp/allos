@@ -51,11 +51,15 @@ function seedScore(
   instrument: "AUDIT" | "PHQ-9",
   total: number
 ): number {
-  const id = recordInstrumentScore(profileId, {
-    instrument,
-    date: today(profileId),
-    total,
-  });
+  const id = recordInstrumentScore(
+    profileId,
+    {
+      instrument,
+      date: today(profileId),
+      total,
+    },
+    "page"
+  );
   if (id == null) throw new Error("seed refused");
   return id;
 }
@@ -115,11 +119,15 @@ describe("the gate sits in the core, so a new caller inherits it (#2107)", () =>
   it("recordInstrumentScore refuses a substance instrument for a known minor", () => {
     const profile = actor("core-minor-record", 15);
     expect(
-      recordInstrumentScore(profile.id, {
-        instrument: "AUDIT",
-        date: today(profile.id),
-        total: 12,
-      })
+      recordInstrumentScore(
+        profile.id,
+        {
+          instrument: "AUDIT",
+          date: today(profile.id),
+          total: 12,
+        },
+        "page"
+      )
     ).toBeNull();
     expect(
       db

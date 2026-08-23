@@ -244,7 +244,7 @@ describe("the offer list never shows a chip its own handler refuses (#3108)", ()
     // A web one-tap: honestly UNATTRIBUTED (no message), and fresh, so it is a
     // burst looking for somewhere to ride.
     const web = ownDose();
-    markDoseTaken(p.profileId, web.doseId, web.itemId, date);
+    markDoseTaken(p.profileId, web.doseId, web.itemId, date, "page");
 
     // The user expands the digest's offer list and logs the `may` item from it —
     // that tap IS attributed to the digest, and its chips are what #2443 adds.

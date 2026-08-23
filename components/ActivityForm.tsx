@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -215,6 +216,8 @@ export default function ActivityForm({
   const { enqueue: enqueueOffline } = useOfflineQueue();
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
+  // Which surface this editor was opened from (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
   const [saving, setSaving] = useState(false);
   // The row the form's initial state is reconstructed from: a stored row being
   // edited, or a "Log again"/"Repeat last" prefill. In prefill mode this only
@@ -810,13 +813,16 @@ export default function ActivityForm({
   // supplied by the auto-save machine so saves update in place rather than
   // inserting duplicates.
   function buildFormData(savedId: number | null): FormData {
+    // The surface the session was entered on (#3087). The editor overlay opens from
+    // the Training page, from the dashboard and from the quick-log sheet, so the
+    // mounting answers and this form does not assume.
     const { comps, flat, primaryType } = buildActivityPayload(
       classifier,
       namedParts,
       overallDuration
     );
 
-    const fd = new FormData();
+    const fd = stampLoggedVia(new FormData());
     if (savedId != null) fd.set("id", String(savedId));
     // Multi-view (#1330): a merged EDIT card carries its subject's profile id, so the
     // save targets the SUBJECT's profile (gateItemProfile → requireProfileWriteAccess).

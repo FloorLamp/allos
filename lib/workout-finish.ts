@@ -15,6 +15,7 @@
 // outcome union — never an unconditional confirm.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import { now as clockNow, sqlNow } from "./clock";
 import { utcSqlString, zonedDateParts } from "./date";
 import { minutesBetween } from "./activity-meta";
@@ -44,6 +45,7 @@ export interface StartWorkoutResult {
 export function startWorkoutSession(
   profileId: number,
   opts: { type: "strength" | "cardio"; title: string },
+  loggedVia: LoggedVia,
   now: Date = clockNow()
 ): StartWorkoutResult {
   const tz = getTimezone(profileId);
@@ -52,10 +54,10 @@ export function startWorkoutSession(
     Number(
       db
         .prepare(
-          `INSERT INTO activities (profile_id, date, type, title, start_time, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO activities (profile_id, date, type, title, start_time, updated_at, logged_via)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(profileId, date, opts.type, opts.title, hhmm, sqlNow())
+        .run(profileId, date, opts.type, opts.title, hhmm, sqlNow(), loggedVia)
         .lastInsertRowid
     )
   );

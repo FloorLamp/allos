@@ -18,6 +18,7 @@
 // leaving rows that already differ only by case alone, is in lib/vocabulary-store.ts.
 
 import { db, writeTx } from "./db";
+import type { LoggedVia } from "./logged-via";
 import {
   resolveSymptomKey,
   isValidSeverity,
@@ -75,6 +76,12 @@ export function logSymptomCore(
   symptomInput: string,
   severity: number,
   date: string,
+  // Which surface logged this symptom (#3087) — required, no default, ahead of the
+  // optional tail. It rides the INSERT arm of the upsert and is deliberately ABSENT
+  // from both DO UPDATE SET clauses below: a re-tap that raises the day's severity is
+  // a mutation of a row that already exists, and the row keeps the provenance it was
+  // created with.
+  loggedVia: LoggedVia,
   note?: string | null,
   explicitEpisodeId?: number
 ): SymptomLogOutcome {
@@ -109,21 +116,23 @@ export function logSymptomCore(
       explicitEpisodeId ?? openEpisodeIdForDate(profileId, date);
     if (explicitEpisodeId == null) {
       db.prepare(
-        `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO symptom_logs
+           (profile_id, date, symptom, severity, note, episode_id, logged_via)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (profile_id, date, symptom)
          DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
                        note = COALESCE(excluded.note, symptom_logs.note)`
-      ).run(profileId, date, symptom, severity, noteVal, episodeId);
+      ).run(profileId, date, symptom, severity, noteVal, episodeId, loggedVia);
     } else {
       db.prepare(
-        `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO symptom_logs
+           (profile_id, date, symptom, severity, note, episode_id, logged_via)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (profile_id, date, symptom)
          DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
                        note = COALESCE(excluded.note, symptom_logs.note),
                        episode_id = excluded.episode_id`
-      ).run(profileId, date, symptom, severity, noteVal, episodeId);
+      ).run(profileId, date, symptom, severity, noteVal, episodeId, loggedVia);
     }
     return {
       kind: "logged" as const,
@@ -175,6 +184,10 @@ export function setSymptomSeverityCore(
   symptomInput: string,
   severity: number,
   date: string,
+  // The surface stating this severity (#3087). This core CAN create a day row (the
+  // bar's severity picker on a symptom not yet logged today), so it needs an origin
+  // for the INSERT arm; the DO UPDATE SET leaves an existing row's provenance alone.
+  loggedVia: LoggedVia,
   note?: string | null
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
@@ -182,11 +195,12 @@ export function setSymptomSeverityCore(
   const noteVal = normalizeNote(note);
   return writeTx(() => {
     db.prepare(
-      `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO symptom_logs
+         (profile_id, date, symptom, severity, note, logged_via)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (profile_id, date, symptom)
        DO UPDATE SET severity = excluded.severity, note = excluded.note`
-    ).run(profileId, date, symptom, severity, noteVal);
+    ).run(profileId, date, symptom, severity, noteVal, loggedVia);
     return { kind: "logged" as const, symptom, severity };
   });
 }

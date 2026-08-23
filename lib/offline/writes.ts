@@ -12,6 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
+import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
@@ -105,9 +106,10 @@ function applyDoseIntent(
           doseId,
           null,
           date,
+          OFFLINE_REPLAY,
           payload.clientTakenAt ? new Date(payload.clientTakenAt) : undefined
         )
-      : markDoseSkipped(profileId, doseId, null, date);
+      : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);
 }
 
@@ -128,6 +130,12 @@ export interface BodyMetricWrite {
   // statement, never the reading — and since #2311 never in silence either: the
   // refusal rides back out on the outcome below.
   occurredAt?: string | null;
+  /**
+   * WHICH SURFACE MADE THIS SUBMISSION (#3087) — required, no default. Stamped on the
+   * INSERT arm only: the per-column UPDATEs below correct a day row that already
+   * exists, and a correction is not a new weigh-in.
+   */
+  loggedVia: LoggedVia;
 }
 
 // What one manual body-metrics submission did (#2311). It used to be a bare
@@ -203,8 +211,8 @@ export function insertBodyMetric(
       .get(profileId, w.date) as { id: number } | undefined;
     if (!found) {
       db.prepare(
-        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, occurred_at, profile_id)
-         VALUES (?,?,?,?,?,?,?)`
+        `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, occurred_at, profile_id, logged_via)
+         VALUES (?,?,?,?,?,?,?,?)`
       ).run(
         w.date,
         weightKg,
@@ -213,7 +221,8 @@ export function insertBodyMetric(
         notes,
         // Bound, never defaulted (#2205): the stated instant or honest NULL.
         stated ?? null,
-        profileId
+        profileId,
+        w.loggedVia
       );
       return;
     }
@@ -331,6 +340,15 @@ export function insertVitals(
   profileId: number,
   date: string,
   raw: VitalsRawInput,
+  // WHICH SURFACE TOOK THESE READINGS (#3087). Required and positional, ahead of the
+  // optional `occurredAt`, for the reason every write core in this tranche takes one:
+  // a default would let a new call site land in the wrong bucket in silence. This
+  // module lives under lib/offline/, but two of its three callers are ONLINE Server
+  // Actions — the Sleep form and the Trends measurements form — and only the replay
+  // at the bottom of this file is a replay. Spelling `offline-replay` here once
+  // stamped every online blood-pressure, glucose, SpO2 and temperature entry as a
+  // queued write replayed after reconnect.
+  loggedVia: LoggedVia,
   occurredAt?: string | null
 ): VitalsWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
@@ -382,6 +400,7 @@ export function insertVitals(
       unit: m.unit,
       date,
       source: "manual",
+      loggedVia,
       category: m.category,
       occurredAt:
         m.canonical === VITAL_CANONICAL.temperature.canonical &&
@@ -406,6 +425,7 @@ export function insertVitals(
       unit: r.unit,
       date,
       source: "manual",
+      loggedVia,
       measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
@@ -765,10 +785,12 @@ function applySetIntent(
   // Canonical-unit fallbacks only: the capture always stamps the units each value
   // was entered in (buildFormData sets both), so these are unreachable for a real
   // intent and merely keep the core total for a hand-crafted one.
-  const outcome = saveActivityCore(profileId, fd, {
-    weightUnit: "kg",
-    distanceUnit: "km",
-  });
+  const outcome = saveActivityCore(
+    profileId,
+    fd,
+    { weightUnit: "kg", distanceUnit: "km" },
+    OFFLINE_REPLAY
+  );
   return classifySetReplay(outcome);
 }
 
@@ -845,6 +867,7 @@ function applyFoodIntent(
       profileId,
       group,
       date,
+      OFFLINE_REPLAY,
       loggedAt,
       mealSlot,
       verdict.kind === "accepted"
@@ -866,7 +889,13 @@ function applyFoodIntent(
   if (payload.entry === "protein") {
     const grams = payload.grams;
     if (typeof grams !== "number") return { status: "rejected" };
-    const outcome = addProteinGramsCore(profileId, date, grams, loggedAt);
+    const outcome = addProteinGramsCore(
+      profileId,
+      date,
+      grams,
+      OFFLINE_REPLAY,
+      loggedAt
+    );
     if (outcome.kind === "invalid") {
       return {
         status: "rejected",
@@ -992,6 +1021,7 @@ export function applyIntent(
         // weigh-in keeps its statement. An intent queued before the field existed
         // has `undefined` here — no statement, never a clear.
         occurredAt: p.occurredAt,
+        loggedVia: OFFLINE_REPLAY,
       });
       ok = applied.wrote;
       // The queued capture is where a fast device clock actually bites a weigh-in
@@ -1047,7 +1077,12 @@ export function applyIntent(
         outcome = { status: "rejected" };
         return;
       }
-      const applied = logMobilityMoveCore(profileId, slug, intent.date);
+      const applied = logMobilityMoveCore(
+        profileId,
+        slug,
+        intent.date,
+        OFFLINE_REPLAY
+      );
       if (applied.kind === "unknown-move") {
         outcome = {
           status: "rejected",
@@ -1075,14 +1110,20 @@ export function applyIntent(
         outcome = { status: "rejected" };
         return;
       }
-      const applied = logPracticeSessionForDay(profileId, name, intent.date, {
-        durationMin: p.durationMin ?? null,
-        // No stated time: the capture happened offline on a device clock, and the write
-        // core's own tap stamp is the profile's clock (#450). A replay landing the next
-        // morning must not stamp the session with the reconnect minute, so this path
-        // states nothing rather than stating something false.
-        time: null,
-      });
+      const applied = logPracticeSessionForDay(
+        profileId,
+        name,
+        intent.date,
+        OFFLINE_REPLAY,
+        {
+          durationMin: p.durationMin ?? null,
+          // No stated time: the capture happened offline on a device clock, and the write
+          // core's own tap stamp is the profile's clock (#450). A replay landing the next
+          // morning must not stamp the session with the reconnect minute, so this path
+          // states nothing rather than stating something false.
+          time: null,
+        }
+      );
       if (applied.kind === "invalid-date") {
         outcome = {
           status: "rejected",
@@ -1115,6 +1156,8 @@ export function applyIntent(
           temperatureTime: p.temperatureTime,
           peakFlowTime: p.peakFlowTime,
         },
+        // THE ONE call of this core that really is a replay (#3087).
+        OFFLINE_REPLAY,
         // The sitting's stated time (#2154), carried through the queue exactly as
         // the body-metric flow carries its own. An intent queued before the fold
         // has `undefined` here — no statement, and the legacy fields above apply.

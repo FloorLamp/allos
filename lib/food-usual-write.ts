@@ -35,6 +35,7 @@
 // thing you log every day" is a claim about the day you are living.
 
 import { instantNow } from "./clock";
+import type { LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
 import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
 import type { FoodSlot } from "./food-slot";
@@ -94,6 +95,9 @@ export function logUsualFoodCore(
   // The group keys the button NAMED. Authoritative only as an upper bound: the offer
   // re-derived below decides what is actually written.
   named: readonly string[],
+  // Which surface tapped the usual-routine button (#3087) — the dashboard control, the
+  // Nutrition page's own, or the composed Telegram one-tap. Required, no default.
+  loggedVia: LoggedVia,
   loggedAt: string = instantNow(),
   // Which message's tap this is (#2264/#2460) — the Telegram composed one-tap only;
   // the web control passes nothing and stores NULL, exactly as the bar does.
@@ -120,6 +124,7 @@ export function logUsualFoodCore(
           profileId,
           groupKey,
           date,
+          loggedVia,
           loggedAt,
           window,
           undefined,

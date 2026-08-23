@@ -56,6 +56,9 @@ describe("20260814-remove-legacy-schema-shells", () => {
       "occurred_at",
       "time_source",
       "notify_message_id",
+      // #3087: which surface a person logged from. Additive and nullable, appended
+      // by 20260822-logged-via-provenance.
+      "logged_via",
     ]);
     expect(names(db, "intake_item_logs")).toEqual([
       "id",
@@ -70,6 +73,8 @@ describe("20260814-remove-legacy-schema-shells", () => {
       "product",
       "supply_adjusted",
       "notify_message_id",
+      // #3087, as above.
+      "logged_via",
     ]);
     expect(names(db, "illness_episodes")).toEqual([
       "id",

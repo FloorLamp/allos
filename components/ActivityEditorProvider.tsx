@@ -1,4 +1,6 @@
 "use client";
+import { LoggedViaSurface, useLoggedVia } from "@/components/LoggedViaSurface";
+import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
 
 import {
   createContext,
@@ -101,15 +103,78 @@ interface ActivityEditorApi {
   editData: ActivityEditData | null;
 }
 
-const Ctx = createContext<ActivityEditorApi | null>(null);
+/**
+ * What the provider actually puts on the context: the public API plus the one thing
+ * only a CONSUMER can answer.
+ *
+ * WHICH SURFACE OPENED THE EDITOR (#3087). This provider is mounted ONCE, in the app
+ * shell, outside every region — so its own `useLoggedVia()` is always `page`, and a
+ * workout started from the quick-log sheet recorded `page` exactly like one started
+ * from the Training page. The surface is knowable, but only where the OPEN CALL is,
+ * so the hook below reads it there and hands it in.
+ *
+ * AND A COMPONENT IS NOT INSIDE THE PROVIDER IT RENDERS, which is the rule the first
+ * version of this missed. `useLoggedVia()` at the consumer answers the region the
+ * consumer is MOUNTED in — and the two openers that own a region declare it in their
+ * own returned JSX, below the hook, so both read `page` and every workout started
+ * from the sheet still recorded `page`. Measured on the real components before the
+ * fix: `MEASURED startWorkout logged_via: page` from the real `QuickLogSheet`.
+ *
+ * A REGION ROOT THEREFORE NAMES ITSELF, `useActivityEditor("quick-log")`, exactly as
+ * `CommandPalette` already names itself for its own posts (`PALETTE_SURFACE`, used
+ * both for the region it declares and for the writes it makes). A consumer mounted
+ * inside someone else's region passes nothing and gets that region from the context,
+ * which is the honest answer for it and leaves the other twelve call sites untouched.
+ */
+interface ActivityEditorContext extends ActivityEditorApi {
+  declareOpenedFrom: (surface: WebLoggedVia) => void;
+}
 
-export function useActivityEditor(): ActivityEditorApi {
+const Ctx = createContext<ActivityEditorContext | null>(null);
+
+/** The open* calls that put the editor on screen, and so decide its surface. */
+const OPENERS = [
+  "openCreate",
+  "openLive",
+  "openSession",
+  "openEdit",
+  "openRepeat",
+  "openRepeatLast",
+] as const;
+
+/**
+ * The activity workspace, and the surface any open from this component came from.
+ *
+ * Pass `declaredSurface` when the calling component IS a region root — it is not
+ * mounted inside the region it declares, so the context cannot answer for it. Omit it
+ * everywhere else and the component's own region answers, `page` included, which is
+ * what a domain page's opener genuinely is.
+ */
+export function useActivityEditor(
+  declaredSurface?: WebLoggedVia
+): ActivityEditorApi {
   const ctx = useContext(Ctx);
   if (!ctx)
     throw new Error(
       "useActivityEditor must be used within ActivityEditorProvider"
     );
-  return ctx;
+  // The caller's own region, read HERE rather than at the provider (see above) — and
+  // overridden by the caller's own declaration when the caller is the region root.
+  const mountedIn = useLoggedVia();
+  const surface = declaredSurface ?? mountedIn;
+  const { declareOpenedFrom } = ctx;
+  return useMemo(() => {
+    const wrapped = { ...ctx } as ActivityEditorContext;
+    for (const name of OPENERS) {
+      const original = ctx[name] as (...args: never[]) => void;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (wrapped as any)[name] = (...args: never[]) => {
+        declareOpenedFrom(surface);
+        original(...args);
+      };
+    }
+    return wrapped;
+  }, [ctx, declareOpenedFrom, surface]);
 }
 
 export default function ActivityEditorProvider({
@@ -190,6 +255,46 @@ export default function ActivityEditorProvider({
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
   const [createDate, setCreateDate] = useState<string | null>(null);
+  // WHICH SURFACE OPENED THIS EDITOR (#3087) — written by `useActivityEditor`'s
+  // wrapper from the OPENER's own region, because this provider sits in the app shell
+  // and has no region of its own.
+  //
+  // A REF *AND* A STATE, and the pair is deliberate. `startLiveSession` posts its
+  // create in the same tick as the open call, so it must read a value that is already
+  // there — a state set moments earlier would still hold the previous surface. The
+  // state is what the region below renders with, which is a render-time question and
+  // so is exactly what state is for.
+  //
+  // DECLARING IS NOT COMMITTING, and the split is the fix to a measured defect. Every
+  // opener below can REFUSE: `preserveCurrentWorkout()` sends a live session's resume
+  // back rather than restarting it, and the eligibility guards drop a tap the profile
+  // may not make. The wrapper runs before all of them, so a refused open used to
+  // re-attribute the editor that stayed open — a tap on the quick-log sheet's bolt,
+  // refused because a workout was already running from the Training page, silently
+  // moved that running workout's region to `quick-log`. So the wrapper writes a
+  // PENDING value, and each opener commits it at the point it actually opens.
+  const pendingOpenedFromRef = useRef<WebLoggedVia>("page");
+  const openedFromRef = useRef<WebLoggedVia>("page");
+  const [openedFrom, setOpenedFrom] = useState<WebLoggedVia>("page");
+  const declareOpenedFrom = useCallback((surface: WebLoggedVia) => {
+    pendingOpenedFromRef.current = surface;
+  }, []);
+  const commitOpenedFrom = useCallback(() => {
+    openedFromRef.current = pendingOpenedFromRef.current;
+    setOpenedFrom(pendingOpenedFromRef.current);
+  }, []);
+  // AND A CLOSED EDITOR HAS NO OPENER. Without this the last opener's surface
+  // outlived its editor: close the sheet's workout, then resume a session from the
+  // dock or let #2471's continuation reopen one after a deploy, and the reopened
+  // workspace still claimed `quick-log` — a sheet that is not on screen and was not
+  // tapped. `page` is the default answer for "nothing declared this", which is
+  // exactly what a dock resume and a post-reload reopen are. A MINIMIZED session is
+  // untouched: it never closed, so it keeps the surface it was started from.
+  const releaseOpenedFrom = useCallback(() => {
+    pendingOpenedFromRef.current = "page";
+    openedFromRef.current = "page";
+    setOpenedFrom("page");
+  }, []);
   const [repeatNonce, setRepeatNonce] = useState(0);
   const router = useRouter();
   const requestCloseRef = useRef<
@@ -231,9 +336,10 @@ export default function ActivityEditorProvider({
         markEditorLinkFollowedRef.current();
         setOpen(false);
       }
+      releaseOpenedFrom();
       router.push(href);
     },
-    [live, router]
+    [live, router, releaseOpenedFrom]
   );
 
   // Resume the acting profile's active session in the shared activity workspace.
@@ -350,6 +456,7 @@ export default function ActivityEditorProvider({
       setOpen(true);
 
       const fd = new FormData();
+      fd.set(LOGGED_VIA_FIELD, openedFromRef.current);
       fd.set("type", kind.type);
       fd.set("title", kind.title);
       void startWorkout(fd)
@@ -482,13 +589,17 @@ export default function ActivityEditorProvider({
   // only re-render when open/editData actually change — not on every provider
   // render (dock registration churns on training log mount/unmount). `offer` is a
   // dependency ON PURPOSE: the bolt's label must flip the moment a session goes live.
-  const api: ActivityEditorApi = useMemo(
+  const api: ActivityEditorContext = useMemo(
     () => ({
+      declareOpenedFrom,
       openCreate: (createPrefill) => {
         if (preserveCurrentWorkout()) return;
         if (!trainingRelevant) return;
         if (createPrefill?.type === "strength" && !strengthTrainingAvailable)
           return;
+        // Past every refusal: this open is happening, so the surface the wrapper
+        // declared is this editor's.
+        commitOpenedFrom();
         setEditData(null);
         setCreateDate(createPrefill?.date ?? null);
         setPrefill(
@@ -511,6 +622,9 @@ export default function ActivityEditorProvider({
         // session's clock and drop its in-flight sets.
         if (preserveCurrentWorkout()) return;
         if (!trainingRelevant || !strengthTrainingAvailable) return;
+        // Before `startLiveSession`, which posts its create in this same tick and
+        // reads the committed ref.
+        commitOpenedFrom();
         startLiveSession({ type: "strength", title: "" }, null);
       },
       canStartWorkout:
@@ -526,6 +640,7 @@ export default function ActivityEditorProvider({
         if (preserveCurrentWorkout()) return;
         if (!trainingRelevant) return;
         if (prefillData.type !== "cardio" && !strengthTrainingAvailable) return;
+        commitOpenedFrom();
         startLiveSession(
           {
             type: prefillData.type === "cardio" ? "cardio" : "strength",
@@ -536,6 +651,7 @@ export default function ActivityEditorProvider({
       },
       openEdit: (data) => {
         if (preserveCurrentWorkout()) return;
+        commitOpenedFrom();
         setEditData(data);
         setCreateDate(null);
         setPrefill(null);
@@ -551,6 +667,7 @@ export default function ActivityEditorProvider({
         if (!trainingRelevant) return;
         if (activityEditDataHasStrength(data) && !strengthTrainingAvailable)
           return;
+        commitOpenedFrom();
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
@@ -570,6 +687,7 @@ export default function ActivityEditorProvider({
           !strengthTrainingAvailable
         )
           return;
+        commitOpenedFrom();
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
@@ -590,6 +708,7 @@ export default function ActivityEditorProvider({
       close: () => {
         setMinimized(false);
         setOpen(false);
+        releaseOpenedFrom();
         abandonEmptyLiveRow();
       },
       leaveFor,
@@ -598,6 +717,9 @@ export default function ActivityEditorProvider({
       editData,
     }),
     [
+      declareOpenedFrom,
+      commitOpenedFrom,
+      releaseOpenedFrom,
       open,
       minimized,
       editData,
@@ -665,65 +787,73 @@ export default function ActivityEditorProvider({
   return (
     <Ctx.Provider value={api}>
       {children}
-      {open && (
-        <ActivityOverlay
-          key={formKey}
-          units={units}
-          suggestions={suggestions}
-          history={history}
-          equipment={equipment}
-          recentActivityEquipment={recentActivityEquipment}
-          bodyweightKg={bodyweightKg}
-          strengthTrainingAvailable={strengthTrainingAvailable}
-          editData={editData}
-          prefill={prefill}
-          initialDate={createDate ?? undefined}
-          live={live}
-          adoptRowId={live ? liveRowId : null}
-          adoptPending={live && liveCreatePending}
-          onRowOwned={live ? onLiveRowOwned : undefined}
-          deloadContext={deloadContext}
-          recoveringContext={recoveringContext}
-          plateauHints={plateauHints}
-          rpeTracking={rpeTracking}
-          // While minimized the workspace stays MOUNTED but hidden — the running
-          // rest timer + elapsed clock keep ticking; the bar restores it.
-          hidden={minimized}
-          onMinimize={live ? minimizeLive : undefined}
-          onLiveFinished={() => {
-            setLive(false);
-            setLiveStartEpoch(null);
-          }}
-          onClose={() => {
-            setMinimized(false);
-            setOpen(false);
-            abandonEmptyLiveRow();
-          }}
-          onCloseRequestReady={(requestClose) => {
-            requestCloseRef.current = requestClose;
-          }}
-          onDeleted={leaveDeletedActivityPage}
-        />
-      )}
-      {/* Spacer so the fixed bottom bar never overlaps the last of the page
+      {/* THE EDITOR'S OWN REGION (#3087), and it is the OPENER's surface rather than a
+          fixed one: this workspace is one component opened from the Training page, the
+          quick-log sheet, the command palette and a dozen other places, so the only
+          honest answer is the one the open call carried in. `{children}` above is
+          deliberately OUTSIDE it — that is the rest of the app, not this editor. */}
+      <LoggedViaSurface value={openedFrom}>
+        {open && (
+          <ActivityOverlay
+            key={formKey}
+            units={units}
+            suggestions={suggestions}
+            history={history}
+            equipment={equipment}
+            recentActivityEquipment={recentActivityEquipment}
+            bodyweightKg={bodyweightKg}
+            strengthTrainingAvailable={strengthTrainingAvailable}
+            editData={editData}
+            prefill={prefill}
+            initialDate={createDate ?? undefined}
+            live={live}
+            adoptRowId={live ? liveRowId : null}
+            adoptPending={live && liveCreatePending}
+            onRowOwned={live ? onLiveRowOwned : undefined}
+            deloadContext={deloadContext}
+            recoveringContext={recoveringContext}
+            plateauHints={plateauHints}
+            rpeTracking={rpeTracking}
+            // While minimized the workspace stays MOUNTED but hidden — the running
+            // rest timer + elapsed clock keep ticking; the bar restores it.
+            hidden={minimized}
+            onMinimize={live ? minimizeLive : undefined}
+            onLiveFinished={() => {
+              setLive(false);
+              setLiveStartEpoch(null);
+            }}
+            onClose={() => {
+              setMinimized(false);
+              setOpen(false);
+              releaseOpenedFrom();
+              abandonEmptyLiveRow();
+            }}
+            onCloseRequestReady={(requestClose) => {
+              requestCloseRef.current = requestClose;
+            }}
+            onDeleted={leaveDeletedActivityPage}
+          />
+        )}
+        {/* Spacer so the fixed bottom bar never overlaps the last of the page
           content — the layout "gains bottom padding while the dock is present". */}
-      {showBar && <div className="h-20 shrink-0" aria-hidden="true" />}
-      {showBar && (
-        <WorkoutDock
-          label={barLabel}
-          startEpochMs={barStartEpoch}
-          live={minimized ? live : true}
-          stale={presence?.stale ?? false}
-          ownerName={subjectName}
-          onOpen={
-            minimized
-              ? () => {
-                  setMinimized(false);
-                }
-              : resumeLive
-          }
-        />
-      )}
+        {showBar && <div className="h-20 shrink-0" aria-hidden="true" />}
+        {showBar && (
+          <WorkoutDock
+            label={barLabel}
+            startEpochMs={barStartEpoch}
+            live={minimized ? live : true}
+            stale={presence?.stale ?? false}
+            ownerName={subjectName}
+            onOpen={
+              minimized
+                ? () => {
+                    setMinimized(false);
+                  }
+                : resumeLive
+            }
+          />
+        )}
+      </LoggedViaSurface>
     </Ctx.Provider>
   );
 }

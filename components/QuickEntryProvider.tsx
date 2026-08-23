@@ -10,6 +10,7 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
+import { LoggedViaSurface } from "./LoggedViaSurface";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
@@ -206,9 +207,17 @@ export default function QuickEntryProvider({
           presentation="dialog"
           titleHidden={sheet.ownsHeading}
         >
-          <div data-testid="quick-entry-body" data-form={form}>
-            <QuickEntryBody state={state} prefill={prefill} onDone={close} />
-          </div>
+          {/* EVERY control inside this sheet is the quick-log sheet (#3087). The
+              bodies below — the food bar, the measurements form, the dose list, the
+              substance row, the practice list — are the SAME components their domain
+              pages mount, posting the SAME Server Actions, so the server can only
+              tell the sheet from the page if the sheet says so. Declared once here,
+              at the region root, rather than on each body. */}
+          <LoggedViaSurface value="quick-log">
+            <div data-testid="quick-entry-body" data-form={form}>
+              <QuickEntryBody state={state} prefill={prefill} onDone={close} />
+            </div>
+          </LoggedViaSurface>
         </BottomSheet>
       )}
     </Ctx.Provider>

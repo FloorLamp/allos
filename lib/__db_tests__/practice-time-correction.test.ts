@@ -150,7 +150,7 @@ afterEach(() => {
 describe("a practice tap can be re-timed", () => {
   it("moves the stored HH:MM back by a chip, and repeat taps compose", () => {
     const pid = makeProfile("chip");
-    logPracticeSession(pid, "Sauna", today(pid));
+    logPracticeSession(pid, "Sauna", today(pid), "page");
     const id = lastLogId(pid);
     const before = storedTime(id);
     expect(before).toMatch(/^\d{2}:\d{2}$/);
@@ -182,8 +182,8 @@ describe("a practice tap can be re-timed", () => {
 
   it("re-stamps every row of a burst, since burst-mates share one error", () => {
     const pid = makeProfile("burst");
-    logPracticeSession(pid, "Breathwork", today(pid));
-    logPracticeSession(pid, "Cold plunge", today(pid));
+    logPracticeSession(pid, "Breathwork", today(pid), "page");
+    logPracticeSession(pid, "Cold plunge", today(pid), "page");
     const ids = db
       .prepare("SELECT id FROM practice_logs WHERE profile_id = ? ORDER BY id")
       .all(pid) as { id: number }[];
@@ -238,7 +238,7 @@ describe("the corrected time is what the scheduler reads", () => {
   it("a chip correction is visible to the inference, end to end", () => {
     const pid = makeProfile("rhythm-live");
     const t = today(pid);
-    logPracticeSession(pid, "Journaling", t);
+    logPracticeSession(pid, "Journaling", t, "page");
     const id = lastLogId(pid);
     const tapped = storedTime(id)!;
 
@@ -260,7 +260,7 @@ describe("a null time is a decision, not a gap", () => {
   it("never appears in a burst and is never given a time by a chip", () => {
     const pid = makeProfile("nulltime");
     // The expanded form's explicit "no instant" statement.
-    logPracticeSession(pid, "Meditation", today(pid), { time: null });
+    logPracticeSession(pid, "Meditation", today(pid), "page", { time: null });
     const untimed = lastLogId(pid);
     expect(storedTime(untimed)).toBeNull();
 
@@ -277,9 +277,9 @@ describe("a null time is a decision, not a gap", () => {
   it("a timed sibling's chip does not sweep an untimed row up with it", () => {
     const pid = makeProfile("nulltime-sibling");
     const t = today(pid);
-    logPracticeSession(pid, "Meditation", t, { time: null });
+    logPracticeSession(pid, "Meditation", t, "page", { time: null });
     const untimed = lastLogId(pid);
-    logPracticeSession(pid, "Sauna", t);
+    logPracticeSession(pid, "Sauna", t, "page");
     const timed = lastLogId(pid);
 
     const [burst] = getPracticeCorrectionBursts(pid, clockNow());
@@ -298,7 +298,7 @@ describe("the chips never move a session to another day", () => {
     const pid = makeProfile("midnight");
     const tz = "Europe/Berlin";
     const t = today(pid);
-    logPracticeSession(pid, "Cold plunge", t);
+    logPracticeSession(pid, "Cold plunge", t, "page");
     const id = lastLogId(pid);
     const before = storedTime(id)!;
 
@@ -354,7 +354,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     const targetId = practiceTarget(pid, "Sauna");
 
     // The write path carries the pointer through, which is what the binding reads.
-    logPracticeByTargetId(pid, targetId, null);
+    logPracticeByTargetId(pid, targetId, "page", null);
     const unattributed = lastLogId(pid);
     expect(
       (
@@ -378,7 +378,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     });
     const messageRow = messagePointerIdAt(pid, "5552875", 4210)!;
     expect(messageRow).toBeGreaterThan(0);
-    logPracticeByTargetId(pid, targetId, messageRow);
+    logPracticeByTargetId(pid, targetId, "page", messageRow);
     const attributed = lastLogId(pid);
 
     const taps = getRecentPracticeTaps(pid, clockNow());

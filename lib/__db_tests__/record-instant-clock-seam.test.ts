@@ -97,10 +97,15 @@ function liveDraftForm(profileId: number, id?: number): FormData {
 describe("activities record instants come off the clock seam (#2287)", () => {
   it("saveActivityCore stamps created_at from the seam, not the column DEFAULT", () => {
     const p = newProfile("seam-activity-create");
-    const outcome = saveActivityCore(p, liveDraftForm(p), {
-      weightUnit: "kg",
-      distanceUnit: "km",
-    });
+    const outcome = saveActivityCore(
+      p,
+      liveDraftForm(p),
+      {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      },
+      "page"
+    );
     expect(outcome.ok).toBe(true);
     const id = outcome.ok ? outcome.id : 0;
     expect(stamps(id).created_at).toBe(utcSqlString(clockNow()));
@@ -108,24 +113,39 @@ describe("activities record instants come off the clock seam (#2287)", () => {
 
   it("an edit stamps updated_at from the seam", () => {
     const p = newProfile("seam-activity-edit");
-    const created = saveActivityCore(p, liveDraftForm(p), {
-      weightUnit: "kg",
-      distanceUnit: "km",
-    });
+    const created = saveActivityCore(
+      p,
+      liveDraftForm(p),
+      {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      },
+      "page"
+    );
     const id = created.ok ? created.id : 0;
-    saveActivityCore(p, liveDraftForm(p, id), {
-      weightUnit: "kg",
-      distanceUnit: "km",
-    });
+    saveActivityCore(
+      p,
+      liveDraftForm(p, id),
+      {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      },
+      "page"
+    );
     expect(stamps(id).updated_at).toBe(utcSqlString(clockNow()));
   });
 
   it("finishWorkoutSession stamps updated_at from the seam", () => {
     const p = newProfile("seam-activity-finish");
-    const created = saveActivityCore(p, liveDraftForm(p), {
-      weightUnit: "kg",
-      distanceUnit: "km",
-    });
+    const created = saveActivityCore(
+      p,
+      liveDraftForm(p),
+      {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      },
+      "page"
+    );
     const id = created.ok ? created.id : 0;
     // A finish refuses a content-less draft (#1205 §4), so give it one logged set.
     db.prepare(
@@ -139,7 +159,9 @@ describe("activities record instants come off the clock seam (#2287)", () => {
   it("the mobility core stamps both created_at and updated_at from the seam", () => {
     const p = newProfile("seam-mobility");
     const date = today(p);
-    expect(logMobilityMoveCore(p, "neck_cars", date).kind).toBe("logged");
+    expect(logMobilityMoveCore(p, "neck_cars", date, "page").kind).toBe(
+      "logged"
+    );
     const row = db
       .prepare(
         "SELECT id FROM activities WHERE profile_id = ? AND date = ? AND type = 'mobility'"
@@ -147,7 +169,7 @@ describe("activities record instants come off the clock seam (#2287)", () => {
       .get(p, date) as { id: number };
     expect(stamps(row.id).created_at).toBe(utcSqlString(clockNow()));
     // A second move UPDATEs the same day's row.
-    expect(logMobilityMoveCore(p, "cat_cow", date).kind).toBe("logged");
+    expect(logMobilityMoveCore(p, "cat_cow", date, "page").kind).toBe("logged");
     expect(stamps(row.id).updated_at).toBe(utcSqlString(clockNow()));
   });
 
@@ -182,10 +204,15 @@ describe("activities record instants come off the clock seam (#2287)", () => {
     // draft written and read in the same breath used to answer `quietMin ≈ 58`,
     // past STALE_MIN (45), and raise the dock's "Still working out?" branch.
     const p = newProfile("seam-presence");
-    const created = saveActivityCore(p, liveDraftForm(p), {
-      weightUnit: "kg",
-      distanceUnit: "km",
-    });
+    const created = saveActivityCore(
+      p,
+      liveDraftForm(p),
+      {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      },
+      "page"
+    );
     const id = created.ok ? created.id : 0;
     const presence = getWorkoutPresence(p);
     expect(NUDGE_GAP_MIN).toBeGreaterThan(STALE_MIN);

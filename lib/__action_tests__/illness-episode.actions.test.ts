@@ -46,7 +46,7 @@ function makeSick(profileId: number): number {
     `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(profileId, start);
-  logSymptomCore(profileId, "cough", 2, today(profileId));
+  logSymptomCore(profileId, "cough", 2, today(profileId), "page");
   return getOpenEpisodeRow(profileId, "Illness")!.id;
 }
 
@@ -410,6 +410,7 @@ describe("episode event ledger actions", () => {
       101.2,
       "F",
       date,
+      "page",
       "08:15"
     );
     expect(temperature.kind).toBe("logged");
@@ -655,6 +656,7 @@ describe("episode event ledger actions", () => {
       99.8,
       "F",
       today(profile.id),
+      "page",
       "08:00"
     );
     expect(reading.kind).toBe("logged");
@@ -695,6 +697,7 @@ describe("episode event ledger actions", () => {
       101.2,
       "F",
       date,
+      "page",
       "08:15"
     );
     expect(temperature.kind).toBe("logged");

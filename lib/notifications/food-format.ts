@@ -133,7 +133,12 @@ export function countVisibleFoodButtons(
       const d = btn.callback_data;
       if (
         typeof d === "string" &&
-        (/^food:\d+:/.test(d) || /^foodprotein:\d+:/.test(d))
+        // The optional origin marker (#3087) sits in a segment of its own between the
+        // family prefix and the profile id, so a `\d+`-anchored pattern would stop
+        // counting the buttons the moment a keyboard declared where it came from —
+        // and the expansion this function preserves is read back from that count.
+        (/^food:(?:[nc]:)?\d+:/.test(d) ||
+          /^foodprotein:(?:[nc]:)?\d+:/.test(d))
       )
         n++;
     }

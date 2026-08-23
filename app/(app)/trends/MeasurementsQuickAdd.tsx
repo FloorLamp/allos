@@ -1,4 +1,5 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
@@ -211,6 +212,9 @@ export default function MeasurementsQuickAdd({
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
+  // Which surface this sitting was entered on (#3087): the Trends panel, a metric
+  // detail page, or the quick-log sheet — three mountings of this one form.
+  const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
   // The submission's WHEN — one date + one optional Time for the whole sitting
   // (#2235 decision 3), owned as a PAIR by the shared control so a stated instant's
@@ -465,7 +469,7 @@ export default function MeasurementsQuickAdd({
     }
     let saved: MeasurementsSaveResult;
     try {
-      saved = await addMeasurements(formData);
+      saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
       if (shouldQueueOffline(navigator.onLine !== false, err)) {
         const captured = await queueOffline();

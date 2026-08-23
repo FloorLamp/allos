@@ -25,6 +25,7 @@ import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
 import PageContainer from "../../components/PageContainer";
+import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
@@ -204,7 +205,8 @@ function ctxFor(profileId: number): PersonaContext {
       );
     },
     reconcileFlags,
-    saveFitnessEntry,
+    saveFitnessEntry: (profileId, entry) =>
+      saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
     diffSituations,
@@ -315,7 +317,20 @@ describe("actual atomic dashboard manifests", () => {
         async () => await Dashboard()
       )) as ReactElement<{ children: ReactElement }>;
       expect(page.type).toBe(PageContainer);
-      return page.props.children as ReactElement<DashboardPlacementCanvasProps>;
+      // …and the SURFACE DECLARATION inside it (#3087): the dashboard names itself
+      // `dashboard-widget` once, at the region root, so every logging control it
+      // places posts the surface it is actually on instead of the domain page's
+      // `page` fallback. Unwrapped here for the same reason the width wrapper above
+      // is: it is a fact about the region, not about the placement, and this tier
+      // must keep reading the manifest off the canvas' own props.
+      const surface = page.props.children as ReactElement<{
+        value: string;
+        children: ReactElement;
+      }>;
+      expect(surface.type).toBe(LoggedViaSurface);
+      expect(surface.props.value).toBe("dashboard-widget");
+      return surface.props
+        .children as ReactElement<DashboardPlacementCanvasProps>;
     };
 
     for (const persona of PERSONAS) {

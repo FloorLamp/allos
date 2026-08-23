@@ -186,7 +186,7 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     const t = today(pid);
     practiceTarget(pid, "Breathwork", 3);
     // One session last week: far under the habitual-weekday gate → no pattern.
-    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -8));
+    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -8), "page");
 
     const untimed = buildPracticeReminder(pid, "n3");
     const timed = buildPracticeReminder(pid, "n3", "", at(2, 8 * 60));
@@ -209,7 +209,7 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     seedWeeklyHabit(pid, "Red light therapy", t, 3, 8, "18:30");
     seedWeeklyHabit(pid, "Red light therapy", t, 5, 8, "18:30");
     practiceTarget(pid, "Breathwork", 3);
-    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1));
+    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1), "page");
 
     const rhythmic = {
       scope_kind: "practice",
@@ -264,7 +264,7 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     seedWeeklyHabit(pid, "Red light therapy", t, 3, 8, "18:30");
     seedWeeklyHabit(pid, "Red light therapy", t, 5, 8, "18:30");
     practiceTarget(pid, "Breathwork", 3);
-    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1));
+    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1), "page");
 
     const byName = new Map(
       getWellnessPractices(pid).map((p) => [p.name, p.usuallyToday])
