@@ -866,20 +866,30 @@ amounts stay transcribed from typical labels, NOT held to the cited-source stand
 NOT marked unverified — is a deliberate no-op with its accepted cost stated on the
 issue.)
 
-It also only speaks where it is true. The reason ends "the total is expected for this
-product", so `formulationUlNote` renders it only when the declaring product ACCOUNTS
-for the exceedance: its own contribution must be above the limit, AND the rest of the
-stack must not be over the limit without it. Both halves are needed and they catch
-different stacks. AREDS 2 at one softgel is 40 mg — exactly at the adult UL, over
-nothing — so adding a separate 50 mg zinc puts the person at 90 mg because of the other
-bottle, and the note stays silent. Two products each over the limit (80 mg and 50 mg,
-130 mg together) get no note either: neither explains 130 mg. Three products sharing an
-exceedance (40 mg, 10 mg and 5 mg, 55 mg together) get none: removing AREDS 2 drops the
-stack under the limit, but its own serving is not above it, so a shared exceedance is
-nobody's by design. A note that explained someone else's total would teach a person to
-dismiss a real warning — the same "looks like a bug, so it gets ignored" failure the
-ruling exists to prevent, read the other way. OPEN: on a pediatric band the adult
-sentence still renders against a child's lower limit; that is an unruled wording call.
+It also only speaks about what it can explain, and the bounds are the CATALOG's, not
+the limit's. A product earns its sentence when its own contribution is above the limit
+AND no larger than what the catalog says that product contains at its largest stated
+serving (`catalogUlExceedances` for that entry — so the bound moves with a
+reformulation). AREDS 2 at one softgel is 40 mg, exactly at the adult UL and over
+nothing, so a stack at 90 mg because of a separate 50 mg bottle gets no note: "above the
+limit by design" is not true of the 40 mg this person takes. Ten softgels is 400 mg —
+ten times the limit and five times any serving the label states — and gets none either:
+no formula designed that, and the person got there by editing a prefilled dose.
+
+The closing sentence is separate, because the catalog knows the product and not the
+stack. `reason` says only what is true of the bottle; `formulationUlNote` appends "The
+total is expected for this product" only when the by-design contributions ARE the total,
+each at a serving its own label states. Anything else in the stack and it appends "The
+rest of this total comes from your other items" instead — an AREDS 2 beside a
+multivitamin, an immune blend and a cold lozenge at 8 mg each is 120 mg, and no
+arrangement of other people's bottles makes 120 mg something AREDS 2 expects. This also
+removes a cliff: under the earlier predicate (rest-of-stack ≤ UL) a second 40 mg bottle
+got "expected" and a 50 mg one got the bare warning, so ten milligrams elsewhere decided
+whether the app reassured. A note that explained someone else's total would teach a
+person to dismiss a real warning — the same "looks like a bug, so it gets ignored"
+failure the ruling exists to prevent, read the other way. OPEN: on a pediatric band the
+adult sentence still renders against a child's lower limit (#3638); that is an unruled
+wording call.
 
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the

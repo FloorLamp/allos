@@ -193,13 +193,12 @@ describe("catalog UL reasons — what a person reads", () => {
     expect(note("vitamin_e", 80, 1000, contributors)).toBeNull();
   });
 
-  it("says nothing when another product is what pushed the total over", () => {
-    // THE CAUSATION GUARD. AREDS 2 at ONE softgel is 40 mg — exactly at the adult UL
-    // and over nothing on its own. Add a separate 50 mg zinc and the stack is at 90
-    // mg, 2.25x the limit, because of the OTHER bottle. The declared reason ends "The
-    // total is expected for this product", and a total this product does not explain
-    // must never carry it: a person told a warning is expected stops reading it, which
-    // is the exact failure #3156's ruling exists to prevent, pointed the other way.
+  it("says nothing when the product's own serving is not above the limit", () => {
+    // THE FLOOR. AREDS 2 at ONE softgel is 40 mg — exactly at the adult UL and over
+    // nothing. Add a separate 50 mg zinc and the stack is at 90 mg, 2.25x the limit,
+    // and "above the general zinc limit by design" is not true of the 40 mg this
+    // person takes. A person told a warning is expected stops reading it, which is the
+    // exact failure #3156's ruling exists to prevent, pointed the other way.
     const warning = zincWarning([itemFor(areds, "1 softgel"), zincItem(50)]);
     expect(warning.total).toBe(90);
     expect(warning.ul).toBe(40);
@@ -215,13 +214,99 @@ describe("catalog UL reasons — what a person reads", () => {
     );
   });
 
-  it("still says nothing when BOTH sources are over the limit alone", () => {
-    // AREDS 2 at its own 2-softgel serving (80 mg) really is above the limit by
-    // design — but at 130 mg the total is not this product's, and the other bottle
-    // would have raised the warning by itself. Neither product explains this line.
+  it("says the product is by design and never that the TOTAL is, once anything else is in the stack", () => {
+    // AREDS 2 at its own 2-softgel serving really is 80 mg by design — and 130 mg is
+    // not this product's number. The note says the first and refuses the second: no
+    // "expected", and a closing sentence pointing at the rest, which is what the person
+    // can actually act on.
     const warning = zincWarning([itemFor(areds, "2 softgels"), zincItem(50)]);
     expect(warning.total).toBe(130);
+    const note = formulationUlNote(warning);
+    expect(note).toBe(
+      "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
+        "the AREDS2 eye-health formula. The rest of this total comes from your other items."
+    );
+    const detail = ulWarningDetail(warning, null, note);
+    expect(detail).not.toContain("expected for this product");
+    expect(detail).toContain("130 mg");
+    expect(detail).toContain(
+      "Discuss with your clinician before changing anything."
+    );
+  });
+
+  it("reads the same either side of the old 10 mg cliff", () => {
+    // THE CLIFF. The predicate this replaced asked whether the REST of the stack would
+    // have tripped the limit alone, so a second 40 mg bottle (120 mg) got "the total is
+    // expected for this product" and a 50 mg one (130 mg) got the bare warning. Ten
+    // milligrams from another bottle decided whether the app reassured. The product's
+    // own fact does not move with the rest of the stack, so neither does the sentence.
+    const at120 = zincWarning([itemFor(areds, "2 softgels"), zincItem(40)]);
+    const at130 = zincWarning([itemFor(areds, "2 softgels"), zincItem(50)]);
+    expect(at120.total).toBe(120);
+    expect(at130.total).toBe(130);
+    expect(formulationUlNote(at120)).toBe(formulationUlNote(at130));
+    expect(formulationUlNote(at120)).not.toContain("expected");
+  });
+
+  it("does not call 120 mg expected because five small items each look unremarkable", () => {
+    // A multivitamin, an immune blend, a prostate formula, a hair/skin/nails and a cold
+    // lozenge at 8 mg each. None of them trips anything alone, and under the old
+    // predicate that made the whole 120 mg "expected for this product". No arrangement
+    // of other people's bottles makes 120 mg something AREDS 2 expects.
+    const warning = zincWarning([
+      itemFor(areds, "2 softgels"),
+      zincItem(8, "Multivitamin"),
+      zincItem(8, "Immune Blend"),
+      zincItem(8, "Prostate Formula"),
+      zincItem(8, "Hair Skin Nails"),
+      zincItem(8, "Cold Lozenge"),
+    ]);
+    expect(warning.total).toBe(120);
+    const note = formulationUlNote(warning);
+    expect(note).toContain("by design");
+    expect(note).not.toContain("expected");
+    expect(note).toContain("The rest of this total comes from your other items.");
+  });
+
+  it("cannot contradict the as-needed sentence it sits beside", () => {
+    // "This total counts every item that supplements it, including as-needed items. …
+    // The total is expected for this product." was one line saying two opposite things.
+    const warning = zincWarning([
+      itemFor(areds, "2 softgels"),
+      { ...zincItem(20, "Cold Lozenge"), optional: true },
+    ]);
+    expect(warning.includesOptional).toBe(true);
+    const detail = ulWarningDetail(warning, null, formulationUlNote(warning));
+    expect(detail).toContain(
+      "This total counts every item that supplements it, including as-needed items."
+    );
+    expect(detail).not.toContain("expected for this product");
+  });
+
+  it("goes silent one stated serving past the label", () => {
+    // THE UPPER BOUND. Three softgels is 120 mg — above every serving the label states,
+    // so "by design" is a claim about a formula this is not. The old predicate had no
+    // upper bound at all and said 120 mg was expected for this product.
+    const warning = zincWarning([itemFor(areds, "3 softgels")]);
+    expect(warning.total).toBe(120);
     expect(formulationUlNote(warning)).toBeNull();
+  });
+
+  it("goes silent at ten times the limit, whatever the rest of the stack is", () => {
+    // Ten softgels: 400 mg, ten times the UL and five times the product's own largest
+    // stated serving, and the old note called it expected for this product. This is not
+    // an adversarial input — the catalog prefills a stated serving and the person is
+    // then free to edit the dose, and nothing else re-checks it.
+    const warning = zincWarning([itemFor(areds, "10 softgels")]);
+    expect(warning.total).toBe(400);
+    expect(formulationUlNote(warning)).toBeNull();
+    const detail = ulWarningDetail(warning, null, formulationUlNote(warning));
+    expect(detail).not.toContain("by design");
+    // Suppressed, never softened.
+    expect(detail).toContain("400 mg");
+    expect(detail).toContain(
+      "Discuss with your clinician before changing anything."
+    );
   });
 
   it("still says nothing when three sources share an exceedance nobody caused", () => {
@@ -238,16 +323,20 @@ describe("catalog UL reasons — what a person reads", () => {
     expect(formulationUlNote(warning)).toBeNull();
   });
 
-  it("keeps the note when the product is over alone and the rest is not", () => {
-    // The other side of the boundary, so the guard above cannot pass by suppressing
-    // everything: AREDS 2 at 80 mg beside a small multivitamin. The 8 mg raises no
-    // warning on its own, so this exceedance is still the product's and still explained.
+  it("keeps the note when the product is at its own serving beside a small multivitamin", () => {
+    // The other side of the boundary, so the guards above cannot pass by suppressing
+    // everything: AREDS 2 at its 80 mg serving beside an 8 mg multivitamin. The product
+    // fact still holds and is still said — losing it here would resurrect the bare
+    // generic warning #3156 exists to prevent, on an entirely ordinary stack. What the
+    // note does not do is call 88 mg expected.
     const warning = zincWarning([
       itemFor(areds, "2 softgels"),
       zincItem(8, "Multivitamin"),
     ]);
     expect(warning.total).toBe(88);
-    expect(formulationUlNote(warning)).toContain("by design");
+    const note = formulationUlNote(warning);
+    expect(note).toContain("by design");
+    expect(note).not.toContain("expected");
   });
 
   it("says nothing for a product that is not the catalogued one", () => {
@@ -272,6 +361,108 @@ describe("catalog UL reasons — what a person reads", () => {
     expect(ulWarningDetail(warning, null, null)).toBe(
       ulWarningDetail(warning, null)
     );
+  });
+});
+
+describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => {
+  // The shipped product moves in 40 mg steps, which cannot land ON either boundary.
+  // These do: a blend stating 41 mg per capsule at one or two capsules, so the stated
+  // serving totals are exactly 41 and 82 against an adult zinc UL of 40.
+  const REASON = "Made-Up Zinc Blend is above the general zinc limit by design.";
+  const synthetic: SupplementCatalogEntry[] = [
+    {
+      name: "Made-Up Zinc Blend",
+      dosages: ["1 capsule", "2 capsules"],
+      ingredients: [{ name: "Zinc", amount: "41 mg" }],
+      aboveUpperLimit: [{ nutrient: "zinc", reason: REASON }],
+    },
+  ];
+
+  function soleNote(amount: number, total = amount) {
+    return formulationUlNote(
+      {
+        key: "zinc",
+        total,
+        ul: 40,
+        contributors: [{ name: "Made-Up Zinc Blend", amount }],
+      },
+      synthetic
+    );
+  }
+
+  it("pins the stated servings this bound is read from", () => {
+    // So the four boundary cases below cannot silently stop being boundaries.
+    expect(catalogUlExceedances(synthetic).map((x) => x.total)).toEqual([41, 82]);
+  });
+
+  it("is silent AT the limit and speaks one milligram past it", () => {
+    expect(soleNote(40)).toBeNull();
+    expect(soleNote(41)).toBe(`${REASON} The total is expected for this product.`);
+  });
+
+  it("speaks AT the largest stated serving and is silent one milligram past it", () => {
+    expect(soleNote(82)).toBe(`${REASON} The total is expected for this product.`);
+    expect(soleNote(83)).toBeNull();
+  });
+
+  it("claims the total only at a serving the label actually states", () => {
+    // 60 mg is inside the product's range and is no serving it states — a person on a
+    // capsule and a half. The product fact holds; "the total is expected" does not.
+    expect(soleNote(60)).toBe(REASON);
+  });
+
+  it("says 'these products' when two of them account for the whole total", () => {
+    const OTHER_REASON = "Made-Up Zinc Blend Two is above it by design too.";
+    const other = {
+      ...synthetic[0],
+      name: "Made-Up Zinc Blend Two",
+      aboveUpperLimit: [{ nutrient: "zinc", reason: OTHER_REASON }],
+    };
+    const note = formulationUlNote(
+      {
+        key: "zinc",
+        total: 82,
+        ul: 40,
+        contributors: [
+          { name: "Made-Up Zinc Blend", amount: 41 },
+          { name: "Made-Up Zinc Blend Two", amount: 41 },
+        ],
+      },
+      [synthetic[0], other]
+    );
+    expect(note).toBe(
+      `${REASON} ${OTHER_REASON} The total is expected for these products.`
+    );
+  });
+
+  it("points at the rest as soon as anything else is in the total", () => {
+    expect(soleNote(82, 83)).toBe(
+      `${REASON} The rest of this total comes from your other items.`
+    );
+  });
+
+  it("withholds the note from a product whose own servings never exceed", () => {
+    // A declaration that outlived its formula: the guard above fails such a catalog,
+    // and until someone fixes it the note must not speak from an empty bound.
+    const stale: SupplementCatalogEntry[] = [
+      {
+        name: "Made-Up Mild Blend",
+        dosages: ["1 capsule"],
+        ingredients: [{ name: "Zinc", amount: "11 mg" }],
+        aboveUpperLimit: [{ nutrient: "zinc", reason: "Stale claim." }],
+      },
+    ];
+    expect(
+      formulationUlNote(
+        {
+          key: "zinc",
+          total: 90,
+          ul: 40,
+          contributors: [{ name: "Made-Up Mild Blend", amount: 90 }],
+        },
+        stale
+      )
+    ).toBeNull();
   });
 });
 

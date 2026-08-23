@@ -53,7 +53,9 @@ export interface SupplementCatalogEntry {
   //
   // `nutrient` is a DRI nutrient key (lib/datasets/data/dri.json — 'zinc', 'vitamin_a',
   // …), never a label string, so the note attaches to the ONE nutrient line it explains
-  // and no other. `reason` is one plain sentence naming the product and why it is high.
+  // and no other. `reason` is one plain sentence naming the product and why it is high —
+  // ABOUT THE PRODUCT ONLY. It must not say anything about the reader's total, which
+  // depends on the rest of their stack and is the join's to describe (#3629).
   //
   // A declaration here is CHECKED BOTH WAYS by lib/__tests__/catalog-ul-notes.test.ts:
   // an entry that trips a UL at one of its own stated servings must carry a reason, and
@@ -675,12 +677,17 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     // 80 mg of zinc a day against an adult UL of 40 mg, so the warning fires on the
     // app's own seeded serving. Owner ruling on #3156: the warning STAYS, and it says
     // why — the sentence below is what the UL surface renders beside the exceedance.
+    //
+    // A sentence about THIS PRODUCT and nothing else. What the reader's TOTAL is made
+    // of is not a property of the bottle, so the catalog does not claim it: the join
+    // (lib/supplement-catalog-ul) adds the closing sentence about the total, and only
+    // when this product's own stated serving IS the total.
     aboveUpperLimit: [
       {
         nutrient: "zinc",
         reason:
           "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
-          "the AREDS2 eye-health formula. The total is expected for this product.",
+          "the AREDS2 eye-health formula.",
       },
     ],
     ingredients: [

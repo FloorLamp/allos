@@ -4,9 +4,9 @@
 // directions:
 //
 //   * DISPLAY — when a UL warning fires on a nutrient, does one of the products
-//     feeding it declare that it is above that limit ON PURPOSE, and is that product
-//     what put the stack over? `formulationUlNote` answers it, and the answer is
-//     appended to the warning's detail line.
+//     feeding it declare that it is above that limit ON PURPOSE, and is the person
+//     taking an amount that product is formulated to deliver? `formulationUlNote`
+//     answers it, and the answer is appended to the warning's detail line.
 //   * CENSUS — which catalogued products trip a UL at one of their OWN stated
 //     servings? `catalogUlExceedances` answers it, and the guard in
 //     lib/__tests__/catalog-ul-notes.test.ts requires every such product to carry a
@@ -22,18 +22,21 @@
 // one. `ulWarningDetail` still states the same total against the same limit and still
 // closes with "discuss with your clinician".
 //
-// AND IT ONLY SPEAKS WHERE IT IS TRUE. The reason ends "the total is expected for this
-// product", so it is withheld unless the product accounts for the exceedance —
-// `explainsExceedance` below. A note that explains someone else's total would teach a
-// person to dismiss a real warning, which is #3156's failure mode wearing the other
-// face.
+// AND IT ONLY SPEAKS ABOUT WHAT IT CAN EXPLAIN. Two bounds, both read off the CATALOG
+// rather than off the limit:
+//
+//   * a product's own contribution earns the "by design" sentence only when it is above
+//     the limit AND no larger than what the catalog says that product contains at its
+//     largest stated serving. Ten softgels of AREDS 2 is 400 mg of zinc — ten times the
+//     limit, five times anything its label states — and no formula designed that.
+//   * the sentence about the TOTAL is appended only when those contributions ARE the
+//     total, at servings the product itself states. Anything else in the stack and the
+//     note explains the product's share and says where the rest came from.
+//
+// A note that explained someone else's total would teach a person to dismiss a real
+// warning, which is #3156's failure mode wearing the other face.
 
-import {
-  stackUlWarnings,
-  type StackItem,
-  type NutrientContribution,
-  type UlWarning,
-} from "./dri";
+import { stackUlWarnings, type StackItem, type UlWarning } from "./dri";
 import { normalizeIngredientDrafts } from "./intake-ingredients";
 import {
   SUPPLEMENT_CATALOG,
@@ -69,40 +72,62 @@ export function catalogEntryByName(
   return entries.find((e) => norm(e.name) === want) ?? null;
 }
 
-// Does THIS contributor account for the exceedance the person is looking at? The
-// declared sentence makes two claims — that the product is above the limit ON PURPOSE,
-// and that "the total is expected for this product" — so it needs both halves to hold:
+// A float slack for comparing two amounts the same engine derived. Doses multiply label
+// amounts, so an arithmetically identical total can land a few ULPs away; nothing here
+// should turn on that.
+const AMOUNT_EPSILON = 1e-9;
+
+// The totals a product reaches for one nutrient at the servings IT states — the bound
+// the note is measured against. Computed from the same census the catalog guard uses,
+// so it cannot drift from the seed data: reformulate the entry and the bound moves with
+// it.
 //
-//   * the product's own contribution is ABOVE the limit. AREDS 2 at one softgel is
-//     40 mg, exactly AT the adult UL and over nothing; the "by design" clause is a
-//     claim about a serving this person is not taking.
-//   * the rest of the stack is NOT over the limit without it. Otherwise the warning
-//     would have fired anyway, this product did not cause it, and telling someone the
-//     total is expected teaches them to dismiss a warning nothing here explains —
-//     which is #3156's own "looks like a bug, so it gets ignored" failure pointed the
-//     other way, and the reason that ruling exists.
-//
-// Both boundaries are the UL's own. stackUlWarnings fires on STRICTLY greater, so a
-// contribution sitting exactly at the UL is not above it, and a remainder sitting
-// exactly at the UL is not an independent cause of anything.
-//
-// The two halves answer the awkward stacks in opposite directions, which is why
-// neither alone will do. Two products each over the limit (80 mg AREDS 2 + 50 mg
-// zinc = 130): the first half passes for both, the second fails for both, and nobody
-// gets to call 130 mg expected. Three products sharing it (40 + 10 + 5 = 55): removing
-// AREDS 2 drops the stack under the limit so the second half passes, but its own
-// serving is not over the limit so the first fails. A shared exceedance is nobody's
-// by design.
-//
-// Contributions sum to the total exactly (lib/dri.summarizeStack builds both from the
-// same reading), so `total - c.amount` IS the rest of the stack.
-function explainsExceedance(
-  c: NutrientContribution,
-  total: number,
-  ul: number
-): boolean {
-  return c.amount > ul && total - c.amount <= ul;
+// The census is the ADULT band's, so a stated serving appears here only when it is over
+// the ADULT limit. That is the bound this needs — a note is only ever considered for a
+// contribution already above the reader's own limit — and on a lower band the omission
+// can only WITHHOLD the sentence about the total, never invent one.
+function statedServingTotals(
+  entry: SupplementCatalogEntry,
+  nutrientKey: string
+): number[] {
+  return catalogUlExceedances([entry])
+    .filter((x) => x.nutrient === nutrientKey)
+    .map((x) => x.total);
 }
+
+// Is this contributor's amount one the product is FORMULATED to deliver — above the
+// limit, and no larger than its own largest stated serving?
+//
+// BOTH bounds are the catalog's; the limit only sets the floor. The predicate this
+// replaced was bounded below and not above (`amount > ul`), so every over-serving
+// passed it: at six softgels a person was told 240 mg was expected for this product, on
+// the same reasoning that withholds the note at ONE softgel because that is a serving
+// they are not taking. Six is equally a serving the product was not designed for, and
+// the catalog prefills at a stated serving that the person is then free to edit.
+//
+// stackUlWarnings fires on STRICTLY greater, so a contribution sitting exactly at the
+// limit is not above it: AREDS 2 at one softgel is 40 mg, exactly at the adult UL and
+// over nothing, and "above the limit by design" is not a claim about it.
+function contributionIsByDesign(
+  amount: number,
+  ul: number,
+  statedTotals: readonly number[]
+): boolean {
+  if (statedTotals.length === 0) return false;
+  return amount > ul && amount <= Math.max(...statedTotals) + AMOUNT_EPSILON;
+}
+
+// The one sentence that speaks about the TOTAL rather than about a product, appended
+// only when the by-design contributions ARE the total and each sits at a serving its own
+// label states. Everything else gets `REST_ELSEWHERE`, which explains nothing about the
+// total and points at what the note does not cover — the difference between a line a
+// person can act on and a line that quietly reassures them about someone else's zinc.
+// Plural keys on how many PRODUCTS explained, not on how many sentences were joined:
+// two entries can carry the same wording, and one sentence covering two bottles is
+// still two bottles.
+const TOTAL_EXPECTED = "The total is expected for this product.";
+const TOTAL_EXPECTED_PLURAL = "The total is expected for these products.";
+const REST_ELSEWHERE = "The rest of this total comes from your other items.";
 
 // The fields of a UL warning this join reads. Taken as ONE argument rather than as
 // loose parts, because the answer depends on the whole exceedance — the total and the
@@ -114,13 +139,22 @@ export type FormulationUlWarning = Pick<
 >;
 
 // The declared reason(s) that a nutrient's UL exceedance is intentional, for the
-// products that actually CAUSED it — joined into one line, or null when no such
-// contributor declares anything for this nutrient.
+// products whose contribution really is what their own label states — joined into one
+// line, with a closing sentence that says how much of the total those products account
+// for. Null when no contributor declares anything for this nutrient at an amount it is
+// formulated to deliver.
 //
-// Scoped to the nutrient, to the contributors, and to causation: an AREDS 2 in the
-// stack explains the zinc line and says nothing on the vitamin A line, it explains
-// nothing at all once it is no longer part of the total, and it explains nothing when
-// the person would have been over the limit without it.
+// Scoped to the nutrient, to the contributors, and to the product's own stated
+// servings: an AREDS 2 in the stack explains the zinc line and says nothing on the
+// vitamin A line, it explains nothing at all once it is no longer part of the total, and
+// at ten softgels it explains nothing because no label states that.
+//
+// WHAT IT NEVER DOES is claim a total it does not account for. Contributions sum to the
+// total exactly (lib/dri.summarizeStack builds both from the same reading), so
+// `total - byDesign` IS everything else in the stack — and while that is above zero the
+// note ends by saying so instead of calling the number expected. A multivitamin, an
+// immune blend and a cold lozenge at 8 mg each beside an AREDS 2 is 120 mg, and no
+// arrangement of those items makes 120 mg something a product expects.
 export function formulationUlNote(
   warning: FormulationUlWarning,
   entries: readonly SupplementCatalogEntry[] = SUPPLEMENT_CATALOG
@@ -128,18 +162,36 @@ export function formulationUlNote(
   const { key: nutrientKey, total, ul, contributors } = warning;
   const seen = new Set<string>();
   const notes: string[] = [];
+  let byDesign = 0;
+  let explainers = 0;
+  let everyShareIsAStatedServing = true;
   for (const c of contributors) {
-    if (!explainsExceedance(c, total, ul)) continue;
     const entry = catalogEntryByName(c.name, entries);
-    if (!entry?.aboveUpperLimit) continue;
-    for (const n of entry.aboveUpperLimit) {
-      if (n.nutrient !== nutrientKey) continue;
+    if (!entry) continue;
+    const declared = (entry.aboveUpperLimit ?? []).filter(
+      (n) => n.nutrient === nutrientKey
+    );
+    if (declared.length === 0) continue;
+    const stated = statedServingTotals(entry, nutrientKey);
+    if (!contributionIsByDesign(c.amount, ul, stated)) continue;
+    byDesign += c.amount;
+    explainers += 1;
+    if (!stated.some((t) => Math.abs(t - c.amount) <= AMOUNT_EPSILON)) {
+      everyShareIsAStatedServing = false;
+    }
+    for (const n of declared) {
       if (seen.has(n.reason)) continue;
       seen.add(n.reason);
       notes.push(n.reason);
     }
   }
-  return notes.length > 0 ? notes.join(" ") : null;
+  if (notes.length === 0) return null;
+  if (total - byDesign > AMOUNT_EPSILON) {
+    notes.push(REST_ELSEWHERE);
+  } else if (everyShareIsAStatedServing) {
+    notes.push(explainers > 1 ? TOTAL_EXPECTED_PLURAL : TOTAL_EXPECTED);
+  }
+  return notes.join(" ");
 }
 
 // One catalogued product exceeding a UL at one of its own stated servings.

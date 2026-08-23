@@ -97,8 +97,9 @@ import {
 // `formulationNote` (#3156) is the same arrangement for the other explanation: a
 // catalogued product that is above this limit BY DESIGN (AREDS 2's zinc) says so, and
 // both surfaces render the one sentence rather than each deciding for itself. The
-// WHOLE warning goes to the join, not just its key and contributors: whether the
-// product explains the exceedance depends on the total and the limit too.
+// WHOLE warning goes to the join, not just its key and contributors: the limit decides
+// whether a product's own serving is above it, and the total decides whether anything
+// else is in the number.
 export type UlWarningWithCaveat = UlWarning & {
   conditionCaveat: string | null;
   formulationNote: string | null;
