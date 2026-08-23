@@ -22,6 +22,7 @@
 // HOLDING row's (the undo token), which is what restore/purge address.
 
 import { BULK_CORRECTION_KIND } from "./bulk-correction";
+import { dateFromCreatedAt } from "./timeline-format";
 import { UNDO_KINDS, type Payload, type Row } from "./undo-delete";
 
 // `deleted_rows` has three writers, and only two of them capture a DELETED ROW:
@@ -67,7 +68,30 @@ export interface TrashEntry {
   // Captured rows BESIDE the root — the sets of an activity, the doses and adherence
   // logs of a medication. Rendered so "restore" visibly means the whole cascade.
   childCount: number;
-  deletedAt: string;
+  // THE PROFILE-LOCAL CALENDAR DAY THE CAPTURE WAS TAKEN ON, and the raw instant is
+  // deliberately NOT here beside it (#3546).
+  //
+  // `deleted_rows.deleted_at` is an INSTANT. The row prints it as a DAY, and the
+  // surface used to do that conversion with `deletedAt.slice(0, 10)` — the first ten
+  // characters of a UTC stamp, which is the UTC calendar day and not this profile's.
+  // A capture deleted at 18:00 in UTC−07:00 was stamped with TOMORROW, beside a
+  // retention countdown derived from the instant and therefore correct: a row whose
+  // two halves disagreed. The project rule is explicit — "preserve the distinction
+  // between an instant and a profile-local day" — and truncating a string is the one
+  // conversion that cannot honour it.
+  //
+  // SO THE ENTRY NO LONGER CARRIES THE INSTANT, which is the guard rather than a
+  // tidy-up. A convention ("convert, don't truncate") is re-broken by the next author
+  // who has the raw stamp in hand; a field that is not there cannot be sliced, and
+  // putting it back is a deliberate act with this paragraph attached. Anything that
+  // genuinely needs the instant reads `TrashCapture.deletedAt` — the storage shape,
+  // where it belongs.
+  //
+  // Null when the stored stamp is unreadable. `trashEntry` already treats that as
+  // possible (the expiry math below guards the same value for NaN), and a client
+  // component handed an Invalid Date would THROW out of Intl rather than degrade —
+  // so the refusal is the same one `calendarDay` makes above, for the same reason.
+  deletedOnDay: string | null;
   // When the retention sweep will purge this capture, and how many whole days that
   // is from `now` (0 = today; never negative — an already-expired capture the tick
   // hasn't reached yet reads as "expires today", not "expired -3 days ago").
@@ -207,10 +231,16 @@ function formatSqliteUtc(d: Date): string {
 }
 
 // Derive one rendered Trash entry from one holding row. Pure.
+//
+// `timezone` is REQUIRED, not defaulted (#3546). The delete instant has to become a
+// calendar day somewhere, and every caller knows whose profile it is reading — so the
+// question is asked once, here, rather than left to a default that would silently
+// mean "UTC" and reproduce the bug it replaced.
 export function trashEntry(
   capture: TrashCapture,
   retentionDays: number,
-  now: Date
+  now: Date,
+  timezone: string
 ): TrashEntry {
   const payload = readPayload(capture.payload);
   const rootKey = payload ? rootEntityKey(capture.kind, payload) : undefined;
@@ -238,7 +268,10 @@ export function trashEntry(
     notes: root ? firstString(root, ["notes"]) : null,
     // The root is one of the captured rows; everything else is cascade.
     childCount: Math.max(0, captured - 1),
-    deletedAt: capture.deletedAt,
+    // The one conversion from instant to profile-local day, through the helper the
+    // timeline already resolves its created-at-fallback events with — the same
+    // question, so the same answer.
+    deletedOnDay: dateFromCreatedAt(capture.deletedAt, timezone),
     expiresAt: Number.isNaN(expiresMs)
       ? capture.deletedAt
       : formatSqliteUtc(new Date(expiresMs)),
@@ -283,8 +316,14 @@ export function trashExpiryLine(entry: TrashEntry): string {
 export interface TrashEntryDateLabels {
   /** The capture's own date. Null when the payload carried none. */
   date: string | null;
-  /** The day the capture was taken. */
-  deletedOn: string;
+  /**
+   * The PROFILE-LOCAL day the capture was taken, already formatted.
+   *
+   * Nullable for the same reason `date` is: `TrashEntry.deletedOnDay` refuses a
+   * stored stamp it cannot read rather than forwarding a shape it cannot vouch for
+   * (#3546), and a caller with no day to show must not be able to state one.
+   */
+  deletedOn: string | null;
 }
 
 // A Trash row's two lines.
@@ -318,7 +357,10 @@ export function trashEntryCopy(
     parts.push(
       `${entry.childCount} related ${entry.childCount === 1 ? "row" : "rows"}`
     );
-  parts.push(`Deleted ${dates.deletedOn}`);
+  // An unreadable stamp drops the sentence rather than printing a half of one. The
+  // expiry line stays: it is derived from the same stamp but degrades to the full
+  // retention window on a NaN, so it is always a true statement about the row.
+  if (dates.deletedOn) parts.push(`Deleted ${dates.deletedOn}`);
   parts.push(trashExpiryLine(entry));
   return {
     headline: trashEntryHeadline(entry, dates.date),
