@@ -132,13 +132,11 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
       // its controls measures an empty page and reports a small number that looks
       // like a small page — and a floor is exactly the assertion that direction
       // defeats. So the named subject is proven on screen before anything is read.
-      // `.first()` because a subject may legitimately be a repeated control:
-      // `/supplies` renders one member chip per linked item. The probe matches
-      // every element against the selector, so the count is not part of the
-      // claim — what matters is that at least one is on screen before the boxes
-      // are read. first-ok: waiting for the subject class to exist, not for a
-      // particular member of it.
-      await expect(page.locator(surface.subject).first()).toBeVisible();
+      // A subject may legitimately be a REPEATED control — `/supplies` renders
+      // one member chip per linked item — and the probe matches every element
+      // against the selector, so the count is not part of the claim. What
+      // matters is that at least one is on screen before the boxes are read.
+      await expect(page.locator(surface.subject).first()).toBeVisible(); // first-ok: waiting for the subject class to exist, not a particular member
 
       const r = await runProbe(page, {
         ...GEOMETRY_THRESHOLDS,
