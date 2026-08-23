@@ -37,9 +37,55 @@
 // toward "this is ordinary code" rather than toward deleting text (see the regex
 // rule below), because deleting text is the failure mode that hides a defect.
 //
-// SEPARATE FROM lib/__tests__/source-literals.ts on purpose: that one EXTRACTS the
-// content of string literals and discards the code, which is the opposite projection
-// and cannot answer this question without a second pass.
+// ── WHAT IT GETS WRONG, MEASURED RATHER THAN CONCEDED (#3581) ───────────────────
+//
+// Sixteen modules read source through this scanner, so "it is a heuristic" is not a
+// useful thing to know on its own — the useful thing is WHICH INPUTS, and in WHICH
+// DIRECTION. `lib/__tests__/strip-comments-oracle.ts` answers that by diffing this
+// scanner against a real TypeScript parse, per character, over the tracked tree, and
+// `lib/__tests__/strip-comments.test.ts` pins both the inputs and the tree-wide count.
+//
+// The two directions are not symmetric and that is the whole reason the answer is
+// "document and pin" rather than "widen the preceder set":
+//
+//   UNDER-BLANK — a comment left as code. A guard matches inside a sentence: a false
+//   FINDING, which somebody investigates. Noise.
+//
+//   OVER-BLANK — code blanked away. A guard cannot see real source: a false PASS, and
+//   it is SILENT. This is the direction that hid 1,244 lines of ActivityForm.tsx.
+//
+// TWO INPUTS ARE STILL WRONG, both over-blanking, both authored in the test file:
+//
+//   1. A REGEX LITERAL OPENING AFTER `}` OR `)`, whose body carries `//` or `/*`
+//      inside a character class — `function f() {}` then `/[//]/.test(s)`, or
+//      `if (x) /[/*]/.test(s)`. Neither `}` nor `)` may join REGEX_PRECEDERS: `}`
+//      because `<Foo a={1} />` puts a `/` right after one (the JSX rule below), and
+//      `)` because `(a + b) / c; // note` is ordinary division whose trailing comment
+//      would then be walked into. So this one is a genuine trade, and the resolution
+//      is that the shape does not occur: a statement-initial regex and a braceless
+//      `if` body carrying a regex are both absent from this tree, and the oracle test
+//      holds that at zero.
+//
+//   2. JSX TEXT. Not the regex heuristic at all — this scanner has no JSX-children
+//      state, so `<p>otpauth:// URI</p>` reads as a line comment and the rest of the
+//      line is blanked. ONE live instance in the tree
+//      (app/(app)/settings/TwoFactorSettings.tsx), frozen by name in the oracle test
+//      so a second one goes red. Closing it means teaching this scanner where JSX
+//      text begins and ends, which is the one ambiguity a non-parser cannot take on
+//      cheaply, so it is recorded rather than guessed at.
+//
+// TWO INPUTS WERE FIXED rather than recorded, because neither needed a guess:
+// `i++ / 2` and `obj.in / 2` are division by the grammar, not by preference. Both
+// are decided in `opensRegex` below. Measured over the tracked tree at the time:
+// ZERO files' blanked text changed, so every reader saw exactly what it saw before.
+//
+// SEPARATE FROM lib/__tests__/source-literals.ts on purpose, but no longer a second
+// COMMENT SCANNER: that module EXTRACTS the content of string literals and discards
+// the code, which is the opposite projection and cannot answer this question without
+// a second pass — so the projection stays its own, and the comment half is now this
+// module's (#3581). It used to hand-roll `//` and `/*` branches with no regex state
+// at all, so `[/\bEdge\//i, "Edge"]` put a `//` in front of it and the rest of that
+// line stopped being read: eleven real string literals invisible in one file.
 
 /**
  * Characters after which a `/` starts a REGULAR EXPRESSION rather than a division.
@@ -78,10 +124,20 @@ function opensRegex(out: string[], i: number): boolean {
   const c = out[j];
   // `=>` — an arrow body may be a regex, though a bare `>` may not.
   if (c === ">" && j > 0 && out[j - 1] === "=") return true;
+  // A POSTFIX `++` / `--` ENDS AN EXPRESSION, so the `/` after it is division and
+  // nothing else. Not a heuristic and not a preference: `i++ /re/` is not a program.
+  // Without this the `+` reads as the operator it usually is and `i++ / 2; // ratio`
+  // has the trailing comment walked into as regex, which surfaces the sentence to
+  // every guard as code (#3581).
+  if ((c === "+" || c === "-") && j > 0 && out[j - 1] === c) return false;
   if (REGEX_PRECEDERS.has(c)) return true;
   if (/[A-Za-z_$]/.test(c)) {
     let k = j;
     while (k >= 0 && /[A-Za-z0-9_$]/.test(out[k])) k--;
+    // A PROPERTY NAMED AFTER A KEYWORD IS NOT THE KEYWORD. `obj.in / 2` ends in a
+    // value, so the `/` divides; only a bare `in` can be followed by a regex. Same
+    // shape as the postfix rule — a decision, not a guess (#3581).
+    if (out[k] === ".") return false;
     return REGEX_KEYWORDS.has(out.slice(k + 1, j + 1).join(""));
   }
   return false;
