@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconChevronLeft } from "@tabler/icons-react";
+import BackLink from "@/components/BackLink";
 import PageContainer from "@/components/PageContainer";
+import { PageHeader } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { isAdultForClinical } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings";
@@ -23,13 +23,19 @@ export default async function FitnessCheckPage() {
   if (!isAdultForClinical(getProfileAge(profile.id))) redirect("/training");
 
   return (
-    <PageContainer width="reading" className="mx-auto">
-      <Link
-        href="/training"
-        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      >
-        <IconChevronLeft className="h-4 w-4" aria-hidden /> Training
-      </Link>
+    // `wide`, not `reading` (#3234). The battery is a 13-tile `lg:grid-cols-4`
+    // board, which is a dense multi-column page and not prose — and it is the
+    // width it had as a tab on /training, which also declares `wide`. The route
+    // move (#2894) gave it a 768px reading measure AND left the view's own
+    // `PageContainer` nested inside, so the tiles came out ~170px on desktop and
+    // each one's title painted through its category chip. ONE container owns the
+    // page width; the view below carries none.
+    <PageContainer width="wide" className="mx-auto">
+      <BackLink href="/training" label="Training" />
+      <PageHeader
+        title="Fitness check"
+        subtitle="Record and re-check the tests behind your fitness age."
+      />
       <FitnessCheckSection />
     </PageContainer>
   );

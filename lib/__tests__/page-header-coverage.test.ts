@@ -99,8 +99,29 @@ function rendersPageHeader(
 
 // A route that only forwards elsewhere (a consolidation's kept-alive old URL)
 // renders nothing at all.
-function isRedirect(source: string): boolean {
-  return /\b(permanentRedirect|redirect)\s*\(/.test(source);
+//
+// "ONLY forwards" is load-bearing, and this predicate used to skip the second word
+// (#3234). A `redirect()` ANYWHERE in the file excused the page — including a page
+// whose redirect is a GUARD on one branch (`/training/fitness-check` sends a
+// non-adult profile away, then renders the battery for everyone else). That page
+// therefore shipped with no page heading at all and this scan never said so: the
+// h1 the whole test exists to require was skipped by the escape hatch for pure
+// forwarders. A page that returns JSX is a page, whatever else it also does.
+// Comments are allowed to sit between the `return (` and the element — the
+// fitness-check page explains its width choice right there — so the gap this
+// walks is whitespace OR a line/block comment, never arbitrary code (which would
+// let a `return (a < b)` read as JSX).
+const JSX_RETURN =
+  /\breturn\s*(?:\(\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)*)?</;
+
+function returnsJsx(source: string): boolean {
+  return JSX_RETURN.test(source);
+}
+
+function isRedirectOnly(source: string): boolean {
+  return (
+    /\b(permanentRedirect|redirect)\s*\(/.test(source) && !returnsJsx(source)
+  );
 }
 
 // The layout.tsx files between a page and the (app) group root, nearest first.
@@ -131,7 +152,7 @@ describe("every (app) page renders the shared PageHeader", () => {
       const rel = path.relative(APP_GROUP, page).split(path.sep).join("/");
       if (rel in EXEMPT) continue;
       const source = fs.readFileSync(page, "utf8");
-      if (isRedirect(source)) continue;
+      if (isRedirectOnly(source)) continue;
       if (rendersPageHeader(page)) continue;
       if (ancestorLayouts(page).some((l) => rendersPageHeader(l))) continue;
       offenders.push(rel);
@@ -141,6 +162,21 @@ describe("every (app) page renders the shared PageHeader", () => {
     // the default 5s budget on Linux CI but not on a Windows filesystem, where the
     // per-file stat/read overhead is enough to overrun it.
   }, 30_000);
+
+  it("the redirect escape hatch excuses a forwarder, not a page that also renders", () => {
+    // A green sweep over a complying tree says nothing about what the sweep can
+    // see, so ask the predicate about one file in each state — the two real
+    // forwarders in the app, and the page whose branch-guard redirect used to buy
+    // it a silent exemption from the heading rule (#3234).
+    const read = (rel: string) =>
+      fs.readFileSync(path.join(APP_GROUP, rel), "utf8");
+    expect(isRedirectOnly(read("appointments/page.tsx"))).toBe(true);
+    expect(isRedirectOnly(read("integrations/page.tsx"))).toBe(true);
+    expect(isRedirectOnly(read("training/fitness-check/page.tsx"))).toBe(false);
+    // …and the tightened predicate is not vacuous in the other direction: a page
+    // with no redirect at all was never excused and still isn't.
+    expect(isRedirectOnly(read("training/page.tsx"))).toBe(false);
+  });
 
   it("keeps the exemption list honest (every entry still exists)", () => {
     for (const rel of Object.keys(EXEMPT)) {

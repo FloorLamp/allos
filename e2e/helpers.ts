@@ -606,6 +606,63 @@ export async function expectSvgTextInsidePlot(page: Page): Promise<void> {
   expect(offenders, offenders.join("\n")).toEqual([]);
 }
 
+// The VERTICAL half of the plot-containment guard (issue #3233).
+//
+// `ChartCard` owns the plot height — square below `sm`, `plotHeightClass` above —
+// and `.chart-card-plot > *` (app/globals.css) makes that ownership real by sizing
+// EVERY DIRECT CHILD to 100% of the box. That rule is written for the one child a
+// plot slot is meant to hold; give it three and each one claims the full height, so
+// the second and third stack straight out of the card and paint over whatever card
+// comes next. #3233 was exactly that: an est-1RM chart plus a gains list plus a
+// caption, ~768px of children in a 256px box.
+//
+// Why a geometry read and not a class assertion: the spill is INVISIBLE to a class
+// check. Every class in that tree is the one the design intends; what is wrong is
+// the arithmetic of three of them. So this measures the box, in ONE browser-side
+// layout pass (the `expectNoClippedContent` precedent above) so the plot rect and
+// its content are read at the same instant and never describe a layout that never
+// existed.
+//
+// `scrollHeight` on a `overflow: visible` box is the union of its padding box and
+// its descendants' boxes, so it is a direct reading of "the content is taller than
+// the slot" without needing to know which child did it. Call it once the charts you
+// mean to measure have rendered — an empty slot fits any box (#3384).
+export async function expectPlotContentInsidePlot(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const TOL = 2;
+    const bad: string[] = [];
+    const plots = Array.from(
+      document.querySelectorAll('[data-testid="chart-card-plot"]')
+    );
+    for (const plot of plots) {
+      const rect = plot.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue; // not rendered
+      const overflow = plot.scrollHeight - plot.clientHeight;
+      if (overflow <= TOL) continue;
+      // Name the card, not the anonymous slot — a bare "a plot overflowed" sends
+      // the next reader hunting through a page of them.
+      const card = plot.parentElement?.closest("[data-testid]") ?? null;
+      const id = card?.getAttribute("data-testid") ?? "(unnamed card)";
+      const kids = Array.from(plot.children)
+        .map((c) => {
+          const t = c.getAttribute("data-testid");
+          return t
+            ? `${c.tagName.toLowerCase()}[${t}]`
+            : c.tagName.toLowerCase();
+        })
+        .join(", ");
+      bad.push(
+        `${id}: plot content overflows its slot by ${Math.round(overflow)}px ` +
+          `(scrollHeight=${plot.scrollHeight} vs clientHeight=${plot.clientHeight}); ` +
+          `${plot.children.length} direct child(ren): ${kids}. Under-plot content ` +
+          `belongs in ChartCard's \`footer\`, not the plot slot.`
+      );
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
 // The other half of #1573's sibling issue (#1518): a chart label at the right
 // PLACE is still unreadable at 3.5px. Asserts every rendered chart `<text>` is at
 // least `minPx` of real type — which for a scaled viewBox means measuring what the
