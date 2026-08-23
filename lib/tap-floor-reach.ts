@@ -514,7 +514,11 @@ export function classDeclarations(
   return declared;
 }
 
-/** How many `export … from` hops a barrel may add. `./overlay` needs one. */
+/**
+ * How many `export … from` hops a barrel may add. The tree's deepest is ONE —
+ * `./overlay`'s index re-exporting `./tokens`, and `./model`'s `export *` — and
+ * three leaves room for a barrel of barrels without licensing a graph walk.
+ */
 const IMPORT_HOPS = 3;
 
 /** `{ A, B as C, type D }` -> local name -> exported name, types dropped. */
@@ -779,7 +783,13 @@ function arrowBody(expression: string): string | null {
   return body.startsWith("{") ? null : body;
 }
 
-/** Bounded, so a cyclic or self-referential declaration dies instead of hanging. */
+/**
+ * How many single replacements one class list may take. Bounded so a cyclic or
+ * self-referential declaration dies here instead of hanging, and generous because
+ * hitting it is a BUG rather than a budget: the deepest class list in the tree
+ * needs SIX (measured 2026-08-23, over app/ and components/), and the first draft
+ * needed hundreds only because it could substitute into text it had just written.
+ */
 const SUBSTITUTION_LIMIT = 400;
 
 /**
