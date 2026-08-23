@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { db, dbFilePath } from "@/lib/db";
@@ -25,9 +24,10 @@ import {
   restoreCore,
   RestoreRefusedError,
 } from "@/lib/restore";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 function mkTmp(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "allos-restore-drill-"));
+  return makeTmpDir("restore-drill");
 }
 
 // Take a real VACUUM INTO snapshot of the live (migrated) singleton DB to `dest`.

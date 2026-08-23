@@ -61,7 +61,10 @@ export interface TrajectoryRollup {
   // Total FINDINGS folded, so the subtitle can report what actually fired rather
   // than how many rows the rollup chose to draw.
   total: number;
-  // "eGFR, LDL Cholesterol, hs-CRP and 2 more" — the roster under the subtitle.
+  // "eGFR · LDL Cholesterol · hs-CRP and 2 more" — the roster under the subtitle.
+  // Joined on the middle dot, never a comma: lab names carry commas of their own
+  // ("Lymphocytes, Relative"), and a comma join made three analytes read as five
+  // while the count beside it still said three (#3496).
   names: string;
 }
 

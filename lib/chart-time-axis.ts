@@ -72,9 +72,30 @@ export function timeAxisTicks(
   const [min, max] = domain;
   if (max <= min) return [min];
   const n = Math.max(2, Math.min(maxTicks, 12));
+  // NEVER MORE TICKS THAN THE LABELS CAN TELL APART (#3497 item 1).
+  //
+  // Six evenly-spaced positions across a TWO-DAY domain are six honest times and
+  // three distinct days, so the axis printed "07-09 · 07-09 · 07-09 · 07-10 ·
+  // 07-10 · 07-11". Repeating a label does not add a gridline a reader can use; it
+  // reads as the chart being broken, which on the surface where it was found it
+  // was.
+  //
+  // The dedupe belongs HERE rather than at a call site because the label vocabulary
+  // is this module's (`formatTimeTick`) and all three time-axis charts share it —
+  // fixing one host would leave the other two able to draw the same axis. The
+  // positions that survive are unchanged: this drops duplicates, it does not
+  // re-space anything, so the ticks stay time-proportional (which is the whole
+  // point of a numeric time axis) and the endpoints are still the first and last
+  // labels their days can carry.
+  const withYear = spansYearBoundary(domain);
+  const seen = new Set<string>();
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
-    out.push(Math.round(min + ((max - min) * i) / (n - 1)));
+    const at = Math.round(min + ((max - min) * i) / (n - 1));
+    const label = formatTimeTick(at, withYear);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push(at);
   }
   return out;
 }

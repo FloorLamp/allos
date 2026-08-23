@@ -12,7 +12,6 @@
 // Deterministic: :memory:/temp-file only, no network.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
@@ -21,6 +20,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { runLiveIntegrityCheck } from "@/lib/backup";
 import { interpretIntegrityRows } from "@/lib/backup-verify";
 import { buildHealthStatus } from "@/lib/health-status";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 // The composition the health route does after reading the cached marker.
 function healthFromMarker(integrityRaw: string | undefined) {
@@ -55,7 +55,7 @@ describe("live integrity → health verdict", () => {
   });
 
   it("a genuinely corrupted DB file is detected → non-200", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-corrupt-"));
+    const dir = makeTmpDir("corrupt");
     const file = path.join(dir, "corrupt.db");
     try {
       // Build a real multi-page DB (a table with an index over enough rows to

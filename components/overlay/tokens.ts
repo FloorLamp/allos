@@ -49,6 +49,14 @@ export const OVERLAY_SAFE_BOTTOM = "pb-[max(1rem,env(safe-area-inset-bottom))]";
 // scroll, so the browser's scroll arbitration has nothing to arbitrate, and
 // without it a downward drag starting on the handle would be stolen by the
 // panel's own scroller before the recognizer saw a second sample.
+//
+// IT IS NOT FREE, AND THE PRICE IS #3262. Chromium suppresses the tap gesture of
+// the FIRST touch sequence after a drag whose starting element forbade that
+// drag's axis: touch events and touch PointerEvents still arrive, and no click
+// is ever made. One sequence, ~300ms, the next tap lands. `pan-x` costs the
+// same; every alternative that avoids it (`pan-y`, `manipulation`, `auto`) hands
+// the drag back to the scroller, so this stays. docs/internals/overlays.md
+// carries the measurements and the e2e suite's answer to it.
 export const OVERLAY_DRAG_HANDLE_HIT =
   "mx-auto flex h-6 w-16 shrink-0 touch-none items-center justify-center";
 export const OVERLAY_DRAG_HANDLE_BAR =
