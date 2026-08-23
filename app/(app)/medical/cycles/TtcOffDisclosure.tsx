@@ -39,9 +39,15 @@ export default function TtcOffDisclosure({
     <section
       data-testid="ttc-section"
       data-open={open ? "true" : "false"}
-      // Collapsed it is a line, not a card. A bordered box holding one sentence would
-      // give back the height the fold just bought and then charge for the frame.
-      className={open ? "card" : ""}
+      // HOUSED IN BOTH STATES (#3482 item 2). This used to draw no container while
+      // collapsed — "collapsed it is a line, not a card" — and the saving was real, but
+      // it was spent in the wrong place: /medical/cycles is cards above and cards below,
+      // and this row plus the add-period disclosure under it broke that grammar
+      // mid-scroll, so the page read as cards giving way to floating fragments. The
+      // QUIET tier (border, no shadow — #2701) is what a housed row takes: it joins the
+      // scroll's container language without adding a fifth shadowed card to it. The fold
+      // itself, its copy and its behaviour are untouched (#2583).
+      className={open ? "card" : "card-quiet"}
     >
       <button
         type="button"

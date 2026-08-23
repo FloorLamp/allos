@@ -202,11 +202,11 @@ export interface IntakeDeltaReportWindow {
   prefs?: DisplayFormatPrefs;
 }
 
-// How one delta's run reads. A SINGLE-occurrence miss inside a multi-day report
-// window names its day — a weekday for a date inside the window, a "Mon, 4 Aug"-
-// style date beyond it (the delta classifier looks back further than a week) —
-// and everything else keeps the run-length copy.
-function runPhrase(
+// How one delta's RUN reads, without the name in front of it. A SINGLE-occurrence miss
+// inside a multi-day report window names its day — a weekday for a date inside the
+// window, a "Mon, 4 Aug"-style date beyond it (the delta classifier looks back further
+// than a week) — and everything else reports the run length.
+function runSuffix(
   d: IntakeDelta,
   window: IntakeDeltaReportWindow | null
 ): string {
@@ -215,26 +215,52 @@ function runPhrase(
       d.date >= window.start && d.date <= window.end
         ? WEEKDAYS_LONG[weekdayOfDateStr(d.date)]
         : formatWeekdayDate(d.date, window.prefs ?? DEFAULT_FORMAT_PREFS);
-    return `${d.name} on ${day}`;
+    return `on ${day}`;
   }
-  return `${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`;
+  return `for ${d.days} day${d.days === 1 ? "" : "s"}`;
 }
 
+function runPhrase(
+  d: IntakeDelta,
+  window: IntakeDeltaReportWindow | null
+): string {
+  return `${d.name} ${runSuffix(d, window)}`;
+}
+
+// UNIFORM RUNS ARE STATED ONCE (#3487 item 3). "Missed: X for 1 day, Y for 1 day, Z for
+// 1 day, +4 more" repeats the only word that is the same on every item and drops the
+// names past three — the line spends its width on the duplicate. When every delta in a
+// half shares one run phrase, it is hoisted into the label: "Missed for 1 day: X, Y, Z,
+// +4 more". Mixed runs keep the per-item form, because there the duration IS per item.
+//
+// Judged over ALL the items, not the named three: the hoisted phrase describes the "+N
+// more" too, so uniformity read off a truncated sample would state a duration for items
+// nobody can see and it could be wrong about them.
+//
+// A SINGLE item is deliberately NOT hoisted. There is nothing repeated to collapse, and
+// "Missed: Magnesium for 3 days" is the exact phrasing `intakeGapExplainedBy` re-uses
+// word for word when the fraction line absorbs the delta (#1819 item 6) — one item is
+// where those two forms have to agree.
 function half(
   label: string,
   items: readonly IntakeDelta[],
   window: IntakeDeltaReportWindow | null
 ): string | null {
   if (items.length === 0) return null;
+  const suffixes = items.map((d) => runSuffix(d, window));
+  const uniform = items.length > 1 && suffixes.every((r) => r === suffixes[0]);
   const named = items.slice(0, INTAKE_DELTA_MAX_NAMED);
-  const parts = named.map((d) => runPhrase(d, window));
+  const parts = uniform
+    ? named.map((d) => d.name)
+    : named.map((d) => runPhrase(d, window));
   const rest = items.length - named.length;
   if (rest > 0) parts.push(`+${rest} more`);
-  return `${label}: ${parts.join(", ")}`;
+  return `${uniform ? `${label} ${suffixes[0]}` : label}: ${parts.join(", ")}`;
 }
 
 // THE headline every digest channel renders — "Missed: Magnesium for 3 days ·
-// Resumed: Vitamin D for 2 days" — or null on a quiet window, which is the signal to
+// Resumed: Vitamin D for 2 days", or "Missed for 1 day: Glycine, Magnesium, Zinc" when
+// every item in a half shares one run (#3487 item 3) — or null on a quiet window, which is the signal to
 // omit the line entirely. One formatter so Telegram, the weekly recap and the
 // household card can't drift into three phrasings of the same fact. `window` is
 // the caller's reporting period (see IntakeDeltaReportWindow): absent for the

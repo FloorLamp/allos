@@ -27,6 +27,7 @@ import {
   cycleStats,
   CYCLE_PHASE_LABELS,
   CYCLE_REGULARITY_VARIATION_DAYS,
+  CYCLE_STATS_MIN_SAMPLES,
   CYCLE_SUSPENSION_NOTES,
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
@@ -53,10 +54,13 @@ export const dynamic = "force-dynamic";
 // unless the user DECLARES it. Informational, not medical advice or diagnosis, and never
 // a contraceptive method.
 
+// The two JUDGING verdicts. `insufficient` has no entry since #3482: below the
+// threshold the section renders one count-aware line (insufficientLengthCopy) in place
+// of both the tiles and this sentence, rather than a verdict-shaped line with no verdict
+// in it.
 const REGULARITY_COPY: Record<string, string> = {
   regular: "Your recent cycles look regular.",
   irregular: "Your recent cycle lengths vary by more than a week.",
-  insufficient: "Log a few cycles to see whether they're regular.",
 };
 
 export default async function CyclePage() {
@@ -182,15 +186,43 @@ export default async function CyclePage() {
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
           Cycle length
         </h2>
-        {stats.cycleCount > 0 ? (
+        {/* THE TILES ANSWER THE SAME QUESTION THE REGULARITY LINE DOES, so they wait
+            for the same evidence (#3482 item 1). The grid used to render from ONE
+            completed cycle: Average 27 d, Shortest 27 d, Longest 27 d — one interval
+            printed three times — beside "Variability 0 d", which reads as a measured
+            claim of perfect regularity and is really just max − min over a single
+            sample. Both cards around it were already honest (the forecast refuses
+            below FORECAST_MIN_CYCLES; the line below said "log a few cycles"), so the
+            page disagreed with itself about what its own history could carry.
+
+            The gate is the regularity model's OWN verdict, not a second threshold:
+            `insufficient` is exactly "fewer than CYCLE_STATS_MIN_SAMPLES samples", and
+            reading it here means a change to that floor moves the tiles with it.
+
+            The trend CHART keeps its own `>= 2` gate on purpose: two plotted lengths
+            are two readings a person can see, not a statistic asserted over them. */}
+        {stats.regularity !== "insufficient" ? (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatBox label="Average" value={fmtDays(stats.meanLength)} />
-              <StatBox label="Shortest" value={fmtDays(stats.minLength)} />
-              <StatBox label="Longest" value={fmtDays(stats.maxLength)} />
+              <StatBox
+                label="Average"
+                value={fmtDays(stats.meanLength)}
+                data-testid="cycle-length-stat"
+              />
+              <StatBox
+                label="Shortest"
+                value={fmtDays(stats.minLength)}
+                data-testid="cycle-length-stat"
+              />
+              <StatBox
+                label="Longest"
+                value={fmtDays(stats.maxLength)}
+                data-testid="cycle-length-stat"
+              />
               <StatBox
                 label="Variability"
                 value={fmtDays(stats.variabilityDays)}
+                data-testid="cycle-length-stat"
               />
             </div>
             <p
@@ -198,23 +230,27 @@ export default async function CyclePage() {
               data-testid="cycle-regularity"
             >
               {REGULARITY_COPY[stats.regularity]}
-              {stats.regularity !== "insufficient" &&
-                ` (regular = within ${CYCLE_REGULARITY_VARIATION_DAYS} days)`}
+              {` (regular = within ${CYCLE_REGULARITY_VARIATION_DAYS} days)`}
             </p>
-            {trendData.length >= 2 && (
-              <LineChartCard
-                // gap-exempt: one point per CYCLE — the index is the event, and
-                // a cycle has no calendar cadence to densify to.
-                data={trendData}
-                label="Cycle length"
-                unit=" d"
-                color={chartSeries.rose}
-                decimals={0}
-              />
-            )}
           </>
         ) : (
-          <EmptyState message="Log at least two periods to see your cycle length and whether it's regular." />
+          <p
+            className="text-xs text-slate-500 dark:text-slate-400"
+            data-testid="cycle-regularity"
+          >
+            {insufficientLengthCopy(stats.cycleCount)}
+          </p>
+        )}
+        {trendData.length >= 2 && (
+          <LineChartCard
+            // gap-exempt: one point per CYCLE — the index is the event, and
+            // a cycle has no calendar cadence to densify to.
+            data={trendData}
+            label="Cycle length"
+            unit=" d"
+            color={chartSeries.rose}
+            decimals={0}
+          />
         )}
       </section>
 
@@ -282,6 +318,10 @@ export default async function CyclePage() {
         panelId="cycle-add-panel-body"
         label="Add a period with dates — for a past or corrected period"
         addLabel="Add a period with dates"
+        // Housed in the page's card grammar while collapsed too (#3482 item 2) — the
+        // second of the two bare rows that broke this scroll. Opt-in, so every other
+        // mount of this panel keeps the bare collapsed affordance it ships today.
+        housed
       >
         <CycleForm action={saveCycleAction} />
       </AddEntryPanel>
@@ -307,4 +347,17 @@ export default async function CyclePage() {
 
 function fmtDays(n: number | null): string {
   return n == null ? "—" : `${n} d`;
+}
+
+// The one line that stands in for the tiles below the threshold (#3482 item 1), in the
+// voice the forecast card and the regularity line already use: it states what the history
+// HAS and when the stats arrive, and claims nothing about regularity. It replaces a
+// "Log at least two periods…" empty state that became false the moment the tiles moved
+// behind a three-cycle gate — two periods is one completed cycle.
+function insufficientLengthCopy(cycleCount: number): string {
+  const have =
+    cycleCount === 0
+      ? "No completed cycles yet"
+      : `${cycleCount} completed cycle${cycleCount === 1 ? "" : "s"}`;
+  return `${have} — cycle length stats appear after ${CYCLE_STATS_MIN_SAMPLES}.`;
 }
