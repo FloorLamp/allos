@@ -445,3 +445,27 @@ export const MIGRATIONS: Migration[] = [
 export const NUMBERED_MIGRATIONS = MIGRATIONS.filter(
   (m): m is Migration & { id: number } => m.id !== undefined
 );
+
+// The name-keyed counterpart to NUMBERED_MIGRATIONS, and the only safe way to
+// build a database "as of just before migration X" (#3565).
+//
+// Position is not identity. `MIGRATIONS.slice(0, -1)` — "every migration but the
+// newest" — means "before X" on exactly the one day X is newest, and from the
+// next merge onward it silently rebuilds the future into the "before" database
+// and starts exercising whichever migration landed last. It stays GREEN through
+// that transition, which is why nothing catches it.
+//
+// An unknown name THROWS rather than returning a slice. `findIndex` answers -1
+// for a name that was renamed or removed, and `slice(0, -1)` on that answer is
+// the very bug this replaces — a silent widening to "all of them".
+export function migrationsBefore(name: string): Migration[] {
+  const index = MIGRATIONS.findIndex((m) => m.name === name);
+  if (index < 0) {
+    throw new Error(
+      `No migration named "${name}" is registered, so no database can be ` +
+        `built as of just before it. If it was renamed, update the fixture to ` +
+        `the new name — do not fall back to slicing by position.`
+    );
+  }
+  return MIGRATIONS.slice(0, index);
+}

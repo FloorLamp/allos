@@ -1,15 +1,14 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { migrationsBefore } from "@/lib/migrations/versions";
 
 function beforeRenames(): Database.Database {
   const db = new Database(":memory:");
-  const target = MIGRATIONS.findIndex(
-    (migration) => migration.name === "20260815-substance-recorded-at"
-  );
-  expect(target).toBeGreaterThan(0);
-  runMigrations(db, MIGRATIONS.slice(0, target));
+  // "20260815-substance-recorded-at" is the FIRST of the two renames this file
+  // covers, so the before-database is built ahead of that one, not ahead of the
+  // migration the filename names.
+  runMigrations(db, migrationsBefore("20260815-substance-recorded-at"));
   db.prepare("INSERT INTO profiles(id, name) VALUES (1, 'Time grains')").run();
   return db;
 }
