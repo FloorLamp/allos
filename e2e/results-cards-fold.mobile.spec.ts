@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PANELINDEX, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -289,6 +289,49 @@ test("desktop renders every card whole, above the index, with no fold controls (
   await expect(inputsCard.getByTestId("bio-age-input")).toHaveCount(9);
   for (const input of await inputsCard.getByTestId("bio-age-input").all())
     await expect(input).toBeVisible();
+
+  await page.context().close();
+});
+
+test("search, Filters and Add result are ONE toolbar row, with no dead band (#3496)", async ({
+  browser,
+}) => {
+  // What the phone review met: "＋ Add result" alone on its own row above the
+  // toolbar, right-aligned over an empty left half, costing a band of height before
+  // the first result. The three controls now share one row.
+  const page = await openPhone(browser);
+
+  const search = page.getByLabel("Search records by name or panel");
+  const filters = page.getByTestId("medical-filters-toggle");
+  const add = page.getByTestId("add-result-panel-toggle");
+
+  // WAIT FOR THE CONTENT BEFORE MEASURING THE CONTAINER: a geometry read taken
+  // before these exist is a claim about an empty box, and an empty box agrees with
+  // everything.
+  await expect(search).toBeVisible();
+  await expect(filters).toBeVisible();
+  await expect(add).toBeVisible();
+
+  // settledBoxes, not three separate reads: each boundingBox() is its own
+  // round-trip and the page lays out between them, so a relative assertion built
+  // from unsettled reads can describe a layout that never existed.
+  const boxes = await settledBoxes([search, filters, add]);
+
+  // ONE ROW: every control's vertical midpoint falls inside every other's band.
+  // Stated as overlap rather than as equal `y`, because the three controls are
+  // different heights and always were.
+  for (const a of boxes) {
+    const mid = a.y + a.height / 2;
+    for (const b of boxes) {
+      expect(mid).toBeGreaterThanOrEqual(b.y - 1);
+      expect(mid).toBeLessThanOrEqual(b.y + b.height + 1);
+    }
+  }
+
+  // AND NO DEAD BAND: the add action is not alone on a row with an empty left half.
+  // The search field starts at the toolbar's left edge, on the same row.
+  const [toolbar] = await settledBoxes([page.getByTestId("medical-filters")]);
+  expect(boxes[0].x - toolbar.x).toBeLessThan(24);
 
   await page.context().close();
 });
