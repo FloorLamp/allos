@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_TRENDS_CURATE,
@@ -57,7 +57,7 @@ test("a metric star pins its existing census tile instead of creating a copy", a
   ).toHaveCount(1);
 
   // The pinned tile's menu is the in-census unstar path.
-  await tile.getByTestId("overflow-menu-trigger").click();
+  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
   await settledClick(
     page,
     page.getByTestId("trend-tile-menu").getByTestId("star-toggle")
