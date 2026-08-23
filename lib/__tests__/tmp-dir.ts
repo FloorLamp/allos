@@ -54,6 +54,69 @@ import path from "node:path";
 // measured 2026-08-23) is invisible to the sweep and to the check-in's counters.
 export const TMP_PREFIX = "allos-";
 
+// THE PREFIXES THE TREE HAS RETIRED, which the sweep reclaims ALONGSIDE
+// `allos-` (#3591).
+//
+// #3248 routed twenty-nine raw `mkdtempSync` call sites through `makeTmpDir`,
+// so every one of them now writes `allos-<label>-*` and nothing new lands under
+// the names below. What it could not do is reclaim what those names had already
+// left behind: the sweep filters `startsWith(TMP_PREFIX)`, so the pre-conversion
+// backlog is outside its reach BY CONSTRUCTION and is permanent unless something
+// names it. Measured on this container 2026-08-23, after #3248 had already
+// stopped the growth: 379 stranded directories under four of these seven names.
+//
+// WHY AN ENUMERATED LIST AND NOT A WIDER MATCH. `startsWith(TMP_PREFIX)` is the
+// predicate whose relaxation to `includes` during #3582's own development deleted
+// a sibling lane's chromium profile, a transform cache and a Next build temp off
+// this box. Several lanes run test tiers here concurrently and every one of them
+// keeps state in `/tmp`. So the widening is exactly seven strings, each matched
+// WHOLE-PREFIX with its trailing dash, and each with a call site behind it:
+// `fact-census-` must never reach `artifact-census-`, `nul-census-` must never
+// reach `annul-census-`. `./tmp-dir-census.test.ts` plants that near-miss pair
+// for every entry, and ablating the match to `includes` reds them.
+//
+// THE BAR FOR ADDING ONE: name the call site that used to write it and the change
+// that converted it, in a sentence, here. A prefix nobody can trace is not known
+// to be ours, and deleting someone else's directory is the failure mode this list
+// is one line away from. Every entry below was converted in 29ca5ae1 (#3582,
+// "Fixes #3248"); the file named is where the raw `mkdtempSync` stood.
+export const RETIRED_TMP_PREFIXES = [
+  // `lib/__tests__/dose-number-readers.test.ts` — `mkdtempSync(path.join(os.tmpdir(),
+  // "dose-scan-census-"))`, now `makeTmpDir("dose-scan-census")`.
+  "dose-scan-census-",
+  // `lib/__tests__/fact-editors-reuse.test.ts` — `mkdtempSync(path.join(os.tmpdir(),
+  // "fact-census-"))`, now `makeTmpDir("fact-census")`.
+  "fact-census-",
+  // `lib/__tests__/chat-origin.test.ts` — `fsMod.mkdtempSync(path.join(os.tmpdir(),
+  // "food-rebuild-"))`, now `makeTmpDir("food-rebuild")` and four sibling labels.
+  "food-rebuild-",
+  // `lib/__tests__/gitleaks-explain.test.ts` — `fs.mkdtempSync(path.join(os.tmpdir(),
+  // "gitleaks-range-"))`, now `makeTmpDir("gitleaks-range")`.
+  "gitleaks-range-",
+  // `lib/__tests__/logged-via-census.test.ts` — `fs.mkdtempSync(path.join(os.tmpdir(),
+  // "logged-via-census-"))`, now `makeTmpDir("logged-via-census")`.
+  "logged-via-census-",
+  // `lib/__tests__/logged-via-surface-wiring.test.ts` — `fs.mkdtempSync(path.join(
+  // os.tmpdir(), "logged-via-wiring-"))`, now `makeTmpDir("logged-via-wiring")`.
+  "logged-via-wiring-",
+  // `lib/__tests__/nul-byte-census.test.ts` — `mkdtempSync(path.join(os.tmpdir(),
+  // "nul-census-"))`, now `makeTmpDir("nul-census")`.
+  "nul-census-",
+] as const;
+
+/**
+ * Is this `/tmp` entry one the test tree owns and may therefore unlink?
+ *
+ * WHOLE-PREFIX ONLY, in both halves. `startsWith` is what keeps
+ * `sibling.allos-scratch` and `artifact-census-*` alive; `includes` — or a
+ * dash-less entry — would put every neighbour that merely mentions one of these
+ * words in scope. Exported so the census can drive the predicate directly.
+ */
+export function isSweepableTmpName(name: string): boolean {
+  if (name.startsWith(TMP_PREFIX)) return true;
+  return RETIRED_TMP_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
 // HOW OLD AN ENTRY MUST BE BEFORE THE SWEEP WILL UNLINK IT, in milliseconds of
 // wall clock since its mtime.
 //
@@ -91,8 +154,9 @@ export const STALE_AFTER_MS = 60 * 60 * 1000;
 let swept = false;
 
 /**
- * Unlink every `/tmp/allos-*` entry (file or directory) whose mtime is older than
- * `STALE_AFTER_MS`. Returns how many entries it removed.
+ * Unlink every `/tmp` entry (file or directory) the test tree owns — `allos-*`
+ * plus `RETIRED_TMP_PREFIXES` — whose mtime is older than `STALE_AFTER_MS`.
+ * Returns how many entries it removed.
  *
  * Exported so the census test can drive it against a corpus rather than against
  * the real `/tmp`, and so a human can call it deliberately.
@@ -110,7 +174,7 @@ export function sweepStaleTmpEntries(
   }
   let removed = 0;
   for (const name of names) {
-    if (!name.startsWith(TMP_PREFIX)) continue;
+    if (!isSweepableTmpName(name)) continue;
     const full = path.join(root, name);
     try {
       // lstat, not stat: a dangling symlink named `allos-*` must still be
@@ -140,9 +204,11 @@ function sweepOnce(): void {
   // something to reclaim.
   if (removed > 0) {
     console.warn(
-      `[tmp-dir] swept ${removed} stale /tmp/${TMP_PREFIX}* entries (older than ${
+      `[tmp-dir] swept ${removed} stale /tmp/${TMP_PREFIX}* entries (or one of ${
+        RETIRED_TMP_PREFIXES.length
+      } retired prefixes, older than ${
         STALE_AFTER_MS / 60_000
-      } min) — a previous run was killed before it could clean up (#3248)`
+      } min) — a previous run was killed before it could clean up (#3248, #3591)`
     );
   }
 }

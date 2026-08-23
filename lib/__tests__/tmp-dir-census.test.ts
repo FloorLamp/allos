@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  RETIRED_TMP_PREFIXES,
   STALE_AFTER_MS,
   TMP_PREFIX,
   findRawTmpCallSites,
@@ -451,6 +452,114 @@ describe("the stale sweep", () => {
     ).toEqual([]);
     // Sweeping the same root again is a no-op, not a second count.
     expect(sweepStaleTmpEntries(root, now)).toBe(0);
+  });
+
+  // THE RETIRED PREFIXES (#3591), which the sweep honours alongside `allos-`.
+  //
+  // This is the fixture that has to be right, because the change it guards is a
+  // WIDENING of the predicate that has already destroyed another lane's data on
+  // this box. Four lanes run test tiers here at once and all of them keep state
+  // in `/tmp`, so the corpus is planted inside a directory only this process can
+  // see — never the live `/tmp`, where a create-then-unlink lands inside a
+  // sibling's read window and kills unrelated tests with ENOENT (#3557).
+  //
+  // For EVERY entry on the list there is a near-miss that CONTAINS it without
+  // starting with it, and those names are the point: `fact-census-` must not
+  // reach `artifact-census-`, `nul-census-` must not reach `annul-census-`.
+  // Ablated 2026-08-23 — relaxing `isSweepableTmpName` to `includes` deletes all
+  // seven and reds this test; dropping any one prefix from the list strands its
+  // own entry and reds it from the other side; dropping a trailing dash from a
+  // list entry deletes `fact-censuses-*`.
+  it("reclaims the retired prefixes and stops at their near-misses", () => {
+    const root = makeTmpDir("tmp-retired-corpus");
+    const outside = makeTmpDir("tmp-retired-outside");
+    const now = Date.now();
+    const STALE = STALE_AFTER_MS + 60_000;
+    const plant = (name: string, ageMs: number): string => {
+      const full = path.join(root, name);
+      fs.mkdirSync(full, { recursive: true });
+      writeFileSync(path.join(full, "fixture.txt"), "x");
+      const seconds = (now - ageMs) / 1000;
+      utimesSync(full, seconds, seconds);
+      return full;
+    };
+
+    // Every name the sweep MUST reclaim: one directory per retired prefix, past
+    // the threshold, plus an `allos-` entry so the two halves are seen composing.
+    const reclaim = [
+      ...RETIRED_TMP_PREFIXES.map((prefix) => plant(`${prefix}aaaaaa`, STALE)),
+      plant(`${TMP_PREFIX}retired-neighbour-aaaaaa`, STALE),
+    ];
+
+    // Every name the sweep MUST LEAVE ALONE, each stale so that AGE cannot be
+    // what saves it — only the predicate can.
+    //
+    // The near-misses are one per list entry, in the two shapes that matter: a
+    // longer word ending in the prefix (`artifact-census-`, `annul-census-`,
+    // `seafood-rebuild-`, `unlogged-via-*`), and a leading segment
+    // (`pre-dose-scan-census-`, `no-gitleaks-range-`). `fact-censuses-` is the
+    // third shape: the prefix with its TRAILING DASH replaced by more word, which
+    // is what makes the dash in each list entry load-bearing.
+    const nearMisses = [
+      "pre-dose-scan-census-aaaaaa",
+      "artifact-census-aaaaaa",
+      "fact-censuses-aaaaaa",
+      "seafood-rebuild-aaaaaa",
+      "no-gitleaks-range-aaaaaa",
+      "unlogged-via-census-aaaaaa",
+      "unlogged-via-wiring-aaaaaa",
+      "annul-census-aaaaaa",
+    ].map((name) => plant(name, STALE));
+    // A sibling lane's browser profile, the shape this box actually has in
+    // `/tmp`, and the kind of directory the `includes` relaxation destroyed.
+    const foreign = plant("playwright_chromiumdev_profile-Xk2p9q", STALE);
+    // Younger than the threshold under a retired prefix: a run may be using it.
+    const young = plant("nul-census-live01", 30_000);
+    // A symlink OUT of the corpus. Named so no predicate matches it, stale, and
+    // pointing at a directory with contents: if the sweep ever followed a link
+    // out of the temp root, this is where it would leave the damage.
+    const linkTarget = path.join(outside, "keep-me");
+    fs.mkdirSync(linkTarget, { recursive: true });
+    writeFileSync(path.join(linkTarget, "payload.txt"), "keep");
+    const bystanderLink = path.join(root, "chromium-profile-link");
+    fs.symlinkSync(linkTarget, bystanderLink);
+    // And one symlink the sweep DOES own by name: the link goes, its target does
+    // not. `lstat`, not `stat`, is the whole of that difference.
+    const ownedLink = path.join(root, "nul-census-lnkaaa");
+    fs.symlinkSync(linkTarget, ownedLink);
+    const old = (now - STALE) / 1000;
+    for (const link of [bystanderLink, ownedLink]) {
+      fs.lutimesSync(link, old, old);
+    }
+
+    expect(
+      sweepStaleTmpEntries(root, now),
+      "The sweep reclaimed a different number of entries than the " +
+        `${reclaim.length + 1} it owns here. More than that means the predicate ` +
+        "has widened past whole-prefix matching and the near-misses below are " +
+        "in scope; fewer means a retired prefix is not on the list."
+    ).toBe(reclaim.length + 1);
+
+    expect(
+      reclaim.filter((p) => fs.existsSync(p)),
+      "A retired prefix planted past the threshold survived the sweep, so it " +
+        "is not on RETIRED_TMP_PREFIXES — or is spelled differently there."
+    ).toEqual([]);
+    expect(
+      nearMisses.filter((p) => !fs.existsSync(p)),
+      "The sweep deleted a name that only CONTAINS a retired prefix. It is " +
+        "matching a substring where it must match a leading one, and every " +
+        "neighbour in /tmp whose name mentions one of these words is now in scope."
+    ).toEqual([]);
+    expect(fs.existsSync(foreign)).toBe(true);
+    expect(fs.existsSync(young)).toBe(true);
+    expect(fs.lstatSync(bystanderLink).isSymbolicLink()).toBe(true);
+    expect(fs.existsSync(ownedLink)).toBe(false);
+    expect(
+      readFileSync(path.join(linkTarget, "payload.txt"), "utf8"),
+      "The sweep followed a symlink out of the temp root and deleted what it " +
+        "pointed at. It must lstat, never stat."
+    ).toBe("keep");
   });
 
   it("survives a root that does not exist", () => {
