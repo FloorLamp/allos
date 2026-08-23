@@ -135,7 +135,7 @@ its root row:
 | Kind           | Children                                                | Reconciled links                | Side effects NOT inverted                       |
 | -------------- | ------------------------------------------------------- | ------------------------------- | ----------------------------------------------- |
 | `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider     | —                                               |
-| `condition`    | —                                                       | document / visit                | `intake_items.indication_condition_id` null-out |
+| `condition`    | —                                                       | document / visit                | `intake_items.indication_condition_id` null-out; `intake_item_purposes` condition rows removed (#2857) |
 | `immunization` | —                                                       | visit / provider                | `sweepImmunizationDismissals` (#376)            |
 | `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider     | `care_plan_items` follow-up links (#700)        |
 | `visit`        | —                                                       | document / clinician / facility | every inbound `encounter_id` (#288/#1050/#1053) |
