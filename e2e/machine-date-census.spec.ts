@@ -137,6 +137,13 @@ const ROUTES: CensusRoute[] = [
     // default 90-day window, so the POPULATED note is what renders here; the empty
     // state's sentence (which carries the same bounds) is pinned by
     // e2e/dose-ledger-phone.mobile.spec.ts on its own dedicated fixture.
+    //
+    // NOTE WHICH CHECK CATCHES A REGRESSION HERE, because it is not the obvious
+    // one: reverting the note to raw ISO fails the SUBJECT assertion, not the
+    // offender sweep — the note stops carrying a date in the display shape, so the
+    // route can no longer prove it rendered what it is censused for, and the error
+    // names this entry. Verified 2026-08-23 by doing exactly that. The offender
+    // sweep still backs it up for a surface that prints both shapes at once.
     path: "/medications/dose-history",
     why: "The dose ledger's window note — 'Showing confirmed doses from … to …' (#3478 item 2).",
     // MEASURED 2026-08-23 under the shared seed: 88 rendered text nodes populated
