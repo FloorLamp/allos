@@ -532,6 +532,33 @@ function importedNames(list: string): Map<string, string> {
 }
 
 /**
+ * One module's own declarations, and the class text behind each export already
+ * asked for — memoised on the module object the reader handed back.
+ *
+ * A HANDFUL OF TOKEN MODULES IS IMPORTED BY HUNDREDS OF FILES, and without this
+ * their whole source was re-scanned once per importer: a tree census went from
+ * ~0.35s to ~5s, which is a test file that times out on a loaded CI box rather
+ * than a slow one. Keyed on object identity, so a reader that caches its modules
+ * (the census does) gets the reuse and one that does not is merely slower — never
+ * wrong, and never stale, because a re-read produces a new object.
+ */
+const MODULE_MEMO = new WeakMap<
+  ImportedModule,
+  { own: ClassDeclarations; resolved: ClassDeclarations }
+>();
+
+function memoFor(module: ImportedModule) {
+  let memo = MODULE_MEMO.get(module);
+  if (memo === undefined) {
+    const own: ClassDeclarations = new Map();
+    collectDeclarations(module.source, own);
+    memo = { own, resolved: new Map() };
+    MODULE_MEMO.set(module, memo);
+  }
+  return memo;
+}
+
+/**
  * The class text behind each requested export of one module, following its own
  * `export … from` re-exports when it does not declare them itself.
  *
@@ -543,13 +570,19 @@ function reachableExports(
   module: ImportedModule,
   hops: number
 ): ClassDeclarations {
-  const own: ClassDeclarations = new Map();
-  collectDeclarations(module.source, own);
+  const { own, resolved } = memoFor(module);
   const out: ClassDeclarations = new Map();
   for (const name of wanted) {
+    const already = resolved.get(name);
+    if (already !== undefined) {
+      out.set(name, already);
+      continue;
+    }
     const value = own.get(name);
     if (value === undefined) continue;
-    out.set(name, value === AMBIGUOUS ? AMBIGUOUS : substitute(value, own));
+    const text = value === AMBIGUOUS ? AMBIGUOUS : substitute(value, own);
+    resolved.set(name, text);
+    out.set(name, text);
   }
   if (hops <= 0) return out;
   for (const m of module.source.matchAll(
@@ -1003,13 +1036,17 @@ function readClassText(
  */
 export function resolveClassName(
   openTag: string,
-  declared: ClassDeclarations
+  declared: ClassDeclarations | (() => ClassDeclarations)
 ): ClassText | null {
   const written = classNameExpression(openTag);
   if (written === null) return null;
+  // A quoted class list IS the class text, and asking for the file's declarations
+  // to reach that conclusion is what made the census walk every import of every
+  // file for the 1223 controls in 1456 that need none.
   if (written.literal) return { readable: true, text: written.text };
+  const reachable = typeof declared === "function" ? declared() : declared;
   const expression = blankExpressionComments(written.text);
-  return readClassText(substitute(expression, declared), declared);
+  return readClassText(substitute(expression, reachable), reachable);
 }
 
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
@@ -1128,9 +1165,12 @@ export function findFlooredControls(
 ): FlooredControl[] {
   const found: FlooredControl[] = [];
   const lineOf = (i: number) => source.slice(0, i).split("\n").length;
-  // Collected ONCE per file: every control in it resolves against the same
-  // declarations, and the import hop reads other files off disk.
-  const declared = classDeclarations(source, readModule);
+  // Collected ONCE per file, and only when a control actually needs it: every
+  // class list in most files is a quoted string, and building the declaration set
+  // walks this file's imports. Lazy, not eager, for that reason alone.
+  let declared: ClassDeclarations | null = null;
+  const declarations = () =>
+    (declared ??= classDeclarations(source, readModule));
 
   // Every `<label>` span in the file, and every id a `htmlFor` names. Both
   // spellings of "a label takes the tap for this box" are in the tree.
@@ -1158,7 +1198,7 @@ export function findFlooredControls(
     if (!byTag && !byHandler) continue;
     let resolved: ClassText | null;
     try {
-      resolved = resolveClassName(openTag, declared);
+      resolved = resolveClassName(openTag, declarations);
     } catch (error) {
       if (error instanceof UnreadableControlError)
         throw new UnreadableControlError(
