@@ -112,6 +112,17 @@ text through `<NotesText>`.
 - **Restore re-inserts with new ids.** Nothing here presents the captured row id
   as stable or links to a pre-restore route. The only id an entry carries is the
   holding row's — the undo token.
+- **The delete is an instant; the row prints a day (#3546).** `deleted_at` is a
+  UTC stamp and the subtitle names a calendar day, so the two are different
+  questions and the conversion needs the profile's timezone. It used to be done
+  with `deletedAt.slice(0, 10)` — the UTC day — which stamped an 18:00 delete in
+  UTC−07:00 with _tomorrow_, beside a retention countdown computed from the
+  instant and therefore right. `trashEntry` now resolves it once, through
+  `dateFromCreatedAt` (`lib/timeline-format.ts`), with the zone `listTrash` reads
+  for the profile. `TrashEntry` carries **only** the resulting
+  `deletedOnDay` — the raw instant is not on the entry at all, so the surface
+  cannot truncate what it cannot see. Anything that genuinely needs the instant
+  reads `TrashCapture.deletedAt`.
 
 ## The clinical kinds (#1847)
 
@@ -228,7 +239,10 @@ by-hand purges — the expiry sweep still takes it, on its own schedule.
 
 - Pure — `lib/__tests__/retention.test.ts` (clamp floor/ceiling/garbage),
   `lib/__tests__/trash.test.ts` (headline derivation, expiry math, lenient
-  payload handling, the excluded kind).
+  payload handling, the excluded kind, and the delete instant's profile-local
+  day — every fixture there straddles a midnight in one direction or the other,
+  because an instant at midday agrees in every zone within eleven hours of UTC
+  and so is green under the bug).
 - DB — `lib/__db_tests__/trash.test.ts`: the sweep honours the configured window
   rather than a hardcoded day; permanent delete removes only that capture;
   Empty trash clears the acting profile's rows and leaves another profile's
@@ -247,7 +261,21 @@ by-hand purges — the expiry sweep still takes it, on its own schedule.
   the five clinical deletes answers `{ undoId, error? }` and REFUSES an id that is
   not the acting profile's rather than reporting a delete it did not perform.
 - E2E — `e2e/trash.spec.ts`: delete a row, let the toast go, open
-  `/data?section=trash`, restore it, assert it is back on its own surface.
+  `/data?section=trash`, restore it, assert it is back on its own surface. Its
+  last three tests run on two DEDICATED profiles ~25 hours apart
+  (`e2e/logins/trash.ts`, seeded by `e2e/seed/trash.ts`), for two reasons that
+  turn out to be one: **Empty trash** deletes every capture on the acting
+  profile, so on the shared admin profile it destroyed rows the spec never
+  created (#868's fixture-ownership rule, #3547) — a spec now owns the whole bin
+  it empties, and one test proves the control does not reach the other profile's
+  captures. And the **profile-local day** (#3546) cannot be observed on a
+  pin-following profile at all: `e2e/pinned-timezone.ts` puts local time at
+  13:mm precisely so the local date always equals the frozen instant's UTC date.
+  A capture planted at 11:30 UTC — the one hour that has rolled over at UTC+13
+  and not yet at UTC−12 — renders a different day on each profile, and the UTC
+  day the truncation printed on neither. Because that test empties nothing
+  shared, seeding `deleted_rows` in the shared fixture is viable again; whether
+  to do it is a separate call.
   `e2e/clinical-undo.spec.ts`: delete an allergy, a lesion and a visit in the UI
   and Undo, proving the graded manifestations and the photo series come back too
   — and that the visit's detached reading stays detached.
