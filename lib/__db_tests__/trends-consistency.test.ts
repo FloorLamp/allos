@@ -14,7 +14,7 @@
 // Runs via `npm run test:db` (vitest.db.config.ts). The `db` singleton is pointed
 // at a throwaway per-file temp DB by lib/__db_tests__/setup.ts.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { toKg } from "@/lib/units";
 import { db, today } from "@/lib/db";
 import {
@@ -23,9 +23,11 @@ import {
 } from "@/lib/integrations/normalize";
 import {
   buildDigestSeries,
+  buildBiomarkerSeries,
   buildMetricSeries,
   listCompareOptions,
 } from "@/lib/trends-series";
+import { biomarkerPlot } from "@/lib/queries/biomarker-plot";
 import {
   getBodyMetricDailySeries,
   getLatestBodyMetricDated,
@@ -138,6 +140,63 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
       .all(profileId) as { weight_kg: number }[];
     const rawTrend = weightTrend(rawTwo[0]?.weight_kg, rawTwo[1]?.weight_kg);
     expect(rawTrend?.dir).not.toBe("flat"); // the device offset masquerading as a change
+  });
+});
+
+describe("#3389 — digest endpoint flags ride the existing biomarker gather", () => {
+  it("carries stored notability without executing another statement", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('DigestFlags')").run()
+        .lastInsertRowid
+    );
+    setStoredAge(profileId, 30);
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value, value_num, unit, flag)
+       VALUES (?, ?, 'lab', 'LDL Cholesterol', 'LDL Cholesterol', ?, ?, 'mg/dL', ?)`
+    );
+    insert.run(profileId, "2026-01-01", "90", 90, "normal");
+    insert.run(profileId, "2026-02-01", "92", 92, "non-optimal");
+
+    const executed: string[] = [];
+    const realPrepare = db.prepare.bind(db);
+    const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+      const statement = realPrepare(sql);
+      return new Proxy(statement, {
+        get(target, property) {
+          const value = Reflect.get(target, property, target);
+          if (
+            typeof value === "function" &&
+            ["get", "all", "run", "iterate"].includes(String(property))
+          ) {
+            return (...args: unknown[]) => {
+              executed.push(sql.replace(/\s+/g, " ").trim());
+              return value.apply(target, args);
+            };
+          }
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as typeof db.prepare);
+
+    try {
+      biomarkerPlot(profileId, "LDL Cholesterol");
+      const baselineStatements = executed.splice(0);
+      const digestSeries = buildBiomarkerSeries(
+        profileId,
+        "LDL Cholesterol",
+        {}
+      );
+
+      expect(baselineStatements.length).toBeGreaterThan(0);
+      expect(executed).toEqual(baselineStatements);
+      expect(digestSeries?.endpointFlags).toEqual({
+        first: "normal",
+        last: "non-optimal",
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

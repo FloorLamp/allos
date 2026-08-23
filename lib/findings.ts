@@ -256,7 +256,8 @@ export function recommendationToFinding(rec: Recommendation): Finding {
 }
 
 // Digest TrendItem → Finding. Tone reflects the clinical range crossing (an out-of-
-// range move is caution, a return into range is positive); a plain move is neutral.
+// range move is caution, a return into range is positive); descriptive dispersion /
+// behavior news is neutral.
 export function trendItemToFinding(item: TrendItem): Finding {
   return {
     domain: "digest",

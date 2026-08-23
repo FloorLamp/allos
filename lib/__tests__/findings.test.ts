@@ -118,6 +118,7 @@ describe("trendItemToFinding", () => {
     pctChange: 0.4,
     days: 90,
     count: 5,
+    admissionReason: "range-crossing",
     magnitude: 1000.4,
     text: "LDL ↑ 40% over 90d — into high range",
   };

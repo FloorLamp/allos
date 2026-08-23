@@ -1,9 +1,9 @@
 // "What's trending" digest for the Trends hub. Given a set
 // of windowed, date-keyed numeric series (body/training metrics and biomarkers),
-// auto-detect which ones are actually MOVING over the selected window — direction
-// + magnitude — and, for biomarkers carrying a canonical reference range, whether
-// the move crossed INTO or OUT OF range. Ranks by significance and returns the top
-// few with human labels ("Resting HR ↓ 6% over 90d", "LDL ↑ into high range").
+// admit only moves that are NEWS inside the selected window: a reference/notability
+// crossing, a level shift large against the series' own dispersion, or a change in
+// the behavior of the leading and trailing halves. Ranks by significance and
+// returns the top few with human labels.
 // Pure and exhaustively unit-tested; range logic reuses referenceStatus from
 // lib/reference-range so it agrees with the biomarker machinery. Flat /
 // insufficient-data series are excluded, never errored.
@@ -14,9 +14,32 @@
 // whole trend. For 2–3 point series k collapses to 1, i.e. the exact old
 // first-vs-last behavior.
 
-import { daysBetween, referenceStatus } from "./reference-range";
-import { robustEndpoints } from "./robust-stats";
+import {
+  daysBetween,
+  flagLabel,
+  isNotableFlag,
+  referenceStatus,
+} from "./reference-range";
+import {
+  median,
+  medianAbsoluteDeviation,
+  robustEndpoints,
+  theilSenSlopePerDay,
+} from "./robust-stats";
 import { round } from "./units";
+
+// A level shift must exceed four times the noisier half's MAD. Four is the exact
+// ratio between the half medians and within-half MAD of a steady linear ramp, so
+// the strict comparison rejects a months-long steady slope while admitting a step
+// between two otherwise stable levels.
+export const DIGEST_DISPERSION_MULTIPLIER = 4;
+
+// A same-direction behavior change must at least double the fitted slope, and the
+// difference projected across a half-window must clear two MADs. The ratio catches
+// an actual pace change; the dispersion floor keeps small fitted jitter from doing
+// so. A sign flip is independently news once the shared endpoint move is material.
+export const DIGEST_SLOPE_RATIO = 2;
+export const DIGEST_SLOPE_DISPERSION_MULTIPLIER = 2;
 
 export interface DigestSeries {
   key: string;
@@ -30,7 +53,14 @@ export interface DigestSeries {
   // move can be classified as crossing into/out of range. Omit for metrics without
   // a clinical range (weight, volume, …).
   range?: { low: number | null; high: number | null } | null;
-  // Optional per-series "trending" threshold (fraction), overriding the global
+  // Stored verdicts on the oldest/newest plottable readings in this window. When
+  // present, crossing classification uses the shared NOTABLE tier instead of
+  // re-judging the values against plain bounds. Metrics omit this field.
+  endpointFlags?: {
+    first: string | null;
+    last: string | null;
+  };
+  // Optional per-series materiality threshold (fraction), overriding the global
   // DigestOptions.minPctChange for THIS series. Lets a caller pick a metric-aware
   // bar — 2% is a real weight move but noise for step counts — instead of one
   // threshold for everything. Falls back to the global option, then 0.05.
@@ -38,6 +68,8 @@ export interface DigestSeries {
 }
 
 export type RangeShift = "into-range" | "out-of-range" | "through-range" | null;
+export type TrendAdmissionReason =
+  "range-crossing" | "dispersion-shift" | "behavior-change";
 
 export interface TrendItem {
   key: string;
@@ -55,6 +87,7 @@ export interface TrendItem {
   days: number;
   count: number;
   rangeShift: RangeShift;
+  admissionReason: TrendAdmissionReason;
   // Where the LATEST value sits vs the range ("above" / "below" / "in"), when a
   // range was supplied — drives the "into high/low range" phrasing.
   lastStatus: "above" | "below" | "in" | "unknown";
@@ -66,9 +99,10 @@ export interface TrendItem {
 export interface DigestOptions {
   // Max items returned (default 5).
   limit?: number;
-  // A move must change by at least this fraction to count as "trending" (default
-  // 0.05 = 5%) — UNLESS it crossed a reference range, which always qualifies. A
-  // per-series DigestSeries.minPctChange overrides this for that series.
+  // A move must change by at least this fraction to clear the shared materiality
+  // base (default 0.05 = 5%) — UNLESS it crossed a reference range, which always
+  // qualifies. The digest then applies its additional news gate. A per-series
+  // DigestSeries.minPctChange overrides this for that series.
   minPctChange?: number;
 }
 
@@ -112,18 +146,168 @@ function classifyShift(
   return { shift, lastStatus };
 }
 
-function buildText(item: Omit<TrendItem, "text">, unitSuffix: string): string {
+interface DigestShift {
+  shift: RangeShift;
+  lastStatus: TrendItem["lastStatus"];
+  storedFlag: string | null | undefined;
+}
+
+// Stored clinical flags are already the shared domain verdict used by dashboard
+// promotion. When they exist, the digest relays their NOTABLE-tier transition and
+// never substitutes a fresh plain-bound judgment. With no stored verdict (ordinary
+// metrics and range-only series), the existing numeric classification remains.
+function classifyDigestShift(
+  first: number,
+  last: number,
+  series: Pick<DigestSeries, "range" | "endpointFlags">
+): DigestShift {
+  if (
+    !series.endpointFlags ||
+    (series.endpointFlags.first == null && series.endpointFlags.last == null)
+  ) {
+    return {
+      ...classifyShift(first, last, series.range),
+      storedFlag: undefined,
+    };
+  }
+
+  const firstNotable = isNotableFlag(series.endpointFlags.first);
+  const lastNotable = isNotableFlag(series.endpointFlags.last);
+  const flag = series.endpointFlags.last;
+  const lastStatus: TrendItem["lastStatus"] =
+    flag === "high" || flag === "non-optimal-high" || flag === "reported-high"
+      ? "above"
+      : flag === "low" || flag === "non-optimal-low" || flag === "reported-low"
+        ? "below"
+        : lastNotable
+          ? "unknown"
+          : "in";
+  return {
+    shift:
+      !firstNotable && lastNotable
+        ? "out-of-range"
+        : firstNotable && !lastNotable
+          ? "into-range"
+          : null,
+    lastStatus,
+    storedFlag: flag,
+  };
+}
+
+type BehaviorChange = "direction-flip" | "pace-change";
+
+interface NewsVerdict {
+  reason: TrendAdmissionReason;
+  behaviorChange?: BehaviorChange;
+}
+
+function halves(points: readonly { date: string; value: number }[]): {
+  leading: { date: string; value: number }[];
+  trailing: { date: string; value: number }[];
+} {
+  const split = Math.floor(points.length / 2);
+  return {
+    leading: points.slice(0, split),
+    trailing: points.slice(split),
+  };
+}
+
+function halfDispersion(
+  leading: readonly { value: number }[],
+  trailing: readonly { value: number }[]
+): number {
+  return Math.max(
+    medianAbsoluteDeviation(leading.map(({ value }) => value)),
+    medianAbsoluteDeviation(trailing.map(({ value }) => value))
+  );
+}
+
+function dispersionShift(
+  leading: readonly { value: number }[],
+  trailing: readonly { value: number }[]
+): boolean {
+  if (leading.length === 0 || trailing.length === 0) return false;
+  const change = Math.abs(
+    median(trailing.map(({ value }) => value)) -
+      median(leading.map(({ value }) => value))
+  );
+  return (
+    change > DIGEST_DISPERSION_MULTIPLIER * halfDispersion(leading, trailing)
+  );
+}
+
+function behaviorChange(
+  leading: readonly { date: string; value: number }[],
+  trailing: readonly { date: string; value: number }[]
+): BehaviorChange | null {
+  if (leading.length < 2 || trailing.length < 2) return null;
+  const firstSlope = theilSenSlopePerDay(leading);
+  const lastSlope = theilSenSlopePerDay(trailing);
+  if (firstSlope == null || lastSlope == null) return null;
+  if (firstSlope * lastSlope < 0) return "direction-flip";
+
+  const slow = Math.min(Math.abs(firstSlope), Math.abs(lastSlope));
+  const fast = Math.max(Math.abs(firstSlope), Math.abs(lastSlope));
+  const ratioChanged =
+    slow === 0 ? fast > 0 : fast / slow >= DIGEST_SLOPE_RATIO;
+  if (!ratioChanged) return null;
+
+  const leadingDays = daysBetween(
+    leading[0].date,
+    leading[leading.length - 1].date
+  );
+  const trailingDays = daysBetween(
+    trailing[0].date,
+    trailing[trailing.length - 1].date
+  );
+  const projectedDifference =
+    Math.abs(lastSlope - firstSlope) * Math.min(leadingDays, trailingDays);
+  return projectedDifference >=
+    DIGEST_SLOPE_DISPERSION_MULTIPLIER * halfDispersion(leading, trailing)
+    ? "pace-change"
+    : null;
+}
+
+function newsVerdict(
+  points: readonly { date: string; value: number }[],
+  shift: RangeShift
+): NewsVerdict | null {
+  if (shift != null) return { reason: "range-crossing" };
+  const { leading, trailing } = halves(points);
+  const changed = behaviorChange(leading, trailing);
+  if (changed) {
+    return { reason: "behavior-change", behaviorChange: changed };
+  }
+  return dispersionShift(leading, trailing)
+    ? { reason: "dispersion-shift" }
+    : null;
+}
+
+function buildText(
+  item: Omit<TrendItem, "text">,
+  unitSuffix: string,
+  verdict: NewsVerdict,
+  storedFlag: string | null | undefined
+): string {
   const arrow = item.direction === "up" ? "↑" : "↓";
   const mag =
     item.pctChange != null
       ? `${Math.round(Math.abs(item.pctChange) * 100)}%`
       : `${round(Math.abs(item.absChange), 1)}${unitSuffix}`;
-  const base = `${item.label} ${arrow} ${mag} over ${item.days}d`;
+  const base = `${item.label} ${arrow} ${mag}`;
   if (item.rangeShift === "out-of-range") {
+    if (storedFlag !== undefined) {
+      return `${base} — ${flagLabel(storedFlag).toLowerCase()}`;
+    }
     const where = item.lastStatus === "above" ? "high" : "low";
     return `${base} — into ${where} range`;
   }
   if (item.rangeShift === "into-range") {
+    if (storedFlag !== undefined) {
+      return storedFlag === "immune"
+        ? `${base} — now marked immune`
+        : `${base} — back to normal`;
+    }
     return `${base} — back into range`;
   }
   if (item.rangeShift === "through-range") {
@@ -131,7 +315,12 @@ function buildText(item: Omit<TrendItem, "text">, unitSuffix: string): string {
     const dir = item.lastStatus === "above" ? "low→high" : "high→low";
     return `${base} — crossed the range ${dir}`;
   }
-  return base;
+  if (verdict.reason === "behavior-change") {
+    return verdict.behaviorChange === "direction-flip"
+      ? `${item.label} changed direction within this range`
+      : `${item.label}'s rate of change shifted within this range`;
+  }
+  return `${base} — larger than its recent variation`;
 }
 
 // The robust-endpoint summary of ONE series — the shared core of the digest AND
@@ -139,9 +328,10 @@ function buildText(item: Omit<TrendItem, "text">, unitSuffix: string): string {
 // can never render two different verdicts about the same series on the same screen.
 // Measures the move between ROBUST endpoints (median of the first/last k readings,
 // k = min(3, ⌊n/2⌋); #37) rather than the literal first/last points, and reports
-// whether that move is MATERIAL under the exact same test summarizeTrends uses to
-// admit an item: it clears the per-series (or global) minPctChange bar OR crosses a
-// reference range. Returns null for a series with fewer than 2 finite points.
+// whether that move clears the shared MATERIALITY base: the per-series (or global)
+// minPctChange bar OR a reference-range crossing. summarizeTrends applies the news
+// gate above this result; the tile keeps using this result unchanged. Returns null
+// for a series with fewer than 2 finite points.
 export interface RobustSummary {
   count: number;
   // Robust endpoint values (median of first/last k), not the literal first/last.
@@ -152,8 +342,8 @@ export interface RobustSummary {
   // (last − first) / |first|, or null when first is 0.
   pctChange: number | null;
   direction: "up" | "down" | "flat";
-  // True when the move is worth surfacing: it clears minPctChange, or crossed a
-  // reference range. A material move always has a non-flat direction.
+  // True when the move clears the shared tile/digest base: it clears minPctChange,
+  // or crossed a reference range. A material move always has a non-flat direction.
   material: boolean;
 }
 
@@ -193,13 +383,10 @@ export function robustSeriesSummary(
   };
 }
 
-// Compute the ranked, human-labeled "what's trending" list. Series with fewer
-// than 2 points, or a net change of 0 (flat), are excluded. A move is kept when it
-// changed by at least its threshold (per-series minPctChange, else the global
-// option, else 0.05) OR crossed a reference range. Ties break on the ranking
-// score, then the label for a stable order. The move is measured between ROBUST
-// endpoints (median of first/last k readings) so a single noisy edge point can't
-// invent a trend (#37).
+// Compute the ranked, human-labeled news list. The unchanged shared endpoint
+// summary first establishes direction/materiality; this additional gate admits
+// only crossings, dispersion-significant level shifts, and in-window behavior
+// changes. Ties still break on the old score, then label.
 export function summarizeTrends(
   series: readonly DigestSeries[],
   opts: DigestOptions = {}
@@ -214,9 +401,18 @@ export function summarizeTrends(
     // Shared robust-endpoint core (#398): the SAME summary the Overview tile badge
     // renders, so the chip and the tile agree on first/last/delta and materiality.
     const summary = robustSeriesSummary(s, globalMinPct);
-    if (!summary || !summary.material) continue; // flat or below the bar
+    if (!summary || summary.direction === "flat") continue;
     const { first, last, absChange, pctChange } = summary;
-    const { shift, lastStatus } = classifyShift(first, last, s.range);
+    const { shift, lastStatus, storedFlag } = classifyDigestShift(
+      first,
+      last,
+      s
+    );
+    // A stored notability transition is itself the shared clinical materiality
+    // verdict. Otherwise preserve robustSeriesSummary's existing threshold gate.
+    if (!summary.material && shift == null) continue;
+    const verdict = newsVerdict(pts, shift);
+    if (!verdict) continue;
 
     const direction: "up" | "down" = absChange > 0 ? "up" : "down";
     const days = daysBetween(pts[0].date, pts[pts.length - 1].date);
@@ -232,10 +428,14 @@ export function summarizeTrends(
       days,
       count: pts.length,
       rangeShift: shift,
+      admissionReason: verdict.reason,
       lastStatus,
       magnitude,
     };
-    items.push({ ...core, text: buildText(core, s.unit ?? "") });
+    items.push({
+      ...core,
+      text: buildText(core, s.unit ?? "", verdict, storedFlag),
+    });
   }
 
   items.sort(

@@ -24,9 +24,9 @@ const LEAD_CHIPS = 3;
 
 // "What's trending" digest for the Trends Overview. Feeds
 // every candidate series (metrics + biomarkers, windowed to the shared range) to
-// the pure summarizeTrends, which flags the ones that actually moved (or crossed a
-// reference range) and ranks them. Renders the top few as compact chips. Nothing
-// renders when nothing is meaningfully moving.
+// the pure summarizeTrends, which admits only crossings, dispersion-significant
+// shifts, and in-window behavior changes, then ranks them. Renders the top few as
+// compact chips. Nothing renders when the window contains no news.
 //
 // #1455 B: the digest shows the TOP THREE inline and puts the rest behind a
 // "Show all N" disclosure. The list is already ranked, so the leading three are
@@ -40,7 +40,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
   // Metrics + biomarkers, plus wellness-practice CADENCE (#1632): a practice whose
-  // days-per-week really moved is a mover like any other. Its series carries no
+  // days-per-week really changed is a candidate like any other. Its series carries no
   // reference range on purpose, so the chip stays neutral — a coaching-tier signal
   // does not get a crossing colour (see buildPracticeDigestSeries).
   const series = [

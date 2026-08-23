@@ -84,7 +84,10 @@ export interface TrendSeries {
   // lets the digest classify a move as crossing into/out of range. null for
   // metrics and biomarkers without a resolvable range.
   range: { low: number | null; high: number | null } | null;
-  // Optional metric-aware "trending" threshold (fraction) for the digest (#37):
+  // Oldest/newest stored clinical verdict in the window. Biomarkers carry this
+  // for the digest's shared NOTABLE-tier crossing decision; metrics omit it.
+  endpointFlags?: DigestSeries["endpointFlags"];
+  // Optional metric-aware materiality threshold (fraction) for the digest (#37):
   // 2% is a real weight move but noise for training volume. Read by summarizeTrends
   // as DigestSeries.minPctChange; undefined falls back to the digest default.
   minPctChange?: number;
@@ -293,6 +296,7 @@ export function buildBiomarkerSeries(
 
   const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
+  const windowedFlags = filterSeriesByRange(plot.pointFlags, range);
 
   return {
     key: resultSeriesKey(canonical),
@@ -304,6 +308,14 @@ export function buildBiomarkerSeries(
     decimals: 1,
     points: windowed,
     range: plot.rng,
+    ...(windowedFlags.length >= 2
+      ? {
+          endpointFlags: {
+            first: windowedFlags[0].flag,
+            last: windowedFlags[windowedFlags.length - 1].flag,
+          },
+        }
+      : {}),
   };
 }
 
