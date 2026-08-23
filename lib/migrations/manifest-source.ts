@@ -65,6 +65,13 @@ export function sha256OfMigration(
 const IMPORT_RE =
   /^import\s*\{\s*migration\s+as\s+(\w+)\s*\}\s*from\s*"\.\/([^"]+)";/gm;
 const ARRAY_RE = /export const MIGRATIONS:\s*Migration\[\]\s*=\s*\[([^\]]*)\]/m;
+// One entry per line, `  mAlias,` — the shape prettier writes and the only shape
+// this array has ever held. Matching the ENTRY rather than stripping comments is
+// deliberate: a hand-rolled comment stripper is its own defect class here (#3595,
+// lib/__tests__/strip-comments.test.ts), and an entry this misses does not go
+// silently missing — `assertRegistryMatchesDisk` then reports the file as present
+// in versions/ and unregistered, which is exactly the loud failure it is for.
+const ENTRY_RE = /^\s*(\w+)\s*,\s*$/gm;
 
 export function registryOrder(registryPath: string = REGISTRY_PATH): string[] {
   const source = fs.readFileSync(registryPath, "utf8");
@@ -80,10 +87,7 @@ export function registryOrder(registryPath: string = REGISTRY_PATH): string[] {
         `if the declaration was reshaped, reshape this parser with it.`
     );
   }
-  const aliases = array[1]
-    .split(",")
-    .map((entry) => entry.replace(/\/\/[^\n]*/g, "").trim())
-    .filter((entry) => entry.length > 0);
+  const aliases = [...array[1].matchAll(ENTRY_RE)].map((m) => m[1]);
   const unknown = aliases.filter((a) => !byAlias.has(a));
   if (unknown.length > 0) {
     throw new Error(

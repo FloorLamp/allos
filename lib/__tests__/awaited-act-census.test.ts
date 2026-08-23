@@ -54,6 +54,20 @@ const SCANNED_EXTENSIONS = [
 // output, so the collapse is silent.
 const CORPUS_FLOOR = 2000;
 
+// THE ONE FILE ALLOWED TO NAME THE CONSTRUCT: this census, which must QUOTE every
+// broken spelling in corpora authored to break the guard. Adding a second entry is
+// a deliberate act with a sentence attached.
+//
+// ./awaited-act.ts is deliberately NOT here. Its header quotes the spellings too,
+// but only in comments and without importing `act`, so the matcher already passes
+// over it for the right reason. An exemption it does not need would be an
+// exemption nobody would notice going stale — the case below checks that the one
+// entry still earns its place.
+//
+// Exempted from the WALK, not from the matcher: the reach tests below hand the
+// matcher those same spellings and require every one to be found.
+const ALLOWED = ["lib/__tests__/awaited-act-census.test.ts"] as const;
+
 // AND A FLOOR ON THE POPULATION THIS GUARD IS ACTUALLY ABOUT, which the file count
 // above cannot give it. The verdict below is "no unawaited act", and that is also
 // true of a tree where nothing imports `act` at all — so the number that has to be
@@ -72,7 +86,11 @@ function scannedSources(base: string = REPO): ScannedSource[] {
   })
     .toString("utf8")
     .split("\0")
-    .filter((f) => SCANNED_EXTENSIONS.some((ext) => f.endsWith(ext)));
+    .filter(
+      (f) =>
+        SCANNED_EXTENSIONS.some((ext) => f.endsWith(ext)) &&
+        !(ALLOWED as readonly string[]).includes(f)
+    );
   return files.map((file) => ({
     file,
     source: readFileSync(path.join(base, file), "utf8"),
@@ -134,6 +152,21 @@ describe("the awaited-act census (#3578)", () => {
 
   it("finds no unawaited React act() anywhere in the test tree", () => {
     expect(describeActFindings(findUnawaitedActSites(sources))).toEqual([]);
+  });
+
+  it("the exempted file really does quote the construct", () => {
+    // An exemption nobody checks is a blanket. Both entries are excused because
+    // they must WRITE the broken spellings — this one in its corpora, the matcher
+    // in its header — so if either stops containing one, it stops needing the
+    // excuse and the entry should go.
+    for (const rel of ALLOWED) {
+      const source = readFileSync(path.join(REPO, rel), "utf8");
+      expect(
+        findUnawaitedActSites([{ file: rel, source }]).length,
+        `${rel} is exempt from the walk but no longer contains a broken \`act(\` ` +
+          "spelling, so the exemption is unearned. Drop its ALLOWED entry."
+      ).toBeGreaterThan(0);
+    }
   });
 });
 

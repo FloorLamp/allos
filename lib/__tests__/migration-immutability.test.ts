@@ -236,4 +236,37 @@ describe("the manifest writer over a corpus authored to break it", () => {
     );
     fs.rmSync(versionsDir, { recursive: true, force: true });
   });
+
+  it("ignores a comment line inside the MIGRATIONS array", () => {
+    // The registry is read as TEXT, and the entry shape is matched rather than
+    // comments stripped (a hand-rolled stripper is its own defect class, #3595).
+    // A comment between entries must not become a phantom migration — and if the
+    // entry matcher ever misses a REAL entry, the disk correspondence check turns
+    // that into a loud "present in versions/ but not registered" rather than a
+    // silently short manifest.
+    const versionsDir = makeTmpDir("manifest-corpus");
+    fs.writeFileSync(
+      path.join(versionsDir, "20260801-present.ts"),
+      "export const migration = 1;\n",
+      "utf8"
+    );
+    const registryPath = path.join(versionsDir, "index.ts");
+    fs.writeFileSync(
+      registryPath,
+      [
+        'import { migration as mPresent } from "./20260801-present";',
+        "",
+        "export const MIGRATIONS: Migration[] = [",
+        "  // The name-keyed era starts here.",
+        "  mPresent,",
+        "];",
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+    expect(Object.keys(buildManifest({ versionsDir, registryPath }))).toEqual([
+      "20260801-present.ts",
+    ]);
+    fs.rmSync(versionsDir, { recursive: true, force: true });
+  });
 });

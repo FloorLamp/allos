@@ -169,6 +169,21 @@ describe("the MUTATION: note census (#3577)", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("the two exempted files really do carry the marker", () => {
+    // An exemption nobody checks is a blanket. Both are excused because they must
+    // WRITE the marker — the matcher's header explains what a note is, and this
+    // census quotes notes authored to break it. If either stops containing one, it
+    // stops needing the excuse and its SELF entry should go.
+    for (const rel of SELF) {
+      const source = readFileSync(path.join(REPO, rel), "utf8");
+      expect(
+        findMutationNotes([{ file: rel, source }]).length,
+        `${rel} is exempt from the walk but no longer carries a \`MUTATION:\` ` +
+          "marker, so the exemption is unearned. Drop its SELF entry."
+      ).toBeGreaterThan(0);
+    }
+  });
+
   it("the frozen counts are still the real ones", () => {
     // A ratchet nobody tightens is an allow-list. When a file's debt shrinks, the
     // entry has to shrink with it, or the slack it leaves is silently re-spendable.
