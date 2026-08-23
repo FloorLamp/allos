@@ -1,6 +1,76 @@
 {
   "days": [
     {
+      "date": "2026-08-23",
+      "entries": [
+        {
+          "pr": 3589,
+          "title": "Lab names with commas stop reading as extra results, a single reading draws as a mark, and a dose is stated once",
+          "kind": "fix",
+          "issues": [3496, 3497, 3498]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-22",
+      "entries": [
+        {
+          "pr": 3537,
+          "title": "A medication imported from a portal shows its clean name, with the portal's own string kept on the record",
+          "kind": "fix",
+          "issues": [3480]
+        },
+        {
+          "pr": 3438,
+          "title": "Health Connect days stop double counting when you cross a timezone",
+          "kind": "fix",
+          "issues": [3424]
+        },
+        {
+          "pr": 3551,
+          "title": "A Health Connect re-sync moves the one measure it re-keys and leaves the rest of that reading alone",
+          "kind": "fix",
+          "issues": [3524]
+        },
+        {
+          "pr": 3570,
+          "title": "Trash names the day you deleted something in your own calendar, not UTC's",
+          "kind": "fix",
+          "issues": [3546, 3547]
+        },
+        {
+          "pr": 3568,
+          "title": "The Now lane orders doses by when they are due, not by the order they happened to be worked out",
+          "kind": "fix",
+          "issues": [3554]
+        },
+        {
+          "pr": 3550,
+          "title": "Notification settings list each kind on its own row, with a labelled chip per channel on a phone",
+          "kind": "feature",
+          "issues": [3495]
+        },
+        {
+          "pr": 3549,
+          "title": "The Next workout card puts Start on its own line, with the two lighter actions side by side beneath",
+          "kind": "fix",
+          "issues": [3473]
+        },
+        {
+          "pr": 3542,
+          "title": "Trash rows keep their name at phone width, and Restore stops being outshouted by Delete",
+          "kind": "fix",
+          "issues": [3491]
+        },
+        {
+          "pr": 3538,
+          "title": "Cards replace tables on a phone at the same width everywhere, so a list stops switching layout between pages",
+          "kind": "fix",
+          "issues": [3457]
+        }
+      ]
+    },
+    {
       "date": "2026-08-21",
       "entries": [
         {
