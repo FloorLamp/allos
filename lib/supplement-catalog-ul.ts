@@ -4,8 +4,9 @@
 // directions:
 //
 //   * DISPLAY — when a UL warning fires on a nutrient, does one of the products
-//     feeding it declare that it is above that limit ON PURPOSE? `formulationUlNote`
-//     answers it, and the answer is appended to the warning's detail line.
+//     feeding it declare that it is above that limit ON PURPOSE, and is that product
+//     what put the stack over? `formulationUlNote` answers it, and the answer is
+//     appended to the warning's detail line.
 //   * CENSUS — which catalogued products trip a UL at one of their OWN stated
 //     servings? `catalogUlExceedances` answers it, and the guard in
 //     lib/__tests__/catalog-ul-notes.test.ts requires every such product to carry a
@@ -20,11 +21,18 @@
 // NEVER PRESCRIPTIVE, NEVER SOFTENING. The note explains a number; it does not shrink
 // one. `ulWarningDetail` still states the same total against the same limit and still
 // closes with "discuss with your clinician".
+//
+// AND IT ONLY SPEAKS WHERE IT IS TRUE. The reason ends "the total is expected for this
+// product", so it is withheld unless the product accounts for the exceedance —
+// `explainsExceedance` below. A note that explains someone else's total would teach a
+// person to dismiss a real warning, which is #3156's failure mode wearing the other
+// face.
 
 import {
   stackUlWarnings,
   type StackItem,
   type NutrientContribution,
+  type UlWarning,
 } from "./dri";
 import { normalizeIngredientDrafts } from "./intake-ingredients";
 import {
@@ -37,7 +45,10 @@ import {
 // ("80 mg zinc against an adult upper limit of 40 mg"). A pediatric profile's lower
 // bands are a real question and a different one — this census makes no claim about
 // them, and `formulationUlNote` is band-agnostic because it reads a warning that has
-// already been computed for whoever is looking at it.
+// already been computed for whoever is looking at it. OPEN: on a pediatric band the
+// note still renders the adult sentence ("above the general zinc limit by design")
+// against a child's lower limit. That is a wording call on a safety surface and is
+// the owner's, not this module's — nothing here decides it.
 const CENSUS_AGE_YEARS = 40;
 
 function norm(name: string): string {
@@ -58,21 +69,67 @@ export function catalogEntryByName(
   return entries.find((e) => norm(e.name) === want) ?? null;
 }
 
+// Does THIS contributor account for the exceedance the person is looking at? The
+// declared sentence makes two claims — that the product is above the limit ON PURPOSE,
+// and that "the total is expected for this product" — so it needs both halves to hold:
+//
+//   * the product's own contribution is ABOVE the limit. AREDS 2 at one softgel is
+//     40 mg, exactly AT the adult UL and over nothing; the "by design" clause is a
+//     claim about a serving this person is not taking.
+//   * the rest of the stack is NOT over the limit without it. Otherwise the warning
+//     would have fired anyway, this product did not cause it, and telling someone the
+//     total is expected teaches them to dismiss a warning nothing here explains —
+//     which is #3156's own "looks like a bug, so it gets ignored" failure pointed the
+//     other way, and the reason that ruling exists.
+//
+// Both boundaries are the UL's own. stackUlWarnings fires on STRICTLY greater, so a
+// contribution sitting exactly at the UL is not above it, and a remainder sitting
+// exactly at the UL is not an independent cause of anything.
+//
+// The two halves answer the awkward stacks in opposite directions, which is why
+// neither alone will do. Two products each over the limit (80 mg AREDS 2 + 50 mg
+// zinc = 130): the first half passes for both, the second fails for both, and nobody
+// gets to call 130 mg expected. Three products sharing it (40 + 10 + 5 = 55): removing
+// AREDS 2 drops the stack under the limit so the second half passes, but its own
+// serving is not over the limit so the first fails. A shared exceedance is nobody's
+// by design.
+//
+// Contributions sum to the total exactly (lib/dri.summarizeStack builds both from the
+// same reading), so `total - c.amount` IS the rest of the stack.
+function explainsExceedance(
+  c: NutrientContribution,
+  total: number,
+  ul: number
+): boolean {
+  return c.amount > ul && total - c.amount <= ul;
+}
+
+// The fields of a UL warning this join reads. Taken as ONE argument rather than as
+// loose parts, because the answer depends on the whole exceedance — the total and the
+// limit decide whether a contributor's declaration explains it, so a caller must not
+// be able to supply the contributors without them.
+export type FormulationUlWarning = Pick<
+  UlWarning,
+  "key" | "total" | "ul" | "contributors"
+>;
+
 // The declared reason(s) that a nutrient's UL exceedance is intentional, for the
-// products actually contributing to it — joined into one line, or null when no
+// products that actually CAUSED it — joined into one line, or null when no such
 // contributor declares anything for this nutrient.
 //
-// Scoped to the nutrient AND to the contributors: an AREDS 2 in the stack explains the
-// zinc line and says nothing on the vitamin A line, and it explains nothing at all
-// once it is no longer part of the total.
+// Scoped to the nutrient, to the contributors, and to causation: an AREDS 2 in the
+// stack explains the zinc line and says nothing on the vitamin A line, it explains
+// nothing at all once it is no longer part of the total, and it explains nothing when
+// the person would have been over the limit without it.
 export function formulationUlNote(
-  nutrientKey: string,
-  contributors: readonly NutrientContribution[],
+  warning: FormulationUlWarning,
   entries: readonly SupplementCatalogEntry[] = SUPPLEMENT_CATALOG
 ): string | null {
+  const { key: nutrientKey, total, ul, contributors } = warning;
   const seen = new Set<string>();
   const notes: string[] = [];
   for (const c of contributors) {
+    if (!explainsExceedance(c, total, ul)) continue;
     const entry = catalogEntryByName(c.name, entries);
     if (!entry?.aboveUpperLimit) continue;
     for (const n of entry.aboveUpperLimit) {

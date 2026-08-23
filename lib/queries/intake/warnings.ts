@@ -96,7 +96,9 @@ import {
 // surfaces (the intake surface row, the Upcoming finding) format it, so they can't disagree.
 // `formulationNote` (#3156) is the same arrangement for the other explanation: a
 // catalogued product that is above this limit BY DESIGN (AREDS 2's zinc) says so, and
-// both surfaces render the one sentence rather than each deciding for itself.
+// both surfaces render the one sentence rather than each deciding for itself. The
+// WHOLE warning goes to the join, not just its key and contributors: whether the
+// product explains the exceedance depends on the total and the limit too.
 export type UlWarningWithCaveat = UlWarning & {
   conditionCaveat: string | null;
   formulationNote: string | null;
@@ -124,7 +126,7 @@ export function getDietaryLimitWarnings(
   return stackUlWarnings(items, ageYears, sex).map((w) => ({
     ...w,
     conditionCaveat: ulConditionCaveat(w.key, conditions),
-    formulationNote: formulationUlNote(w.key, w.contributors),
+    formulationNote: formulationUlNote(w),
   }));
 }
 

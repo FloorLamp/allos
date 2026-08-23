@@ -1567,7 +1567,9 @@ export function ulConditionCaveat(
 //
 // `formulationNote` (#3156) is the per-product reason a contributing product is above
 // this limit ON PURPOSE — AREDS 2's zinc is the anchor case. It is resolved by
-// lib/supplement-catalog-ul.formulationUlNote (the catalog lives outside this engine)
+// lib/supplement-catalog-ul.formulationUlNote (the catalog lives outside this engine),
+// which supplies it only when that product ACCOUNTS for the exceedance — a total the
+// product does not explain gets no explanation
 // and placed BEFORE the clinician close, because it reframes the whole line: without
 // it, a warning firing on the app's own seeded serving reads like a bug. It explains
 // the number and never shrinks it — same total, same limit, same close.

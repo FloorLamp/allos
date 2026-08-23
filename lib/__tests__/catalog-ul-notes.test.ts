@@ -121,6 +121,35 @@ describe("catalog UL reasons — the shipped catalog", () => {
 describe("catalog UL reasons — what a person reads", () => {
   const areds = catalogEntryByName("PreserVision AREDS 2")!;
 
+  // A hand-built warning, for the cases that are about the JOIN rather than about the
+  // stack arithmetic. The total and the limit are stated because the note now depends
+  // on them: the same contributor list reads differently at a different total.
+  function note(
+    key: string,
+    total: number,
+    ul: number,
+    contributors: NutrientContribution[]
+  ) {
+    return formulationUlNote({ key, total, ul, contributors });
+  }
+
+  // A plain second zinc source, so a stack can be over the limit without AREDS 2.
+  function zincItem(mg: number, name = "Zinc Picolinate"): StackItem {
+    return {
+      name,
+      active: true,
+      doseAmounts: ["1 capsule"],
+      ingredients: [{ name: "Zinc", amount: mg, unit: "mg" }],
+    };
+  }
+
+  // The zinc warning a real adult stack raises, through the real engine.
+  function zincWarning(items: StackItem[]) {
+    const w = stackUlWarnings(items, 40, "male").find((x) => x.key === "zinc");
+    if (!w) throw new Error("expected a zinc UL warning for this stack");
+    return w;
+  }
+
   it("puts the reason in the zinc warning AREDS 2 raises on its own serving", () => {
     const [warning] = stackUlWarnings(
       [itemFor(areds, "2 softgels")],
@@ -128,7 +157,7 @@ describe("catalog UL reasons — what a person reads", () => {
       "male"
     );
     expect(warning.key).toBe("zinc");
-    const note = formulationUlNote(warning.key, warning.contributors);
+    const note = formulationUlNote(warning);
     expect(note).toBe(
       "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
         "the AREDS2 eye-health formula. The total is expected for this product."
@@ -159,23 +188,78 @@ describe("catalog UL reasons — what a person reads", () => {
     const contributors: NutrientContribution[] = [
       { name: "PreserVision AREDS 2", amount: 80 },
     ];
-    expect(formulationUlNote("zinc", contributors)).toContain("by design");
-    expect(formulationUlNote("copper", contributors)).toBeNull();
-    expect(formulationUlNote("vitamin_e", contributors)).toBeNull();
+    expect(note("zinc", 80, 40, contributors)).toContain("by design");
+    expect(note("copper", 80, 10, contributors)).toBeNull();
+    expect(note("vitamin_e", 80, 1000, contributors)).toBeNull();
+  });
+
+  it("says nothing when another product is what pushed the total over", () => {
+    // THE CAUSATION GUARD. AREDS 2 at ONE softgel is 40 mg — exactly at the adult UL
+    // and over nothing on its own. Add a separate 50 mg zinc and the stack is at 90
+    // mg, 2.25x the limit, because of the OTHER bottle. The declared reason ends "The
+    // total is expected for this product", and a total this product does not explain
+    // must never carry it: a person told a warning is expected stops reading it, which
+    // is the exact failure #3156's ruling exists to prevent, pointed the other way.
+    const warning = zincWarning([itemFor(areds, "1 softgel"), zincItem(50)]);
+    expect(warning.total).toBe(90);
+    expect(warning.ul).toBe(40);
+    expect(formulationUlNote(warning)).toBeNull();
+    const detail = ulWarningDetail(warning, null, formulationUlNote(warning));
+    expect(detail).not.toContain("expected for this product");
+    expect(detail).not.toContain("by design");
+    // Suppressed, never softened: the number, the limit and the close are untouched.
+    expect(detail).toContain("90 mg");
+    expect(detail).toContain("40 mg");
+    expect(detail).toContain(
+      "Discuss with your clinician before changing anything."
+    );
+  });
+
+  it("still says nothing when BOTH sources are over the limit alone", () => {
+    // AREDS 2 at its own 2-softgel serving (80 mg) really is above the limit by
+    // design — but at 130 mg the total is not this product's, and the other bottle
+    // would have raised the warning by itself. Neither product explains this line.
+    const warning = zincWarning([itemFor(areds, "2 softgels"), zincItem(50)]);
+    expect(warning.total).toBe(130);
+    expect(formulationUlNote(warning)).toBeNull();
+  });
+
+  it("still says nothing when three sources share an exceedance nobody caused", () => {
+    // 40 + 10 + 5 = 55. Removing AREDS 2 drops the stack under the limit, so it is
+    // NECESSARY — but its own one-softgel 40 mg is not above the limit, so "above the
+    // general zinc limit by design" is not true of what this person takes. Necessity
+    // alone is not enough; the product's own serving has to be the thing over.
+    const warning = zincWarning([
+      itemFor(areds, "1 softgel"),
+      zincItem(10, "Zinc Gluconate"),
+      zincItem(5, "Multivitamin"),
+    ]);
+    expect(warning.total).toBe(55);
+    expect(formulationUlNote(warning)).toBeNull();
+  });
+
+  it("keeps the note when the product is over alone and the rest is not", () => {
+    // The other side of the boundary, so the guard above cannot pass by suppressing
+    // everything: AREDS 2 at 80 mg beside a small multivitamin. The 8 mg raises no
+    // warning on its own, so this exceedance is still the product's and still explained.
+    const warning = zincWarning([
+      itemFor(areds, "2 softgels"),
+      zincItem(8, "Multivitamin"),
+    ]);
+    expect(warning.total).toBe(88);
+    expect(formulationUlNote(warning)).toContain("by design");
   });
 
   it("says nothing for a product that is not the catalogued one", () => {
     // EXACT name match. A renamed or look-alike item gets the ordinary generic
     // warning — nobody here knows what is in that bottle.
     for (const name of ["AREDS 2", "PreserVision AREDS 2 Generic", "Zinc"]) {
-      expect(formulationUlNote("zinc", [{ name, amount: 80 }])).toBeNull();
+      expect(note("zinc", 80, 40, [{ name, amount: 80 }])).toBeNull();
     }
     // Case and surrounding space are not part of the identity, matching the form's
     // own catalog lookup.
     expect(
-      formulationUlNote("zinc", [
-        { name: "  preservision areds 2 ", amount: 80 },
-      ])
+      note("zinc", 80, 40, [{ name: "  preservision areds 2 ", amount: 80 }])
     ).toContain("by design");
   });
 
