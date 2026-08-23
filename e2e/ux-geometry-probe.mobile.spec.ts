@@ -105,6 +105,13 @@ const SURFACES: Surface[] = [
   },
 ];
 
+// `/supplies` is deliberately NOT in that list, and the reason is worth writing
+// down: measured 2026-08-23 at 390px it holds 48 boxes and ZERO rows with two or
+// more controls, so a `minControlRows` entry there could only have been 0 — a
+// floor that asserts nothing while looking like it does. It gets its own block
+// below instead, carrying the same three legs (a corpus floor, a named subject,
+// and then the verdict) for the CLIP probe alone.
+
 // The option shape comes FROM the probe rather than being restated here, so a
 // threshold added to the rule cannot be silently absent from the guard's calls.
 type ProbeOptions = Parameters<typeof geometryProbe>[0];
@@ -125,7 +132,13 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
       // its controls measures an empty page and reports a small number that looks
       // like a small page — and a floor is exactly the assertion that direction
       // defeats. So the named subject is proven on screen before anything is read.
-      await expect(page.locator(surface.subject)).toBeVisible();
+      // `.first()` because a subject may legitimately be a repeated control:
+      // `/supplies` renders one member chip per linked item. The probe matches
+      // every element against the selector, so the count is not part of the
+      // claim — what matters is that at least one is on screen before the boxes
+      // are read. first-ok: waiting for the subject class to exist, not for a
+      // particular member of it.
+      await expect(page.locator(surface.subject).first()).toBeVisible();
 
       const r = await runProbe(page, {
         ...GEOMETRY_THRESHOLDS,
@@ -164,6 +177,67 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
       ).toBe(true);
     });
   }
+
+  // ── THE ONE FINDINGS ASSERTION, AND WHY IT IS ONLY ONE ────────────────────────
+  //
+  // Everything above is a claim about the PROBE. This is a claim about the APP,
+  // and the file's header explains why that is normally out of bounds: the defects
+  // the probe exists to find are open on main, so a spec demanding zero findings
+  // would be red on arrival and would get its routes trimmed until it was green.
+  //
+  // `/supplies` is the exception because its findings were DIAGNOSED. #3529
+  // recorded three `span "· Supply Parent (e2e)"` rows at 8-16px over; #3607 item
+  // 1 established that all three were the probe reading an inline run inside a
+  // `.truncate` ancestor, which keeps full natural width under `white-space:
+  // nowrap` while the ancestor paints an ellipsis at its own edge. Nothing was off
+  // screen. The rule that removes them is `insideEllipsisTruncation`, and this is
+  // what says so — "the census says it, rather than a person saying it", which is
+  // #3607's own acceptance criterion. If a fourth row appears here it is either a
+  // real overhang on this page or the exemption having grown teeth, and both are
+  // worth a red.
+  test("/supplies reports no clipped content (#3607 item 1)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/supplies");
+    // The chips ARE the subject of the diagnosis, so they are on screen before
+    // anything is pronounced clean — an absence assertion over a page that has not
+    // rendered is the shape that passes hardest when it has stopped working.
+    await expect(
+      page.getByTestId("shared-supply-member-link").first() // first-ok: waiting for the member chips to exist at all
+    ).toBeVisible();
+
+    const SUBJECT = '[data-testid="shared-supply-member-link"]';
+    const r = await runProbe(page, {
+      ...UNCAPPED,
+      subjectSelector: SUBJECT,
+    });
+    // KEEP THIS, reviewer — it is how the floor below was derived and how the
+    // next person re-derives it, and it makes a red here say WHICH number moved.
+    console.log(
+      `[#3607 item 1] /supplies @${PHONE.width}px: ${r.clipCandidates} boxes, ` +
+        `${r.clippedTotal} clipped`
+    );
+    // Measured 48 on two runs. Cut hard, because the floor separates "this page
+    // rendered" from "this page did not" and is not a layout pin.
+    expect(
+      r.clipCandidates,
+      `the probe measured only ${r.clipCandidates} boxes inside <main> — it is ` +
+        "not looking at this page, so the clean verdict below is about nothing"
+    ).toBeGreaterThanOrEqual(24);
+    expect(
+      r.subjectExamined,
+      "the member chips are on screen but were not among the boxes the probe " +
+        "measured — they are the elements #3529's three rows came from"
+    ).toBe(true);
+    expect(
+      r.clipped.map((c) => `${c.el} ${c.overflowPx}px ${c.side}`),
+      "the geometry probe reports content leaving /supplies' right edge. Either " +
+        "this page really does overhang now, or `insideEllipsisTruncation` has " +
+        "stopped exempting an inline run that a `.truncate` ancestor clips inside " +
+        "the viewport (#3607 item 1)."
+    ).toEqual([]);
+  });
 
   // ── THE FORGERIES ─────────────────────────────────────────────────────────────
   //

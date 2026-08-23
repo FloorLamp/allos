@@ -73,9 +73,12 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(primarySummary).toContainText("148/171 bpm");
   await expect(primarySummary).toContainText("72");
   await expect(primarySummary).toContainText("648 kcal");
-  await expect(page.getByTestId("ride-stat-max-heart-rate")).toContainText(
-    "171 bpm"
-  );
+  // MAX HEART RATE IS NOT REPEATED HERE (#3500 item 3). This ride's summary line
+  // above already reads "148/171 bpm" — the house avg/max composite — so the
+  // secondary block no longer states 171 a second time. The branch where the box
+  // DOES still render (a max with no average, so the composite cannot carry it)
+  // has its own test below.
+  await expect(page.getByTestId("ride-stat-max-heart-rate")).toHaveCount(0);
   await expect(page.getByTestId("ride-stat-power")).toContainText("186 W");
   await expect(page.getByTestId("ride-stat-power")).toContainText(
     "193 weighted"
@@ -172,8 +175,12 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(speedComparison).toHaveText("0.3 km/h below 24 km/h median");
   await expect(speedComparison).toHaveClass(/text-amber-700/);
   await expect(page.getByTestId("ride-summary-comparison-power")).toBeVisible();
+  // The neutral tone is SLATE (#3500 item 1) — it used to be sky, which at
+  // font-medium is this app's most link-like non-link. The tone rule as a whole
+  // (nothing sky, speed still directional, both themes) is measured in
+  // "the ride comparison deltas read as statements…" below.
   await expect(page.getByTestId("ride-summary-comparison-power")).toHaveClass(
-    /text-sky-700/
+    /text-slate-600/
   );
   await expect(
     page.getByTestId("ride-summary-comparison-weighted-power")
@@ -767,6 +774,250 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
   await expect(page.getByTestId("ride-zone-2")).toContainText("50 min · 83%");
   await expect(page.getByTestId("ride-zone-4")).toContainText("10 min · 17%");
   await expect(page.getByTestId("ride-zone-1")).toContainText("0 min · 0%");
+});
+
+// ── #3500: THE RIDE DETAIL'S SUMMARY, MEASURED ───────────────────────────────
+//
+// Four fixes on one surface, and each one's guard is a RENDERED reading rather
+// than the class string that produced it. #3466 is why: a stepped 16px seam
+// shipped rendering at 24px with a computed-style guard reading 16 on the very
+// element. Class assertions appear here only where the fix IS a class choice —
+// the tone — and even there the colours are compared as painted pixels.
+test("the ride summary states each fact once and uses the whole phone (#3500)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/training?tab=log");
+  await openRideRecord(page, "Strava morning ride");
+
+  // WAIT FOR THE CONTENT BEFORE MEASURING ANYTHING. Every assertion below is
+  // about size, position or count on a card the router streams in; an empty
+  // region fits any width and satisfies any "nothing clips" claim it is handed.
+  const deltas = page.locator('[data-testid^="ride-summary-comparison-"]');
+  await expect(deltas.first()).toBeVisible(); // first-ok: waiting for the group to exist, not for a particular member
+  const measurements = page.getByTestId("ride-recorded-measurements");
+  await expect(measurements).toBeVisible();
+  await expect(page.getByTestId("ride-stat-power")).toBeVisible();
+
+  // ── ITEM 1: no comparison delta wears a link-adjacent tone ─────────────────
+  //
+  // The floor first: this ride carries a speed delta plus five neutral ones, so
+  // a run that found two would be pronouncing a colour rule over a card that had
+  // not finished arriving.
+  const NEUTRAL_DELTA_FLOOR = 5;
+  const toneRows = await deltas.evaluateAll((els) =>
+    els.map((el) => ({
+      id: el.getAttribute("data-testid") ?? "",
+      className: el.className,
+      color: getComputedStyle(el).color,
+    }))
+  );
+  expect(
+    toneRows.length,
+    "fewer comparison deltas than this ride renders — the card had not arrived"
+  ).toBeGreaterThanOrEqual(NEUTRAL_DELTA_FLOOR + 1);
+  expect(
+    toneRows.filter((r) => /text-sky-/.test(r.className)).map((r) => r.id),
+    "a comparison delta is still toned sky. Sky at font-medium is the app's most " +
+      "link-like non-link (#3487 item 2), and these are static text."
+  ).toEqual([]);
+
+  // The painted proof, in BOTH themes: every non-speed delta is the same colour
+  // as a plain `text-slate-600 dark:text-slate-300` run on this page, and speed's
+  // directional tone is a different colour from it. The reference span is forged
+  // rather than borrowed from a neighbour so the reading cannot drift with an
+  // unrelated component's styling, and it is planted and read inside ONE
+  // synchronous evaluate so no re-render can land between the two.
+  const tonesIn = async (): Promise<{
+    reference: string;
+    neutral: string[];
+    speed: string;
+  }> =>
+    page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.className = "text-slate-600 dark:text-slate-300";
+      probe.textContent = "reference";
+      document.body.appendChild(probe);
+      const reference = getComputedStyle(probe).color;
+      probe.remove();
+      const all = [
+        ...document.querySelectorAll(
+          '[data-testid^="ride-summary-comparison-"]'
+        ),
+      ];
+      return {
+        reference,
+        neutral: all
+          .filter(
+            (el) =>
+              el.getAttribute("data-testid") !== "ride-summary-comparison-speed"
+          )
+          .map((el) => getComputedStyle(el).color),
+        speed: getComputedStyle(
+          document.querySelector(
+            '[data-testid="ride-summary-comparison-speed"]'
+          )!
+        ).color,
+      };
+    });
+
+  const light = await tonesIn();
+  expect(light.neutral.length).toBeGreaterThanOrEqual(NEUTRAL_DELTA_FLOOR);
+  expect(
+    [...new Set(light.neutral)],
+    "the neutral deltas are not all painting the one no-verdict tone"
+  ).toEqual([light.reference]);
+  expect(
+    light.speed,
+    "speed lost its direction tone — only speed has a clear better/worse " +
+      "direction among these deltas, and that reasoning is unchanged"
+  ).not.toBe(light.reference);
+
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  const dark = await tonesIn();
+  expect([...new Set(dark.neutral)]).toEqual([dark.reference]);
+  expect(dark.speed).not.toBe(dark.reference);
+  expect(
+    dark.reference,
+    "the dark theme did not actually engage, so the reading above is the light " +
+      "one twice"
+  ).not.toBe(light.reference);
+  await page.evaluate(() => document.documentElement.classList.remove("dark"));
+
+  // ── ITEM 2: a comparison line wraps; it never clips ────────────────────────
+  //
+  // Nothing on the seeded ride clips today, and an assertion that the shipped
+  // sentences fit would pass for as long as they happen to be short. So the
+  // claim is made about a sentence long enough to force the question: the
+  // weighted-power delta's text is replaced with one two and a half times its
+  // length, and the box has to grow DOWN rather than cut it off. Restored
+  // immediately; the page is discarded either way.
+  const wrapping = await page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>(
+      '[data-testid="ride-summary-comparison-weighted-power"]'
+    )!;
+    const before = el.textContent ?? "";
+    const short = el.getBoundingClientRect().height;
+    el.textContent =
+      "Weighted: 1234 W above 1234 W median across every comparable ride in this window";
+    const rect = el.getBoundingClientRect();
+    const long = {
+      height: rect.height,
+      right: rect.left + window.scrollX + rect.width,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      overflowX: getComputedStyle(el).overflowX,
+      whiteSpace: getComputedStyle(el).whiteSpace,
+      textOverflow: getComputedStyle(el).textOverflow,
+    };
+    el.textContent = before;
+    return { short, ...long, viewport: document.documentElement.clientWidth };
+  });
+  expect(
+    wrapping.height,
+    "a longer comparison sentence did not make its line box taller, so it is not " +
+      "wrapping — it is being cut off somewhere"
+  ).toBeGreaterThan(wrapping.short);
+  expect(wrapping.scrollWidth).toBeLessThanOrEqual(wrapping.clientWidth + 1);
+  expect(wrapping.right).toBeLessThanOrEqual(wrapping.viewport);
+  expect(wrapping.whiteSpace).not.toBe("nowrap");
+  expect(wrapping.textOverflow).not.toBe("ellipsis");
+
+  // ── ITEM 4: two columns at 390, and the Power box keeps the full row ───────
+  const boxes = await measurements.evaluate((dl) =>
+    [...dl.children].map((child) => {
+      const r = child.getBoundingClientRect();
+      return {
+        id: child.getAttribute("data-testid") ?? "",
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        width: Math.round(r.width),
+      };
+    })
+  );
+  expect(boxes.length).toBeGreaterThanOrEqual(6);
+  const power = boxes.find((b) => b.id === "ride-stat-power")!;
+  const columns = boxes.filter((b) => b.id !== "ride-stat-power");
+  // Two columns: the narrow boxes take two distinct x positions, and at least one
+  // pair shares a row. A single-column grid gives one x and no shared row, which
+  // is what this block did below `sm` before #3500 item 4.
+  expect(new Set(columns.map((b) => b.x)).size).toBe(2);
+  expect(
+    columns.some((a) => columns.some((b) => b.x !== a.x && b.y === a.y)),
+    "no two secondary stats share a row at 390px — the block is still one column " +
+      "with an empty right half"
+  ).toBe(true);
+  // Power spans both, so its three sub-lines keep the room item 2 needs.
+  expect(power.width).toBeGreaterThan(Math.max(...columns.map((b) => b.width)));
+  const contentWidth = (await measurements.boundingBox())!.width;
+  expect(Math.abs(power.width - contentWidth)).toBeLessThanOrEqual(1);
+
+  // ── AND DESKTOP IS UNCHANGED ──────────────────────────────────────────────
+  //
+  // Two columns above `sm` was already the count, and Power took one of them.
+  // The phone span is `col-span-2 sm:col-span-1` for exactly this reason: an
+  // unscoped `col-span-2` measured 726px here instead of 347px and reflowed the
+  // four boxes below it. A page pass that quietly rearranges the desktop layout
+  // is not the fix this issue asked for.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByTestId("ride-stat-power")).toBeVisible();
+  const desktop = await measurements.evaluate((dl) =>
+    [...dl.children].map((child) => {
+      const r = child.getBoundingClientRect();
+      return {
+        id: child.getAttribute("data-testid") ?? "",
+        x: Math.round(r.x),
+        width: Math.round(r.width),
+      };
+    })
+  );
+  const desktopPower = desktop.find((b) => b.id === "ride-stat-power")!;
+  const desktopOthers = desktop.filter((b) => b.id !== "ride-stat-power");
+  expect(new Set(desktop.map((b) => b.x)).size).toBe(2);
+  expect(
+    desktopPower.width,
+    "Power is spanning both columns on the desktop layout too — the phone-only " +
+      "span lost its `sm:` scope"
+  ).toBe(desktopOthers[0].width);
+});
+
+// The other side of item 3's boundary. Every ride the seed carries seeds an
+// average heart rate, so without this the "renders only when the headline is not
+// already saying it" rule would only ever be exercised in its hiding direction —
+// and a rule tested in one direction is a deletion wearing a condition.
+test("a ride with a max heart rate but no average still shows the Max heart rate box (#3500)", async ({
+  page,
+}) => {
+  const db = new Database(workerDbPath());
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, components,
+        avg_hr, max_hr, avg_speed_kmh, source, external_id)
+     VALUES (1, ?, 'cardio', ?, ?, ?, ?, NULL, ?, ?, 'manual', ?)`
+  ).run(
+    "2026-07-24",
+    "Fictional max-only ride",
+    40,
+    18,
+    JSON.stringify([{ name: "Cycling", type: "cardio" }]),
+    166,
+    22,
+    "e2e:max-hr-only"
+  );
+  db.close();
+
+  await page.goto("/training?tab=log");
+  await openRideRecord(page, "Fictional max-only ride");
+
+  const summary = page.getByTestId("ride-summary-line");
+  await expect(summary).toBeVisible();
+  // The composite cannot state a max without an average, so it says nothing about
+  // heart rate at all — and the secondary box is then the only place the reader
+  // can learn the number.
+  await expect(summary).not.toContainText("bpm");
+  await expect(page.getByTestId("ride-stat-max-heart-rate")).toContainText(
+    "166 bpm"
+  );
 });
 
 test("canonical activity navigation stays compact on a ride", async ({

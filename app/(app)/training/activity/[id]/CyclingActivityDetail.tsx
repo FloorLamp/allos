@@ -577,14 +577,21 @@ export default async function CyclingActivityDetail(props: {
                       value={stat.value}
                       sub={summaryStatSub(stat.key, stat.detail)}
                       variant="plain"
-                      // THE ONE BOX THAT SPANS BOTH COLUMNS (#3500 item 4).
-                      // Power is the only secondary stat carrying more than one
-                      // sub-line — a detail line plus two comparison sentences —
-                      // and a half-width column would set each of them across
-                      // ~150px at 390. It keeps the full row so those sentences
-                      // keep room to wrap; every other box takes a column.
+                      // THE ONE BOX THAT SPANS BOTH COLUMNS, AND ONLY ON THE
+                      // PHONE (#3500 item 4). Power is the only secondary stat
+                      // carrying more than one sub-line — a detail line plus two
+                      // comparison sentences — and a half-width column sets each
+                      // of them across 146px at 390. It keeps the full row there.
+                      // `sm:col-span-1` puts it back in one column from the
+                      // breakpoint up, because that is what desktop already did
+                      // and #3500 changes nothing above `sm`: measured
+                      // 2026-08-23, an unscoped `col-span-2` widened this box
+                      // from 347px to 726px at 1280 and reflowed the four boxes
+                      // under it.
                       className={
-                        stat.key === "power" ? "col-span-2" : undefined
+                        stat.key === "power"
+                          ? "col-span-2 sm:col-span-1"
+                          : undefined
                       }
                       data-testid={statTestId(stat)}
                     />
