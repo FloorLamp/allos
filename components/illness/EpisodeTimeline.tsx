@@ -30,6 +30,7 @@ import NotesText from "@/components/NotesText";
 import SubmitButton from "@/components/SubmitButton";
 import ScrollFade from "@/components/ScrollFade";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import { CARD_MODE_ONLY } from "@/lib/card-row";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
@@ -650,7 +651,7 @@ export default function EpisodeTimeline({
           {earlierGroupCount > 0 && (
             <button
               type="button"
-              className="mt-3 text-xs font-medium text-brand-600 hover:underline sm:hidden print:hidden dark:text-brand-400"
+              className={`mt-3 text-xs font-medium text-brand-600 hover:underline ${CARD_MODE_ONLY} print:hidden dark:text-brand-400`}
               data-testid="illness-history-earlier-toggle"
               aria-expanded={showEarlierHistory}
               aria-controls="illness-history-events"
