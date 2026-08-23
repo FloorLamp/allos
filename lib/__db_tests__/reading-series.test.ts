@@ -249,7 +249,14 @@ describe("the migration-free guarantee", () => {
   // EDITED ONCE, DELIBERATELY, by #2237 (#2205 phase 2 wave 1): migration 165 adds a
   // nullable `occurred_at` to body_metrics and medical_records. That is a real schema
   // change and this pin's one legitimate edit path — it is the announcement, not an
-  // obstacle. `metric_samples` is untouched: it already had `started_at`.
+  // obstacle.
+  //
+  // EDITED A SECOND TIME by #3424: `20260821-hc-overlap-supersede` adds a nullable
+  // `metric_samples.pushed_at`, the instant the exporter stamped on the push that wrote
+  // the row. The store is still tall and still metric/value — the column carries no
+  // reading, and no read path in phase 1 touches it. It exists so the Health Connect
+  // overlap-supersede can decide freshness from what the PAYLOAD states instead of from
+  // arrival order, which an ordinary exporter retry defeats.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -280,6 +287,7 @@ describe("the migration-free guarantee", () => {
       "metric",
       "origin",
       "profile_id",
+      "pushed_at",
       "source",
       "started_at",
       "value",

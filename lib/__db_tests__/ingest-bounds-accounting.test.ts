@@ -84,6 +84,7 @@ describe("ingest bounds: mixed absurd/good batch accounting", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const tally = summarizeSplit(split, parsed.skipped);
@@ -158,6 +159,7 @@ describe("ingest bounds: mixed absurd/good batch accounting", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const after = db

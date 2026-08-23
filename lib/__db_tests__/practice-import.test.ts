@@ -28,6 +28,7 @@ describe("imported wellness practices", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(upsertPracticeLogs(profileId, [row], "fitbit-takeout")).toEqual({
       inserted: 0,
@@ -35,6 +36,7 @@ describe("imported wellness practices", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const imported = db
@@ -53,6 +55,7 @@ describe("imported wellness practices", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     expect(
       db
@@ -77,6 +80,7 @@ describe("imported wellness practices", () => {
       unchanged: 0,
       suppressed: 1,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -149,6 +153,7 @@ describe("imported wellness practices", () => {
       unchanged: 0,
       suppressed: 2,
       edited: 1,
+      superseded: 0,
     });
     expect(
       db
@@ -205,6 +210,7 @@ describe("imported wellness practices", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     expect(
       db

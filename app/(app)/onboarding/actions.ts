@@ -9,7 +9,6 @@ import {
 } from "@/lib/auth";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
-import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
   completeOnboardingState,
   hasOnboardingFirstValue,
@@ -38,7 +37,6 @@ import {
   getNotifySchedule,
   hasProteinGoalLevel,
   setProteinGoalLevel,
-  getTimezone,
   getProfileBirthdate,
   getProfileSex,
   getProfileAge,
@@ -280,7 +278,6 @@ export async function saveOnboardingBasics(formData: FormData) {
     formData.get("weight_unit") === "lb" ? "lb" : "kg";
   const distanceUnit: DistanceUnit =
     formData.get("distance_unit") === "mi" ? "mi" : "km";
-  const previousTimezone = getTimezone(profile.id);
   const demographicsChanged =
     sex !== getProfileSex(profile.id) ||
     birthdate !== getProfileBirthdate(profile.id);
@@ -294,6 +291,10 @@ export async function saveOnboardingBasics(formData: FormData) {
     setProfileSex(profile.id, sex);
     setProfileBirthdate(profile.id, birthdate);
     setStoredAge(profile.id, birthdate ? null : age);
+    // Nothing is swept when this moves the zone (#3524): onboarding's timezone step is
+    // usually the profile's FIRST zone, there is no departed zone to reconcile against,
+    // and a re-key that a later push does carry is handled at ingest
+    // (lib/integrations/ingest-timezone-reconcile.ts) against the instant re-sent.
     setTimezone(profile.id, timezone);
     // Onboarding collects weight + distance; preserve the login's temperature unit
     // (default °F, changeable under Settings → Preferences — #857).
@@ -305,9 +306,6 @@ export async function saveOnboardingBasics(formData: FormData) {
     setOnboardingState(profile.id, nextState);
   });
 
-  if (previousTimezone !== timezone) {
-    sweepIngestWindowForTimezoneChange(profile.id);
-  }
   if (demographicsChanged) reconcileFlags(profile.id);
 
   revalidateRoute("/", "layout");

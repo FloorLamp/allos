@@ -431,6 +431,10 @@ export interface IntegrationSyncEvent {
   // Rows the source re-sent that the user-edit lock held out (#133/#659). Null on
   // legacy rows recorded before the column existed (migration 033).
   edited: number | null;
+  // STORED rows this push deleted because an incoming Health Connect interval
+  // overlapped them (#3424). Not part of `received` — see UpsertCounts. Null on legacy
+  // rows recorded before the column existed (20260821-hc-overlap-supersede).
+  superseded: number | null;
   skipped: number | null;
   // Optional structured diagnostics for a successful sync (currently Health
   // Connect exporter-shape warnings and within-source origin choices).

@@ -21,6 +21,7 @@ function sync(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
     ok: 1,
     window_start: "2026-07-06",
     window_end: "2026-07-08",
+    superseded: 0,
     inserted: 30,
     updated: 10,
     unchanged: 0,

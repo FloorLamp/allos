@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { migrationsBefore } from "@/lib/migrations/versions";
 
 function tableColumns(db: Database.Database, table: string): string[] {
   return (
@@ -17,11 +17,7 @@ function indexColumns(db: Database.Database, index: string): string[] {
 
 function seedUpgradeDb(): Database.Database {
   const db = new Database(":memory:");
-  const target = MIGRATIONS.findIndex(
-    (migration) => migration.name === "20260814-integration-source-id"
-  );
-  expect(target).toBeGreaterThan(0);
-  runMigrations(db, MIGRATIONS.slice(0, target));
+  runMigrations(db, migrationsBefore("20260814-integration-source-id"));
   db.prepare(
     "INSERT INTO profiles(id, name) VALUES (1, 'Source rename')"
   ).run();

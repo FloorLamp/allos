@@ -250,6 +250,7 @@ export async function POST(req: Request) {
       unchanged: tally?.unchanged ?? null,
       suppressed: tally?.suppressed ?? null,
       edited: tally?.edited ?? null,
+      superseded: tally?.superseded ?? null,
       skipped: tally?.skipped ?? null,
       details: serializeSyncEventDetails({
         ...parsed.details,
@@ -321,6 +322,7 @@ export async function POST(req: Request) {
     unchanged: tally.unchanged,
     suppressed: tally.suppressed,
     edited: tally.edited,
+    superseded: tally.superseded,
     skipped: tally.skipped,
     details: serializeSyncEventDetails(parsed.details),
     raw_ref: rawRef,

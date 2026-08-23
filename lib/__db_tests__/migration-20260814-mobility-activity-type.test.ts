@@ -1,16 +1,12 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/20260814-mobility-activity-type";
 
 function beforeMobilityRename(): Database.Database {
   const mem = new Database(":memory:");
-  const target = MIGRATIONS.findIndex(
-    (migration) => migration.name === "20260814-mobility-activity-type"
-  );
-  expect(target).toBeGreaterThan(0);
-  runMigrations(mem, MIGRATIONS.slice(0, target));
+  runMigrations(mem, migrationsBefore("20260814-mobility-activity-type"));
   return mem;
 }
 
@@ -139,7 +135,7 @@ describe("20260814 mobility activity type", () => {
 
   it("converges migration 117's historical Fitbit recovery output to mobility", () => {
     const mem = new Database(":memory:");
-    runMigrations(mem, MIGRATIONS.slice(0, 116));
+    runMigrations(mem, migrationsBefore("117-fitbit-activity-components"));
     mem.exec(`
       INSERT INTO profiles (id, name) VALUES (1, 'Alex');
       INSERT INTO activities
