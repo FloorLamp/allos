@@ -493,9 +493,9 @@ describe("the stale sweep", () => {
   //
   // This is the fixture that has to be right, because the change it guards is a
   // WIDENING of the predicate that has already destroyed another lane's data on
-  // this box. Four lanes run test tiers here at once and all of them keep state
-  // in `/tmp`, so the corpus is planted inside a directory only this process can
-  // see — never the live `/tmp`, where a create-then-unlink lands inside a
+  // this box. Several lanes run test tiers here at once — six worktrees on this
+  // container as of 2026-08-23 — and all of them keep state in `/tmp`, so the
+  // corpus is planted inside a directory only this process can see — never the live `/tmp`, where a create-then-unlink lands inside a
   // sibling's read window and kills unrelated tests with ENOENT (#3557).
   //
   // For EVERY entry on the list there is a near-miss that CONTAINS it without
