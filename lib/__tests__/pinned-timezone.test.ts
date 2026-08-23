@@ -134,6 +134,13 @@ describe("pinned zone × fixture sleep instants (#2159 band)", () => {
 // opts out to UTC has a local minute-of-day equal to the run's real UTC start hour, and
 // goes dark for the ~3 hours a day after the last window closes — which is what made
 // e2e/routine-usual.spec.ts red on main for runs starting in [21:00, 24:00) UTC.
+//
+// THE BAND IS STILL REAL; ITS ORIGINAL EXAMPLE IS NOT. #3265 moved the composed
+// usual-routine candidate off `mealTimeWindows` and onto the food-slot window it is
+// actually about, so that spec no longer goes dark at 21:00 for any profile. Every other
+// candidate that borrows the reminder anchors — protein-today is the live one — still
+// does, which is why this band is pinned rather than deleted. The rule the table in
+// e2e/fixture-timezones.ts states is unchanged.
 describe("pinned zone × meal-window dashboard timing (#3260 band)", () => {
   const anchors = [
     DEFAULT_INTAKE_REMINDER_MINUTES.Morning,
