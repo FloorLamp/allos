@@ -169,20 +169,100 @@ function sources(root: string): { rel: string; src: string }[] {
   return out.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
-/** Every `buildFoodNudge(` call that is NOT wrapped, as `file:line`. */
-export function unwrappedFoodRebuilds(root: string): string[] {
-  const out: string[] = [];
-  for (const { rel, src } of sources(root)) {
+/** The builder's own name. */
+const BUILDER = "buildFoodNudge";
+
+/**
+ * Every name the builder can be CALLED by anywhere in the tree.
+ *
+ * A census that matches one spelling of a symbol fails open on every other one, and
+ * reports clean because it cannot see (#3580). `import { buildFoodNudge as build }`
+ * then `build(…)` is the same rebuild and used to return `[]`; so does the same
+ * rename through a barrel — `export { buildFoodNudge as build } from "./food"` — and
+ * a barrel re-exporting a barrel. The loop runs to a fixed point for that last one.
+ *
+ * Every caller in this tree writes the plain named import today, so this is latent
+ * rather than live. That is the point: the guard has to be able to see the shape
+ * BEFORE somebody writes it, or the day it appears is the day it is invisible.
+ */
+export function builderAliases(files: { src: string }[]): Set<string> {
+  const out = new Set([BUILDER]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const { src } of files)
+      for (const m of src.matchAll(
+        /export\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/g
+      ))
+        for (const part of m[1].split(",")) {
+          const t = part.trim().replace(/^type\s+/, "");
+          if (!t) continue;
+          const [orig, alias] = /\s+as\s+/.test(t)
+            ? (t.split(/\s+as\s+/).map((x) => x.trim()) as [string, string])
+            : [t, t];
+          if (out.has(orig) && !out.has(alias)) {
+            out.add(alias);
+            grew = true;
+          }
+        }
+  }
+  return out;
+}
+
+/** What THIS file can call the builder by, after resolving its own imports. */
+function localBuilderNames(src: string, aliases: Set<string>): Set<string> {
+  const out = new Set([BUILDER]);
+  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/g))
+    for (const part of m[1].split(",")) {
+      const t = part.trim().replace(/^type\s+/, "");
+      if (!t) continue;
+      const [orig, local] = /\s+as\s+/.test(t)
+        ? (t.split(/\s+as\s+/).map((x) => x.trim()) as [string, string])
+        : [t, t];
+      if (aliases.has(orig)) out.add(local);
+    }
+  // `import * as F from "…"` then `F.buildFoodNudge(…)` — the same indirection in
+  // the namespace spelling.
+  for (const m of src.matchAll(
+    /import\s*\*\s*as\s+([A-Za-z0-9_$]+)\s*from\s*["'][^"']+["']/g
+  ))
+    for (const a of aliases) out.add(`${m[1]}.${a}`);
+  return out;
+}
+
+/** Every call to the builder, under any name, as `file:line`. */
+function builderCalls(
+  root: string
+): { rel: string; src: string; at: number }[] {
+  const files = sources(root);
+  const aliases = builderAliases(files);
+  const out: { rel: string; src: string; at: number }[] = [];
+  for (const { rel, src } of files) {
     if (rel === BUILDER_MODULE) continue;
-    for (const m of src.matchAll(/buildFoodNudge\s*\(/g)) {
-      const at = m.index ?? 0;
-      // The wrap, allowing the formatter's line break between the two calls.
-      const before = src.slice(Math.max(0, at - 60), at);
-      if (/withChatOrigin\s*\(\s*$/.test(before)) continue;
-      out.push(`${rel}:${src.slice(0, at).split("\n").length}`);
+    for (const name of localBuilderNames(src, aliases)) {
+      const re = new RegExp(`\\b${name.replace(/\./g, "\\.")}\\s*\\(`, "g");
+      for (const m of src.matchAll(re))
+        out.push({ rel, src, at: m.index ?? 0 });
     }
   }
   return out;
+}
+
+/** Every call to the builder that is NOT wrapped, as `file:line`. */
+export function unwrappedFoodRebuilds(root: string): string[] {
+  const out: string[] = [];
+  for (const { rel, src, at } of builderCalls(root)) {
+    // The wrap, allowing the formatter's line break between the two calls.
+    const before = src.slice(Math.max(0, at - 60), at);
+    if (/withChatOrigin\s*\(\s*$/.test(before)) continue;
+    // THE LINE IS THE REAL LINE (#3580 item 3, closed by #3581). This counts on the
+    // COMMENT-BLANKED source, which used to be a different file: the old stripper
+    // DELETED comments, so a ten-line block comment collapsed and every line after
+    // it was reported short — a call at :13 came out as `lib/x.ts:4`. The shared
+    // scanner blanks in place and keeps every newline, so the two agree by
+    // construction. Pinned below rather than assumed.
+    out.push(`${rel}:${src.slice(0, at).split("\n").length}`);
+  }
+  return [...new Set(out)].sort();
 }
 
 describe("every rebuild of a food nudge re-applies the origin", () => {
@@ -190,10 +270,15 @@ describe("every rebuild of a food nudge re-applies the origin", () => {
     // AN ABSENCE ASSERTION FAILS OPEN. The floor is the four rebuild sites plus the
     // two mint sites plus the hourly sweep, measured on 2026-08-23 and set below the
     // real figure so ordinary churn does not trip it and a collapsed scan does.
-    const calls = sources(REPO)
+    const files = sources(REPO);
+    expect(files.length).toBeGreaterThanOrEqual(500);
+    const calls = files
       .filter((f) => f.rel !== BUILDER_MODULE)
       .flatMap((f) => [...f.src.matchAll(/buildFoodNudge\s*\(/g)]);
     expect(calls.length).toBeGreaterThanOrEqual(6);
+    // The alias resolution is part of the walker now, so it gets a floor of its own:
+    // an empty alias set would still find every plain call and look healthy.
+    expect(builderAliases(files).has("buildFoodNudge")).toBe(true);
   });
 
   it("leaves no call site rebuilding a nudge without re-applying the marker", () => {
@@ -229,6 +314,91 @@ describe("every rebuild of a food nudge re-applies the origin", () => {
     );
     expect(unwrappedFoodRebuilds(root)).toEqual([
       "lib/notifications/handlers.ts:7",
+    ]);
+  });
+
+  it("SEES a rebuild through an ALIASED import", () => {
+    // FAIL-OPEN ON AN INDIRECTION (#3580 item 2). `import { buildFoodNudge as build }`
+    // then `build(…)` rebuilds the same keyboard and used to return `[]`.
+    const root = makeTmpDir("food-rebuild-alias");
+    fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/aliased.ts"),
+      [
+        'import { buildFoodNudge as build } from "@/lib/notifications/food";',
+        "const a = withChatOrigin(build(p, w, d), origin);",
+        "const b = build(p, w, d, n, { ref });",
+      ].join("\n")
+    );
+    expect(unwrappedFoodRebuilds(root)).toEqual([
+      "lib/notifications/aliased.ts:3",
+    ]);
+  });
+
+  it("SEES a rebuild reached through a BARREL that renames the builder", () => {
+    // The same indirection one hop further out: the barrel renames, the caller only
+    // ever sees the new name, and nothing in either file spells `buildFoodNudge(`.
+    const root = makeTmpDir("food-rebuild-barrel");
+    fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/index.ts"),
+      'export { buildFoodNudge as renderFood } from "./food";\n'
+    );
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/sweep.ts"),
+      [
+        'import { renderFood } from "@/lib/notifications";',
+        "const a = withChatOrigin(renderFood(p, w, d), origin);",
+        "const b = renderFood(p, w, d);",
+      ].join("\n")
+    );
+    expect(unwrappedFoodRebuilds(root)).toEqual([
+      "lib/notifications/sweep.ts:3",
+    ]);
+  });
+
+  it("STAYS QUIET on a same-named function that is not the builder", () => {
+    // The over-matching direction. `build(…)` is an ordinary name; it is the builder
+    // only where an import binds it to one, and a file that defines its own must not
+    // become a finding.
+    const root = makeTmpDir("food-rebuild-quiet");
+    fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/other.ts"),
+      ["function build(p: number) { return p; }", "const a = build(1);"].join(
+        "\n"
+      )
+    );
+    expect(unwrappedFoodRebuilds(root)).toEqual([]);
+  });
+
+  it("names the REAL line, behind a multi-line block comment", () => {
+    // #3580 item 3, closed by the shared scanner (#3581) and pinned here so it stays
+    // closed. The old stripper DELETED comments, so this call — at real line 13 —
+    // was reported as `lib/x.ts:4`. Blanking in place keeps every newline, so the
+    // offset the match lands on is the offset in the real file.
+    const root = makeTmpDir("food-rebuild-lines");
+    fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
+    const body = [
+      "/**",
+      " * A ten-line block comment, which is what this tree writes above a rebuild.",
+      " * It exists to explain the marker rule, and it says `buildFoodNudge` twice",
+      " * on purpose — a census that counted a sentence as a call would fire here.",
+      " *",
+      " * The old stripper deleted these lines outright, so every line number after",
+      " * this comment was reported short by exactly the number of lines it spans.",
+      " * That sends the next reader to the wrong place, and after once they stop",
+      " * trusting the guard.",
+      " */",
+      "const origin = keyboardChatOrigin(rows);",
+      "",
+      "const rebuilt = buildFoodNudge(p, w, d);",
+    ].join("\n");
+    fsMod.writeFileSync(path.join(root, "lib/notifications/spaced.ts"), body);
+    // The call really is on line 13 of the file on disk.
+    expect(body.split("\n")[12]).toContain("buildFoodNudge");
+    expect(unwrappedFoodRebuilds(root)).toEqual([
+      "lib/notifications/spaced.ts:13",
     ]);
   });
 });

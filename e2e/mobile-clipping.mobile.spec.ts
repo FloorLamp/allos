@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
+import { shiftDateStr } from "@/lib/date";
 import {
   expectAtomicCardPairs,
   expectNoClippedContent,
@@ -9,6 +10,7 @@ import {
   settledBoxes,
   touchSwipe,
 } from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -51,6 +53,68 @@ async function scrollableBy(locator: Locator): Promise<number> {
 // constant fails and names the fixture instead of passing over a page that
 // cannot be wrong.
 const MIN_NAPS_TO_EXPRESS_THE_DEFECT = 3;
+
+// The wake-day `e2e/seed/sleep.ts` builds that fixture on: `today-2`, profile-local.
+// The suite's pinned zone always reads 13:mm local (e2e/pinned-timezone.ts), so the
+// profile-local date and the frozen instant's UTC date are the same day by
+// construction — see that file.
+const NAP_FIXTURE_WAKE_DAY = shiftDateStr(
+  frozenNow().toISOString().slice(0, 10),
+  -2
+);
+
+// The seed's own claim, read back off the page, SEPARATELY from the layout claim
+// (#3636). Item 2b's `MIN_NAPS...` expectation was doing both jobs and fired first,
+// so when the fixture broke — three naps that merged into one fragmented night and
+// left the cell empty — the run reported a layout failure and sent the reader to
+// ResponsiveTable instead of to the seed. This names the seed.
+//
+// A NIGHT *AND* THREE NAPS, because the two are one fact: a wake-day with no ≥6h
+// block does not have three naps on it at all, whatever was inserted. `napSessions`
+// is the inverse of `mainSleepPeriod`, so without the night the same three rows are
+// co-equal fragments of one merged night and the nap count is zero.
+//
+// AT LEAST three, not exactly three: the #160 SRI block writes its nights as raw-UTC
+// windows, and at run hours where that lands one on this wake-day it is an extra,
+// unasked-for session which the elected night then classifies as a fourth nap. That
+// mis-attribution is its own defect and nothing here asserts about it; this bound is
+// the part that is true in every zone the suite pins.
+async function expectSeededNapFixture(history: Locator): Promise<void> {
+  const row = history.locator(
+    `[data-testid="sleep-mood-history-row"][data-date="${NAP_FIXTURE_WAKE_DAY}"]`
+  );
+  await expect(
+    row,
+    `e2e/seed/sleep.ts seeds the #3517 night-plus-naps fixture on wake-day ` +
+      `${NAP_FIXTURE_WAKE_DAY}, which must be a row on page 1 of the sleep log`
+  ).toHaveCount(1);
+  const seeded = await row.evaluate((node) => ({
+    // The row's headline duration cell — the main sleep period for the wake-day.
+    duration: (
+      node.querySelector('[data-card="value"] span')?.textContent ?? ""
+    ).trim(),
+    // One `·` per rendered "start → end · duration" nap line, the same count item
+    // 2b takes below.
+    naps: (
+      node.querySelector('[data-testid="sleep-history-naps"]')?.textContent ??
+      ""
+    ).match(/·/g)?.length,
+  }));
+  const hours = Number(/^(\d+)h/.exec(seeded.duration)?.[1] ?? NaN);
+  expect(
+    hours,
+    `wake-day ${NAP_FIXTURE_WAKE_DAY} reads "${seeded.duration}" as its main ` +
+      `sleep. e2e/seed/sleep.ts must give it a block of at least 6h that ENDS on ` +
+      `it in the profile's zone — under that, mainSleepPeriod's siesta guard does ` +
+      `not fire and the day's sessions merge into one fragmented night instead`
+  ).toBeGreaterThanOrEqual(6);
+  expect(
+    seeded.naps ?? 0,
+    `wake-day ${NAP_FIXTURE_WAKE_DAY} renders ${seeded.naps ?? 0} nap line(s). ` +
+      `e2e/seed/sleep.ts seeds three afternoon naps there; a lower count means ` +
+      `the seed drifted, not that the layout regressed`
+  ).toBeGreaterThanOrEqual(MIN_NAPS_TO_EXPRESS_THE_DEFECT);
+}
 
 test.describe("mobile clipping batch (#2614)", () => {
   test("item 1: every Trends tab is laid out inside the strip beside the range control", async ({
@@ -153,6 +217,10 @@ test.describe("mobile clipping batch (#2614)", () => {
     await expect(
       history.getByTestId("sleep-history-naps").first() // first-ok: any painted naps cell proves the rows rendered; the reads below are over ALL of them
     ).toBeVisible();
+
+    // The fixture first, in its own words: this test can only judge the layout of a
+    // page that has something to lay out.
+    await expectSeededNapFixture(history);
 
     // One settled read over every naps cell on the page: how many nap lines the
     // value holds, and how far the row it sits in could be scrolled sideways.
