@@ -339,6 +339,11 @@ test("the medications page reaches the dose ledger, pre-filtered to medications"
 }) => {
   await page.goto("/medications");
   const ledgerDoor = page.getByTestId("dose-ledger-link");
+  // Both sides visible before the containment read — this page streams, and a node the
+  // runtime has not yet relocated is attached but not yet inside its parent, which
+  // answers FALSE about correct markup.
+  await expect(ledgerDoor).toBeVisible();
+  await expect(page.getByTestId("medications-today")).toBeVisible();
   // Since #3479 the door lives in the Today card rather than the page header — the
   // ledger is the record of exactly what that card checks off. The containment is the
   // half of the move a URL assertion cannot see.

@@ -29,9 +29,10 @@ const REPO = path.join(here, "..", "..");
 describe("geometry census thresholds", () => {
   // THE NUMBERS ARE PINNED HERE, not because they are sacred, but because the
   // harness and the guard must be talking about the same tolerance. #3489 names
-  // 2px; #3481's defect is 8px (a 40px `input` beside a 32px `btn-sm`) and #3486's
-  // was 4px, so both clear the floor with room — which is what a threshold has to
-  // be able to say about itself.
+  // 2px; #3481's defect MEASURED 6px when it was fixed (2026-08-23 — this comment
+  // used to say 8px, taken from the issue's prose rather than a reading) and
+  // #3486's was 4px, so both clear the floor with room — which is what a threshold
+  // has to be able to say about itself.
   it("tolerates sub-pixel noise and nothing the review actually found", () => {
     expect(GEOMETRY_THRESHOLDS.controlHeightTolerancePx).toBe(2);
     expect(GEOMETRY_THRESHOLDS.clipEpsilonPx).toBe(1);
@@ -60,6 +61,11 @@ describe("geometryAuditSections", () => {
       heightRowsTotal: 0,
       heightRows: [],
     },
+    // FABRICATED INPUT, not a recording. These rows exist to exercise the RENDERER
+    // — the thresholds, the ranking, the truncation notice — so they stay exactly as
+    // they are now that #3481 is fixed and /supplies produces this finding no more.
+    // A table that can only be tested against live findings can only be tested while
+    // the app is broken.
     {
       route: "/supplies",
       viewport: "mobile",

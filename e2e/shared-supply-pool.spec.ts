@@ -278,6 +278,16 @@ test.describe("shared supply pools", () => {
       // the assertion, not incidental.
       await page.goto("/medications");
       const medDoor = page.getByTestId("shared-supplies-link");
+      // WAIT FOR BOTH SIDES OF THE QUESTION TO BE ON SCREEN before asking it. A
+      // containment read taken between "the node exists" and "the node is in its
+      // place" answers FALSE about correct markup: this page streams, and a node the
+      // runtime has not yet relocated is attached — so `getByTestId` resolves it —
+      // while its eventual parent does not contain it yet. Measured on this exact
+      // assertion, 2026-08-23: 5/5 red with no wait, green once both are visible.
+      // Visibility is the right gate rather than a timeout, because a staged node is
+      // not visible.
+      await expect(medDoor).toBeVisible();
+      await expect(page.getByTestId("medication-list")).toBeVisible();
       expect(
         await medDoor.evaluate((node) =>
           Boolean(

@@ -301,6 +301,12 @@ test("the medications phone header carries title, subtitle and one action (#3479
 
   const workspace = page.getByTestId("medication-add-workspace");
   await expect(workspace.getByTestId("medication-add-toggle")).toBeVisible();
+  // Both cards on screen before anything below reads a position or a containment:
+  // this page streams, and a node the runtime has not yet relocated is attached but
+  // not yet inside its parent — which answers FALSE about correct markup and reports
+  // a box that is not where the box will be.
+  await expect(page.getByTestId("medications-today")).toBeVisible();
+  await expect(page.getByTestId("medication-list")).toBeVisible();
 
   // (a) The header's own subtree holds exactly one interactive affordance.
   // Scoped to the HEADER BAND, not to the workspace: the add panel is the header's
