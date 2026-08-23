@@ -35,6 +35,7 @@ export default function TrendMetricTiles({
   sleep,
   order,
   pinned,
+  structural,
   addTile,
 }: {
   tiles: TrendMetricTile[];
@@ -49,6 +50,8 @@ export default function TrendMetricTiles({
   // Saved metric cards, in saved order. Their contiguous run owns the census's
   // drag and arrow reorder controls now that the duplicate Starred grid is gone.
   pinned: readonly BodyCardId[];
+  // Life-stage cards that stay ahead of the movable saved run even when saved.
+  structural: readonly BodyCardId[];
   // The non-card picker cell that trails every real census tile.
   addTile?: ReactNode;
 }) {
@@ -90,7 +93,7 @@ export default function TrendMetricTiles({
   // their clinical order inside it. Sleep has its own base position.
   growth.forEach(addSpecial);
   addSpecial(sleep);
-  const ordered = orderTrendMetricTiles(descriptors, order, pinned);
+  const ordered = orderTrendMetricTiles(descriptors, order, pinned, structural);
 
   if (ordered.length === 0 && !addTile) {
     return (
@@ -109,6 +112,8 @@ export default function TrendMetricTiles({
     return {
       key: isPinned ? savedKey : `card:${descriptor.slug}`,
       pinned: isPinned,
+      reorderable:
+        isPinned && !structural.includes(descriptor.id as BodyCardId),
       empty: descriptor.empty === true,
       node: nodeBySlug.get(descriptor.slug),
     };

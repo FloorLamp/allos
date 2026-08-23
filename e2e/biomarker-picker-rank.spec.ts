@@ -1,6 +1,11 @@
 import type { Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openCombobox, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  openCombobox,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_BIOMARKER_PICKER,
@@ -12,10 +17,11 @@ import {
 
 // Relevance-ranked biomarker pickers (#1675). ~200 canonical analytes used to render
 // alphabetically on every picker, so the handful that matter right now were buried.
-// Three of the census surfaces are driven here — the ★ picker on Trends Overview, the
-// Compare A/B pickers, and the record form's canonical-name field on Results — because
-// the claim of the issue is that they all read ONE ranking, so proving it on a single
-// surface would prove nothing about the others.
+// The two biomarker surfaces are driven here — Compare A/B and the record form's
+// canonical-name field on Results. Trends' retired cross-domain ★ picker is now the
+// Body census's metric-only final cell (#3387); its first case below preserves the
+// shared picker mechanics (ranked empty view, fuzzy search, same save action) without
+// pretending a clinical-result save produces a Body tile.
 //
 // The fixture profile (e2e/seed/trends.ts, seedBiomarkerPickerRank) owns exactly three
 // analytes, deliberately in ANTI-alphabetical relevance order:
@@ -36,7 +42,7 @@ function options(listbox: Locator): Locator {
 }
 
 test.describe("relevance-ranked biomarker pickers (#1675)", () => {
-  test("the ★ picker opens on the markers that matter, fuzzy-searches, and still stars through the same action", async ({
+  test("the Body census picker is ranked, fuzzy-searches, and stars through the same action", async ({
     browser,
   }) => {
     test.slow();
@@ -45,27 +51,26 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/trends");
-      await page.getByTestId("save-trend-picker-toggle").click();
-      const picker = page.getByTestId("save-trend-picker");
+      await page.goto("/trends?view=tiles");
+      const grid = page.getByTestId("body-metric-tiles");
+      const slot = grid.getByTestId("save-trend-picker-slot");
+      await hydratedClick(page, slot.getByTestId("save-trend-picker-toggle"));
+      const picker = slot.getByTestId("save-trend-picker");
       await expect(picker).toBeVisible();
 
       // The `<select>` is the pre-hydration / no-JS rendering; the mounted client swaps
       // in the shared Combobox, which is what carries the ranked, group-headed list.
       // Addressed as an input on purpose: that is what waits out the swap.
       const field = picker.locator('input[role="combobox"]');
-      await expect(field).toHaveAttribute("aria-label", "Add to your overview");
+      await expect(field).toHaveAttribute("aria-label", "Pin metric");
       const listbox = await openCombobox(page, field);
 
-      // The relevance view, whole: the overdue draw leads, the flagged one follows,
-      // and the alphabetically-first analyte — what the old A–Z picker led with — is
-      // demoted behind both, under a header that says why.
-      await expect(options(listbox)).toHaveText([
-        BIOMARKER_PICKER_OVERDUE,
-        BIOMARKER_PICKER_FLAGGED,
-        BIOMARKER_PICKER_MEASURED,
-      ]);
-      await expect(groups(listbox)).toHaveText([RELEVANT_GROUP, YOUR_GROUP]);
+      // The empty view follows the census rank rather than alphabetizing the
+      // registry, and includes non-legacy metrics such as Steps.
+      await expect(groups(listbox)).toHaveText(["Metrics"]);
+      await expect(
+        options(listbox).filter({ hasText: "Daily Steps" })
+      ).toHaveCount(1);
 
       // Typing is the app-wide fuzzy search, FLAT — a header over one match is noise
       // — and the best match leads. That is the assertion, not the exact result set:
@@ -74,9 +79,9 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // #2382 an analyte's curated alias spellings are search keys of their own, so
       // "Glycated Hemoglobin" also carries the subsequence l…d…l and trails far
       // behind at 2.81 to LDL Cholesterol's 11.85.
-      await settledFill(page, field, "ldl");
-      const ldlLead = options(listbox).first(); // first-ok: the LEADING option is the assertion
-      await expect(ldlLead).toHaveText(BIOMARKER_PICKER_FLAGGED);
+      await settledFill(page, field, "steps");
+      const stepsLead = options(listbox).first(); // first-ok: the LEADING fuzzy match is the assertion
+      await expect(stepsLead).toHaveText("Daily Steps");
       await expect(groups(listbox)).toHaveCount(0);
 
       // Picking + Star writes through the SAME toggleSavedItem the ★ uses anywhere
@@ -84,18 +89,16 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // The option row IS the button, so it is addressed on the listbox, not inside
       // an option. `exact` makes a duplicate label fail loudly (#531).
       await listbox
-        .getByRole("option", { name: BIOMARKER_PICKER_FLAGGED, exact: true })
+        .getByRole("option", { name: "Daily Steps", exact: true })
         .click();
-      await expect(field).toHaveValue(BIOMARKER_PICKER_FLAGGED);
+      await expect(field).toHaveValue("Daily Steps");
       await settledClick(page, picker.getByRole("button", { name: "Star" }));
-      const tile = page
-        .getByTestId("trend-mini-card")
-        .filter({ hasText: BIOMARKER_PICKER_FLAGGED });
+      const tile = page.getByTestId("body-tile-steps");
       await expect(tile).toHaveCount(1);
 
       // Restore the fixture so --repeat-each stays clean: a saved analyte is withdrawn
       // from the picker's options, so leaving it starred would break the next run.
-      await tile.getByTestId("overflow-menu-trigger").click();
+      await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
       const menu = page.getByTestId("trend-tile-menu");
       await expect(menu).toBeVisible();
       await settledClick(page, menu.getByTestId("star-toggle"));
@@ -103,9 +106,9 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // the tile can leave the grid, so this settles later than the default allows on a
       // loaded machine. A named ceiling, not a sleep.
       await expect(
-        page
-          .getByTestId("trend-mini-card")
-          .filter({ hasText: BIOMARKER_PICKER_FLAGGED })
+        page.locator(
+          '[data-testid="pinned-census-tile"][data-tile-key="metric:steps"]'
+        )
       ).toHaveCount(0, { timeout: 20_000 });
     } finally {
       await page.context().close();

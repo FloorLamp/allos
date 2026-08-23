@@ -60,7 +60,11 @@ import {
   SLEEP_DURATION_SERIES_KEY,
   type DayFillSpec,
 } from "@/lib/trend-sparkline";
-import { applyCardOrder, bodyCardOrder } from "@/lib/trends-card-rank";
+import {
+  applyCardOrder,
+  bodyCardOrder,
+  structuralBodyCardIds,
+} from "@/lib/trends-card-rank";
 import {
   TREND_METRIC_META,
   bodyCardIdForSeriesKey,
@@ -77,7 +81,6 @@ import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
-  listTrendMetricOptions,
 } from "@/lib/trends-series";
 import {
   hrSlotSeries,
@@ -340,10 +343,9 @@ export default async function BodySection({
   const plan = planBodyCharts({ ageYears, ageMonths });
   const pins = getBodyCardPins(profile.id);
   const savedRefs = getSavedItems(profile.id);
-  const cardOrder = bodyCardOrder(
-    buildTrendsSubjectContext(profile.id, todayStr),
-    pins
-  );
+  const subjectContext = buildTrendsSubjectContext(profile.id, todayStr);
+  const cardOrder = bodyCardOrder(subjectContext, pins);
+  const structuralCards = structuralBodyCardIds(subjectContext);
 
   // WHERE THE ★ LIVES (#1643/#3387). Every card still opens its metric page, where
   // the star pins or unpins it. Only an ALREADY-pinned tile gets a corner menu here,
@@ -355,20 +357,6 @@ export default async function BodySection({
   // of hidden-from-charts-but-still-enterable. (The raw data export keeps the column,
   // a complete-record contract distinct from this display choice.)
   const bodyFatShown = showBodyFat(ageYears);
-
-  // The former cross-domain picker now trails the one Body census grid (#3387).
-  // It offers only metric keys that map to a census card: starring a clinical
-  // result here would change Results/passport state without producing the tile the
-  // affordance promises, and training volume has no Body card to pin.
-  const unsavedCensusMetrics = listTrendMetricOptions(profile.id).filter(
-    (option) =>
-      bodyCardIdForSeriesKey(option.key) != null &&
-      !isSeriesKeySaved(savedRefs, option.key)
-  );
-  const addTile =
-    unsavedCensusMetrics.length > 0 ? (
-      <SaveTrendPicker metrics={unsavedCensusMetrics} />
-    ) : undefined;
 
   // Height + head-circumference series (canonical cm, from metric_samples — the same
   // store the growth charts read). Read the WHOLE series (ALL_ROWS) before windowing
@@ -1303,7 +1291,8 @@ export default async function BodySection({
   // the resolver is only consulted when there IS something to plot, so a profile
   // that never used the scale pays nothing. The two are asserted together anyway,
   // because "the trend follows the card" must survive a future change to either.
-  const hasCalm = calmAll.length > 0 && isAnxietyScaleRelevant(profile.id);
+  const calmRelevant = isAnxietyScaleRelevant(profile.id);
+  const hasCalm = calmAll.length > 0 && calmRelevant;
 
   // ── The FLAT ranked stack (#1674) ───────────────────────────────────────────
   // The census used to render titled runs ("Vitals", "Composition") ordered as
@@ -1484,16 +1473,62 @@ export default async function BodySection({
     ["energy", energyAll],
     ["calm", calmAll],
   ];
-  const metricTiles: TrendMetricTile[] = tileSeries
-    .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
-    // Calm follows the check-in card's own gate in BOTH view modes (#1313/#1408) —
-    // `view=tiles` and `view=all` are two renderings of one metric set, so a tile
-    // may not surface a scale the chart above is gating away.
-    .filter(([slug]) => slug !== "calm" || hasCalm)
+  const savedCards = new Set(pins);
+  const plannedComposition = new Set<TrendMetricSlug>(
+    plan.keys.flatMap((key) =>
+      key === "bodyfat"
+        ? ["body-fat" as const]
+        : key === "head_circumference"
+          ? ["head-circ" as const]
+          : key === "resting_hr"
+            ? ["resting-hr" as const]
+            : [key]
+    )
+  );
+  const censusEligible = (slug: TrendMetricSlug): boolean => {
+    if (slug === "body-fat" || slug === "height" || slug === "head-circ") {
+      return plannedComposition.has(slug);
+    }
+    if (slug === "calm") return calmRelevant;
+    return true;
+  };
+  const eligibleTileSeries = tileSeries.filter(
+    ([slug]) => censusEligible(slug) || savedCards.has(slug)
+  );
+  const metricTiles: TrendMetricTile[] = eligibleTileSeries
     .map(([slug, arr]) =>
       buildTrendMetricTile(TREND_METRIC_META[slug], arr, wu, range)
     )
-    .filter((t) => t.present);
+    // A save is also a reachability promise. Keep a normal linked empty tile when
+    // the metric has never been measured (or its relevance gate later closes), so
+    // its menu/detail-page star remains available to remove it.
+    .filter((tile) => tile.present || savedCards.has(tile.slug))
+    .map((tile) =>
+      savedCards.has(tile.slug) && !tile.present
+        ? { ...tile, present: true }
+        : tile
+    );
+
+  // The former cross-domain picker now trails the one Body census grid (#3387).
+  // Derive its membership from the census series above, not the four legacy digest
+  // metrics: every eligible Body tile (Steps/HRV/etc.) is reachable, while a metric
+  // this profile cannot surface and every clinical result stay out.
+  const unsavedCensusMetrics = applyCardOrder(
+    eligibleTileSeries
+      .filter(([slug]) => censusEligible(slug))
+      .map(([slug]) => ({
+        key: metricSeriesKey(savedMetricIdForTrendSlug(slug)),
+        label: TREND_METRIC_META[slug].title,
+        kind: "metric" as const,
+      }))
+      .filter((option) => !isSeriesKeySaved(savedRefs, option.key)),
+    cardOrder,
+    (option) => bodyCardIdForSeriesKey(option.key) ?? option.key
+  );
+  const addTile =
+    unsavedCensusMetrics.length > 0 ? (
+      <SaveTrendPicker metrics={unsavedCensusMetrics} />
+    ) : undefined;
 
   const growthGridTiles =
     growthPresentation?.views.map((growthView) => {
@@ -1647,6 +1682,7 @@ export default async function BodySection({
           sleep={sleepGridTile}
           order={cardOrder}
           pinned={pins}
+          structural={structuralCards}
           addTile={addTile}
         />
 

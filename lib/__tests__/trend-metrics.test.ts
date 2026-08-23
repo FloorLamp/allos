@@ -273,6 +273,34 @@ describe("orderTrendMetricTiles", () => {
       "sleep",
     ]);
   });
+
+  it("keeps the complete life-stage prefix ahead of later movable pins", () => {
+    const tiles: OrderableTile[] = [
+      { slug: "growth", id: "growth", label: "Growth", present: true },
+      { slug: "height", id: "height", label: "Height", present: true },
+      {
+        slug: "head-circ",
+        id: "head-circ",
+        label: "Head circumference",
+        present: true,
+      },
+      { slug: "steps", id: "steps", label: "Steps", present: true },
+      { slug: "weight", id: "weight", label: "Weight", present: true },
+    ];
+    const ordered = orderTrendMetricTiles(
+      tiles,
+      ["growth", "height", "head-circ", "steps", "weight"],
+      ["height", "steps"],
+      ["growth", "height", "head-circ"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "growth",
+      "height",
+      "head-circ",
+      "steps",
+      "weight",
+    ]);
+  });
 });
 
 describe("stableEmptyLast", () => {

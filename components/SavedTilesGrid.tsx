@@ -27,6 +27,10 @@ export interface SavedTileItem {
   // saved-store vocabularies are identical; unpinned/special cards use their slug.
   key: string;
   pinned: boolean;
+  // Structural life-stage cards can be saved (and therefore need their unstar
+  // menu) without joining the movable saved run. Their fixed prefix outranks user
+  // arrangement; only the remaining pins are sortable.
+  reorderable: boolean;
   empty: boolean;
   node: ReactNode;
 }
@@ -68,8 +72,10 @@ function StaticTile({ item }: { item: SavedTileItem }) {
   return (
     <div
       className={`h-full *:h-full ${item.empty ? "opacity-70" : ""}`}
-      data-testid="census-tile"
-      data-card-key={item.key}
+      data-testid={item.pinned ? "pinned-census-tile" : "census-tile"}
+      {...(item.pinned
+        ? { "data-tile-key": item.key }
+        : { "data-card-key": item.key })}
     >
       {item.node}
     </div>
@@ -87,7 +93,7 @@ export default function SavedTilesGrid({
   const toast = useToast();
   const [, startTransition] = useTransition();
   const serverOrder = items
-    .filter((item) => item.pinned)
+    .filter((item) => item.reorderable)
     .map((item) => item.key);
   const signature = serverOrder.join(" ");
   const [order, setOrder] = useState<string[]>(serverOrder);
@@ -98,13 +104,16 @@ export default function SavedTilesGrid({
   }
 
   const pinnedByKey = new Map(
-    items.filter((item) => item.pinned).map((item) => [item.key, item])
+    items.filter((item) => item.reorderable).map((item) => [item.key, item])
   );
-  const firstPinned = items.findIndex((item) => item.pinned);
-  const leading = firstPinned < 0 ? [] : items.slice(0, firstPinned);
-  const trailing = items.filter(
-    (item, index) => !item.pinned && (firstPinned < 0 || index >= firstPinned)
-  );
+  const firstPinned = items.findIndex((item) => item.reorderable);
+  const leading = firstPinned < 0 ? items : items.slice(0, firstPinned);
+  const trailing =
+    firstPinned < 0
+      ? []
+      : items.filter(
+          (item, index) => !item.reorderable && index >= firstPinned
+        );
   const pinned = order
     .map((key) => pinnedByKey.get(key))
     .filter((item): item is SavedTileItem => item != null);

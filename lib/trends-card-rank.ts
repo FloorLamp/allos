@@ -392,13 +392,22 @@ export function bodyCardOrder(
   pinned?: readonly string[] | null
 ): BodyCardId[] {
   const ranked = rankItems(BODY_ITEMS, TRENDS_CARD_TABLE, ctx);
-  const isStructural = (id: BodyCardId): boolean =>
-    ranked.some(
-      (r) => r.id === id && r.boosts.some((b) => b.key === STRUCTURAL_SIGNAL)
-    );
-  const structural = ranked.map((r) => r.id).filter(isStructural);
-  const rest = ranked.map((r) => r.id).filter((id) => !isStructural(id));
+  const structural = structuralBodyCardIds(ctx);
+  const structuralSet = new Set(structural);
+  const rest = ranked.map((r) => r.id).filter((id) => !structuralSet.has(id));
   return [...structural, ...mergeStoredOrder(rest, pinned)];
+}
+
+// Cards whose life-stage membership outranks user arrangement. The renderer needs
+// this same answer as `bodyCardOrder`: a saved height/head-circ card still gets its
+// unstar menu, but it must not enter the drag run and pull later saved cards across
+// the complete pediatric prefix.
+export function structuralBodyCardIds(ctx: TrendsSubjectContext): BodyCardId[] {
+  return rankItems(BODY_ITEMS, TRENDS_CARD_TABLE, ctx)
+    .filter((item) =>
+      item.boosts.some((boost) => boost.key === STRUCTURAL_SIGNAL)
+    )
+    .map((item) => item.id);
 }
 
 // Sort a renderer's already-built list into a card order. Items whose key is not in
