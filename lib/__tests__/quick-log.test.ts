@@ -38,7 +38,8 @@ describe("primaryQuickLog", () => {
     // without a shim of their own.
     expect(primaryQuickLog("/trends", "body").id).toBe("log-measurements");
     expect(primaryQuickLog("/trends", "vitals").id).toBe("log-measurements");
-    // The surviving tabs are unchanged: neither is a measurements surface.
+    // The retired Fitness URL redirects to Training → Analyze, whose promoted log
+    // is activity; the surviving non-body tabs remain activity too.
     expect(primaryQuickLog("/trends", "fitness").id).toBe(LOG_ACTIVITY_ID);
     expect(primaryQuickLog("/trends", "nutrition").id).toBe(LOG_ACTIVITY_ID);
     expect(primaryQuickLog("/trends", "insights").id).toBe(LOG_ACTIVITY_ID);

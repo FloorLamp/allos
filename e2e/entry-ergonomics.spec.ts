@@ -174,10 +174,12 @@ test("Training Log actions share the search toolbar and stay outside the editor 
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
-  // The weekly-routine chips remain on Overview/Plan (#2892); this row carries
-  // only the literal weekly summary and recent cadence.
+  // The weekly-target chips remain on Overview/Plan (#2892); this row carries
+  // only the literal weekly summary and recent cadence. The heading was renamed by
+  // #3474 ("Weekly routine" → "Weekly targets") — this absence follows the CURRENT
+  // string, or it would go green by naming one nothing renders any more.
   const routineRow = page.getByTestId("training-log-routine-row");
-  await expect(routineRow.getByText("Weekly routine")).toHaveCount(0);
+  await expect(routineRow.getByText("Weekly targets")).toHaveCount(0);
   const weekSummary = page.getByTestId("training-log-week-summary");
   await expect(weekSummary).toContainText(/\d+ sessions?/);
   await expect(weekSummary).toContainText(/\d+\/7 days active/);

@@ -82,7 +82,7 @@ function muscleNames(findings: readonly Finding[]): string[] {
   return out;
 }
 
-// "Chest, Quads, Calves and 2 more" — the summary line under the group title. The
+// "Chest · Quads · Calves and 2 more" — the summary line under the group title. The
 // sentence itself is the shared summarizeNames (the Results-hub trajectory rollup
 // prints the identical shape for analyte names); this stays as the muscle-domain
 // name for it, so the rollup's own tests keep pinning the copy they always did.

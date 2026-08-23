@@ -3,18 +3,9 @@ import { type Page } from "@playwright/test";
 import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import {
-  E2E_LOGIN_VITALS_DAY,
-  E2E_MEMBER_PASSWORD,
-  VITALS_DAY_BP_LATER,
-  VITALS_DAY_BP_LATER_TIME,
-  VITALS_DAY_BODY_FAT,
-  VITALS_DAY_RESTING_HR,
-  VITALS_DAY_STEPS,
-  VITALS_DAY_WEIGHT_KG,
-} from "./fixture-logins";
+import { E2E_LOGIN_VITALS_DAY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// The Today strip, the 1D (intraday) window and the full-bleed mobile HR chart
+// The Timeline handoff, the 1D (intraday) window and the full-bleed mobile HR chart
 // (issue #1466) — RE-POINTED to the merged body census by #1486, which retired the
 // Vitals tab into Body's first section. Same layer, same fixtures, one tab.
 //
@@ -28,8 +19,8 @@ import {
 //     offer a 1D pill) — navigation only, no writes, no exact count of a
 //     shared-seed row;
 //   • the dedicated E2E_LOGIN_VITALS_DAY profile seeded by e2e/seed-events.ts, for
-//     the questions that are about a DAY'S DATA (the intraday charts, the strip's
-//     values). Its vitals live nowhere else, so --repeat-each and a neighbour's
+//     the questions that are about a DAY'S DATA (the intraday charts and Timeline
+//     handoff). Its vitals live nowhere else, so --repeat-each and a neighbour's
 //     writes can't move them.
 //
 // `loginAs` opens its own context, which does NOT inherit the project's `use`
@@ -46,11 +37,11 @@ async function vitalsDayPage(browser: Parameters<typeof loginAs>[0]) {
   );
 }
 
-// The fixture's day IS the profile's today; read it off the Today strip's link
-// rather than recomputing the run's frozen clock here.
-async function todayFromStrip(page: Page): Promise<string> {
+// The fixture's day IS the profile's today; read it off the Body-head link rather
+// than recomputing the run's frozen clock here.
+async function todayFromBodyLink(page: Page): Promise<string> {
   const href = await page
-    .getByTestId("vitals-today-timeline-link")
+    .getByTestId("body-timeline-link")
     .getAttribute("href");
   const match = /from=(\d{4}-\d{2}-\d{2})/.exec(href ?? "");
   expect(match, `no day in timeline link href: ${href}`).not.toBeNull();
@@ -81,11 +72,7 @@ test.describe("the 1D pill is scoped to the surface that owns the census (B)", (
 
     // On a daily-grain series a one-day window is a single dot — worse than
     // useless — so no other TAB may advertise it. The shared pills stay shared.
-    for (const tab of [
-      "/trends?tab=fitness",
-      "/trends?tab=nutrition",
-      "/trends?tab=insights",
-    ]) {
+    for (const tab of ["/trends?tab=nutrition", "/trends?tab=insights"]) {
       await page.goto(tab);
       await expandTrendsContext(page);
       // Exact, like the 1D locators above: the movers digest renders LINK chips
@@ -160,79 +147,27 @@ test.describe("1D keeps Overview tiles-only on mobile (#2152)", () => {
   });
 });
 
-test.describe("the Today strip (A)", () => {
-  test("shows the day's latest reading per vital and links to the day view", async ({
+test.describe("the retired Today strip (#3387)", () => {
+  test("renders no duplicate snapshot and keeps the Timeline day link at the Body head", async ({
     browser,
   }) => {
     test.slow();
     const member = await vitalsDayPage(browser);
     try {
-      // The strip is the merged tab's FIRST section — above the fold on a phone,
-      // before any chart or logging affordance (#1486).
       await member.goto("/trends");
+      await expect(member.getByTestId("vitals-today-strip")).toHaveCount(0);
+      const link = member.getByTestId("body-timeline-link");
+      await expect(link).toBeVisible();
+      await expect(link).toHaveText("View today on Timeline");
 
-      const strip = member.getByTestId("vitals-today-strip");
-      await expect(strip).toBeVisible();
-
-      // The LATER of the fixture's two timed BP pairs wins "latest today", with
-      // its clock time — the whole point of the strip over a chart's last point.
-      const bp = strip.getByTestId("vitals-today-bp");
-      await expect(bp.locator("dt")).toHaveText("Blood Pressure");
-      await expect(bp).toContainText(VITALS_DAY_BP_LATER);
-      await expect(bp).toContainText(VITALS_DAY_BP_LATER_TIME);
-
-      // A day-granular aggregate has a value but no clock time, and is deliberately
-      // in the strip rather than charted at 1D.
-      const restingHr = strip.getByTestId("vitals-today-resting-hr");
-      await expect(restingHr.locator("dt")).toHaveText("Resting Heart Rate");
-      await expect(restingHr).toContainText(VITALS_DAY_RESTING_HR);
-      await expect(restingHr).toContainText("today");
-      const weight = strip.getByTestId("vitals-today-weight");
-      const bodyFat = strip.getByTestId("vitals-today-body-fat");
-      await expect(weight.locator("dt")).toHaveText("Weight");
-      await expect(bodyFat.locator("dt")).toHaveText("Body Fat");
-      await expect(weight).toContainText(
-        new RegExp(`${VITALS_DAY_WEIGHT_KG}\\s*kg`)
-      );
-      await expect(bodyFat).toContainText(
-        new RegExp(`${VITALS_DAY_BODY_FAT}\\s*%`)
-      );
-      const steps = strip.getByTestId("vitals-today-steps");
-      await expect(steps.locator("dt")).toHaveText("Daily Steps");
-      await expect(steps).toContainText(
-        new RegExp(`${VITALS_DAY_STEPS.toLocaleString("en-US")}\\s*steps`)
-      );
-      // Oxygen and respiratory rate have seeded readings and remain available in
-      // their charts, but the concise Body snapshot intentionally excludes them.
-      await expect(strip.getByTestId("vitals-today-spo2")).toHaveCount(0);
-      await expect(
-        strip.getByTestId("vitals-today-respiratory-rate")
-      ).toHaveCount(0);
-      await expect(strip.getByTestId("vitals-today-timeline-link")).toHaveText(
-        "View timeline"
-      );
-
-      // The day's answers read as one balanced row, not a loose horizontally
-      // scrolling string of values inside an oversized card.
-      const stripBox = await strip.boundingBox();
-      const weightBox = await weight.boundingBox();
-      const bodyFatBox = await bodyFat.boundingBox();
-      expect(stripBox).not.toBeNull();
-      expect(weightBox).not.toBeNull();
-      expect(bodyFatBox).not.toBeNull();
-      expect(Math.abs(weightBox!.y - bodyFatBox!.y)).toBeLessThan(4);
-      expect(weightBox!.width).toBeGreaterThan(stripBox!.width * 0.4);
-      expect(bodyFatBox!.width).toBeGreaterThan(stripBox!.width * 0.4);
-
-      const day = await todayFromStrip(member);
+      const day = await todayFromBodyLink(member);
       await followLink(
         member,
-        strip.getByTestId("vitals-today-timeline-link"),
+        link,
         new RegExp(`/timeline\\?from=${day}&to=${day}`)
       );
 
-      // The strip's destination is the surface it exists to make reachable: the
-      // Timeline day view's intraday panel (#1068).
+      // The retired card's destination remains reachable from the Body section.
       await expect(member.getByTestId("intraday-panel")).toBeVisible();
       await expect(member.getByTestId("intraday-panel")).toHaveAttribute(
         "data-intraday-date",

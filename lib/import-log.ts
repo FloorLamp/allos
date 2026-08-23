@@ -76,6 +76,29 @@ export function statusBadge(status: ImportLogStatus): StatusBadge {
 
 // ---- Format / kind labels ----
 
+// A HUMAN LABEL FOR THE SOURCE VALUES ALLOS ITSELF WRITES (#3493).
+//
+// `medical_documents.source` holds two kinds of string with different owners. The
+// health-record parser writes a fixed INTERNAL key — "ccda", "fhir",
+// "smart-health-card" (lib/health-record-parse.ts) — while the AI extractor writes
+// whatever the document called its issuer ("Quest", "LabCorp"). Only the first kind is
+// ours to translate, which is why this is a MAP WITH A RAW FALLBACK and not a
+// formatter: an unmapped value is somebody's real name and must survive untouched,
+// unchanged in case, spacing and spelling.
+//
+// Display only. Nothing writes these labels back, and no matcher reads them — a
+// document imported as "ccda" is still stored, keyed and re-imported as "ccda".
+const SOURCE_LABELS: Record<string, string> = {
+  ccda: "C-CDA document",
+  fhir: "FHIR bundle",
+  "smart-health-card": "SMART Health Card",
+};
+
+export function documentSourceLabel(source: string): string {
+  const raw = source.trim();
+  return SOURCE_LABELS[raw.toLowerCase()] ?? raw;
+}
+
 // A human label for a document's detected format/type: prefer the extracted
 // doc_type, else the source (lab/provider), else the file extension, else a
 // generic fallback. Purely presentational.
@@ -85,7 +108,10 @@ export function documentFormatLabel(doc: {
   filename: string;
 }): string {
   if (doc.doc_type && doc.doc_type.trim()) return doc.doc_type.trim();
-  if (doc.source && doc.source.trim()) return doc.source.trim();
+  // Through the label map (#3493): this branch is the one that put "ccda" on the
+  // import page's "Detected format" row and in its page subtitle. A lab/provider name
+  // falls through the map unchanged, so nothing else moves.
+  if (doc.source && doc.source.trim()) return documentSourceLabel(doc.source);
   const dot = doc.filename.lastIndexOf(".");
   if (dot > 0 && dot < doc.filename.length - 1)
     return doc.filename.slice(dot + 1).toUpperCase();

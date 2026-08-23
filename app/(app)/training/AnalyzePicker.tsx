@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Combobox from "@/components/Combobox";
 import type { AnalyzeOption } from "@/lib/analyze-view";
 import { useResettableState } from "@/components/useResettableState";
+import type { AppRoute } from "@/lib/hrefs";
 
 export type { AnalyzeOption };
 
@@ -23,21 +24,26 @@ const KIND_LABEL: Record<AnalyzeOption["kind"], string> = {
   sport: "Sport",
 };
 
+// Combobox options are identities, not their visible text. An activity may quite
+// legitimately be named "All training"; reserving that LABEL made choosing the
+// activity route to the aggregate view instead. Keep the aggregate and every
+// entity in separate keyed namespaces, then render their human labels with
+// Combobox.labelFor.
+const ALL_TRAINING_OPTION_ID = "summary:all-training";
+
 export default function AnalyzePicker({
   options,
   value,
+  allTrainingHref,
   appearance = "field",
 }: {
   options: AnalyzeOption[];
   value: string;
+  allTrainingHref: AppRoute;
   appearance?: "field" | "title";
 }) {
   const router = useRouter();
   const [text, setText] = useResettableState(value, value);
-  const byLabel = useMemo(
-    () => new Map(options.map((o) => [o.label, o])),
-    [options]
-  );
 
   const rankedOptions = useMemo(
     () =>
@@ -49,22 +55,56 @@ export default function AnalyzePicker({
       ),
     [options]
   );
+  const pickerOptions = useMemo(
+    () => [
+      {
+        id: ALL_TRAINING_OPTION_ID,
+        label: "All training",
+        option: null,
+      },
+      ...rankedOptions.map((option, index) => ({
+        id: `entity:${index}`,
+        label: option.label,
+        option,
+      })),
+    ],
+    [rankedOptions]
+  );
+  const byId = useMemo(
+    () => new Map(pickerOptions.map((option) => [option.id, option])),
+    [pickerOptions]
+  );
 
   return (
     <Combobox
       value={text}
       onChange={setText}
-      onPick={(label) => {
-        const option = byLabel.get(label);
-        if (option) router.push(option.href);
+      onPick={(id) => {
+        const picked = byId.get(id);
+        if (!picked) return;
+        // Combobox first writes the selected identity through onChange. Restore
+        // the human label in the controlled field in the same event.
+        setText(picked.label);
+        if (!picked.option) {
+          router.push(allTrainingHref);
+          return;
+        }
+        router.push(picked.option.href);
       }}
-      options={rankedOptions.map((o) => o.label)}
+      options={pickerOptions.map((option) => option.id)}
+      labelFor={(id) => byId.get(id)?.label ?? id}
+      searchTermsFor={(id) => {
+        const picked = byId.get(id);
+        return picked
+          ? [picked.label, picked.option?.item ?? "", picked.option?.kind ?? ""]
+          : [];
+      }}
       placeholder="Choose an exercise or activity"
       ariaLabel="Exercise or activity"
       emptyLabel="No training item found"
       appearance={appearance}
-      badgeFor={(label) => {
-        const option = byLabel.get(label);
+      badgeFor={(id) => {
+        const option = byId.get(id)?.option;
         if (!option) return null;
         return (
           <span className={BADGE_CLASS[option.kind]}>

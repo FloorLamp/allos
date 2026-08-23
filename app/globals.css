@@ -1262,6 +1262,41 @@
   }
 }
 
+/* ── SECTION: Log out pending state ── */
+/* THE LOG OUT CONTROL'S PENDING STATE (#3515). Plain CSS keyed off two attributes,
+   and it has to be plain CSS for one reason: this state must be paintable with NO
+   React and NO bundle. Log out is the one control in this app without a
+   progressive-enhancement fallback — #2908 made it `type="button"` on purpose so the
+   device PHI wipe could not race the navigation — so a tap before hydration used to
+   produce nothing at all: no submit, no POST, no navigation, and no error. It now
+   queues, and this is what the person sees while it waits.
+
+   TWO ATTRIBUTES, ONE APPEARANCE, and that is the whole design:
+     • data-logout-tapped — written by LOGOUT_BOOT_SCRIPT (lib/logout-tap.ts) from the
+       document head, before any handler exists. React never renders this attribute, so
+       hydration cannot take it away and the pixels survive the bundle landing.
+     • data-pending — written by SidebarContent while a logout is genuinely in flight.
+   A tap on either side of hydration paints identically, which is the point: the person
+   cannot tell which one they got, and should not have to.
+
+   Toggling DISPLAY rather than opacity/visibility so exactly one of the two icons
+   occupies the slot — the row must not change width when the spinner takes over. */
+[data-logout-button] .logout-pending-spinner {
+  display: none;
+}
+[data-logout-button][data-logout-tapped] .logout-pending-spinner,
+[data-logout-button][data-pending] .logout-pending-spinner {
+  display: block;
+}
+[data-logout-button][data-logout-tapped] .logout-idle-icon,
+[data-logout-button][data-pending] .logout-idle-icon {
+  display: none;
+}
+[data-logout-button][data-logout-tapped],
+[data-logout-button][data-pending] {
+  cursor: progress;
+}
+
 /* ── SECTION: Fitness-check tile landing sweep ── */
 /* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
    just-saved tile as its new value lands on the grid — a brief scale/settle that

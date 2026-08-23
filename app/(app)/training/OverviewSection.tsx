@@ -116,8 +116,7 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
   return formatMinutes(p.durationMin);
 }
 
-// Training → Overview: the DOING surface (#1496, the other half of #1492's rule —
-// analyze on Trends, do here). Order is deliberate and static, doing-first:
+// Training → Overview is the doing surface. Order is deliberate and static:
 //   1. Today's session (the daily payload leads)
 //   2. This week — the WEEK SPINE (#2566): the seven-day band, captioned by the
 //      week's counts and the weekly routine's cadence chips, as ONE card
@@ -125,8 +124,9 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 //   4. Muscle coverage + mobility
 //   5. Injuries / event plans (the descriptive copy renders only when they're live)
 //   6. Recent cardio PRs — top 3 + "show all → Analyze"
-// The chart block LEFT: strength/cardio volume + intensity mix live windowed on
-// Trends → Fitness (#1492), with no mini duplicates here.
+// Aggregate volume/cadence and intensity-mix charts stay retired here (#3512):
+// muscle coverage carries the volume judgment, while HR zones live on Analyze's
+// data-gated All training view.
 export default async function OverviewSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
@@ -572,7 +572,7 @@ export default async function OverviewSection() {
 
         <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
           <div className="flex items-baseline justify-between gap-2">
-            <h4 className="section-label">Weekly routine</h4>
+            <h4 className="section-label">Weekly targets</h4>
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <Link
               href="/training?tab=plan#targets"
@@ -583,7 +583,7 @@ export default async function OverviewSection() {
           </div>
           {targets.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              No weekly routine set yet.
+              No weekly targets set yet.
             </p>
           ) : (
             <>

@@ -202,10 +202,26 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   //     button the async IndexedDB wipe raced the navigation and lost, leaving
   //     one login's PHI readable by the next person — and in doing so it removed
   //     the progressive-enhancement fallback from the one control that ends a
-  //     session. A click dispatched before React attaches now does NOTHING AT
+  //     session. A click dispatched before React attached then did NOTHING AT
   //     ALL: no submit event, no POST, no navigation, and no error either. The
-  //     bare click then failed here as a bare `waitForURL` timeout naming
-  //     nothing, three times on CI (#3400).
+  //     bare click here failed as a bare `waitForURL` timeout naming nothing,
+  //     three times on CI (#3400).
+  //
+  //     PAST TENSE SINCE #3515, and the update matters because this paragraph is
+  //     the reason the gate below exists. The app now QUEUES a tap that lands in
+  //     that window — LOGOUT_BOOT_SCRIPT (lib/logout-tap.ts) records it from the
+  //     document head and SidebarContent replays it on attach, with a pending
+  //     state meanwhile — so the swallow this describes is no longer reachable
+  //     from any control. e2e/logout-pre-hydration.spec.ts holds that window open
+  //     deterministically and is the test that fails without the fix.
+  //
+  //     THE GATE STAYS ANYWAY, and not out of caution. settledClick's value here
+  //     was never only the wait: it CORRELATES the Server Action POST, so if this
+  //     ever reds again the failure names its own shape instead of arriving as a
+  //     bare timeout — which is exactly what #3400 asked for and what #3513
+  //     landed. #2908's design is also unchanged, so the residual the #3515
+  //     ruling accepted is still real: a queued tap fires on attach, and nothing
+  //     fires if the page never gets there.
   //
   // settledClick is the right helper of the three, and the choice is load-bearing:
   // logout IS a Server Action (`logoutAction` in app/(app)/session-actions.ts is

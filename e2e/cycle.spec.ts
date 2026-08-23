@@ -96,6 +96,72 @@ test.describe("menstrual cycle (#714)", () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
+  // ── #3482 item 1: one interval is not four measured statistics ─────────────
+  //
+  // THIS FIXTURE SITS BELOW THE NEW THRESHOLD, ON PURPOSE. Three seeded periods are
+  // TWO completed cycles, one short of CYCLE_STATS_MIN_SAMPLES — the same thin
+  // history ttc.spec.ts relies on to prove the forecast refuses to invent a date. So
+  // it is exactly the profile the defect showed on, and asserting the tiles' absence
+  // here is asserting it where a person would have met it.
+  //
+  // Nothing raises this fixture over the threshold deliberately: at 3 completed
+  // cycles a forecast WOULD render, and the forecast's own "log a couple more
+  // cycles" spec exists to see it refuse. The above-threshold render is pinned in
+  // the pure tier (lib/__tests__/cycle.test.ts) instead.
+  test("a thin history shows no length tiles and one insufficiency line (#3482)", async () => {
+    await page.goto("/medical/cycles");
+    const trend = page.getByTestId("cycle-trend");
+    await expect(trend).toBeVisible();
+
+    // No tiles at all — and in particular no "Variability 0 d", which asserted
+    // perfect regularity from a single interval.
+    await expect(trend.getByTestId("cycle-length-stat")).toHaveCount(0);
+    await expect(trend).not.toContainText("Variability");
+    await expect(trend).not.toContainText("Shortest");
+
+    // ONE line, and it states what the history HAS rather than a verdict it cannot
+    // reach. The count is read from the page's own History list, so the assertion
+    // survives the fixture gaining or losing a period.
+    const periods = await page.getByTestId("cycle-history-row").count();
+    await expect(page.getByTestId("cycle-regularity")).toHaveText(
+      `${periods - 1} completed cycles — cycle length stats appear after 3.`
+    );
+  });
+
+  // ── #3482 item 2: the two bare rows join the page's card grammar ───────────
+  //
+  // Presentation only — #2583's folds and the TTC declare/off treatment are ruled and
+  // untouched. Measured as a RENDERED border on the collapsed row, at both widths,
+  // because the defect was visual: cards above, cards below, two unhoused rows in
+  // between.
+  test("the TTC line and the add-period disclosure render housed at both widths (#3482)", async () => {
+    await page.goto("/medical/cycles");
+    const ttc = page.getByTestId("ttc-section");
+    const addPanel = page.getByTestId("cycle-add-panel");
+    // Collapsed is the state that was bare, so the add panel's precondition is
+    // asserted. The TTC row's open/closed state is NOT asserted here: ttc.spec.ts
+    // declares and stops TTC on this same profile, and both of that section's states
+    // draw a container since #3482 — so this reads the border on whichever branch
+    // rendered rather than racing a neighbour for a precondition it does not need.
+    await expect(addPanel).toHaveAttribute("data-open", "false");
+
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const row of [ttc, addPanel]) {
+        const box = await row.evaluate((el) => {
+          const s = getComputedStyle(el);
+          return {
+            border: parseFloat(s.borderTopWidth),
+            radius: parseFloat(s.borderTopLeftRadius),
+          };
+        });
+        expect(box.border, `${width}px`).toBeGreaterThan(0);
+        expect(box.radius, `${width}px`).toBeGreaterThan(0);
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  });
+
   test("one-tap start → end withdraws the start CTA; 'Still bleeding' repairs it (#1681)", async () => {
     await page.goto("/medical/cycles");
     const rows = page.getByTestId("cycle-history-row");

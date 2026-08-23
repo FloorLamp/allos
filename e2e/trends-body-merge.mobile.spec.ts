@@ -7,8 +7,8 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Trends → the MERGED Body census (issue #1486, a SECTION since #1644). Vitals
 // retired into Body,
-// whose sections read: Today → the two ranked chart runs → growth/history. (#1486
-// declared those runs Vitals-then-Composition; #1659 re-sequenced the base layout
+// whose sections read as one ranked stack → growth/history. (#1486 declared the
+// original runs Vitals-then-Composition; #1659 re-sequenced the base layout
 // everyday-first, so with no signal firing they now read Composition-then-Vitals —
 // the runs rank by their best member.) Logging
 // moved to ONE combined "Log measurements" form, behind a collapsed "+ Log" on
@@ -42,10 +42,10 @@ test.describe("one census, one ordered stack (#1486)", () => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
     const tabs = page.getByRole("tab");
-    // Four since #1644 folded Body into Overview; the ORDER + phone fit are that
-    // issue's spec — trends-compare-fold.mobile.spec.ts. What #1486 owns here is
+    // Three since #3512 retired Fitness into Training → Analyze; the ORDER + phone
+    // fit are owned by trends-compare-fold.mobile.spec.ts. What #1486 owns here is
     // the absence of a Vitals destination of its own.
-    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveCount(3);
     await expect(
       page.getByRole("tab", { name: "Vitals", exact: true })
     ).toHaveCount(0);
@@ -84,13 +84,12 @@ test.describe("one census, one ordered stack (#1486)", () => {
     // vitals-first, from the page narrative; #1659 re-sequenced the base layout
     // everyday-first because that order was also the TIE-BREAK, and on a tie it put
     // the clinical block above the metrics a wearable profile checks daily. With the
-    // boxes retired the cards themselves carry that sequence. The Today strip still
-    // opens with the vitals — that narrative kept its job.
+    // boxes retired the cards themselves carry that sequence.
     const order = await page.evaluate(() => {
       const ids = [
         "body-chart-weight",
         "vitals-systolic",
-        "vitals-today-strip",
+        "body-timeline-link",
       ];
       return ids
         .map((id) => ({
@@ -104,10 +103,10 @@ test.describe("one census, one ordered stack (#1486)", () => {
         )
         .map((e) => e.id);
     });
-    // The Today strip is the page's head (fixed anatomy, not a ranked card), then
-    // composition, then the clinical cards.
+    // The Timeline handoff is the section head, then composition, then the
+    // clinical cards.
     expect(order).toEqual([
-      "vitals-today-strip",
+      "body-timeline-link",
       "body-chart-weight",
       "vitals-systolic",
     ]);

@@ -1,9 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildTodayVitalsStrip,
   hrSlotSeries,
   intradayVitalPoints,
-  latestVitalOn,
   slotLabel,
   toIntradaySlotSeries,
   VITALS_SLOT_MINUTES,
@@ -12,7 +10,7 @@ import {
 } from "@/lib/vitals-day";
 import { MINUTES_IN_DAY } from "@/lib/intraday";
 
-// The Trends → Vitals today/intraday model (#1466). Pure: fixtures only, no DB.
+// The Trends Body 1D intraday model (#1466/#3387). Pure: fixtures only, no DB.
 // Every value here is synthetic (no PHI) — round numbers on a fictional day.
 
 const TZ = "America/New_York";
@@ -107,157 +105,12 @@ describe("vitalReadingTime", () => {
   });
 });
 
-describe("latestVitalOn", () => {
-  it("ignores other days and non-numeric rows", () => {
-    const rows = [
-      bpRow({ id: 1, date: "2026-07-24", value_num: 111 }),
-      bpRow({ id: 2, value_num: null }),
-      bpRow({ id: 3, value_num: 118 }),
-    ];
-    expect(latestVitalOn(rows, DAY, TZ)).toEqual({ value: 118, time: null });
-  });
-
-  it("picks the latest by clock time, not by row order", () => {
-    const rows = [
-      bpRow({ id: 9, value_num: 131, occurred_at: "2026-07-25T23:40:00Z" }),
-      bpRow({ id: 10, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
-    ];
-    expect(latestVitalOn(rows, DAY, TZ)).toEqual({
-      value: 131,
-      time: "19:40",
-    });
-  });
-
-  it("falls back to insert order when the day's rows carry no time", () => {
-    const rows = [
-      bpRow({ id: 4, value_num: 120 }),
-      bpRow({ id: 7, value_num: 126 }),
-      bpRow({ id: 5, value_num: 122 }),
-    ];
-    expect(latestVitalOn(rows, DAY, TZ)).toEqual({ value: 126, time: null });
-  });
-
-  it("prefers a timed reading over an untimed one on the same day", () => {
-    const rows = [
-      bpRow({ id: 30, value_num: 140 }),
-      bpRow({ id: 2, value_num: 117, occurred_at: "2026-07-25T10:15:00Z" }),
-    ];
-    expect(latestVitalOn(rows, DAY, TZ)).toEqual({
-      value: 117,
-      time: "06:15",
-    });
-  });
-
-  it("returns null for an empty day", () => {
-    expect(latestVitalOn([], DAY, TZ)).toBeNull();
-  });
-});
-
-describe("buildTodayVitalsStrip", () => {
-  const specs = [
-    {
-      key: "bp",
-      label: "Blood pressure",
-      unit: "mmHg",
-      rows: [
-        bpRow({ id: 1, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
-      ],
-      pairRows: [
-        bpRow({ id: 2, value_num: 76, occurred_at: "2026-07-25T11:10:00Z" }),
-      ],
-    },
-    {
-      key: "temperature",
-      label: "Temperature",
-      unit: "°F",
-      rows: [
-        bpRow({ id: 3, value_num: 98.64, occurred_at: "2026-07-25T12:05:00Z" }),
-      ],
-      decimals: 1,
-    },
-    {
-      key: "steps",
-      label: "Steps",
-      unit: "steps",
-      rows: [bpRow({ id: 4, value_num: 4321 })],
-      groupThousands: true,
-    },
-    { key: "spo2", label: "Oxygen sat.", unit: "%", rows: [] },
-  ];
-
-  it("renders one row per vital with a reading today, in spec order", () => {
-    expect(buildTodayVitalsStrip(specs, DAY, TZ)).toEqual([
-      {
-        key: "bp",
-        label: "Blood pressure",
-        value: "118/76",
-        unit: "mmHg",
-        time: "07:10",
-      },
-      {
-        key: "temperature",
-        label: "Temperature",
-        value: "98.6",
-        unit: "°F",
-        time: "08:05",
-      },
-      {
-        key: "steps",
-        label: "Steps",
-        value: "4,321",
-        unit: "steps",
-        time: null,
-      },
-    ]);
-  });
-
-  it("renders nothing at all for an empty day", () => {
-    // The strip is data-gated like every #1068 intraday layer: no readings today
-    // means no frame, not an empty card.
-    expect(buildTodayVitalsStrip(specs, "2026-07-20", TZ)).toEqual([]);
-  });
-
-  it("shows the primary alone when its pair has no reading today", () => {
-    const rows = buildTodayVitalsStrip(
-      [{ ...specs[0], pairRows: [] }],
-      DAY,
-      TZ
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].value).toBe("118");
-  });
-
-  it("carries a null time for a day-granular aggregate", () => {
-    const rows = buildTodayVitalsStrip(
-      [
-        {
-          key: "resting-hr",
-          label: "Resting HR",
-          unit: "bpm",
-          rows: [{ date: DAY, value_num: 54 }],
-        },
-      ],
-      DAY,
-      TZ
-    );
-    expect(rows).toEqual([
-      {
-        key: "resting-hr",
-        label: "Resting HR",
-        value: "54",
-        unit: "bpm",
-        time: null,
-      },
-    ]);
-  });
-});
-
 describe("intradayVitalPoints", () => {
   it("keeps only today's TIMED readings, ascending by minute", () => {
     const rows = [
       bpRow({ id: 1, value_num: 131, occurred_at: "2026-07-25T23:40:00Z" }),
       bpRow({ id: 2, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
-      bpRow({ id: 3, value_num: 125 }), // untimed → stays in the Today strip
+      bpRow({ id: 3, value_num: 125 }), // untimed → cannot sit on a clock axis
       bpRow({
         id: 4,
         date: "2026-07-24",

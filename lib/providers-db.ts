@@ -1,4 +1,5 @@
 import { db, writeTx } from "./db";
+import { UserFacingError } from "./user-error-copy";
 import type { Provider, ProviderType } from "./types";
 import {
   cleanProviderInput,
@@ -224,7 +225,10 @@ export function setProviderArchived(id: number, archived: boolean): void {
 // "already exists — merge instead" message.
 export function updateProviderIdentity(id: number, input: ProviderInput): void {
   const p = cleanProviderInput(input);
-  if (!p) throw new Error("A provider needs a name.");
+  // AUTHORED HOUSE COPY, marked as such (#3198). The action surfaces a
+  // UserFacingError verbatim and classifies everything else, so this sentence keeps
+  // reaching the admin while a TypeError or a constraint no longer does.
+  if (!p) throw new UserFacingError("A provider needs a name.");
   const key = providerDedupKey(p);
   const friendlyClash =
     "Another provider already matches this identity — merge the duplicates instead.";
@@ -240,7 +244,7 @@ export function updateProviderIdentity(id: number, input: ProviderInput): void {
       const clash = db
         .prepare("SELECT id FROM providers WHERE dedup_key = ? AND id <> ?")
         .get(key, id) as { id: number } | undefined;
-      if (clash) throw new Error(friendlyClash);
+      if (clash) throw new UserFacingError(friendlyClash);
       // The manual identity card is the edit-lock trigger (issue #1058): asserting a
       // phone/address here sets contact_edited = 1, so a later import upsert preserves
       // it (see resolveProviderId). Only lock when the user actually supplied a
@@ -271,7 +275,7 @@ export function updateProviderIdentity(id: number, input: ProviderInput): void {
       "code" in err &&
       (err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
     )
-      throw new Error(friendlyClash);
+      throw new UserFacingError(friendlyClash);
     throw err;
   }
 }

@@ -14,6 +14,7 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   studyDisplayLabel,
   modalityLabel,
+  impressionDisplayText,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
 import {
@@ -101,9 +102,17 @@ const baseColumns = (
           </span>
         ) : null}
         <DoseChip study={s} />
-        {s.impression ? (
-          <span className="ml-2 line-clamp-1 text-xs font-normal text-slate-400">
-            {s.impression}
+        {/* THE FINDING, NOT ITS HEADING, AND NOT ONE LINE OF IT (#3498 item 3).
+            `line-clamp-1` cut "OVERALL IMPRESSION: Findings suggestive of a left
+            breast…" exactly where the clinical payload starts — the heading spent
+            the whole line and the label row above already says what this field is.
+            The label strips at the display boundary (the stored value is untouched
+            and the study form still edits it as imported), and a phone gets three
+            lines. Desktop keeps its one-line subtitle: a table row there has a
+            column grid to hold, and the full text is one tap away in the form. */}
+        {impressionDisplayText(s.impression) ? (
+          <span className="ml-2 line-clamp-3 text-xs font-normal text-slate-400 sm:line-clamp-1">
+            {impressionDisplayText(s.impression)}
           </span>
         ) : null}
         {encounters[s.id] ? (
@@ -187,11 +196,18 @@ export default function ImagingStudyList({
   followUps = [],
   encounters = {},
   multiView,
+  action,
 }: {
   items: Stamped<ImagingStudy>[];
   followUps?: ImagingFollowUpSummary[];
   encounters?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
+  // The tab's create affordance (#3486's grammar, #3498 item 4). It renders INSIDE
+  // this filter toolbar rather than on a row of its own above the tab, so the tab
+  // opens with the dose card and the controls that act on the list live together.
+  // Passed in rather than mounted here: the form and its Server Action belong to
+  // the section, and this component stays a list.
+  action?: ReactNode;
 }) {
   const [modality, setModality] = useState<ImagingModality | "">("");
   const [region, setRegion] = useState("");
@@ -220,7 +236,10 @@ export default function ImagingStudyList({
 
   return (
     <div data-testid="imaging-study-list" className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+      <div
+        data-testid="imaging-filter-toolbar"
+        className="flex flex-wrap items-center gap-2"
+      >
         <select
           aria-label="Filter by modality"
           className="input w-auto"
@@ -241,6 +260,7 @@ export default function ImagingStudyList({
           value={region}
           onChange={(e) => setRegion(e.target.value)}
         />
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       <RecordTable
         items={filtered}

@@ -11,8 +11,8 @@ import { followLink } from "./helpers";
 // Trends tab order + the Compare fold (issue #1489).
 //
 // Two changes, one surface:
-//   A. the strip is FIVE chips in frequency order — Overview | Body | Fitness |
-//      Nutrition | Insights — which is what makes it fit a 390px phone unclipped;
+//   A. the strip is THREE chips in frequency order — Overview | Nutrition |
+//      Insights — after Body folded into Overview and Fitness moved to Training;
 //   B. Compare stopped being a tab and became a SECTION of Insights, and with it
 //      body self-history analytics remain available for a school-age minor.
 //
@@ -29,8 +29,8 @@ import { followLink } from "./helpers";
 //     `--repeat-each` can't move them.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
-// FOUR since #1644 folded Body into Overview; permanent by owner ruling.
-const TAB_ORDER = ["Overview", "Fitness", "Nutrition", "Insights"];
+// THREE since #3512 retired Fitness into Training → Analyze.
+const TAB_ORDER = ["Overview", "Nutrition", "Insights"];
 // Data-independent marker of the Insights tab's AI half.
 const INSIGHTS_MARKER = "Date to analyze";
 
@@ -47,15 +47,15 @@ async function comparePage(browser: Parameters<typeof loginAs>[0]) {
 
 // The hub's tab strip, located by the chip that is in it for every profile —
 // scoping by containment rather than by position keeps this honest if the page
-// ever grows a second tablist (the Fitness tab has a nested one).
+// ever grows a second tablist.
 function tabStrip(page: Page) {
   return page
     .getByRole("tablist")
     .filter({ has: page.getByRole("tab", { name: "Overview", exact: true }) });
 }
 
-test.describe("A — the tab strip is four chips in frequency order", () => {
-  test("renders the new order, without a Compare or Body chip", async ({
+test.describe("A — the tab strip is three chips in frequency order", () => {
+  test("renders the new order, without a Compare, Body, or Fitness chip", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -64,7 +64,7 @@ test.describe("A — the tab strip is four chips in frequency order", () => {
 
     // Neither retired tab is in the strip. `exact` is load-bearing: Playwright
     // matches accessible names by case-insensitive substring.
-    for (const gone of ["Compare", "Body"]) {
+    for (const gone of ["Compare", "Body", "Fitness"]) {
       await expect(
         page.getByRole("tab", { name: gone, exact: true })
       ).toHaveCount(0);
@@ -82,7 +82,7 @@ test.describe("A — the tab strip is four chips in frequency order", () => {
     // stable horizontal scroller instead of hiding them inside that trigger. #640
     // gave the strip that scroller and it is still here — asserted as the PROPERTY
     // (an overflow-x scroller) rather than as "there is something to scroll right
-    // now", because #2614 made the four-tab set actually FIT the column the trigger
+    // now", because #2614 made the tab set actually FIT the column the trigger
     // leaves it. A strip that needs no swipe is the better outcome, and it is what
     // the clause below has always been about.
     await expect(strip).toHaveCSS("overflow-x", "auto");
@@ -131,7 +131,7 @@ test.describe("B — Compare folded into Insights", () => {
 });
 
 test.describe("C — school-age self-history analytics stay available", () => {
-  test("a school-age minor gets Fitness and the complete Insights surface", async ({
+  test("a school-age minor gets the complete Insights surface", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
@@ -158,12 +158,6 @@ test.describe("C — school-age self-history analytics stay available", () => {
       await expect(member.getByTestId("insights-ai")).toBeVisible();
       await expect(member.getByText(INSIGHTS_MARKER)).toBeVisible();
       await expect(member.getByTestId("recap-narrative-form")).toBeVisible();
-
-      await member.goto("/trends?tab=fitness");
-      await expandTrendsContext(member);
-      await expect(
-        member.getByRole("tab", { name: "Fitness", exact: true })
-      ).toHaveAttribute("aria-selected", "true");
     } finally {
       await member.context().close();
     }

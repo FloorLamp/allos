@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   detectDataQualityGaps,
   householdDataQualityLine,
+  shortGapNoun,
+  DATA_QUALITY_GAP_KEYS,
   dataQualityDedupeKey,
   DATA_QUALITY_PREFIX,
   REPRODUCTIVE_STATUS_BAND_MIN_AGE,
@@ -488,6 +490,74 @@ describe("householdDataQualityLine", () => {
     expect(line).toContain(`${gaps.length} data gaps`);
     expect(line).toContain("birthdate");
     expect(line).toContain("sex");
+  });
+});
+
+// ---- Lay words on a lay surface (#3487 item 4) -----------------------------
+//
+// These nouns render on the household glance — "4 data gaps — RxNorm codes,
+// prescriber links, …" — which a caregiver reads about their family. RxNorm is a
+// drug-terminology standard, and naming it there is the project's regular-people rule
+// broken on the surface furthest from anyone who would recognise the word.
+//
+// The sweep is EXHAUSTIVE over DATA_QUALITY_GAP_KEYS (not over whichever keys a
+// fixture trips), and the vocabulary list below is the standards names this repo's
+// gap model actually touches — the identifier systems named in lib/data-quality.ts
+// and its detectors — rather than a general "jargon" notion no test could apply.
+const STANDARDS_VOCABULARY = [
+  "rxnorm",
+  "rxcui",
+  "loinc",
+  "snomed",
+  "icd",
+  "cvx",
+  "ndc",
+  "fhir",
+  "hl7",
+];
+
+function namesAStandard(text: string): boolean {
+  const lower = text.toLowerCase();
+  return STANDARDS_VOCABULARY.some((v) =>
+    new RegExp(`(?<![a-z])${v}(?![a-z])`).test(lower)
+  );
+}
+
+describe("shortGapNoun — no standards vocabulary on the household glance (#3487)", () => {
+  it("the check can SEE a standards name", () => {
+    // A green sweep over a complying map says nothing about what the sweep can see,
+    // so run it over the two strings this issue actually removed.
+    expect(namesAStandard("RxNorm codes")).toBe(true);
+    expect(namesAStandard("confirm the LOINC mapping")).toBe(true);
+  });
+
+  it("…and stays QUIET on the lay nouns it must not fire on", () => {
+    // A guard that cried wolf on ordinary words would be deleted within a week.
+    // "medication details" and "prescriber info" are the replacements; the rest are
+    // shipped neighbours that merely sit near the word it hunts.
+    for (const benign of [
+      "medication details",
+      "prescriber info",
+      "bio-age labs",
+      "dose amounts",
+      "risk factors",
+      "failed docs",
+    ]) {
+      expect(namesAStandard(benign), benign).toBe(false);
+    }
+  });
+
+  it("no gap's household noun names a standard", () => {
+    for (const key of DATA_QUALITY_GAP_KEYS) {
+      const noun = shortGapNoun(key);
+      expect(noun.length, key).toBeGreaterThan(0);
+      expect(namesAStandard(noun), `${key} → "${noun}"`).toBe(false);
+    }
+  });
+
+  it("the two reworded keys read as lay words", () => {
+    expect(shortGapNoun("med-rxcui")).toBe("medication details");
+    expect(shortGapNoun("prescriber-link")).toBe("prescriber info");
   });
 });
 

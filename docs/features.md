@@ -326,10 +326,10 @@ delete/end reverses that situation activation. A protocol can also reference the
 **recovery gear** it studies (which sauna / plunge, linking to its Equipment
 detail) and declare a **practice** to track — an activity type **or a food
 group** (#580, e.g. "fatty fish 2×/week" for an omega-3 protocol) × N/week —
-whose **adherence** is the same weekly-count your Weekly routine targets use (so
+whose **adherence** is the same weekly-count your Weekly targets use (so
 "sauna 4×/week" shows "2 / 4 this week"), plus a usage-during-window tally ("23
 sessions · last 3 days ago") over the protocol's dates; the practice reuses a
-matching weekly routine target if you already have one, or creates one it cleans
+matching weekly target if you already have one, or creates one it cleans
 up on delete. The experiment list adds a compact day-density heatmap bounded to
 the most recent 53 weeks while its session and active-day summary still covers
 the complete protocol window. A recently ended protocol can resume the same run;
@@ -637,7 +637,7 @@ zones, mapped-route, telemetry, and segment-data coverage, segment PR records,
 and a linked ride
 history carrying the key sensor measurements. The HR distribution is the one
 windowed card in that rollup: it covers the same twelve-week training block the
-Trends Fitness zone section uses, anchored on the activity's most recent ride
+Training → Analyze All training zone section uses, anchored on the activity's most recent ride
 rather than on today, so an activity parked for a season still shows the shape of
 its last block. The card names those weeks and their end date instead of letting
 the surrounding all-time totals imply every ride ever.
@@ -839,22 +839,18 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live in four tabs:
+Charts and analysis live in three tabs:
 
 - **Overview** is the landing surface, and answers "how am I doing" in one
-  scroll: the **"what's trending" digest**, then your **starred grid** — your own
-  cross-domain set of saved, drag-orderable tiles, the one curated area where
-  nothing appears unless you put it there — then the **body census**: vitals,
+  scroll: the conditional **"what's trending" digest**, then the **body census**:
+  saved metric cards pin to its head in saved order and can be re-sequenced there;
+  the ranked remainder follows. The census covers vitals,
   acute temperature, sleep and outdoor-time
   signals, body composition, and the shared **Log measurements** form — which
   groups its fields into **Vitals**, **Body** and **Sleep & recovery**, opening the
   one your entry point implies (and the one a deep link names) with the rest a tap
   away. A **Data check** card catches probable weight-entry errors before they skew
   charts.
-- **Fitness** combines the workout-density heatmap, strength/cardio/sport
-  progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
-  use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
-  max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
 - **Insights** combines comparison tools with daily analysis and weekly/monthly
   recap narratives.
@@ -865,13 +861,13 @@ the same completed-week verdicts, cadence band, consistency rate, and optional
 session-length trend beside logging, editing, and session history. The retired
 `/trends#practices` fragment has no shim.
 
-The body census **streams in below** the digest and starred grid, so the landing
-surface paints as fast as it did when Body was its own tab. Links that used to
+The body census **streams in below** the digest, so the landing surface paints as
+fast as it did when Body was its own tab. Links that used to
 target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
-lands on the Overview surface that carries the census. The three remaining tabs
-are permanent — the deliberate asymmetry is the design: the landing surface
-answers "how am I doing", the tabs answer "how is my training or nutrition
-specifically".
+lands on the Overview surface that carries the census. Fitness analytics live in
+**Training → Analyze**; old Fitness and `ftab` links redirect there. The Trends
+landing surface answers "how am I doing", while Nutrition and Insights hold the
+remaining focused lenses.
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
@@ -917,13 +913,15 @@ honestly empty rather than showing today's number under an average's label. The
 Steps-today card declines the fallback — its question is today versus prior days,
 and today cannot be its own baseline.
 
-### The Overview surface: starred grid and body census
+### The Overview surface: one body census
 
-The starred grid answers two questions: **what you saved** and **what changed**.
-Tiles
-lead with the latest reading and its age, distinguish current value from trend,
-and can be pinned and reordered. The mobile layout uses compact cards; the
-overflow menu owns secondary controls instead of crowding the chart.
+The movers digest answers **what changed**. The census answers **what is tracked**:
+each metric appears once, with saved cards pinned at the head. A pinned tile's
+overflow menu owns unstar and arrow fallback controls; drag reorders that same
+saved run. The final dashed cell is **+ Add tile** and pins a metric without
+entering the ranked card list itself. In the desktop full-chart view there is no
+tile flow, so the picker is omitted; each chart still opens the metric page whose
+star owns pinning.
 
 The census is organized into Vitals, acute temperature, sun/outdoor time, composition,
 and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
@@ -945,12 +943,19 @@ are branched by sex _and by population_ (≥94 cm for European men against ≥90
 for South Asian ones), and judging every profile against one population's
 threshold would be worse than showing the trend and saying nothing.
 
-The star is the **one arrangement gesture** across both halves of the surface —
-which is why they are one surface. Starring a body metric — on its own page, which
-every card opens — is the same save as starring a grid tile, and starred cards
-lead the census in the order the grid holds them, so pinned cards are re-sequenced
-by dragging them (or using their overflow arrows) in the grid one scroll above.
-There is no second reorder surface in the census.
+The star is the **one arrangement gesture**. Starring a body metric on its own
+page — which every card opens — pins that same card at the census head. Pinned
+cards are re-sequenced by dragging them or using their overflow arrows in place.
+Unstarring removes the pin, not the metric from the census. A selected window with
+no readings does not pull a pin out of the run; its detail-page star remains the
+way to remove it.
+
+Clinical-result saves no longer render a second copy on Trends. Their star still
+controls the Results status card and profile passport, where those readings belong.
+The retired `/trends#starred` fragment resolves to the Body census so saved links
+do not dangle. The retired Today snapshot is also gone: Standing owns the current
+instrument cluster, census tiles carry their latest value, and **View today on
+Timeline** remains at the Body section head.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has
@@ -963,17 +968,21 @@ growth-tracked profile still leads with its percentile card whatever is starred:
 which cards exist for an age, and the pediatric lead, are membership decisions
 that the star does not override.
 
-### Fitness and Nutrition
+### Training analysis and Nutrition
 
-Fitness separates:
+**Training → Analyze** defaults to **All training** under its 12w / 6m / 1y /
+All control. Workout history leads with the cross-activity calendar and matrix.
+**Zones & cardio** follows only when that window contains workout-scoped HR-zone
+data; no empty zone section is reserved. Choosing an exercise or activity drills
+into its existing progression view, and **All training** remains in the picker as
+the way back.
 
-- **Volume & cadence** for workout density and weekly volume;
-- **Zones & cardio** for heart-rate-zone minutes, Zone 2, pace, and endurance;
-- **Strength progression** for exercise history and estimated 1RM — a lift's
-  variants count as one, while each piece of registry equipment is its own
-  labeled progression;
-- **Sport** for repeated sport/activity series;
-- **PRs this window**, linked to the underlying sessions.
+The former Trends Fitness volume/cadence, aggregate strength, sport-summary, and
+window-PR charts are retired, deliberately reversing #1492. Muscle-coverage bands
+answer the volume question with a judgment; per-exercise Analyze charts answer
+strength progression; the entity picker reaches sport summaries; and Training
+Overview plus the full Training lists own PRs. Their underlying computations are
+unchanged for other consumers.
 
 A **cardio** record is held to what its own measurement can evidence. Each kind
 is judged against the sessions carrying THAT measurement — a distance record
@@ -988,10 +997,9 @@ beat the previous best by more than the measurement's own error — GPS distance
 elapsed duration and derived speed each declare their own floor — so two walks
 three metres apart are noise, not two personal bests.
 
-Deeper analysis and benchmark ladders remain under **Training → Analyze**, where
+Per-entity analysis and benchmark ladders remain under **Training → Analyze**, where
 a lift logged on more than one machine keeps a single entry and offers its
-machines as labeled choices, defaulting to the one used most recently. Trends
-shows change over time rather than duplicating the coaching workspace.
+machines as labeled choices, defaulting to the one used most recently.
 
 Nutrition shows macros and fiber, food-group frequency, goal adherence, and
 intake history over the selected range. Clinical results stay under **Medical →

@@ -18,6 +18,7 @@ import path from "node:path";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import type { ExtractionResult } from "@/lib/medical-extract";
@@ -124,8 +125,14 @@ export { MAX_AI_BYTES, MAX_HEALTH_BYTES } from "@/lib/upload-gate";
 // isRealIsoDate checks calendar validity too, not just the shape.
 const isIsoDate = isRealIsoDate;
 
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : "unknown error";
+// `medical_documents.extraction_error` is rendered on the documents list, so every
+// write to it carries HOUSE COPY and the raw cause goes to the `log.error` beside it
+// (#3198). These used to read `Extraction crashed: <whatever was thrown>` and
+// `Could not read stored file: <SQLite or errno>` — sentences minted by code that
+// never considered a reader, and in three cases carrying a banned error verb too
+// (copy.md rule 1).
+function docError(err: unknown, doing: string): string {
+  return userErrorCopy(err, { doing });
 }
 
 // Surfaced (as the document's extraction_error) when the profile's daily AI
@@ -204,7 +211,7 @@ function dispatchExtraction(
         });
         db.prepare(
           "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-        ).run(`Could not read stored file: ${errMsg(err)}`, docId, profileId);
+        ).run(docError(err, "read the stored file"), docId, profileId);
         // Charged but nothing extracted — hand the unit back (#135 item 3).
         if (charged) refundAiUsage(profileId, "extraction");
         return;
@@ -234,7 +241,7 @@ function dispatchExtraction(
     log.error("extraction dispatch rejected unexpectedly", { docId, err });
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-    ).run(`Extraction dispatch failed: ${errMsg(err)}`, docId, profileId);
+    ).run(docError(err, "start this extraction"), docId, profileId);
     if (charged) refundAiUsage(profileId, "extraction");
   });
 }
@@ -685,7 +692,7 @@ export async function ingestMedicalUpload(
     });
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-    ).run(`Could not save file: ${errMsg(err)}`, docId, profileId);
+    ).run(docError(err, "save this file"), docId, profileId);
     revalidateRoute("/data");
     return landed(docId, contentHash, restored);
   }
@@ -744,7 +751,7 @@ function runHealthImport(
     } catch (err) {
       db.prepare(
         "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-      ).run(`Import crashed: ${errMsg(err)}`, docId, profileId);
+      ).run(docError(err, "import this document"), docId, profileId);
     }
     try {
       after();
@@ -837,9 +844,14 @@ function failCrashed(
   err: unknown
 ): "failed" {
   log.error("import/runner crashed", { docId, filename, err });
+  // `extraction_error` is rendered on the documents list, so it carries house copy
+  // and the raw cause stays in the log above (#3198). This is the sink
+  // lib/import-persist.ts's footprint-clear failure lands in — a thrown
+  // `Clearing imported <table> rows for document <id> failed: <SQLite>` that used
+  // to be shown to a person verbatim, table name and all.
   db.prepare(
     "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-  ).run(`Extraction crashed: ${errMsg(err)}`, docId, profileId);
+  ).run(userErrorCopy(err, { doing: "read this document" }), docId, profileId);
   if (charged) refundAiUsage(profileId, "extraction");
   return "failed";
 }
@@ -1453,7 +1465,7 @@ export async function reprocessFromRawById(
   } catch (err) {
     log.error("raw reprocess: saved extraction is not valid JSON", { id, err });
     return fail(
-      `Saved extraction is not valid JSON: ${errMsg(err)}`,
+      docError(err, "read the saved extraction"),
       "The saved extraction could not be parsed — re-extract this document."
     );
   }
@@ -1497,7 +1509,7 @@ export async function reprocessFromRawById(
     // Never charged (no model call), so nothing to refund — just leave the row in a
     // terminal state with the reason on it.
     return fail(
-      `Re-import from the saved extraction crashed: ${errMsg(err)}`,
+      docError(err, "re-import from the saved extraction"),
       "Re-import from the saved extraction failed — see the document."
     );
   }
@@ -1557,7 +1569,7 @@ async function extractPersistInputForPreview(
         ),
       };
     } catch (err) {
-      return { skip: `Could not parse the file: ${errMsg(err)}` };
+      return { skip: docError(err, "read that file") };
     }
   }
 

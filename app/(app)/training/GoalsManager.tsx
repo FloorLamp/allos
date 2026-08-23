@@ -185,16 +185,16 @@ export default function GoalsManager({
                       ) : null}
                     </div>
                     {isExercise ? (
-                      <span className="text-xs text-brand-600 dark:text-brand-400">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                         {goalTargetText(g, wu)}
                       </span>
                     ) : isBody ? (
-                      <span className="text-xs text-brand-600 dark:text-brand-400">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                         {goalBodyTargetText(g, wu)}
                       </span>
                     ) : isBio ? (
                       <span
-                        className="text-xs text-brand-600 dark:text-brand-400"
+                        className="text-xs font-medium text-slate-500 dark:text-slate-400"
                         data-testid="goal-biomarker-target"
                       >
                         {biomarkerGoalTargetText(g)}

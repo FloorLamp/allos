@@ -60,10 +60,10 @@ test.describe("mobile clipping batch (#2614)", () => {
     const strip = page.getByTestId("trends-tabs");
     await expect(strip).toBeVisible();
 
-    // The four-tab set fits the column the range trigger leaves it. #640 gave this
+    // The three-tab set fits the column the range trigger leaves it. #640 gave this
     // strip its own `overflow-x-auto` and that fix is intact — but a scroller is
     // the fallback, not the answer: "Insights" used to sit past the edge on first
-    // paint with no affordance, so a whole tab of four read as absent.
+    // paint with no affordance, so a whole tab read as absent.
     expect(await scrollableBy(strip)).toBeLessThanOrEqual(1);
     const insights = strip.getByRole("tab", { name: "Insights" });
     await expect(insights).toBeVisible();
@@ -81,7 +81,7 @@ test.describe("mobile clipping batch (#2614)", () => {
   }) => {
     // The affordance is the fallback for a strip a shorter viewport cannot hold —
     // the same mask ScrollFade paints on the range pills one row down (#1485 D).
-    // Narrow the viewport until the four tabs genuinely cannot fit, and the strip
+    // Narrow the viewport until the three tabs genuinely cannot fit, and the strip
     // must declare its scrollable edge rather than simply cutting off.
     await page.setViewportSize({ width: 280, height: 844 });
     await page.goto("/trends");

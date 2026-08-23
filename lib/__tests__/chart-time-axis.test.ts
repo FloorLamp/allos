@@ -87,3 +87,67 @@ describe("formatTimeTick", () => {
     expect(formatTimeTick(dateToEpoch("2021-06-15"), true)).toBe("2021-06");
   });
 });
+
+describe("an axis never prints the same label twice (#3497 item 1)", () => {
+  // The rendering the phone review met, on an ApoB-class analyte: a two-day span
+  // subdivided into six evenly-spaced positions, which is three distinct days and
+  // six ticks — "07-09 · 07-09 · 07-09 · 07-10 · 07-10 · 07-11".
+  const twoDays = timeAxisDomain(["2026-07-09", "2026-07-11"])!;
+
+  it("a sub-week span emits one tick per day it can name", () => {
+    const ticks = timeAxisTicks(twoDays);
+    const labels = ticks.map((t) => formatTimeTick(t, false));
+    expect(labels).toEqual(["07-09", "07-10", "07-11"]);
+  });
+
+  it("the surviving ticks are the ORIGINAL positions, not re-spaced ones", () => {
+    // The dedupe drops duplicates; it must not redistribute what is left, or the
+    // ticks stop being time-proportional and the numeric axis loses its reason to
+    // exist (#402).
+    const [min, max] = twoDays;
+    const evenly = [0, 1, 2, 3, 4, 5].map((i) =>
+      Math.round(min + ((max - min) * i) / 5)
+    );
+    for (const t of timeAxisTicks(twoDays)) expect(evenly).toContain(t);
+  });
+
+  it("the endpoints are still the first and last labels", () => {
+    const ticks = timeAxisTicks(twoDays);
+    expect(ticks[0]).toBe(twoDays[0]);
+    expect(formatTimeTick(ticks[ticks.length - 1], false)).toBe("07-11");
+  });
+
+  it("a span with room for every tick is untouched", () => {
+    // The guard has to stay QUIET on the ordinary case, or it would be silently
+    // thinning axes that were fine.
+    const wide = timeAxisDomain(["2026-01-01", "2026-06-30"])!;
+    expect(timeAxisTicks(wide)).toHaveLength(6);
+  });
+
+  it("a multi-year domain dedupes on the MONTH label it actually prints", () => {
+    // Across years the label is "YYYY-MM", so the collision to avoid is two ticks
+    // inside one month — a different vocabulary, and the reason the dedupe asks
+    // the formatter rather than comparing days.
+    const twoMonths = timeAxisDomain(["2025-12-20", "2026-01-10"])!;
+    const labels = timeAxisTicks(twoMonths).map((t) => formatTimeTick(t, true));
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).toEqual(["2025-12", "2026-01"]);
+  });
+
+  it("no domain this module can build produces a repeated label", () => {
+    // Stated as the rule rather than as cases: every span from one day to five
+    // years, at both tick vocabularies.
+    for (const days of [1, 2, 3, 4, 5, 6, 7, 13, 29, 31, 90, 365, 1825]) {
+      const start = new Date(Date.UTC(2024, 0, 1) + days * 86_400_000);
+      const domain = timeAxisDomain([
+        "2024-01-01",
+        start.toISOString().slice(0, 10),
+      ])!;
+      const withYear = spansYearBoundary(domain);
+      const labels = timeAxisTicks(domain).map((t) =>
+        formatTimeTick(t, withYear)
+      );
+      expect(new Set(labels).size, `${days}d span`).toBe(labels.length);
+    }
+  });
+});

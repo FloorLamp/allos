@@ -326,9 +326,17 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+// The minimum number of COMPLETED cycles any length claim needs. Below it there is one
+// interval (or none), and a spread, a mean and a min/max over one sample are the same
+// number wearing four labels — which is what put "Variability 0 d" on a one-cycle profile
+// (#3482). `cycleStats` leaves `insufficient` below this, and the Cycle page's length
+// tiles render only at or above it; FORECAST_MIN_CYCLES is this same number, deliberately.
+export const CYCLE_STATS_MIN_SAMPLES = 3;
+
 // The "is it regular / changing" read over the most recent completed cycles. `insufficient`
-// until there are at least 3 length samples; then `regular` when the spread (max − min) is
-// within CYCLE_REGULARITY_VARIATION_DAYS, else `irregular`. Informational, not a diagnosis.
+// until there are at least CYCLE_STATS_MIN_SAMPLES length samples; then `regular` when the
+// spread (max − min) is within CYCLE_REGULARITY_VARIATION_DAYS, else `irregular`.
+// Informational, not a diagnosis.
 export function cycleStats(
   periods: CyclePeriod[],
   window = CYCLE_STATS_WINDOW
@@ -355,7 +363,7 @@ export function cycleStats(
     n % 2 === 1 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
   const variability = max - min;
   const regularity: CycleRegularity =
-    n < 3
+    n < CYCLE_STATS_MIN_SAMPLES
       ? "insufficient"
       : variability <= CYCLE_REGULARITY_VARIATION_DAYS
         ? "regular"
@@ -377,10 +385,11 @@ export function cycleStats(
 // history cycleStats() already reads (#221: one question, one computation) — no new
 // inputs, no model the evidence can't carry.
 
-// The minimum number of COMPLETED cycles a forecast needs. Identical to the threshold
-// cycleStats() uses to leave `insufficient`, deliberately: the regularity verdict and the
-// forecast must never disagree about whether the history can carry a claim.
-export const FORECAST_MIN_CYCLES = 3;
+// The minimum number of COMPLETED cycles a forecast needs. THE SAME CONSTANT the
+// regularity verdict and the length tiles use, not a copy of its value: the forecast, the
+// regularity line and the Cycle length grid must never disagree about whether the history
+// can carry a claim (#3482 made the tiles the third tenant of that one threshold).
+export const FORECAST_MIN_CYCLES = CYCLE_STATS_MIN_SAMPLES;
 
 // The NARROWEST half-width a forecast window may have, in days (so the tightest possible
 // regular history still reads "±2 days", never a bare date). A range is the unit of the

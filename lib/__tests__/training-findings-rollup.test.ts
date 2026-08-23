@@ -62,7 +62,7 @@ describe("rollupTrainingFindings", () => {
     expect(row.group.title).toBe("5 muscle groups under weekly target");
     // Engine order is preserved (largest shortfall first) and the summary names the
     // first three, then counts the rest.
-    expect(row.group.detail).toBe("Chest, Quads, Calves and 2 more");
+    expect(row.group.detail).toBe("Chest · Quads · Calves and 2 more");
   });
 
   it("singularizes a lone muscle shortfall", () => {
@@ -189,12 +189,12 @@ describe("rollupTrainingFindings", () => {
 describe("summarizeMuscleNames", () => {
   it("lists up to the limit then counts the rest", () => {
     expect(summarizeMuscleNames(["Chest"])).toBe("Chest");
-    expect(summarizeMuscleNames(["Chest", "Quads"])).toBe("Chest, Quads");
+    expect(summarizeMuscleNames(["Chest", "Quads"])).toBe("Chest · Quads");
     expect(summarizeMuscleNames(["Chest", "Quads", "Calves"])).toBe(
-      "Chest, Quads, Calves"
+      "Chest · Quads · Calves"
     );
     expect(summarizeMuscleNames(["Chest", "Quads", "Calves", "Abs"])).toBe(
-      "Chest, Quads, Calves and 1 more"
+      "Chest · Quads · Calves and 1 more"
     );
   });
 

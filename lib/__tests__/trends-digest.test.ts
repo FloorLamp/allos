@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  DIGEST_DISPERSION_MULTIPLIER,
+  DIGEST_SLOPE_DISPERSION_MULTIPLIER,
+  DIGEST_SLOPE_RATIO,
   summarizeTrends,
   robustSeriesSummary,
   type DigestSeries,
 } from "../trends-digest";
+import { clinicalResultBecameNotable } from "../dashboard-reading-promotions";
 import * as trends from "../trends";
 
 // Two points 10 days apart, so `days` is a predictable 10 in the labels.
@@ -58,7 +62,9 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
     expect(item.direction).toBe("down");
     expect(item.days).toBe(10);
     // (60-64)/64 = -6.25% → rounds to 6%
-    expect(item.text).toBe("Resting HR ↓ 6% over 10d");
+    expect(item.text).toBe(
+      "Resting HR ↓ 6% — larger than its recent variation"
+    );
   });
 
   it("labels an upward percentage move", () => {
@@ -66,7 +72,7 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
       series("weight", 80, 88, { label: "Weight" }),
     ]);
     expect(item.direction).toBe("up");
-    expect(item.text).toBe("Weight ↑ 10% over 10d");
+    expect(item.text).toBe("Weight ↑ 10% — larger than its recent variation");
   });
 
   it("uses an absolute-change label when the first value is 0", () => {
@@ -74,7 +80,9 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
       series("volume", 0, 1500, { label: "Volume", unit: " kg" }),
     ]);
     expect(item.pctChange).toBeNull();
-    expect(item.text).toBe("Volume ↑ 1500 kg over 10d");
+    expect(item.text).toBe(
+      "Volume ↑ 1500 kg — larger than its recent variation"
+    );
   });
 });
 
@@ -90,7 +98,7 @@ describe("summarizeTrends — reference-range crossings", () => {
     ]);
     expect(item.rangeShift).toBe("out-of-range");
     expect(item.lastStatus).toBe("above");
-    expect(item.text).toBe("LDL ↑ 2% over 10d — into high range");
+    expect(item.text).toBe("LDL ↑ 2% — into high range");
   });
 
   it("flags a move that goes below range", () => {
@@ -144,7 +152,7 @@ describe("summarizeTrends — reference-range crossings", () => {
     ]);
     // Both endpoints above range — only magnitude, no range annotation.
     expect(item.rangeShift).toBeNull();
-    expect(item.text).toBe("LDL ↑ 18% over 10d");
+    expect(item.text).toBe("LDL ↑ 18% — larger than its recent variation");
   });
 
   it("does NOT flag a move that stays out on the same side (both below)", () => {
@@ -250,13 +258,164 @@ describe("summarizeTrends — robust endpoints (#37)", () => {
     expect(item.days).toBe(5);
   });
 
-  it("keeps exact first-vs-last behavior for a 3-point series (k=1)", () => {
+  it("keeps exact first-vs-last summary behavior for a 3-point series (k=1)", () => {
     // floor(3/2)=1 → robust endpoints are the raw first/last points, mid ignored.
+    const summary = robustSeriesSummary(
+      valueSeries("weight", [80, 999, 88], { label: "Weight" })
+    );
+    expect(summary?.first).toBe(80);
+    expect(summary?.last).toBe(88);
+  });
+});
+
+describe("summarizeTrends — news admission (#3389)", () => {
+  it("states the named robust thresholds", () => {
+    expect(DIGEST_DISPERSION_MULTIPLIER).toBe(4);
+    expect(DIGEST_SLOPE_RATIO).toBe(2);
+    expect(DIGEST_SLOPE_DISPERSION_MULTIPLIER).toBe(2);
+  });
+
+  it("rejects wandering inside dispersion but admits sustained step changes in both directions", () => {
+    const wandering = valueSeries("wandering", [100, 112, 94, 108, 96, 106]);
+    const steppedUp = valueSeries("up", [100, 102, 98, 112, 114, 110]);
+    const steppedDown = valueSeries("down", [112, 114, 110, 100, 102, 98]);
+
+    expect(robustSeriesSummary(wandering)?.material).toBe(true);
+    expect(summarizeTrends([wandering])).toEqual([]);
+    expect(summarizeTrends([steppedUp])[0]).toMatchObject({
+      direction: "up",
+      admissionReason: "dispersion-shift",
+    });
+    expect(summarizeTrends([steppedDown])[0]).toMatchObject({
+      direction: "down",
+      admissionReason: "dispersion-shift",
+    });
+  });
+
+  it.each([4, 5, 6, 7, 8, 9, 10, 12])(
+    "rejects a steady slope at %i points even when its endpoint move is material",
+    (count) => {
+      const steady = valueSeries(
+        `steady-${count}`,
+        Array.from({ length: count }, (_, i) => 100 + i * 2),
+        { minPctChange: 0.01 }
+      );
+      expect(robustSeriesSummary(steady)?.material).toBe(true);
+      expect(summarizeTrends([steady])).toEqual([]);
+    }
+  );
+
+  it("admits a within-window sign flip and names the changed behavior", () => {
+    const flipped = valueSeries(
+      "weight",
+      [100, 106, 112, 118, 120, 114, 108, 102],
+      { label: "Weight", minPctChange: 0.01 }
+    );
+    const [item] = summarizeTrends([flipped]);
+    expect(item.admissionReason).toBe("behavior-change");
+    expect(item.text).toBe("Weight changed direction within this range");
+    expect(item.text).not.toContain("over 7d");
+  });
+
+  it("admits a material slope-magnitude change and names the rate change", () => {
+    const accelerated = valueSeries(
+      "weight",
+      [100, 102, 104, 106, 108, 114, 120, 126],
+      { label: "Weight" }
+    );
+    const [item] = summarizeTrends([accelerated]);
+    expect(item.admissionReason).toBe("behavior-change");
+    expect(item.text).toBe("Weight's rate of change shifted within this range");
+    expect(item.text).not.toContain("over 7d");
+  });
+
+  it("never admits a direction that contradicts the shared robust summary", () => {
+    const candidates = [
+      valueSeries("up-step", [100, 102, 98, 112, 114, 110]),
+      valueSeries("down-step", [112, 114, 110, 100, 102, 98]),
+      valueSeries("flip", [100, 106, 112, 118, 120, 114, 108, 102], {
+        minPctChange: 0.01,
+      }),
+      valueSeries("pace", [100, 102, 104, 106, 108, 114, 120, 126]),
+    ];
+
+    for (const candidate of candidates) {
+      const [item] = summarizeTrends([candidate]);
+      const summary = robustSeriesSummary(candidate);
+      expect(item.direction).toBe(summary?.direction);
+    }
+  });
+});
+
+describe("summarizeTrends — stored notability verdict (#3389)", () => {
+  it.each([
+    ["non-optimal", "non-optimal"],
+    ["reported-high", "above reported range"],
+  ])(
+    "uses the shared notable transition for %s even while plain bounds say in-range",
+    (lastFlag, label) => {
+      const flagged = series("result:Example", 90, 92, {
+        label: "Example",
+        range: { low: 0, high: 100 },
+        endpointFlags: { first: "normal", last: lastFlag },
+      });
+      const [item] = summarizeTrends([flagged]);
+
+      expect(
+        clinicalResultBecameNotable(lastFlag, "normal"),
+        "dashboard promotion and digest must share NOTABLE-tier membership"
+      ).toBe(true);
+      expect(item.rangeShift).toBe("out-of-range");
+      expect(item.admissionReason).toBe("range-crossing");
+      expect(item.storedFlagTone).toBe("warn");
+      expect(item.text).toContain(label);
+    }
+  );
+
+  it.each(["non-optimal", "reported-high"])(
+    "admits an equal-value normal→%s transition without inventing a direction",
+    (lastFlag) => {
+      const unchanged = series("result:Example", 90, 90, {
+        label: "Example",
+        endpointFlags: { first: "normal", last: lastFlag },
+      });
+      const [item] = summarizeTrends([unchanged]);
+
+      expect(robustSeriesSummary(unchanged)?.direction).toBe("flat");
+      expect(item).toMatchObject({
+        direction: "flat",
+        rangeShift: "out-of-range",
+        admissionReason: "range-crossing",
+        storedFlagTone: "warn",
+      });
+      expect(item.text).not.toMatch(/[↑↓]/);
+    }
+  );
+
+  it("keeps an app out-of-range stored transition in the bad tone tier", () => {
     const [item] = summarizeTrends([
-      valueSeries("weight", [80, 999, 88], { label: "Weight" }),
+      series("result:Example", 90, 110, {
+        endpointFlags: { first: "normal", last: "high" },
+      }),
     ]);
-    expect(item.first).toBe(80);
-    expect(item.last).toBe(88);
+    expect(item.storedFlagTone).toBe("bad");
+  });
+
+  it("does not invent a crossing from plain bounds when stored flags stay non-notable", () => {
+    const normal = series("result:Example", 90, 110, {
+      range: { low: 0, high: 100 },
+      endpointFlags: { first: "normal", last: "normal" },
+    });
+    expect(clinicalResultBecameNotable("normal", "normal")).toBe(false);
+    expect(summarizeTrends([normal])[0]?.rangeShift).toBeNull();
+  });
+
+  it("keeps plain-bound crossings when neither endpoint carries a stored flag", () => {
+    const unflagged = series("result:Example", 90, 110, {
+      range: { low: 0, high: 100 },
+      endpointFlags: { first: null, last: null },
+    });
+    expect(summarizeTrends([unflagged])[0]?.rangeShift).toBe("out-of-range");
   });
 });
 

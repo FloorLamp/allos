@@ -14,10 +14,9 @@
 
 import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
-process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), "allos-ai-clear-")));
+process.chdir(makeTmpDir("ai-clear"));
 process.env.LOG_LEVEL = "error"; // silence the stdout echo of each event
 
 const { revalidatePath } = await import("next/cache");

@@ -4,6 +4,7 @@ import {
   jobLogStatus,
   statusBadge,
   documentFormatLabel,
+  documentSourceLabel,
   jobTitle,
   jobFormatLabel,
   isProvenanceMismatch,
@@ -53,6 +54,34 @@ describe("statusBadge", () => {
   });
 });
 
+// #3493 item 1: the Provenance card rendered `source` verbatim, so a person read
+// "Source: ccda" — the health-record parser's own internal key — on a page whose whole
+// job is telling them where a record came from.
+describe("documentSourceLabel", () => {
+  it("names every source key the health-record parser writes", () => {
+    // The set is lib/health-record-parse.ts's own returns. If a fourth key is added
+    // there and not here it falls through to the raw fallback, which is the safe
+    // direction (an ugly label, never a wrong one) — but this list is where it goes.
+    expect(documentSourceLabel("ccda")).toBe("C-CDA document");
+    expect(documentSourceLabel("fhir")).toBe("FHIR bundle");
+    expect(documentSourceLabel("smart-health-card")).toBe("SMART Health Card");
+  });
+
+  it("passes an UNMAPPED source through untouched — it is somebody's real name", () => {
+    // The AI extractor writes the issuer the document named. A formatter would
+    // title-case or otherwise "improve" these; a map with a raw fallback cannot.
+    expect(documentSourceLabel("Quest")).toBe("Quest");
+    expect(documentSourceLabel("LabCorp")).toBe("LabCorp");
+    expect(documentSourceLabel("  Mayo Clinic Laboratories  ")).toBe(
+      "Mayo Clinic Laboratories"
+    );
+  });
+
+  it("matches the key case-insensitively", () => {
+    expect(documentSourceLabel("CCDA")).toBe("C-CDA document");
+  });
+});
+
 describe("documentFormatLabel", () => {
   it("prefers doc_type", () => {
     expect(
@@ -63,6 +92,18 @@ describe("documentFormatLabel", () => {
       })
     ).toBe("lab");
   });
+  it("routes the source fallback through the label map (#3493)", () => {
+    // The branch that used to put "ccda" under "Detected format" and in the import
+    // page's own subtitle.
+    expect(
+      documentFormatLabel({
+        doc_type: null,
+        source: "ccda",
+        filename: "ccd.xml",
+      })
+    ).toBe("C-CDA document");
+  });
+
   it("falls back to source, then extension, then generic", () => {
     expect(
       documentFormatLabel({

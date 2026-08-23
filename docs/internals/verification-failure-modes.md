@@ -182,6 +182,17 @@ not at all five by rote.
   boundary worth naming — a number with one home can be inherited; a number
   spelled out in fourteen consumers can only be re-agreed.
 
+- **A measurement can read a REAL box and still not be reading the box the
+  question is about.** "Measure rendered geometry, not computed styles" is the
+  rule (#3466, #3529), and it is not sufficient: #3390's chrome baseline read
+  `getBoundingClientRect()` on the content container and reported every page
+  gutter as 0 on all ten surfaces, because this shell's gutters are PADDING and
+  the border box spans `<main>` edge to edge. The reading was rendered, real, and
+  about the wrong rectangle — and 0 is plausible enough to commit. The tell is a
+  landmark that comes back uniform across surfaces that do not look alike. Say
+  which box a number is a number OF (border, padding, content) the way #3391 made
+  a bound say what it bounds, and the wrong one is visible while you write it.
+
 ## Verification hygiene
 
 These are not review taste; each retired a green that meant nothing.

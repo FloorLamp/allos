@@ -62,16 +62,6 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-4">
-        <div>
-          <AddEntryPanel
-            testId="add-imaging-panel"
-            panelId="add-imaging-panel-body"
-            label="Add imaging study"
-            presentation="modal"
-          >
-            <ImagingStudyForm action={addImagingStudy} />
-          </AddEntryPanel>
-        </div>
         <CreateVisitFromRecord
           profileId={profileId}
           offers={createVisitOffersList}
@@ -81,12 +71,27 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
           pediatric={pediatric}
           fmt={getDisplayFormatPrefs(scope.loginId)}
         />
+        {/* The create action joins the list's own filter toolbar (#3486's grammar,
+            #3498 item 4). It used to be a lone left-aligned primary on its own row
+            ABOVE the dose card, so the tab opened with a button instead of with the
+            thing the tab is about. The form and its Server Action stay here; only
+            the mount position moved. */}
         <ImagingStudyList
           items={studies}
           followUps={followUps}
           encounters={encounters}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+          action={
+            <AddEntryPanel
+              testId="add-imaging-panel"
+              panelId="add-imaging-panel-body"
+              label="Add imaging study"
+              presentation="modal"
+            >
+              <ImagingStudyForm action={addImagingStudy} />
+            </AddEntryPanel>
           }
         />
       </div>

@@ -92,7 +92,7 @@ function gatherInsightContext(
       ).map((pr) => cardioPrToFinding(pr, units.distanceUnit))
     : [];
 
-  // "What's trending" digest over the trailing 90-day window, adapted to findings.
+  // News-grade Trends digest over the trailing 90-day window, adapted to findings.
   // By LABEL, not index — #1938 grew the shared set to four pills, and this read
   // must keep meaning "the 90D window" whatever the row's length.
   const range = quickRanges(date).find((qr) => qr.label === "90D")!;

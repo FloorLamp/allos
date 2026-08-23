@@ -44,6 +44,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import {
   DOMAIN_LABELS,
+  decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
   planLabelRemovals,
@@ -231,28 +232,28 @@ if (PLAN_FILE !== null) {
   >;
   for (const [key, adds] of Object.entries(plan)) {
     const number = Number(key);
-    const current = readIssue(number);
+    // What THIS RUN has already decided to give this issue. A plan file may list
+    // two domains for one issue, and both the re-read below (under --apply) and
+    // this list (under a dry run) have to see the first one before judging the
+    // second — otherwise the second passes the gap check the first just closed
+    // and the issue ends up double-classified with nothing logged (#3122).
+    const addedHere: string[] = [];
     for (const add of adds) {
-      if (!(DOMAIN_LABELS as readonly string[]).includes(add.label)) {
+      // RE-READ IMMEDIATELY BEFORE EACH WRITE, which is what the retired-label
+      // and priority paths in this file already do and what its header promises.
+      // The evidence may be hours old, the tracker moves hourly, and a label
+      // fixed by hand between two writes of the same run must refuse rather than
+      // be written over.
+      const current = readIssue(number);
+      const decision = decideDomainAdd(current, add.label, addedHere);
+      if (!decision.ok) {
         no(
-          `#${number} +${add.label}: REFUSED (not-a-domain) — only a domain label may be added`
-        );
-        continue;
-      }
-      if (current.state !== "open") {
-        no(`#${number} +${add.label}: REFUSED (issue-closed)`);
-        continue;
-      }
-      const has = current.labels.filter((l) =>
-        (DOMAIN_LABELS as readonly string[]).includes(l)
-      );
-      if (has.length > 0) {
-        no(
-          `#${number} +${add.label}: REFUSED (already-classified) — carries ${has.join(", ")}; re-classifying is not this routine's call`
+          `#${number} +${add.label}: REFUSED (${decision.refusal}) — ${decision.detail}`
         );
         continue;
       }
       if (APPLY) addLabels(number, [add.label]);
+      addedHere.push(add.label);
       ok(`#${number} +${add.label}: ok — ${add.reason}`);
     }
   }

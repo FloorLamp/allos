@@ -736,10 +736,9 @@ export function seedIntradayPanel(): void {
 // ── Trends -> Vitals today/1D ──
 export function seedVitalsToday(): void {
   // ── Trends → Vitals today/1D fixture (issue #1466) ───────────────────────────
-  // The Vitals tab's TODAY layer: a Today strip (latest reading per vital, with its
-  // clock time) and a 1D window that swaps the windowed daily charts for intraday
-  // ones. A dedicated profile so the day is deterministic without perturbing profile
-  // 1 (whose hr_minutes exist ONLY inside the zone-ride window training-zones.spec
+  // The retired Vitals Today layer plus the surviving 1D intraday view. A dedicated
+  // profile makes its timed readings deterministic without perturbing profile 1
+  // (whose hr_minutes exist ONLY inside the zone-ride window training-zones.spec
   // pins, and whose vitals other specs count).
   //
   // The day carries every shape the surface distinguishes:
@@ -846,9 +845,8 @@ export function seedVitalsToday(): void {
       utcInstant(zonedWallTimeToUtc(vdTz, vdToday, VITALS_DAY_TEMP_TIME)!)
     );
 
-    // Day-granular body/composition aggregates: values without times. These make
-    // the Body → Today card prove that composition is included while the seeded
-    // oxygen readings above are deliberately excluded from that concise card.
+    // Day-granular body/composition aggregates: values without times. These keep
+    // the Body census populated while the timed rows above exercise 1D charts.
     db.prepare(
       `INSERT INTO body_metrics
        (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)

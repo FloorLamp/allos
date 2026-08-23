@@ -970,7 +970,7 @@ const ON_TRACK: Recommendation = {
   kind: "ontrack",
   title: "You're on track",
   detail:
-    "You've hit your weekly routine — an easy session or a rest day are both fine.",
+    "You've hit your weekly targets — an easy session or a rest day are both fine.",
   tone: "positive",
 };
 
@@ -979,7 +979,7 @@ const EMPTY_STATE: Recommendation = {
   kind: "setup",
   title: "Start tracking to get coaching",
   detail:
-    "Log an activity or set a weekly routine and you'll get a focused suggestion here each day.",
+    "Log an activity or set a weekly target and you'll get a focused suggestion here each day.",
   tone: "neutral",
   actionHref: "/training",
   actionLabel: "Log activity",
@@ -1001,9 +1001,8 @@ export function intensityRecommendation(
     title: "Ease off — add easy Zone 2",
     detail: `${split.hardPct}% of your recent training time was hard (above the aerobic threshold); a polarized 80/20 base keeps most of it easy. Swap a hard session for easy Zone 2 to build aerobic volume without the fatigue.`,
     tone: "caution",
-    // #1492: the nested `?ftab=cardio` strip is gone — zones are a SECTION of the
-    // Fitness tab now, so the deep link carries its in-page anchor instead.
-    actionHref: "/trends?tab=fitness#zones",
+    // #3512: Fitness retired into Analyze; keep the stable moved-section anchor.
+    actionHref: "/training?tab=analyze#zones",
     actionLabel: "See HR zones",
   };
 }

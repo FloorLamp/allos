@@ -14,6 +14,11 @@ import {
 } from "@tabler/icons-react";
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
+import {
+  PILLAR_TONE_CLASS,
+  PillarToneBadge,
+} from "@/components/dashboard/HealthspanPillarPresentation";
+import type { PillarTone } from "@/lib/longevity-pillars";
 import type { AvatarProfile } from "@/components/Avatar";
 import DoseConfirmButton from "@/components/DoseConfirmButton";
 import {
@@ -82,7 +87,13 @@ export interface HouseholdCardData {
   // The viewing login's weight unit, so the trend delta reads in the same unit
   // as weightLabel (never a hardcoded kg).
   weightUnit: WeightUnit;
-  oorBiomarkers: number;
+  // The BROAD-PANEL optimal fraction the dashboard's own pillar states (#3487 item 1,
+  // owner-ruled 2026-08-21) — `optimal of total`, plus the pillar's tone so the glance
+  // and the dashboard render one judgment. Null when the profile has no judgeable
+  // marker at all, which is the same condition that omits the pillar entirely.
+  // This replaced a bare rose count of every out-of-lab-range analyte; that OOR read
+  // left this page with it (#2479 explains why both were "right").
+  biomarkers: { optimal: number; total: number; tone: PillarTone } | null;
   goals: GoalHighlight[];
   // A one-line "sick day N · 101.3°F" chip when this profile has an OPEN illness
   // episode (issue #801), else null — the household mirror of the dashboard card.
@@ -361,6 +372,12 @@ function Attention({ data }: { data: HouseholdCardData }) {
 // existing `FindingTone` (#2173 constraint 2 — content may raise a row, but no new
 // severity words); this map is presentation only. Deliberately NOT a bordered tinted
 // block: the setup row is a calm configuration note on a glance card, not an alert.
+//
+// This map is for the check's HEADLINE, not for its link. The two CTAs below draw
+// `text-link` — the one inline action-link treatment (#2719), which this block had
+// re-hand-rolled as a literal `text-sky-700 dark:text-sky-300` pair on both sites while
+// three brand links rendered on the same screen (#3487 item 2). The `action` tone here
+// stays sky by the tone map's own rule; the links are ruled by #2719.
 const SETUP_TONE_TEXT: Record<FindingTone, string> = {
   caution: "text-amber-700 dark:text-amber-300",
   action: "text-sky-700 dark:text-sky-300",
@@ -396,7 +413,7 @@ function SetupCheckRow({
           <Link
             href={check.cta.href}
             data-testid="household-setup-cta"
-            className="mt-1 inline-block text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+            className="mt-1 inline-block text-xs text-link"
           >
             {check.cta.label} →
           </Link>
@@ -410,7 +427,7 @@ function SetupCheckRow({
             <button
               type="submit"
               data-testid="household-setup-cta"
-              className="text-xs font-medium text-sky-700 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-sky-300"
+              className="text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
             >
               {check.cta.label} →
             </button>
@@ -479,7 +496,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
     weightWhen,
     trend,
     weightUnit,
-    oorBiomarkers,
+    biomarkers,
     goals,
     sick,
     presence,
@@ -581,13 +598,26 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           )}
         </Stat>
 
-        <Stat label="Out of range">
-          {oorBiomarkers > 0 ? (
-            <span className="text-rose-600 dark:text-rose-400">
-              {oorBiomarkers} biomarker{oorBiomarkers === 1 ? "" : "s"}
+        <Stat label="Biomarkers optimal">
+          {biomarkers ? (
+            <span
+              className="flex flex-wrap items-center gap-1.5"
+              data-testid="household-biomarkers"
+            >
+              <span className={PILLAR_TONE_CLASS[biomarkers.tone]}>
+                {biomarkers.optimal} of {biomarkers.total}
+              </span>
+              {/* The tone's TEXT twin (#1220): the verdict may never travel by colour
+                  alone, and this is the same badge both pillar surfaces render. */}
+              <PillarToneBadge tone={biomarkers.tone} />
             </span>
           ) : (
-            <span className="text-slate-500 dark:text-slate-400">none</span>
+            <span
+              className="text-slate-500 dark:text-slate-400"
+              data-testid="household-biomarkers"
+            >
+              no results yet
+            </span>
           )}
         </Stat>
 

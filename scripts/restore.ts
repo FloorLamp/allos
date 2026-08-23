@@ -43,6 +43,7 @@ import {
   RestoreRefusedError,
 } from "../lib/restore";
 import { MIGRATIONS } from "../lib/migrations/versions";
+import { isBusyError } from "../lib/sqlite-error";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -104,8 +105,11 @@ function appAppearsRunning(livePath: string): boolean {
     probe.exec("ROLLBACK");
     return false;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return /SQLITE_BUSY|database is locked/i.test(msg);
+    // On `.code`, not on the message: better-sqlite3 stringifies a busy error to
+    // "database is locked" with no code in it, so a message match here happened to
+    // work only because it also listed that prose. The same defect keyed on the
+    // same construct killed runBootTx's retry outright (#3442).
+    return isBusyError(e);
   } finally {
     try {
       probe?.close();

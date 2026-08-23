@@ -7,7 +7,7 @@ import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 // Training HR-zone settings (issue #159) — PROFILE-scoped, following the active
 // profile. A manual max-HR override for people who've tested theirs (it beats the
-// age formula) and the weekly Zone 2 minutes target the Trends → Fitness view
+// age formula) and the weekly Zone 2 minutes target Training → Analyze
 // tracks against. Both save on blur, mirroring the smoking-history form.
 export default function TrainingZonesForm({
   maxHrOverride,
@@ -103,9 +103,9 @@ export default function TrainingZonesForm({
           className="input"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          The weekly aerobic-base goal the Trends → Fitness zone chart draws its
-          target line against. 150 min/week is a common starting point; set 0 to
-          hide the target.
+          The weekly aerobic-base goal the Training → Analyze zone chart draws
+          its target line against. 150 min/week is a common starting point; set
+          0 to hide the target.
         </p>
       </div>
 

@@ -61,7 +61,7 @@ test("every day-history domain closes an empty-day gap with a dated log link (#2
     /\/nutrition\?tab=supplements&backfill=/
   );
 
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   await expectEmptyDayAddLink(
     page.getByTestId("workout-history"),
     "sessions",

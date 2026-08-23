@@ -98,10 +98,11 @@ test.describe("Training Log first-run empty state (#809)", () => {
     await page.close();
   });
 
-  // #812: an EmptyState that names a destination now links to it. The Analyze tab's
-  // "No training data yet. Log an activity…" empty state carries a typed action link
-  // to the Log tab. Same activity-free fixture — a representative of the whole sweep.
-  test("the Analyze empty state links to the Log tab", async ({ browser }) => {
+  // #3512: Analyze defaults to All training even before the first session. Its
+  // empty workout history carries the typed action into the Log tab.
+  test("the All training history empty state links to Log", async ({
+    browser,
+  }) => {
     const page = await loginAs(browser, {
       username: E2E_LOGIN_EMPTY_TRAINING,
       password: E2E_MEMBER_PASSWORD,
@@ -110,7 +111,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
 
     await page.goto("/training?tab=analyze");
     await expect(
-      page.getByText("No training data yet. Log an activity", { exact: false })
+      page.getByText("No workouts logged in this window yet", { exact: false })
     ).toBeVisible();
 
     // Follow the empty state's action link — it lands on the Log tab.

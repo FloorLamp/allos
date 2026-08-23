@@ -27,7 +27,7 @@ const ALLOWLIST = new Map<string, string>([
   // A tone map applied to a `rounded-full` trend CHIP, not a message container —
   // the string is returned and used elsewhere, so it can't be excluded by line.
   [
-    "app/(app)/trends/TrendingDigest.tsx",
+    "components/TrendDigestChip.tsx",
     "trend chip tone map (applied to a rounded-full pill, not a notice block)",
   ],
 ]);

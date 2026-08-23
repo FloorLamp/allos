@@ -15,9 +15,10 @@ A column is a **bucket**, and a bucket is a day or a week — see
 half's cell shape is the same code at both grains.
 
 Four surfaces render it: Trends → Nutrition's **Intake history** (food
-servings) and **Dose history** (confirmed supplement/med doses), Trends →
-Fitness's **Workout history** (sessions by named activity, which replaced the
-bespoke #186 `WorkoutHeatmap`), and /wellness's **Practice history** (sessions
+servings) and **Dose history** (confirmed supplement/med doses), Training →
+Analyze's default **All training** view renders **Workout history** (sessions by
+named activity, which replaced the bespoke #186 `WorkoutHeatmap`), and
+/wellness's **Practice history** (sessions
 by canonical `practiceIdentity`, above the per-practice cards — placed THERE
 because #2151 rules that Trends has no practices section; the cross-practice
 day axis is the one thing no card can show).
@@ -273,7 +274,7 @@ a quiet recent stretch is the live signal.
 completeness, the grain decision at the cap boundary, week bucketing, the strip,
 the partial trailing week, ranking, folding, trim, notes, grid padding), `lib/__db_tests__/workout-activity-days.test.ts` +
 `practice-days.test.ts` + `trends-fitness-window.test.ts` (identity + windowing
-over real SQL), and the Nutrition/Fitness/Wellness plus
+over real SQL), and the Nutrition/Training Analyze/Wellness plus
 `day-history-backfill.spec.ts` specs in `e2e/` (rendering, domain-ledger and
 dated-entry link shapes, destination prefills/bounds, chip filtering, and the
 cross-practice rows).

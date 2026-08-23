@@ -465,8 +465,8 @@ content-only matcher will happily read.
 
 ## Streamed sections: the harness settles the reveal (#1644)
 
-The Trends Overview surface streams its body census below a fast head (digest +
-starred grid), behind a `<Suspense>` boundary. In the streamed HTML the census
+The Trends Overview surface streams its body census below a fast conditional
+digest, behind a `<Suspense>` boundary. In the streamed HTML the census
 arrives in a `<div hidden id="S:n">` staging node at the end of `<body>`, and
 React moves it into its section on a schedule of its own — a rAF, or a coalescing
 timeout that a loaded CI shard can stretch to SECONDS past the load event. During
@@ -2119,6 +2119,83 @@ click nor the thing it was waiting for. That is #890's causeless timeout, and it
 is what #2729's two failures were read through. `openConfirm` (`e2e/helpers.ts`)
 is the shared repair for the confirm case; `hydratedClick` is the rest of it.
 
+### Holding the window OPEN beats making it PROBABLE (2026-08-23, #3515/#3400)
+
+The throttle above makes a pre-hydration window WIDER. It does not make it
+certain, and there is a class of question that needs certainty: not "does this
+flake" but "does the app do the right thing for a person whose tap lands in that
+window". #3513 hit the wall from the other side — diagnosing #3400 it could not
+force the window at all, and recorded both failures:
+
+- **CPU throttling at 20× and 50× navigated every time**, and past ~100× the
+  `goto` itself blows the 15 s navigation bound, so the usable band is exhausted.
+- **`page.route` never fired.** `public/sw.js` serves `/_next/static/*`
+  `cacheFirst`, and route interception does not see a service-worker-mediated
+  fetch. Once the SW is controlling — which it is on every page after the first
+  load — `page.route` cannot be used to stress hydration ANYWHERE in this app.
+
+So it shipped an instrument with no test that fails without the fix, and said so.
+Both obstacles are removable, and together they give a window that is held open
+rather than sampled:
+
+```ts
+test.use({ serviceWorkers: "block" }); // now page.route can see the chunks
+
+let releaseChunks = (): void => {};
+const chunksReleased = new Promise<void>((r) => (releaseChunks = r));
+await page.route(/\/_next\/static\/chunks\/[^?]*\.js(\?|$)/, async (route) => {
+  await chunksReleased;
+  await route.continue();
+});
+
+await page.goto("/", { waitUntil: "commit" }); // `load` would wait for what is held
+// … the control is in the server HTML; React provably has not attached …
+await locator.click();
+// … assert what the app does with a tap that has no handler behind it …
+releaseChunks(); // React attaches; assert the tap was not lost
+```
+
+**Assert the precondition, or the spec passes vacuously.** Read the node's own
+React markers before the tap and require their ABSENCE — the same probe
+`awaitHydrated` waits FOR:
+
+```ts
+const hydrated = await locator.evaluate((node) =>
+  Object.keys(node).some(
+    (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+  )
+);
+expect(
+  hydrated,
+  "not in the pre-hydration window; this spec proves nothing"
+).toBe(false);
+```
+
+It is an absence assertion with NO ceiling on purpose — one instantaneous
+question about the node in front of the tap, not a state being waited for. It is
+also the assertion that fails toward "this test is vacuous", which is the
+direction an absence assertion is safe in.
+
+**`.js` ONLY, and the glob is load-bearing rather than tidy.** In this Turbopack
+build the STYLESHEETS also live under `/_next/static/chunks/`, so the obvious
+`**/_next/static/chunks/**` holds them too — and React 19 will not reveal a shell
+whose `<link rel=stylesheet data-precedence>` has not loaded. Measured on #3515:
+**4.6 KB of HTML, no body, and the control never arrives**, failing as
+`element(s) not found` — the SAME symptom a swallowed tap produces, from a
+completely different cause, which is exactly the kind of false reproduction that
+convicts the wrong thing. Match `\.js` explicitly.
+
+**Still run a base-tree control.** The comparison is the verdict here too, and
+because this form is deterministic rather than sampled, the control is unusually
+cheap to read: #3515's guard ran 3/3 green on the branch and 3/3 red on
+`origin/main` with only the spec applied, and a control variant that dropped the
+new assertions and kept the bare click reproduced #3400's own signature —
+`TimeoutError: page.waitForURL: Timeout 30000ms exceeded` — on `main`, with no
+diff, for the first time.
+
+Reach for the throttle when the question is "does this flake, and whose fault";
+reach for this when the question is "what does the app do in that window".
+
 ### "The page produced no traffic" was two findings wearing one message (#3029)
 
 `cycle-guards.spec.ts:69` failed `e2e (2)` about half the time on one branch and
@@ -2627,6 +2704,40 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     its TEXT (toasts stack, so "the toast" is not a thing, and on an undo path
     the top card is the one the next assertion is about), click its `Dismiss`,
     then assert `toHaveCount(0)` before the next round trip.
+19. **A tap on a hydrated element with a live handler produces NO CLICK AT ALL,
+    intermittently, after a touch DRAG** (#3262). The tell is an empty click log
+    beside a perfect touch log: `touchstart touches:1`, `touchend touches:0`,
+    zero moves, `elementFromPoint` naming the element the tap was aimed at, the
+    element's `onClick` still committed on `__reactProps$`, and `page errors:
+[]`. Nothing in the page can see it, because the page is not where it
+    happens. **Chromium suppresses the tap gesture of the FIRST touch sequence
+    after a drag whose starting element forbade the drag's axis** — the raw
+    touch events and the touch-type PointerEvents still arrive, but no
+    `GestureTap` is made, so the renderer synthesises no `mousedown`, no
+    `mouseup` and no `click`. Measured on a standalone page with no React in it,
+    phone viewport, Chromium 1194: `touch-action: none` and `pan-x` on the
+    element the drag starts on lose the next tap 6/6; `pan-y`, `manipulation`
+    and `auto` lose 0/6. The debt is exactly one touch sequence and roughly
+    300 ms wide (lost at gaps 0–300 ms, recovered by 350–400 ms, second tap
+    always lands). This suite drives every sheet flick from a `touch-none` drag
+    handle (components/overlay/tokens.ts), so every flick incurs it.
+    **Fix: spend the sequence, do not wait it out.** `touchSwipe`/`touchSwipeFrom`
+    now end with `consumeSuppressedTap` — a `touchStart` immediately cancelled,
+    which is a complete sequence to the browser's arbitration and can never
+    produce a click by construction, and which every recognizer in the app
+    ignores because nothing moved. 23/24 taps lost without it, 0/24 with it, at
+    gaps of 14–103 ms. A sleep would have been a guess: the window is a
+    wall-clock timer in the BROWSER process that the page cannot observe, and a
+    starved runner outlasts any constant.
+    **The reproduction is committed**: `node scripts/tap-suppression-probe.mjs`
+    prints all three tables above in about a minute, on a page with no React and
+    no app in it. #3262 asked for a reproduction outside CI as the single most
+    valuable thing anyone could contribute; that is it, and it keeps these
+    numbers checkable instead of remembered.
+    **And this is why the throttling recipe found nothing** across five probe
+    rounds. `Emulation.setCPUThrottlingRate` slows the RENDERER; the timer that
+    closes this window is not in the renderer, and 20x moved it not at all. Before
+    reaching for the throttle, ask which process the suspect state lives in.
 
 **Two spec-authoring hazards worth their own note.**
 

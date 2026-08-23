@@ -332,3 +332,62 @@ test.describe("Household view for members (issue #31)", () => {
     await memberPage.context().close();
   });
 });
+
+// ── The glance's biomarker line, and the doors above it (#3487) ──────────────
+//
+// Runs as the default admin (storageState), read-only, on the shared seed — so it
+// asserts the SHAPE of the line rather than a number the seed could move under it.
+// The number itself is pinned where the computation lives: the pillar's own
+// `optimalRangeHitRate` tests, which this page now shares (#2023/#3487 item 1).
+test.describe("the household glance's biomarker line (#3487)", () => {
+  test("the member card states the broad-panel optimal fraction, never a rose out-of-range count", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/household");
+    const cards = page.getByTestId("household-card");
+    await expect(cards.first()).toBeVisible(); // first-ok: the set is judged below, order-agnostic
+    const count = await cards.count();
+    expect(count).toBeGreaterThan(0);
+
+    for (let i = 0; i < count; i++) {
+      const card = cards.nth(i);
+      // The label is the dashboard's, because the axis is now the dashboard's.
+      await expect(card).toContainText("Biomarkers optimal");
+      // Either the fraction, or the honest absence when nothing is judgeable.
+      const line = card.getByTestId("household-biomarkers");
+      await expect(line).toHaveText(/(\d+ of \d+|no results yet)/);
+      // The retired framing: a bare count of everything outside the LAB range,
+      // rendered rose. Neither the phrasing nor the label may come back.
+      await expect(card).not.toContainText("Out of range");
+      await expect(card).not.toContainText(/\d+ biomarkers?\b/);
+    }
+
+    // A judged card carries the verdict as TEXT beside the colour (#1220): a
+    // colour-only judgment is the thing that mapping exists to prevent.
+    const judged = page
+      .getByTestId("household-biomarkers")
+      .filter({ hasText: /\d+ of \d+/ });
+    if (await judged.count()) {
+      const badge = judged.first().getByTestId("pillar-tone-badge"); // first-ok: one judged card is enough to prove the badge rides the fraction
+      await expect(badge).toBeVisible();
+    }
+  });
+
+  test("both header doors end on one glyph (#3487 item 5)", async ({
+    page,
+  }) => {
+    await page.goto("/household");
+    const cabinet = page.getByTestId("shared-supplies-link");
+    const history = page.getByTestId("household-history-link");
+    await expect(cabinet).toBeVisible();
+    await expect(history).toBeVisible();
+
+    // One glyph, and it is an SVG chevron on BOTH — not a literal arrow character on
+    // one and a chevron on the other, which is what this row shipped.
+    for (const door of [cabinet, history]) {
+      await expect(door.locator("svg.h-4.w-4").last()).toBeVisible(); // last-ok: the trailing glyph is the one under test
+      expect(await door.innerText()).not.toContain("→");
+    }
+  });
+});

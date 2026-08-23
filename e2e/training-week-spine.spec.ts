@@ -131,10 +131,10 @@ test("the week spine draws seven days, blocks by type, and a caption that matche
       "mobility",
     ]);
 
-    // Composed, not stacked: the weekly routine lives in the SAME card as the band,
+    // Composed, not stacked: the weekly targets live in the SAME card as the band,
     // and the two-number tile it replaced is gone.
     await expect(
-      card.getByText("Weekly routine", { exact: true })
+      card.getByText("Weekly targets", { exact: true })
     ).toBeVisible();
     await expect(card.getByText("Sessions", { exact: true })).toHaveCount(0);
     await expect(card.getByText("Days", { exact: true })).toHaveCount(0);

@@ -158,7 +158,97 @@ describe("intakeDeltaLine — the one formatter", () => {
     }));
     const line = intakeDeltaLine(classifyIntakeDeltas(many))!;
     expect(line).toContain("+2 more");
-    expect(line.startsWith("Missed: Item A (test) for 1 day")).toBe(true);
+    // Every item here missed one day, so the run is stated ONCE (#3487 item 3) —
+    // this is the line the household glance rendered as "Missed: X for 1 day, Y for
+    // 1 day, Z for 1 day, +4 more".
+    expect(line.startsWith("Missed for 1 day: Item A (test)")).toBe(true);
+  });
+});
+
+// ---- Uniform runs are stated once (#3487 item 3) ---------------------------
+//
+// The formatter is SHARED — the Telegram morning digest, the weekly recap and the
+// household card all render it — so the grouping lands on all three at once, which
+// is why it belongs here and not on a surface.
+describe("intakeDeltaLine — a uniform run is hoisted into the label (#3487)", () => {
+  const missedFor = (days: number, names: string[]) =>
+    classifyIntakeDeltas(
+      names.map((name, i) => ({
+        itemId: i + 1,
+        name,
+        // Three taken occurrences (the notable-miss floor) then `days` misses.
+        strip: strip([T, T, T, ...Array<AdherenceState>(days).fill(M)]),
+      }))
+    );
+
+  it("names the shared duration once and then only the items", () => {
+    expect(intakeDeltaLine(missedFor(1, ["Zinc (test)", "Iron (test)"]))).toBe(
+      "Missed for 1 day: Iron (test), Zinc (test)"
+    );
+  });
+
+  it("pluralizes the hoisted run the same way the per-item form does", () => {
+    expect(intakeDeltaLine(missedFor(3, ["Zinc (test)", "Iron (test)"]))).toBe(
+      "Missed for 3 days: Iron (test), Zinc (test)"
+    );
+  });
+
+  it("keeps the per-item form when the runs differ", () => {
+    const mixed = classifyIntakeDeltas([
+      { itemId: 1, name: "Iron (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Zinc (test)", strip: strip([T, T, T, M, M]) },
+    ]);
+    expect(intakeDeltaLine(mixed)).toBe(
+      "Missed: Iron (test) for 1 day, Zinc (test) for 2 days"
+    );
+  });
+
+  it("judges uniformity over ALL items, not the three it names", () => {
+    // Four items: three missed one day, the fourth missed two. The fourth is behind
+    // "+1 more", so hoisting off the named sample would state "for 1 day" over an
+    // item that missed two — a claim about rows the reader cannot check.
+    const items = [
+      { itemId: 1, name: "Item A (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Item B (test)", strip: strip([T, T, T, M]) },
+      { itemId: 3, name: "Item C (test)", strip: strip([T, T, T, M]) },
+      { itemId: 4, name: "Item D (test)", strip: strip([T, T, T, M, M]) },
+    ];
+    const line = intakeDeltaLine(classifyIntakeDeltas(items))!;
+    expect(line.startsWith("Missed:")).toBe(true);
+    expect(line).toContain("Item A (test) for 1 day");
+    expect(line).toContain("+1 more");
+  });
+
+  it("leaves a ONE-item half alone — nothing is repeated, and #1819's merge clause quotes it", () => {
+    const one = classifyIntakeDeltas([
+      { itemId: 1, name: "Glycine (test)", strip: strip([T, T, T, M]) },
+    ]);
+    expect(intakeDeltaLine(one)).toBe("Missed: Glycine (test) for 1 day");
+  });
+
+  it("groups each half independently", () => {
+    const both = classifyIntakeDeltas([
+      { itemId: 1, name: "Iron (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Zinc (test)", strip: strip([T, T, T, M]) },
+      { itemId: 3, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
+    ]);
+    expect(intakeDeltaLine(both)).toBe(
+      "Missed for 1 day: Iron (test), Zinc (test) · Resumed: Vitamin D (test) for 2 days"
+    );
+  });
+
+  it("hoists a shared DAY name too, when the window resolves the run to one (#3033)", () => {
+    // Both missed 1990-02-04 only, inside a week-scale window: the run phrase is the
+    // weekday, and it is the same phrase for both, so it hoists exactly as a duration
+    // does. The grouping is over the RENDERED run, not over `days`.
+    const week = { start: "1990-02-01", end: "1990-02-07" };
+    const sunday = classifyIntakeDeltas([
+      { itemId: 1, name: "Iron (test)", strip: strip([T, T, T, M]) },
+      { itemId: 2, name: "Zinc (test)", strip: strip([T, T, T, M]) },
+    ]);
+    expect(intakeDeltaLine(sunday, week)).toBe(
+      "Missed on Sunday: Iron (test), Zinc (test)"
+    );
   });
 });
 

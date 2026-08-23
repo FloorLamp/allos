@@ -65,7 +65,7 @@ test("Overview leads with today's session, then the week, then depth", async ({
   expect(weekTop).toBeLessThan(await topOf(page, "muscle-coverage"));
 
   // #2566: the week is the SPINE now — ONE card holding a seven-day band plus the
-  // weekly routine's chips, in place of the two-number tile ("Sessions 4 · Days 3")
+  // weekly targets' chips, in place of the two-number tile ("Sessions 4 · Days 3")
   // and the separate routine card beside it. The band survives a 390px phone as seven
   // cells inside the card rather than overflowing it.
   // (#1937's rule still holds inside it: no "Streak" figure restating the active-day
@@ -77,7 +77,7 @@ test("Overview leads with today's session, then the week, then depth", async ({
   await expect(week.getByTestId("week-spine-caption")).toContainText(
     "this week"
   );
-  await expect(week.getByText("Weekly routine", { exact: true })).toBeVisible();
+  await expect(week.getByText("Weekly targets", { exact: true })).toBeVisible();
   await expect(week.getByText("Streak", { exact: true })).toHaveCount(0);
   const [cardBox, lastCellBox] = await settledBoxes([week, cells.nth(6)]);
   expect(lastCellBox.x + lastCellBox.width).toBeLessThanOrEqual(
@@ -202,7 +202,7 @@ test("the desktop Training header keeps the Equipment door beside the title (#16
   expect(doorBox.y).toBeLessThan(titleBox.y + titleBox.height);
 });
 
-test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({
+test("no chart card renders on Overview — aggregate volume stays retired", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");

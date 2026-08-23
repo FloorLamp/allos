@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { IconChevronRight } from "@tabler/icons-react";
 import {
   requireSession,
   getAccessibleProfiles,
@@ -17,12 +18,12 @@ import {
   getLatestBodyMetricDated,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  countClinicalObservations,
   getIntakeItems,
   getIntakeDoses,
   getTakenDoseIds,
   getLatestBodyMetricDailyPoints,
   getWorkoutPresence,
+  getOptimalHitRate,
   collectHouseholdRollup,
   getFindingSuppressions,
   countVisiblePools,
@@ -44,6 +45,7 @@ import {
   isStrengthTrainingRelevant,
   isTrainingRelevant,
 } from "@/lib/life-stage";
+import { optimalTone } from "@/lib/longevity-pillars";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
@@ -145,13 +147,18 @@ export default async function HouseholdPage() {
       dailyWeights[dwLen - 2]?.value
     );
 
-    // Biomarkers whose current (latest) reading is out of the lab reference range.
-    // A COUNT over the same DEDUP+LATEST pass (#2116): the badge renders a number, and
-    // hydrating every flagged row's every column to take `.length` is the whole read.
-    const oorBiomarkers = countClinicalObservations(pid, {
-      current: true,
-      range: "oor",
-    });
+    // THE BROAD PANEL, not the widest net (#3487 item 1, owner-ruled 2026-08-21).
+    // This line used to be a bare rose count of every current analyte outside the LAB
+    // REFERENCE RANGE — which put "27 biomarkers" in red on the card of a person whose
+    // own dashboard read "Biomarkers optimal 30 of 34 · Good". Both numbers were right
+    // on their own axis (#2479); a GLANCE surface showing the scariest framing of the
+    // widest net was the defect. So the card now tells the dashboard's story, through
+    // the dashboard's OWN read (getOptimalHitRate — the same gather and the same
+    // rangeBadge judgment the optimal pillar counts), never a second derivation.
+    //
+    // Accepted consequence of the ruling: out-of-panel lab flags leave this glance.
+    // They stay on the Results and clinical surfaces that own them.
+    const optimal = getOptimalHitRate(pid);
 
     const goals = trainingRelevant
       ? getOutcomeGoals(pid).filter(
@@ -214,7 +221,16 @@ export default async function HouseholdPage() {
         : null,
       trend,
       weightUnit,
-      oorBiomarkers,
+      // The pillar's own tone, so "Good"/"Fair"/"Poor" means here exactly what it
+      // means on the dashboard — one judgment, formatted twice.
+      biomarkers:
+        optimal.total > 0
+          ? {
+              optimal: optimal.optimal,
+              total: optimal.total,
+              tone: optimalTone(optimal),
+            }
+          : null,
       goals: goalHighlights(goals, goalProgress, day, 2),
       // An open illness episode surfaces as a "sick day N" chip (issue #801) — the
       // same assembly the dashboard illness Now group (#858) formats over.
@@ -268,12 +284,24 @@ export default async function HouseholdPage() {
           // reached from the stable parents that consume it.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={countVisiblePools(profileIds)} />
+            {/* ONE glyph for the doors in this row (#3487 item 5). It used to say
+                "History →" beside the cabinet door's "›" — two arrow glyphs, one row.
+                The standing-door convention is the chevron (#3253), so this door
+                matches the door beside it, in treatment as well as glyph: the
+                hand-rolled sky pair here was the same per-widget near-copy #2719
+                retired, and a matched glyph in an unmatched colour would have traded
+                one mismatch for another. */}
             <Link
               href={EPISODES_HREF}
-              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
               data-testid="household-history-link"
             >
-              History →
+              History
+              <IconChevronRight
+                aria-hidden
+                className="h-4 w-4 shrink-0"
+                stroke={1.75}
+              />
             </Link>
           </div>
         }

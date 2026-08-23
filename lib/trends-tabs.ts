@@ -5,16 +5,10 @@
 // on a Server Component (which the pure tier structurally can't see).
 //
 // #1486 retired the **Vitals** tab into Body. #1489 retired **Compare** into
-// Insights. #1644 retires **Body** itself: its census moved onto the Overview
-// LANDING SURFACE (digest → starred grid → body census), leaving FOUR tabs in
-// frequency order: Overview | Fitness | Nutrition | Insights.
-//
-// THE FOUR ARE PERMANENT (owner ruling, #1644). The merge stops here: the landing
-// surface answers "how am I doing", and Fitness / Nutrition / Insights answer "how
-// is my training / nutrition / analysis specifically". There is no all-tabs
-// endpoint and no phase 2 — the earlier symmetry argument for folding the rest in
-// was rejected as aesthetic, so reviving it needs a new owner decision rather than
-// this file quietly growing sections again.
+// Insights. #1644 retired **Body** itself: its census moved onto the Overview
+// landing surface (conditional digest → body census). #3512 then deliberately
+// reversed #1492 and retired **Fitness** into Training → Analyze, leaving three
+// tabs in frequency order: Overview | Nutrition | Insights.
 //
 // #1489's Compare retirement stays a VOCABULARY MAPPING — one alias entry here,
 // resolved by `parseTab`, deliberately NOT a redirect layer: an old
@@ -28,16 +22,9 @@
 // value already falls through to the default. Adding an alias would be a shim for
 // a link that already lands correctly, which is exactly what #1635 forbids.
 //
-// Fitness is the workout-product tab and is omitted through early childhood.
-// Population benchmarks and adult clinical models keep their stricter gates inside
-// the components that render those numbers.
+import type { AppRoute } from "./hrefs";
 
-export const TRENDS_TABS = [
-  "overview",
-  "fitness",
-  "nutrition",
-  "insights",
-] as const;
+export const TRENDS_TABS = ["overview", "nutrition", "insights"] as const;
 
 export type TrendsTab = (typeof TRENDS_TABS)[number];
 
@@ -52,18 +39,9 @@ const TAB_ALIASES: Record<string, TrendsTab> = {
   compare: "insights",
 };
 
-// The RETIRED nested Fitness strip (#1492). Fitness used to carry a second
-// navigation level — `?ftab=strength|cardio|sport` — that re-mounted the /training
-// page's sections verbatim. It's gone: Fitness is now four windowed SECTIONS, so
-// there is no nested tab to select and no nested param to honor.
-//
-// Same vocabulary-mapping shape as TAB_ALIASES above, one level down: an old link
-// simply NAMES the Fitness tab by its nested value, and the value itself is then
-// IGNORED (there is nothing left for "cardio" to select — the Zones & cardio
-// section renders on the tab unconditionally). A `?tab=fitness&ftab=cardio` link
-// already carries its tab and needs nothing; the case this table exists for is a
-// link that lost (or never had) the outer `?tab=` — it still lands on Fitness
-// rather than silently on Overview.
+// The retired nested Fitness strip (#1492) still names the retired Fitness
+// surface when no live/aliased outer tab wins. The page uses this to redirect old
+// bookmarks and notification links to Training → Analyze (#3512).
 const RETIRED_FTABS: readonly string[] = ["strength", "cardio", "sport"];
 
 export const DEFAULT_TRENDS_TAB: TrendsTab = "overview";
@@ -79,22 +57,32 @@ function first(value: string | string[] | undefined): string | undefined {
 }
 
 // Resolve a raw `?tab=` value: a live tab name wins, a retired one maps through the
-// alias table, anything else falls back to the default. `nested` is the legacy
-// `?ftab=` value (#1492) — consulted ONLY when `?tab=` names nothing live, so a
-// pre-#1492 deep link into a nested Fitness view still lands on Fitness.
-export function parseTab(
-  value: string | string[] | undefined,
-  nested?: string | string[] | undefined
-): TrendsTab {
+// alias table, anything else falls back to the default. Fitness is handled by the
+// explicit redirect decision below so it cannot silently fall onto Overview.
+export function parseTab(value: string | string[] | undefined): TrendsTab {
   const raw = first(value);
   if (raw) {
     if (isTrendsTab(raw)) return raw;
     const alias = TAB_ALIASES[raw];
     if (alias) return alias;
   }
-  const ftab = first(nested);
-  if (ftab && RETIRED_FTABS.includes(ftab)) return "fitness";
   return DEFAULT_TRENDS_TAB;
+}
+
+/** Return the canonical destination for the retired Fitness surface. A live or
+ * aliased outer tab still wins over a stale nested `ftab`, matching the old
+ * parser's precedence. */
+export function retiredFitnessTabTarget(
+  value: string | string[] | undefined,
+  nested?: string | string[] | undefined
+): AppRoute | null {
+  const raw = first(value);
+  if (raw) {
+    if (raw === "fitness") return "/training?tab=analyze";
+    if (isTrendsTab(raw) || TAB_ALIASES[raw]) return null;
+  }
+  const ftab = first(nested);
+  return ftab && RETIRED_FTABS.includes(ftab) ? "/training?tab=analyze" : null;
 }
 
 export interface TrendsTabEntry {
@@ -107,14 +95,12 @@ export interface TrendsTabEntry {
 // underneath now.
 const TAB_LABELS: Record<TrendsTab, string> = {
   overview: "Overview",
-  fitness: "Fitness",
   nutrition: "Nutrition",
   insights: "Insights",
 };
 
-// The tab strip, in display order — FOUR entries since #1644.
-export function trendsTabStrip(trainingRelevant = true): TrendsTabEntry[] {
-  return TRENDS_TABS.filter((id) => trainingRelevant || id !== "fitness").map(
-    (id) => ({ id, label: TAB_LABELS[id] })
-  );
+// The tab strip, in display order — THREE entries since Fitness retired into
+// Training → Analyze (#3512).
+export function trendsTabStrip(): TrendsTabEntry[] {
+  return TRENDS_TABS.map((id) => ({ id, label: TAB_LABELS[id] }));
 }

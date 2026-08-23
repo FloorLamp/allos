@@ -17,6 +17,8 @@ import {
   doseSourceNote,
   doseExclusionNote,
   describesAnyStudy,
+  doseSplitIsRedundant,
+  doseScopeCountLabel,
   NON_IONIZING_MODALITIES,
   BACKGROUND_YEARS_CUTOVER_MONTHS,
   type DoseStudyInput,
@@ -1069,5 +1071,109 @@ describe("a recorded 0 and a NULL dose are different facts (#2970 R8)", () => {
   it("speaks either way — the fork changes what the card says, not whether it speaks", () => {
     expect(describesAnyStudy(scan(0))).toBe(true);
     expect(describesAnyStudy(scan(null))).toBe(true);
+  });
+});
+
+describe("the split only earns its lines when it splits something (#3498 item 2)", () => {
+  const now = "2026-08-15";
+
+  it("one estimated study inside the lens: the figure is stated ONCE", () => {
+    // The card the phone review met: "≈ 0.4 mSv" headline, "Estimated: 0.4 mSv
+    // (1 study)", "Last 3 years: ≈ 0.4 mSv". One number, three claims, nothing to
+    // compare — the #3482 class.
+    const b = doseContributions(
+      [idStudy(1, { modality: "ct", study_date: "2025-11-04" })],
+      now
+    );
+    expect(b.allRecords.estimatedCount).toBe(1);
+    expect(b.allRecords.recordedCount).toBe(0);
+    expect(doseSplitIsRedundant(b)).toBe(true);
+    expect(doseScopeCountLabel(b.allRecords)).toBe("1 estimated study");
+  });
+
+  it("generalises past n=1 — five estimates, all inside the lens, still one figure", () => {
+    // The rule is "the three values are equal", not "there is one study": a record
+    // of five estimates inside the window prints the identical figure three times
+    // for exactly the same reason.
+    const b = doseContributions(
+      [1, 2, 3, 4, 5].map((i) =>
+        idStudy(i, { modality: "x-ray", study_date: "2025-0" + i + "-04" })
+      ),
+      now
+    );
+    expect(b.allRecords.estimatedCount).toBe(5);
+    expect(doseSplitIsRedundant(b)).toBe(true);
+    expect(doseScopeCountLabel(b.allRecords)).toBe("5 estimated studies");
+  });
+
+  it("a RECORDED-only record collapses too, and says so", () => {
+    const b = doseContributions(
+      [
+        idStudy(1, {
+          modality: "ct",
+          study_date: "2025-11-04",
+          dose_msv: 7.2,
+        }),
+      ],
+      now
+    );
+    expect(doseSplitIsRedundant(b)).toBe(true);
+    expect(doseScopeCountLabel(b.allRecords)).toBe("1 recorded study");
+  });
+
+  it("BOTH sides populated: the sub-lines are parts of a whole, and stay", () => {
+    const b = doseContributions(
+      [
+        idStudy(1, {
+          modality: "ct",
+          study_date: "2025-11-04",
+          dose_msv: 7.2,
+        }),
+        idStudy(2, { modality: "x-ray", study_date: "2025-12-04" }),
+      ],
+      now
+    );
+    expect(b.allRecords.recordedCount).toBe(1);
+    expect(b.allRecords.estimatedCount).toBe(1);
+    expect(doseSplitIsRedundant(b)).toBe(false);
+  });
+
+  it("a study OUTSIDE the 3-year lens: the lens is the one comparison worth drawing", () => {
+    // Same single source (estimates), so the split line restates the headline — but
+    // the lens does not, and that difference is the whole point of having a lens.
+    const b = doseContributions(
+      [
+        idStudy(1, { modality: "ct", study_date: "2020-01-04" }),
+        idStudy(2, { modality: "ct", study_date: "2025-11-04" }),
+      ],
+      now
+    );
+    expect(combinedMsv(b.window)).toBeLessThan(combinedMsv(b.allRecords));
+    expect(doseSplitIsRedundant(b)).toBe(false);
+  });
+
+  it("a record with no dose at all collapses nothing — there is no headline to collapse into", () => {
+    const b = doseContributions(
+      [idStudy(1, { modality: "ultrasound", study_date: "2025-11-04" })],
+      now
+    );
+    expect(b.allRecords.hasAnyDose).toBe(false);
+    expect(doseSplitIsRedundant(b)).toBe(false);
+    expect(doseScopeCountLabel(b.allRecords)).toBeNull();
+  });
+
+  it("the verdict is over the PRINTED figures, not the raw sums", () => {
+    // "States the figure twice" is a claim about what a reader sees, and
+    // formatScopeMsv is where a figure becomes visible. Two estimates whose raw
+    // values differ but which print identically inside and outside the lens would
+    // still be two identical lines.
+    const b = doseContributions(
+      [idStudy(1, { modality: "ct", study_date: "2025-11-04" })],
+      now
+    );
+    const headline = formatScopeMsv(b.allRecords, combinedMsv(b.allRecords));
+    const lens = formatScopeMsv(b.window, combinedMsv(b.window));
+    expect(headline).toBe(lens);
+    expect(doseSplitIsRedundant(b)).toBe(true);
   });
 });

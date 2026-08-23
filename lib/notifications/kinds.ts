@@ -190,7 +190,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     kind: "workout",
     label: "Workout reminders",
     blurb:
-      "Sent on the usual training schedule when behind on the weekly routine.",
+      "Sent on the usual training schedule when behind on the weekly targets.",
     safety: false,
     control: { type: "toggle", field: "workout_enabled" },
     requiresTraining: true,

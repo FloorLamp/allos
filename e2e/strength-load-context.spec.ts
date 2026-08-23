@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expandTrendsContext } from "./trends-chrome";
 import {
   followLink,
   hydratedClick,
@@ -106,40 +105,6 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
         name: `${LOAD_CONTEXT_LIFT} (${LOAD_CONTEXT_HOME})`,
       })
     ).toBeVisible();
-
-    await page.close();
-  });
-
-  test("Trends → Fitness names the implement on the progression chart and movers", async ({
-    browser,
-  }) => {
-    const page = await signIn(browser);
-    await page.goto("/trends?tab=fitness");
-    await expandTrendsContext(page);
-
-    const strength = page.getByTestId("fitness-strength");
-    await expect(strength).toBeVisible();
-
-    // The est-1RM lead is ONE machine's progression, titled with that machine.
-    const trend = page.getByTestId("fitness-e1rm-trend");
-    await expect(trend).toContainText(LOAD_CONTEXT_LIFT);
-    await expect(trend).toContainText(LOAD_CONTEXT_HOME);
-
-    // Both lanes reach the movers list, each labeled — the flip's whole precondition.
-    const movers = page.getByTestId("fitness-strength-movers");
-    await expect(movers).toBeVisible();
-    await expect(
-      movers.getByRole("listitem").filter({ hasText: LOAD_CONTEXT_HOME })
-    ).toHaveCount(1);
-    await expect(
-      movers.getByRole("listitem").filter({ hasText: LOAD_CONTEXT_HOTEL })
-    ).toHaveCount(1);
-
-    // No row names the bare movement alone: an unlabeled lane would be one of two
-    // identical-looking "Machine Chest Press" rows.
-    await expect(
-      movers.getByRole("listitem").filter({ hasText: LOAD_CONTEXT_LIFT })
-    ).toHaveCount(2);
 
     await page.close();
   });
