@@ -313,7 +313,13 @@ function buildBrief(opts) {
 - Worktree setup: git fetch origin main && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} origin/main
 - cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
-- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts
+- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts.
+  AND IF TYPECHECK FAILS NAMING A PACKAGE YOU DID NOT ADD, that is the same drift
+  wearing a different error. Your node_modules is HARD-LINKED from the parent tree,
+  which was built at some earlier main; a dependency that landed after it is simply
+  absent, and the failure points at the import rather than at the cause. Measured
+  2026-08-22: a lane lost time to \`@testing-library/react\` missing because #3511
+  had added it hours after the parent tree was built. npm ci in the worktree.
 - FIRST ACTION is the worktree + node_modules link, BEFORE reading any source. If it
   fails you must know before spending context.
 - If a tool call is DENIED by the permission system, or fails for an environment
@@ -367,6 +373,22 @@ ${nodeLine}
   source files carry a deliberate NUL as a composite-key separator, so rg calls them
   BINARY and skips them: a plain \`rg <pattern>\` reports a clean sweep it never took.
   They are listed in lib/__tests__/nul-byte-census.test.ts (#3206).
+- PREFER \`git grep\` TO \`rg\` FOR A CENSUS IN YOUR WORKTREE. \`rg\` HANGS here, and
+  \`--glob '!node_modules'\` does NOT save it: your node_modules is a \`cp -al\` hardlink
+  copy, which ripgrep's gitignore handling does not skip the way it would a normal
+  ignored directory. \`git grep\` is fast, and it scans exactly the TRACKED set — which
+  is the set a census should be making a claim about anyway, so this is a correctness
+  win and not only a speed one. Measured 2026-08-22 on #3457, where a lane lost a
+  census run to it. The \`-a\` rule above still applies when you do reach for rg.
+- SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
+  anything that leaves \`next-server\` alive), stop it and confirm it is gone
+  before your final message. A clean \`git status\` does NOT mean the tree is
+  free: the orchestrator's worktree cleanup refuses to delete a directory with
+  live processes in it — correctly, because removing it out from under a running
+  process has caused damage — so an orphaned server strands the whole worktree
+  and its port until the container dies. Two lanes did this on 2026-08-22 and one
+  tree could not be reclaimed at all, because killing the processes was outside
+  the orchestrator's permissions.
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
@@ -621,9 +643,49 @@ ${MIGRATION_LINES}
   staring at the number would have surfaced, because the number was irrelevant. Having
   to say out loud what a bound is bounding is the check. Demand the stated unit even
   when the constant looks obviously right.
-- Run YOUR changed e2e specs at CI parity on your assigned port range:
-  E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
-  Do NOT run the full suite — the orchestrator owns full-suite runs.
+- E2E SPLITS IN TWO, AND ONLY ONE HALF RUNS ON THIS BOX.
+  * SPECS YOU AUTHORED OR EDITED: run locally, at CI parity, on your assigned port
+    range: E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is
+    E2E_PORT, never PORT. This is usually one to three files and it is where you can
+    actually introduce a flake, so the repeat is earned here.
+  * EVERY OTHER SPEC — the blast radius, the geometry-asserting sweep, the specs that
+    merely exercise code you changed: DO NOT RUN THEM LOCALLY. Push, and read CI.
+  Do NOT run the full suite locally — the orchestrator owns full-suite runs.
+
+  WHY, IN NUMBERS, because this reverses what lanes did until 2026-08-21: CI runs ALL
+  438 spec files across TWELVE parallel shards in 4-5 MINUTES of wall clock. A lane
+  running ~20 named files in a batch takes 2.5-4 minutes PER BATCH and needs about
+  nine of them to cover a blast radius — call it 30 minutes, for a fraction of the
+  coverage, on four cores it is sharing with every sibling lane. CI is both faster
+  and more complete, and it costs this box nothing.
+
+  AND \`--repeat-each=3\` BUYS ALMOST NOTHING ON THE BLAST RADIUS, which is the part
+  that makes this a correctness argument and not only a speed one. The failures a
+  repeat would catch in a spec you did NOT author are co-residency effects — a spec
+  behaving differently because of WHO IT RAN BESIDE. Those depend on shard
+  composition, and an ORDINARY local run does not reproduce it. So repeating a
+  blast-radius spec locally re-rolls a die that is not the die CI throws.
+  Repeat what you wrote; let CI run what you did not.
+
+  BUT THE SHARD *IS* REPRODUCIBLE WHEN YOU NEED IT, and an earlier version of this
+  brief said flatly that it was not. That was wrong and it cost a diagnosis:
+  \`scripts/e2e-shard-plan.ts <n> 12\` is deterministic, but it is balanced from
+  RECORDED DURATIONS, so it must be recomputed AT THE HEAD THAT RAN — not on main,
+  and not at your current head if the failure was two pushes ago. Running it on main
+  points at the wrong neighbours: in the #3400 diagnosis main's shard 11 was the
+  37-file set that PASSED, while both failing runs held a 38-file set. The job log
+  lists what actually ran, so use it as ground truth and use the recomputed plan to
+  confirm you matched it. This is for DIAGNOSING a specific red, not for routine
+  verification — the policy above is unchanged.
+
+- THE PR IS AN INSTRUMENT, NOT A FINISH LINE. CI triggers on \`pull_request\` only —
+  never on a branch push — so until the PR exists you have no CI, and the policy
+  above cannot work. Open it as soon as lint, typecheck and the pure tier are clean,
+  then iterate against CI. \`concurrency: cancel-in-progress\` is keyed per ref, so a
+  second push CANCELS your own earlier run rather than queueing behind it or behind
+  a sibling; pushing again is cheap and is the intended loop.
+  A red on your own PR before review is not a broken window. A red you LEAVE is.
+  Read every CI red and say what it was — yours, contention, or a re-partition.
 - \`e2e (N)\` IS NOT \`--shard=N/12\`, and reaching for the obvious spelling gives you a
   FALSE GREEN off the wrong 113 tests. CI builds each shard from a DURATION-BALANCED
   plan (scripts/e2e-shard-plan.ts over e2e/spec-durations.json); Playwright's own

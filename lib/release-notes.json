@@ -1,6 +1,179 @@
 {
   "days": [
     {
+      "date": "2026-08-21",
+      "entries": [
+        {
+          "pr": 3429,
+          "title": "The dashboard keeps a readable width on a wide screen, and each standing reading draws its recent trend",
+          "kind": "feature",
+          "issues": [3253, 3252, 3238]
+        },
+        {
+          "pr": 3426,
+          "title": "A picker fed two lists shows both before you type, and the stack field offers the stacks you already use",
+          "kind": "fix",
+          "issues": [3410, 3316, 3100]
+        },
+        {
+          "pr": 3440,
+          "title": "On a phone, a toast is a full-width bar above the dock and Prev/Next are big enough to tap",
+          "kind": "feature",
+          "issues": [3373, 3378]
+        },
+        {
+          "pr": 3425,
+          "title": "Escape asks before throwing away a form you have typed into, and three more forms stopped discarding silently",
+          "kind": "fix",
+          "issues": [3371, 3420]
+        },
+        {
+          "pr": 3447,
+          "title": "A prescription written 0,125 mg is no longer stored as 125 mg, and an unreadable dose says so instead of guessing",
+          "kind": "fix",
+          "issues": [3444]
+        },
+        {
+          "pr": 3450,
+          "title": "On a phone: passport tables fit the card, drawer calendar days are tappable, and the Timeline action fits one line",
+          "kind": "fix",
+          "issues": [3242, 3377, 3403]
+        },
+        {
+          "pr": 3453,
+          "title": "On a phone the ⋯ menu and every date picker open as a sheet you can actually tap, instead of a desktop popover",
+          "kind": "fix",
+          "issues": [3374, 3376]
+        },
+        {
+          "pr": 3455,
+          "title": "The last dialogs behave like the rest when you scroll or dismiss them, and Close greys out mid-save",
+          "kind": "fix",
+          "issues": [3405, 3421, 3395]
+        },
+        {
+          "pr": 3461,
+          "title": "Added checks that find a hand-built dialog even when it says nothing about itself",
+          "kind": "fix",
+          "issues": [3445]
+        },
+        {
+          "pr": 3469,
+          "title": "Test runs stop failing just because the machine was busy, so a red means a real problem",
+          "kind": "fix",
+          "issues": [3436]
+        },
+        {
+          "pr": 3456,
+          "title": "On a phone the command palette fills the screen, and Records leads with your records instead of its own name",
+          "kind": "feature",
+          "issues": [3423, 3408]
+        },
+        {
+          "pr": 3476,
+          "title": "The dashboard's trend column finally appears, hover labels line up, and Now cards get smaller on a phone",
+          "kind": "fix",
+          "issues": [3459, 3460]
+        },
+        {
+          "pr": 3464,
+          "title": "A dose written 1 000 mg is read as 1000 or says it cannot be read — never counted as nothing",
+          "kind": "fix",
+          "issues": [3451]
+        },
+        {
+          "pr": 3483,
+          "title": "Starting a workout and picking an exercise quickly no longer leaves two activities for one session",
+          "kind": "fix",
+          "issues": [3441]
+        },
+        {
+          "pr": 3494,
+          "title": "On a phone, panels inside a card and the gaps between sections both step down a notch, so less of the screen is padding",
+          "kind": "feature",
+          "issues": [3466]
+        },
+        {
+          "pr": 3511,
+          "title": "Guards over UI components can be tested cheaply now, so a broken safeguard shows up before it reaches you",
+          "kind": "fix",
+          "issues": [3446]
+        },
+        {
+          "pr": 3508,
+          "title": "Deleting an entry from its form waits for the server, so a discard can no longer leave a stray draft behind",
+          "kind": "fix",
+          "issues": [3454]
+        },
+        {
+          "pr": 3513,
+          "title": "A logout tapped the instant a page loads is no longer silently ignored by the test that guards it",
+          "kind": "fix",
+          "issues": [3400]
+        },
+        {
+          "pr": 3510,
+          "title": "Every row's action menu names the row it acts on, and add buttons all reach the same tappable size",
+          "kind": "fix",
+          "issues": [3501]
+        },
+        {
+          "pr": 3516,
+          "title": "Labels and their values stay together on phone-width tables, so a card's details read as pairs instead of a run-on",
+          "kind": "fix",
+          "issues": [3499]
+        },
+        {
+          "pr": 3519,
+          "title": "Database tests stop rebuilding the schema for every single test, so the suite stops getting slower each release",
+          "kind": "fix",
+          "issues": [3470, 3471]
+        },
+        {
+          "pr": 3523,
+          "title": "Filter and tab chips look the same everywhere, and one can no longer look selected without saying so to a screen reader",
+          "kind": "fix",
+          "issues": [3475]
+        },
+        {
+          "pr": 3522,
+          "title": "Dates read the way you set them everywhere, instead of surfacing as 2026-05-24 on imports, results and the dashboard",
+          "kind": "fix",
+          "issues": [3492]
+        },
+        {
+          "pr": 3529,
+          "title": "The design review now measures button and text positions on real pages, catching clipped names and mismatched controls",
+          "kind": "fix",
+          "issues": [3489]
+        },
+        {
+          "pr": 3527,
+          "title": "One tap-target size across the app, so small buttons are as easy to hit as large ones",
+          "kind": "fix",
+          "issues": [3514]
+        },
+        {
+          "pr": 3528,
+          "title": "Sleep naps and vaccine doses stop running off the edge of a phone card, and a check now covers every such list",
+          "kind": "fix",
+          "issues": [3517]
+        },
+        {
+          "pr": 3535,
+          "title": "Integration and import pages open with one sentence and fold the rest, instead of a wall of text on a phone",
+          "kind": "fix",
+          "issues": [3488, 3490]
+        },
+        {
+          "pr": 3531,
+          "title": "Every add button says Add, sits in one of four places, and is big enough to hit on a phone",
+          "kind": "fix",
+          "issues": [3486, 3514]
+        }
+      ]
+    },
+    {
       "date": "2026-08-20",
       "entries": [
         {
@@ -77,7 +250,7 @@
         },
         {
           "pr": 3348,
-          "title": "A protocol reads as the sentence it is \u2014 practice, cadence and window as chips you tap to change",
+          "title": "A protocol reads as the sentence it is — practice, cadence and window as chips you tap to change",
           "kind": "feature",
           "issues": [3219]
         },
@@ -113,7 +286,7 @@
         },
         {
           "pr": 3380,
-          "title": "\u201ckratom\u201d and \u201cKratom\u201d are one thing again \u2014 and MDMA still reads as MDMA",
+          "title": "“kratom” and “Kratom” are one thing again — and MDMA still reads as MDMA",
           "kind": "fix",
           "issues": [3325]
         },
@@ -143,7 +316,7 @@
         },
         {
           "pr": 3418,
-          "title": "Three identical sets read as one line \u2014 175 lb \u00d7 8 \u00d7 3 \u2014 with the grid one tap behind",
+          "title": "Three identical sets read as one line — 175 lb × 8 × 3 — with the grid one tap behind",
           "kind": "feature",
           "issues": [3336]
         }
@@ -292,7 +465,7 @@
         },
         {
           "pr": 3209,
-          "title": "Note a twinge without calling it an injury \u2014 it expires on its own, and your own words offer it",
+          "title": "Note a twinge without calling it an injury — it expires on its own, and your own words offer it",
           "kind": "feature",
           "issues": [2948]
         },
@@ -386,7 +559,7 @@
         },
         {
           "pr": 3048,
-          "title": "Air quality and pollen arrive \u2014 so an item paused on high pollen is now held \u2014 and one workout sends one message",
+          "title": "Air quality and pollen arrive — so an item paused on high pollen is now held — and one workout sends one message",
           "kind": "fix",
           "issues": [3007, 3021]
         },
@@ -545,7 +718,7 @@
       ],
       "operatorNotes": [
         "Upgrades now copy the database to data/backups/pre-migration before applying any migration. Two copies are kept and any older than 30 days is removed; set ALLOS_MIGRATION_SNAPSHOT=off to skip it, or ALLOS_MIGRATION_SNAPSHOT_DIR to put it on another volume.",
-        "If that copy cannot be made \u2014 most likely a full data volume \u2014 the container refuses to start rather than migrate unprotected. Nothing has been applied at that point, so freeing space and starting again is a complete fix. See docs/backups.md."
+        "If that copy cannot be made — most likely a full data volume — the container refuses to start rather than migrate unprotected. Nothing has been applied at that point, so freeing space and starting again is a complete fix. See docs/backups.md."
       ]
     },
     {
@@ -595,7 +768,7 @@
         },
         {
           "pr": 2706,
-          "title": "Phones get a bottom dock \u2014 Home, Training, Trends and More \u2014 with a raised log puck between them",
+          "title": "Phones get a bottom dock — Home, Training, Trends and More — with a raised log puck between them",
           "kind": "feature",
           "issues": []
         },
@@ -607,7 +780,7 @@
         },
         {
           "pr": 2692,
-          "title": "Settings \u2192 Notifications shows each channel as live, waiting or off instead of inking every box the same",
+          "title": "Settings → Notifications shows each channel as live, waiting or off instead of inking every box the same",
           "kind": "fix",
           "issues": []
         },
@@ -667,7 +840,7 @@
         },
         {
           "pr": 2682,
-          "title": "Training \u2192 Overview opens on a week band showing each day's sessions, with the week's counts beneath it",
+          "title": "Training → Overview opens on a week band showing each day's sessions, with the week's counts beneath it",
           "kind": "feature",
           "issues": []
         },
@@ -1071,7 +1244,7 @@
       "entries": [
         {
           "pr": 2325,
-          "title": "A source allos does not drive is never called \u201cConnected\u201d",
+          "title": "A source allos does not drive is never called “Connected”",
           "kind": "fix",
           "issues": [2301]
         },
@@ -1083,7 +1256,7 @@
         },
         {
           "pr": 2333,
-          "title": "\u201cReview risk factors\u201d can be answered by people it does not apply to",
+          "title": "“Review risk factors” can be answered by people it does not apply to",
           "kind": "fix",
           "issues": [2299]
         },
@@ -1113,7 +1286,7 @@
         },
         {
           "pr": 2349,
-          "title": "\u201cCheck these first\u201d links to the rows it names",
+          "title": "“Check these first” links to the rows it names",
           "kind": "feature",
           "issues": [2339]
         },
@@ -1125,7 +1298,7 @@
         },
         {
           "pr": 2354,
-          "title": "Results are not labelled \u201cfasting\u201d when the report never said so",
+          "title": "Results are not labelled “fasting” when the report never said so",
           "kind": "fix",
           "issues": [2338]
         },
@@ -1410,7 +1583,7 @@
         },
         {
           "pr": 2169,
-          "title": "Deletion now means deletion \u2014 and undo where it counts",
+          "title": "Deletion now means deletion — and undo where it counts",
           "kind": "fix",
           "issues": [2126, 2125, 2129]
         },
@@ -1577,7 +1750,7 @@
         },
         {
           "pr": 2047,
-          "title": "Setting up a portal is not \u201coverdue\u201d",
+          "title": "Setting up a portal is not “overdue”",
           "kind": "fix",
           "issues": [2010, 1930]
         },
@@ -1607,7 +1780,7 @@
         },
         {
           "pr": 2030,
-          "title": "Last night\u2019s supplements can still be confirmed this morning",
+          "title": "Last night’s supplements can still be confirmed this morning",
           "kind": "fix",
           "issues": [2018]
         }
@@ -1702,7 +1875,7 @@
           "pr": 1955,
           "kind": "feature",
           "issues": [1935, 1936, 1937, 1939],
-          "title": "Streaks are gone \u2014 the numbers that survive are the ones that describe you fairly"
+          "title": "Streaks are gone — the numbers that survive are the ones that describe you fairly"
         },
         {
           "pr": 1951,
@@ -1714,7 +1887,7 @@
           "pr": 1950,
           "kind": "feature",
           "issues": [1933],
-          "title": "Correct a dose you logged wrong \u2014 supplements too, not just medications"
+          "title": "Correct a dose you logged wrong — supplements too, not just medications"
         },
         {
           "pr": 1946,
@@ -1726,7 +1899,7 @@
           "pr": 1943,
           "kind": "fix",
           "issues": [1909, 1917],
-          "title": "Seven-day averages now cover seven days \u2014 and your first reading shows up the day you take it"
+          "title": "Seven-day averages now cover seven days — and your first reading shows up the day you take it"
         },
         {
           "pr": 1929,
@@ -2030,7 +2203,7 @@
         {
           "pr": 1769,
           "kind": "feature",
-          "title": "Lipid ratios computed for you \u2014 and a lighter Biomarkers page",
+          "title": "Lipid ratios computed for you — and a lighter Biomarkers page",
           "issues": [1651, 1582]
         },
         {
@@ -2048,7 +2221,7 @@
         {
           "pr": 1781,
           "kind": "feature",
-          "title": "Deleted documents stay deleted \u2014 and portal syncs stop re-uploading what you already have",
+          "title": "Deleted documents stay deleted — and portal syncs stop re-uploading what you already have",
           "issues": [1776, 1777]
         }
       ]
@@ -2077,7 +2250,7 @@
         {
           "pr": 1761,
           "kind": "feature",
-          "title": "Your portal reminds the right person \u2014 and the tool learns its own config",
+          "title": "Your portal reminds the right person — and the tool learns its own config",
           "issues": [1757, 1759]
         },
         {
@@ -2107,7 +2280,7 @@
         {
           "pr": 1745,
           "kind": "feature",
-          "title": "Training that checks the forecast \u2014 without overruling you",
+          "title": "Training that checks the forecast — without overruling you",
           "issues": [1724, 1728]
         },
         {
@@ -2119,13 +2292,13 @@
         {
           "pr": 1742,
           "kind": "feature",
-          "title": "Patient portals get real names \u2014 and syncs tell you whose data arrived",
+          "title": "Patient portals get real names — and syncs tell you whose data arrived",
           "issues": [1735]
         },
         {
           "pr": 1740,
           "kind": "feature",
-          "title": "Upload documents from anywhere \u2014 tokens, an API, and a tiny CLI",
+          "title": "Upload documents from anywhere — tokens, an API, and a tiny CLI",
           "issues": [1734]
         },
         {
@@ -2148,7 +2321,7 @@
         {
           "pr": 1730,
           "kind": "fix",
-          "title": "Imaging saves show up reliably \u2014 and failures say so",
+          "title": "Imaging saves show up reliably — and failures say so",
           "issues": []
         },
         {
@@ -2160,7 +2333,7 @@
         {
           "pr": 1715,
           "kind": "fix",
-          "title": "Broken syncs finally speak up \u2014 and food taps count right",
+          "title": "Broken syncs finally speak up — and food taps count right",
           "issues": [1685, 1704]
         },
         {
@@ -2172,7 +2345,7 @@
         {
           "pr": 1707,
           "kind": "fix",
-          "title": "Cycle tracking stops lying to you \u2014 in both directions",
+          "title": "Cycle tracking stops lying to you — in both directions",
           "issues": [1681, 1682]
         },
         {
@@ -2202,13 +2375,13 @@
         {
           "pr": 1697,
           "kind": "feature",
-          "title": "Weekly, alternating-day, and taper schedules \u2014 without giving up reminders",
+          "title": "Weekly, alternating-day, and taper schedules — without giving up reminders",
           "issues": [1602]
         },
         {
           "pr": 1693,
           "kind": "fix",
-          "title": "Charts you can actually read on a phone \u2014 and a day chart you can touch",
+          "title": "Charts you can actually read on a phone — and a day chart you can touch",
           "issues": [1573, 1518, 1512, 1515]
         },
         {
@@ -2255,7 +2428,7 @@
         {
           "pr": 1669,
           "kind": "feature",
-          "title": "All your scans, one source \u2014 and a strict mode that means it",
+          "title": "All your scans, one source — and a strict mode that means it",
           "issues": [1640, 1642]
         },
         {
@@ -2266,12 +2439,12 @@
         {
           "pr": 1666,
           "kind": "feature",
-          "title": "Pin your Body cards with a star \u2014 and the default order finally makes sense",
+          "title": "Pin your Body cards with a star — and the default order finally makes sense",
           "issues": [1643, 1659]
         },
         {
           "pr": 1662,
-          "title": "The 'just recovered' dashboard calms down \u2014 and dismissals finally stick",
+          "title": "The 'just recovered' dashboard calms down — and dismissals finally stick",
           "kind": "fix",
           "issues": [1547, 1548, 1549]
         },
@@ -2307,7 +2480,7 @@
         },
         {
           "pr": 1646,
-          "title": "The Biomarkers index shows itself whole \u2014 and fits a phone",
+          "title": "The Biomarkers index shows itself whole — and fits a phone",
           "kind": "feature",
           "issues": [1581, 1578]
         },
@@ -2319,7 +2492,7 @@
         },
         {
           "pr": 1639,
-          "title": "Corrected lab results stop erasing history \u2014 and readings learn how they were drawn",
+          "title": "Corrected lab results stop erasing history — and readings learn how they were drawn",
           "kind": "feature",
           "issues": [1404, 1629]
         },
@@ -2418,7 +2591,7 @@
         },
         {
           "pr": 1569,
-          "title": "Your labs, organized by panel \u2014 everywhere",
+          "title": "Your labs, organized by panel — everywhere",
           "kind": "feature",
           "issues": [1502]
         },
@@ -2442,19 +2615,19 @@
         },
         {
           "pr": 1560,
-          "title": "Tap any chart to go deeper \u2014 and edit its readings",
+          "title": "Tap any chart to go deeper — and edit its readings",
           "kind": "feature",
           "issues": [1488, 1397]
         },
         {
           "pr": 1562,
-          "title": "Health Connect syncs catch more duplicates \u2014 and more readings",
+          "title": "Health Connect syncs catch more duplicates — and more readings",
           "kind": "fix",
           "issues": []
         },
         {
           "pr": 1558,
-          "title": "Trends chrome gets out of the way \u2014 and tiles drag",
+          "title": "Trends chrome gets out of the way — and tiles drag",
           "kind": "feature",
           "issues": [1485]
         },
@@ -2466,13 +2639,13 @@
         },
         {
           "pr": 1554,
-          "title": "Trends \u2192 Fitness respects your date range",
+          "title": "Trends → Fitness respects your date range",
           "kind": "feature",
           "issues": [1492]
         },
         {
           "pr": 1546,
-          "title": "A logged workout is a logged workout \u2014 and day one reads honestly",
+          "title": "A logged workout is a logged workout — and day one reads honestly",
           "kind": "fix",
           "issues": [1441, 1442]
         },
@@ -2699,7 +2872,7 @@
       ],
       "operatorNotes": [
         "Health Connect ingest tokens can no longer be re-displayed after this upgrade. Use Rotate on the Health Connect page to mint a new one; phones already paired keep working with their existing token.",
-        "Database migrations 109\u2013111 apply automatically on the first boot after upgrading."
+        "Database migrations 109–111 apply automatically on the first boot after upgrading."
       ]
     }
   ]

@@ -204,6 +204,21 @@ if [ "$prettier_would_rewrite" = "1" ]; then
 fi
 
 echo
-echo "ALL GATES PASSED (format included). Remember: run YOUR changed e2e specs at CI"
-echo "parity on your assigned port range before opening the PR — this script does not"
-echo "run Playwright."
+echo "ALL GATES PASSED (format included). This script does not run Playwright."
+echo
+echo "E2E SPLITS IN TWO (policy changed 2026-08-21):"
+echo "  - specs you AUTHORED or EDITED: run locally at CI parity on your port range,"
+echo "    --repeat-each=3 --retries=0. That is where you can introduce a flake."
+echo "  - the blast radius — specs you did not edit: DO NOT run them locally. Push"
+echo "    and read CI. It runs all 438 across 12 shards in 4-5 min; a local batch"
+echo "    sweep is ~30 min on four contended cores for less coverage."
+echo "  Repeating a blast-radius spec locally re-rolls a die CI does not throw: the"
+echo "  failures it would catch are co-residency effects, and an ordinary local run"
+echo "  does not reproduce shard composition."
+echo "  To DIAGNOSE a specific red you can reproduce it: e2e-shard-plan.ts <n> 12 is"
+echo "  deterministic but balanced from RECORDED durations, so recompute it AT THE"
+echo "  HEAD THAT RAN. On main it names the wrong neighbours (#3400)."
+echo
+echo "OPEN THE PR EARLY. CI triggers on pull_request only, never on a branch push,"
+echo "so until it exists you have no CI. cancel-in-progress is keyed per ref, so a"
+echo "second push cancels your own earlier run rather than queueing."
