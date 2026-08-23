@@ -401,7 +401,17 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
         },
       };
       await runWeatherSync(p, badDaily);
-      expect(isTruncatedSyncEvent(latestEvent(p))).toBe(true);
+      const ev = latestEvent(p);
+      expect(isTruncatedSyncEvent(ev)).toBe(true);
+      // AND THE NOTE IS COPY, NOT THE THROW'S OWN TEXT (#3592). This branch used to
+      // set `partial` to the raw caught message, so the amber Review line read
+      // "…the daily forecast/air-quality half failed (NOT NULL constraint failed:
+      // weather_days.date)". The SQLite vocabulary goes to log.error; the reason
+      // stays a fragment in the same register as "air-quality fetch failed (400)".
+      expect(ev.details ?? "").toContain(
+        weatherPartialWarning("the daily rows couldn't be saved")
+      );
+      expect(ev.details ?? "").not.toMatch(/constraint|NOT NULL|SQLITE/i);
     });
 
     // ── #3007: a deterministic half-failure stops promising a retry ─────────
