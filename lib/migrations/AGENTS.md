@@ -31,11 +31,10 @@ These instructions apply to the migration runner and migrations.
   `off:<migration name>` scopes it to one pending set and expires by itself.
 - Boot tasks run after the copy is taken, so their deletes have none behind
   them. Register every one in the boot-task delete census with its row class.
-- A migration body may be RE-ENTERED: the runner applies each `up()` through
-  `runBootTx`'s `SQLITE_BUSY` retry. The runner's transaction undoes a failed
-  attempt, so keep every effect inside the `db` handle you were given — a
-  second connection, a file write, or a module-level accumulator survives the
-  rollback and is applied twice. See `docs/internals/migration-reentry.md`.
+- A migration body may be RE-ENTERED by `runBootTx`'s `SQLITE_BUSY` retry. Keep
+  every effect inside the `db` handle you were given — a second connection, a
+  file write or a module-level accumulator survives the rollback and applies
+  twice (`docs/internals/migration-reentry.md`).
 
 Read `docs/versioned-migrations-spec.md` before changing migrations or the
 runner, and `docs/internals/migration-snapshot.md` before changing the snapshot.

@@ -29,10 +29,6 @@ import { runMigrations } from "../lib/migrations/runner";
 
 type Verdict = "noop" | "changed" | "threw";
 
-// Thrown to unwind the trial application. A sentinel object, not an Error, so it
-// can never be confused with something a migration body raised.
-const ROLLBACK = { rollbackTheTrial: true };
-
 /** Every schema object and every row, as comparable text. */
 function dumpState(db: Database.Database): string {
   const out: string[] = [];
@@ -80,19 +76,21 @@ function main(): void {
     let verdict: Verdict = "noop";
     let detail = "";
     let after = before;
+    // A raw SAVEPOINT rather than db.transaction(): the trial must be unwound
+    // whether the body returns or throws, and a body that opens its own
+    // transaction (53 of them do) nests inside this one as a further savepoint.
+    db.exec("SAVEPOINT replay_trial");
     try {
-      db.transaction(() => {
-        m.up(db);
-        // Read INSIDE the trial: the rollback below is what keeps the census
-        // side-effect free, so the comparison has to happen before it.
-        after = dumpState(db);
-        throw ROLLBACK;
-      })();
+      m.up(db);
+      // Read INSIDE the trial — the rollback below is what keeps the census
+      // side-effect free, so the comparison has to happen before it.
+      after = dumpState(db);
     } catch (err) {
-      if (err !== ROLLBACK) {
-        verdict = "threw";
-        detail = String((err as Error)?.message ?? err).slice(0, 140);
-      }
+      verdict = "threw";
+      detail = String((err as Error)?.message ?? err).slice(0, 140);
+    } finally {
+      db.exec("ROLLBACK TO replay_trial");
+      db.exec("RELEASE replay_trial");
     }
     if (verdict !== "threw" && after !== before) {
       verdict = "changed";

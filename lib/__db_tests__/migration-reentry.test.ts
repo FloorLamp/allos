@@ -30,10 +30,10 @@ import { makeTmpDir } from "../__tests__/tmp-dir";
 //     That is what this file measures, over every shipped migration at once.
 //
 // THIS FILE DELIBERATELY CONSTRUCTS THE HARDER CASE THAN PRODUCTION CAN PRODUCE.
-// The databases below run in SQLite's default rollback-journal mode, not WAL,
-// because that is the only mode in which a body can write in full and THEN meet a
-// busy: a peer holding a SHARED read lock lets BEGIN IMMEDIATE take RESERVED, and
-// refuses only the RESERVED -> EXCLUSIVE upgrade at COMMIT. Every busy error here
+// The databases below run at SQLite's default `journal_mode` (`delete`) rather
+// than WAL, because that is the only mode in which a body can write in full and
+// THEN meet a busy: a peer holding a SHARED read lock lets BEGIN IMMEDIATE take
+// RESERVED, and refuses only the RESERVED -> EXCLUSIVE upgrade at COMMIT. Every busy error here
 // is raised by SQLite, never synthesised — the same standard
 // `boot-tx-busy-retry.test.ts` sets, and for the same reason: a hand-thrown
 // `{ code: "SQLITE_BUSY" }` would prove only that the harness sets the property

@@ -31,9 +31,10 @@ in one transaction. SQLite rolls back DDL and DML together, so the retry re-ente
 a database identical to the one the first attempt found, and the ledger row can
 never exist without the body's work (or the reverse).
 
-The test drives property 2, deliberately in SQLite's default rollback-journal
-mode rather than WAL — that is the **only** mode in which a body can write in full
-and then meet a busy, so it constructs a harder case than production can produce.
+The test drives property 2, deliberately at SQLite's default `journal_mode`
+(`delete`) rather than WAL — that is the **only** mode in which a body can write
+in full and then meet a busy, so it constructs a harder case than production can
+produce.
 A peer holding a `SHARED` read lock lets `BEGIN IMMEDIATE` take `RESERVED` and
 refuses only the `RESERVED -> EXCLUSIVE` upgrade at `COMMIT`. Every busy error in
 that file is raised by SQLite, never synthesised.
