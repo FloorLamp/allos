@@ -2651,6 +2651,73 @@ async function dragToEnd(
     type: "touchEnd",
     touchPoints: [],
   });
+  await consumeSuppressedTap(cdp, to);
+}
+
+// ── A DRAG LEAVES ONE SWALLOWED TAP BEHIND, AND SPENDS IT HERE (#3262) ───────
+//
+// After a touch drag whose STARTING element forbids the axis the drag travels on,
+// Chromium suppresses the tap gesture of the NEXT touch sequence. The touch
+// events still flow — `touchstart`/`touchend` arrive intact, and so do the
+// touch-type PointerEvents — but no `GestureTap` is produced, so the renderer
+// synthesises no `mousedown`, no `mouseup` and NO `click`. Nothing in the page
+// can see it happen: the element is hydrated, the handler is committed, and the
+// tap simply reaches nobody.
+//
+// That is #3262, and it is the whole of it. Measured in this repo, Chromium
+// 1194, phone viewport, on a standalone page with no React in it at all:
+//
+//   touch-action on the element the drag STARTS on   next tap's click
+//   ------------------------------------------------ ----------------
+//   none                                             lost 6/6
+//   pan-x        (forbids the vertical drag)         lost 6/6
+//   pan-y        (permits it)                        lost 0/6
+//   manipulation (permits it)                        lost 0/6
+//   auto                                             lost 0/6
+//
+// So it is not a fling, not a scroll, and not multi-touch: it is the browser's
+// tap arbitration for a gesture it was told it may not have. The sheet's drag
+// handle is `touch-none` on purpose (components/overlay/tokens.ts — the panel's
+// own scroller would otherwise steal the drag), so every flick this suite drives
+// from a handle incurs the debt.
+//
+// The debt is exactly ONE touch sequence, and only for ~300 ms: measured lost at
+// gaps of 0–300 ms after the drag's lift, recovered by 350–400 ms, and the
+// SECOND tap always lands (0/6 lost) however soon it comes. A CPU throttle does
+// not move the window — 20x on the renderer left it where it was — which is why
+// the throttling recipe in docs/internals/e2e-hygiene.md answered "nothing
+// wrong" for five probe rounds: the timer is in the BROWSER process, and the
+// instrument only slows the renderer.
+//
+// WAITING IT OUT WOULD BE THE WRONG FIX. The window is a wall-clock timer we
+// cannot observe from the page, so any sleep would be a guess that a loaded
+// runner can outlast — the flake would come back quieter. SPENDING the sequence
+// is state-based instead: a `touchStart` immediately cancelled is a complete
+// touch sequence to the browser's arbitration and can never produce a click by
+// construction, so it consumes the suppression and does nothing else. It is
+// inert for the app too — every recognizer in components/overlay/useDragGesture.ts
+// requires a CLAIMED axis before it calls anything, claiming requires movement,
+// and nothing moved; `PullToRefresh` reads the same touchstart and arms nothing.
+//
+// Measured over 24 trials each, gap 14–103 ms, on the same page:
+//   without this call: 23/24 taps lost.  with it: 0/24.
+//
+// It runs after EVERY drag, not only the ones that started on a restricted
+// element. A drag that was allowed its axis has no suppressed tap to spend, so
+// the call is a no-op there — one path is cheaper than a rule about which drags
+// owe it, and a future gesture over a `touch-none` surface cannot forget.
+async function consumeSuppressedTap(
+  cdp: CDPSession,
+  at: { x: number; y: number }
+): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: at.x, y: at.y }],
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
 }
 
 // ── An element-anchored swipe PROVES where the finger landed (#2714) ─────────

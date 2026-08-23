@@ -377,6 +377,24 @@ horizontal scrollers are unaffected. (Caveat: this governs the browser's
 overscroll gesture, not the platform's — an iOS Safari tab keeps its system
 edge-swipe-back; installed to the home screen there is none.)
 
+**The drag handle's `touch-action: none` costs one tap** (#3262). It is the one
+place in the app that takes an axis away from the browser, and it is still the
+right call — without it the panel's own scroller steals a downward drag before
+the recognizer sees a second sample. The price, measured rather than reasoned:
+**Chromium suppresses the tap gesture of the first touch sequence after a drag
+whose starting element forbade the drag's axis.** The touch events and the
+touch-type PointerEvents still arrive; no `GestureTap` is produced, so no
+`mousedown`, no `mouseup` and no `click` reaches the page at all. It is exactly
+one sequence and roughly 300 ms wide, and the next tap always lands — which is
+the whole of the user-visible symptom #3262 confirmed: after flicking a dirty
+sheet and being asked to confirm, a tap that follows within a third of a second
+does nothing, the dialog stays open, and nothing is ever discarded. `pan-x`
+behaves the same way (it forbids the same axis); `pan-y`, `manipulation` and
+`auto` do not, and all three would give the scroller back the drag. No JS can
+see the suppression or clear it, so the app cannot work around it — the e2e
+suite spends the sequence deliberately instead (`consumeSuppressedTap` in
+`e2e/helpers.ts`, which carries the measurements).
+
 **Every gesture has a control path.** The drawer keeps its hamburger, the sheet
 its backdrop tap and Escape, the activity handle is itself a button, and the
 Timeline keeps its prev/next arrows — built from the SAME `timelineDayHref`
