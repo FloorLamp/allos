@@ -14,6 +14,7 @@ import {
   conditionMonitorTags,
   presenceLevel,
   rankBodyCards,
+  structuralBodyCardIds,
   TRENDS_CARD_TABLE,
   type BodyCardId,
   type TrendsSubjectContext,
@@ -344,6 +345,11 @@ describe("bodyCardOrder (★-pinned first, ranked remainder — #1643)", () => {
     ]);
     expect(order.slice(0, 3)).toEqual(["growth", "height", "head-circ"]);
     expect(order.slice(3, 6)).toEqual(["mood", "steps", "weight"]);
+    expect(structuralBodyCardIds(ctx({ growthTracked: true }))).toEqual([
+      "growth",
+      "height",
+      "head-circ",
+    ]);
   });
 
   it("leaves an adult's pins untouched by the structural rule", () => {

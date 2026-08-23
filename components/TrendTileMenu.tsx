@@ -5,8 +5,8 @@ import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { useTileReorder } from "@/components/SavedTilesGrid";
 import { toggleSavedItem } from "@/app/(app)/saved-actions";
 
-// The corner ⋯ menu on a Trends Overview tile (#1485 B) — the tile's own controls,
-// off the tile's vertical budget.
+// The corner ⋯ menu on a PINNED Body census tile (#1485 B/#3387) — the tile's
+// saved-state controls, off its vertical budget.
 //
 // They used to be a FOOTER ROW under every sparkline: a ★ button plus two reorder
 // arrows, ~90px per tile, nine tiles deep on a phone. The affordances are unchanged
@@ -15,10 +15,9 @@ import { toggleSavedItem } from "@/app/(app)/saved-actions";
 // standard), which is also how the tile grid can go two-abreast at 390px without
 // the controls eating the tile.
 //
-// Every tile on Overview is a SAVED tile now (#1487 — the grid is membership-driven),
-// so the star item is always the UNSAVE; a tile with nothing to show still renders
-// (compacted) precisely so this gesture stays reachable at any window — the #1456
-// contract. Compaction, not omission.
+// Only pinned census tiles mount this menu, so the star item is always UNSAVE. An
+// empty-window pin keeps its normal saved slot, which preserves both this control
+// and the order the star promises.
 //
 // THE ARROWS ARE THE NON-POINTER FALLBACK (#1485 C). Drag is now the reorder
 // language (long-press to lift on touch, through the shared mechanism in
@@ -28,10 +27,8 @@ import { toggleSavedItem } from "@/app/(app)/saved-actions";
 // reorder context, so an arrow and a drag move the same tile through the same
 // order into the same `saved_items.position` sweep.
 //
-// A tile that cannot be reordered — an EMPTY one, sunk below the grid by rule
-// because it has nothing to show at this window — offers no arrows at all, rather
-// than two controls that would visibly do nothing. Its unstar stays, which is the
-// only thing #1456 requires of it.
+// Empty-window pins remain reorderable; emptiness no longer pulls a saved card out
+// of the pinned run (#3387).
 export default function TrendTileMenu({
   itemKey,
   label,

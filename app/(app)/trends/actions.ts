@@ -94,8 +94,8 @@ export async function dismissBodyHygiene(
 // #1490's per-tab arrangement blob and never gained a UI caller, so the body census
 // arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
 // star toggle is app/(app)/saved-actions.ts `toggleSavedItem`, the sequence is its
-// `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
-// over the ranked remainder. There is no second arrangement action to keep in step.
+// `reorderSavedMetrics`, and lib/trends-card-rank.ts `bodyCardOrder` composes
+// pinned-first over the ranked remainder. There is no second arrangement action.
 
 // `saveTrendView` / `deleteTrendView` / `applyTrendView` (and their `paramsFromForm`
 // helper) lived here until #1653. The Trends overhaul deleted `SavedViewsBar` and

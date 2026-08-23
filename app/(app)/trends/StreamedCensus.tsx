@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 //
 // So the census is preceded by ONE macrotask yield. React sees a real suspension,
 // flushes the shell it already has — the header, the tab strip, the range control,
-// the digest, the starred grid, and the census's own heading and anchor — and
+// the digest, and the census's own heading and anchor — and
 // resumes with the census after the browser has something to paint. The cost is one
 // event-loop turn; the saving is the whole census off the critical path.
 //

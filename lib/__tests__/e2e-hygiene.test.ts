@@ -477,7 +477,6 @@ const MENU_TRIGGER_OK_MARKER = "hydrated-ok";
 // trends-default-range and trends-overview-curated.mobile, six of which reached zero.
 const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "appointments.spec.ts": 2,
-  "biomarker-picker-rank.spec.ts": 1,
   "care-plan.spec.ts": 1,
   "clinical-undo.spec.ts": 3,
   "condition-family-attributes.spec.ts": 2,

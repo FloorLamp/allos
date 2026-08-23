@@ -41,15 +41,6 @@ const ALLOWLIST = new Map<string, string>([
     "components/ui.tsx",
     "EmptyState itself — this is the one declaration of the panel",
   ],
-  [
-    "app/(app)/trends/StarredSection.tsx",
-    "ONE responsive state, not a copy: below `sm` the starred grid's empty state " +
-      "is a compact inline row carrying the add-tile control, and the dashed " +
-      "panel only appears at `sm` and up (every token is `sm:`-prefixed). " +
-      "EmptyState takes a message and typed links, so it can express neither the " +
-      "breakpoint nor the control — and #2536 decided against widening it into a " +
-      "content slot for a single caller, which is how a primitive becomes a div",
-  ],
 ]);
 
 function walk(dir: string): string[] {

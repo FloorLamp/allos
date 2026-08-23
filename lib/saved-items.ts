@@ -12,16 +12,13 @@
 //
 // KIND SEMANTICS (kind-specific meaning is the whole point of a generic store):
 //   • `clinical-result` — key is the canonical result name. Saved = it appears in the
-//     Results status card, earns a chart tile on Trends Overview, AND is
-//     included in the profile passport summary. Membership, not position, drives all
-//     three (the passport contract: lib/profile-summary-load.ts).
-//   • `trend-metric` — key is a standard body/training metric id ("weight"). A save is
-//     MEMBERSHIP here too, since #1487: Trends Overview renders the saved set and
-//     nothing else, so unstarring a standard metric removes its tile (the metric stays
-//     on its domain tab, and SaveTrendPicker offers it back). The four standard tiles
-//     are default-saved SEEDS (lib/standard-metric-seeds.ts) rather than a hardcoded
-//     sampler, which is what made the two kinds mean the same thing. Before that, a
-//     metric save was PROMOTION only — every metric tile rendered either way.
+//     Results status card and the profile passport summary. #3387 retires its second
+//     Trends copy; membership stays unchanged on those two owning surfaces.
+//   • `trend-metric` — key is a standard body/training metric id ("weight"). For a
+//     Body census metric, saved means PINNED: the card leads in saved order and owns
+//     reorder/unstar controls in that run. Unstarring removes the pin, not the
+//     metric's census membership. The standard metric seeds remain ordinary saved
+//     rows (lib/standard-metric-seeds.ts), preserving the day-one lead.
 
 export const SAVED_KINDS = ["clinical-result", "trend-metric"] as const;
 export type SavedKind = (typeof SAVED_KINDS)[number];

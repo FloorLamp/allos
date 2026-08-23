@@ -428,7 +428,7 @@ describe("#1487 migration 114 — seeding the installed base", () => {
       .prepare(
         // The app's saved order, in SQL: positioned rows first ascending, then
         // unpositioned ones newest-first. Mirrors orderSavedRefs / getSavedItems,
-        // which is what the Overview grid actually reads — ordering by `position`
+        // which is what the Body census pin run actually reads — ordering by `position`
         // alone would sort the unpositioned seeds FIRST and hide the very thing
         // these tests exist to check.
         `SELECT kind, key, position FROM saved_items

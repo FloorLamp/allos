@@ -16,7 +16,7 @@ export const TRENDS_BODY_PROFILE = "Trends Body (e2e)";
 export const TRENDS_BODY_OLD_DAY = "2024-01-15";
 
 // ── Curated Trends Overview (issue #1487 rendering half / #1485 A+B) ─────────
-// A dedicated adult profile for the membership-driven Overview grid. It owns a
+// A dedicated adult profile for the pinned Body census. It owns a
 // KNOWN tile mix so both halves of the grid are deterministic at phone width:
 //   populated → weight + resting HR (two weigh-ins, so two tiles draw a sparkline)
 //   empty     → body fat + training volume (never logged) and a starred analyte

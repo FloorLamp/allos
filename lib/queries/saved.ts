@@ -120,10 +120,10 @@ export function toggleItemSaved(
 // It replaced the retired `moveSavedItem` (one-slot up/down over the stored order):
 // with the grid holding the list client-side, the drag AND the ⋯ menu's arrow
 // fallback both name a destination, so ONE write serves both and they cannot drift.
-// Ordering is ONE list across kinds (the Overview grid interleaves saved clinical-result
-// and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1
-// position, so a set that was half-unpositioned (a fresh star) becomes fully ordered
-// on the first reorder instead of drifting.
+// Ordering is ONE list across kinds. The rewrite normalizes EVERY row to a dense
+// 0..n-1 position, so a set that was half-unpositioned (a fresh star) becomes fully
+// ordered on the first reorder instead of drifting. Trends now uses the kind-scoped
+// writer below because its Body census renders metric pins only (#3387).
 //
 // Refs the profile doesn't actually have saved are ignored, and any saved row the
 // caller didn't name keeps its relative order AFTER the named ones — a client
@@ -149,6 +149,45 @@ export function setSavedOrder(
       ordered.push(row);
     }
     for (const row of rows) if (!seen.has(row.id)) ordered.push(row);
+    writeSavedPositions(profileId, ordered);
+  });
+}
+
+// Reorder ONE kind inside the unified saved list without moving the other kinds'
+// slots (#3387). Trends no longer renders clinical-result saves, so its census can
+// only name the visible trend-metric subsequence. Reusing setSavedOrder with that
+// partial list would hoist every metric ahead of every clinical result. Instead,
+// replace the rows in this kind's existing slots and leave every other row exactly
+// where it was.
+export function setSavedKindOrder(
+  profileId: number,
+  kind: SavedKind,
+  refs: readonly SavedRef[]
+): void {
+  writeTx(() => {
+    const rows = getSavedItems(profileId);
+    const kindRows = rows.filter((row) => row.kind === kind);
+    const seen = new Set<number>();
+    const orderedKind: SavedItemRow[] = [];
+    for (const ref of refs) {
+      if (ref.kind !== kind) continue;
+      const row = kindRows.find(
+        (candidate) =>
+          !seen.has(candidate.id) &&
+          candidate.key.toLowerCase() === ref.key.toLowerCase()
+      );
+      if (!row) continue;
+      seen.add(row.id);
+      orderedKind.push(row);
+    }
+    for (const row of kindRows) {
+      if (!seen.has(row.id)) orderedKind.push(row);
+    }
+
+    let index = 0;
+    const ordered = rows.map((row) =>
+      row.kind === kind ? orderedKind[index++] : row
+    );
     writeSavedPositions(profileId, ordered);
   });
 }
