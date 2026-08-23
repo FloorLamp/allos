@@ -1,14 +1,14 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { migrationsBefore } from "@/lib/migrations/versions";
 import { registerSqlFunctions } from "@/lib/sql-functions";
 
 function databaseBeforeMigration(): Database.Database {
   const db = new Database(":memory:");
   registerSqlFunctions(db);
   db.pragma("foreign_keys = ON");
-  runMigrations(db, MIGRATIONS.slice(0, -1));
+  runMigrations(db, migrationsBefore("20260814-remove-legacy-schema-shells"));
   return db;
 }
 

@@ -766,12 +766,33 @@ export function parseHealthConnectPayload(
     bfN: number;
     rhrSum: number;
     rhrN: number;
+    // THE INSTANT BEHIND EACH OF THE THREE MEASURES, separately (#3524). This day is an
+    // aggregate of up to three measures taken at up to three different times, and the
+    // ingest reconcile asks the day arithmetic about ONE measure at a time — so one
+    // instant per day would be the same conflation that made an earlier draft destroy a
+    // weigh-in while re-keying a resting-HR reading. Each is the instant of the value
+    // this day actually reports: for weight the LAST reading of the day, because that is
+    // the one that wins; for the two averaged measures the LATEST contributing reading.
+    // Carried in memory to the ingest reconcile only — never persisted (owner ruling,
+    // #3524, 2026-08-23; persisted per-measure instants are #3428's schema question).
+    weightMs: number | null;
+    bfMs: number | null;
+    rhrMs: number | null;
   }
   const byDate = new Map<string, DayAgg>();
   const dayFor = (date: string): DayAgg => {
     let a = byDate.get(date);
     if (!a) {
-      a = { weight_kg: null, bfSum: 0, bfN: 0, rhrSum: 0, rhrN: 0 };
+      a = {
+        weight_kg: null,
+        bfSum: 0,
+        bfN: 0,
+        rhrSum: 0,
+        rhrN: 0,
+        weightMs: null,
+        bfMs: null,
+        rhrMs: null,
+      };
       byDate.set(date, a);
     }
     return a;
@@ -787,11 +808,14 @@ export function parseHealthConnectPayload(
   // value would be its own bug), so we leave the normal last-wins merge in place. The
   // flag holds only the AVERAGED fields on the upsert; weight is last-of-day, unaffected.
   let earliestBodyMs: number | null = null;
-  const noteInstant = (iso: unknown) => {
-    if (typeof iso !== "string") return;
+  // Returns the usable instant so the caller can file it under the MEASURE it belongs
+  // to — one instant per measure per day, never one per day (#3524).
+  const noteInstant = (iso: unknown): number | null => {
+    if (typeof iso !== "string") return null;
     const t = new Date(iso).getTime();
-    if (Number.isNaN(t) || !inTimeWindow(t)) return;
+    if (Number.isNaN(t) || !inTimeWindow(t)) return null;
     if (earliestBodyMs === null || t < earliestBodyMs) earliestBodyMs = t;
+    return t;
   };
   for (const w of asArray(payload.weight)) {
     const p = parts(w.time, tz);
@@ -800,11 +824,15 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(w.time);
+    const t = noteInstant(w.time);
     // Health Connect's Weight record is stated in KILOGRAMS (the field aliases read
     // above name it), so the canonical mint is the identity conversion — and it is
     // what makes the day aggregate carry a `Kg` all the way to the upsert (#2149).
-    dayFor(p.date).weight_kg = toKg(kg, "kg"); // last reading of the day wins
+    const a = dayFor(p.date);
+    a.weight_kg = toKg(kg, "kg"); // last reading of the day wins
+    // …and so does its instant: the stamp must belong to the value that won, not to the
+    // latest of the three measures.
+    a.weightMs = t;
   }
   for (const b of asArray(payload.body_fat)) {
     const p = parts(b.time, tz);
@@ -816,10 +844,11 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(b.time);
+    const t = noteInstant(b.time);
     const a = dayFor(p.date);
     a.bfSum += pct;
     a.bfN++;
+    if (t !== null && (a.bfMs === null || t > a.bfMs)) a.bfMs = t;
   }
   for (const r of asArray(payload.resting_heart_rate)) {
     const p = parts(r.time, tz);
@@ -831,25 +860,41 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
-    noteInstant(r.time);
+    const t = noteInstant(r.time);
     const a = dayFor(p.date);
     a.rhrSum += bpm;
     a.rhrN++;
+    if (t !== null && (a.rhrMs === null || t > a.rhrMs)) a.rhrMs = t;
   }
   // Only the oldest day of a MULTI-day window is treated as partial (see above).
   const partialDate =
     earliestBodyMs !== null && byDate.size >= 2
       ? zonedDateParts(tz, new Date(earliestBodyMs)).date
       : null;
-  out.bodyMetrics = [...byDate.entries()].map(([date, a]) => ({
-    date,
-    ...(partialDate !== null && date === partialDate
-      ? { partial_day: true }
-      : {}),
-    ...(a.weight_kg != null ? { weight_kg: a.weight_kg } : {}),
-    ...(a.bfN ? { body_fat_pct: Math.round((a.bfSum / a.bfN) * 10) / 10 } : {}),
-    ...(a.rhrN ? { resting_hr: Math.round(a.rhrSum / a.rhrN) } : {}),
-  }));
+  // Each measure carries its own instant beside its value (#3524) — canonical UTC
+  // (#2205's `utcInstant` shape) so the reconcile parses one spelling. A measure this
+  // day does not report has no instant to state.
+  const stamp = (ms: number | null) =>
+    ms === null ? null : utcInstant(new Date(ms));
+  out.bodyMetrics = [...byDate.entries()].map(([date, a]) => {
+    const weightAt = a.weight_kg != null ? stamp(a.weightMs) : null;
+    const bfAt = a.bfN ? stamp(a.bfMs) : null;
+    const rhrAt = a.rhrN ? stamp(a.rhrMs) : null;
+    return {
+      date,
+      ...(partialDate !== null && date === partialDate
+        ? { partial_day: true }
+        : {}),
+      ...(a.weight_kg != null ? { weight_kg: a.weight_kg } : {}),
+      ...(a.bfN
+        ? { body_fat_pct: Math.round((a.bfSum / a.bfN) * 10) / 10 }
+        : {}),
+      ...(a.rhrN ? { resting_hr: Math.round(a.rhrSum / a.rhrN) } : {}),
+      ...(weightAt ? { weight_at: weightAt } : {}),
+      ...(bfAt ? { body_fat_at: bfAt } : {}),
+      ...(rhrAt ? { resting_hr_at: rhrAt } : {}),
+    };
+  });
 
   // --- summable / scalar daily metrics → metric_samples ---
   const interval = (
