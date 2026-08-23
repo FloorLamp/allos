@@ -169,7 +169,9 @@ describe("A logout survives the sidebar unmounting mid-wipe (#3605)", () => {
     // THE WHOLE CLAIM, IN ONE NUMBER. Through `logoutFormRef.current?.requestSubmit()`
     // this is 0: the device is wiped, the write gate is shut, and the session is still
     // alive with nothing said about it.
-    expect(calls.logout, "the session destroy still reached the server").toBe(1);
+    expect(calls.logout, "the session destroy still reached the server").toBe(
+      1
+    );
   });
 
   it("still shows a failure when the logout it issued fails", async () => {
@@ -187,6 +189,8 @@ describe("A logout survives the sidebar unmounting mid-wipe (#3605)", () => {
     });
 
     expect(calls.logout, "the attempt was made").toBe(1);
-    expect(seen, "and its failure reached an error boundary").toEqual([failure]);
+    expect(seen, "and its failure reached an error boundary").toEqual([
+      failure,
+    ]);
   });
 });
