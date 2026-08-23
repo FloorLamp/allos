@@ -197,9 +197,9 @@ describe("departedZones: which zones the reconcile may consider at all", () => {
     ]);
     expect(out.map((d) => d.zone)).toEqual(["Asia/Tokyo"]);
     // …and it cannot touch a reading taken after it, which is the actual protection.
-    expect(rekeyedDaysFor(at("2026-08-20T09:30:00Z"), "2026-08-20", out)).toEqual(
-      []
-    );
+    expect(
+      rekeyedDaysFor(at("2026-08-20T09:30:00Z"), "2026-08-20", out)
+    ).toEqual([]);
   });
 
   it("drops a corrupt record rather than failing the push", () => {

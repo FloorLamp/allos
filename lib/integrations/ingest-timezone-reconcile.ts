@@ -177,7 +177,8 @@ export function reconcileRekeyedBodyMetrics(
       // tombstoned destination refuses the write, and a re-key with nowhere to land is
       // not a re-key.
       const dest = stored(row.date);
-      if (!dest || isEditLocked(dest.edited) || dest[m.column] == null) continue;
+      if (!dest || isEditLocked(dest.edited) || dest[m.column] == null)
+        continue;
       for (const victim of victims) {
         const was = stored(victim.date);
         if (!was || isEditLocked(was.edited) || was[m.column] == null) continue;

@@ -358,7 +358,12 @@ describe("what the reconcile refuses to touch", () => {
         body_fat_pct: null,
         resting_hr: null,
       },
-      { date: "2026-05-01", weight_kg: 79, body_fat_pct: null, resting_hr: null },
+      {
+        date: "2026-05-01",
+        weight_kg: 79,
+        body_fat_pct: null,
+        resting_hr: null,
+      },
     ]);
   });
 
