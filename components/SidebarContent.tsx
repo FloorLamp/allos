@@ -289,12 +289,23 @@ export default function SidebarContent({
   // regains signal before the device is closed. That is the same way the deleted
   // `LOGOUT_SETTLE_MS` clock failed to pay for itself, and a new barrier here would need
   // its own pair of mutant-red tests to be worth more than this paragraph.
+  //
+  // AND THE CONTROL STOPS CLAIMING TO BE WORKING (#3515). This is the only place
+  // that ever learns a logout did NOT land: `logoutAfterWipe` calls
+  // `requestSubmit()`, which returns long before the action settles, so its own
+  // catch can only see a wipe that threw. A pending state that outlives the
+  // attempt would leave a spinner on the one control whose whole job is to end
+  // access, with no way to try again — the same silence #3515 exists to remove,
+  // wearing the opposite costume.
   async function submitLogout(): Promise<void> {
     try {
       await logoutAction();
     } catch (err) {
       unstable_rethrow(err);
       await reopenUnlessSessionEnded();
+      logoutStarted.current = false;
+      setLogoutPending(false);
+      clearQueuedLogoutTap(logoutButtonRef.current);
       throw err;
     }
   }
