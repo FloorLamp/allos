@@ -52,6 +52,9 @@ import type { NormBodyMetric } from "./normalize";
 //     victim and wrote nothing, which is the loss this whole change exists to refuse.
 //     It is observed AFTER the upsert, by reading `D` back: a rule about what landed can
 //     only be answered by the database, never by re-deriving what the upsert would do.
+//     The question it asks is "does `D` hold this measure now", not "is the stored value
+//     the one this push sent" — #606's partial-day rule can legitimately keep a fuller
+//     stored average there, and the day still holds the measure either way.
 //
 //   • EDIT-LOCKED VICTIM ROWS ARE KEPT (#133). A row the user hand-corrected through the
 //     Review resolver is not the source's to withdraw: the re-push would re-insert it
