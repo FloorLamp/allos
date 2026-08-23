@@ -12,6 +12,7 @@ import NavProgress from "@/components/NavProgress";
 import UpdateTakenToast from "@/components/UpdateTakenToast";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import { DISCLOSURE_BOOT_SCRIPT } from "@/lib/disclosure-memory";
+import { LOGOUT_BOOT_SCRIPT } from "@/lib/logout-tap";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -93,6 +94,20 @@ export default async function RootLayout({
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{ __html: DISCLOSURE_BOOT_SCRIPT }}
+        />
+        {/* Catches a Log out tap that lands before React attaches (#3515). Third
+            script for the same reason as the two above — a bundle that has not
+            arrived cannot be waited for — but for an EVENT rather than a state:
+            Log out is the one control in this app with no progressive-enhancement
+            fallback (#2908 made it `type="button"` on purpose to stop the PHI wipe
+            racing the navigation), so a tap in that window used to do nothing at
+            all and say nothing either. This records the tap; SidebarContent
+            replays it on attach. Registered from the ROOT layout, not the app one,
+            because a listener costs nothing on routes where the control does not
+            exist and this way there is exactly one of it. */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: LOGOUT_BOOT_SCRIPT }}
         />
       </head>
       <body>
