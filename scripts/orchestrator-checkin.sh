@@ -41,6 +41,35 @@
 
 set -uo pipefail
 
+# THE STAMP MUST SURVIVE A TRUNCATED READ, and this is not a hypothetical
+# reader — it is the ordinary one. This script prints ~40 lines and stamps at
+# the very END (deliberately: see the block down there). Reading it with
+# `orchestrator-checkin.sh | head -30` — the natural way to look at a long
+# recorder output, and what the runbook's own "first action of every check-in"
+# invites — closes the pipe early, SIGPIPE kills the script mid-print, and the
+# stamp NEVER RUNS.
+#
+# The next run then reads the stale boot-id, declares a restart that did not
+# happen, and prints "DIRTY AND NO AGENT: RESCUE NOW" over live agents'
+# worktrees. Measured 2026-08-21T05:42Z through 06:27Z: a real restart was
+# handled correctly, four agents were rescued and relaunched, and then THREE
+# consecutive check-ins kept reporting the same restart and kept flagging a
+# live lane for rescue — because every one of those reads was piped through
+# `head` and none of them could stamp. `--relaunched` cleared the sticky flag
+# and did not help, because the flag was not the thing that was stale.
+#
+# So: ignore SIGPIPE. A closed stdout now costs the unread tail of the report
+# and nothing else. The state writes are the load-bearing half and they are not
+# stdout.
+#
+# This is the THIRD direction this recorder's alarm has been wrong — after
+# soothing over dead agents (fixed by the sticky verdict) and screaming over
+# live ones because the state dir did not exist (fixed by mkdir -p). All three
+# share one root: THE RECORDER'S OUTPUT AND THE RECORDER'S STATE ARE DIFFERENT
+# THINGS, and every failure came from something breaking the second while the
+# first still looked fine.
+trap '' PIPE
+
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
@@ -67,6 +96,38 @@ ROSTER="$STATE_DIR/.roster"
 # An orchestrator that forgets to clear it loses nothing but a loud reminder; one
 # that never sees it loses an agent's uncommitted work.
 RESCUE_FILE="$STATE_DIR/.agents_dead"
+
+# THE STATE DIR MUST EXIST BEFORE THE FIRST COMPARE, AND ITS ABSENCE MUST BE
+# LOUD. Every fix above widened WHAT counts as a restart or made the verdict
+# survive being read; none of them noticed that on a FRESH container
+# $STATE_DIR does not exist at all. Then every stamp write fails with "No such
+# file or directory", the next compare reads MISSING, and the recorder declares
+# a restart that never happened — over a fleet that is alive.
+#
+# Measured 2026-08-21T01:46Z: the session's first check-in ran before the
+# scratch directory existed. It printed *** RESTARTED *** for both boot-id and
+# session, and 62 minutes later the follow-up check-in — still the same
+# container, same boot-id, four subagents all `running` — printed
+# "DIRTY AND NO AGENT: RESCUE NOW" over a LIVE agent's worktree. The rescue
+# drill that verdict authorises is "commit whatever is in the tree and push";
+# performed against a live lane it is the two-writers-on-one-worktree failure
+# the runbook forbids everywhere else.
+#
+# This is the same defect shape as the sticky-verdict fix directly above, in
+# the other direction: that one soothed over dead agents, this one screams over
+# live ones. Both teach the same thing — a recorder whose alarm is wrong in
+# EITHER direction stops being read. So: create the directory, and if it cannot
+# be created, say so and exit non-zero rather than reporting a restart that is
+# really a failed write. An inoperative flight recorder must not be mistaken
+# for a flight recorder reporting bad news.
+if ! mkdir -p "$STATE_DIR" 2>/dev/null; then
+  echo "=== ORCHESTRATOR CHECK-IN: CANNOT CREATE STATE DIR ==="
+  echo "  $STATE_DIR is not creatable, so restart detection CANNOT WORK."
+  echo "  Every verdict this script would print is a failed write, not a finding."
+  echo "  Fix the directory before trusting any check-in output."
+  exit 1
+fi
+
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 
 echo "=== ORCHESTRATOR CHECK-IN  $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
@@ -139,6 +200,46 @@ else
   echo "  >>> PRESERVE-FIRST DRILL applies to every dirty worktree before relaunching."
   echo "  >>> THEN CONFIRM WITH ListAgents BEFORE RELAUNCHING ANYTHING — see below."
   SESSION_NEW=1
+fi
+
+# ROLLBACK DETECTION, AND WHY THE BOOT-ID CANNOT DO IT.
+#
+# The boot-id and the session-id answer "did my process die". They cannot answer
+# "is this the tree I left", and on 2026-08-22T17:25Z that gap cost a
+# misdiagnosis: boot-id UNCHANGED + session RESTARTED printed as a RESTART with a
+# CURRENT tree, while the checkout had actually been rolled back several hours —
+# every commit of that session unreachable, a file set the orchestrator did not
+# recognise, and `docs/orchestration/review-merge.md` reverted to a two-day-old
+# copy. The tell that worked was reading `git log` and not recognising it, which
+# is a human step this recorder exists to remove.
+#
+# So ask the ONE question the boot-id cannot: is the local branch behind its own
+# remote? A rollback restores an old working copy while the remote keeps every
+# pushed commit — that is the documented shape of all four so far — so
+# local-behind-remote is the signature, and it is cheap to test.
+#
+# `git ls-remote` on purpose, NOT the remote-tracking ref: a rollback rewinds
+# `.git/` too, so `origin/<branch>` is rolled back with everything else and
+# comparing against it says the tree agrees with itself. That is exactly the
+# reassuring answer the 17:25Z run gave.
+BRANCH_NOW=$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+if [ -n "$BRANCH_NOW" ]; then
+  head_local=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo "")
+  head_remote=$(git -C "$REPO" ls-remote origin "refs/heads/$BRANCH_NOW" 2>/dev/null | awk '{print $1}')
+  if [ -n "$head_remote" ] && [ -n "$head_local" ] && [ "$head_local" != "$head_remote" ]; then
+    if git -C "$REPO" cat-file -e "$head_remote" 2>/dev/null &&
+       git -C "$REPO" merge-base --is-ancestor "$head_local" "$head_remote" 2>/dev/null; then
+      echo "checkout: *** LOCAL IS BEHIND THE REMOTE — THIS IS A ROLLBACK, NOT A RESTART ***"
+      echo "  >>> local  $head_local"
+      echo "  >>> remote $head_remote  (has commits this checkout has lost)"
+      echo "  >>> git fetch --prune origin && git merge --ff-only origin/$BRANCH_NOW"
+    else
+      echo "checkout: local and remote DIVERGED, or the remote head is not local yet."
+      echo "  >>> local  $head_local"
+      echo "  >>> remote $head_remote"
+      echo "  >>> git fetch --prune origin, then decide — do NOT assume the tree is current."
+    fi
+  fi
 fi
 
 # WHICH WAY THIS VERDICT IS SAFE, AND WHICH WAY IT IS NOT.
@@ -335,8 +436,23 @@ while read -r d; do
   wt_reflog=$(git -C "$d" reflog show HEAD 2>/dev/null || true)
   if [ "$b" = "HEAD" ] &&
      ! grep -qE '\bcommit( \([a-z-]+\))?: ' <<<"$wt_reflog"; then
-    printf "  %-16s %-32s %-6s local=%s  (read-only lane, nothing authored here — nothing to rescue)\n" \
-      "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+    # SAY WHAT IS ACTUALLY THERE. The decision above — a detached worktree with
+    # no commits is a lane's scratch and its dirt is probes — is sound and stands.
+    # The old wording for it, "nothing authored here", was not: four such trees
+    # held 34 uncommitted probe files between them while this line claimed none.
+    # A status line that overstates its own silence is the same defect this
+    # session keeps finding in guards: the decision was right, the claim
+    # licensing it was false, and only the claim is visible at 3am after a
+    # restart. Print the count so the reader makes the call the recorder is
+    # merely recommending.
+    wt_probes=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${wt_probes:-0}" -gt 0 ]; then
+      wt_note="read-only lane, ${wt_probes} uncommitted probe file(s) — not rescued: no commits, so this is scratch"
+    else
+      wt_note="read-only lane, clean — nothing to rescue"
+    fi
+    printf "  %-16s %-32s %-6s local=%s  (%s)\n" \
+      "$(basename "$d")" "(detached)" "lane" "${h:0:7}" "$wt_note"
     continue
   fi
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
@@ -382,7 +498,26 @@ while read -r d; do
   fi
   # An unpushed commit under a live agent is the near miss, not the accident:
   # worth saying, not worth shouting.
-  [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  #
+  # CLASSIFY it, do not just compare strings. This test used to be
+  # `[ "${h:0:7}" != "$r" ]` printing "(local ahead of remote)", which fires on
+  # ANY difference — so a worktree merely BEHIND its remote (harmless, the agent
+  # just has not pulled) got the same words as one carrying unpushed work. The
+  # alarm that matters is AHEAD, and a label that also fires on the harmless case
+  # is a label you learn to skim. That is the same failure as an alarm that fires
+  # two times in three, one level down.
+  #
+  # Measured on 2026-08-22: wt-hc-overlap read "local ahead of remote" while its
+  # HEAD was an ANCESTOR of the remote tip — nothing unpushed at all.
+  if [ -n "$r" ] && [ "${h:0:7}" != "$r" ]; then
+    if git -C "$d" merge-base --is-ancestor "$h" "origin/$b" 2>/dev/null; then
+      flag="$flag  (local BEHIND remote — stale checkout, nothing to rescue)"
+    elif git -C "$d" merge-base --is-ancestor "origin/$b" "$h" 2>/dev/null; then
+      flag="$flag  (local AHEAD of remote — UNPUSHED COMMITS HERE)"
+    else
+      flag="$flag  (local DIVERGED from remote — unpushed commits AND remote moved)"
+    fi
+  fi
   # A tree outside $STATE_DIR is findable HERE (git enumerates it) but not by
   # anything that globs the documented path — say where it actually is.
   case "$d" in "$STATE_DIR"/*) ;; *) flag="$flag  (outside \$SCRATCH: $d)" ;; esac
@@ -406,6 +541,44 @@ echo
 # 3. The roster the orchestrator's own memory cannot be trusted to hold.
 echo "--- in-flight roster (written at dispatch; the only copy that outlives you) ---"
 if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
+
+# ROSTER vs LEDGER DIVERGENCE. They are two files kept in step by
+# dispatch-brief.mjs, and ONLY by it: `new` appends to both, `done` closes both.
+# Close a dispatch by editing the JSONL directly — which is tempting, because it
+# is one append — and the roster keeps a `Cluster` line for a lane that is over.
+# That line is not cosmetic. Live-vs-done classification above is anchored to
+# `^Cluster` (see live_branches), so a stale entry makes a DEAD worktree read
+# LIVE, and a LIVE tree is never a rescue target: after a rollback restored it,
+# its dirty contents would be skipped as "belongs to a live agent". The
+# divergence is silent in both files on their own; only the comparison shows it.
+# Observed 2026-08-22 on card-mode-breakpoint. Always close with
+# `dispatch-brief.mjs done <branch>`.
+LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
+if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
+  roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
+  ledger_live=$(python3 -c '
+import json,sys
+state={}
+for line in open(sys.argv[1]):
+    line=line.strip()
+    if not line: continue
+    try: e=json.loads(line)
+    except Exception: continue
+    b=e.get("branch")
+    if b: state[b]=e.get("status")
+print("\n".join(sorted(b for b,st in state.items() if st=="active")))
+' "$LEDGER" 2>/dev/null)
+  only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+  only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+  if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
+    echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
+    [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
+    [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
+    echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
+    echo "      never a rescue target. Fix the roster by hand, then close via"
+    echo "      dispatch-brief.mjs done <branch> from now on."
+  fi
+fi
 echo
 
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
@@ -537,11 +710,26 @@ echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 
 # Stamp LAST, so a crash mid-check-in still reports the restart next time.
+#
+# A FAILED STAMP IS A FUTURE FALSE RESTART, so it is announced rather than
+# swallowed. mkdir -p succeeding does not prove these writes succeed — a full
+# disk or a read-only mount fails here and nowhere else — and the cost is paid
+# by the NEXT run, which reads MISSING and cries restart at a live fleet.
+stamp() {
+  local file="$1" value="$2" ok="$3"
+  if echo "$value" > "$file" 2>/dev/null; then
+    echo "$ok"
+  else
+    echo "*** STAMP FAILED: could not write $file ***"
+    echo "    The NEXT check-in will read this as MISSING and report a restart"
+    echo "    that did not happen. Fix the write before trusting that verdict."
+  fi
+}
 if [ "$RESTARTED" = "1" ]; then
-  echo "$CUR" > "$BOOT_FILE"
-  echo "boot-id stamped. Timers and any canary are DEAD - re-arm them now."
+  stamp "$BOOT_FILE" "$CUR" \
+    "boot-id stamped. Timers and any canary are DEAD - re-arm them now."
 fi
 if [ -n "$sid" ] && [ "$SESSION_NEW" = "1" ]; then
-  echo "$sid" > "$SESSION_FILE"
-  echo "session stamped. Every subagent and in-process timer is DEAD - relaunch and re-arm now."
+  stamp "$SESSION_FILE" "$sid" \
+    "session stamped. Every subagent and in-process timer is DEAD - relaunch and re-arm now."
 fi

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  DATE_COLUMNS,
   TRASH_EXCLUDED_KIND,
   parseSqliteUtc,
   trashEntry,
@@ -7,10 +8,10 @@ import {
   trashEntryHeadline,
   type TrashCapture,
 } from "@/lib/trash";
+import { UNDO_KINDS, serializePayload } from "@/lib/undo-delete";
 import { machineDateHits } from "@/lib/machine-date-census";
 import { DEFAULT_FORMAT_PREFS, formatDateWithYear } from "@/lib/format-date";
 import { BULK_CORRECTION_KIND } from "@/lib/bulk-correction";
-import { serializePayload } from "@/lib/undo-delete";
 
 // Pure Trash read model (issue #2013). The DB list and the purges are covered in the
 // DB tier (lib/__db_tests__/trash.test.ts); this file owns the derivation that turns
@@ -336,6 +337,55 @@ describe("trashEntryCopy — the headline and subtitle derived together", () => 
     ).toEqual([]);
   });
 
+  // THE HOLE THE CENSUS FOUND, and it was found by a SHARD RE-PARTITION rather
+  // than by anyone reading this file (#3495's PR, which added a spec and moved
+  // e2e/intake-lifecycle.spec.ts into e2e/machine-date-census.spec.ts's shard).
+  //
+  // `DATE_COLUMNS` falls through to `recorded_at` / `created_at`, and SQLite writes
+  // those as "YYYY-MM-DD HH:MM:SS". A capture whose root carries only one of them
+  // handed a TIMESTAMP to `TrashEntry.date`, which is documented as a day — and
+  // `formatDateWithYear` returns a value it cannot parse UNCHANGED, so the row read
+  // "E2E Restore Fish Oil · 2026-08-22 14:03:55" on the real page. The assertion
+  // above could not see it: its fixture's root carries a plain `date` column, so the
+  // fall-through was never exercised.
+  it("takes the calendar DAY off a captured timestamp column (#3492)", () => {
+    const entry = trashEntry(
+      capture({
+        // The real shape, not an invented one: `intake_items` has no date column at
+        // all, so DATE_COLUMNS reaches its LAST fallback — `created_at`, declared
+        // `DEFAULT (datetime('now'))` in migration 124.
+        kind: "intake-item",
+        label: "supplement",
+        payload: serializePayload("intake-item", {
+          item: [
+            {
+              id: 77,
+              profile_id: 1,
+              name: "Fish Oil",
+              created_at: "2026-08-22 14:03:55",
+            },
+          ],
+        }),
+      }),
+      30,
+      NOW
+    );
+    expect(
+      entry.date,
+      "TrashEntry.date is a storage DAY; a timestamp reaching it is a machine " +
+        "date one `formatDateWithYear` away from the screen"
+    ).toBe("2026-08-22");
+    const { headline } = trashEntryCopy(entry, {
+      date: formatDateWithYear(entry.date ?? "", DEFAULT_FORMAT_PREFS),
+      deletedOn: formatDateWithYear(
+        entry.deletedAt.slice(0, 10),
+        DEFAULT_FORMAT_PREFS
+      ),
+    });
+    expect(headline).toBe("Fish Oil · Aug 22, 2026");
+    expect(machineDateHits(headline)).toEqual([]);
+  });
+
   it("passes a machine date straight through when one is handed in", () => {
     // The counter-proof: this module does not sanitize, it REFUSES to source. The
     // assertion above would be worth nothing if the pair scrubbed dates on its own
@@ -354,5 +404,147 @@ describe("TRASH_EXCLUDED_KIND", () => {
     // undoBulkCorrection (guarded, partial, reported), not restoreDeletedRow — so
     // listing it would offer a Restore button that cannot work.
     expect(TRASH_EXCLUDED_KIND).toBe(BULK_CORRECTION_KIND);
+  });
+});
+
+// THE CENSUS OVER `UNDO_KINDS` × `DATE_COLUMNS` (#3495's review of the #3492 fix).
+//
+// WHY A CENSUS AND NOT ONE MORE FIXTURE. The `intake-item` case above is the bug that
+// was found — and it was found by a shard re-partition, not by anyone reading this
+// file. The reason it could hide is structural: the fixture that was supposed to
+// cover `TrashEntry.date` carried a plain `date` column, so the `recorded_at` /
+// `created_at` fall-through was never exercised by anything. `calendarDay` is generic,
+// so today all three fall-through roots (`intake_items`, `cycles`,
+// `frequency_targets`) are covered BY CONSTRUCTION — but "by construction" is a claim
+// about the code as it stands, and reverting `calendarDay` reds exactly one test out
+// of the whole pure tier. That is the same shape of coverage the hole had.
+//
+// So this walks the registry itself: every undoable kind, through every column
+// `DATE_COLUMNS` will read, in every spelling the storage layer produces. A kind added
+// to `UNDO_KINDS` tomorrow is in the census the day it lands, without anyone
+// remembering to add a fixture.
+//
+// AND IT ASSERTS BOTH DIRECTIONS, because only one of them is about today's schema.
+// The reducible half says a date this module CAN vouch for arrives as a day. The
+// refused half is the one that keeps the class closed: a future root storing
+// `2026/08/22`, an epoch string, or a bare `2026-08` must reach `TrashEntry.date` as
+// NULL rather than be forwarded to `formatDateWithYear`, which returns what it cannot
+// parse unchanged and puts it on the screen. That is how #3492 happened, one spelling
+// over.
+describe("TrashEntry.date over UNDO_KINDS × DATE_COLUMNS (#3492)", () => {
+  const DAY = "2026-08-22";
+
+  // The spellings the storage layer actually produces, and where each comes from.
+  // Written as literals rather than derived from anything under test.
+  const REDUCIBLE = [
+    {
+      stored: DAY,
+      from: "a clinical day column (activities.date, conditions.onset_date)",
+    },
+    {
+      stored: `${DAY} 14:03:55`,
+      from: "SQLite datetime('now') — recorded_at / created_at",
+    },
+    { stored: `${DAY}T14:03:55Z`, from: "an ISO instant" },
+    {
+      stored: `${DAY}T14:03:55.000Z`,
+      from: "an ISO instant with milliseconds",
+    },
+  ];
+
+  // Shapes NO root stores today. That is exactly why they are here: a census over
+  // what the schema currently holds can only ever re-prove the present.
+  const REFUSED = [
+    "1755878635",
+    "2026/08/22",
+    "22-08-2026",
+    "2026-08",
+    "August 22, 2026",
+  ];
+
+  const KINDS = Object.keys(UNDO_KINDS);
+
+  function entryFor(kind: string, column: string, stored: string) {
+    const rootEntity = UNDO_KINDS[kind].entities[0].entity;
+    return trashEntry(
+      capture({
+        kind,
+        label: kind,
+        payload: serializePayload(kind, {
+          [rootEntity]: [{ id: 1, profile_id: 1, [column]: stored }],
+        }),
+      }),
+      30,
+      NOW
+    );
+  }
+
+  function headlineOf(entry: ReturnType<typeof trashEntry>): string {
+    return trashEntryCopy(entry, {
+      date: entry.date
+        ? formatDateWithYear(entry.date, DEFAULT_FORMAT_PREFS)
+        : null,
+      deletedOn: formatDateWithYear(
+        entry.deletedAt.slice(0, 10),
+        DEFAULT_FORMAT_PREFS
+      ),
+    }).headline;
+  }
+
+  // THE CORPUS FLOOR. An empty registry or an empty column list would make every
+  // verdict below an absence over nothing (#3509's shape).
+  it("walks a registry and a column list that are actually there", () => {
+    expect(
+      KINDS.length,
+      "UNDO_KINDS is empty — the census below asserts nothing"
+    ).toBeGreaterThan(10);
+    expect(DATE_COLUMNS.length).toBeGreaterThanOrEqual(5);
+    expect([...DATE_COLUMNS]).toContain("created_at");
+  });
+
+  it("hands every kind a DAY, through every date column, in every stored spelling", () => {
+    const wrong: string[] = [];
+    for (const kind of KINDS)
+      for (const column of DATE_COLUMNS)
+        for (const { stored, from } of REDUCIBLE) {
+          const entry = entryFor(kind, column, stored);
+          if (entry.date !== DAY)
+            wrong.push(
+              `${kind}.${column} = "${stored}" (${from}) → ${entry.date}`
+            );
+          const hits = machineDateHits(headlineOf(entry));
+          if (hits.length > 0)
+            wrong.push(
+              `${kind}.${column} = "${stored}" put ${hits.join(", ")} in the headline`
+            );
+        }
+    expect(
+      wrong,
+      "TrashEntry.date is documented as a storage DAY. A kind whose root reaches a " +
+        "timestamp column hands the timestamp on, and formatDateWithYear returns " +
+        "what it cannot parse UNCHANGED — which is a machine date on the Trash row."
+    ).toEqual([]);
+  });
+
+  it("refuses a shape it cannot vouch for rather than forwarding it to the screen", () => {
+    const forwarded: string[] = [];
+    for (const kind of KINDS)
+      for (const column of DATE_COLUMNS)
+        for (const stored of REFUSED) {
+          const entry = entryFor(kind, column, stored);
+          if (entry.date !== null)
+            forwarded.push(`${kind}.${column} = "${stored}" → ${entry.date}`);
+          if (headlineOf(entry).includes(stored))
+            forwarded.push(
+              `${kind}.${column} = "${stored}" reached the headline verbatim`
+            );
+        }
+    expect(
+      forwarded,
+      "a date column holding a spelling this module cannot reduce to a day was " +
+        "forwarded instead of refused. `formatDateWithYear` passes an unparseable " +
+        "value straight through, so forwarding it IS #3492: a machine date in " +
+        "rendered copy. No date at all is the honest reading."
+    ).toEqual([]);
   });
 });
