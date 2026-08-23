@@ -51,6 +51,20 @@ export interface NormBodyMetric {
   // Connect) omit it; Withings/Oura set it so their unsorted per-reading rows fold
   // in chronological order. Never persisted.
   measured_at?: string;
+  // THE INSTANT EACH MEASURE WAS TAKEN, per measure, ISO (#3524). NEVER PERSISTED and
+  // deliberately not one field: `body_metrics` is one WIDE row per day carrying up to
+  // three measures, and one column cannot hold three instants — that is exactly the
+  // mistake that made an earlier draft of the ingest reconcile destroy a weigh-in while
+  // re-keying a resting-HR reading. The ingest reconcile
+  // (lib/integrations/ingest-timezone-reconcile.ts) asks the day arithmetic about ONE
+  // measure at a time and clears ONE column, so it needs the instant that measure
+  // actually carries. Health Connect sets these; nothing else needs to, because a
+  // profile-timezone change does not re-key a source that attributes readings in the
+  // DEVICE's zone. Persisting a per-measure instant is a schema question and belongs to
+  // #3428's resolver, not here.
+  weight_at?: string;
+  body_fat_at?: string;
+  resting_hr_at?: string;
   // The day is only PARTIALLY covered by this batch's rolling window (#606): its
   // body-fat / resting-HR day-averages were computed from a partial tail of the day's
   // samples, so they must not overwrite a fuller value stored when the day was wholly
