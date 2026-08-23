@@ -131,6 +131,7 @@ import {
   seedNotifyTickLog,
 } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
+import { seedTrashZones } from "./seed/trash";
 import {
   seedBodyMobile,
   seedCuratedOverview,
@@ -292,6 +293,10 @@ seedStrengthLadderLanes();
 // so every existing fixture's row ids stay exactly where they were — and no shared
 // profile's timezone can be moved by a spec that switches one.
 seedTravel();
+// Appended LAST (#3546/#3547): two new profiles + two logins for trash.spec.ts, so
+// every existing fixture's row ids stay exactly where they were — and the Trash the
+// "Empty trash" test empties is a bin no other spec writes to.
+seedTrashZones();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world

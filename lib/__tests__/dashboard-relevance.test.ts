@@ -19,6 +19,10 @@ import {
   statementCandidate,
 } from "../dashboard-candidates";
 import type { UpcomingItem } from "../upcoming";
+import { buildAttentionModel, groupAttentionForPage } from "../attention";
+import { dashboardAttentionCandidateId } from "../dashboard-attention-identity";
+import { doseSortKey } from "../dose-order";
+import { timeBucket } from "../intake-schedule";
 
 const subject = { scope: "profile" as const, profileId: 7 };
 let order = 0;
@@ -895,5 +899,126 @@ describe("atomic dashboard placement", () => {
         lane: "now",
       },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Now lane's tie-break reads the CANONICAL dose-day order (#3554).
+//
+// Every owed `must` dose scores identically (4_000 + 200), so the ordinary tier's
+// order — and therefore which two survive NOW_CANDIDATE_CAP — is decided entirely
+// by compareSource, i.e. by the attention model's own order. Before #3554 that
+// order was raw generator emission (item-id order), so one item's Midday+Evening
+// pair could fill both slots while another item's equally-owed Midday dose was
+// absent from the lane that exists to say what needs you.
+//
+// VERIFIED BY SHUFFLE, NOT BY EXAMPLE. The defect IS that the rendered order
+// tracks emission, so a single input asserting a single order cannot see it.
+// Every permutation of the same logical set must render the SAME lane.
+// ---------------------------------------------------------------------------
+describe("Now lane ordering follows the dose-day order (#3554)", () => {
+  const ORDER_TODAY = "2026-08-22";
+
+  function doseItem(
+    id: number,
+    name: string,
+    timeOfDay: string,
+    obligation: "must" | "should" = "must"
+  ): UpcomingItem {
+    return {
+      key: `dose:${id}`,
+      domain: "dose",
+      title: name,
+      href: "/medications",
+      dueDate: null,
+      dueText: timeBucket(timeOfDay),
+      doseId: id,
+      obligation,
+      // The SAME key the dose generator stamps (#297), so the fixture cannot
+      // encode an order the app does not actually produce.
+      sortHint: doseSortKey({ timeOfDay, obligation, stack: null, name }),
+    } as UpcomingItem;
+  }
+
+  // The prod sighting: item ids ascend Omega-3 Midday (5), Vitamin D3 Midday (6),
+  // Omega-3 Evening (7), but the generator groups by ITEM, emitting Omega-3's two
+  // doses before Vitamin D3's one.
+  const omegaMidday = doseItem(5, "Omega-3", "midday");
+  const vitaminMidday = doseItem(6, "Vitamin D3 + K2", "midday");
+  const omegaEvening = doseItem(7, "Omega-3", "evening");
+
+  const permutations: UpcomingItem[][] = [
+    [omegaMidday, omegaEvening, vitaminMidday], // the generator's own order
+    [omegaMidday, vitaminMidday, omegaEvening],
+    [omegaEvening, omegaMidday, vitaminMidday],
+    [omegaEvening, vitaminMidday, omegaMidday],
+    [vitaminMidday, omegaMidday, omegaEvening],
+    [vitaminMidday, omegaEvening, omegaMidday],
+  ];
+
+  const model = (upcoming: UpcomingItem[]) =>
+    buildAttentionModel({
+      upcoming,
+      flaggedBiomarkers: [],
+      integrations: [],
+      reviewCount: 0,
+      today: ORDER_TODAY,
+    });
+
+  const placeFrom = (upcoming: UpcomingItem[]) =>
+    rankDashboardCandidates(
+      attentionCandidates(subject, model(upcoming), ORDER_TODAY),
+      {
+        activeProfileId: 7,
+        minutesOfDay: 12 * 60,
+        today: ORDER_TODAY,
+        upcoming: [],
+      }
+    );
+
+  const laneKeys = (
+    placements: ReturnType<typeof placeFrom>,
+    lane: "now" | "everything"
+  ) =>
+    placements
+      .filter((placement) => placement.lane === lane)
+      .map((placement) => placement.candidate.candidateId);
+
+  it("renders the same Now lane from every generator order", () => {
+    for (const permutation of permutations) {
+      expect(laneKeys(placeFrom(permutation), "now")).toEqual([
+        dashboardAttentionCandidateId("dose:5"),
+        dashboardAttentionCandidateId("dose:6"),
+      ]);
+    }
+  });
+
+  it("never ranks an Evening dose ahead of a Midday one", () => {
+    for (const permutation of permutations) {
+      const order = model(permutation).map((item) => item.key);
+      expect(order.indexOf("dose:5")).toBeLessThan(order.indexOf("dose:7"));
+      expect(order.indexOf("dose:6")).toBeLessThan(order.indexOf("dose:7"));
+    }
+  });
+
+  it("agrees with the Upcoming page's band order on the same fixture", () => {
+    for (const permutation of permutations) {
+      const items = model(permutation);
+      const page = groupAttentionForPage(items, ORDER_TODAY).flatMap((group) =>
+        group.items.map((item) => item.key)
+      );
+      expect(items.map((item) => item.key)).toEqual(page);
+    }
+  });
+
+  it("orders a total rule: items alike on every key still land in one order", () => {
+    // Two doses identical on date, priority, domain, sortHint AND title — the
+    // comparator's last-resort key is the only thing left to separate them, and
+    // without one Array.sort's stability hands the order back to the generator.
+    const twin = (id: number) => doseItem(id, "Magnesium", "midday");
+    const forward = model([twin(11), twin(12)]).map((item) => item.key);
+    const backward = model([twin(12), twin(11)]).map((item) => item.key);
+    expect(forward).toEqual(["dose:11", "dose:12"]);
+    expect(backward).toEqual(forward);
   });
 });
