@@ -454,6 +454,41 @@ describe("the stale sweep", () => {
     expect(sweepStaleTmpEntries(root, now)).toBe(0);
   });
 
+  // THE LIST ITSELF, PINNED. The corpus below DERIVES its reclaim cases from
+  // `RETIRED_TMP_PREFIXES`, which is what makes a newly added prefix arrive with
+  // a fixture for free — and exactly what makes a DELETED one arrive with its
+  // fixture deleted too. So the membership is spelled out once, here, where
+  // adding or dropping an entry is a visible edit with the justification comment
+  // in `./tmp-dir.ts` beside it.
+  it("names exactly the prefixes #3248 converted, and no others", () => {
+    expect(
+      [...RETIRED_TMP_PREFIXES].sort(),
+      "RETIRED_TMP_PREFIXES changed. Each entry must name, in a comment beside " +
+        "it, the call site that used to write it and the change that converted " +
+        "it — a prefix nobody can trace is not known to be ours, and the sweep " +
+        "unlinks what this list admits."
+    ).toEqual([
+      "dose-scan-census-",
+      "fact-census-",
+      "food-rebuild-",
+      "gitleaks-range-",
+      "logged-via-census-",
+      "logged-via-wiring-",
+      "nul-census-",
+    ]);
+    for (const prefix of RETIRED_TMP_PREFIXES) {
+      // The trailing dash is load-bearing: without it `fact-census` admits
+      // `fact-censuses-*`, which belongs to nobody here.
+      expect(
+        prefix,
+        `${prefix} must be a whole prefix ending in a dash, as mkdtemp writes it.`
+      ).toMatch(/^[a-z0-9][a-z0-9-]*-$/);
+      // A retired prefix that started with `allos-` would already be swept, and
+      // listing it would hide which half of the predicate is doing the work.
+      expect(prefix.startsWith(TMP_PREFIX)).toBe(false);
+    }
+  });
+
   // THE RETIRED PREFIXES (#3591), which the sweep honours alongside `allos-`.
   //
   // This is the fixture that has to be right, because the change it guards is a
