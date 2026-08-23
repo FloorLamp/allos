@@ -25,6 +25,9 @@ Verbatim from #865, and none of them is negotiable:
 > markers/cross-refs/path refreshes · never changes scope or decisions —
 > judgment calls get FLAGGED, not made.**
 
+`symbol-refresh` (#3619) joined that list of factual kinds: an identifier
+CITATION refreshed to the name that replaced it, on the same terms.
+
 Three things follow, and they are enforced by construction rather than by your
 compliance:
 
@@ -46,9 +49,16 @@ compliance:
   There is no fuzzy fallback, and you must never hand-edit a body to work
   around a refusal. A refusal means the body moved under you, which is
   precisely when a blind edit does damage.
-- **Three patch kinds exist and no fourth.** `status-marker`, `cross-ref`,
-  `path-refresh`. Anything you want to say that does not fit one of those three
-  is a finding, not a patch.
+- **Four patch kinds exist and no fifth.** `status-marker`, `cross-ref`,
+  `path-refresh`, `symbol-refresh`. Anything you want to say that does not fit
+  one of those four is a finding, not a patch.
+- **A `symbol-refresh` is written WITH ITS BACKTICKS, on both sides** — anchor
+  `` `oldName` ``, replacement `` `newName` ``. The scan reports the bare
+  identifier; the patch anchors the code span, because that is what makes it a
+  citation rather than a sentence. It refuses if the replacement does not
+  resolve on main, if the old name still does (nothing expired), and if the
+  body cites the symbol more than once — which is what holds #3472, whose
+  ruling names the same absent symbol its Refs bullet does.
 - **Labels have three ops and a standing exception to "flag, don't judge".**
   The second writer is `scripts/orchestration/reconcile-labels.ts`. Removing a
   `RETIRED_LABELS` entry and resetting a priority slot to the priority the

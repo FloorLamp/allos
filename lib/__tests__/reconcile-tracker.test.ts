@@ -1112,11 +1112,12 @@ describe("the patcher refuses rather than mangles", () => {
     expect(out.refusal).toBe("unknown-kind");
   });
 
-  it("keeps the vocabulary three wide", () => {
+  it("keeps the vocabulary four wide", () => {
     expect([...PATCH_KINDS]).toEqual([
       "status-marker",
       "cross-ref",
       "path-refresh",
+      "symbol-refresh",
     ]);
   });
 });
@@ -1205,6 +1206,169 @@ describe("each patch kind is shape-checked, so the kind alone smuggles nothing",
   });
 });
 
+// ── THE FOURTH KIND: A RENAME (#3619) ────────────────────────────────────────
+//
+// The scan half reports `absent-premise-symbol` — an issue body citing an
+// identifier that no longer exists on main — and until #3619 the patcher had no
+// way to express the repair. The kind that fills the gap has a WIDER blast
+// radius than a path, so it earns two guardrails the other three do not need:
+// the anchor and the replacement are BACKTICKED (so a patch can only ever land
+// inside a citation, never in a sentence discussing the rename), and the rename
+// itself is checked against the tree (so a rename to a name that also does not
+// exist refuses instead of landing).
+//
+// EVERY IDENTIFIER BELOW IS INVENTED, AND THAT IS NOT SQUEAMISHNESS. `symbolExists`
+// asks "does this name appear anywhere in the tracked tree", raw text, comments
+// included — so writing a real absent symbol HERE would make it exist, and the scan
+// would stop reporting the very finding this kind was built to repair. Measured
+// while writing this file: a first cut used the two live examples verbatim, and the
+// live apply of #3594's repair then refused with "still exists on main" — pointing
+// at this test. A guard blinded by its own fixture, in the file about guards blinded
+// by prose. The two real cases are described in the comments by what they are, never
+// by name, and their verbatim before/after is on the PR instead.
+//
+// BOTH DIRECTIONS ARE TESTED, because a patch that lands and a patch that must
+// refuse are two different claims and only one of them is reassuring.
+describe("a symbol-refresh repairs a rename, or refuses (#3619)", () => {
+  // The live repair #3619 was filed with, transposed: an issue's Refs bullet cites
+  // an import-mapper that was renamed — narrowed to one FHIR resource kind — before
+  // the branch naming it ever merged, so the cited name never existed on main.
+  const body =
+    "`lib/fhir/resources.ts:1764` (`mapZephyrReport`, imaging branch) and " +
+    "`:1837` (`mapZephyrDocument`) both write `capNarrative(...)`.";
+  const ON_MAIN = new Set(["mapZephyrDocumentImaging", "mapZephyrReport"]);
+  const resolveSymbol = (symbol: string): boolean => ON_MAIN.has(symbol);
+  const patch = (over: Partial<AnchoredPatch> = {}): AnchoredPatch => ({
+    kind: "symbol-refresh",
+    anchor: "`mapZephyrDocument`",
+    replacement: "`mapZephyrDocumentImaging`",
+    reason: "renamed before merge",
+    ...over,
+  });
+
+  it("applies the repair and touches nothing else", () => {
+    const out = applyAnchoredPatch(body, patch(), { resolveSymbol });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error("unreachable");
+    expect(out.body).toContain("(`mapZephyrDocumentImaging`)");
+    // Every character outside the anchor span is byte-identical, by construction
+    // — the neighbouring citation on the same line included.
+    expect(
+      out.body.replace("`mapZephyrDocumentImaging`", "`mapZephyrDocument`")
+    ).toBe(body);
+  });
+
+  it("refuses a replacement that does not resolve on main either", () => {
+    const out = applyAnchoredPatch(
+      body,
+      patch({ replacement: "`mapZephyrDocumentImagingg`" }),
+      { resolveSymbol }
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error("unreachable");
+    expect(out.refusal).toBe("symbol-unresolvable");
+    expect(out.detail).toContain("one absent name to another");
+  });
+
+  it("refuses when the OLD name is still there, because nothing expired", () => {
+    // The scan proposes these only for symbols it could not find. If the tree
+    // disagrees at apply time, the evidence is stale and the "repair" would be
+    // an unasked-for rename of a live citation.
+    const out = applyAnchoredPatch(
+      body,
+      patch({
+        anchor: "`mapZephyrReport`",
+        replacement: "`mapZephyrDocumentImaging`",
+      }),
+      { resolveSymbol }
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error("unreachable");
+    expect(out.refusal).toBe("symbol-unresolvable");
+    expect(out.detail).toContain("still exists on main");
+  });
+
+  it("refuses with no resolver at all — fail-closed, never fail-open", () => {
+    // A symbol-refresh applied with nothing to check against is exactly the
+    // patch that reads as verified and is not.
+    const out = applyAnchoredPatch(body, patch());
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error("unreachable");
+    expect(out.refusal).toBe("symbol-unresolvable");
+    expect(out.detail).toContain("no resolver was supplied");
+  });
+
+  it("refuses a bare identifier on either side — the backticks are the guard", () => {
+    const bare = applyAnchoredPatch(
+      body,
+      patch({ anchor: "mapZephyrDocument" }),
+      { resolveSymbol }
+    );
+    expect(bare.ok).toBe(false);
+    if (bare.ok) throw new Error("unreachable");
+    expect(bare.refusal).toBe("shape-rejected");
+    const loose = applyAnchoredPatch(
+      body,
+      patch({ replacement: "`the imaging mapper`" }),
+      { resolveSymbol }
+    );
+    expect(loose.ok).toBe(false);
+    if (loose.ok) throw new Error("unreachable");
+    expect(loose.refusal).toBe("shape-rejected");
+  });
+
+  it("cannot reach a bare mention in the prose ABOUT the rename", () => {
+    // #3619's named wrong-direction. The sentence explaining the rename says the
+    // old name out loud; only the CITATION is a fact with a shape.
+    const discussed =
+      "We renamed mapZephyrDocument during review, so `mapZephyrDocument` " +
+      "in the Refs bullet is stale.";
+    const out = applyAnchoredPatch(discussed, patch(), { resolveSymbol });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error("unreachable");
+    expect(out.body).toBe(
+      "We renamed mapZephyrDocument during review, so " +
+        "`mapZephyrDocumentImaging` in the Refs bullet is stale."
+    );
+  });
+
+  it("refuses the held shape, where a ruling cites the same symbol", () => {
+    // THE SECOND REAL REPAIR IS HELD, and it is held STRUCTURALLY rather than by
+    // policy. That issue names its absent constant twice — once in Refs, once
+    // inside the owner ruling that decided what to do about it — so repairing the
+    // bullet alone would leave the body internally inconsistent AND make a stale
+    // decision read as validated. The existing exactly-once anchor contract
+    // already refuses it; this pins that it is not an accident of wording.
+    const twice = [
+      "## Refs",
+      "",
+      "- `lib/zephyr.ts` — `ZEPHYR_SEP_CHARS` and the paragraph above it.",
+      "",
+      "## Owner ruling",
+      "",
+      "The zero-width members in `ZEPHYR_SEP_CHARS` stay as defence in depth.",
+    ].join("\n");
+    const out = applyAnchoredPatch(
+      twice,
+      patch({
+        anchor: "`ZEPHYR_SEP_CHARS`",
+        replacement: "`ZEPHYR_SEP_RUN`",
+      }),
+      { resolveSymbol: (sym) => sym === "ZEPHYR_SEP_RUN" }
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error("unreachable");
+    expect(out.refusal).toBe("anchor-ambiguous");
+  });
+
+  it("carries the resolver through a batch", () => {
+    const { entries } = applyPatchPlan(body, [patch()], { resolveSymbol });
+    expect(entries[0].outcome.ok).toBe(true);
+    const { entries: without } = applyPatchPlan(body, [patch()]);
+    expect(without[0].outcome.ok).toBe(false);
+  });
+});
+
 describe("a patch batch", () => {
   it("lands the safe patches and flags the rest, never all-or-nothing", () => {
     const body = "`lib/a.ts` and `lib/b.ts`";
@@ -1253,6 +1417,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
   const MODULES = [
     "scripts/orchestration/reconcile-tracker.ts",
     "scripts/orchestration/reconcile-tracker-core.ts",
+    "scripts/orchestration/reconcile-repo-index.ts",
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
