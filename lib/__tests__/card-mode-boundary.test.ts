@@ -7,6 +7,7 @@ import {
   CARD_MODE_BREAKPOINT_PX,
   CARD_MODE_ONLY,
   CARD_MODE_ROW_STACK,
+  CARD_MODE_TABLE_ONLY,
 } from "../card-row";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
@@ -192,6 +193,21 @@ export function scanCardModeScopes(
 // PHONE-ONLY HAS TWO SPELLINGS and a TSX file can reach for the other one: a raw
 // media query in a `matchMedia` call is the same restatement as a class prefix.
 // Both are derived from CARD_MODE_BREAKPOINT_PX below.
+//
+// THE ONE ARGUABLE MEMBER, RULED ON RATHER THAN LEFT QUIET (#3620). The illness
+// timeline's "show N earlier days" toggle is phone-only progressive disclosure, and
+// it was open whether that makes it PAGE-level markup — which would put it on a
+// licensed-exemption list — or card-mode markup, which keeps it inside this guard.
+// It is card-mode markup, and the argument is its twin rather than its wording: the
+// rows the toggle reveals are `<tbody>` groups carrying the ABOVE-boundary half of
+// the very same fold, so the two are one contract with two halves. Exempting the
+// toggle would license exactly the drift this guard exists for — a control that
+// stops matching the rows it controls. It stays on the list, both halves import a
+// constant, and the named-subject assertion below requires both.
+//
+// THERE IS NO EXEMPTION LIST, AND THAT IS THE RULING, not an omission. If a later
+// case genuinely is page-level, it needs one, with the argument attached — never a
+// quiet removal from the derived population.
 
 /** Files under these roots are candidates; nothing else renders a card. */
 const CONSUMER_ROOTS = ["app", "components"];
@@ -208,12 +224,29 @@ const CONSUMER_ROOTS = ["app", "components"];
  */
 const CONSUMER_FLOOR = 12;
 
-/** The utilities the exported constants themselves name. */
+/**
+ * The utilities the exported constants themselves name.
+ *
+ * TOKENISED RATHER THAN SLICED (#3620), because the mirror constant is not one
+ * class. "This exists only ABOVE the boundary" is a PAIR — a base `hidden` and a
+ * scoped restoration — so `CARD_MODE_TABLE_ONLY.inline` is `hidden sm:inline`.
+ * Only the scoped tokens carry the boundary; the bare `hidden`/`hidden!` half
+ * carries no tier and is nobody's restatement. The `!` important marker comes off
+ * too, so a restatement that omits it is caught by the same literal.
+ */
 const CARD_MODE_UTILITIES = [
-  CARD_MODE_ONLY,
-  CARD_MODE_ROW_STACK.text,
-  CARD_MODE_ROW_STACK.lead,
-].map((cls) => cls.slice(cls.indexOf(":") + 1));
+  ...new Set(
+    [
+      CARD_MODE_ONLY,
+      CARD_MODE_ROW_STACK.text,
+      CARD_MODE_ROW_STACK.lead,
+      ...Object.values(CARD_MODE_TABLE_ONLY),
+    ]
+      .flatMap((cls) => cls.split(/\s+/))
+      .filter((token) => token.includes(":"))
+      .map((token) => token.slice(token.indexOf(":") + 1).replace(/!$/, ""))
+  ),
+];
 
 /**
  * The class literals that ARE the card-mode boundary: its tier, in both directions,
@@ -434,6 +467,41 @@ describe("card-mode boundary (#3457)", () => {
     );
   });
 
+  it("the ABOVE-boundary mirror spells the same variant, derived not typed (#3620)", () => {
+    // `CARD_MODE_ONLY` names the half that shows only BELOW the boundary. Its
+    // mirror was a literal everywhere, so nothing caught a restatement of the
+    // other half — and a fold whose halves go out of step shows an element in
+    // both modes or in neither.
+    expect(CARD_MODE_TABLE_ONLY.inline).toBe(
+      `hidden ${CARD_MODE_VARIANT}:inline`
+    );
+    expect(CARD_MODE_TABLE_ONLY.tableRowGroup).toBe(
+      `hidden! ${CARD_MODE_VARIANT}:table-row-group!`
+    );
+
+    // AND THE FORBIDDEN SET GREW WITH IT, which is the second half of #3620: the
+    // predicate is derived from what the constants NAME, so naming the mirror is
+    // what makes a restatement of it visible. Asserted as membership rather than
+    // as a count, so adding a constant does not have to come back here.
+    for (const literal of [
+      `${CARD_MODE_VARIANT}:inline`,
+      `max-${CARD_MODE_VARIANT}:inline`,
+      `${CARD_MODE_VARIANT}:table-row-group`,
+      `max-${CARD_MODE_VARIANT}:table-row-group`,
+    ])
+      expect(FORBIDDEN_CLASS_LITERALS).toContain(literal);
+
+    // AND THE COLUMN LADDER STAYED OUT OF IT. `hidden sm:table-cell` is the middle
+    // rung of the three-step column tier this file's header describes, not a
+    // card-mode fold: inside a card its `hidden` half is inert, because
+    // `.table-cards td[data-card]` (0,2,1) outranks `.hidden` (0,1,0). Nine shipped
+    // declarations spell it across three consumers, and flagging them would be the
+    // cry-wolf direction that kept a large surface off the list entirely (#3552).
+    expect(FORBIDDEN_CLASS_LITERALS).not.toContain(
+      `${CARD_MODE_VARIANT}:table-cell`
+    );
+  });
+
   it("the named consumers inherit the boundary instead of restating it", () => {
     // NAMED SUBJECTS, kept as PRESENCE claims. The derived census below is what
     // makes membership honest; these three say that the specific files the boundary
@@ -444,10 +512,25 @@ describe("card-mode boundary (#3457)", () => {
     // a row (#3491's Trash list) inherits a different constant than one that hides
     // card-mode-only markup, and demanding CARD_MODE_ONLY of both would be a guard
     // that fires on correct code.
+    //
+    // THE TWO TWIN PAIRS ARE NAMED AS PAIRS (#3620). Each is one fold with two
+    // halves, and the failure this guards against is the halves going out of step —
+    // so each file is required to import BOTH constants, and losing either import
+    // is the red. A derivation cannot say this: a file that dropped one half would
+    // still be a consumer by the other.
     const named: [string, string][] = [
       ["components/ResponsiveTable.tsx", "CARD_MODE_ONLY"],
       ["components/TableSortSelect.tsx", "CARD_MODE_ONLY"],
       ["app/(app)/data/TrashList.tsx", "CARD_MODE_ROW_STACK"],
+      // The illness timeline's earlier-days fold: the phone-only toggle and the
+      // row groups it toggles. See the exemption note below for why the toggle is
+      // card-mode markup and not page-level progressive disclosure.
+      ["components/illness/EpisodeTimeline.tsx", "CARD_MODE_ONLY"],
+      ["components/illness/EpisodeTimeline.tsx", "CARD_MODE_TABLE_ONLY"],
+      // The sleep history's date pair: short date on the card, long date in the
+      // table, one `<Link>`, two spans.
+      ["app/(app)/sleep/SleepMoodSection.tsx", "CARD_MODE_ONLY"],
+      ["app/(app)/sleep/SleepMoodSection.tsx", "CARD_MODE_TABLE_ONLY"],
     ];
     for (const [rel, symbol] of named)
       expect(
@@ -507,8 +590,9 @@ describe("card-mode boundary (#3457)", () => {
         restatements,
         "A card-mode consumer spells the boundary itself instead of importing it. " +
           "That is the second copy of a number that has to agree with " +
-          "app/globals.css and with every AC — import CARD_MODE_ONLY or " +
-          "CARD_MODE_ROW_STACK from lib/card-row.ts (#3457). Only the card-mode " +
+          "app/globals.css and with every AC — import CARD_MODE_ONLY, " +
+          "CARD_MODE_TABLE_ONLY or CARD_MODE_ROW_STACK from lib/card-row.ts " +
+          "(#3457, #3620). Only the card-mode " +
           "tier's own utilities are forbidden here: an unrelated responsive class " +
           "at any tier is styling and this guard says nothing about it (#3552).\n" +
           restatements.join("\n")
@@ -709,6 +793,37 @@ describe("the consumer census over a corpus authored to break it (#3601, #3552)"
     expect(censusOf().restatements).toEqual([]);
   });
 
+  it("sees a restatement of the ABOVE-boundary half (#3620)", () => {
+    // THE HALF THAT NOTHING CAUGHT. Until CARD_MODE_TABLE_ONLY existed, every one
+    // of these lines was invisible to this guard while its below-boundary twin was
+    // caught — which is the state that lets one half of a fold drift and show an
+    // element in both modes or in neither. The important marker is stripped when
+    // the literal is derived, so the `!` spelling and the bare one are one rule.
+    write(
+      "components/PlantedMirror.tsx",
+      [
+        'import { Td } from "@/components/ResponsiveTable";',
+        "export const P = () => (",
+        "  <div>",
+        '    <span className="hidden sm:inline" />',
+        '    <tbody className="hidden! sm:table-row-group!" />',
+        '    <span className="max-sm:inline" />',
+        "  </div>",
+        ");",
+        "",
+      ].join("\n")
+    );
+    track();
+    expect(censusOf().restatements).toEqual([
+      "components/PlantedMirror.tsx:4 — `sm:inline`",
+      "components/PlantedMirror.tsx:5 — `sm:table-row-group`",
+      "components/PlantedMirror.tsx:6 — `max-sm:inline`",
+    ]);
+    fs.rmSync(path.join(base, "components/PlantedMirror.tsx"));
+    track();
+    expect(censusOf().restatements).toEqual([]);
+  });
+
   it("sees the boundary written as a raw media query", () => {
     // #3552's "phone-only has two spellings". In TSX the second one is a
     // `matchMedia` string, and `components/ActivityEditorProvider.tsx:773` already
@@ -747,7 +862,18 @@ describe("the consumer census over a corpus authored to break it (#3601, #3552)"
         "  <div>",
         '    <input className="input sm:w-40" />',
         '    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_20rem]" />',
+        // The middle rung of the COLUMN LADDER, and the reason `table-cell` is not
+        // in CARD_MODE_TABLE_ONLY: in card mode its `hidden` half is inert, because
+        // `.table-cards td[data-card]` (0,2,1) outranks `.hidden` (0,1,0). Nine
+        // shipped declarations across three consumers spell it.
         '    <th className="hidden sm:table-cell" />',
+        // NOT CAUGHT, AND KNOWN: `sm:block` is a mirror spelling the constants do
+        // not name, because no consumer folds with it — measured 2026-08-23, zero
+        // occurrences of `sm:block` or `max-sm:block` inside the 20 derived
+        // consumers. The predicate is the constants, so the day a card consumer
+        // needs that fold, the fix is a `block` entry beside `inline`, not a
+        // hand-written literal here (#3552).
+        '    <div className="hidden sm:block" />',
         '    <td className="px-2 pb-2 sm:px-5 sm:pt-4" />',
         '    <span className="max-md:h-40 lg:flex xl:hidden" />',
         '    <Td slot="meta" />',

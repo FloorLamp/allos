@@ -55,7 +55,7 @@ import { makeTmpDir } from "./tmp-dir";
 //      45 native boxes with a `<label>` taking the tap are licensed — and this file
 //      does not pretend otherwise; what it does is stop the number growing, and
 //      record what each group is waiting on.
-//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 21 `.tap-target`
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 22 `.tap-target`
 //      controls pin no height in source, so `floorMiss` returns null at its first
 //      line and they are neither findings nor cleared. Counting them is what
 //      turns a silent blind spot into a number that can go up (#3557 review).
@@ -322,7 +322,7 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
  * see the module header on what a class-list scan can see. That is a stated
- * bound and it is honest, but until now it was also SILENT: twenty-one controls
+ * bound and it is honest, but until now it was also SILENT: twenty-two controls
  * wearing the token that says "the floor was reached by hit area" were neither
  * findings nor cleared, and nothing counted them. A blind spot with no number
  * cannot grow visibly, which is the #3206 shape one level down.
@@ -335,8 +335,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty-one have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other eighteen are UNMEASURED — nobody
+ * declare. Three of the twenty-two have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other nineteen are UNMEASURED — nobody
  * has looked, and this file says so rather than implying they are fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
@@ -345,6 +345,10 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
   { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
   { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
+  // The injury bar's trailing-affordance MENU (#3221), the same control ProtocolForm
+  // and GoalForm are rostered for: a `.tap-target` chip whose height is whatever its
+  // padding and text come to. Unjudged for the same reason and counted for the same one.
+  { file: "app/(app)/training/InjuryBar.tsx", controls: 1 },
   { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
   { file: "components/IntakeItemForm.tsx", controls: 2 },
   // The purpose chips (#2857): the goal buttons and the suggestion offer, both
@@ -467,14 +471,15 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
 ];
 
 /**
- * The twenty nobody has measured. Stated as a number rather than left as
+ * The twenty-one nobody has measured. Stated as a number rather than left as
  * subtraction, because "we have not looked" is the fact worth being able to
  * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
- * readable — the controls did not change, the scan's sight did. It went 18 -> 20
- * with #2857's two purpose chips, which is the other kind of increase: two new
- * controls nobody has put a ruler to.
+ * readable — the controls did not change, the scan's sight did. The other three
+ * are the other kind of increase, new controls nobody has put a ruler to:
+ * #3221's trailing-affordance menu on the injury bar, which the other
+ * facts-with-editors hosts already had, and #2857's two purpose chips.
  */
-const UNMEASURED_TAP_TARGETS = 20;
+const UNMEASURED_TAP_TARGETS = 21;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");

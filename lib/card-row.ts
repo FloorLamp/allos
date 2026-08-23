@@ -54,6 +54,54 @@ export const CARD_MODE_BREAKPOINT_PX = 640;
 // than spelling `sm:` again (#3457).
 export const CARD_MODE_ONLY = "sm:hidden";
 
+// THE MIRROR OF `CARD_MODE_ONLY` (issue #3620).
+//
+// `CARD_MODE_ONLY` says "this markup exists only BELOW the boundary". Its twin —
+// "this markup exists only ABOVE it" — was spelled as a literal everywhere it
+// appeared, so nothing caught a restatement of that half. A fold whose two halves
+// go out of step shows an element in BOTH modes or in NEITHER, which is worse than
+// either half being wrong on its own: two live pairs each had one caught half and
+// one uncaught one (the illness timeline's earlier-days fold, the sleep history's
+// short/long date pair).
+//
+// KEYED BY THE DISPLAY THE ELEMENT RETURNS TO, because `hidden` has no single undo.
+// A span comes back `inline`; a `<tbody>` comes back `table-row-group`. That is
+// also why this is a map and `CARD_MODE_ONLY` is a string — `sm:hidden` needs to
+// know nothing about what it is hiding, and its mirror cannot avoid knowing.
+//
+// THE `!` ON THE TABLE-ROW-GROUP ENTRY IS LOAD-BEARING. `.table-cards tbody` is an
+// element+class selector (0,1,1) and a bare `hidden` utility is (0,1,0), so without
+// the important marker the card rule wins below the boundary and the "hidden" half
+// never happens (#2533 item 2). The span entry needs no such thing: nothing in the
+// `table-cards` family selects a `<span>`.
+//
+// WHAT IS DELIBERATELY NOT HERE: `table-cell`. `hidden sm:table-cell` reads like
+// this same fold and is not one — it is the middle rung of the COLUMN LADDER this
+// module's header describes, and inside a card its `hidden` half is inert, because
+// `.table-cards td[data-card]` (0,2,1) outranks `.hidden` (0,1,0). Nine shipped
+// declarations spell it; naming it here would red every one of them for writing
+// correct code, which is the cry-wolf direction #3552 was filed about.
+export const CARD_MODE_TABLE_ONLY = {
+  /**
+   * An inline element that exists only above the boundary — the long-form date
+   * beside its short card twin.
+   *
+   * KNOWN EDGE, so the next author meets it as a note rather than as a trap: an
+   * ADD AFFORDANCE's label uses the same two classes for a different reason (an
+   * icon-only create below `sm`), and `lib/add-affordance-grammar.ts` recognises
+   * that composition by matching the LITERAL. Reaching for this constant on such
+   * a button would make that guard stop seeing the control as icon-only, and its
+   * `aria-label` requirement would go quiet. If a card-mode consumer ever grows
+   * one, the two guards have to be reconciled — not the literal re-spelled.
+   */
+  inline: "hidden sm:inline",
+  /**
+   * A `<tbody>` that exists only above the boundary — a row group the phone folds
+   * away behind a "show earlier days" toggle. Important-marked; see above.
+   */
+  tableRowGroup: "hidden! sm:table-row-group!",
+} as const;
+
 // A ROW THAT STACKS IN CARD MODE (issue #3491).
 //
 // The other half of the same boundary, for a surface that is not a table: a flex

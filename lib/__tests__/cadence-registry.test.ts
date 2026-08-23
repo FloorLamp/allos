@@ -32,6 +32,7 @@ import {
   ALL_NOTIFICATION_KINDS,
   isSafetyKind,
 } from "@/lib/notifications/kinds";
+import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const LIB = path.join(REPO, "lib");
@@ -58,12 +59,6 @@ function libSources(): { rel: string; text: string }[] {
   };
   walk(LIB);
   return out;
-}
-
-// Strip comments so the module headers — which name `planNudgeCadence` in prose all
-// over this domain — are not read as call sites.
-function stripComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
 /** The modules that really adapt the shared engine: they import it and they call it. */

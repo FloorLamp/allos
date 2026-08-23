@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick, settledFill } from "./helpers";
+import { openInjuryFact, withInjuryFact } from "./injury-form-helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #838 — the injury layer. Logging a user-declared injury makes the shared
@@ -42,9 +43,14 @@ test("log an injury → recommendation avoids the region and names why → resol
   const form = bar.getByTestId("injury-form");
   await expect(form).toBeVisible();
 
-  // Log a right-shoulder injury that puts Chest off the table.
-  await form.getByTestId("injury-label-input").fill("right shoulder");
-  await form.getByTestId("injury-region-Chest").check();
+  // Log a right-shoulder injury that puts Chest off the table. Both facts are reached
+  // through their own chip since #3221 — the fields are the same and so is the write.
+  await withInjuryFact(form, "label", () =>
+    form.getByTestId("injury-label-input").fill("right shoulder")
+  );
+  await withInjuryFact(form, "regions", () =>
+    form.getByTestId("injury-region-Chest").check()
+  );
   await settledClick(page, form.getByTestId("injury-submit"));
 
   // The injury chip is listed as Active, naming Chest.
@@ -95,11 +101,21 @@ test("a movement-scoped constraint narrows the exclusion and says so (#2024)", a
   const form = bar.getByTestId("injury-form");
   await expect(form).toBeVisible();
 
-  // "Pressing hurts" — the region is Chest, but only the PUSH pattern is affected.
-  await form.getByTestId("injury-label-input").fill("pressing pain");
-  await form.getByTestId("injury-region-Chest").check();
-  await form.getByTestId("injury-movement-push").check();
-  await form.getByTestId("injury-laterality").selectOption("right");
+  // "Pressing hurts" — the region is Chest, but only the PUSH pattern is affected. The
+  // movement and the side are ABSENT OPTIONALS until they say something, so they are
+  // reached through the trailing affordance rather than through a chip (#3221).
+  await withInjuryFact(form, "label", () =>
+    form.getByTestId("injury-label-input").fill("pressing pain")
+  );
+  await withInjuryFact(form, "regions", () =>
+    form.getByTestId("injury-region-Chest").check()
+  );
+  await withInjuryFact(form, "movements", () =>
+    form.getByTestId("injury-movement-push").check()
+  );
+  await withInjuryFact(form, "laterality", async () => {
+    await form.getByTestId("injury-laterality").selectOption("right");
+  });
   await settledClick(page, form.getByTestId("injury-submit"));
 
   // The chip names what the user actually declared — the pattern and the side — rather
@@ -143,9 +159,13 @@ test("an over-broad constraint is narrowed in place and gives the region back (#
 
   // Day one: "my shoulder hurts when I push" — logged as the two regions involved,
   // because that is genuinely all that is known yet.
-  await form.getByTestId("injury-label-input").fill("sore shoulder");
-  await form.getByTestId("injury-region-Chest").check();
-  await form.getByTestId("injury-region-Shoulders").check();
+  await withInjuryFact(form, "label", () =>
+    form.getByTestId("injury-label-input").fill("sore shoulder")
+  );
+  await withInjuryFact(form, "regions", async () => {
+    await form.getByTestId("injury-region-Chest").check();
+    await form.getByTestId("injury-region-Shoulders").check();
+  });
   await settledClick(page, form.getByTestId("injury-submit"));
 
   const chip = bar
@@ -162,13 +182,22 @@ test("an over-broad constraint is narrowed in place and gives the region back (#
   const edit = chip.getByTestId("injury-edit-form");
   await expect(edit).toBeVisible();
   // The form opens on what was SAVED — a correction starts from the declaration, not
-  // from an empty draft the user would have to retype.
+  // from an empty draft the user would have to retype. Since #3221 the row STATES that
+  // before anything is opened, which is the whole point of the summary; the fields behind
+  // the chips still hold it.
+  await expect(edit.getByTestId("injury-fact-label")).toContainText(
+    "sore shoulder"
+  );
+  await expect(edit.getByTestId("injury-fact-regions")).toContainText("Chest");
+  await openInjuryFact(edit, "label");
   await expect(edit.getByTestId("injury-label-input")).toHaveValue(
     "sore shoulder"
   );
+  await openInjuryFact(edit, "regions");
   await expect(edit.getByTestId("injury-region-Chest")).toBeChecked();
 
   // The finest level is reached through the SAME #2199 picker the log form uses.
+  await openInjuryFact(edit, "exercises");
   const field = edit.getByLabel("Add an affected lift");
   await settledFill(page, field, "Overhead Press");
   const option = page
@@ -223,12 +252,19 @@ test("an exercise-scoped constraint is loggable from the form and names the lift
   const form = bar.getByTestId("injury-form");
   await expect(form).toBeVisible();
 
-  await form.getByTestId("injury-label-input").fill("tender elbow");
-  await form.getByTestId("injury-region-Arms").check();
+  await withInjuryFact(form, "label", () =>
+    form.getByTestId("injury-label-input").fill("tender elbow")
+  );
+  await withInjuryFact(form, "regions", () =>
+    form.getByTestId("injury-region-Arms").check()
+  );
 
-  // The picker is the shared Combobox, so the lift is found the way a user finds it:
+  // The picker is an ABSENT OPTIONAL until a lift is named, so it opens through the
+  // trailing affordance (#3221). It is the shared Combobox, so the lift is found the way
+  // a user finds it:
   // typed, then chosen from the listbox by its accessible name. The pick lands as a
   // removable chip, not in the input. settledFill owns the hydration retry.
+  await openInjuryFact(form, "exercises");
   const field = form.getByLabel("Add an affected lift");
   await settledFill(page, field, "Curl");
   const option = page
