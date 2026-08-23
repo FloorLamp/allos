@@ -299,6 +299,7 @@ export async function saveTrainingZones(formData: FormData) {
   }
 
   revalidateRoute("/settings/training");
+  revalidateRoute("/training");
   revalidateRoute("/trends");
 }
 

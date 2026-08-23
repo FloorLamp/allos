@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, hydratedClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick, settledBoxes } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_FITNESS,
@@ -36,6 +36,18 @@ test.describe("Training → Analyze, All training (#3512)", () => {
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
 
+    // #1492's phone stacking contract follows the history to its new owner: an
+    // expanded activity matrix starts below the calendar instead of overlaying it.
+    await history
+      .getByRole("button", { name: /View occurrences for/ })
+      .first() // first-ok: every history row shares this stacking contract
+      .click();
+    const [calendarBox, rowBox] = await settledBoxes([
+      history.getByTestId("day-history-calendar-panel"),
+      history.getByTestId("day-history-rowpanel"),
+    ]);
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
+
     // This fixture has no workout-scoped HR minutes, so the moved section does
     // not reserve standing empty chrome. e2e/training-zones.spec.ts owns the
     // positive, data-present render.
@@ -51,6 +63,25 @@ test.describe("Training → Analyze, All training (#3512)", () => {
       await expect(page.getByTestId(testId)).toHaveCount(0);
     }
     await expectNoClippedContent(page);
+    await page.close();
+  });
+
+  test("the first chart remains inside the first viewport at the default range", async ({
+    browser,
+  }) => {
+    const page = await signIn(browser);
+    await page.goto("/training?tab=analyze");
+
+    // The workout-history chart was #1492's answer to a 1,776px pre-chart wall.
+    // Moving it must preserve that measured phone outcome, not merely its DOM.
+    const firstChart = page.getByTestId("workout-day-history");
+    const box = await firstChart.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(box!.y).toBeLessThan(viewport!.height);
+    await expectNoClippedContent(page);
+
     await page.close();
   });
 
@@ -108,20 +139,26 @@ test.describe("Training → Analyze, All training (#3512)", () => {
   }) => {
     const page = await signIn(browser);
 
-    for (const legacy of [
-      "/trends?tab=fitness",
-      "/trends?tab=fitness&ftab=cardio#zones",
-      "/trends?ftab=sport#sport",
-      "/trends?tab=fitness#volume",
-      "/trends?tab=fitness#strength",
-      "/trends?tab=fitness#prs",
-    ]) {
-      await page.goto(legacy);
+    const aliases = [
+      { href: "/trends?tab=fitness", anchor: null },
+      { href: "/trends?tab=fitness&ftab=cardio#zones", anchor: "zones" },
+      { href: "/trends?ftab=sport#sport", anchor: "sport" },
+      { href: "/trends?tab=fitness#volume", anchor: "volume" },
+      { href: "/trends?tab=fitness#strength", anchor: "strength" },
+      { href: "/trends?tab=fitness#prs", anchor: "prs" },
+    ] as const;
+
+    for (const legacy of aliases) {
+      await page.goto(legacy.href);
       await expect(page).toHaveURL(/\/training\?tab=analyze/);
       await expect(page.getByTestId("analyze-all-training")).toBeVisible();
-      if (legacy.endsWith("#zones")) {
-        await expect(page).toHaveURL(/#zones$/);
-        await expect(page.locator("#zones")).toHaveCount(1);
+      if (legacy.anchor) {
+        await expect(page).toHaveURL(
+          new RegExp(
+            `#${legacy.anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`
+          )
+        );
+        await expect(page.locator(`#${legacy.anchor}`)).toHaveCount(1);
       }
     }
 

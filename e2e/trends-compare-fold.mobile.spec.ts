@@ -11,8 +11,8 @@ import { followLink } from "./helpers";
 // Trends tab order + the Compare fold (issue #1489).
 //
 // Two changes, one surface:
-//   A. the strip is FIVE chips in frequency order — Overview | Body | Fitness |
-//      Nutrition | Insights — which is what makes it fit a 390px phone unclipped;
+//   A. the strip is THREE chips in frequency order — Overview | Nutrition |
+//      Insights — after Body folded into Overview and Fitness moved to Training;
 //   B. Compare stopped being a tab and became a SECTION of Insights, and with it
 //      body self-history analytics remain available for a school-age minor.
 //
@@ -47,7 +47,7 @@ async function comparePage(browser: Parameters<typeof loginAs>[0]) {
 
 // The hub's tab strip, located by the chip that is in it for every profile —
 // scoping by containment rather than by position keeps this honest if the page
-// ever grows a second tablist (the Fitness tab has a nested one).
+// ever grows a second tablist.
 function tabStrip(page: Page) {
   return page
     .getByRole("tablist")
@@ -82,7 +82,7 @@ test.describe("A — the tab strip is three chips in frequency order", () => {
     // stable horizontal scroller instead of hiding them inside that trigger. #640
     // gave the strip that scroller and it is still here — asserted as the PROPERTY
     // (an overflow-x scroller) rather than as "there is something to scroll right
-    // now", because #2614 made the four-tab set actually FIT the column the trigger
+    // now", because #2614 made the tab set actually FIT the column the trigger
     // leaves it. A strip that needs no swipe is the better outcome, and it is what
     // the clause below has always been about.
     await expect(strip).toHaveCSS("overflow-x", "auto");

@@ -37,16 +37,17 @@ export default async function FitnessZonesSection({
   weeks: number;
 }) {
   const { profile } = await requireSession();
+  const zoneData = getTrainingZoneData(profile.id, weeks, window.to);
+
+  // #3512: the moved section is not standing chrome. Decide that from the zone
+  // model before paying for cardio aggregates whose JSX would be discarded.
+  if (!zoneData.model || zoneData.split.totalMin === 0) return null;
+
   const todayStr = today(profile.id);
   const since = window.from ?? undefined;
   const weekly = getCardioVolumeByWeek(profile.id, weeks, since, window.to);
   const mix = getCardioIntensityMix(profile.id, since, window.to);
   const mixTotal = mix.reduce((s, b) => s + b.minutes, 0);
-  const zoneData = getTrainingZoneData(profile.id, weeks, window.to);
-
-  // #3512: the moved section is not standing chrome. It appears only when this
-  // window contains workout-scoped minutes that can actually be placed in zones.
-  if (!zoneData.model || zoneData.split.totalMin === 0) return null;
 
   return (
     <section className="space-y-6" data-testid="fitness-zones">
