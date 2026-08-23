@@ -8,6 +8,102 @@
           "title": "Lab names with commas stop reading as extra results, a single reading draws as a mark, and a dose is stated once",
           "kind": "fix",
           "issues": [3496, 3497, 3498]
+        },
+        {
+          "pr": 3622,
+          "title": "Re-sent health data keeps the day it was recorded on instead of collapsing onto one day",
+          "kind": "fix",
+          "issues": [3428]
+        },
+        {
+          "pr": 3625,
+          "title": "Logging out works even if the sidebar closes part-way through",
+          "kind": "fix",
+          "issues": [3605]
+        },
+        {
+          "pr": 3587,
+          "title": "Logging out works even if you tap before the page has finished loading",
+          "kind": "fix",
+          "issues": [3400, 3515]
+        },
+        {
+          "pr": 3586,
+          "title": "Tapping outside a sheet closes it, even right after a swipe that did not",
+          "kind": "fix",
+          "issues": [3262]
+        },
+        {
+          "pr": 3588,
+          "title": "Strava activities with very large ids import correctly, and sync errors read in plain language",
+          "kind": "fix",
+          "issues": [3037, 3194, 3198]
+        },
+        {
+          "pr": 3613,
+          "title": "Oura and Withings records with very large ids import correctly, and more errors read plainly",
+          "kind": "fix",
+          "issues": [3592, 3593]
+        },
+        {
+          "pr": 3596,
+          "title": "Fitness analytics now live together in Training, under Analyze",
+          "kind": "feature",
+          "issues": [3512]
+        },
+        {
+          "pr": 3599,
+          "title": "Starred Trends metrics now live in the Body census",
+          "kind": "feature",
+          "issues": [3387]
+        },
+        {
+          "pr": 3630,
+          "title": "Injuries can be edited in place, the way other records already were",
+          "kind": "feature",
+          "issues": [3221]
+        },
+        {
+          "pr": 3584,
+          "title": "The Trends digest reports only what has actually changed",
+          "kind": "fix",
+          "issues": [3389]
+        },
+        {
+          "pr": 3609,
+          "title": "Trends notices changes it used to miss",
+          "kind": "fix",
+          "issues": [3397]
+        },
+        {
+          "pr": 3626,
+          "title": "The dose history list fits a phone: readable dates, a usable item filter, a clearer empty state",
+          "kind": "fix",
+          "issues": [3478]
+        },
+        {
+          "pr": 3598,
+          "title": "The Medications header, the cabinet add-row and the import review fit a phone screen",
+          "kind": "fix",
+          "issues": [3479, 3481, 3493]
+        },
+        {
+          "pr": 3585,
+          "title": "The fitness check page gets a heading, and one container owns its width",
+          "kind": "fix",
+          "issues": [3234]
+        },
+        {
+          "pr": 3597,
+          "title": "Layout passes for the Plan tab, a thin Cycles history, and the household glance",
+          "kind": "fix",
+          "issues": [3474, 3482, 3487]
+        },
+        {
+          "pr": 3617,
+          "title": "The ride detail page reads better, and stray text links look like links",
+          "kind": "fix",
+          "issues": [3500, 3607]
         }
       ]
     },
