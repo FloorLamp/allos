@@ -42,6 +42,19 @@
 // other pure/impure splits (raw-log-format.ts vs raw-log.ts, backfill-error.ts vs
 // backfill-jobs.ts).
 
+// The id-shaped key spellings this app has actually met on the wire, ENUMERATED
+// rather than generalized (#3593). `id` and `<word>_id` are Strava's; `grpid` is
+// Withings' measure-group id, which reaches storage as
+// `withings:<grpid>:<analyte>` and is documented `type: integer, format: int64` in
+// Withings' own API reference — so it is precisely the shape #3194 describes, and
+// the `[A-Za-z0-9]+_id` half does not reach it (there is no underscore).
+//
+// NOT widened to "any key ending in id". That would take `valid`, `paid`, `android`,
+// `deviceid` and `model_id` along with it, and lean on the precision gate never
+// firing for them — which is "safe because it never happens", the weakest kind of
+// safe. A new provider adds its spelling here, next to the evidence for it.
+const ID_KEY_NAMES = "id|[A-Za-z0-9]+_id|grpid";
+
 // An id-shaped key in KEY position — preceded by `{` or `,` — holding an unquoted
 // integer.
 //
@@ -53,8 +66,10 @@
 // `"name":",\"id\":12345678901234567,"` and is left completely alone (measured).
 // So this is not "usually safe on string values"; it is unreachable on them for
 // any input that is valid JSON.
-const ID_KEY_INTEGER_RE =
-  /([{,]\s*"(?:id|[A-Za-z0-9]+_id)"\s*:\s*)(-?\d+)(?=\s*[,}])/g;
+const ID_KEY_INTEGER_RE = new RegExp(
+  `([{,]\\s*"(?:${ID_KEY_NAMES})"\\s*:\\s*)(-?\\d+)(?=\\s*[,}])`,
+  "g"
+);
 
 // Does this digit string survive a trip through a JS number unchanged? `String` on
 // a double prints the shortest decimal that round-trips to the same double, so this

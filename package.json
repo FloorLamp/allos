@@ -24,6 +24,7 @@
     "census:dose-amounts": "tsx scripts/dose-amount-census.ts",
     "census:dialogs": "tsx scripts/dialog-census.ts",
     "census:hc-overlaps": "tsx scripts/hc-origin-overlap-census.ts",
+    "census:migration-replay": "tsx scripts/migration-replay-census.ts",
     "seed": "tsx scripts/seed.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",
     "notify": "tsx scripts/notify.ts",

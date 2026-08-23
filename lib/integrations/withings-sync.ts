@@ -1,4 +1,6 @@
 import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
+import { parseJsonPreservingIds } from "./json-big-ids";
 import { addCanonicalNames, reconcileFlags } from "@/lib/queries";
 import {
   WITHINGS_ID,
@@ -69,7 +71,16 @@ async function withingsPost(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false, status: res.status };
-    const json = (await res.json()) as Record<string, unknown>;
+    // NOT `res.json()`. Withings documents `measuregrps[].grpid` — the id this app
+    // stores as `withings:<grpid>:<analyte>` — as `type: integer, format: int64`,
+    // so nothing in the contract keeps it under 2^53 and an ordinary parse would
+    // round it before the mapper ever saw it (#3593, the defect #3194 measured on
+    // Strava). The digits are preserved in the response TEXT; see json-big-ids.ts,
+    // whose key list carries Withings' `grpid` spelling for exactly this reason.
+    const json = parseJsonPreservingIds(await res.text()) as Record<
+      string,
+      unknown
+    >;
     // Withings wraps everything in { status, body }; status 0 = success. An error
     // (bad/expired token, rate limit) rides in the envelope with HTTP 200, so the
     // envelope status is authoritative.
@@ -81,10 +92,20 @@ async function withingsPost(
         : {};
     return { ok: true, body };
   } catch (err) {
+    // Network error / timeout / DNS. WHICH request failed goes to the log with the
+    // raw cause; `error` carries the house sentence, because it is rendered on the
+    // integration card and in the "Sync failed: …" toast (#3592).
+    log.error("Withings request failed", {
+      path,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       ok: false,
       status: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: userErrorCopy(err, {
+        doing: "sync your Withings data",
+        service: "Withings",
+      }),
     };
   }
 }
@@ -132,7 +153,10 @@ async function fetchPages(
         timezone,
         updatetime,
         truncated: false,
-        error: `Withings ${path} request failed (${res.status})`,
+        // withingsPost only sets `error` for a network throw, where it is already
+        // the house sentence (#3592) — and where this line's alternative would be
+        // the meaningless "(0)". An HTTP/envelope status keeps the authored line.
+        error: res.error ?? `Withings ${path} request failed (${res.status})`,
       };
     }
     const body = res.body;

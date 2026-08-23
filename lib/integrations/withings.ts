@@ -73,6 +73,20 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+// A Withings measure-group id, as the digit string that goes into an external id.
+//
+// IT MUST ACCEPT A STRING (#3593), and that is the whole reason this exists instead
+// of `num(rec.grpid)`. `grpid` is documented int64, so the fetch boundary parses it
+// through lib/integrations/json-big-ids.ts, which hands a value past 2^53 back as
+// its exact digits rather than a rounded double. A number-only read would then see
+// a string, return null, and SKIP the whole group — trading a silent collision for
+// silent data loss. Mirrors `externalIdOf` in ./strava.ts, which exists for the same
+// reason on the same boundary.
+function groupIdOf(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return str(v);
+}
+
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 function dayStr(v: unknown): string | null {
   const s = str(v);
@@ -132,10 +146,10 @@ export function mapWithingsMeasureGroup(
 } | null {
   if (!group || typeof group !== "object") return null;
   const rec = group as Record<string, unknown>;
-  const grpid = num(rec.grpid);
+  const grpid = groupIdOf(rec.grpid);
   const tz = str(rec.timezone) ?? defaultTz;
   const loc = localFromUnix(num(rec.date), tz);
-  if (grpid == null || !loc) return null;
+  if (!grpid || !loc) return null;
 
   // Last-writer-wins per type within a group (a group is one reading session, so a
   // type appears at most once in practice; the Map keeps it robust regardless).

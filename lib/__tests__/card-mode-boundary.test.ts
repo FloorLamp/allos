@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { afterAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,8 @@ import {
   CARD_MODE_ONLY,
   CARD_MODE_ROW_STACK,
 } from "../card-row";
+import { stripComments } from "./strip-comments";
+import { makeTmpDir } from "./tmp-dir";
 
 // THE CARD-MODE BOUNDARY IS ONE NUMBER, HELD IN THREE PLACES (issue #3457).
 //
@@ -87,23 +90,18 @@ interface Scoping {
   ok: boolean;
 }
 
-function stripComments(css: string): string {
+// CSS ONLY. `//` is not a comment in CSS, so the shared TypeScript scanner
+// (./strip-comments) is the wrong tool for a stylesheet — it would read the `//`
+// in a `url(https://…)` as one and blank the rest of the line. TSX below uses the
+// shared scanner, which is the right tool there.
+function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
-}
-
-// TSX carries its conventions in `//` prose, and a scan that reads source as text
-// cannot tell a class string from a sentence about one. The first cut of the
-// consumer check below flagged ResponsiveTable's own comment describing the sort
-// select — the mirror-image failure recorded on #3509, where a guard fires on the
-// documentation that explains it and teaches the next author to stop writing it.
-function stripTsComments(source: string): string {
-  return stripComments(source).replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 /** The body of each `@utility <name> { … }`, brace-matched. */
 export function utilityBodies(css: string): Map<string, string> {
   const out = new Map<string, string>();
-  const source = stripComments(css);
+  const source = stripCssComments(css);
   for (const m of source.matchAll(/@utility\s+([a-z0-9-]+)\s*\{/g)) {
     const open = m.index + m[0].length - 1;
     let depth = 0;
@@ -163,6 +161,183 @@ export function scanCardModeScopes(
   return out;
 }
 
+// ── WHO THE CONSUMERS ARE, DERIVED (#3601) AND WHAT IS FORBIDDEN OF THEM (#3552) ──
+//
+// The consumer half of this guard was a hand-written list of three files with no
+// floor: measured 2026-08-23, setting it to `[]` left 12/12 passing, and
+// `components/ClinicalResultsTable.tsx:370` wrote `"sm:hidden"` — character for
+// character the value of CARD_MODE_ONLY — on card-mode-only markup without anything
+// noticing. #3457 recurring inside the check that closed #3457.
+//
+// THESE TWO ISSUES ARE ONE CHANGE, and the measurement is why. Deriving membership
+// (#3601) puts 20 files on the list. Measured 2026-08-23, TEN of them carry a `sm:`
+// or `md:` class literal that has nothing to do with card mode — `md:grid-cols-…`
+// on a layout, `input sm:w-40` on three settings fields, `hidden md:table-cell`
+// column tiers, `sm:px-5` padding. Under the old predicate — "a listed consumer may
+// write NO responsive literal at all" — the derivation reds ten correct files on its
+// first run, so it cannot be done without #3552's narrowing; and narrowing alone
+// leaves the list a list somebody has to remember to append to. Neither half is
+// shippable without the other.
+//
+// THE NARROWED PREDICATE, DERIVED FROM THE CONSTANTS RATHER THAN WRITTEN OUT. The
+// question is "does this file restate the CARD-MODE boundary", not "does it carry a
+// breakpoint". So the forbidden set is built from what the exported constants
+// actually say: their tier (CARD_MODE_VARIANT) crossed with the utilities they name
+// (`hidden` from CARD_MODE_ONLY, `basis-full` and `whitespace-normal` from
+// CARD_MODE_ROW_STACK), in both directions of the tier. A responsive class at that
+// tier doing anything else — a width, a gap, a grid template — is styling, not a
+// second copy of the number, and flagging it is the cry-wolf direction that got a
+// large surface kept OFF the list entirely (#3552 / PR #3550).
+//
+// PHONE-ONLY HAS TWO SPELLINGS and a TSX file can reach for the other one: a raw
+// media query in a `matchMedia` call is the same restatement as a class prefix.
+// Both are derived from CARD_MODE_BREAKPOINT_PX below.
+
+/** Files under these roots are candidates; nothing else renders a card. */
+const CONSUMER_ROOTS = ["app", "components"];
+
+/**
+ * THE FLOOR THE DERIVED CONSUMER SET MUST CLEAR, asserted before any verdict is
+ * pronounced over it. The verdict is an ABSENCE — "nobody restates the boundary" —
+ * and the old list had no floor at all, which is how emptying it stayed green.
+ *
+ * Measured 2026-08-23 at this head: 20 files, by three signals (6 name a family
+ * class, 15 import the card DOM, 7 import lib/card-row; the sets overlap). Slack on
+ * purpose: a surface adopting `@utility` instead of `<Td>` legitimately leaves the
+ * population (#3495 / PR #3550 did exactly that).
+ */
+const CONSUMER_FLOOR = 12;
+
+/** The utilities the exported constants themselves name. */
+const CARD_MODE_UTILITIES = [
+  CARD_MODE_ONLY,
+  CARD_MODE_ROW_STACK.text,
+  CARD_MODE_ROW_STACK.lead,
+].map((cls) => cls.slice(cls.indexOf(":") + 1));
+
+/**
+ * The class literals that ARE the card-mode boundary: its tier, in both directions,
+ * applied to the utilities the constants use. `sm:w-40` is not one of them.
+ */
+const FORBIDDEN_CLASS_LITERALS = CARD_MODE_UTILITIES.flatMap((utility) => [
+  `${CARD_MODE_VARIANT}:${utility}`,
+  `max-${CARD_MODE_VARIANT}:${utility}`,
+]);
+
+/**
+ * The same boundary written as a raw media query — what a `matchMedia` call or an
+ * inline style block would say. Tailwind emits the tier as `width < 40rem`; a
+ * hand-written block says `max-width: 639.98px`; the desktop side says
+ * `min-width: 640px`. All three are derived from the constant.
+ */
+const FORBIDDEN_RAW_QUERIES = [
+  `max-width: ${RAW_MAX_WIDTH_PX}px`,
+  `min-width: ${CARD_MODE_BREAKPOINT_PX}px`,
+  `width < ${CARD_MODE_BREAKPOINT_PX / 16}rem`,
+  `width >= ${CARD_MODE_BREAKPOINT_PX / 16}rem`,
+];
+
+const escapeRe = (v: string): string =>
+  v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Does this source render one of the card-mode family utilities as a class token? */
+function namesFamilyClass(source: string): string[] {
+  return FAMILY.filter((c) =>
+    new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(source)
+  );
+}
+
+export interface CardModeConsumer {
+  rel: string;
+  /** Why this file is a consumer — the signals that put it on the list. */
+  signals: string[];
+}
+
+/**
+ * Every file that renders markup whose arrangement changes at the card-mode
+ * boundary, derived from the tree rather than remembered in a list.
+ *
+ * Three signals, each of which means the file is inside the card contract:
+ * it names a `table-cards`-family utility, it imports the card DOM
+ * (`ResponsiveTable`/`Td`), or it imports the boundary's own module.
+ *
+ * `sources` is keyed by repo-relative path and must already be COMMENT-BLANKED —
+ * prose in this tree quotes the classes it explains, and the first cut of the old
+ * consumer check fired on ResponsiveTable's own documentation (#3509's shape).
+ */
+export function deriveCardModeConsumers(
+  sources: ReadonlyMap<string, string>
+): CardModeConsumer[] {
+  const out: CardModeConsumer[] = [];
+  for (const [rel, source] of sources) {
+    const signals: string[] = [];
+    const family = namesFamilyClass(source);
+    if (family.length) signals.push(`renders ${family.join(", ")}`);
+    if (/from\s+["'][^"']*\/ResponsiveTable["']/.test(source))
+      signals.push("imports the card DOM (ResponsiveTable/Td)");
+    if (/from\s+["'][^"']*\/card-row["']/.test(source))
+      signals.push("imports lib/card-row");
+    if (signals.length) out.push({ rel, signals });
+  }
+  return out.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+/**
+ * Every place a consumer RESTATES the card-mode boundary instead of importing it,
+ * as `rel:line — spelling`.
+ *
+ * Narrowed per #3552: only the tier the boundary uses, only the utilities the
+ * exported constants name, plus the raw media-query spellings of the same number.
+ * Anything else responsive is styling and is none of this guard's business.
+ */
+export function cardModeRestatements(
+  consumers: readonly CardModeConsumer[],
+  sources: ReadonlyMap<string, string>
+): string[] {
+  const out: string[] = [];
+  for (const { rel } of consumers) {
+    const source = sources.get(rel) ?? "";
+    for (const literal of FORBIDDEN_CLASS_LITERALS) {
+      const re = new RegExp(`(?<![\\w-])${escapeRe(literal)}(?![\\w-])`, "g");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(source)))
+        out.push(
+          `${rel}:${source.slice(0, m.index).split("\n").length} — \`${literal}\``
+        );
+    }
+    for (const query of FORBIDDEN_RAW_QUERIES) {
+      const re = new RegExp(escapeRe(query).replace(/\\?\s+/g, "\\s*"), "g");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(source)))
+        out.push(
+          `${rel}:${source.slice(0, m.index).split("\n").length} — \`${query}\``
+        );
+    }
+  }
+  return out.sort();
+}
+
+/** Comment-blanked sources for every `.ts`/`.tsx` file under the consumer roots. */
+function consumerSources(base: string = REPO): Map<string, string> {
+  const files = execFileSync(
+    "git",
+    ["ls-files", "-z", "--", ...CONSUMER_ROOTS],
+    {
+      cwd: base,
+      maxBuffer: 64 * 1024 * 1024,
+    }
+  )
+    .toString("utf8")
+    .split("\0")
+    .filter((f) => /\.tsx?$/.test(f) && !f.includes("__tests__"));
+  return new Map(
+    files.map((f) => [
+      f,
+      stripComments(fs.readFileSync(path.join(base, f), "utf8")),
+    ])
+  );
+}
+
 function read(rel: string): string {
   return fs.readFileSync(path.join(REPO, rel), "utf8");
 }
@@ -179,7 +354,9 @@ describe("card-mode boundary (#3457)", () => {
     // registry names this as an unguarded inference (#3466: "it would stop
     // holding if `--breakpoint-sm` moved — nothing in the test suite would
     // notice"). This is the notice.
-    const override = /--breakpoint-sm\s*:\s*([^;]+);/.exec(stripComments(css));
+    const override = /--breakpoint-sm\s*:\s*([^;]+);/.exec(
+      stripCssComments(css)
+    );
     expect(
       override?.[1]?.trim() ?? "40rem",
       "app/globals.css moved Tailwind's `sm` breakpoint. Card mode's boundary " +
@@ -257,41 +434,86 @@ describe("card-mode boundary (#3457)", () => {
     );
   });
 
-  it("the consumers inherit the boundary instead of restating it", () => {
-    // SCOPED TO THE FILES THAT ACTUALLY HAVE A CARD-MODE-ONLY ELEMENT. A
-    // tree-wide "nobody may write `sm:hidden`" would be wrong: plenty of
-    // surfaces hide something at `sm` for reasons that have nothing to do with
-    // a table becoming cards.
+  it("the named consumers inherit the boundary instead of restating it", () => {
+    // NAMED SUBJECTS, kept as PRESENCE claims. The derived census below is what
+    // makes membership honest; these three say that the specific files the boundary
+    // was built for still import it, which a derivation cannot say — a file can
+    // stop importing the constant and simply leave the derived population.
     //
-    // Each entry names the export it is required to import. A consumer that
-    // stacks a row (#3491's Trash list) inherits a different constant than one
-    // that hides card-mode-only markup, and demanding CARD_MODE_ONLY of both
-    // would be a guard that fires on correct code.
-    const consumers: [string, string][] = [
+    // Each entry names the export it is required to import. A consumer that stacks
+    // a row (#3491's Trash list) inherits a different constant than one that hides
+    // card-mode-only markup, and demanding CARD_MODE_ONLY of both would be a guard
+    // that fires on correct code.
+    const named: [string, string][] = [
       ["components/ResponsiveTable.tsx", "CARD_MODE_ONLY"],
       ["components/TableSortSelect.tsx", "CARD_MODE_ONLY"],
       ["app/(app)/data/TrashList.tsx", "CARD_MODE_ROW_STACK"],
     ];
-    for (const [rel, symbol] of consumers) {
-      const text = read(rel);
+    for (const [rel, symbol] of named)
       expect(
-        text.includes(symbol),
+        stripComments(read(rel)).includes(symbol),
         `${rel} renders markup whose arrangement changes at the card-mode ` +
           `boundary, so it takes that boundary from ${symbol} ` +
           `(lib/card-row.ts) rather than writing a variant of its own (#3457).`
       ).toBe(true);
-      const literals = [
-        ...stripTsComments(text).matchAll(
-          /["'`][^"'`]*\b(max-)?(sm|md):[a-z0-9[-]/g
-        ),
-      ].map((m) => m[0]);
+  });
+
+  describe("the consumer census, derived from the tree (#3601, #3552)", () => {
+    const sources = consumerSources();
+    const consumers = deriveCardModeConsumers(sources);
+
+    it("derives a population before pronouncing anything about it", () => {
       expect(
-        literals,
-        `${rel} hardcodes the card-mode boundary in a class string. That is ` +
-          `the second copy of a number that has to agree with app/globals.css ` +
-          `and with every AC — import from lib/card-row.ts instead.`
+        consumers.length,
+        `The derivation found ${consumers.length} card-mode consumers, below the ` +
+          `floor of ${CONSUMER_FLOOR}. The verdict below is an absence, so a ` +
+          "derivation that has stopped finding files agrees that nobody restates " +
+          "the boundary. Emptying the old hand-written list left 12/12 green."
+      ).toBeGreaterThanOrEqual(CONSUMER_FLOOR);
+
+      // PER SIGNAL, because the total clears the floor while one signal has
+      // silently stopped matching — the card-DOM import alone would carry it, and a
+      // moved import path is exactly how that happens.
+      for (const signal of [
+        "renders",
+        "imports the card DOM",
+        "imports lib/card-row",
+      ])
+        expect(
+          consumers.filter((c) => c.signals.some((x) => x.startsWith(signal)))
+            .length,
+          `No consumer at all by the \`${signal}\` signal. Either that way of ` +
+            "joining the card contract has gone out of use, or this derivation " +
+            "has stopped seeing it — and the second one is silent."
+        ).toBeGreaterThan(0);
+
+      // And the named subjects are inside the population they are named from. A
+      // derivation that does not reach the three files this guard was built for is
+      // not describing the same thing the list did.
+      const rels = new Set(consumers.map((c) => c.rel));
+      for (const rel of [
+        "components/ResponsiveTable.tsx",
+        "components/TableSortSelect.tsx",
+        "app/(app)/data/TrashList.tsx",
+      ])
+        expect(rels, `${rel} fell out of the derived consumer set`).toContain(
+          rel
+        );
+    });
+
+    it("no consumer restates the boundary as a literal", () => {
+      const restatements = cardModeRestatements(consumers, sources);
+      expect(
+        restatements,
+        "A card-mode consumer spells the boundary itself instead of importing it. " +
+          "That is the second copy of a number that has to agree with " +
+          "app/globals.css and with every AC — import CARD_MODE_ONLY or " +
+          "CARD_MODE_ROW_STACK from lib/card-row.ts (#3457). Only the card-mode " +
+          "tier's own utilities are forbidden here: an unrelated responsive class " +
+          "at any tier is styling and this guard says nothing about it (#3552).\n" +
+          restatements.join("\n")
       ).toEqual([]);
-    }
+    });
   });
 
   describe("the scan can see, and stays quiet on its benign neighbours", () => {
@@ -340,5 +562,217 @@ describe("card-mode boundary (#3457)", () => {
         const found = scanCardModeScopes(utilityBodies(source), FAMILY);
         expect(found.filter((s) => !s.ok)).toEqual([]);
       });
+  });
+});
+
+// Everything in the consumer census above is a claim about the LIVE tree, which
+// already complies — a green sweep over it says nothing about what the sweep can
+// see (#3325). These run the same derivation and the same predicate over a corpus
+// authored to break them: real files written to disk, tracked in a real git
+// repository, read back through the same `git ls-files` walk. #3552's acceptance
+// criterion says the offender must be PLANTED IN THE SCANNED CORPUS rather than
+// handed to the matcher, and that is the difference between proving the predicate
+// and proving the census.
+//
+// A CORPUS OF ITS OWN, never the live tree: vitest runs test files concurrently and
+// several other guards walk `app/` and `components/` and read them a moment later,
+// so a create-then-unlink there kills unrelated tests with ENOENT (measured on
+// #3557's tap-floor census). `makeTmpDir` keeps this file out of the temp-dir
+// census's findings (#3248).
+describe("the consumer census over a corpus authored to break it (#3601, #3552)", () => {
+  const base = makeTmpDir("card-mode-consumers");
+
+  const SEEDS: ReadonlyArray<readonly [string, string]> = [
+    // A consumer by each signal, so the readings below are not three empties
+    // agreeing. Each one is CLEAN: it inherits the boundary or names none.
+    [
+      "components/ByFamilyClass.tsx",
+      'export const A = () => <table className="table-cards" />;\n',
+    ],
+    [
+      "app/(app)/by-card-dom/page.tsx",
+      'import { Td } from "@/components/ResponsiveTable";\nexport default () => <Td slot="title" />;\n',
+    ],
+    [
+      "components/ByCardRow.tsx",
+      'import { CARD_MODE_ONLY } from "@/lib/card-row";\nexport const C = () => <span className={CARD_MODE_ONLY} />;\n',
+    ],
+    // NOT a consumer: it renders responsive markup and knows nothing about cards.
+    [
+      "components/Bystander.tsx",
+      'export const D = () => <input className="input sm:w-40 md:grid-cols-2" />;\n',
+    ],
+    // NOT a consumer either, and this is the one that matters: it names the family
+    // in PROSE in order to explain it. `components/MedicalFilters.tsx`,
+    // `components/OverflowMenu.tsx` and TrainingOverviewActions all do exactly this
+    // in the real tree, and a census that read them as consumers would then demand
+    // things of files that render no card at all (#3509's shape).
+    [
+      "components/AboutTheFamily.tsx",
+      '// `.table-cards tr.table-section-row` is how a group heading is laid out.\nexport const E = () => <div className="sm:hidden" />;\n',
+    ],
+  ];
+
+  const write = (rel: string, source: string): void => {
+    const full = path.join(base, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, source, "utf8");
+  };
+  // `-f` so a global excludes file cannot quietly drop a plant and hand this test a
+  // green it did not earn.
+  const track = (): void => {
+    execFileSync("git", ["-C", base, "add", "-f", "-A"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  };
+
+  execFileSync("git", ["init", "-q", base], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  for (const [rel, source] of SEEDS) write(rel, source);
+  track();
+
+  const censusOf = (): { rels: string[]; restatements: string[] } => {
+    const sources = consumerSources(base);
+    const consumers = deriveCardModeConsumers(sources);
+    return {
+      rels: consumers.map((c) => c.rel),
+      restatements: cardModeRestatements(consumers, sources),
+    };
+  };
+
+  afterAll(() => {
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it("derives exactly the files inside the card contract, and no bystander", () => {
+    // The prose file is the load-bearing one: it carries `sm:hidden` AND names two
+    // family classes, so a census that counted its comment would report a
+    // restatement in a file that renders no card.
+    expect(censusOf().rels).toEqual([
+      "app/(app)/by-card-dom/page.tsx",
+      "components/ByCardRow.tsx",
+      "components/ByFamilyClass.tsx",
+    ]);
+    expect(censusOf().restatements).toEqual([]);
+  });
+
+  it("sees a restatement planted in a consumer, at its line", () => {
+    // The live case, reproduced: `sm:hidden` on card-mode-only markup inside a file
+    // that renders the card DOM. It was `components/ClinicalResultsTable.tsx:370`.
+    write(
+      "components/Planted.tsx",
+      [
+        'import { Td } from "@/components/ResponsiveTable";',
+        "export const P = ({ isStart }: { isStart: boolean }) => (",
+        '  <Td slot="title">',
+        '    <span className={isStart ? undefined : "sm:hidden"} />',
+        "  </Td>",
+        ");",
+        "",
+      ].join("\n")
+    );
+    track();
+    expect(censusOf().restatements).toEqual([
+      "components/Planted.tsx:4 — `sm:hidden`",
+    ]);
+    fs.rmSync(path.join(base, "components/Planted.tsx"));
+    track();
+    // Additive, not a rewrite — which is what makes the reading above mean anything.
+    expect(censusOf().restatements).toEqual([]);
+  });
+
+  it("sees the phone-only spelling and the row-stack utilities too", () => {
+    write(
+      "components/PlantedVariants.tsx",
+      [
+        'import { CARD_MODE_ONLY } from "@/lib/card-row";',
+        "export const P = () => (",
+        "  <div>",
+        "    <span className={CARD_MODE_ONLY} />",
+        '    <span className="max-sm:hidden" />',
+        '    <span className="max-sm:basis-full" />',
+        '    <span className="max-sm:whitespace-normal" />',
+        "  </div>",
+        ");",
+        "",
+      ].join("\n")
+    );
+    track();
+    expect(censusOf().restatements).toEqual([
+      "components/PlantedVariants.tsx:5 — `max-sm:hidden`",
+      "components/PlantedVariants.tsx:6 — `max-sm:basis-full`",
+      "components/PlantedVariants.tsx:7 — `max-sm:whitespace-normal`",
+    ]);
+    fs.rmSync(path.join(base, "components/PlantedVariants.tsx"));
+    track();
+    expect(censusOf().restatements).toEqual([]);
+  });
+
+  it("sees the boundary written as a raw media query", () => {
+    // #3552's "phone-only has two spellings". In TSX the second one is a
+    // `matchMedia` string, and `components/ActivityEditorProvider.tsx:773` already
+    // spells `(min-width: 640px)` that way — outside the card contract today, but
+    // the same number.
+    write(
+      "components/PlantedQuery.tsx",
+      [
+        'import { Td } from "@/components/ResponsiveTable";',
+        'const CARDS = "(max-width: 639.98px)";',
+        'const TABLE = "(min-width: 640px)";',
+        'export const P = () => <Td slot="title">{CARDS}{TABLE}</Td>;',
+        "",
+      ].join("\n")
+    );
+    track();
+    expect(censusOf().restatements).toEqual([
+      "components/PlantedQuery.tsx:2 — `max-width: 639.98px`",
+      "components/PlantedQuery.tsx:3 — `min-width: 640px`",
+    ]);
+    fs.rmSync(path.join(base, "components/PlantedQuery.tsx"));
+    track();
+    expect(censusOf().restatements).toEqual([]);
+  });
+
+  it("stays silent on the unrelated responsive classes #3552 was filed for", () => {
+    // THE CRY-WOLF DIRECTION, and the reason a large surface stayed off the old
+    // list rather than joining it. Every literal here is at a tier the boundary
+    // does not own, or is a utility the constants never name. A guard that flagged
+    // these would be deleted within a week, taking the real guard with it.
+    write(
+      "components/PlantedBenign.tsx",
+      [
+        'import { Td } from "@/components/ResponsiveTable";',
+        "export const P = () => (",
+        "  <div>",
+        '    <input className="input sm:w-40" />',
+        '    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_20rem]" />',
+        '    <th className="hidden sm:table-cell" />',
+        '    <td className="px-2 pb-2 sm:px-5 sm:pt-4" />',
+        '    <span className="max-md:h-40 lg:flex xl:hidden" />',
+        '    <Td slot="meta" />',
+        "  </div>",
+        ");",
+        "",
+      ].join("\n")
+    );
+    track();
+    expect(
+      censusOf().restatements,
+      "The narrowed predicate fired on ordinary responsive styling. That is the " +
+        "state #3552 was filed about: the surfaces most worth watching are the big " +
+        "ones, and they are the ones most likely to carry an unrelated `sm:`."
+    ).toEqual([]);
+    fs.rmSync(path.join(base, "components/PlantedBenign.tsx"));
+    track();
+  });
+
+  it("goes quiet when the derivation collapses — which is why the floor exists", () => {
+    // The fail-open shape this whole change is about, made visible: with no
+    // consumers derived, the restatement verdict agrees that nobody restates
+    // anything. Only the floor above can tell that reading apart from a clean tree.
+    const empty = new Map<string, string>();
+    expect(deriveCardModeConsumers(empty)).toEqual([]);
+    expect(cardModeRestatements([], empty)).toEqual([]);
   });
 });

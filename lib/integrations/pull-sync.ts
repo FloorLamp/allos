@@ -1,5 +1,6 @@
 import { writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import type { IntegrationId } from "@/lib/types";
 import {
   markConnectionNeedsReauth,
@@ -40,6 +41,7 @@ import {
   type NormSegmentEffort,
 } from "./activity-telemetry";
 import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
+import { getIntegration } from "./registry";
 
 // THE pull-sync runner (#2040). One implementation of everything a scheduled pull
 // does either side of the source's own API calls:
@@ -185,11 +187,26 @@ export async function runPullSync<
   profileId: number,
   spec: PullSpec<TToken, TCursor, TCounts>
 ): Promise<(TCounts & { truncated?: true }) | { error: string }> {
+  // The source's display name, so the house sentence names what a person recognises
+  // ("Couldn't reach Strava.") rather than the registry id.
+  const name = getIntegration(spec.id)?.name ?? spec.id;
   let token: TToken | null;
   try {
     token = await spec.authorize(profileId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // HOUSE COPY ON THE COLUMN, RAW CAUSE IN THE LOG (#3592). This string is written
+    // to `integration_sync_events.error`, which the integration card renders in red,
+    // and it is also returned to `syncNow`, which renders it as "Sync failed: …".
+    // Both readers are the person tracking their health; the refresh's own text
+    // ("fetch failed", a 400 body) is for an operator and belongs in the error log.
+    log.error("authorize failed", {
+      sourceId: spec.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    const message = userErrorCopy(err, {
+      doing: `connect to ${name}`,
+      service: name,
+    });
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
   }
@@ -285,7 +302,15 @@ export async function runPullSync<
       }
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Same rule as the authorize catch above: the SQLite vocabulary a failed write
+    // throws ("UNIQUE constraint failed: activities.profile_id, …") is exactly the
+    // text #3198 stopped rendering to people. It goes to the log; the column and the
+    // "Sync failed: …" toast get the classifier's sentence.
+    log.error("sync write failed", {
+      sourceId: spec.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    const message = userErrorCopy(err, { doing: `save your ${name} data` });
     const w = win();
     recordSyncEvent(profileId, spec.id, {
       ok: false,
