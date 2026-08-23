@@ -165,7 +165,7 @@ is the majority and would bury the first.
   replacement does not resolve either (a rename to a name that also does not
   exist), and when the OLD name still resolves (nothing expired, so there is
   nothing to refresh). The backticks are the other half: a patch can only land
-  inside an inline code span, so a sentence *discussing* the rename is
+  inside an inline code span, so a sentence _discussing_ the rename is
   unreachable by construction. A body that cites the symbol twice — once in
   Refs and once inside a ruling, which is #3472's shape — refuses under the
   anchor contract rather than making a stale decision read as validated.

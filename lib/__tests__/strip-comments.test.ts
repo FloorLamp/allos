@@ -266,7 +266,7 @@ describe("the four spans the old stripper deleted", () => {
 // against that spelling, not the common one.
 //
 // THE INSTRUMENT IS COMMITTED, because the rule is only worth having if the next
-// conversion can re-run it: `scripts/strip-comments-equivalence.ts <pathspec>`, with
+// conversion can re-run it: `npx tsx lib/__tests__/strip-comments-equivalence.ts <pathspec>`, with
 // `--narrow` for the other spelling. Reading a number out of a lane's transcript is
 // not a measurement anybody can repeat.
 //
@@ -384,14 +384,14 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
    * comment-blanking cannot excuse them and they are named instead.
    *
    * This census quotes the retired pair in order to look for it.
-   * `scripts/strip-comments-equivalence.ts` RUNS it — that is the whole point of
+   * `lib/__tests__/strip-comments-equivalence.ts` RUNS it — that is the whole point of
    * the instrument: it applies the old stripper and the new one to the same corpus
    * and reports where they disagree, which is what makes a conversion a
    * measurement (#3621). Two entries, both argued rather than tolerated.
    */
   const QUOTES_THE_CONSTRUCT = new Set([
     "lib/__tests__/strip-comments.test.ts",
-    "scripts/strip-comments-equivalence.ts",
+    "lib/__tests__/strip-comments-equivalence.ts",
   ]);
 
   const sources = (): { rel: string; code: string }[] =>

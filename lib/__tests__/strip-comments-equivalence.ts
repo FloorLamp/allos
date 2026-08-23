@@ -1,7 +1,7 @@
 // IS CONVERTING THIS SCANNER TO `stripComments` VERDICT-PRESERVING? (#3621)
 //
-//   npx tsx scripts/strip-comments-equivalence.ts <pathspec…>
-//   npx tsx scripts/strip-comments-equivalence.ts --narrow <pathspec…>
+//   npx tsx lib/__tests__/strip-comments-equivalence.ts <pathspec…>
+//   npx tsx lib/__tests__/strip-comments-equivalence.ts --narrow <pathspec…>
 //
 // The work queue in `lib/__tests__/strip-comments.test.ts` freezes the guards that
 // still hand-roll a comment deleter. Converting one changes what it SEES, so each
@@ -28,12 +28,17 @@
 // was going to fire on something newly visible goes red at conversion time, which is
 // the finding, not the failure.
 //
+// IT LIVES BESIDE THE SCANNER RATHER THAN IN `scripts/` because it imports it, and
+// `lib/__tests__` is in CI's no-runtime-surface skip set — a `scripts/` module reaching
+// into that tree would make a change there skip the browser matrix while a reachable
+// module still depended on it (`lib/__tests__/ci-skip-set.test.ts` says so, and did).
+//
 // `--narrow` compares against the OTHER hand-roll in the tree — `^\s*//.*$`, whole-
 // line comments only, which let a trailing `// …` survive untouched. Two of the
 // conversions in #3621 used that spelling and their numbers are measured against it.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import { stripComments } from "../lib/__tests__/strip-comments";
+import { stripComments } from "./strip-comments";
 
 /** The ordered pair this repo's guards overwhelmingly wrote. */
 const common = (src: string): string =>

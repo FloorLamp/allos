@@ -711,7 +711,10 @@ function checkPattern(
       `see docs/internals/e2e-hygiene.md.`;
 
   for (const { name, text } of files) {
-    const count = countMatches(hygieneScanText(text, opts?.excludeLineMarker), re);
+    const count = countMatches(
+      hygieneScanText(text, opts?.excludeLineMarker),
+      re
+    );
     const allowed = allow[name] ?? 0;
     seen.add(name);
     if (count > allowed) {

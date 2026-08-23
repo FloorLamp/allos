@@ -472,7 +472,9 @@ describe("card-mode boundary (#3457)", () => {
     // mirror was a literal everywhere, so nothing caught a restatement of the
     // other half — and a fold whose halves go out of step shows an element in
     // both modes or in neither.
-    expect(CARD_MODE_TABLE_ONLY.inline).toBe(`hidden ${CARD_MODE_VARIANT}:inline`);
+    expect(CARD_MODE_TABLE_ONLY.inline).toBe(
+      `hidden ${CARD_MODE_VARIANT}:inline`
+    );
     expect(CARD_MODE_TABLE_ONLY.tableRowGroup).toBe(
       `hidden! ${CARD_MODE_VARIANT}:table-row-group!`
     );
