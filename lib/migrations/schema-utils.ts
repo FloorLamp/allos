@@ -32,8 +32,9 @@ import { isBusyError } from "../sqlite-error";
 // THE BOUND IS ATTEMPTS, NOT MILLISECONDS, and the two are not interchangeable
 // here. Each attempt re-issues BEGIN IMMEDIATE, which parks in SQLite's busy
 // handler for up to the connection's busy_timeout — BOOT_LOCK_TIMEOUT_MS (60 s) on
-// the boot path (lib/db.ts). So `attempts = 5` bounds the worst case at ~5 minutes
-// of waiting for the flavours busy_timeout covers, and at five immediate re-BEGINs
+// the boot path (lib/db.ts). So `attempts = 5` bounds the worst case at ~6 minutes
+// of waiting — `attempts + 1` tries, each parking up to that minute — for the
+// flavours busy_timeout covers, and at five immediate re-BEGINs
 // for SQLITE_BUSY_SNAPSHOT, which it does not. Five is chosen against the measured
 // collision: lib/db.ts names three steady-state writers, so the realistic pile-up
 // is 2-3 deep, and a worker that loses five races in a row to a peer whose own boot

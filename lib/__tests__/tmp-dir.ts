@@ -57,15 +57,32 @@ export const TMP_PREFIX = "allos-";
 // HOW OLD AN ENTRY MUST BE BEFORE THE SWEEP WILL UNLINK IT, in milliseconds of
 // wall clock since its mtime.
 //
-// The unit is "age of a directory that a LIVE run might still be writing to", and
-// the bound has to exceed the longest a single temp directory is legitimately held
-// open. The longest-lived one in the tree is `allos-db-shared-*`: it is seeded in
+// WHAT THE MTIME ACTUALLY MEASURES, because a bound is only as good as the
+// quantity it bounds. A directory's mtime advances when an entry is CREATED or
+// UNLINKED directly inside it, and not otherwise. Measured 2026-08-23 on this
+// container: appending to a file already inside it, overwriting that file, and
+// writing a file in a SUBdirectory each left the mtime unmoved (0 ms), while
+// creating one entry and unlinking one both moved it. So for a fixture that is
+// seeded once and then written to — which is every temp directory here — the
+// mtime is effectively CREATION time, and what this bounds is THE LIFETIME OF ONE
+// TEMP DIRECTORY FROM CREATION. It is NOT time since last use, and a run that
+// keeps a directory busy for longer than the window is swept out from under
+// itself. Anyone shortening this window is choosing a lifetime cap.
+//
+// So the bound has to exceed the longest a single temp directory legitimately
+// lives. The longest-lived one in the tree is `allos-db-shared-*`: it is seeded in
 // `beforeAll` and discarded by the NEXT file's `beforeAll`, so it lives for one
-// test file — and the whole DB tier has been measured at ~190 s end to end
-// (#3248). One hour is ~19x that, which also covers a worker starved on this box's
-// measured load of 22 on 4 cores. Deliberately generous: reclaiming an hour late
-// costs disk that was already stranded, whereas sweeping a live run's fixture out
-// from under it fails a test with a mystery ENOENT.
+// test file — bounded above by the whole DB tier, measured at ~190 s end to end on
+// a quiet box (#3248), which one hour clears ~19x over.
+//
+// THE MARGIN THAT MATTERS IS THE LOADED ONE, and ~19x is not it. `vitest.timeouts.ts`
+// in this same tree records the same DB tier taking 862 s instead of 161 s at load
+// average 18.1 on these four cores — and a starved box is exactly the case the
+// generosity is for. Against 862 s one hour is 4.2x. Still comfortable, and it is
+// the number to argue with if this window is ever shortened. Deliberately
+// generous: reclaiming an hour late costs disk that was already stranded, whereas
+// sweeping a live run's fixture out from under it fails a test with a mystery
+// ENOENT.
 export const STALE_AFTER_MS = 60 * 60 * 1000;
 
 // Sweep ONCE PER PROCESS, not once per created directory. The sweep is O(entries
