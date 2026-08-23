@@ -20,8 +20,28 @@ import {
 export const EMERGENCY_LS_KEY = "allos:emergency-card";
 
 // True in a browser context with a usable localStorage (SSR / private-mode guards).
+//
+// THE PROPERTY READ IS ITSELF THE THROWING PART, which is why the try is here and
+// not around each caller's own `setItem`/`getItem`/`removeItem`. With site data
+// blocked, Chrome throws `SecurityError` from the `window.localStorage` GETTER —
+// before any method is reached — so every guard written one level down is a guard
+// on the wrong statement. `clearEmergencyPayload` was never the culprit: it already
+// wraps its own `removeItem`, and the throw happened above it in this predicate.
+//
+// That mattered most on the logout path. `wipeDeviceForSignOut` calls
+// `clearEmergencyPayload` OUTSIDE its own try (components/device-wipe.ts), so a
+// throw here rejected the wipe, which rejected `logoutAfterWipe`, which is invoked
+// as `void logoutAfterWipe()` — an unhandled rejection, a tap that did nothing, and
+// nothing said. One try here covers all three readers/writers below at once, which
+// is why it is here rather than in the one that happened to be on fire (#3605).
 function hasStorage(): boolean {
-  return typeof window !== "undefined" && !!window.localStorage;
+  if (typeof window === "undefined") return false;
+  try {
+    return !!window.localStorage;
+  } catch {
+    /* site data blocked — no offline copy is possible, and that is not an error */
+    return false;
+  }
 }
 
 // Persist the profile's card for offline use. Best-effort: a full/blocked quota
