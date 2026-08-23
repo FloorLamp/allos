@@ -1,3 +1,5 @@
+import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import {
   OURA_ID,
   getOuraToken,
@@ -29,6 +31,8 @@ import type {
 // This file used to carry its own copy of all of it, and said so in a comment
 // ("Mirrors strava-sync.ts"); withings-sync.ts said the same about this file.
 
+const log = createLogger("oura-sync");
+
 const BASE = "https://api.ouraring.com";
 const { timeoutMs, maxPages, rescanDays, backfillDays } = pullPaging(OURA_ID);
 
@@ -55,14 +59,28 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false, status: res.status };
+    // A PLAIN PARSE IS CORRECT HERE, and it was audited rather than assumed (#3593).
+    // Every `id` in Oura's published v2 schema is `type: string` — there is no
+    // integer id to round. See the note above `str(rec.id)` in ./oura.ts.
     return { ok: true, json: await res.json() };
   } catch (err) {
     // Network error / timeout / DNS: surface as a non-HTTP failure (status 0) so the
     // runner records a failed sync event and returns gracefully instead of throwing.
+    //
+    // WHICH request failed goes to the log with the raw cause; `error` carries the
+    // house sentence, because it is rendered on the integration card and in the
+    // "Sync failed: …" toast (#3592).
+    log.error("Oura request failed", {
+      path,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       ok: false,
       status: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: userErrorCopy(err, {
+        doing: "sync your Oura data",
+        service: "Oura",
+      }),
     };
   }
 }
@@ -120,7 +138,10 @@ async function fetchPages(
       return {
         items,
         truncated: false,
-        error: `Oura ${path} request failed (${res.status})`,
+        // ouraGet only sets `error` for a network throw, where it is already the
+        // house sentence (#3592) — and where this line's alternative would be the
+        // meaningless "(0)". An HTTP status keeps the authored line that names it.
+        error: res.error ?? `Oura ${path} request failed (${res.status})`,
         status: res.status,
       };
     }

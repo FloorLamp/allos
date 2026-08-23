@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
@@ -151,7 +152,14 @@ export async function runWeatherSync(
   try {
     counts = upsertUvHours(home.lat, home.lng, res.rows, source.id);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // The UV cache write refused (a constraint, a locked DB). Its SQLite vocabulary
+    // is for an operator; the card and the "Sync failed: …" toast get the house
+    // sentence (#3592).
+    log.error("weather UV upsert failed", {
+      profile: profileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    const message = userErrorCopy(err, { doing: "save the UV forecast" });
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,
@@ -190,7 +198,18 @@ export async function runWeatherSync(
       dayCounts = upsertWeatherDays(home.lat, home.lng, daily.rows, source.id);
     } catch (err) {
       // A write failure, not a response — a retry is exactly the right advice.
-      partial = err instanceof Error ? err.message : String(err);
+      //
+      // THE REASON IS A FRAGMENT, NOT A SENTENCE (#3592). It is interpolated into
+      // weatherPartialWarning's parenthetical beside "air-quality fetch failed
+      // (400)", so the shape that belongs here is an authored clause in that
+      // register — not `userErrorCopy`'s standalone "Couldn't … Try again.", whose
+      // retry advice would then contradict the warning's own tail. The raw cause,
+      // which is SQLite vocabulary, goes to the log like every other write failure.
+      log.error("weather daily upsert failed", {
+        profile: profileId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      partial = "the daily rows couldn't be saved";
       partialDeterministic = false;
     }
   }
