@@ -164,10 +164,16 @@ export function ingestHealthConnectPayload(
     //
     // So the victim set is derived from THE STORE, inside the LAST chunk's `IMMEDIATE`
     // transaction and AFTER that chunk's upserts have run: a stored day bucket is a
-    // victim exactly when a row of its own group carrying THIS PUSH'S STAMP overlaps it
-    // and outranks it, unlocked. A row a veto stopped never got the stamp, so it
-    // justifies nothing — every veto is honoured without being named, and a fifth one
-    // costs no edit here. `supersedeMetricSampleOverlaps` carries the argument.
+    // victim exactly when a row of its own group carrying THIS PUSH'S STAMP is FILED
+    // UNDER THE VICTIM'S OWN `date`, overlaps it and outranks it, unlocked. A row a veto
+    // stopped never got the stamp, so it justifies nothing — every veto is honoured
+    // without being named, and a fifth one costs no edit here.
+    //
+    // THE `date` TERM IS THE COVER-THE-DAY RULING (#3424, 2026-08-23T00:58Z), and it is
+    // what stops the PREVIOUS day's re-anchored bucket — which overlaps this day's row
+    // by the zone offset — from justifying a delete on a day this push never replaced.
+    // The day is the unit a person reads, and no date may lose its last reading to this
+    // mechanism. `supersedeMetricSampleOverlaps` carries the argument.
     //
     // THE PLACEMENT IS THE OTHER RULING (#3424, 2026-08-22T05:46Z), and it is the LAST
     // chunk rather than the first:
