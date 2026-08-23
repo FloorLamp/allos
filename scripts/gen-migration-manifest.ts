@@ -39,6 +39,15 @@
  * is a second source of truth for the one thing the guard exists to check. The body
  * here is argv, printing and an exit code — everything testable is next door.
  */
+// FIRST IMPORT, and not decoration: this script reads `process.env` (that is how
+// `npm run gen:migration-manifest --check` without the `--` reaches it), and a
+// standalone tsx entrypoint gets none of Next's .env loading. ESM evaluates every
+// static dependency before this body runs, so the loader has to be the first edge
+// or it is too late — the rule and its receipts are in
+// lib/__tests__/script-env-bootstrap.test.ts. The environment read here is also the
+// one the `git` subprocesses in manifest-source inherit.
+import "./load-env";
+
 import { runManifestCli } from "../lib/migrations/manifest-source";
 
 const result = runManifestCli({

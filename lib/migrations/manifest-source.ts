@@ -334,7 +334,8 @@ export function resolveShippedReference(options?: {
     );
   }
 
-  const shortBase = git(["rev-parse", "--short", base], cwd).stdout.trim() || base;
+  const shortBase =
+    git(["rev-parse", "--short", base], cwd).stdout.trim() || base;
 
   // ls-tree rather than matching git's "does not exist" wording on stderr: an
   // absent path is empty stdout and exit 0, which separates "not there" from
@@ -483,8 +484,7 @@ export function generateManifest(
   const rehashed = Object.keys(manifest).filter(
     (f) => f in shipped.manifest && shipped.manifest[f] !== manifest[f]
   );
-  const unchanged =
-    Object.keys(manifest).length - added.length - edited.length;
+  const unchanged = Object.keys(manifest).length - added.length - edited.length;
 
   // The first four lines PARTITION the tree against the checked-in manifest —
   // unchanged + new + edited is the total — so a file cannot fall between them
@@ -629,7 +629,10 @@ export function runManifestCli(invocation: {
   const argv = invocation.argv;
   const env = invocation.env ?? {};
 
-  if (!argv.includes("--allow-rehash") && npmFlag(env.npm_config_allow_rehash)) {
+  if (
+    !argv.includes("--allow-rehash") &&
+    npmFlag(env.npm_config_allow_rehash)
+  ) {
     return {
       stdout: "",
       stderr:
