@@ -162,8 +162,7 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
       "app/(app)/household/page.tsx — member cards and their headings",
     ],
     planted: false,
-    why:
-      "profile 1's name is the app shell's identity — it is in the header of EVERY census screenshot, so a long value here moves the whole census rather than the surfaces that render it, and the reading would be about the change rather than about the app. It wants its own decision (a long-named MEMBER profile is the likelier shape), not a line in this one.",
+    why: "profile 1's name is the app shell's identity — it is in the header of EVERY census screenshot, so a long value here moves the whole census rather than the surfaces that render it, and the reading would be about the change rather than about the app. It wants its own decision (a long-named MEMBER profile is the likelier shape), not a line in this one.",
   },
   {
     key: "providerName",
@@ -174,7 +173,6 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
       "app/(app)/records/ProvidersSection.tsx — provider rows",
     ],
     planted: false,
-    why:
-      "not yet measured. The seed's providers are shared across records, appointments and encounters, so a long value here reaches surfaces this lane did not look at; rostered so the gap is a number rather than a silence.",
+    why: "not yet measured. The seed's providers are shared across records, appointments and encounters, so a long value here reaches surfaces this lane did not look at; rostered so the gap is a number rather than a silence.",
   },
 ];

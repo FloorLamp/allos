@@ -63,7 +63,11 @@ export function longNameReferences(
 ): { key: string; guarded: boolean }[] {
   const code = stripComments(source);
   const blocks: [number, number][] = [];
-  for (let at = code.indexOf(GUARD); at >= 0; at = code.indexOf(GUARD, at + 1)) {
+  for (
+    let at = code.indexOf(GUARD);
+    at >= 0;
+    at = code.indexOf(GUARD, at + 1)
+  ) {
     let depth = 0;
     let end = -1;
     for (let i = at + GUARD.length - 1; i < code.length; i++) {

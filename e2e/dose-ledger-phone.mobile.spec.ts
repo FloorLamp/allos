@@ -249,9 +249,12 @@ test.describe("the dose ledger at phone width (#3478)", () => {
       .locator(`a[href^="/medications/"]`, {
         hasText: DOSE_LEDGER_PHONE_ACTIVE_MED,
       })
-      .first()
+      .first() // first-ok: the dedicated fixture profile owns exactly two medications, and this locator is already filtered to the active one's name
       .getAttribute("href");
-    expect(href, "the active medication's card did not render a link").toBeTruthy();
+    expect(
+      href,
+      "the active medication's card did not render a link"
+    ).toBeTruthy();
     await page.goto(`${href}?action=edit`);
 
     // Add a keep-apart rule: the sentence whose blank is the Other item select.
