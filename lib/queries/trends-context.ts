@@ -238,7 +238,7 @@ export function buildTrendsSubjectContext(
 //
 // The other half of the tab's order, and the reason it is a read rather than a
 // second store: `saved_items` is the ONE arrangement substrate on Trends, so the
-// sequence the Overview grid's drag (and its ⋯-menu arrow fallback) writes is the
+// sequence the pinned census run's drag (and its ⋯-menu arrow fallback) writes is the
 // sequence the Body stack leads with. `getSavedItems` already returns canonical
 // saved order — explicitly positioned rows first, then unpositioned newest-star
 // first — so a freshly starred card leads, and a dragged one lands where it was

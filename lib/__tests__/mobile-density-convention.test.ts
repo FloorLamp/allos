@@ -353,42 +353,6 @@ describe("phone density conventions (#3466)", () => {
     }
   });
 
-  // A card that pads with `p-0!` and lets its CELLS carry the gutter has one
-  // padding layer, not two — so a "sub-panel" inset there IS the #1416 card token,
-  // and stepping it tightens the very floor #3466 declares untouchable. Measured
-  // while #3466 was implemented: the strip's text would have sat 4px left of every
-  // other card's text in a vertical stack at 390px. #3466's table lists this site
-  // and says the table was "verified in code"; for THIS row that claim does not
-  // hold, and the owner reverted it on 2026-08-21. Asserted rather than commented,
-  // because the next reader working the table will otherwise "finish" it.
-  it("a card that delegates its own gutter to its cells is NOT a sub-panel site (#3466, owner-reverted)", () => {
-    const src = read("app/(app)/trends/VitalsTodayStrip.tsx");
-    // Read off the STRIP'S OWN tag, not the file. A file-level `toContain("p-0!")`
-    // stays satisfied by any `p-0!` anywhere in the file, so the card could take
-    // back a real `p-4` — falsifying the very premise this exemption rests on —
-    // while an inner cell kept the substring alive and the exemption outlived its
-    // reason in silence. That is the `why`-went-false failure, in the guard that
-    // exists to prevent it.
-    const strip = classTextOf(src, 'data-testid="vitals-today-strip"').split(
-      /\s+/
-    );
-    expect(
-      strip,
-      "the strip's own section must still be `p-0!` — this exemption is true only while the CARD carries no padding of its own"
-    ).toContain("p-0!");
-    expect(
-      strip,
-      "…and it must still BE the card, or the premise is about a different element"
-    ).toContain("card");
-    for (const tier of TIERS.keys()) {
-      if (!tier.startsWith("subpanel-")) continue;
-      expect(
-        hasClass(src, tier),
-        `VitalsTodayStrip must not carry ${tier}: its card is \`p-0!\`, so \`px-4 py-3.5\` is the card's OWN gutter reproducing the #1416 token, not a second layer inside it`
-      ).toBe(false);
-    }
-  });
-
   it("rule 4: nobody outside app/globals.css hand-writes a phone step for these properties", () => {
     const offenders = sourceFiles().filter((f) => OWNED_STEP.test(read(f)));
     expect(

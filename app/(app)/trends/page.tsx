@@ -24,7 +24,6 @@ import {
   TrendAnnotationProvider,
 } from "@/components/TrendAnnotationToggles";
 import TrendingDigest from "./TrendingDigest";
-import StarredSection from "./StarredSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
 import InsightsSection from "./InsightsSection";
@@ -61,15 +60,8 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 //
 // ── The landing surface (the Overview tab), top to bottom ────────────────────
 //   1. "What's trending" digest — the movers over the shared window.
-//   2. Starred grid — the cross-domain curation surface (tile zoom, drag order via
-//      SortableOrder → reorderSaved). STILL the only curated area: nothing renders
-//      there unconditionally.
-//   3. The wellness lens (#1632) — per-practice weeks-in-range, cadence against the
-//      declared min–max band, session length. Conditional on a tracked practice
-//      existing; an anchored part of this surface, not a fifth tab.
-//   4. The body census — the complete ranked metric stack, skeleton intact
-//      (Today strip → cards starred-first-then-ranked → source comparison →
-//      history table), streamed below the head.
+//   2. The body census — the complete ranked metric stack, with saved cards pinned
+//      in order and re-sequenced in place, streamed below the digest.
 //
 // The two are one surface because #1643 already made them one substrate: the same
 // `saved_items` stars govern the grid's membership and the census's pinned run, so
@@ -77,11 +69,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 //
 // ── Streaming (an acceptance criterion, not an optimization) ─────────────────
 // The tab strip WAS the render budget: #105 made the hub build only the active tab.
-// Overview must not pay for absorbing the census, so the head (digest + starred
-// grid) renders inline — the same work the Overview tab always did — and the census
-// is a <Suspense> boundary BELOW it. Nothing between the shell and that boundary
-// awaits the census, so the first byte carries the header, the tab strip, the range
-// control, the head and the census's own heading + anchor.
+// Overview must not pay for absorbing the census, so the digest renders inline and
+// the census is a <Suspense> boundary BELOW it. Nothing between the shell and that
+// boundary awaits the census, so the first byte carries the header, tab strip,
+// range control, digest and census anchor.
 //
 // ── `?tab=body` is gone (#1635 / #1644) ─────────────────────────────────────
 // Retired WITHOUT a shim: the census it named is the DEFAULT view now, so the
@@ -242,21 +233,22 @@ export default async function TrendsPage(props: {
       default:
         return (
           <div className="space-y-6" data-testid="trends-overview">
-            {/* A `#starred` / `#body` deep link has to survive the census
+            {/* A legacy `#starred` / current `#body` deep link has to survive the census
                 streaming in below the head — see the component for why the
                 native fragment scroll can't do it alone. */}
             <SectionHashScroll />
 
-            {/* 1. What moved, then 2. what you curated: the fast head. */}
+            {/* What moved is the page's one fast head. */}
             <TrendingDigest range={range} />
 
-            <TrendsSectionShell id="starred" heading="Starred" quietHeading>
-              <StarredSection range={range} />
-            </TrendsSectionShell>
-
-            {/* 3. The census, streamed so the head never waits on it. Practice
+            {/* The census, streamed so the head never waits on it. Practice
                 trends moved to each /wellness card by the #2151 owner ruling. */}
-            <TrendsSectionShell id="body" heading="Body" quietHeading>
+            <TrendsSectionShell
+              id="body"
+              legacyId="starred"
+              heading="Body"
+              quietHeading
+            >
               <Suspense fallback={<TrendsSectionSkeleton label="Body" />}>
                 <StreamedCensus>
                   <BodySection

@@ -1,12 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import {
-  followLink,
-  hydratedClick,
-  settledClick,
-  settledPickOption,
-} from "./helpers";
-import type { Locator } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // #1485 G — Trends opens on 90D, and a sparse series shows its latest reading.
 //
@@ -19,21 +13,6 @@ import type { Locator } from "@playwright/test";
 // The contract that must never bend: a URL that SAYS something is never
 // reinterpreted. Only the URL that says nothing gained a meaning.
 //
-// Fixture (#868 hygiene): CREATE-AND-CLEAN on the shared seed. The sparse test
-// stars an analyte the seed leaves unsaved (seeded saves: LDL Cholesterol, ApoB,
-// hs-CRP, Lipoprotein(a) + the weight metric) and un-stars it through the tile's
-// own control, restoring seed state — repeat-safe, perturbing no neighbour. No
-// exact count of a shared-seed row is asserted.
-
-// A seeded biomarker the seed deliberately stops drawing ("not retested recently"
-// in scripts/seed.ts): four readings, the newest ~450 days old. So it is empty in a
-// 90-day window but has real history — exactly the shape the fallback exists for.
-// The seed does not star it, so this spec owns its save.
-// Named by its CANONICAL spelling (#2335 gave the thyroid fractions their long
-// form), because that is what the picker lists and what the tile renders.
-const SPARSE_ANALYTE = "Thyroxine, Free (Free T4)";
-const SPARSE_LATEST = "1.3 ng/dL"; // its newest reading, in its own unit
-
 // A range pill, located EXACTLY. Playwright matches an accessible name by
 // case-insensitive SUBSTRING by default, and the movers digest sits on this same
 // page rendering its chips as LINKS labelled "… over 90d" (lib/trends-digest) —
@@ -44,20 +23,6 @@ const SPARSE_LATEST = "1.3 ng/dL"; // its newest reading, in its own unit
 // the whole history and could never collide.
 const rangePill = (page: Page, label: string) =>
   page.getByRole("link", { name: label, exact: true });
-
-// A tile's unstar control (#1485 B): open its corner ⋯ menu, then take the item out
-// of the portaled panel. Returns the locator for settledClick to drive.
-async function unstarItem(page: Page, tile: Locator): Promise<Locator> {
-  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
-  const menu = page.getByTestId("trend-tile-menu");
-  await expect(menu).toBeVisible();
-  return menu.getByTestId("star-toggle");
-}
-
-// The seeded genomics marker (e2e/seed-events.ts): STARRED, dated 2023, and
-// qualitative — 'e3/e4' has no numeric value at all, so nothing can be plotted for
-// it under any window. Read-only here; the spec stars nothing to use it.
-const GENOTYPE_ANALYTE = "E2E APOE Genotype";
 
 test("a no-param load opens on 90D, with All time one tap away", async ({
   page,
@@ -110,98 +75,4 @@ test("an explicit window in the URL always wins over the default", async ({
     "page"
   );
   await expect(page).toHaveURL(/from=2026-01-01&to=2026-02-01/);
-});
-
-test("a sparse saved clinical result shows its latest reading and age, not 'No data'", async ({
-  page,
-}) => {
-  await page.goto("/trends");
-  await page.getByTestId("save-trend-picker-toggle").click();
-  const picker = page.getByTestId("save-trend-picker");
-  // The picker is the shared Combobox since #1675 (a ranked, group-headed list), so
-  // the analyte is chosen by its LABEL through the app's own fuzzy search.
-  await settledPickOption(
-    page,
-    picker.locator('input[role="combobox"]'),
-    SPARSE_ANALYTE
-  );
-  await settledClick(page, picker.getByRole("button", { name: "Star" }));
-
-  const tile = page
-    .getByTestId("trend-mini-card")
-    .filter({ hasText: SPARSE_ANALYTE });
-  await expect(tile).toHaveCount(1);
-
-  // The window is genuinely empty — but the tile answers with the last real
-  // reading instead of throwing it away.
-  const fallback = tile.getByTestId("trend-mini-outside-window");
-  await expect(fallback).toBeVisible();
-  await expect(fallback).toContainText(SPARSE_LATEST);
-  await expect(tile).not.toContainText("No data in this range");
-  const singleReading = tile.getByTestId("trend-mini-single-reading");
-  await expect(singleReading).toBeVisible();
-  await expect(singleReading).toHaveAttribute("data-reading-scope", "outside");
-  await expect(singleReading).toContainText("Latest recorded ·");
-  await expect(singleReading.locator("time")).toHaveAttribute(
-    "datetime",
-    /\d{4}-\d{2}-\d{2}/
-  );
-
-  // The age is the honesty marker: it is the only thing stopping a year-old value
-  // from reading as current, so it is asserted as hard as the value is. (Pattern,
-  // not a literal: the reading's date is fixed in the seed while "today" is the
-  // run's own clock, so the exact bucket drifts with the calendar.)
-  await expect(fallback).toContainText(/\d+(y|mo|w|d) ago/);
-  await expect(fallback).toContainText("outside 90D range");
-
-  // The same tile under an explicit all-time window draws the real series — the
-  // fallback is a property of the WINDOW, not of the analyte.
-  await page.goto("/trends?range=all");
-  const allTimeTile = page
-    .getByTestId("trend-mini-card")
-    .filter({ hasText: SPARSE_ANALYTE });
-  await expect(
-    allTimeTile.getByTestId("trend-mini-outside-window")
-  ).toHaveCount(0);
-  await expect(allTimeTile.getByTestId("trend-mini-range")).toBeVisible();
-
-  // Cleanup is the assertion: un-starring restores the seed state. The control
-  // lives in the tile's corner ⋯ menu since #1485 B, and the menu panel is portaled
-  // to <body>, so it is located on the page rather than inside the card.
-  await settledClick(page, await unstarItem(page, allTimeTile));
-  await expect(
-    page.getByTestId("trend-mini-card").filter({ hasText: SPARSE_ANALYTE })
-  ).toHaveCount(0);
-});
-
-test("a qualitative reading falls back too, though nothing can plot it", async ({
-  page,
-}) => {
-  // A genotype has no numeric value, so a numeric-only fallback would silently
-  // drop the one analyte whose value never changes and is never re-drawn — the
-  // worst possible thing to hide behind "no data in this range".
-  await page.goto("/trends");
-  const tile = page
-    .getByTestId("trend-mini-card")
-    .filter({ hasText: GENOTYPE_ANALYTE });
-  const fallback = tile.getByTestId("trend-mini-outside-window");
-  await expect(fallback).toContainText("e3/e4");
-  await expect(fallback).toContainText(/\d+(y|mo|w|d) ago/);
-});
-
-test("a never-measured saved clinical result keeps the plain empty tile", async ({
-  page,
-}) => {
-  // The fallback needs history to fall back TO. The seed stars two analytes that
-  // resolve to no readings at all, and those must keep the honest empty state —
-  // a blanket replacement of it would invent a reading (and #1485 A's compaction
-  // is scoped to exactly these).
-  await page.goto("/trends");
-  const saved = page.getByTestId("saved-tiles");
-  const empty = saved
-    .getByTestId("trend-mini-card")
-    .filter({ hasText: "No data in this range" })
-    .first(); // first-ok: any one never-measured tile proves the empty state survived; asserting a count of a shared-seed row is what #868 forbids
-  await expect(empty).toBeVisible();
-  await expect(empty.getByTestId("trend-mini-outside-window")).toHaveCount(0);
 });

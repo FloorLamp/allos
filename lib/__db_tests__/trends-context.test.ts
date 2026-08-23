@@ -290,7 +290,7 @@ describe("buildTrendsSubjectContext — data presence", () => {
 //
 // The pure tier owns the COMPOSITION (pinned first, ranked remainder); what only a
 // database can show is that the pins really are the profile's saved order — the same
-// rows the Overview grid's ★ writes and its drag re-sequences — resolved through the
+// rows the Body census's ★ writes and its drag re-sequences — resolved through the
 // one series-key ↔ card-id mapping. `makeProfile` inserts a bare profile row, so
 // nothing is starred until a test says so.
 describe("getBodyCardPins — the body census ★ arrangement", () => {
@@ -311,7 +311,7 @@ describe("getBodyCardPins — the body census ★ arrangement", () => {
     expect(getBodyCardPins(profileId)).toEqual(["steps", "weight"]);
   });
 
-  it("follows setSavedOrder — the write behind the Overview drag", () => {
+  it("follows the saved order used by the Body census", () => {
     const { profileId } = makeProfile("pins-reordered");
     star(profileId, "weight");
     star(profileId, "steps");

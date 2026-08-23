@@ -69,6 +69,8 @@ import {
   capProgressLine,
   substanceCapStatus,
 } from "@/lib/substance-use";
+import { CHANGE_DETECTION_DOMAIN_CENSUS } from "@/lib/change-detection";
+import { isArguedExclusion } from "@/lib/loggable-domains";
 
 function newProfile(name: string): number {
   return Number(
@@ -267,6 +269,11 @@ describe("cap semantics never leak into floor-semantics surfaces (#998)", () => 
     const progress = getFrequencyTargetProgress(p);
     expect(progress.some((t) => t.target.scope_kind === "substance")).toBe(
       false
+    );
+    // The change-detection census must describe the production path above, not
+    // claim that the floor-only Dashboard transition can see this cap tenant.
+    expect(isArguedExclusion(CHANGE_DETECTION_DOMAIN_CENSUS.substance)).toBe(
+      true
     );
 
     // …Upcoming carries no substance item (coaching tier reaches no push surface)…

@@ -7,8 +7,8 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 // ★-PINNED Body card order (#1643) — the USER's half of the Trends → Overview → body census sequence.
 //
 // Trends had TWO user-arrangement substrates. Overview's is `saved_items`: one ★
-// store, starred from a tile's ⋯ menu or from a metric's own page, re-sequenced by
-// drag (and the menu's arrow fallback) through `reorderSaved` → `setSavedOrder`. The
+// store, starred from a metric's own page, re-sequenced inside the pinned census
+// run by drag (and the menu's arrow fallback). The
 // the census formerly had a second, order-only one that no UI ever wrote. #1643 retired it: the
 // body census now leads with the profile's STARRED cards, in the saved order, and ranks
 // everything else behind them.
@@ -16,7 +16,7 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 // Only a browser can prove the two ends meet, because they are three different pages
 // over one store. Three moves, in one fixture's own profile:
 //   1. star a Body metric from the page its card taps through to → it leads the tab;
-//   2. re-sequence it on OVERVIEW → the Body stack follows, with no gesture on Body;
+//   2. re-sequence it inside the pinned census run;
 //   3. unstar it → it drops back to its ranked slot.
 //
 // Fixture (#868 hygiene): a dedicated WRITE-granted member whose profile has exactly
@@ -78,12 +78,12 @@ async function toggleStepsStarFromItsCard(
   await openBodyTiles(page);
 }
 
-// The Overview grid's populated order, as the grid renders it.
-async function overviewTileKeys(page: Page): Promise<string[]> {
+// The census's pinned run, in rendered order.
+async function pinnedTileKeys(page: Page): Promise<string[]> {
   return page
-    .getByTestId("saved-tiles")
+    .getByTestId("body-metric-tiles")
     .evaluate((el) =>
-      Array.from(el.querySelectorAll("[data-tile-key]")).map(
+      Array.from(el.querySelectorAll('[data-testid="pinned-census-tile"]')).map(
         (n) => n.getAttribute("data-tile-key") ?? ""
       )
     );
@@ -127,7 +127,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
     }
   });
 
-  test("the Body order follows a re-sequence made on Overview, with no gesture on Body", async ({
+  test("the Body order follows a re-sequence made in its pinned run", async ({
     browser,
   }) => {
     test.slow();
@@ -137,29 +137,27 @@ test.describe("★-pinned Body card order (#1643)", () => {
       await toggleStepsStarFromItsCard(page, "false");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([STEPS, WEIGHT]);
 
-      // Move it later on OVERVIEW — the ⋯ menu's arrow is the non-pointer fallback
-      // for the drag and writes the same `saved_items` positions, which is why it is
-      // the honest way to assert "Body follows the saved order" without pointer
-      // physics standing in for the claim.
-      await page.goto("/trends");
-      await expect(page.getByTestId("saved-tiles")).toBeVisible();
-      expect((await overviewTileKeys(page))[0]).toBe("metric:steps");
+      // Move it later in the census — the ⋯ menu's arrow is the non-pointer
+      // fallback for the drag and writes the same `saved_items` positions.
+      await page.goto("/trends?view=tiles");
+      await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+      expect((await pinnedTileKeys(page))[0]).toBe("metric:steps");
       await page
         .locator('[data-tile-key="metric:steps"]')
         .getByTestId("overflow-menu-trigger")
         .click();
-      const overviewMenu = page.getByTestId("trend-tile-menu");
-      await expect(overviewMenu).toBeVisible();
+      const pinnedMenu = page.getByTestId("trend-tile-menu");
+      await expect(pinnedMenu).toBeVisible();
       const settled = reorderSettled(page);
-      await overviewMenu.getByTestId("saved-move-down").click();
+      await pinnedMenu.getByTestId("saved-move-down").click();
       // The optimistic swap first (the grid owns the list), then the persist — a
       // navigation that outran either would read the order it was about to leave.
       await expect
-        .poll(async () => (await overviewTileKeys(page))[0])
+        .poll(async () => (await pinnedTileKeys(page))[0])
         .toBe("metric:weight");
       await settled;
 
-      // No control on the body census was touched, and its order moved with the store.
+      // The rendered order and stored order agree after navigation.
       await openBodyTiles(page);
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
 
@@ -176,19 +174,64 @@ test.describe("★-pinned Body card order (#1643)", () => {
     try {
       await openBodyTiles(page);
 
-      // The pin gesture lives on the metric page and the re-sequence in the starred
-      // grid, so the census has to say so — the alternative was a second reorder
-      // surface here. Since #1644 both live on the same page, one anchor apart.
+      // The pin gesture lives on the metric page and the re-sequence in the pinned
+      // census run, so the hint has to name both paths.
       const hint = page.getByTestId("body-pin-hint");
       await expect(hint).toBeVisible();
-      await expect(
-        hint.getByRole("link", { name: "starred grid" })
-      ).toHaveAttribute("href", "/trends#starred");
+      await expect(hint).toContainText("Drag pinned cards here");
 
       // …and the route it describes is one tap from the card itself.
       await expect(
         page.getByTestId(STEPS).getByTestId("trend-mini-header-link")
       ).toHaveAttribute("href", STEPS_DETAIL);
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("an empty-window metric keeps its detail-page unstar path", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, PIN);
+    try {
+      await openBodyTiles(page);
+      await toggleStepsStarFromItsCard(page, "false");
+
+      await page.goto("/trends?view=tiles&from=2000-01-01&to=2000-01-01#body");
+      const emptySteps = page.getByTestId(STEPS);
+      await expect(emptySteps).toContainText("No data in this range");
+      expect((await pinnedTileKeys(page))[0]).toBe("metric:steps");
+
+      await followLink(
+        page,
+        emptySteps.getByTestId("trend-mini-header-link"),
+        new RegExp(STEPS_DETAIL)
+      );
+      const star = page.getByTestId("star-toggle");
+      await expect(star).toHaveAttribute("aria-pressed", "true");
+      await settledClick(page, star);
+      await expect(star).toHaveAttribute("aria-pressed", "false");
+
+      await page.goto("/trends?view=tiles&from=2000-01-01&to=2000-01-01#body");
+      await expect(page.getByTestId(STEPS)).toHaveCount(1);
+      expect(await pinnedTileKeys(page)).not.toContain("metric:steps");
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("a starred metric renders exactly once at 390px (#3387)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, PIN, {
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+    try {
+      await openBodyTiles(page);
+      await expect(page.getByTestId(WEIGHT)).toHaveCount(1);
+      await expect(page.getByTestId("vitals-today-strip")).toHaveCount(0);
+      await expect(page.getByTestId("trends-section-starred")).toHaveCount(0);
     } finally {
       await page.context().close();
     }

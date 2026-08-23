@@ -21,8 +21,9 @@ import { expandTrendsContext } from "./trends-chrome";
 //   • The bar rides the shell chrome. A sticky strip that did NOT hide with the
 //     navbar would permanently spend the band F just reclaimed.
 //   • The heading is gone below `sm` but still in the accessibility tree.
-//   • The first chart sits inside the arc's ~400px target — the number the whole
-//     wave is measured against.
+//   • The first Overview content sits inside the arc's ~400px target, and the first
+//     census chart remains in the initial viewport after #3387 put the conditional
+//     movers digest ahead of it.
 //
 // Fixture (#868 hygiene): READ-ONLY over the shared seed. Every test navigates and
 // toggles client state; nothing is written and no shared-seed row is exact-counted,
@@ -44,6 +45,16 @@ async function barReady(page: Page) {
 async function scrollTo(page: Page, y: number): Promise<number> {
   await page.evaluate((to) => window.scrollTo(0, to), y);
   return page.evaluate(() => window.scrollY);
+}
+
+// The census gives each metric its own stable testid. The retired Starred grid
+// supplied a generic `trend-mini-card`; anchoring inside the one Body grid keeps
+// "first chart" tied to the current composition (#3387).
+function firstBodyTile(page: Page) {
+  return page
+    .getByTestId("body-metric-tiles")
+    .locator('[data-testid^="body-tile-"]')
+    .first(); // first-ok: this helper deliberately names the first census metric
 }
 
 test.describe("the tab-and-range context bar", () => {
@@ -95,7 +106,7 @@ test.describe("the tab-and-range context bar", () => {
     ).toBeCloseTo(shellBox.y + shellBox.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
-    const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile is the subject — "is the window named above the FIRST chart?"
+    const tile = firstBodyTile(page); // first-ok: the census's topmost tile is the subject — "is the window named above the FIRST chart?"
     await expect(tile).toBeVisible();
     const [labelBox, tileBox] = await settledBoxes([
       page.getByTestId("trends-context-label"),
@@ -196,7 +207,7 @@ test.describe("the tab-and-range context bar", () => {
     );
     await expect(page.getByTestId("trends-context-controls")).toBeVisible();
     // And the charts came with it (the tiles re-render under the new range).
-    await expect(page.getByTestId("saved-tiles")).toBeVisible();
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
   });
 });
 
@@ -340,14 +351,19 @@ test.describe("the heading band is given up below sm (F)", () => {
     await expect(page.getByText("Your analytics lens —")).toBeHidden();
   });
 
-  test("the first chart clears the wave's ~400px target", async ({ page }) => {
+  test("the first Overview content clears the wave's ~400px target", async ({
+    page,
+  }) => {
     // The arc's acceptance number (#1485). Measured, not asserted qualitatively:
     // the point of F is a specific band of chrome, and a regression that quietly
     // re-adds 130px would still pass "the tile is in the viewport".
     await page.goto("/trends");
-    const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile IS the measurement's subject
+    const overviewLead = page.getByTestId("trending-digest");
+    await expect(overviewLead).toBeVisible();
+    const leadBox = await overviewLead.boundingBox();
+    const tile = firstBodyTile(page); // first-ok: the census's topmost tile IS the measurement's subject
     await expect(tile).toBeVisible();
-    const box = await tile.boundingBox();
+    const tileBox = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px
     // this wave started from.
     //
@@ -355,10 +371,11 @@ test.describe("the heading band is given up below sm (F)", () => {
     // OTHER assertion a band above the content moves, and 130px of banner would
     // push a 300px offset to 430 without naming what arrived.
     expect(
-      box!.y,
-      `first chart offset on Trends → Overview; ` +
-        (await bandStory(page.getByTestId("shell-chrome"), tile))
+      leadBox!.y,
+      `first content offset on Trends → Overview; ` +
+        (await bandStory(page.getByTestId("shell-chrome"), overviewLead))
     ).toBeLessThan(430);
+    expect(tileBox!.y).toBeLessThan(844);
     await expect(tile).toBeInViewport();
   });
 });

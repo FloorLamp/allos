@@ -279,7 +279,7 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
   test.slow();
   clearTodayManualBodyRow();
   try {
-    await page.goto("/trends");
+    await page.goto("/trends?view=tiles");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
@@ -320,10 +320,9 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
       handle.close();
     }
 
-    // The body census Today cell says WHEN the weigh-in was taken.
-    await expect(page.getByTestId("vitals-today-weight")).toContainText(
-      `at ${statedHhmm}`
-    );
+    // The retired Today card no longer repeats it; the census tile confirms the
+    // reading landed while the DB assertion above owns its stated instant.
+    await expect(page.getByTestId("body-tile-weight")).toContainText("71.8");
 
     // Re-opening the form for the day seeds the Time back from the row's own
     // occurred_at, so a resubmission preserves the statement unless cleared.
@@ -362,7 +361,7 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
     const { zone } = pinnedTimezone(frozenNow().toISOString());
     expect(frozenLocalHHMM(zone).slice(0, 2)).toBe("13");
 
-    await page.goto("/trends");
+    await page.goto("/trends?view=tiles");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
@@ -416,9 +415,10 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
       handle.close();
     }
 
-    // And the census renders it as an untimed weigh-in rather than claiming a time.
+    // And the one census tile renders the reading without inventing the refused
+    // clock time.
     await page.reload();
-    const cell = page.getByTestId("vitals-today-weight");
+    const cell = page.getByTestId("body-tile-weight");
     await expect(cell).toBeVisible();
     await expect(cell).not.toContainText(`at ${REFUSED_HHMM}`);
   } finally {

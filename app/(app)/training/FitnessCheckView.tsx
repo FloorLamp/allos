@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import ModalShell from "@/components/ModalShell";
-import PageContainer from "@/components/PageContainer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
 import { TONE_TILE } from "@/components/fitness-heat";
@@ -92,11 +91,17 @@ export default function FitnessCheckView({
   }
 
   return (
-    <PageContainer width="full" data-testid="fitness-check">
+    // The page owns its width (#3234). This view used to open its own
+    // `PageContainer width="full"` INSIDE the route's, which is a width policy in
+    // two places — and when the route moved to `reading` (#2894) the inner one
+    // could not undo it, so the 4-col grid rendered at 170px a tile.
+    <div data-testid="fitness-check">
       <div className="space-y-4">
         <header className="rounded-xl border border-black/10 p-4 dark:border-white/10">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold">Fitness check</h2>
+            {/* The page's h1 names the check (#3234); this card summarizes where
+                the battery stands, so it names THAT rather than repeating it. */}
+            <h2 className="text-lg font-semibold">Where you stand</h2>
             <span
               data-testid="fitness-completion"
               className="text-sm text-slate-500 dark:text-slate-400"
@@ -181,7 +186,7 @@ export default function FitnessCheckView({
           onClose={() => setOpenKey(null)}
         />
       )}
-    </PageContainer>
+    </div>
   );
 }
 
@@ -313,13 +318,22 @@ function Tile({
             testKey={tile.key}
             className="h-6 w-6 shrink-0 opacity-80 sm:h-7 sm:w-7"
           />
-          <span className="text-sm font-semibold leading-tight">
+          {/* `min-w-0` + `wrap-break-word` so a squeezed tile DEGRADES (#3234).
+              The chip beside this is `shrink-0`, so without a shrink floor and a
+              break rule the title keeps its min-content width and paints straight
+              through the chip instead of wrapping — which is what a 170px tile
+              did. The tile is `aspect-square`, so a wrapped title has room. */}
+          <span
+            data-testid="fitness-tile-title"
+            className="min-w-0 text-sm font-semibold leading-tight wrap-break-word"
+          >
             {tile.label}
           </span>
         </div>
         {/* Below sm the chip collapses to its glyph + a title, with the text kept
             for AT (sr-only) — the 2-col tiles are too narrow for glyph AND text. */}
         <span
+          data-testid="fitness-tile-domain"
           className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
           title={DOMAIN_LABEL[tile.domain] ?? tile.domain}
         >
