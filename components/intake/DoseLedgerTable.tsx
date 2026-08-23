@@ -69,6 +69,7 @@ export default function DoseLedgerTable({
   defaultTime,
   defaultItemId,
   note,
+  emptyNote,
 }: {
   rows: DoseLedgerEntry[];
   items: DoseLedgerItem[];
@@ -80,8 +81,13 @@ export default function DoseLedgerTable({
   // opens on it instead of on whatever sorts first. Every item stays selectable.
   defaultItemId?: number;
   // What the window is bounded to, rendered rather than left implicit so a list that
-  // stops at the range's edge never reads as "you took nothing before this".
+  // stops at the range's edge never reads as "you took nothing before this". The
+  // POPULATED case's note only — empty, the bound is folded into `emptyNote`.
   note?: string;
+  // The EMPTY case's whole sentence: state, window and way out in one, naming the
+  // kind the page is filtered to (#3478 item 3). Composed in lib/dose-ledger so the
+  // wording is unit-testable rather than trapped in a client component.
+  emptyNote: string;
 }) {
   const formatPrefs = useFormatPrefs();
   const [adding, setAdding] = useState(false);
@@ -159,118 +165,134 @@ export default function DoseLedgerTable({
     },
   ];
 
-  return (
-    <div data-testid="dose-ledger">
-      {canWrite && loggable.length > 0 ? (
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => setAdding((value) => !value)}
-            className="btn-ghost btn-sm"
-            aria-expanded={adding}
-            data-testid="dose-ledger-add"
-          >
-            {adding ? "Cancel" : "Log past dose"}
-          </button>
-          {adding && picked ? (
-            <div data-testid="dose-ledger-add-panel">
-              {/* Named distinctly from the page's Item FILTER: two controls whose
+  const empty = rows.length === 0;
+
+  // THE ORDER IS THE STATE'S, NOT THE ACTION'S (#3478 item 3). An empty ledger used
+  // to open with the "Log past dose" button and two sentences of scope prose before
+  // it got round to saying it was empty — under a page header that had already
+  // explained the surface. Empty, the state leads and the launcher follows it;
+  // populated, the launcher keeps its place above rows that are actually there.
+  const launcher =
+    canWrite && loggable.length > 0 ? (
+      <div className={empty ? "mt-3" : "mb-3"}>
+        <button
+          type="button"
+          onClick={() => setAdding((value) => !value)}
+          className="btn-ghost btn-sm"
+          aria-expanded={adding}
+          data-testid="dose-ledger-add"
+        >
+          {adding ? "Cancel" : "Log past dose"}
+        </button>
+        {adding && picked ? (
+          <div data-testid="dose-ledger-add-panel">
+            {/* Named distinctly from the page's Item FILTER: two controls whose
                   accessible name is just "Item" would be indistinguishable to a
                   screen reader (and to a spec) on the same page. */}
-              <label className="label mt-3 block" htmlFor="dose-ledger-item">
-                Item to log against
-              </label>
-              <select
-                id="dose-ledger-item"
-                className="input"
-                value={picked.id}
-                data-testid="dose-ledger-item-picker"
-                onChange={(event) => setPickedId(Number(event.target.value))}
-              >
-                {loggable.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-              {/* Keyed on the item so switching the picker RESETS the form's dose,
+            <label className="label mt-3 block" htmlFor="dose-ledger-item">
+              Item to log against
+            </label>
+            <select
+              id="dose-ledger-item"
+              className="input"
+              value={picked.id}
+              data-testid="dose-ledger-item-picker"
+              onChange={(event) => setPickedId(Number(event.target.value))}
+            >
+              {loggable.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            {/* Keyed on the item so switching the picker RESETS the form's dose,
                   amount and date state — a form seeded from a different item would
                   otherwise carry that item's dose id into this one's write. */}
-              <HistoricalDoseForm
-                key={picked.id}
-                itemId={picked.id}
-                itemName={picked.name}
-                doses={doseOptionsFor(picked)}
-                maxDate={maxDate}
-                defaultTime={defaultTime}
-                asNeeded={picked.asNeeded}
-                courseBound={picked.kind === "medication"}
-                onDone={() => setAdding(false)}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {note ? (
-        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-          {note}
-        </p>
-      ) : null}
-      {rows.length === 0 ? (
+            <HistoricalDoseForm
+              key={picked.id}
+              itemId={picked.id}
+              itemName={picked.name}
+              doses={doseOptionsFor(picked)}
+              maxDate={maxDate}
+              defaultTime={defaultTime}
+              asNeeded={picked.asNeeded}
+              courseBound={picked.kind === "medication"}
+              onDone={() => setAdding(false)}
+            />
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
+  if (empty)
+    return (
+      <div data-testid="dose-ledger">
         <p
           className="text-sm text-slate-500 dark:text-slate-400"
           data-testid="dose-ledger-empty"
         >
-          No confirmed doses in this window. Widen the date range, or confirm a
-          dose on Supplements or Medications.
+          {emptyNote}
         </p>
-      ) : (
-        <EntryHistoryTable
-          items={rows}
-          columns={columns}
-          readOnly={!canWrite}
-          menuKind="Dose"
-          menuItemName={(row) => formatLongDate(row.date, formatPrefs)}
-          rowTestId={() => "dose-ledger-row"}
-          renderEditForm={(row, done) => {
-            const item = itemById.get(row.itemId);
-            return (
-              <HistoricalDoseForm
-                itemId={row.itemId}
-                itemName={row.itemName}
-                doses={item ? doseOptionsFor(item) : []}
-                maxDate={maxDate}
-                defaultTime={defaultTime}
-                asNeeded={item?.asNeeded ?? false}
-                courseBound={row.kind === "medication"}
-                editing={{
-                  logId: row.id,
-                  doseId: row.doseId,
-                  date: row.date,
-                  statedAt: row.statedAt,
-                  amount: row.amount,
-                }}
-                onDone={done}
-              />
-            );
-          }}
-          confirmDelete={(row) => ({
-            title: "Delete dose?",
-            message: `Remove the ${formatLongDate(
-              row.date,
-              formatPrefs
-            )} dose of ${row.itemName} from the record. You can undo this.`,
-            confirmLabel: "Delete dose",
-          })}
-          deleteFormData={(row) => {
-            const fd = new FormData();
-            fd.set("log_id", String(row.id));
-            return fd;
-          }}
-          deleteAction={deleteAdministration}
-          deletedMessage="Dose deleted."
-        />
-      )}
+        {launcher}
+      </div>
+    );
+
+  return (
+    <div data-testid="dose-ledger">
+      {launcher}
+      {note ? (
+        <p
+          className="mb-2 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="dose-ledger-window-note"
+        >
+          {note}
+        </p>
+      ) : null}
+      <EntryHistoryTable
+        items={rows}
+        columns={columns}
+        readOnly={!canWrite}
+        menuKind="Dose"
+        menuItemName={(row) => formatLongDate(row.date, formatPrefs)}
+        rowTestId={() => "dose-ledger-row"}
+        renderEditForm={(row, done) => {
+          const item = itemById.get(row.itemId);
+          return (
+            <HistoricalDoseForm
+              itemId={row.itemId}
+              itemName={row.itemName}
+              doses={item ? doseOptionsFor(item) : []}
+              maxDate={maxDate}
+              defaultTime={defaultTime}
+              asNeeded={item?.asNeeded ?? false}
+              courseBound={row.kind === "medication"}
+              editing={{
+                logId: row.id,
+                doseId: row.doseId,
+                date: row.date,
+                statedAt: row.statedAt,
+                amount: row.amount,
+              }}
+              onDone={done}
+            />
+          );
+        }}
+        confirmDelete={(row) => ({
+          title: "Delete dose?",
+          message: `Remove the ${formatLongDate(
+            row.date,
+            formatPrefs
+          )} dose of ${row.itemName} from the record. You can undo this.`,
+          confirmLabel: "Delete dose",
+        })}
+        deleteFormData={(row) => {
+          const fd = new FormData();
+          fd.set("log_id", String(row.id));
+          return fd;
+        }}
+        deleteAction={deleteAdministration}
+        deletedMessage="Dose deleted."
+      />
     </div>
   );
 }
