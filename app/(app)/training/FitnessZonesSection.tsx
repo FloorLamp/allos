@@ -6,7 +6,10 @@ import {
   getTrainingZoneData,
 } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
-import type { FitnessWindow } from "@/lib/trends-fitness";
+import {
+  hasFitnessZoneContent,
+  type FitnessWindow,
+} from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
@@ -41,7 +44,7 @@ export default async function FitnessZonesSection({
 
   // #3512: the moved section is not standing chrome. Decide that from the zone
   // model before paying for cardio aggregates whose JSX would be discarded.
-  if (!zoneData.model || zoneData.split.totalMin === 0) return null;
+  if (!hasFitnessZoneContent(zoneData)) return null;
 
   const todayStr = today(profile.id);
   const since = window.from ?? undefined;

@@ -6,6 +6,7 @@ import {
   WINDOW_PR_LIMIT,
   fitnessWindow,
   fitnessWindowWeeks,
+  hasFitnessZoneContent,
   prWeeks,
   selectWindowPRs,
   strengthMovers,
@@ -109,6 +110,20 @@ describe("fitnessWindowWeeks", () => {
     expect(fitnessWindowWeeks(30)).toBe(5); // 4.28 weeks
     expect(fitnessWindowWeeks(35)).toBe(5);
     expect(fitnessWindowWeeks(36)).toBe(6);
+  });
+});
+
+describe("hasFitnessZoneContent", () => {
+  it("gates the moved section before its discarded cardio aggregate reads", () => {
+    expect(
+      hasFitnessZoneContent({ model: null, split: { totalMin: 42 } })
+    ).toBe(false);
+    expect(
+      hasFitnessZoneContent({ model: { maxHr: 190 }, split: { totalMin: 0 } })
+    ).toBe(false);
+    expect(
+      hasFitnessZoneContent({ model: { maxHr: 190 }, split: { totalMin: 42 } })
+    ).toBe(true);
   });
 });
 

@@ -78,6 +78,17 @@ export function fitnessWindowWeeks(days: number | null): number {
   return clampLensWeeks(days, FITNESS_WEEK_CAPS);
 }
 
+// Zones & cardio is data-gated rather than standing Analyze chrome. The server
+// component calls this immediately after its zone-model read and before gathering
+// either cardio aggregate, so an absent model or an empty zone split ends the
+// render without paying for data whose JSX would be discarded.
+export function hasFitnessZoneContent(data: {
+  model: unknown | null;
+  split: { totalMin: number };
+}): boolean {
+  return data.model != null && data.split.totalMin > 0;
+}
+
 // The `withinDays` a PR engine needs to mean "set inside this window". The engines
 // take (stats, today, withinDays) and keep records whose date is within that many
 // days BACK from `today`, so the window's end is the anchor and its length is the
