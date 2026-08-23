@@ -197,72 +197,74 @@ export default function FrequencyTargets({
       </button>
       <Collapse open={formOpen}>
         <div id={FORM_PANEL_ID} className="pt-3">
-      <form action={save} className="flex flex-wrap items-end gap-3">
-        {/* When editing, carry the row id so the action updates it in place —
+          <form action={save} className="flex flex-wrap items-end gap-3">
+            {/* When editing, carry the row id so the action updates it in place —
             including a scope change — instead of inserting a duplicate. */}
-        {selectedId != null && (
-          <input type="hidden" name="id" value={selectedId} />
-        )}
-        <div>
-          <label className="label">Scope</label>
-          <select
-            name="scope_kind"
-            value={kind}
-            onChange={(e) => changeKind(e.target.value as FrequencyScopeKind)}
-            className="input"
-          >
-            {strengthTrainingAvailable && (
-              <option value="region">Muscle region</option>
+            {selectedId != null && (
+              <input type="hidden" name="id" value={selectedId} />
             )}
-            {strengthTrainingAvailable && (
-              <option value="group">Body group</option>
-            )}
-            <option value="type">Activity type</option>
-            <option value="mobility_region">Mobility region</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">Target</label>
-          <select
-            name="scope_value"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            className="input"
-          >
-            {optionsFor(kind, strengthTrainingAvailable).map((v) => (
-              <option key={v.value} value={v.value}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Per week</label>
-          <input
-            type="number"
-            name="per_week"
-            min={1}
-            value={perWeek}
-            onChange={(e) => setPerWeek(e.target.value)}
-            className="input w-24"
-          />
-        </div>
-        {/* Plain form grammar ("Save"), not a second "Add target" (#3474 item 2).
+            <div>
+              <label className="label">Scope</label>
+              <select
+                name="scope_kind"
+                value={kind}
+                onChange={(e) =>
+                  changeKind(e.target.value as FrequencyScopeKind)
+                }
+                className="input"
+              >
+                {strengthTrainingAvailable && (
+                  <option value="region">Muscle region</option>
+                )}
+                {strengthTrainingAvailable && (
+                  <option value="group">Body group</option>
+                )}
+                <option value="type">Activity type</option>
+                <option value="mobility_region">Mobility region</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Target</label>
+              <select
+                name="scope_value"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="input"
+              >
+                {optionsFor(kind, strengthTrainingAvailable).map((v) => (
+                  <option key={v.value} value={v.value}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Per week</label>
+              <input
+                type="number"
+                name="per_week"
+                min={1}
+                value={perWeek}
+                onChange={(e) => setPerWeek(e.target.value)}
+                className="input w-24"
+              />
+            </div>
+            {/* Plain form grammar ("Save"), not a second "Add target" (#3474 item 2).
             The DISCLOSURE above is the card's create affordance and carries that
             name; two controls answering to it inside one card is a duplicate
             accessible name, and the one the user reaches first would be the wrong
             one. Same split CycleForm already ships under its own fold. */}
-        <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
-        {selectedId != null && (
-          <button
-            type="button"
-            onClick={remove}
-            className="btn-ghost text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-          >
-            Delete
-          </button>
-        )}
-      </form>
+            <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
+            {selectedId != null && (
+              <button
+                type="button"
+                onClick={remove}
+                className="btn-ghost text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+              >
+                Delete
+              </button>
+            )}
+          </form>
         </div>
       </Collapse>
       {error && (
