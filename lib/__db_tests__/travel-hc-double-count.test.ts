@@ -24,7 +24,6 @@ import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
-import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import { getMetricDailyTotals } from "@/lib/queries";
 import {
   getTimezone,
@@ -87,9 +86,10 @@ describe("HC daily steps across a westward travel switch", () => {
     );
     ingestHealthConnectPayload(profileId, push1);
 
-    // The one-tap travel switch (accept action path: switch + sweep).
+    // The one-tap travel switch — the accept action's whole path, which DELETES NOTHING.
+    // #3551 removed the trailing-window sweep this used to call; it only ever touched
+    // `body_metrics`, never `metric_samples`, so what this test measures is unchanged.
     switchProfileTimezone(profileId, HONOLULU, TOKYO);
-    sweepIngestWindowForTimezoneChange(profileId);
     expect(today(profileId)).toBe("2026-05-01");
 
     // Push 2, after the switch (device now on Honolulu time). Health Connect

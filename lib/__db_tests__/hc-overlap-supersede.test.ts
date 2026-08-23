@@ -18,6 +18,9 @@
 // SYNTHETIC ONLY: fictional profiles, invented step counts, no PHI.
 
 import { beforeAll, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db } from "@/lib/db";
 import {
   upsertMetricSamples,
@@ -34,6 +37,21 @@ import type { ParsedPayload } from "@/lib/integrations/health-connect";
 
 const HC = "health-connect";
 const ORIGIN = "com.fitbit.FitbitMobile";
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+/** The candidate query exactly as `supersedeMetricSampleOverlaps` spells it. */
+function findOverlapsSql(): string {
+  const src = fs.readFileSync(
+    path.join(REPO, "lib/integrations/normalize.ts"),
+    "utf8"
+  );
+  const m = src.match(
+    /const findOverlaps = db\.prepare\(\s*`([\s\S]*?)`\s*\);/
+  );
+  if (!m) throw new Error("findOverlaps statement not found in normalize.ts");
+  return m[1];
+}
 
 let profileId: number;
 
@@ -885,6 +903,43 @@ describe("the SQL narrowing agrees with the pure rule", () => {
       pushedAt: PUSHED_AT,
     });
     expect(counts.superseded).toBe(unnarrowed.supersede.length);
+  });
+
+  // AND WHAT THE SQL HALF IS ACTUALLY FOR. The test above says the `date` term is not
+  // ALLOWED to live only in the SQL. This one says what it buys by living there too, and
+  // it exists because nothing else noticed: measured, removing `AND date = ?` from the
+  // candidate query alone leaves all 78 tests of the three Health Connect supersede specs
+  // green. The term is a NARROWING, not a safety gate — `planSupersede` holds the safety
+  // — and a narrowing is pinned by the plan it produces or by nothing at all.
+  it("resolves to the (profile_id, metric, date) index prefix, with no temp b-tree", () => {
+    // The statement is read out of the SOURCE rather than re-typed here, for the reason
+    // lib/__tests__/profile-scoping.test.ts reads its DELETE out of the source: a copy in
+    // the test is a copy that stays green when the shipped query changes. It is also why
+    // `findOverlaps` is spelled inline in normalize.ts rather than hoisted.
+    const sql = findOverlapsSql();
+    // Values do not steer SQLite here — every placeholder is an equality or an IS against
+    // an unanalyzed table, so the WHERE's SHAPE is the whole input to the planner.
+    const holes = (sql.match(/\?/g) ?? []).length;
+    const plan = (
+      db
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(...Array(holes).fill(null)) as {
+        detail: string;
+      }[]
+    )
+      .map((r) => r.detail)
+      .join(" | ");
+    // All three leading columns of `idx_metric_samples_md` pinned to equality, so the
+    // index hands the group back in rowid order and `ORDER BY id` is free. Drop the
+    // `date` term and this reads
+    //     SEARCH metric_samples USING INDEX idx_metric_samples_natural
+    //       (profile_id=? AND metric=? AND source=?) | USE TEMP B-TREE FOR ORDER BY
+    // — two columns pinned instead of three, and the sort paid for on every push.
+    expect(plan).toContain(
+      "USING INDEX idx_metric_samples_md (profile_id=? AND metric=? AND date=?)"
+    );
+    expect(plan).not.toContain("TEMP B-TREE");
+    expect(plan).not.toContain("SCAN metric_samples");
   });
 });
 

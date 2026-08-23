@@ -855,14 +855,36 @@ export interface SupersedeOutcome {
  * this LITERAL and fails when the clause is not there. That is also why the SQL is not
  * hoisted to a named constant: the census can only read a statement written inline.
  *
+ * WHAT THAT CENSUS COVERS, EXACTLY, because "held by a test" reads wider than it is.
+ * Measured, four runs:
+ *
+ *   • REMOVE the clause: the census reds — its "no owned-table statement missing
+ *     profile_id" case — and the whole db tier stays green, 6624 passed.
+ *   • REWRITE it as a literal-preserving tautology, `(profile_id = ? OR 1 = 1)`: NOTHING
+ *     anywhere reds — census 15/15 green, db tier 6624/6624 green.
+ *
+ * So the census is a TEXT ratchet against the clause going MISSING, not a behavioural
+ * observation of it doing work — and it cannot be one on its own, because with the
+ * candidate SELECT correct every id handed here already belongs to the profile.
+ *
+ * IT IS STILL THE SECOND BARRIER, AND THAT MUCH IS OBSERVED. Neutralise the candidate
+ * SELECT's own `profile_id` the same way and 14 tests red — but R5 ("keeps another
+ * profile's overlapping row of the same metric and origin",
+ * lib/__db_tests__/hc-overlap-supersede-refutations.test.ts) is NOT one of them: the
+ * leaked id reaches this DELETE and this DELETE refuses it. Neutralise BOTH and R5 reds.
+ * The first query's `profile_id` reds 20 under the same tautology. Two barriers, each
+ * standing in for the other's failure.
+ *
  * IT CARRIES NO `pushed_at IS ?` OR `EXISTS` RE-STATEMENT, and their absence is the
  * ruling rather than an oversight. Those clauses existed because the plan was read in one
  * transaction and applied in another; here there is no interval to defend, and a clause
  * that can never fire is a clause the next reader defends.
  *
- * The deletes are sync-internal — they write no re-import tombstone, exactly like the
- * #608 timezone sweep's deletes, because the source is expected to keep sending the span
- * under its current anchoring.
+ * The deletes are sync-internal — they write no re-import tombstone, because the source
+ * is expected to keep sending the span under its current anchoring. (The #608 timezone
+ * sweep's deletes were the precedent for that; #3551 replaced the sweep itself with
+ * lib/integrations/ingest-timezone-reconcile.ts, which re-keys a measure rather than
+ * deleting a row, so the precedent is now history rather than a neighbour.)
  */
 export function supersedeMetricSampleOverlaps(
   profileId: number,

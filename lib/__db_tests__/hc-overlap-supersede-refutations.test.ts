@@ -34,6 +34,12 @@ import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 const HC = "health-connect";
 const ORIGIN = "com.fitbit.FitbitMobile";
 
+/**
+ * The fragment `overlapsLeftWarning` states whatever the count is, so a case asserting
+ * the line is ABSENT can match on it without knowing the number the line would carry.
+ */
+const OVERLAP_LINE = "overlap other readings on the same day";
+
 /** A fresh profile per case, so one test's rows can never explain another's survival. */
 function freshProfile(name: string): number {
   return Number(
@@ -79,9 +85,35 @@ function stored(profile: number, metric: string) {
 // the delete.
 //
 // EVERY DOOR INTO THE INGEST IN THIS FILE GOES THROUGH `guarded`, so a case added later
-// is covered without anyone remembering to cover it. MUTATION: drop the `date` term
-// from `supersedeMetricSampleOverlaps`'s candidate query, or from `planSupersede`, and
-// the three round-10 drivers below go red HERE as well as on their own assertions.
+// is covered without anyone remembering to cover it.
+//
+// `guarded` ENCODES THE STRICTER OF THE TWO READINGS: it compares (metric, date) totals
+// with the ZEROES DROPPED, so a day whose total falls to 0 counts as emptied even though
+// a row is still there. The ruling says "a date keeps a reading"; this says "a date keeps
+// a NON-ZERO total". Nothing in this file reaches the gap — no fixture supersedes a
+// non-zero row with a 0-valued bucket on its own date — and the stricter reading is the
+// one worth failing on, because a day reading 0 is what the person sees.
+//
+// MUTATION — AND IT TAKES BOTH HALVES OF THE `date` TERM, not either. Measured over the
+// three Health Connect supersede specs (79 tests) rather than asserted:
+//
+//   • `AND date = ?` out of `supersedeMetricSampleOverlaps`'s candidate query ALONE:
+//     1 failed of 79, and the one is the QUERY PLAN assertion — hc-overlap-supersede.ts's
+//     "resolves to the (profile_id, metric, date) index prefix, with no temp b-tree",
+//     added this round for exactly this reason. Before it existed the run was EXIT=0 and
+//     78 passed: not one behavioural case died. That term is the NARROWING, and a
+//     narrowing is pinned by the plan it produces or by nothing.
+//   • `row.date !== incoming.date` out of `planSupersede` ALONE: EXIT=1, 1 failed — and
+//     it is NOT one of the drivers. It is hc-overlap-supersede.test.ts:837, "never
+//     narrows away a row the predicate would have superseded", which hands the pure rule
+//     the whole UNNARROWED stored group and so sees the term go missing from the one
+//     encoding that decides.
+//   • BOTH: EXIT=1, 5 failed — those two, plus all three round-10 drivers, each of them
+//     here on `guarded`. Their own assertions catch it too: with `guarded` neutered the
+//     same mutation still reds all three (3 failed of 48).
+//
+// So `planSupersede`'s term is the SAFETY encoding and the SQL's is the narrowing beside
+// it. An earlier version of this note said "either", which was wrong in both directions.
 //
 // A PUSH THAT THROWS IS NOT CHECKED, deliberately: the transaction rolled back, there is
 // nothing this could observe, and an assertion raised out of a `finally` would replace
@@ -214,8 +246,18 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
     // record deleting the current 2400 one. Both halves of that are now impossible: the
     // rows of one push share a stamp so neither can supersede the other, and there is no
     // within-push ranking left to depend on which chunk a row landed in.
-    // MUTATION: let a row supersede another of the same push (relax `pushOutranks` to
-    // `>=`) and which of these two survives becomes a function of the chunk split.
+    // TWO BARRIERS STAND BETWEEN THIS PUSH AND A DELETE, AND EITHER ONE ALONE HOLDS IT,
+    // which is why no single mutation reds this case. Measured:
+    //   • relax `pushOutranks` to `>=` (the equal-stamp barrier): the WHOLE db tier stays
+    //     green, 6624 passed. The candidate query never hands `planSupersede` a row of
+    //     this push, so the comparison is not even reached from here. What does catch it
+    //     is the pure tier — lib/__tests__/metric-window-overlap.test.ts, "is FALSE on an
+    //     equal stamp — a replay, or a second chunk of the same push" (1 failed of 47).
+    //   • drop `AND pushed_at IS NOT ?` (the push-key exclusion): 17 tests red across the
+    //     three HC specs, but not this one — both rows then see each other and the equal
+    //     stamp still refuses the delete.
+    // The redundancy is deliberate and this case records the RESULT of it; the two
+    // barriers are pinned individually, above and in the pure tier.
     const p = freshProfile("R1-CHUNK");
     const result = push(
       p,
@@ -410,9 +452,15 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
   it("stores both, says so, and deletes nothing", () => {
     // MUTATION: drop the `AND pushed_at IS NOT ?` clause from the candidate query in
     // `supersedeMetricSampleOverlaps` — the push-key exclusion, on this side of the
-    // ruling — and the stored NY row is deleted here, by the TOKYO bucket of the very
-    // push that is re-sending it. Whether it came back then depended on which of the two
-    // the loop reached first, which is rounds 1 and 5 in one fixture.
+    // ruling. Measured, and it is NOT a delete: `superseded` stays 0 and both rows stay
+    // stored, because the re-sent NY row now carries THIS push's stamp and `pushOutranks`
+    // refuses an equal one. What moves is the Review line — the NY row is counted in
+    // `left` as well as in the push's own excess, so this case reds on
+    // `overlapsLeftWarning(1)` reading 2. The exclusion is a narrowing whose safety is
+    // held by the equal-stamp comparison behind it; what it buys is a count that says one
+    // day reading high rather than two. (17 tests red across the three HC specs, mostly
+    // on that count; the property spec's "derives the victim set from the STORE" reds on
+    // 4 for 1.)
     const p = freshProfile("BOTH-ANCHORINGS-ONE-PUSH");
     seedNY(p);
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
@@ -432,8 +480,12 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     // `superseded: 0`, `overlapsLeft: 0`, `warnings: []`.
     //
     // MUTATION: drop the in-push term from `supersedeMetricSampleOverlaps`'s return
-    // (`left.size` alone) and this goes back to a silent wrong total, with every other
-    // spec in this file and in hc-overlap-supersede.test.ts still green.
+    // (`left.size` alone) and this goes back to a silent wrong total. Measured: 5 red
+    // across the three HC specs — this case and "stores both, says so, and deletes
+    // nothing" above, "still counts two genuine anchorings" in R8b, plus one each in
+    // hc-overlap-supersede.test.ts and hc-overlap-push-property.test.ts. So it is NOT the
+    // only case that notices, which an earlier version of this note claimed; what is
+    // particular to this one is the store-holds-NEITHER configuration.
     const p = freshProfile("BOTH-ANCHORINGS-EMPTY-STORE");
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     expect(only.split.superseded).toBe(0);
@@ -528,8 +580,16 @@ describe("R2 — nutrition at a `full` exporter setting", () => {
   };
 
   it("stores BOTH when they arrive in one push", () => {
-    // MUTATION: add `nutrition_kcal` to DAY_BUCKET_METRICS and the snack is dropped and
-    // reported `unchanged`, which is invisible in Review.
+    // MUTATION: add `nutrition_kcal` to DAY_BUCKET_METRICS. Measured, and this case does
+    // NOT move: 6624 db tests green. Two independent reasons, both worth knowing — these
+    // two rows arrive in ONE push, so they share a stamp and can never be each other's
+    // candidates; and a 1-hour meal and a 5-minute snack are both below the granularity
+    // gate, so `isSupersedingWindow` refuses them whatever the metric list says. What the
+    // metric list is pinned by is the pure tier: lib/__tests__/metric-window-overlap.test.ts
+    // reds 3 of 47 on this mutation ("admits exactly the four metrics Health Connect
+    // stores as daily totals", "keeps NUTRITION, HYDRATION and SLEEP out of reach", "is
+    // true only for a day-bucket window of a tiling metric"). What THIS case pins is the
+    // parse-and-store shape the metric list was chosen from.
     const p = freshProfile("R2-NUTRITION-ONE");
     push(p, { nutrition: [MEAL, SNACK] });
     expect(stored(p, "nutrition_kcal").map((r) => r.value)).toEqual([800, 150]);
@@ -569,7 +629,13 @@ describe("R2 — sleep", () => {
   });
 
   it("keeps two DEVICES that both parse to origin = null", () => {
-    // MUTATION: add `sleep_min` to DAY_BUCKET_METRICS and one whole night is destroyed.
+    // MUTATION: add `sleep_min` to DAY_BUCKET_METRICS. Measured, and this case does NOT
+    // move: 6624 db tests green. Both sessions arrive in ONE push, so they carry the same
+    // stamp and the candidate query excludes each from the other — the metric list never
+    // gets to matter here. The list is pinned in the pure tier instead:
+    // lib/__tests__/metric-window-overlap.test.ts reds 3 of 47 on this mutation,
+    // including "refuses two overlapping SLEEP sessions, including the origin=null group".
+    // What THIS case pins is the origin=null grouping the pure test's premise rests on.
     const p = freshProfile("R2-SLEEP-NULL-ORIGIN");
     push(p, {
       sleep: [
@@ -648,7 +714,17 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
   // every total and repaired by the next push. That read it too LOW, looked exactly like
   // a day you did not walk, and converged on nothing.
   it("writes the 3500 and supersedes the 3000", () => {
-    // MUTATION: reintroduce any window-derived push stamp and this stores 3000.
+    // MUTATION: give the push a stamp derived from its own windows INSTEAD of the stated
+    // one (`pushStampFor(latest ended_at) ?? pushStampFor(parsed.pushedAt)`) and this
+    // reds: `superseded` reads 0 for 1 and the store keeps both rows. Measured — 9 red
+    // across the three HC specs.
+    //
+    // NOT "any" window-derived stamp, which an earlier version of this note said. The
+    // shape this branch actually deleted was a FALLBACK, used only when the payload
+    // stated nothing readable; reinstating it that way leaves THIS case green (3 red
+    // elsewhere, none of them here), because both pushes state a `timestamp` and the
+    // fallback never fires. It is the stated stamp being DISPLACED that loses the
+    // reading.
     const p = freshProfile("COMPLETED-DAY-CORRECTS");
     push(
       p,
@@ -685,8 +761,21 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
   it("and a push that states NO stamp deletes nothing, rather than dropping a row", () => {
     // The stampless path, which is what the fallback was invented to serve. It now
     // supersedes nothing — so the day reads HIGH, visibly, instead of a reading going
-    // missing. MUTATION: let a stampless push supersede (or block) and one of the two
-    // rows below disappears.
+    // missing.
+    //
+    // NO MUTATION REDS THIS CASE, and saying so is more use than the claim that used to
+    // stand here ("let a stampless push supersede and one of the two rows disappears").
+    // Three were run: removing the `pushedAt === null` guard from
+    // `supersedeMetricSampleOverlaps` is a NO-OP (`pushed_at = NULL` matches no row, so
+    // the stamped set is empty either way) — 6624 db tests green; the window-derived
+    // FALLBACK leaves it green too, because the correcting push's latest end is EARLIER
+    // than the stored row's, so the fallback stamp fails to outrank and the delete does
+    // not happen — the case passes for the wrong reason; the window-derived PRIMARY reds
+    // 9 tests but not this one, for the same reason. What holds the stampless rule is the
+    // pair below — "leaves the converged row alone when a stale record rides in beside a
+    // later one" and "says NOTHING for a push that stamped nothing" — both of which red
+    // under either window-derived shape. This case is the readable statement of the
+    // designed outcome, not the guard.
     const p = freshProfile("NO-STAMP-KEEPS-BOTH");
     const body = (start: string, end: string, count: number) => ({
       steps: [
@@ -777,9 +866,14 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
     // deletes, so the reason never has to be enumerated anywhere.
     //
     // MUTATION: drop `overlapsLeft = outcome.overlapsLeft` in
-    // `ingestHealthConnectPayload`, or return `left.size` alone from
-    // `supersedeMetricSampleOverlaps` without pruning, and this goes silent or double
-    // counts its own report.
+    // `ingestHealthConnectPayload` and this goes silent — measured, 6 red across the
+    // three HC specs, this case among them.
+    //
+    // Returning `left.size` alone does NOT red this case (5 red, none of them here): the
+    // double count here is a STORED row the predicate declined, which lives in `left`, so
+    // dropping the in-push term leaves this number right. That half is pinned by the two
+    // cases in "a push carrying BOTH anchorings…" above. And there is no prune to drop
+    // any more — the line that re-subtracted collapsed ids was unreachable and is gone.
     profile = freshProfile("OVERLAP-LEFT-WARNS");
     // The store: a converged row, stamped LATE.
     push(
@@ -849,21 +943,25 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
   it("stays quiet when there was no overlap to leave standing", () => {
     // MUTATION: emit the line unconditionally, or from a shape test that answers true
     // for everything, and every ordinary push starts announcing a problem it does not
-    // have — which is how a real signal gets tuned out.
+    // have — which is how a real signal gets tuned out. Measured: 12 red across the three
+    // HC specs, this case among them (11 before the assertion below was repaired).
+    //
+    // IT MATCHES ON TEXT THE LINE ACTUALLY CARRIES. It used to look for "timezone
+    // change", which `overlapsLeftWarning` stopped saying when it stopped naming a cause
+    // — so both assertions were true of every possible output and the stated mutation
+    // could not have reddened this case.
     profile = freshProfile("OVERLAP-LEFT-QUIET");
     const only = unstamped({
       steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
     });
-    expect(warningsOf(only).some((w) => w.includes("timezone change"))).toBe(
-      false
-    );
+    expect(warningsOf(only).some((w) => w.includes(OVERLAP_LINE))).toBe(false);
     // Nor for a payload with nothing the rule could ever act on.
     const points = unstamped({
       heart_rate_variability: [
         { time: "2026-05-01T10:00:00Z", milliseconds: 40 },
       ],
     });
-    expect(warningsOf(points).some((w) => w.includes("timezone change"))).toBe(
+    expect(warningsOf(points).some((w) => w.includes(OVERLAP_LINE))).toBe(
       false
     );
   });
@@ -872,9 +970,15 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
 describe("the stored stamp is canonical", () => {
   it("re-serializes whatever spelling the exporter used", () => {
     // MUTATION: hand `upsertMetricSamples` `parsed.pushedAt` raw instead of routing it
-    // through `pushStampFor`, and `metric_samples.pushed_at` starts holding two shapes —
-    // which lib/__tests__/time-columns.test.ts freezes against for a new column, and
-    // which also skips the clock-skew bound on the way past.
+    // through `pushStampFor`, and `metric_samples.pushed_at` starts holding two shapes,
+    // skipping the clock-skew bound on the way past. Measured: 2 red across the three HC
+    // specs — this case and "says NOTHING for a push that stamped nothing".
+    //
+    // AND THIS CASE IS WHAT HOLDS IT. lib/__tests__/time-columns.test.ts stays green
+    // under the mutation (15 passed): it is a registry-and-docs ratchet over the declared
+    // shape of each column, with no writer in it, so it cannot see a writer that stops
+    // canonicalising. `docs/internals/time-columns.md` declares this column `canonical`;
+    // this assertion is the only place that makes the declaration true.
     const p = freshProfile("CANONICAL-STAMP");
     push(
       p,
@@ -957,8 +1061,12 @@ describe("R4 — a byte-identical replay of a pre-switch push", () => {
 
   it("and the NEXT genuine push collapses what the replay left", () => {
     // The other half of that trade, and the reason it is acceptable: the double count
-    // is transient. MUTATION: any change that lets the replay's row keep a stamp as new
-    // as the push that corrects it, and this stops converging.
+    // is transient. MUTATION, stated as something runnable rather than as a class: stamp
+    // rows with ARRIVAL time instead of the payload's (`pushStampFor(new
+    // Date().toISOString())` in `ingestHealthConnectPayload`). `pushStampFor` resolves to
+    // the second, so all four pushes here land inside one and share a stamp, nothing
+    // outranks anything, and this reads `superseded: 0` for 1 — it stops converging.
+    // Measured: 22 red across the three HC specs, this case and the one above among them.
     const p = freshProfile("R4-CONVERGES");
     push(p, TOKYO, T1);
     push(p, HONOLULU, T2);
@@ -1152,10 +1260,16 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
   //     NEVER NEITHER. A day may read HIGH between commits; it must never read LOWER
   //     than `main` would.
   //
-  // MUTATION for both tests below: move `supersedeMetricSampleOverlaps` back to the first
-  // chunk (`remaining === orderedSamples.length - slice.length`, or the `pending` flag
-  // the earlier rounds used) in `ingestHealthConnectPayload`. The crash test then finds
-  // the seeded 8000 gone.
+  // MUTATION: move `supersedeMetricSampleOverlaps` back to the first chunk
+  // (`remaining === orderedSamples.length - slice.length`, or the `pending` flag the
+  // earlier rounds used) in `ingestHealthConnectPayload`. The CRASH test then finds the
+  // seeded 8000 gone — measured, 10 red across the three HC specs.
+  //
+  // IT IS THE CRASH TEST ALONE, not "both tests below". The one-chunk case cannot move
+  // under it by construction: with a single chunk the first chunk IS the last one, so
+  // first-chunk and last-chunk placement are the same placement. What that case pins is
+  // the rollback, and its mutation is a different one — anything that takes the deletes
+  // out of the chunk's transaction.
 
   const LA = "2026-05-01T07:00:00Z";
 
@@ -1982,10 +2096,19 @@ describe("R10 — a day bucket may only be collapsed on its OWN date", () => {
   // overlaps it. Overlap stays a gate — it is what excludes the rollover pair and the
   // same-anchoring neighbours — and the date carries the justification.
   //
-  // MUTATION for all three cases: drop `AND date = ?` from the candidate query in
-  // `supersedeMetricSampleOverlaps`, or the `row.date !== incoming.date` term from
-  // `planSupersede`. Each restores exactly one of these drivers, and the `guarded`
-  // property above goes red beside the case's own assertions.
+  // MUTATION for all three cases, AND IT TAKES BOTH ENCODINGS OF THE `date` TERM. Run,
+  // not asserted — over the three Health Connect supersede specs (79 tests):
+  //
+  //   • `AND date = ?` out of the candidate query in `supersedeMetricSampleOverlaps`
+  //     ALONE: 1 failed of 79, and it is the query-plan assertion in
+  //     hc-overlap-supersede.test.ts. None of these three drivers moves — before that
+  //     assertion existed the run was EXIT=0, 78 passed. The SQL half is a narrowing.
+  //   • `row.date !== incoming.date` out of `planSupersede` ALONE: EXIT=1, 1 failed, and
+  //     it is hc-overlap-supersede.test.ts:837, not a driver.
+  //   • BOTH: EXIT=1, 5 failed — those two plus ALL THREE drivers together, each on the
+  //     `guarded` property above; with `guarded` neutered the same mutation still reds
+  //     all three on their own assertions (3 failed of 48). So it is not "each restores
+  //     exactly one" either: the safety lives in one encoding and both must go.
   //
   // COVER-THE-WINDOW WAS THE OTHER CANDIDATE AND IT WAS REJECTED, which these fixtures
   // also show: no single re-anchored bucket ever CONTAINS the one it replaces —
@@ -2028,7 +2151,13 @@ describe("R10 — a day bucket may only be collapsed on its OWN date", () => {
     steps(`${day}T07:00:00Z`, `${next}T07:00:00Z`, count);
 
   it("DRIVER 1 — keeps the day when a TOMBSTONE refused its replacement", () => {
-    // The lens's reproduction, step for step, through the real parse + ingest path.
+    // The round-10 lens's SHAPE, re-authored here from its prose in PR #3438's comment
+    // 5381290964 and driven through the real parse + ingest path. It is not the lens's
+    // fixture byte for byte and should not be read as one: the lens measured LA 04-30 at
+    // 5000 and `{inserted:0, unchanged:1, suppressed:1, superseded:1}`; this uses 5200,
+    // so the 04-30 bucket is a write and the counts read `{inserted:1, …}`. What
+    // reproduces is the class — a bucket landing on the PREVIOUS date justifying a delete
+    // on this one — and the both-halves mutation above reds it.
     const p = freshProfile("R10-TOMBSTONE");
     // 1. New York, stamped.
     pushAt(
