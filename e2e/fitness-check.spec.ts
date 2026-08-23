@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, settledClick } from "./helpers";
@@ -133,6 +134,21 @@ function seedNearComplete(exceptKey: string): void {
 // readings the check never recorded (a synced VO2, a scale body-fat/RHR, a logged squat +
 // plank) so the grid lights up auto-counted tiles. The SENIOR profile (age 72) renders the
 // older-adult variant.
+// The board's desktop column count (`lg:grid-cols-4` on the grid in
+// FitnessCheckView). Named so the "enough tiles to have a fourth column"
+// precondition below says what it is checking rather than carrying a bare 4.
+const GRID_COLUMNS_DESKTOP = 4;
+
+// The narrowest a tile may be at the 1280px project viewport, in CSS px. This is
+// a FLOOR on the page's width policy, not a pin on a tile. Both sides were
+// measured with the probe below at the 1280px project viewport: the nested
+// containers put the 4-col board inside a 768px `reading` measure and produced
+// 183px tiles, with 11 of the 13 titles overlapping their chip; one container
+// produces 241px and zero overlaps. 210 sits between the two with ~27px of room
+// on each side, so a padding or gap revision does not fail it and a re-nested
+// container cannot pass it.
+const DESKTOP_TILE_FLOOR = 210;
+
 test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
   test("renders the heat grid, auto-counts synced/logged values, records a test, shows a delta", async ({
     browser,
@@ -261,6 +277,103 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     // the overflow away, so comparing the document's width to the viewport's is
     // true no matter how far a tile spills past the edge.
     await expectNoClippedContent(page);
+
+    await page.close();
+  });
+
+  // #3234 — the page's width, measured rather than asserted as a class.
+  //
+  // The route move (#2894) left TWO width containers on this page: the route's own
+  // `PageContainer width="reading"` (max-w-3xl) with the view's `width="full"`
+  // nested inside it, which the inner one cannot undo. A `lg:grid-cols-4` board
+  // inside a 768px measure is a ~170px tile, and at that width the title span ran
+  // straight under the `shrink-0` domain chip beside it — "VO2" printed through
+  // ENDURANCE in about eight of the thirteen tiles.
+  //
+  // A CLASS ASSERTION CANNOT SEE THIS. Every class in that tree was the intended
+  // one; what was wrong was two of them being applied at once, one file apart. So
+  // this reads boxes — the title's and the chip's — in ONE browser-side layout
+  // pass, at both widths the 2026-08-19 census shot.
+  async function tileHeaderGeometry(page: Page) {
+    return page.evaluate(() => {
+      // `button[...]`, not a bare prefix match: the tile's own header spans are
+      // `fitness-tile-title` / `fitness-tile-domain`, which share the prefix. The
+      // tile is the only BUTTON in that namespace.
+      const tiles = Array.from(
+        document.querySelectorAll('button[data-testid^="fitness-tile-"]')
+      );
+      const collisions: string[] = [];
+      let narrowest = Infinity;
+      for (const tile of tiles) {
+        const title = tile.querySelector('[data-testid="fitness-tile-title"]');
+        const chip = tile.querySelector('[data-testid="fitness-tile-domain"]');
+        if (!title || !chip) continue;
+        const t = title.getBoundingClientRect();
+        const c = chip.getBoundingClientRect();
+        narrowest = Math.min(narrowest, tile.getBoundingClientRect().width);
+        // An INTERSECTION is overlap on BOTH axes. Comparing only the x edges
+        // would call a title that wraps below the chip a collision, and comparing
+        // only y would call every same-row pair one.
+        const overlapX = Math.min(t.right, c.right) - Math.max(t.left, c.left);
+        const overlapY = Math.min(t.bottom, c.bottom) - Math.max(t.top, c.top);
+        if (overlapX > 0 && overlapY > 0) {
+          collisions.push(
+            `${tile.getAttribute("data-testid")}: "${(title.textContent ?? "").trim()}" ` +
+              `[${Math.round(t.left)}–${Math.round(t.right)}] overlaps its chip ` +
+              `[${Math.round(c.left)}–${Math.round(c.right)}] by ` +
+              `${Math.round(overlapX)}×${Math.round(overlapY)}px`
+          );
+        }
+      }
+      return { collisions, narrowest, tiles: tiles.length };
+    });
+  }
+
+  test("one container owns the page width, so no tile title paints through its chip (#3234)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+
+    await page.goto("/training/fitness-check");
+    // Wait for the CONTENT the measurement is about, not the container: a grid
+    // with no tiles in it fits any width and would pass for the wrong reason
+    // (#3384).
+    const grid = page.getByTestId("fitness-grid");
+    await expect(grid).toBeVisible();
+    const titles = page.getByTestId("fitness-tile-title");
+    const tileCount = await titles.count();
+    // The battery's length is not this spec's business; that a 4-column board has
+    // enough tiles to HAVE a fourth column is.
+    expect(tileCount).toBeGreaterThan(GRID_COLUMNS_DESKTOP);
+    await expect(titles.nth(tileCount - 1)).toBeVisible();
+
+    // The page's one h1, from the shared PageHeader — the route used to render no
+    // page heading at all, only a back link, with "Fitness check" living as an h2
+    // inside a card (#1449: a page's identity does not sit inside a content
+    // container).
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveCount(1);
+    await expect(h1).toHaveText("Fitness check");
+
+    const desktop = await tileHeaderGeometry(page);
+    expect(desktop.tiles).toBe(tileCount);
+    expect(desktop.collisions, desktop.collisions.join("\n")).toEqual([]);
+    // The width the un-nesting bought — see DESKTOP_TILE_FLOOR for both measured
+    // sides. This asks "is this the 4-col board or the squeezed one", and does not
+    // pin a pixel.
+    expect(desktop.narrowest).toBeGreaterThan(DESKTOP_TILE_FLOOR);
+
+    // …and the phone, the census's other width. Two columns here, and the chip
+    // drops its text to a glyph below `sm`, so this is the case the tile header's
+    // own comment was written for — it must stay true.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(titles.nth(tileCount - 1)).toBeVisible();
+    const phone = await tileHeaderGeometry(page);
+    expect(phone.collisions, phone.collisions.join("\n")).toEqual([]);
 
     await page.close();
   });
