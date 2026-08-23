@@ -67,8 +67,7 @@ export type BodyCardId = TrendMetricSlug | "growth" | "sleep" | "hr-day";
 // daily subjective/environment pair, then clinical vitals, then the synced
 // composition tail. Clinical cards are not demoted — they are lifted BY SIGNAL when
 // they matter (a monitored condition promotes BP/SpO₂/respiratory rate), which is
-// the signal's job rather than the base order's. The Today strip (#1486) keeps the
-// vitals-first narrative; the card stack stops inheriting it.
+// the signal's job rather than the base order's.
 export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   // Composition — what people check daily. `height`/`head-circ` only exist for a
   // growth-tracked profile (membership is still planBodyCharts'); their ADULT-layout
@@ -371,7 +370,7 @@ const STRUCTURAL_SIGNAL = "life-stage";
 // their saved order, then the ranked default for everything unpinned.
 //
 // There is ONE arrangement substrate on Trends — `saved_items`, the store the
-// Overview grid's star, drag and ⋯-menu arrows already write. The body census used to
+// pinned census run's star, drag and ⋯-menu arrows write. The body census used to
 // have a second, order-only one (`trends_card_order` in profile settings) that no UI
 // ever wrote; #1643 retired it rather than completing a parallel language for one job
 // (#1485-C's convergence, at the data model instead of the interaction).
@@ -393,13 +392,22 @@ export function bodyCardOrder(
   pinned?: readonly string[] | null
 ): BodyCardId[] {
   const ranked = rankItems(BODY_ITEMS, TRENDS_CARD_TABLE, ctx);
-  const isStructural = (id: BodyCardId): boolean =>
-    ranked.some(
-      (r) => r.id === id && r.boosts.some((b) => b.key === STRUCTURAL_SIGNAL)
-    );
-  const structural = ranked.map((r) => r.id).filter(isStructural);
-  const rest = ranked.map((r) => r.id).filter((id) => !isStructural(id));
+  const structural = structuralBodyCardIds(ctx);
+  const structuralSet = new Set(structural);
+  const rest = ranked.map((r) => r.id).filter((id) => !structuralSet.has(id));
   return [...structural, ...mergeStoredOrder(rest, pinned)];
+}
+
+// Cards whose life-stage membership outranks user arrangement. The renderer needs
+// this same answer as `bodyCardOrder`: a saved height/head-circ card still gets its
+// unstar menu, but it must not enter the drag run and pull later saved cards across
+// the complete pediatric prefix.
+export function structuralBodyCardIds(ctx: TrendsSubjectContext): BodyCardId[] {
+  return rankItems(BODY_ITEMS, TRENDS_CARD_TABLE, ctx)
+    .filter((item) =>
+      item.boosts.some((boost) => boost.key === STRUCTURAL_SIGNAL)
+    )
+    .map((item) => item.id);
 }
 
 // Sort a renderer's already-built list into a card order. Items whose key is not in

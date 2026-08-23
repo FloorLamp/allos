@@ -1231,10 +1231,12 @@ async function measureReachCosts(browser) {
       await page.keyboard.press("Escape");
     }
   }
-  // Second-level examples (the #1510-pinned pair): the Overview body census and Records → Visits.
+  // #1510's second-level pair. #3387 shortened Trends: Body is now the landing
+  // surface's only census, directly below the conditional digest — no intermediate
+  // Starred or Today section remains to count.
   await page.goto(`${BASE}/trends`);
   await page.waitForTimeout(1000);
-  beginTaps("reach: Trends → Overview → body census (from Trends)");
+  beginTaps("reach: Trends → Body census (from Trends)");
   const bodyCensus = page.locator("#body").first();
   if (await bodyCensus.isVisible().catch(() => false)) endTaps();
   else endTaps("body census not visible — unmeasured");
@@ -1394,14 +1396,14 @@ async function workflowsJourney(browser) {
     log("log-food: food-log-bar not found — check shots");
   }
 
-  // Workflow: log a weight (Trends → Overview → body census quick-add).
+  // Workflow: log a weight (Trends → Body census quick-add).
   await page.goto(`${BASE}/trends#body`);
   await page.waitForTimeout(1500);
   const weight = page.locator("#bm-weight");
   if (await weight.count()) {
     await weight.scrollIntoViewIfNeeded();
     await shot(page, "workflow-weight-before");
-    beginTaps("log weight (on Trends → Overview → body census)");
+    beginTaps("log weight (on Trends → Body census)");
     await tapFill(weight, "82");
     await tapClick(page.getByRole("button", { name: "Save entry" }));
     endTaps();

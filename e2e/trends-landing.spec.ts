@@ -3,18 +3,14 @@ import { type Page } from "@playwright/test";
 
 // The Trends LANDING SURFACE (#1644): the metric census moved into Overview.
 //
-// `/trends` is now one scroll — trending digest → cross-domain starred grid → the
-// body census — while Nutrition and Insights stay tabs. What this spec
+// `/trends` is now one scroll — conditional trending digest → the Body census —
+// while Nutrition and Insights stay tabs (Fitness moved to Training → Analyze).
+// What this spec
 // pins, and why each clause is a real regression class:
 //
-//   • COMPOSITION — digest first, grid second, census LAST, in DOM order. The
-//     reading order IS the design (what changed → what you curated → the whole
-//     domain); #2151 restores the two-anchor surface by moving practice charts to
-//     /wellness.
-//   • CURATION — the grid is still the only curated area: it renders the saved set
-//     and the census below it renders everything. A census card leaking into the
-//     grid (or a second picker appearing in the census) is the #1487 contract
-//     breaking.
+//   • COMPOSITION — digest first, census LAST, in DOM order.
+//   • CURATION — saved metrics pin and reorder inside the census; its picker is the
+//     final non-card cell. Clinical-result saves render nowhere on Trends.
 //   • STREAMING — the census arrives through Suspense BELOW the head, so the head
 //     paints without waiting for ~30 body queries. Its heading and `#body` anchor
 //     are in the first byte; its content follows.
@@ -35,18 +31,16 @@ async function landingOrder(page: Page): Promise<string[]> {
     );
 }
 
-test("the landing surface reads digest → starred grid → body census", async ({
-  page,
-}) => {
+test("the landing surface reads digest → body census", async ({ page }) => {
   await page.goto("/trends");
 
   const order = (await landingOrder(page)).filter(Boolean);
-  // The two anchored parts, in reading order, with the census last.
+  // The one anchored part is the census, and it is last.
   const parts = order.filter((id) => id.startsWith("trends-section-"));
   expect(
     parts,
     "the landing surface's anchored parts, in reading order"
-  ).toEqual(["trends-section-starred", "trends-section-body"]);
+  ).toEqual(["trends-section-body"]);
   // The digest renders only when something moved, so it is asserted positionally
   // rather than for presence: when it is there, it heads the surface.
   const digest = order.indexOf("trending-digest");
@@ -54,8 +48,9 @@ test("the landing surface reads digest → starred grid → body census", async 
     expect(digest, "the digest heads the surface when it renders").toBe(0);
   }
 
-  // Both halves really render: the curated grid, and the census's own content.
-  await expect(page.getByTestId("saved-tiles")).toBeVisible();
+  // The census and its single tile flow really render. Desktop's default full-chart
+  // view keeps the tile flow mounted but hidden; `view=tiles` owns visual geometry.
+  await expect(page.getByTestId("body-metric-tiles")).toHaveCount(1);
   await expect(page.getByTestId("trends-body")).toBeVisible();
 });
 
@@ -72,21 +67,23 @@ test("the census is a section of this surface, reachable by its anchor", async (
   await expect(section.getByTestId("trends-body")).toBeVisible();
 });
 
-test("the curated grid stays the only curated area", async ({ page }) => {
-  await page.goto("/trends");
+test("the retired #starred deep link resolves to the census", async ({
+  page,
+}) => {
+  await page.goto("/trends#starred");
+  await expect(page.locator("#starred")).toHaveCount(1);
+  await expect(page.locator("section#body")).toBeInViewport();
+  await expect(page.getByTestId("trends-body")).toBeVisible();
+});
 
-  // Curation lives in the grid: its tiles are saved rows, and the picker that adds
-  // to them is the grid's, not the census's.
-  const grid = page.getByTestId("trends-section-starred");
-  await expect(grid.getByTestId("saved-tiles")).toBeVisible();
-  await expect(grid.getByTestId("save-trend-picker-toggle")).toBeVisible();
-  await expect(grid.getByTestId("save-trend-picker")).not.toBeVisible();
-  // The census renders its domain unconditionally and offers no second curation
-  // surface — the ★ it honours is written one scroll up (#1643).
+test("clinical-result saves do not enter the census", async ({ page }) => {
+  await page.goto("/trends?view=tiles");
+
   const census = page.getByTestId("trends-section-body");
-  await expect(census.getByTestId("saved-tiles")).toHaveCount(0);
-  await expect(census.getByTestId("save-trend-picker-toggle")).toHaveCount(0);
-  await expect(census.getByTestId("save-trend-picker")).toHaveCount(0);
+  await expect(census.getByTestId("body-metric-tiles")).toBeVisible();
+  await expect(census.getByText("Lipoprotein(a)", { exact: true })).toHaveCount(
+    0
+  );
 });
 
 test("the census streams below the head instead of blocking it", async ({
@@ -100,7 +97,8 @@ test("the census streams below the head instead of blocking it", async ({
   // The head, the tab strip, and the census's heading + anchor are in the shell…
   expect(html).toContain('data-testid="trends-overview"');
   expect(html).toContain('data-testid="trends-tabs"');
-  expect(html).toContain('data-testid="trends-section-starred"');
+  expect(html).not.toContain('data-testid="trends-section-starred"');
+  expect(html).toContain('id="starred"');
   expect(html).toContain('data-testid="trends-section-body"');
   // …and the census content rides the same streamed response (the Suspense
   // boundary flushes it after the head rather than dropping it).
@@ -128,40 +126,28 @@ test("the shared window drives the head and the census together", async ({
 }) => {
   // One range control at the surface's head, not one per part: a window change
   // re-renders both halves.
-  await page.goto("/trends?range=all");
-  await expect(page.getByTestId("saved-tiles")).toBeVisible();
+  await page.goto("/trends?range=all&view=tiles");
+  await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
   await expect(page.getByTestId("trends-context-label")).toHaveText("All");
 });
 
-test("every starred tile shows its whole title, never a mid-word clip (#2523)", async ({
+test("every census tile shows its whole title, never a mid-word clip (#2523)", async ({
   page,
 }) => {
-  // The starred grid is the only curated area on this surface, and its tile
-  // titles were being HARD-CLIPPED from the `sm:` breakpoint up: `truncate`
+  // Census tile titles must not be HARD-CLIPPED from the `sm:` breakpoint up: `truncate`
   // supplies `overflow: hidden`, `sm:whitespace-normal` re-enabled wrapping, and
   // `sm:text-clip` removed the ellipsis, so a token wider than the ~110px the
   // value leaves it was cut mid-glyph with nothing to signal the loss.
-  // `Lipoprotein(a)` rendered as `Lipoprotein(` — and the `(a)` is the entire
-  // distinction between Lp(a) and ordinary lipoprotein, so that is a WRONG LABEL,
-  // not a truncated one. The seed stars it, which is why this needs no fixture.
-  //
   // Measured, not eyeballed: a wrapped-but-whole title has content no wider and
   // no taller than the box it renders into. `scrollWidth`/`scrollHeight` are
   // integers rounded UP from fractional layout, so a 1px allowance is the
   // rounding, not slack (#2505) — the defect this pins overflowed by tens of px.
   await page.goto("/trends");
-  const grid = page.getByTestId("trends-section-starred");
-  await expect(grid.getByTestId("saved-tiles")).toBeVisible();
-
-  const lpa = grid
-    .getByTestId("trend-mini-card")
-    .filter({ hasText: "Lipoprotein(a)" });
+  const grid = page.getByTestId("body-metric-tiles");
   // Anchored on the named tile, but asserted over the WHOLE grid: the widest
   // value on a row is what squeezes its neighbour's title, so one tile cannot
   // prove the grid. (A text assertion would prove nothing either way — the DOM
   // always carries the full string; the loss is purely visual, hence measured.)
-  await expect(lpa).toHaveCount(1);
-
   const clipped = await grid
     .getByTestId("trend-mini-header-link")
     .locator("span[title]")

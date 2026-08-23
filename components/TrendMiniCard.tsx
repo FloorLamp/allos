@@ -11,7 +11,7 @@ import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A compact trend tile for the Trends hub's Overview grid: the latest value with a
+// A compact trend tile for the Trends hub's Body census: the latest value with a
 // net-change badge over the visible window, its linked name, and a small sparkline.
 // The data is pre-windowed and already in display units by the caller (the hub
 // converts kg/km at the boundary), so this component only formats and draws it. An
@@ -45,9 +45,9 @@ import type { AppRoute } from "@/lib/hrefs";
 //     headline, the plot's job is the SHAPE of the move, not its magnitude.
 //
 // The old COMPACT VARIANT (#1485 A) remains available to non-grid callers, but the
-// saved Overview grid no longer uses it: #2153 keeps an empty tile in its saved
-// slot at the same minimum geometry as every other card. The sparse fallback below
-// is also full-size because it carries a real number.
+// Body census no longer uses it: empty tiles keep the same minimum geometry as
+// their neighbors. The sparse fallback below is also full-size because it carries
+// a real number.
 //
 // The change badge is driven by robustSeriesSummary — the SAME robust-endpoint
 // computation the "what's trending" digest above uses (#398) — so the tile's arrow
@@ -97,8 +97,8 @@ export default function TrendMiniCard({
   // Percentile movement is not inherently good or bad, so composite growth turns
   // off the green/red directional badge while retaining its plotted trajectory.
   showChange?: boolean;
-  // The tile's corner ⋯ menu (star / reorder). Omitted by tile grids that carry no
-  // per-tile controls (the body census).
+  // The tile's corner ⋯ menu (unstar / reorder). The Body census supplies it only
+  // for the pinned run; ranked cards keep the whole header as their tap target.
   menu?: ReactNode;
   // Render as a one-line row rather than a card (#1485 A). Only meaningful for a
   // tile with no points AND no out-of-window reading.

@@ -3,24 +3,23 @@ import type { TrendsLandingSection } from "@/lib/trends-sections";
 
 // The section frame of the merged Trends landing surface (#1644).
 //
-// One shell for both of its parts — the starred grid and the body census — so a
-// part's anchor, heading level, scroll offset and testid are decided ONCE rather
-// than twice. The `id` IS the section id from lib/trends-sections: the value every
-// retired `?tab=body` link was rewritten to through `trendsSectionHref`.
+// The streamed Body census shell. Its canonical id and retired Starred alias share
+// one scroll position, so old deep links survive without reviving a second section.
 export default function TrendsSectionShell({
   id,
+  legacyId,
   heading,
   description,
   quietHeading = false,
   children,
 }: {
   id: TrendsLandingSection;
+  legacyId?: "starred";
   heading: string;
   description?: string;
-  // The page HEAD carries no heading band (#1485 F reclaimed it, and the tab
-  // strip already names the surface): the starred grid keeps its heading in the
-  // accessibility tree only, so the first tile stays inside the wave's ~400px
-  // target. The census below scrolls into view under a visible heading.
+  // The page head carries no heading band (#1485 F reclaimed it, and the tab
+  // strip already names the surface), so the census heading stays in the
+  // accessibility tree without spending a second visible row.
   quietHeading?: boolean;
   children: ReactNode;
 }) {
@@ -33,6 +32,9 @@ export default function TrendsSectionShell({
       data-testid={`trends-section-${id}`}
       aria-labelledby={`trends-section-${id}-heading`}
     >
+      {legacyId ? (
+        <span id={legacyId} className="scroll-mt-28" aria-hidden />
+      ) : null}
       <div className={quietHeading ? undefined : "space-y-1"}>
         <h2
           id={`trends-section-${id}-heading`}

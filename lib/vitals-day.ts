@@ -1,12 +1,8 @@
-// The Trends → Vitals tab's TODAY layer (issue #1466) — PURE model.
+// The Trends Body census's 1D intraday layer (issue #1466) — PURE model.
 //
-// Two questions live here, and both are FORMATTERS over series the section already
-// reads (#221 "one question, one computation" — no second data path is opened):
-//
-//   A. "What are my vitals right now?" — the latest reading of each vital on the
-//      profile's today, with its clock time, for the Today strip.
-//   B. "What did today actually look like?" — the 1D (intraday) swap: readings
-//      positioned on a fixed 5-minute slot grid spanning 00:00–24:00.
+// It answers "What did today actually look like?" with readings positioned on a
+// fixed 5-minute slot grid spanning 00:00–24:00. #3387 retired the sibling Today
+// strip; the intraday chart remains the distinct clock-axis view.
 //
 // WHY A SLOT GRID (and not the #402 epoch axis). recharts treats a string dataKey
 // as a CATEGORY axis, where x-position is the array INDEX — which is exactly the
@@ -34,7 +30,7 @@ import {
 
 // ── Reading time ─────────────────────────────────────────────────────────────
 
-// The minimal row shape both layers read. Deliberately a structural subset of
+// The minimal row shape the intraday formatter reads. A structural subset of
 // ClinicalObservation (and satisfiable by a synthetic {date, value_num} for the daily
 // aggregates), so the section can hand this module the rows it already has.
 export interface VitalReadingRow {
@@ -91,106 +87,7 @@ export function vitalReadingTime(
   return parts.date === row.date ? parts.hhmm : null;
 }
 
-// ── A. The Today strip ───────────────────────────────────────────────────────
-
-export interface VitalReading {
-  value: number;
-  // Local "HH:MM", or null for a day-granular reading.
-  time: string | null;
-}
-
-// The latest numeric reading of ONE vital on `date`, or null when the day carries
-// none. "Latest" is by clock time where the rows have one, falling back to insert
-// order (id) — the same tie-break the series queries use (date, then id).
-export function latestVitalOn(
-  rows: VitalReadingRow[],
-  date: string,
-  tz: string
-): VitalReading | null {
-  let best: VitalReading | null = null;
-  let bestMinute = -1;
-  let bestId = -1;
-  for (const row of rows) {
-    if (row.date !== date) continue;
-    const value = row.value_num;
-    if (value == null || !Number.isFinite(value)) continue;
-    const time = vitalReadingTime(row, tz);
-    const minute = time != null ? (clockMinute(time) ?? -1) : -1;
-    const id = row.id ?? 0;
-    if (
-      best != null &&
-      (minute < bestMinute || (minute === bestMinute && id < bestId))
-    ) {
-      continue;
-    }
-    best = { value, time };
-    bestMinute = minute;
-    bestId = id;
-  }
-  return best;
-}
-
-// One vital's entry in the strip spec. `pairRows` exists for blood pressure, which
-// is TWO stored analytes but ONE reading a person recognizes — it renders as a
-// single "118/76" cell rather than two half-answers.
-export interface TodayVitalSpec {
-  key: string;
-  label: string;
-  unit: string;
-  rows: VitalReadingRow[];
-  pairRows?: VitalReadingRow[];
-  decimals?: number;
-  // Cumulative quantities such as steps are easier to scan with digit grouping.
-  groupThousands?: boolean;
-}
-
-export interface TodayVitalRow {
-  key: string;
-  label: string;
-  value: string;
-  unit: string;
-  time: string | null;
-}
-
-function formatValue(value: number, decimals = 0): string {
-  const factor = 10 ** decimals;
-  const rounded = Math.round(value * factor) / factor;
-  return String(rounded);
-}
-
-// The Today strip's rows: the latest reading of each spec'd vital on `date`, in the
-// spec's order, with vitals that have nothing today DROPPED. An empty day therefore
-// returns [] and the caller renders no strip at all — never an empty frame.
-export function buildTodayVitalsStrip(
-  specs: TodayVitalSpec[],
-  date: string,
-  tz: string
-): TodayVitalRow[] {
-  const out: TodayVitalRow[] = [];
-  for (const spec of specs) {
-    const primary = latestVitalOn(spec.rows, date, tz);
-    if (!primary) continue;
-    const decimals = spec.decimals ?? 0;
-    let value = spec.groupThousands
-      ? Math.round(primary.value).toLocaleString("en-US")
-      : formatValue(primary.value, decimals);
-    if (spec.pairRows) {
-      const secondary = latestVitalOn(spec.pairRows, date, tz);
-      if (secondary)
-        value = `${value}/${formatValue(secondary.value, decimals)}`;
-    }
-    out.push({
-      key: spec.key,
-      label: spec.label,
-      value,
-      unit: spec.unit,
-      time: primary.time,
-    });
-  }
-  return out;
-}
-
-// ── B. The 1D intraday swap ──────────────────────────────────────────────────
+// ── The 1D intraday swap ────────────────────────────────────────────────────
 
 // The slot width of the intraday grid — the SAME bucket the #1068 panel
 // downsamples HR to, so the two surfaces resolve the day identically.
@@ -204,7 +101,7 @@ export interface IntradayVitalPoint {
 
 // A day's TIMED readings of one vital, ascending. Rows with no resolvable clock
 // time are excluded on purpose: an untimed reading cannot be positioned honestly on
-// a clock axis, so it stays in the Today strip instead of being pinned to a lie.
+// a clock axis, so it is excluded instead of being pinned to a lie.
 export function intradayVitalPoints(
   rows: VitalReadingRow[],
   date: string,

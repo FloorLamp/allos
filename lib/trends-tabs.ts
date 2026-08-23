@@ -5,8 +5,9 @@
 // on a Server Component (which the pure tier structurally can't see).
 //
 // #1486 retired the **Vitals** tab into Body. #1489 retired **Compare** into
-// Insights. #1644 retired **Body** itself into Overview. #3512 deliberately
-// reverses #1492 and retires **Fitness** into Training → Analyze, leaving three
+// Insights. #1644 retired **Body** itself: its census moved onto the Overview
+// landing surface (conditional digest → body census). #3512 then deliberately
+// reversed #1492 and retired **Fitness** into Training → Analyze, leaving three
 // tabs in frequency order: Overview | Nutrition | Insights.
 //
 // #1489's Compare retirement stays a VOCABULARY MAPPING — one alias entry here,

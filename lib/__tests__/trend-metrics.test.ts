@@ -14,6 +14,7 @@ import {
   collapseCoincidentPeriods,
   seriesCoverageNote,
   trendMetricChartScale,
+  trendMetricCensusEntries,
   type OrderableTile,
 } from "@/lib/trend-metrics";
 
@@ -26,6 +27,17 @@ describe("TREND_METRIC_META registry", () => {
       const meta = TREND_METRIC_META[slug];
       expect(meta.slug).toBe(slug);
     }
+  });
+
+  it("drives the complete Body census from the registered metric set (#3387)", () => {
+    const gathered = Object.fromEntries(
+      TREND_METRIC_SLUGS.map((slug) => [slug, slug])
+    ) as Record<(typeof TREND_METRIC_SLUGS)[number], string>;
+    const census = trendMetricCensusEntries(gathered);
+
+    expect(census.map(([slug]) => slug)).toEqual(TREND_METRIC_SLUGS);
+    expect(census).toContainEqual(["peak-flow", "peak-flow"]);
+    expect(census).toContainEqual(["waist-circ", "waist-circ"]);
   });
 
   it("only weight carries the login weight-unit suffix; others are static", () => {
@@ -236,6 +248,69 @@ describe("orderTrendMetricTiles", () => {
       "sleep",
       "weight",
       "bmi",
+    ]);
+  });
+
+  it("keeps an empty-window saved metric inside the pinned run (#3387)", () => {
+    const ordered = orderTrendMetricTiles(
+      [
+        {
+          slug: "steps",
+          id: "steps",
+          label: "Steps",
+          present: true,
+          empty: true,
+        },
+        {
+          slug: "weight",
+          id: "weight",
+          label: "Weight",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "sleep",
+          id: "sleep",
+          label: "Sleep",
+          present: true,
+          empty: false,
+        },
+      ],
+      ["steps", "weight", "sleep"],
+      ["steps", "weight"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "steps",
+      "weight",
+      "sleep",
+    ]);
+  });
+
+  it("keeps the complete life-stage prefix ahead of later movable pins", () => {
+    const tiles: OrderableTile[] = [
+      { slug: "growth", id: "growth", label: "Growth", present: true },
+      { slug: "height", id: "height", label: "Height", present: true },
+      {
+        slug: "head-circ",
+        id: "head-circ",
+        label: "Head circumference",
+        present: true,
+      },
+      { slug: "steps", id: "steps", label: "Steps", present: true },
+      { slug: "weight", id: "weight", label: "Weight", present: true },
+    ];
+    const ordered = orderTrendMetricTiles(
+      tiles,
+      ["growth", "height", "head-circ", "steps", "weight"],
+      ["height", "steps"],
+      ["growth", "height", "head-circ"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "growth",
+      "height",
+      "head-circ",
+      "steps",
+      "weight",
     ]);
   });
 });

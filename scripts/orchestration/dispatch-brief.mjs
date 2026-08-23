@@ -236,11 +236,27 @@ const RESERVED_PORT_REASON = (base) =>
     ? `port base ${base} is inside 6000-6099, which Next refuses ("Bad port: reserved for x11")`
     : null;
 
+// THE SAME SPLIT, FOR THE SAME REASON: a collision is a property of the BASE, so
+// the check is a predicate over the active roster rather than a step inside the
+// allocator. The reserved-band lesson above was learned and then only half
+// applied — `--port-base` was routed past the 6000-6099 rule and fixed, while it
+// stayed routed past the "is anyone else on this range" rule, which is the one an
+// allocator existed to answer. On 2026-08-23 I passed `--port-base 7600` for a
+// live e2e lane while a retired-but-unclosed dispatch still held 7600 in the
+// ledger; nothing complained, and the two would have shared a range had the first
+// lane's agent still been alive. A caller who supplies the answer never asks the
+// question — so ask it of the answer.
+export function portBaseCollision(base, active) {
+  const clash = active.find((d) => d.portBase === base);
+  return clash
+    ? `port base ${base} is already held by the active dispatch ${clash.branch}`
+    : null;
+}
+
 function allocatePortBase(active) {
-  const taken = new Set(active.map((d) => d.portBase).filter(Boolean));
   for (let base = 5400; base < 9000; base += 200) {
     if (RESERVED_PORT_REASON(base)) continue;
-    if (!taken.has(base)) return base;
+    if (!portBaseCollision(base, active)) return base;
   }
   throw new Error(
     "no free E2E port range — close finished dispatches with `done <branch>`"
@@ -272,6 +288,13 @@ function buildBrief(opts) {
   if (reserved) {
     throw new Error(
       `${reserved}. Drop --port-base to let the allocator pick, or choose one outside that band.`
+    );
+  }
+  const collision = opts.portBase && portBaseCollision(opts.portBase, active);
+  if (collision) {
+    throw new Error(
+      `${collision}. Drop --port-base to let the allocator pick, or close that ` +
+        `dispatch first with \`done ${opts.portBase && active.find((d) => d.portBase === opts.portBase).branch}\`.`
     );
   }
   const portBase = opts.portBase ?? allocatePortBase(active);

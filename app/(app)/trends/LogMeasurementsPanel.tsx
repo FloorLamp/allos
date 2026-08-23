@@ -97,8 +97,7 @@ export default function LogMeasurementsPanel(
   }, [deepLinkDestination, openQuickEntry]);
 
   return (
-    // Desktop-only container: on a phone this renders nothing at all, so the tab
-    // opens on the Today strip.
+    // Desktop-only container: phones use the global measurements entry surface.
     <div className="hidden md:block" data-testid="log-measurements-panel">
       <div
         className="relative z-40 flex items-center justify-center"
