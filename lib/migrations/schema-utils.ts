@@ -2,6 +2,7 @@
 // in this leaf module (no import cycle back into lib/db.ts) so both can use it.
 
 import Database from "better-sqlite3";
+import { isBusyError } from "../sqlite-error";
 
 // Run a one-time boot/migration transaction with the write lock taken at BEGIN
 // (IMMEDIATE) and a bounded retry on SQLITE_BUSY. `next build` collects page data
@@ -17,6 +18,27 @@ import Database from "better-sqlite3";
 // migration's up() in IMMEDIATE, and a boot task may call runBootTx inside it —
 // better-sqlite3 turns the inner transaction into a SAVEPOINT and ignores the
 // access mode, so this is safe at either the top level or nested.
+//
+// THE RETRY IS KEYED ON `err.code`, NEVER ON THE MESSAGE (#3442). This guard read
+// `/SQLITE_BUSY/i.test(String(err))` from the day it was written and therefore had
+// NEVER retried anything: better-sqlite3 stringifies a busy error to exactly
+// `SqliteError: database is locked`, and puts the result code on `.code`. The one
+// real wait was the single `busy_timeout`, and the "bounded retry backstop" this
+// comment describes was dead code — proven when #3438's repair migration held the
+// write lock for 2m24s and a boot worker 5 s behind CRASHED after 122 s instead of
+// waiting. `isBusyError` matches the code prefix, so SQLITE_BUSY_SNAPSHOT (the
+// deferred-upgrade flavour, which busy_timeout does NOT cover) retries too.
+//
+// THE BOUND IS ATTEMPTS, NOT MILLISECONDS, and the two are not interchangeable
+// here. Each attempt re-issues BEGIN IMMEDIATE, which parks in SQLite's busy
+// handler for up to the connection's busy_timeout — BOOT_LOCK_TIMEOUT_MS (60 s) on
+// the boot path (lib/db.ts). So `attempts = 5` bounds the worst case at ~5 minutes
+// of waiting for the flavours busy_timeout covers, and at five immediate re-BEGINs
+// for SQLITE_BUSY_SNAPSHOT, which it does not. Five is chosen against the measured
+// collision: lib/db.ts names three steady-state writers, so the realistic pile-up
+// is 2-3 deep, and a worker that loses five races in a row to a peer whose own boot
+// has already been given a full minute is not queued behind traffic — something is
+// wedged, and failing loudly beats waiting forever.
 export function runBootTx(
   tx: { immediate: () => unknown },
   attempts = 5
@@ -26,7 +48,7 @@ export function runBootTx(
       tx.immediate();
       return;
     } catch (err) {
-      if (attempt < attempts && /SQLITE_BUSY/i.test(String(err))) continue;
+      if (attempt < attempts && isBusyError(err)) continue;
       throw err;
     }
   }

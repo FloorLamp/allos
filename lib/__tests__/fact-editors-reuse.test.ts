@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { makeTmpDir } from "./tmp-dir";
 
 // #3218: facts-with-editors is ONE shared primitive, not a shape each form redraws.
 //
@@ -338,7 +338,7 @@ describe("CONSUMERS is a census of the tree, not a list someone remembers (#3300
     // comply proves nothing about that. So the read-and-match path is run over a file
     // written to defeat the obvious implementation: a consumer whose source carries a raw
     // NUL, which ripgrep calls binary and skips without `-a` (#3206).
-    const dir = mkdtempSync(path.join(os.tmpdir(), "fact-census-"));
+    const dir = makeTmpDir("fact-census");
     const forked = path.join(dir, "ForkedSurface.tsx");
     writeFileSync(
       forked,

@@ -16,8 +16,8 @@
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 function open(file: string): Database.Database {
   const db = new Database(file);
@@ -35,7 +35,7 @@ describe("DEFERRED read-then-write trap vs IMMEDIATE (issue #468)", () => {
   let b: Database.Database;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-tx-"));
+    dir = makeTmpDir("tx");
     file = path.join(dir, "t.db");
     a = open(file);
     b = open(file);

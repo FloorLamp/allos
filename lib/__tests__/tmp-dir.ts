@@ -1,0 +1,220 @@
+// THE ONE TEMP-DIRECTORY MAKER FOR THE TEST TREE (#3248, and #2529 before it).
+//
+// WHY A SHARED SUBSTRATE RATHER THAN ANOTHER TEARDOWN. #2529 found 13,615
+// stranded `/tmp/allos-db-shared-*` directories eating the whole writable
+// allowance, and fixed it where it found it: an `afterAll` in
+// `lib/__db_tests__/setup-shared.ts`. That fix WORKS and still works — measured
+// on this container 2026-08-23, `allos-db-shared-*` was 14 of 3,248 stranded
+// directories, 0.4%. What came back at scale (#3248: 19,221 directories, 24 GB)
+// was the SAME LEAK THROUGH DIFFERENT CALL SITES: `allos-jsonl-*` at 846,
+// `allos-email-notify-*` at 488, the four `allos-offsite-*` prefixes at 1,220
+// between them — every one a `fs.mkdtempSync` written straight into a spec with
+// no teardown at all.
+//
+// So the regression was never "the fix stopped holding". A PER-SITE fix cannot
+// cover sites that do not exist yet, and this tree grew twenty more of them. The
+// only fix that cannot regress the same way is one that (a) every site shares and
+// (b) a guard REQUIRES every site to use — `./tmp-dir-census.test.ts` fails the
+// build on a raw `mkdtempSync` under a test directory.
+//
+// TWO DEFENCES, AND THE ORDER MATTERS.
+//
+//   1. A SWEEP AT CREATION TIME, which is the load-bearing one. An `afterAll`
+//      hook — or the exit hook below — cannot run in a process that was KILLED,
+//      and on this box that is the normal way a run ends: agents hitting a
+//      10-minute tool cap mid-`agent-gates.sh`, a foreground Bash call timing out
+//      at 2 minutes and killing `npm run test` mid-flight, contention kills,
+//      container restarts. Sweeping stale siblings before we create our own
+//      reclaims those by CONSTRUCTION, with no cooperation from the process that
+//      leaked them.
+//   2. A best-effort unlink of this process's own directories at exit, so a
+//      cleanly-exiting run nets zero rather than waiting out the staleness
+//      threshold. This is the nicety; the sweep is the guarantee.
+//
+// Nothing here changes the `afterAll`/rolling-discard logic in the db-tier setup
+// files. That logic is correct for the exits it can see, and #3248 explicitly put
+// it out of scope.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// Every temp entry the test tree creates starts with this, so ONE sweep pattern
+// covers all of them. It is also why the census refuses a bare `mkdtempSync`:
+// a spec that invents its own prefix (`nul-census-`, `fact-census-`,
+// `gitleaks-range-`, `dose-scan-census-` — 379 stranded directories between them,
+// measured 2026-08-23) is invisible to the sweep and to the check-in's counters.
+export const TMP_PREFIX = "allos-";
+
+// HOW OLD AN ENTRY MUST BE BEFORE THE SWEEP WILL UNLINK IT, in milliseconds of
+// wall clock since its mtime.
+//
+// The unit is "age of a directory that a LIVE run might still be writing to", and
+// the bound has to exceed the longest a single temp directory is legitimately held
+// open. The longest-lived one in the tree is `allos-db-shared-*`: it is seeded in
+// `beforeAll` and discarded by the NEXT file's `beforeAll`, so it lives for one
+// test file — and the whole DB tier has been measured at ~190 s end to end
+// (#3248). One hour is ~19x that, which also covers a worker starved on this box's
+// measured load of 22 on 4 cores. Deliberately generous: reclaiming an hour late
+// costs disk that was already stranded, whereas sweeping a live run's fixture out
+// from under it fails a test with a mystery ENOENT.
+export const STALE_AFTER_MS = 60 * 60 * 1000;
+
+// Sweep ONCE PER PROCESS, not once per created directory. The sweep is O(entries
+// in /tmp) and nothing it would reclaim on a second pass could have aged past the
+// threshold during a single test run.
+let swept = false;
+
+// This process's own directories, unlinked at exit. Not a Set: order does not
+// matter and the list is short.
+const mine: string[] = [];
+let exitHookInstalled = false;
+
+/**
+ * Unlink every `/tmp/allos-*` entry (file or directory) whose mtime is older than
+ * `STALE_AFTER_MS`. Returns how many entries it removed.
+ *
+ * Exported so the census test can drive it against a corpus rather than against
+ * the real `/tmp`, and so a human can call it deliberately.
+ */
+export function sweepStaleTmpEntries(
+  root: string = os.tmpdir(),
+  now: number = Date.now(),
+  staleAfterMs: number = STALE_AFTER_MS
+): number {
+  let names: string[];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const name of names) {
+    if (!name.startsWith(TMP_PREFIX)) continue;
+    const full = path.join(root, name);
+    try {
+      // lstat, not stat: a dangling symlink named `allos-*` must still be
+      // reclaimable, and we never want to follow one out of the temp root.
+      const age = now - fs.lstatSync(full).mtimeMs;
+      if (age < staleAfterMs) continue;
+      fs.rmSync(full, { recursive: true, force: true });
+      removed++;
+    } catch {
+      // A concurrent sweep from a sibling agent's vitest worker got there first,
+      // or the entry belongs to another uid. Neither is worth failing a test over
+      // — the next run sweeps again.
+    }
+  }
+  return removed;
+}
+
+function sweepOnce(): void {
+  if (swept) return;
+  swept = true;
+  const removed = sweepStaleTmpEntries();
+  // NOT silent when it finds something, and silent when it does not. #3248's
+  // author could not do the per-prefix A/B that would have named the real leaker
+  // because nothing had ever announced the backlog; a line here would have
+  // surfaced it months earlier. Printing on every clean `npm run test:db` would
+  // train everyone to ignore it, so the line only appears when there was in fact
+  // something to reclaim.
+  if (removed > 0) {
+    console.warn(
+      `[tmp-dir] swept ${removed} stale /tmp/${TMP_PREFIX}* entries (older than ${
+        STALE_AFTER_MS / 60_000
+      } min) — a previous run was killed before it could clean up (#3248)`
+    );
+  }
+}
+
+function installExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => {
+    for (const dir of mine) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // Best effort by definition — we are inside an exit handler. The sweep
+        // above is what actually guarantees the directory goes away.
+      }
+    }
+  });
+}
+
+/**
+ * Make a throwaway temp directory for a test, named `/tmp/allos-<label>-XXXXXX`.
+ *
+ * `label` is the old per-suite prefix WITHOUT the `allos-` and without the
+ * trailing dash: `makeTmpDir("jsonl")` produces what
+ * `mkdtempSync(path.join(os.tmpdir(), "allos-jsonl-"))` used to.
+ *
+ * Callers may still delete the directory themselves; nothing here requires it.
+ */
+export function makeTmpDir(label: string): string {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(label)) {
+    throw new Error(
+      `makeTmpDir: label must be lowercase words and digits joined by dashes, got ${JSON.stringify(label)}`
+    );
+  }
+  sweepOnce();
+  installExitHook();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${TMP_PREFIX}${label}-`));
+  mine.push(dir);
+  return dir;
+}
+
+// ---------------------------------------------------------------------------
+// The guard's scanner (driven by ./tmp-dir-census.test.ts).
+//
+// Kept beside the helper rather than inside the test file so the rule and the
+// thing that enforces it live together, and so the census can run the scanner
+// over a corpus authored to BREAK it.
+
+/** One test-tree source that makes a temp directory without going through here. */
+export interface RawTmpCallSite {
+  file: string;
+  line: number;
+  text: string;
+}
+
+// The construct as this repo actually spells it, in every variant present when
+// the census was written:
+//   fs.mkdtempSync(path.join(os.tmpdir(), "allos-jsonl-"))
+//   mkdtempSync(path.join(os.tmpdir(), "nul-census-"))       // named import
+//   fsMod.mkdtempSync(...)                                    // aliased namespace
+//   fs.mkdtemp(...)  /  fs.promises.mkdtemp(...)              // async, none today
+// So: match the METHOD NAME, with or without a receiver, rather than any
+// particular import spelling — a census keyed to one import style is blind to the
+// other two, which are both in the tree.
+const RAW_MKDTEMP = /(?:^|[^\w.])(?:[\w$]+\.)*mkdtemp(?:Sync)?\s*\(/;
+
+/**
+ * Find every raw `mkdtemp` call in the given sources. Pure over (path, source)
+ * pairs so the census can feed it a synthetic corpus.
+ *
+ * `allowed` is the small set of paths that may name the construct: this module,
+ * which is the one place that calls it, and the census, which must QUOTE it in a
+ * corpus authored to break the guard. Anything else is a leak waiting to happen.
+ */
+export function findRawTmpCallSites(
+  sources: ReadonlyArray<{ file: string; source: string }>,
+  allowed: readonly string[]
+): RawTmpCallSite[] {
+  const out: RawTmpCallSite[] = [];
+  for (const { file, source } of sources) {
+    if (allowed.includes(file)) continue;
+    const lines = source.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const text = lines[i] ?? "";
+      // A comment or a doc line that NAMES the construct in order to argue about
+      // it is not a call site. Several already exist (this file has four), and a
+      // guard that cried wolf on them would be deleted within a week — taking the
+      // real guard with it.
+      const code = text.replace(/^\s*(\/\/|\*|\/\*).*$/, "");
+      if (!RAW_MKDTEMP.test(code)) continue;
+      out.push({ file, line: i + 1, text: text.trim() });
+    }
+  }
+  return out;
+}

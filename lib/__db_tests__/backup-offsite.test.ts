@@ -16,10 +16,7 @@ import path from "node:path";
 import { replicateToOffsite, listUploadFiles } from "@/lib/backup";
 import { verificationSidecarName } from "@/lib/backup-verify";
 import { OFFSITE_SENTINEL } from "@/lib/backup-offsite";
-
-function mkTmp(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 // Mark a temp dir as a verified, MOUNTED off-volume destination (#463): the
 // replicator refuses to write into a root without the sentinel.
@@ -49,9 +46,9 @@ describe("replicateToOffsite (copy path)", () => {
   let uploads: string;
 
   beforeEach(() => {
-    srcDir = mkTmp("allos-offsite-src-");
-    destDir = mkTmp("allos-offsite-dest-");
-    uploads = mkTmp("allos-offsite-uploads-");
+    srcDir = makeTmpDir("offsite-src");
+    destDir = makeTmpDir("offsite-dest");
+    uploads = makeTmpDir("offsite-uploads");
     // The destination is a real, verified mount for the happy-path cases below.
     markMounted(destDir);
   });
@@ -168,8 +165,8 @@ describe("replicateToOffsite mount detection (#463)", () => {
   let uploads: string;
 
   beforeEach(() => {
-    srcDir = mkTmp("allos-offsite-src-");
-    uploads = mkTmp("allos-offsite-uploads-");
+    srcDir = makeTmpDir("offsite-src");
+    uploads = makeTmpDir("offsite-uploads");
     writeSnapshot(srcDir, "allos-2026-07-10-0300.db");
   });
 
@@ -193,7 +190,7 @@ describe("replicateToOffsite mount detection (#463)", () => {
   });
 
   it("skips when the root exists but has no sentinel (bare/unmounted mount point)", () => {
-    const bare = mkTmp("allos-offsite-bare-"); // exists, but no sentinel written
+    const bare = makeTmpDir("offsite-bare"); // exists, but no sentinel written
     const r = replicateToOffsite("allos-2026-07-10-0300.db", {
       destDir: bare,
       sourceBackupsDir: srcDir,
@@ -212,7 +209,7 @@ describe("replicateToOffsite mount detection (#463)", () => {
   });
 
   it("replicates once the sentinel is present", () => {
-    const dest = mkTmp("allos-offsite-mounted-");
+    const dest = makeTmpDir("offsite-mounted");
     markMounted(dest);
     const r = replicateToOffsite("allos-2026-07-10-0300.db", {
       destDir: dest,
@@ -237,7 +234,7 @@ describe("listUploadFiles", () => {
   });
 
   it("walks nested files with relative paths + sizes", () => {
-    const root = mkTmp("allos-uploads-walk-");
+    const root = makeTmpDir("uploads-walk");
     writeUpload(root, "medical/1/a.pdf", "AAA");
     writeUpload(root, "medical/1/nested/b.pdf", "BB");
     const entries = listUploadFiles(root).sort((x, y) =>

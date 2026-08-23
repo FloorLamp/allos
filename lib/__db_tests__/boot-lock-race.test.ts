@@ -50,13 +50,13 @@ import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { Worker } from "node:worker_threads";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   acquireBootLock,
   BOOT_LOCK_TIMEOUT_MS,
 } from "@/lib/migrations/schema-utils";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 // Worker body (eval'd raw JS, no TS transform): optionally take the advisory boot
 // lock (the cooperating-booter shape), then open the main file, establish WAL, take
@@ -145,7 +145,7 @@ function peerWrites(db: Database.Database): number {
 
 describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   it("a boot write with busy_timeout set FIRST waits out a peer's lock and succeeds", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
+    const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
       // A generous hold: the before/after reads below prove the contention was real,
@@ -203,7 +203,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   });
 
   it("the same write with busy_timeout DISABLED throws the raw SQLITE_BUSY the bug reported", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
+    const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
       // 1000ms hold so the probe reliably overlaps it even if worker→main message
@@ -233,7 +233,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   // round 1 merged, reproduced with the timeout scaled down (150ms) against a
   // longer hold (700ms).
   it("RESIDUAL: a peer holding the lock LONGER than busy_timeout still throws SQLITE_BUSY without the boot lock", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
+    const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
       const { err } = await withHeldLock(file, 1000, () => {
@@ -259,7 +259,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   // and only then touches the main DB, where there is no contention left, so a
   // busy_timeout of ZERO never comes into play.
   it("the advisory boot lock rescues the hold-longer-than-timeout case", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
+    const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
       const HOLD = 1000;
@@ -328,7 +328,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
   });
 
   it("acquireBootLock is mutually exclusive in-process, releasable, and skips :memory:", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
+    const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
       expect(acquireBootLock(":memory:")).toBeNull();
