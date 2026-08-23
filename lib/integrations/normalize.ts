@@ -1024,6 +1024,89 @@ export function supersedeMetricSampleOverlaps(
   return { removed, overlapsLeft: left.size + inPushDoubleCounts };
 }
 
+/**
+ * THE DAY A RE-SENT ROW IS FILED UNDER (#3428, the write-side half).
+ *
+ * `metric_samples.date` is a PROFILE-LOCAL day the app derived at ingest from the row's
+ * own instants, under `getTimezone(profileId)` — the zone in force AT THE MOMENT OF THE
+ * PUSH. The natural key omits `date` (migration 083), so a re-send of the same row lands
+ * as an ON CONFLICT UPDATE, and before this function every re-send RE-DERIVED that day
+ * under whatever zone the profile holds NOW.
+ *
+ * That is a live corruption after a travel switch, measured on prod (#3428, owner
+ * 2026-08-23T05:42:56Z): the 08-21 night (`sleep_min` 01:15Z → 08:59Z) was hand-repaired
+ * from wake-day 08-20 back to 08-21 at 03:13Z, and the next push six minutes later put
+ * all 72 rows of that session back on 08-20 under Honolulu. The exporter re-sends a sleep
+ * session on EVERY push while it is inside its 48 h window, not only on change, so the
+ * re-dating recurs for two days after a switch and no hand repair sticks.
+ *
+ * THE RULE: a stored `date` is not recomputed by a re-send. It is #3428's decision 4
+ * ("stored `date` columns keep winning — a day attribution is a decision the app already
+ * made", the rule `rowLocalDay` already applies on READ) moved to the write, so the store
+ * and the reader finally agree. The row's day stays the one it was attributed under the
+ * zone in force when it was attributed, which is what `zoneAt(profileId, instant)` would
+ * compute for every row whose instants did not move — i.e. every row of a re-send.
+ *
+ * IT IS NOT `zoneAt`, AND THAT IS DELIBERATE. The resolver of #3428 item 3 needs the
+ * COMPLETE, unbounded switch history of item 2, which does not exist: today's
+ * `profile_settings.timezone_switches` is written only by `switchProfileTimezone`
+ * (`lib/settings/travel.ts`) — a Settings or onboarding `setTimezone` leaves no record at
+ * all — and it is pruned (`MAX_STORED_SWITCHES` / `SWITCH_RETENTION_DAYS`). A resolver
+ * over that history would silently do nothing on the Settings path. Item 2 is also
+ * blocked on the owner's `kind: travel | settings` discriminator (#3428 comments of
+ * 2026-08-23T00:58Z and 01:01:51Z), because #3263's `isExcusedSlot` / `isRepeatedSlot`
+ * read travel switches ONLY. So this lane takes the owner's stated alternative — "or
+ * simply a stored `date` is not recomputed by a re-send" — and the resolver replaces it
+ * when the history it needs is real.
+ *
+ * THE ONE EXCEPTION, AND WHY IT IS NOT OPTIONAL: A RE-ANCHORABLE DAY BUCKET.
+ *
+ * `isSupersedingWindow` names the rows whose `date` is not an attribution of an instant
+ * at all — a `daily` steps / distance / calories record, whose window IS "the device's
+ * local day so far". When the device changes zone it re-cuts "today", and #3424's
+ * overlap-supersede collapses the stale anchoring — but only over candidates filed under
+ * THE BUCKET'S OWN `date` (`AND date = ?` in `supersedeMetricSampleOverlaps`, the term
+ * #3424 round 10 added after a version without it emptied a day). Freeze a stale day
+ * bucket's `date` and it is stranded on a day no later bucket ever shares, so it can
+ * never be collapsed, and its double count is not even REPORTED by `overlapsLeft`, which
+ * is scoped to the victim's own date too. MEASURED on this branch by deleting the two
+ * lines below: `travel-hc-double-count` reds `expected 3500 to be 6500`, and probing the
+ * store after its third push returns
+ *     [{"date":"2026-05-01","value":3500},{"date":"2026-05-02","value":3000}]
+ * — 6500 recorded for 3500 walked, split across two days instead of one, permanent (no
+ * later push can reach 05-02) and silent. A bug made quieter is worse than the bug
+ * (`lib/metric-window-overlap.ts`), so day buckets keep re-deriving.
+ *
+ * The predicate is the SAME one the supersede filters its own stamped rows with, over the
+ * INCOMING window — which is exactly the window the updated row will carry when
+ * `supersedeMetricSampleOverlaps` reads it back, since `ended_at = excluded.ended_at`.
+ * One predicate, so the freeze and the collapse cannot disagree about which rows tile.
+ *
+ * NOT GATED ON THE SOURCE, unlike `OVERLAP_SUPERSEDE_SOURCE`. That gate exists because
+ * the supersede DELETES readings, so it must never reach a source whose windows it has
+ * not been argued about. This one only DECLINES TO OVERWRITE a day the store already
+ * chose, which is the conservative direction for every source: Health Connect, the Fitbit
+ * takeout and Strava all derive `date` from the PROFILE's zone and re-send (a rolling 48 h
+ * window, a re-import, a trailing re-scan), and for the sources that carry their own day
+ * (Oura's `day`, the manual writers, the glucose trace) `date` is a function of the
+ * natural key, so there is nothing for this to change.
+ */
+function resendDay(
+  incoming: NormMetricSample,
+  twin: MetricSampleTwin | undefined
+): string {
+  if (!twin) return incoming.date;
+  if (
+    isSupersedingWindow(
+      incoming.metric,
+      incoming.started_at,
+      incoming.ended_at
+    )
+  )
+    return incoming.date;
+  return twin.date;
+}
+
 export function upsertMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
@@ -1044,6 +1127,10 @@ export function upsertMetricSamples(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value,
+       -- excluded.date IS NOT THE PAYLOAD'S DATE ON A RE-SEND (#3428). The bound
+       -- parameter is resendDay()'s answer, which for everything but a re-anchorable
+       -- day bucket is the STORED day. See its header: a re-send must not re-attribute
+       -- a row to a day it was not lived in.
        date = excluded.date,
        ended_at = excluded.ended_at,
        activity_external_id = COALESCE(
@@ -1117,22 +1204,28 @@ export function upsertMetricSamples(
       VETO_TALLY[veto](counts);
       continue;
     }
+    // #3428: the day this row is FILED under, which on a re-send is the day the store
+    // already chose. `resendDay`'s header carries the whole argument.
+    const date = resendDay(r, found);
     const info = stmt.run(
       profileId,
       source,
       r.origin ?? null,
       r.metric,
-      r.date,
+      date,
       r.started_at,
       r.ended_at,
       r.value,
       r.activity_external_id ?? null,
       pushedAt
     );
+    // COMPARED AGAINST THE DAY ACTUALLY WRITTEN, not against `r.date`. A re-send carrying
+    // a zone-shifted day now stores nothing new, so Review must call it `unchanged`
+    // rather than reporting an update that did not happen (#3428).
     const equal =
       !!found &&
       found.value === r.value &&
-      found.date === r.date &&
+      found.date === date &&
       found.ended_at === r.ended_at &&
       (r.activity_external_id == null ||
         found.activity_external_id === r.activity_external_id);
