@@ -71,6 +71,12 @@ export function attentionCandidates(
         changed:
           item.signalGroup === "flagged" || item.signalGroup === "review",
       },
+      // The candidate's rank tiebreak IS this list's index, so the order the
+      // model arrives in decides which owed `must` doses survive
+      // NOW_CANDIDATE_CAP when they all score alike. buildAttentionModel states
+      // and guarantees that order — date → priority → domain → dose-day slot
+      // (#297) → title → key — so this index means the canonical dose-day order,
+      // never raw generator emission (#3554).
       sourceOrder: sourceOrder + index,
     };
     return actionable
