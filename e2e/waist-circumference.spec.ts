@@ -33,6 +33,13 @@ test.describe("the waist-circ metric detail page (#2322)", () => {
       username: E2E_LOGIN_WAIST,
       password: E2E_MEMBER_PASSWORD,
     });
+    await page.goto("/trends?view=tiles");
+    const censusTile = page.getByTestId("body-tile-waist-circ");
+    await expect(censusTile).toBeVisible();
+    await expect(
+      censusTile.getByTestId("trend-mini-header-link")
+    ).toHaveAttribute("href", "/trends/metric/waist-circ");
+
     await page.goto("/trends/metric/waist-circ");
 
     await expect(

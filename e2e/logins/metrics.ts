@@ -99,7 +99,7 @@ export const SHELL_DOSE_AMOUNT = "1000 IU";
 export const SHELL_PRACTICE = "Shell Sauna (e2e)";
 export const SHELL_PRACTICE_PER_WEEK = 3;
 
-// #1466 — the Trends → Vitals tab's Today strip + 1D (intraday) view. A DEDICATED
+// #1466/#3387 — the retired Today strip and surviving 1D intraday view. A DEDICATED
 // member login + adult profile carrying a full BODY day: today's weight/body fat,
 // per-minute HR across the morning (the 1D heart-rate chart), two TIMED
 // blood-pressure pairs and two timed SpO2 readings ingest-shaped so each carries
@@ -110,9 +110,6 @@ export const SHELL_PRACTICE_PER_WEEK = 3;
 // move those totals. Synthetic, no PHI; the spec only reads.
 export const E2E_LOGIN_VITALS_DAY = "e2e_vitalsday";
 export const VITALS_DAY_PROFILE = "Vitals Day (e2e)";
-// The later of the day's two BP pairs — the one that must win the strip's "latest".
-export const VITALS_DAY_BP_LATER = "126/82";
-export const VITALS_DAY_BP_LATER_TIME = "09:40";
 export const VITALS_DAY_TEMP_TIME = "08:05";
 export const VITALS_DAY_RESTING_HR = "54";
 export const VITALS_DAY_WEIGHT_KG = 78.4;

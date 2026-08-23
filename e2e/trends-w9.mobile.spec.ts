@@ -84,34 +84,6 @@ test.describe("the range-pill row says that it scrolls (#1485 D)", () => {
   });
 });
 
-test.describe("training volume draws bars, not a sawtooth (#1485 D)", () => {
-  test("the volume tile renders bar marks where the level tiles render lines", async ({
-    page,
-  }) => {
-    await page.goto("/trends?range=all");
-    const volume = page
-      .getByTestId("saved-tiles")
-      .locator('[data-sparkline-shape="bar"]');
-    // Exactly one bar-shaped tile in the seeded grid (training volume) — a count on
-    // a SHAPE, not on a shared-seed row set, so it does not break when the seed
-    // grows a biomarker.
-    await expect(volume).toHaveCount(1);
-
-    // The marks themselves: bars, and no line path inside that tile.
-    await expect
-      .poll(async () => volume.locator(".recharts-bar-rectangle").count())
-      .toBeGreaterThan(1);
-    await expect(volume.locator(".recharts-line")).toHaveCount(0);
-
-    // The level tiles are untouched — the variant is applied to volume-shaped
-    // series, not to every tile.
-    const lines = page
-      .getByTestId("saved-tiles")
-      .locator('[data-sparkline-shape="line"]');
-    await expect.poll(async () => lines.count()).toBeGreaterThan(0);
-  });
-});
-
 test.describe("the compare block at 390px (#1493 B)", () => {
   test("pickers stack full-width and the normalize toggle clears the touch floor", async ({
     page,

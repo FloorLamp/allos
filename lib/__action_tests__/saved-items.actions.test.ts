@@ -11,7 +11,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { toggleSavedItem, reorderSaved } from "@/app/(app)/saved-actions";
+import {
+  toggleSavedItem,
+  reorderSaved,
+  reorderSavedMetrics,
+} from "@/app/(app)/saved-actions";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -37,7 +41,8 @@ describe("toggleSavedItem", () => {
     expect(saved(profile.id)).toEqual([
       { kind: "clinical-result", key: "ApoB" },
     ]);
-    // A save is membership on three surfaces at once — that IS the issue.
+    // Trends no longer renders clinical-result saves (#3387); the shared action
+    // still revalidates it because metric pins use the same write boundary.
     const paths = revalidate.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/trends");
     expect(paths).toContain("/results");
@@ -227,5 +232,40 @@ describe("reorderSaved", () => {
     actAs(login, profile, "read");
 
     await expect(reorderSaved(order(["result:ApoB"]))).rejects.toThrow();
+  });
+});
+
+describe("reorderSavedMetrics", () => {
+  const order = (keys: string[]) => fd({ keys: JSON.stringify(keys) });
+
+  it("reorders metric pins without moving interleaved clinical-result slots", async () => {
+    const { profile } = seedActor();
+    await toggleSavedItem(fd({ key: "metric:weight" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
+    await toggleSavedItem(fd({ key: "metric:steps" }));
+    await toggleSavedItem(fd({ key: "result:Ferritin" }));
+    const beforeKinds = saved(profile.id).map((row) => row.kind);
+
+    const res = await reorderSavedMetrics(
+      order(["metric:weight", "metric:steps"])
+    );
+
+    expect(res.ok).toBe(true);
+    expect(saved(profile.id).map((row) => row.kind)).toEqual(beforeKinds);
+    expect(
+      saved(profile.id)
+        .filter((row) => row.kind === "trend-metric")
+        .map((row) => row.key)
+    ).toEqual(["weight", "steps"]);
+    expect(
+      saved(profile.id)
+        .filter((row) => row.kind === "clinical-result")
+        .map((row) => row.key)
+    ).toEqual(["Ferritin", "ApoB"]);
+  });
+
+  it("refuses a list with no metric keys", async () => {
+    seedActor();
+    expect((await reorderSavedMetrics(order(["result:ApoB"]))).ok).toBe(false);
   });
 });

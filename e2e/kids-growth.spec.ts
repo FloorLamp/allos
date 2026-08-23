@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { hydratedClick, settledBoxes } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Kids growth trends. For a CHILD profile the Trends → Overview → body census prioritizes
 // height (WHO/CDC growth percentiles + a height/head-circ chart), offers a manual
@@ -59,6 +61,27 @@ async function setWeightUnit(page: Page, value: "kg" | "lb") {
     .first(); // first-ok: the weight-unit select, filtered by its lb option — one match
   await select.selectOption(value);
   await expect(page.getByLabel("Saved")).toBeVisible();
+}
+
+function setRileyMetricSave(key: string, saved: boolean): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare("SELECT id FROM profiles WHERE name = 'Riley (child)'")
+      .get() as { id: number };
+    if (saved) {
+      db.prepare(
+        "INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'trend-metric', ?)"
+      ).run(row.id, key);
+    } else {
+      db.prepare(
+        "DELETE FROM saved_items WHERE profile_id = ? AND kind = 'trend-metric' AND key = ?"
+      ).run(row.id, key);
+    }
+  } finally {
+    db.close();
+  }
 }
 
 test.describe.serial("kids growth trends", () => {
@@ -215,6 +238,62 @@ test.describe.serial("kids growth trends", () => {
     }
     await page.goto("/trends/metric/head-circ");
     await expect(page.getByTestId("metric-measurement-toggle")).toBeVisible();
+  });
+
+  test("saved growth metrics keep the complete life-stage prefix ahead of movable pins", async ({
+    page,
+  }) => {
+    setRileyMetricSave("height", true);
+    setRileyMetricSave("steps", true);
+    try {
+      await switchProfile(page, "Riley (child)");
+      await page.goto("/trends?view=tiles");
+
+      const grid = page.getByTestId("body-metric-tiles");
+      const ordered = await grid.evaluate((element) => {
+        const ids = [
+          "body-tile-growth-height",
+          "body-tile-height",
+          "body-tile-head-circ",
+          "body-tile-steps",
+        ];
+        return ids
+          .map((id) => ({
+            id,
+            node: element.querySelector(`[data-testid="${id}"]`),
+          }))
+          .filter((entry): entry is { id: string; node: Element } =>
+            Boolean(entry.node)
+          )
+          .sort((a, b) =>
+            a.node.compareDocumentPosition(b.node) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+              ? -1
+              : 1
+          )
+          .map((entry) => entry.id);
+      });
+      expect(ordered).toEqual([
+        "body-tile-growth-height",
+        "body-tile-height",
+        "body-tile-head-circ",
+        "body-tile-steps",
+      ]);
+
+      await hydratedClick(
+        page,
+        grid
+          .locator('[data-tile-key="metric:height"]')
+          .getByTestId("overflow-menu-trigger")
+      );
+      const menu = page.getByTestId("trend-tile-menu");
+      await expect(menu.getByTestId("star-toggle")).toBeVisible();
+      await expect(menu.getByTestId("saved-move-up")).toHaveCount(0);
+      await expect(menu.getByTestId("saved-move-down")).toHaveCount(0);
+    } finally {
+      setRileyMetricSave("height", false);
+      setRileyMetricSave("steps", false);
+    }
   });
 
   test("adult profile: unchanged layout, no growth affordance", async ({

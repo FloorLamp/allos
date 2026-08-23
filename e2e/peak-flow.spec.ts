@@ -33,6 +33,13 @@ test.describe("with no personal best there is no verdict (#1850)", () => {
       username: E2E_LOGIN_PEAK_FLOW,
       password: E2E_MEMBER_PASSWORD,
     });
+    await page.goto("/trends?view=tiles");
+    const censusTile = page.getByTestId("body-tile-peak-flow");
+    await expect(censusTile).toBeVisible();
+    await expect(
+      censusTile.getByTestId("trend-mini-header-link")
+    ).toHaveAttribute("href", "/trends/metric/peak-flow");
+
     await page.goto("/trends/metric/peak-flow");
 
     const zone = page.getByTestId("peak-flow-zone");

@@ -3,7 +3,11 @@
 import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { toggleClinicalResultSaved } from "@/lib/queries";
-import { setSavedOrder, toggleItemSaved } from "@/lib/queries/saved";
+import {
+  setSavedKindOrder,
+  setSavedOrder,
+  toggleItemSaved,
+} from "@/lib/queries/saved";
 import {
   isSavedKind,
   savedRefFromSeriesKey,
@@ -80,6 +84,34 @@ export async function reorderSaved(formData: FormData): Promise<FormResult> {
   }
   if (refs.length === 0) return formError("Couldn't read that order.");
   setSavedOrder(profile.id, refs);
+  revalidateRoute("/trends");
+  return formOk();
+}
+
+// Re-sequence only the metric pins rendered at the head of the Body census
+// (#3387). Clinical-result saves no longer render on Trends, but they remain one
+// unified saved_items list for Results and the passport. The kind-scoped writer
+// preserves those hidden rows' slots instead of moving them as a side effect of a
+// reorder surface that cannot see them.
+export async function reorderSavedMetrics(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(formData.get("keys") ?? ""));
+  } catch {
+    return formError("Couldn't read that order.");
+  }
+  if (!Array.isArray(raw)) return formError("Couldn't read that order.");
+  const refs: SavedRef[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const ref = savedRefFromSeriesKey(entry);
+    if (ref?.kind === "trend-metric") refs.push(ref);
+  }
+  if (refs.length === 0) return formError("Couldn't read that order.");
+  setSavedKindOrder(profile.id, "trend-metric", refs);
   revalidateRoute("/trends");
   return formOk();
 }

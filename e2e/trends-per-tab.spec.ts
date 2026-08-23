@@ -8,15 +8,30 @@ const INSIGHTS_MARKER = "Date to analyze";
 test("direct navigation renders only the requested Trends section (#105/#3512)", async ({
   page,
 }) => {
-  await page.goto("/trends");
+  // Overview (default): neither the Insights form nor the Fitness sections render —
+  // even though this tab now also carries the body census (#1644).
+  await page.goto("/trends?view=tiles");
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
   await expect(page.getByTestId("trends-fitness")).toHaveCount(0);
-  await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: proves the overview census mounted
+  await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
 
+  // The Overview tiles render (fed by the deduped one-source-per-day series and the
+  // robust-endpoint change badge — #395/#398). Since #1487 the grid is the profile's
+  // SAVED set: the seed's standard metric saves are why the "Weight" tile is here,
+  // and its full header links to the metric detail page.
+  const weightTile = page.locator(
+    '[data-testid="pinned-census-tile"][data-tile-key="metric:weight"]'
+  );
+  await expect(weightTile).toBeVisible();
+  await expect(
+    weightTile.getByTestId("trend-mini-header-link")
+  ).toHaveAttribute("href", "/trends/metric/weight");
+
+  // Insights: its generate form renders; the Fitness section does not.
   await page.goto("/trends?tab=insights");
   await expect(page.getByRole("tab", { name: "Insights" })).toHaveAttribute(
     "aria-selected",

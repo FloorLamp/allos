@@ -82,7 +82,9 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     expect(tileBox).not.toBeNull();
     expect(tileHeaderBox).not.toBeNull();
     expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(44);
-    expect(tileHeaderBox!.width).toBeGreaterThan(tileBox!.width * 0.75);
+    // A pinned tile now reserves a separate ⋯ control beside the header. The
+    // detail link keeps a full tap target without claiming the menu's width.
+    expect(tileHeaderBox!.width).toBeGreaterThanOrEqual(44);
     // The full chart is one tap away on its metric detail page, never inline on
     // mobile Overview (#2152). Following the header proves the whole tap target;
     // its hover paint is deliberately not part of the phone contract.
@@ -91,17 +93,9 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await page.goBack();
     await expect(page.getByTestId("body-tiles-view")).toBeVisible();
 
-    // With the redundant controls gone, the tiles follow the Today card directly
-    // without reintroducing horizontal clipping.
-    const todayBox = await page.getByTestId("vitals-today-strip").boundingBox();
-    const tilesBox = await tiles.boundingBox();
-    expect(todayBox).not.toBeNull();
-    expect(tilesBox).not.toBeNull();
-    if (todayBox && tilesBox) {
-      expect(tilesBox.y - (todayBox.y + todayBox.height)).toBeLessThanOrEqual(
-        9
-      );
-    }
+    // #3387 retires the duplicate Today card; the census is the one rendering of
+    // each metric on Overview.
+    await expect(page.getByTestId("vitals-today-strip")).toHaveCount(0);
 
     // 1D follows the same phone rule: no full chart exception on Overview.
     await expandTrendsContext(page);
@@ -193,10 +187,13 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
             item.firstElementChild?.getAttribute("data-testid") ?? "unknown"
         )
       );
-    expect(renderedOrder.indexOf("body-tile-weight")).toBeGreaterThan(
+    // Weight is a standard saved metric, so #3387's pinned run keeps its saved
+    // position even when the selected window is empty. Empty-last still applies
+    // to the ranked (unpinned) remainder; it must not override the user's pin.
+    expect(renderedOrder.indexOf("body-tile-weight")).toBeLessThan(
       renderedOrder.indexOf("body-tile-hr")
     );
-    expect(renderedOrder.indexOf("body-tile-weight")).toBeGreaterThan(
+    expect(renderedOrder.indexOf("body-tile-weight")).toBeLessThan(
       renderedOrder.indexOf("body-tile-sleep")
     );
 
@@ -375,8 +372,7 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expectNoClippedContent(page);
 
     // A card fills its own grid cell rather than leaving a vacant strip beside it.
-    // Read atomically: the stack shares a page with the starred grid above, whose
-    // sparklines settle after mount (#1644).
+    // Read atomically after the streamed census settles (#1644).
     const cellWidths = await page.evaluate(() => {
       const stack = document.querySelector('[data-testid="body-chart-stack"]');
       const card = document.querySelector('[data-testid="vitals-resting-hr"]');
