@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardioPR, PR } from "@/lib/coaching";
 import {
-  FITNESS_SECTIONS,
   MAX_FITNESS_WEEKS,
   MIN_FITNESS_WEEKS,
   WINDOW_PR_LIMIT,
@@ -48,23 +47,6 @@ function cpr(over: Partial<CardioPR> = {}): CardioPR {
     ...over,
   };
 }
-
-describe("FITNESS_SECTIONS", () => {
-  it("is the four PINNED sections, in render order", () => {
-    expect(FITNESS_SECTIONS.map((s) => s.id)).toEqual([
-      "volume",
-      "zones",
-      "strength",
-      "sport",
-    ]);
-    expect(FITNESS_SECTIONS.map((s) => s.label)).toEqual([
-      "Volume & cadence",
-      "Zones & cardio",
-      "Strength progression",
-      "Sport",
-    ]);
-  });
-});
 
 describe("fitnessWindow", () => {
   it("resolves the hub's default 90D window to a closed [from, to] of 90 days", () => {

@@ -1,53 +1,16 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expandTrendsContext } from "./trends-chrome";
-import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
+import { expectNoClippedContent, hydratedClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_FITNESS,
   TRENDS_FITNESS_LIFT,
-  TRENDS_FITNESS_OLD_LIFT,
 } from "./fixture-logins";
 
-// #1492 — Trends → Fitness became the WINDOWED ANALYTICS LENS.
-//
-// The audit measured this tab worse than anything else on the page: the first
-// chart sat at 1,776px (Strength) / 2,031px (Cardio) on a 390×844 phone, behind a
-// 12-month heatmap and a 14-row PR list, under a NESTED `?ftab=` tab strip, and
-// none of it honored the hub's shared range. So the four things this spec pins are
-// exactly the four things that were wrong:
-//
-//   1. a range change RE-WINDOWS every chart (the tab is not full-history any more)
-//   2. NO nested tab strip renders (sections, not tabs-in-tabs)
-//   3. the first chart is inside the first viewport-height at the 90D default
-//   4. the PR block is 3 rows + a "show all" link into /training
-//
-// …plus the compatibility clause: an old `?tab=fitness&ftab=cardio` deep link (the
-// coaching engine's zone nudge shipped one for months) still lands on Fitness.
-//
-// Fixture (#868 hygiene): a dedicated read-only member/profile whose training data
-// STRADDLES the 90-day window — recent sessions inside it, a deep-past block
-// (2026-01-*) only reachable at All time. Without a straddling fixture "the range
-// re-windows the charts" can't be observed, only asserted. Read-only: the spec
-// navigates and taps range pills, so --repeat-each stays clean.
-
-// The range pills are links; match EXACTLY (a bare "90D" also substring-matches the
-// movers digest's "… over 90d" chips on other tabs — the #1485 G note).
-const rangePill = (page: Page, label: string) =>
-  page.getByRole("link", { name: label, exact: true });
-
-async function openFitness(page: Page): Promise<void> {
-  await page.goto("/trends?tab=fitness");
-  // The tab strip AND the range pills collapse into the #1485 F context bar at
-  // phone width; every assertion below reads one or the other, so open it once.
-  await expandTrendsContext(page);
-  await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
-  await expect(page.getByTestId("trends-fitness")).toBeVisible();
-}
+// #3512 deliberately reverses #1492: Training → Analyze is the one fitness-
+// analytics surface. Its default is the windowed All training view; selecting an
+// entity drills into the existing per-entity analysis.
 
 async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {
   return loginAs(browser, {
@@ -56,199 +19,111 @@ async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {
   });
 }
 
-test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
-  test("the four sections render and no nested tab strip does", async ({
+test.describe("Training → Analyze, All training (#3512)", () => {
+  test("the default moves only workout history and data-backed zones", async ({
     browser,
   }) => {
     const page = await signIn(browser);
-    await openFitness(page);
+    await page.goto("/training?tab=analyze");
 
-    // Exactly the four PINNED sections (owner-decided composition).
-    await expect(page.getByTestId("fitness-volume")).toBeVisible();
-    await expect(page.getByTestId("fitness-zones")).toBeVisible();
-    await expect(page.getByTestId("fitness-strength")).toBeVisible();
-    await expect(page.getByTestId("fitness-sport")).toBeVisible();
+    await expect(page.getByTestId("analyze-all-training")).toBeVisible();
+    await expect(page.getByLabel("Exercise or activity")).toHaveValue(
+      "All training"
+    );
 
-    // The tab LEADS with the workout history: the day-history calendar
-    // (coverage) plus a matrix row per activity type the fixture trained in
-    // the window (composition).
     const history = page.getByTestId("workout-history");
     await expect(history).toBeVisible();
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
-    const rowButton = history
-      .getByRole("button", { name: /View occurrences for/ })
-      .first(); // first-ok: every workout row shares the same phone stacking contract
-    await rowButton.click();
-    const [calendarBox, rowBox] = await settledBoxes([
-      history.getByTestId("day-history-calendar-panel"),
-      history.getByTestId("day-history-rowpanel"),
-    ]);
-    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
-    await expectNoClippedContent(page);
 
-    // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
-    // plain in-page anchors, never a third tab level — so no tab by those names
-    // exists, and the only selected tab is the hub's own.
-    for (const name of ["Strength", "Cardio", "Sport"]) {
-      await expect(page.getByRole("tab", { name, exact: true })).toHaveCount(0);
+    // This fixture has no workout-scoped HR minutes, so the moved section does
+    // not reserve standing empty chrome. e2e/training-zones.spec.ts owns the
+    // positive, data-present render.
+    await expect(page.getByTestId("fitness-zones")).toHaveCount(0);
+
+    // The four amended retirements do not follow their old mount.
+    for (const testId of [
+      "fitness-volume",
+      "fitness-strength",
+      "fitness-sport",
+      "fitness-window-prs",
+    ]) {
+      await expect(page.getByTestId(testId)).toHaveCount(0);
     }
-    // Four consecutive headed sections do not need a third navigation layer on
-    // phones. The long-page shortcut is a desktop-only dropdown.
-    await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
-    await expect(page.getByTestId("chart-jump-menu")).not.toBeVisible();
-
-    // The old un-windowed content is gone with its apology: the tab used to say
-    // "Strength, cardio, and sport progress (full history)" beside a "Full
-    // Training →" link, on a hub promising one shared date range.
-    await expect(page.getByText("(full history)")).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /Full Training/ })).toHaveCount(
-      0
-    );
-
-    await page.close();
-  });
-
-  test("the first chart is inside the first viewport-height at the 90D default", async ({
-    browser,
-  }) => {
-    const page = await signIn(browser);
-    await openFitness(page);
-
-    // No ?from/?to → the hub's 90D default (#1485 G), which is the state the audit
-    // measured. The first chart is now the workout-history calendar the tab leads
-    // with, and it must be reachable without scrolling past a pre-chart wall.
-    const firstChart = page.getByTestId("workout-day-history");
-    const box = await firstChart.boundingBox();
-    expect(box).not.toBeNull();
-    const viewport = page.viewportSize();
-    expect(viewport).not.toBeNull();
-    // The card's TOP inside the first screen (the audit's 1,776px → under 844px).
-    expect(box!.y).toBeLessThan(viewport!.height);
-
-    // And nothing is pushed past the right edge at 390px — measured per element
-    // (#1543), since the app shell clips the overflow a page-level width
-    // comparison would look for.
     await expectNoClippedContent(page);
-
     await page.close();
   });
 
-  test("the PR block shows three rows and links the rest to /training", async ({
+  test("Analyze's range control re-windows the workout history", async ({
     browser,
   }) => {
     const page = await signIn(browser);
-    await openFitness(page);
+    await page.goto("/training?tab=analyze");
 
-    const prs = page.getByTestId("fitness-window-prs");
-    await expect(prs).toBeVisible();
-    await expect(prs).toContainText("PRs this window");
-    // The compact movers treatment: at most three rows, never the 14-row list.
-    const rows = prs.getByRole("listitem");
-    expect(await rows.count()).toBeLessThanOrEqual(3);
-    expect(await rows.count()).toBeGreaterThan(0);
-
-    // "Show all" leaves the lens for the do-surface.
-    const showAll = prs.getByTestId("fitness-prs-show-all");
-    await expect(showAll).toBeVisible();
-    await expect(showAll).toHaveAttribute("href", /\/training/);
-
-    await page.close();
-  });
-
-  test("a range change re-windows every chart", async ({ browser }) => {
-    const page = await signIn(browser);
-    await openFitness(page);
-
-    // ── At the 90D default: only the in-window training shows. ────────────────
-    const strength = page.getByTestId("fitness-strength");
-    await expect(strength).toContainText(TRENDS_FITNESS_LIFT);
-    // The deep-past lift (2026-01) is outside a 90-day window, so nothing on the
-    // tab names it — not the est-1RM lead, not the movers list.
-    await expect(strength).not.toContainText(TRENDS_FITNESS_OLD_LIFT);
-
-    // The workout-history calendar is scoped to the window too: ~13 week
-    // columns, not 12 months. Its earliest drawn cell can precede the window by
-    // up to a week (the grid is week-column aligned), never by months.
-    const ninetyDayFirstCell = await page
-      .getByTestId("workout-history")
+    const history = page.getByTestId("workout-history");
+    const defaultFirst = await history
       .getByTestId("day-history-calendar")
       .locator("[data-date]")
-      .first() // first-ok: the grid's oldest cell — the measurement's subject, order is the grid's own
+      .first() // first-ok: the grid's oldest bucket is the window measurement
       .getAttribute("data-date");
-    expect(ninetyDayFirstCell).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // The sport section counts only the window's matches.
-    await expect(page.getByTestId("fitness-sport")).toContainText("2 sessions");
-
-    // ── Switch to All time: the deep-past block appears everywhere. ───────────
-    await followLink(page, rangePill(page, "All time"), /range=all/);
-    await expect(page.getByTestId("trends-fitness")).toBeVisible();
-    // The navigation re-renders the page with the bar collapsed again.
-    await expandTrendsContext(page);
-
-    // Strength: the old lift is now in the window, so it reaches the movers list.
-    await expect(page.getByTestId("fitness-strength")).toContainText(
-      TRENDS_FITNESS_OLD_LIFT
-    );
-    // Sport: the deep-past match joins the count.
-    await expect(page.getByTestId("fitness-sport")).toContainText("3 sessions");
-    // Cadence: the workout history widened back to its 12-month cap, so its
-    // oldest cell is strictly older than the 90-day grid's. Above the 13-week
-    // day cap the history re-grains to WEEKS (#2413) — a year of day cells is
-    // the thing that does not scale — so the widened window is read off the
-    // single-row week strip, and the day calendar is gone rather than clamped.
-    const history = page.getByTestId("workout-history");
+    await page.getByLabel("Range").selectOption("all");
+    await expect(page).toHaveURL(/tab=analyze&range=all/);
+    await expect(page.getByTestId("analyze-all-training")).toBeVisible();
     await expect(history.getByTestId("day-history-calendar")).toHaveCount(0);
-    const allTimeFirstCell = await history
+    const allTimeFirst = await history
       .getByTestId("day-history-strip")
       .locator("[data-date]")
-      .first() // first-ok: same subject as above — the grid's oldest cell
+      .first() // first-ok: the widened grid's oldest bucket is the comparison
       .getAttribute("data-date");
-    expect(allTimeFirstCell! < ninetyDayFirstCell!).toBe(true);
-
-    // ── And back to 90D: the window closes again (not a one-way widening). ────
-    await followLink(page, rangePill(page, "90D"), /from=/);
-    await expandTrendsContext(page);
-    await expect(page.getByTestId("fitness-strength")).not.toContainText(
-      TRENDS_FITNESS_OLD_LIFT
-    );
-    await expect(page.getByTestId("fitness-sport")).toContainText("2 sessions");
-    // …and the grain closes with it: a quarter is day cells again.
-    await expect(
-      page.getByTestId("workout-history").getByTestId("day-history-calendar")
-    ).toBeVisible();
+    expect(allTimeFirst! < defaultFirst!).toBe(true);
 
     await page.close();
   });
 
-  test("an old ?tab=fitness&ftab=cardio deep link still lands on Fitness", async ({
+  test("the picker drills into an entity and provides the door back", async ({
+    browser,
+  }) => {
+    const page = await signIn(browser);
+    await page.goto("/training?tab=analyze");
+
+    const picker = page.getByLabel("Exercise or activity");
+    await hydratedClick(page, picker);
+    await picker.fill(TRENDS_FITNESS_LIFT);
+    await page.getByRole("option", { name: TRENDS_FITNESS_LIFT }).click();
+    await expect(page).toHaveURL(/tab=analyze&kind=strength&item=/);
+    await expect(page.getByTestId("analyze-all-training")).toHaveCount(0);
+    await expect(page.getByTestId("analyze-sessions")).toBeVisible();
+
+    await hydratedClick(page, page.getByLabel("Exercise or activity"));
+    await page.getByRole("option", { name: "All training" }).click();
+    await expect(page).toHaveURL(/tab=analyze&range=12w/);
+    await expect(page.getByTestId("analyze-all-training")).toBeVisible();
+
+    await page.close();
+  });
+
+  test("legacy tab, nested aliases, and anchors redirect to Analyze", async ({
     browser,
   }) => {
     const page = await signIn(browser);
 
-    // The retired nested vocabulary (#1492): the param names the tab and is then
-    // ignored — no redirect, no 404, and the zone content it wanted is simply a
-    // section of the page it lands on.
-    await page.goto("/trends?tab=fitness&ftab=cardio");
-    await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    await expect(page.getByTestId("fitness-zones")).toBeVisible();
-    await expect(page.getByTestId("training-zones")).toBeVisible();
-    // The URL is left exactly as the old link wrote it (a mapping, not a redirect).
-    await expect(page).toHaveURL(/ftab=cardio/);
-
-    // A nested value with NO outer tab still names Fitness.
-    await page.goto("/trends?ftab=sport");
-    await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    await expect(page.getByTestId("fitness-sport")).toBeVisible();
+    for (const legacy of [
+      "/trends?tab=fitness",
+      "/trends?tab=fitness&ftab=cardio#zones",
+      "/trends?ftab=sport#sport",
+      "/trends?tab=fitness#volume",
+      "/trends?tab=fitness#strength",
+      "/trends?tab=fitness#prs",
+    ]) {
+      await page.goto(legacy);
+      await expect(page).toHaveURL(/\/training\?tab=analyze/);
+      await expect(page.getByTestId("analyze-all-training")).toBeVisible();
+      if (legacy.endsWith("#zones")) {
+        await expect(page).toHaveURL(/#zones$/);
+        await expect(page.locator("#zones")).toHaveCount(1);
+      }
+    }
 
     await page.close();
   });

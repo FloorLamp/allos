@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getTrainingZoneData } from "@/lib/queries";
+import type { getTrainingZoneData } from "@/lib/queries";
 import { ZONES, ZONE_COLORS, type ZoneModel } from "@/lib/training-zones";
 import { EmptyState } from "@/components/ui";
 import ZoneMinutesCard, {
@@ -18,7 +18,7 @@ function zoneRange(model: ZoneModel, id: number): string {
   return id < 5 ? `${lo}–${hi} bpm` : `${lo}+ bpm`;
 }
 
-// Trends → Fitness → HR training-intensity distribution (issue #159): weekly
+// Training → Analyze → All training HR-intensity distribution (#159/#3512): weekly
 // stacked zone minutes with a Zone 2 target line, the current-week Zone 2 volume,
 // the easy/hard polarization split, and the zone boundary table WITH its formula.
 // All HR is scoped to activity windows so all-day wear doesn't count as training.
@@ -30,17 +30,14 @@ function zoneRange(model: ZoneModel, id: number): string {
 // reaches today (`includesToday`) rather than quietly reporting the current week
 // under a historical window.
 export default async function TrainingZonesSection({
-  weeks,
-  end,
+  data,
   includesToday = true,
 }: {
-  weeks?: number;
-  end?: string;
+  data: ReturnType<typeof getTrainingZoneData>;
   includesToday?: boolean;
 }) {
   const { profile } = await requireSession();
   const adultContentAvailable = isLongevityRelevant(getProfileAge(profile.id));
-  const data = getTrainingZoneData(profile.id, weeks, end);
   const { model } = data;
 
   return (

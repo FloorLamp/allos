@@ -94,6 +94,9 @@ import {
 } from "@/lib/cycling-metrics";
 import { trainingActivityPageHref } from "@/lib/hrefs";
 import { isCyclingActivityName } from "@/lib/cycling-activity";
+import { fitnessWindow, fitnessWindowWeeks } from "@/lib/trends-fitness";
+import WorkoutHistorySection from "./WorkoutHistorySection";
+import FitnessZonesSection from "./FitnessZonesSection";
 
 export default async function AnalyzeSection({
   kind,
@@ -124,6 +127,73 @@ export default async function AnalyzeSection({
     : [];
   const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const sports = getSportByActivity(profile.id, formatPrefs);
+  const activeRange = coerceRange(range);
+  const analyzeOptions = buildAnalyzeOptions({
+    strength,
+    cardio,
+    sports,
+    activeRange,
+    metric,
+  });
+
+  // No entity in the URL means the aggregate view. #3512 deliberately reverses
+  // #1492: Training → Analyze is now the one fitness-analytics surface, and an
+  // entity is entered only by choosing one from this default view.
+  if (!item?.trim() && !exercise?.trim()) {
+    const todayStr = today(profile.id);
+    const fromDate = rangeStart(profile.id, activeRange);
+    const window = fitnessWindow(
+      fromDate ? { from: fromDate, to: todayStr } : {},
+      todayStr
+    );
+    const weeks = fitnessWindowWeeks(window.days);
+    const aggregateHref = analyzeAggregateHref(activeRange);
+
+    return (
+      <section className="space-y-6" data-testid="analyze-section">
+        {/* Retired Fitness anchors survive redirects. The four retired chart
+            anchors intentionally land at the aggregate view's top; #zones is
+            owned by the moved section below. */}
+        {["volume", "strength", "sport", "prs"].map((anchor) => (
+          <span
+            key={anchor}
+            id={anchor}
+            className="block scroll-mt-28"
+            aria-hidden="true"
+          />
+        ))}
+
+        <div className="card" data-testid="analyze-all-training">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div role="heading" aria-level={2}>
+              <AnalyzePicker
+                options={analyzeOptions}
+                value="All training"
+                allTrainingHref={aggregateHref}
+                appearance="title"
+              />
+            </div>
+            <HrefSelect
+              ariaLabel="Range"
+              value={activeRange}
+              options={RANGES.map((option) => ({
+                value: option.id,
+                label: option.label,
+                href: analyzeAggregateHref(option.id),
+              }))}
+            />
+          </div>
+        </div>
+
+        <WorkoutHistorySection window={window} />
+        {/* The legacy anchor remains a zero-content destination when this window
+            has no zone data; the section itself stays fully gated. */}
+        <span id="zones" className="block scroll-mt-28" aria-hidden="true" />
+        <FitnessZonesSection window={window} weeks={weeks} />
+      </section>
+    );
+  }
+
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
   const goals = getOutcomeGoals(profile.id).filter(
@@ -157,7 +227,6 @@ export default async function AnalyzeSection({
     cardio[0]?.activity ??
     sports[0]?.sport ??
     "";
-  const activeRange = coerceRange(range);
   const fromDate = rangeStart(profile.id, activeRange);
   // The resolved strength item, pulled out of the view builders so its LOAD CONTEXTS
   // (#1610) can be read before hrefFor closes over the active lane — every control
@@ -201,13 +270,6 @@ export default async function AnalyzeSection({
     if (nextLane) params.set("lane", nextLane);
     return `/training?${params.toString()}`;
   };
-  const analyzeOptions = buildAnalyzeOptions({
-    strength,
-    cardio,
-    sports,
-    activeRange,
-    metric,
-  });
   const cardioStat =
     activeKind === "cardio"
       ? (cardio.find((c) => c.activity === selectedName) ?? cardio[0])
@@ -329,6 +391,7 @@ export default async function AnalyzeSection({
                 <AnalyzePicker
                   options={analyzeOptions}
                   value={currentPickerLabel}
+                  allTrainingHref={analyzeAggregateHref(activeRange)}
                   appearance="title"
                 />
               </div>
@@ -978,6 +1041,11 @@ function sportView({
 function rangeStart(profileId: number, range: RangeId): string | null {
   const def = RANGES.find((r) => r.id === range)!;
   return def.days == null ? null : shiftDateStr(today(profileId), -def.days);
+}
+
+function analyzeAggregateHref(range: RangeId): AppRoute {
+  const params = new URLSearchParams({ tab: "analyze", range });
+  return `/training?${params.toString()}`;
 }
 
 function BenchmarkCard({

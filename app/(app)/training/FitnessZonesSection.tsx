@@ -1,6 +1,10 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getCardioIntensityMix, getCardioVolumeByWeek } from "@/lib/queries";
+import {
+  getCardioIntensityMix,
+  getCardioVolumeByWeek,
+  getTrainingZoneData,
+} from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
 import type { FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
@@ -17,8 +21,8 @@ const INTENSITY_COLOR: Record<string, string> = {
   Unspecified: "bg-slate-400",
 };
 
-// Trends → Fitness → **Zones & cardio** (#1492): how hard the window's aerobic
-// work was.
+// Training → Analyze → All training → **Zones & cardio** (#3512): how hard the
+// window's aerobic work was.
 //
 // Two windowed reads of EXISTING computations (#221), never forks:
 //   • getTrainingZoneData — the #159 zone model, weekly zone minutes, Zone 2
@@ -38,16 +42,16 @@ export default async function FitnessZonesSection({
   const weekly = getCardioVolumeByWeek(profile.id, weeks, since, window.to);
   const mix = getCardioIntensityMix(profile.id, since, window.to);
   const mixTotal = mix.reduce((s, b) => s + b.minutes, 0);
+  const zoneData = getTrainingZoneData(profile.id, weeks, window.to);
+
+  // #3512: the moved section is not standing chrome. It appears only when this
+  // window contains workout-scoped minutes that can actually be placed in zones.
+  if (!zoneData.model || zoneData.split.totalMin === 0) return null;
 
   return (
-    <section
-      id="zones"
-      className="scroll-mt-28 space-y-6"
-      data-testid="fitness-zones"
-    >
+    <section className="space-y-6" data-testid="fitness-zones">
       <TrainingZonesSection
-        weeks={weeks}
-        end={window.to}
+        data={zoneData}
         includesToday={window.to >= todayStr}
       />
 

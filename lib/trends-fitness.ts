@@ -1,11 +1,8 @@
-// Trends → Fitness, the WINDOWED ANALYTICS LENS (issue #1492) — pure layer.
-//
-// The rule the tab now obeys: **analyze on Trends, do on /training**. Fitness used
-// to re-mount /training's Strength/Cardio/Sport sections verbatim behind a nested
-// `?ftab=` strip — full history, un-windowed, on a page whose subtitle promises
-// "under one date range". It is now four SECTIONS (volume & cadence, zones &
-// cardio, strength progression, sport), every one of them reading the hub's shared
-// window.
+// Windowed fitness computations introduced for Trends → Fitness by #1492 and
+// retained after that tab retired into Training → Analyze by #3512. Workout
+// history and zones still consume the shared window helpers. The retired volume,
+// aggregate-strength, sport, and PR mounts no longer consume their computations,
+// but the pure functions remain available to other callers.
 //
 // This module owns the pure decisions that windowing needs, so they're unit-tested
 // rather than inlined on a Server Component:
@@ -25,23 +22,6 @@ import { shiftDateStr } from "./date";
 import { loadContextLabel } from "./lifts";
 import type { DateRange } from "./timeline-format";
 import { clampLensWeeks, lensWindow, type LensWeekCaps } from "./trends";
-
-// ---------------------------------------------------------------------------
-// Sections
-// ---------------------------------------------------------------------------
-
-// The four sections, in render order. PINNED composition (owner-decided,
-// 2026-07-25): exactly these, no others. The ids double as the in-page `#anchor`
-// the jump chips scroll to — the #1486/#1067 section pattern that replaced the
-// nested tab strip.
-export const FITNESS_SECTIONS = [
-  { id: "volume", label: "Volume & cadence" },
-  { id: "zones", label: "Zones & cardio" },
-  { id: "strength", label: "Strength progression" },
-  { id: "sport", label: "Sport" },
-] as const;
-
-export type FitnessSectionId = (typeof FITNESS_SECTIONS)[number]["id"];
 
 // ---------------------------------------------------------------------------
 // The window

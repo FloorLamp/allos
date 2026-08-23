@@ -1,9 +1,8 @@
-// SERVER-ACTION TIER — issue #333: every activity write must revalidate /trends
-// (the FitnessSection volume chart + WorkoutHistorySection), not just /training and
-// the dashboard. /trends reads activity-derived data, so a create/edit/merge/delete
-// that skips it leaves the fitness chart and workout history stale. These tests pin the exact
-// revalidated path SET for each mutation so a future edit can't silently drop /trends
-// or a separate ride read model again.
+// SERVER-ACTION TIER — issue #333: every activity write must revalidate /trends,
+// not just /training and the dashboard. #3512 moved workout history to Analyze,
+// but Compare's Training Volume series still reads activity-derived data. These
+// tests pin the exact revalidated path set so an edit cannot silently stale that
+// cross-domain series or a separate ride read model.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";

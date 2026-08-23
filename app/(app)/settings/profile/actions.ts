@@ -256,7 +256,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
 // ---- Training HR zones (profile scope, issue #159) ----
 
 // The manual max-HR override (bpm) and the weekly Zone 2 minutes target that drive
-// the Trends → Fitness intensity-distribution view. Both profile-scoped properties
+// the Training → Analyze intensity-distribution view. Both profile-scoped properties
 // of the tracked person; any login with write access may edit them. A blank/zero
 // max-HR clears the override (falls back to the age formula); a blank Zone 2 target
 // leaves the stored value untouched (its getter supplies the default).

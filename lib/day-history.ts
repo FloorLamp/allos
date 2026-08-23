@@ -1,6 +1,6 @@
 // Generalized group×day history — the ONE pure model behind the "what did I
 // actually log, day by day" surfaces: the Trends → Nutrition intake history
-// (calendar + matrix) and the Trends → Fitness sessions-by-type matrix. Two
+// (calendar + matrix) and the Training → Analyze sessions-by-type matrix. Two
 // halves over the same per-day per-group values:
 //
 //   - a CALENDAR (coverage): one cell per day on the shared `dayGrid`, colored

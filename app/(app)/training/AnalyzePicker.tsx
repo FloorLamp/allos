@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Combobox from "@/components/Combobox";
 import type { AnalyzeOption } from "@/lib/analyze-view";
 import { useResettableState } from "@/components/useResettableState";
+import type { AppRoute } from "@/lib/hrefs";
 
 export type { AnalyzeOption };
 
@@ -26,10 +27,12 @@ const KIND_LABEL: Record<AnalyzeOption["kind"], string> = {
 export default function AnalyzePicker({
   options,
   value,
+  allTrainingHref,
   appearance = "field",
 }: {
   options: AnalyzeOption[];
   value: string;
+  allTrainingHref: AppRoute;
   appearance?: "field" | "title";
 }) {
   const router = useRouter();
@@ -55,10 +58,14 @@ export default function AnalyzePicker({
       value={text}
       onChange={setText}
       onPick={(label) => {
+        if (label === "All training") {
+          router.push(allTrainingHref);
+          return;
+        }
         const option = byLabel.get(label);
         if (option) router.push(option.href);
       }}
-      options={rankedOptions.map((o) => o.label)}
+      options={["All training", ...rankedOptions.map((o) => o.label)]}
       placeholder="Choose an exercise or activity"
       ariaLabel="Exercise or activity"
       emptyLabel="No training item found"
