@@ -22,6 +22,13 @@ import { expandTimelineFilters } from "./timeline-chrome";
 
 const LEAD_CHIPS = 3; // mirrors TrendingDigest's inline cap
 
+function firstBodyTile(page: import("@playwright/test").Page) {
+  return page
+    .getByTestId("body-metric-tiles")
+    .locator('[data-testid^="body-tile-"]')
+    .first(); // first-ok: this helper deliberately names the first census metric
+}
+
 test.describe("the custom From/To form collapses behind a Custom… pill (A)", () => {
   test("collapsed by default, with the quick-range row as the primary control", async ({
     page,
@@ -120,7 +127,7 @@ test.describe("Overview leads with charts (B)", () => {
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport
     // asks exactly the question the issue does (is the payload above the fold?)
     // without pinning a number that ordinary content changes would break.
-    const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile is the subject — "is the FIRST chart above the fold?"
+    const tile = firstBodyTile(page); // first-ok: the census's topmost tile is the subject — "is the FIRST chart above the fold?"
     await expect(tile).toBeVisible();
     await expect(tile).toBeInViewport();
   });
@@ -129,7 +136,7 @@ test.describe("Overview leads with charts (B)", () => {
     page,
   }) => {
     await page.goto("/trends");
-    await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: any tile proves the Body census rendered before asserting an absence
+    await expect(firstBodyTile(page)).toBeVisible(); // first-ok: any tile proves the Body census rendered before asserting an absence
     await expect(page.getByTestId("starred-results")).toHaveCount(0);
 
     // Its one remaining card surface still renders it — the store and the lens are

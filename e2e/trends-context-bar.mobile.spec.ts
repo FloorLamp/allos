@@ -46,6 +46,16 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
 
+// The census gives each metric its own stable testid. The retired Starred grid
+// supplied a generic `trend-mini-card`; anchoring inside the one Body grid keeps
+// "first chart" tied to the current composition (#3387).
+function firstBodyTile(page: Page) {
+  return page
+    .getByTestId("body-metric-tiles")
+    .locator('[data-testid^="body-tile-"]')
+    .first(); // first-ok: this helper deliberately names the first census metric
+}
+
 test.describe("the tab-and-range context bar", () => {
   test("shows primary tabs and the window before any chart, with range controls put away", async ({
     page,
@@ -95,7 +105,7 @@ test.describe("the tab-and-range context bar", () => {
     ).toBeCloseTo(shellBox.y + shellBox.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
-    const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile is the subject — "is the window named above the FIRST chart?"
+    const tile = firstBodyTile(page); // first-ok: the census's topmost tile is the subject — "is the window named above the FIRST chart?"
     await expect(tile).toBeVisible();
     const [labelBox, tileBox] = await settledBoxes([
       page.getByTestId("trends-context-label"),
@@ -345,7 +355,7 @@ test.describe("the heading band is given up below sm (F)", () => {
     // the point of F is a specific band of chrome, and a regression that quietly
     // re-adds 130px would still pass "the tile is in the viewport".
     await page.goto("/trends");
-    const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile IS the measurement's subject
+    const tile = firstBodyTile(page); // first-ok: the census's topmost tile IS the measurement's subject
     await expect(tile).toBeVisible();
     const box = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px
