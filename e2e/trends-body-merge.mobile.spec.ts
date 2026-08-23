@@ -42,10 +42,10 @@ test.describe("one census, one ordered stack (#1486)", () => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
     const tabs = page.getByRole("tab");
-    // Four since #1644 folded Body into Overview; the ORDER + phone fit are that
-    // issue's spec — trends-compare-fold.mobile.spec.ts. What #1486 owns here is
+    // Three since #3512 retired Fitness into Training → Analyze; the ORDER + phone
+    // fit are owned by trends-compare-fold.mobile.spec.ts. What #1486 owns here is
     // the absence of a Vitals destination of its own.
-    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveCount(3);
     await expect(
       page.getByRole("tab", { name: "Vitals", exact: true })
     ).toHaveCount(0);

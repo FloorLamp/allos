@@ -81,11 +81,7 @@ test.describe("the 1D pill is scoped to the surface that owns the census (B)", (
 
     // On a daily-grain series a one-day window is a single dot — worse than
     // useless — so no other TAB may advertise it. The shared pills stay shared.
-    for (const tab of [
-      "/trends?tab=fitness",
-      "/trends?tab=nutrition",
-      "/trends?tab=insights",
-    ]) {
+    for (const tab of ["/trends?tab=nutrition", "/trends?tab=insights"]) {
       await page.goto(tab);
       await expandTrendsContext(page);
       // Exact, like the 1D locators above: the movers digest renders LINK chips

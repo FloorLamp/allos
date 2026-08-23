@@ -637,7 +637,7 @@ zones, mapped-route, telemetry, and segment-data coverage, segment PR records,
 and a linked ride
 history carrying the key sensor measurements. The HR distribution is the one
 windowed card in that rollup: it covers the same twelve-week training block the
-Trends Fitness zone section uses, anchored on the activity's most recent ride
+Training → Analyze All training zone section uses, anchored on the activity's most recent ride
 rather than on today, so an activity parked for a season still shows the shape of
 its last block. The card names those weeks and their end date instead of letting
 the surrounding all-time totals imply every ride ever.
@@ -839,7 +839,7 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live in four tabs:
+Charts and analysis live in three tabs:
 
 - **Overview** is the landing surface, and answers "how am I doing" in one
   scroll: the **"what's trending" digest**, then your **starred grid** — your own
@@ -851,10 +851,6 @@ Charts and analysis live in four tabs:
   one your entry point implies (and the one a deep link names) with the rest a tap
   away. A **Data check** card catches probable weight-entry errors before they skew
   charts.
-- **Fitness** combines the workout-density heatmap, strength/cardio/sport
-  progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
-  use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
-  max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
 - **Insights** combines comparison tools with daily analysis and weekly/monthly
   recap narratives.
@@ -868,10 +864,10 @@ session-length trend beside logging, editing, and session history. The retired
 The body census **streams in below** the digest and starred grid, so the landing
 surface paints as fast as it did when Body was its own tab. Links that used to
 target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
-lands on the Overview surface that carries the census. The three remaining tabs
-are permanent — the deliberate asymmetry is the design: the landing surface
-answers "how am I doing", the tabs answer "how is my training or nutrition
-specifically".
+lands on the Overview surface that carries the census. Fitness analytics live in
+**Training → Analyze**; old Fitness and `ftab` links redirect there. The Trends
+landing surface answers "how am I doing", while Nutrition and Insights hold the
+remaining focused lenses.
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
@@ -963,17 +959,21 @@ growth-tracked profile still leads with its percentile card whatever is starred:
 which cards exist for an age, and the pediatric lead, are membership decisions
 that the star does not override.
 
-### Fitness and Nutrition
+### Training analysis and Nutrition
 
-Fitness separates:
+**Training → Analyze** defaults to **All training** under its 12w / 6m / 1y /
+All control. Workout history leads with the cross-activity calendar and matrix.
+**Zones & cardio** follows only when that window contains workout-scoped HR-zone
+data; no empty zone section is reserved. Choosing an exercise or activity drills
+into its existing progression view, and **All training** remains in the picker as
+the way back.
 
-- **Volume & cadence** for workout density and weekly volume;
-- **Zones & cardio** for heart-rate-zone minutes, Zone 2, pace, and endurance;
-- **Strength progression** for exercise history and estimated 1RM — a lift's
-  variants count as one, while each piece of registry equipment is its own
-  labeled progression;
-- **Sport** for repeated sport/activity series;
-- **PRs this window**, linked to the underlying sessions.
+The former Trends Fitness volume/cadence, aggregate strength, sport-summary, and
+window-PR charts are retired, deliberately reversing #1492. Muscle-coverage bands
+answer the volume question with a judgment; per-exercise Analyze charts answer
+strength progression; the entity picker reaches sport summaries; and Training
+Overview plus the full Training lists own PRs. Their underlying computations are
+unchanged for other consumers.
 
 A **cardio** record is held to what its own measurement can evidence. Each kind
 is judged against the sessions carrying THAT measurement — a distance record
@@ -988,10 +988,9 @@ beat the previous best by more than the measurement's own error — GPS distance
 elapsed duration and derived speed each declare their own floor — so two walks
 three metres apart are noise, not two personal bests.
 
-Deeper analysis and benchmark ladders remain under **Training → Analyze**, where
+Per-entity analysis and benchmark ladders remain under **Training → Analyze**, where
 a lift logged on more than one machine keeps a single entry and offers its
-machines as labeled choices, defaulting to the one used most recently. Trends
-shows change over time rather than duplicating the coaching workspace.
+machines as labeled choices, defaulting to the one used most recently.
 
 Nutrition shows macros and fiber, food-group frequency, goal adherence, and
 intake history over the selected range. Clinical results stay under **Medical →

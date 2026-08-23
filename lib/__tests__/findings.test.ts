@@ -118,6 +118,7 @@ describe("trendItemToFinding", () => {
     pctChange: 0.4,
     days: 90,
     count: 5,
+    admissionReason: "range-crossing",
     magnitude: 1000.4,
     text: "LDL ↑ 40% over 90d — into high range",
   };
@@ -134,6 +135,12 @@ describe("trendItemToFinding", () => {
       title: "LDL",
       tone: "caution",
     });
+  });
+
+  it("gives a directionless stored transition its own stable dismissal key", () => {
+    expect(digestDedupeKey({ key: "result:LDL", direction: "flat" })).toBe(
+      "digest:result:LDL:flat"
+    );
   });
 
   it("marks a return into range as positive, a plain move as neutral", () => {

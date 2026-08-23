@@ -9,7 +9,7 @@ import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 // component, but its QUESTIONS did not, and deleting them with the markup would
 // have quietly dropped desktop coverage of the tab's lead surface:
 //
-//   1. Does Trends → Fitness render a density view with active days?
+//   1. Does Training → Analyze render a density view with active days?
 //   2. Can a reader get from a workout day to that Training Log day?
 //
 // The second one's ANSWER changed, which is the point of re-asking it here.
@@ -25,10 +25,10 @@ import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 // 16 weeks of PPL strength sessions (3/week) on relative dates, so the grid
 // always has active cells. Read-only — no mutations to self-clean.
 
-test("Trends → Fitness leads with the workout history and its active days (#186/#2415)", async ({
+test("Training → Analyze leads with workout history and its active days (#186/#2415/#3512)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   const main = page.getByRole("main");
 
   const section = main.getByTestId("workout-history");
@@ -124,7 +124,7 @@ test("Trends → Fitness leads with the workout history and its active days (#18
 test("selecting a workout day opens its panel, which links to that Training Log day (#186/#2415)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   const main = page.getByRole("main");
   const section = main.getByTestId("workout-history");
   await expect(section).toBeVisible();
@@ -147,7 +147,7 @@ test("selecting a workout day opens its panel, which links to that Training Log 
   await expect(panel).toContainText(
     formatLongDate(date!, DEFAULT_FORMAT_PREFS, { year: "always" })
   );
-  await expect(page).toHaveURL(/tab=fitness/);
+  await expect(page).toHaveURL(/tab=analyze/);
 
   // Workout review/editing belongs to the Training Log, anchored to this day.
   const link = panel.getByRole("link", { name: /Training log/ });
@@ -163,7 +163,7 @@ test("selecting a workout day opens its panel, which links to that Training Log 
 test("the matrix is one keyboard grid and selecting a cell opens the shared day panel", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   const section = page.getByTestId("workout-history");
   const grid = section.getByRole("grid", { name: /By activity/ });
   const tabStops = grid.locator('[role="gridcell"][tabindex="0"]');
@@ -188,7 +188,7 @@ test("the matrix is one keyboard grid and selecting a cell opens the shared day 
 test("an empty calendar day is selectable and still reaches Timeline", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   const section = page.getByTestId("workout-history");
   const emptyDay = section
     .getByTestId("day-history-calendar")

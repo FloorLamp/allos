@@ -27,7 +27,6 @@ import TrendingDigest from "./TrendingDigest";
 import StarredSection from "./StarredSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
-import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
 import SectionHashScroll from "./SectionHashScroll";
@@ -36,9 +35,12 @@ import TrendsSectionShell, {
   TrendsSectionSkeleton,
 } from "./TrendsSectionShell";
 import type { AppRoute } from "@/lib/hrefs";
-import { parseTab, trendsTabStrip, type TrendsTab } from "@/lib/trends-tabs";
-import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isTrainingRelevant } from "@/lib/life-stage";
+import {
+  parseTab,
+  retiredFitnessTabTarget,
+  trendsTabStrip,
+  type TrendsTab,
+} from "@/lib/trends-tabs";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -52,14 +54,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // The Trends hub: the analytics lens — a sibling to the Timeline — that gathers the
 // app's trend charts under a SHARED date-range control.
 //
-// ── The strip: FOUR tabs, permanently (#1644) ────────────────────────────────
-// Overview · Fitness · Nutrition · Insights. #1644 merged the **Body** tab into
-// Overview, which is the last merge: the landing surface answers "how am I doing",
-// and the three remaining tabs answer "how is my training / nutrition / analysis
-// specifically". The asymmetry is the design, not an unfinished phase — folding the
-// rest in was considered and rejected (render weight, URL churn, and the blur of a
-// three-census page bought nothing), so a fifth section here needs a new owner
-// decision rather than a symmetry argument.
+// ── The strip: THREE tabs (#3512) ────────────────────────────────────────────
+// Overview · Nutrition · Insights. Fitness deliberately retired into Training →
+// Analyze once that surface grew its own windowed analytics. Old Fitness and
+// nested `ftab` URLs redirect there rather than falling onto this hub's default.
 //
 // ── The landing surface (the Overview tab), top to bottom ────────────────────
 //   1. "What's trending" digest — the movers over the shared window.
@@ -93,9 +91,8 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export default async function TrendsPage(props: {
   searchParams: Promise<{
     tab?: string | string[];
-    // The RETIRED nested Fitness strip (#1492) — read only so an old deep link can
-    // still name the Fitness tab through parseTab; the value itself is ignored and
-    // never re-emitted into a hub link.
+    // Retired nested Fitness vocabulary, read only for the explicit Analyze
+    // redirect (#3512); never re-emitted by this hub.
     ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
@@ -126,14 +123,17 @@ export default async function TrendsPage(props: {
     firstParam(searchParams.range)
   );
   const allTime = isAllTimeRange(range);
-  // parseTab also maps the RETIRED `?tab=compare` onto insights (#1489) — a
+  const retiredFitness = retiredFitnessTabTarget(
+    searchParams.tab,
+    searchParams.ftab
+  );
+  if (retiredFitness) redirect(retiredFitness);
+
+  // parseTab maps the RETIRED `?tab=compare` onto insights (#1489) — a
   // vocabulary mapping in lib/trends-tabs.ts — and lets `?tab=body` / `?tab=vitals`
   // fall through to the default, which is the surface that absorbed them (#1644).
-  // The retired NESTED `?ftab=` (#1492) maps the same way: it names Fitness when no
-  // live `?tab=` is present, and its value is then ignored.
-  const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
-  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
-  if (requestedTab === "fitness" && !trainingRelevant) redirect("/trends");
+  // Fitness and its nested aliases have already taken the explicit redirect above.
+  const requestedTab = parseTab(searchParams.tab);
   const activeTab = requestedTab;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
@@ -209,10 +209,8 @@ export default async function TrendsPage(props: {
     });
 
   // Tab-strip spec: labels only, built by the pure registry (lib/trends-tabs.ts).
-  // FOUR entries since #1644 — Vitals merged into Body (#1486), Compare into
-  // Insights (#1489), and Body into Overview — in frequency order (Overview |
-  // Fitness | Nutrition | Insights).
-  const tabStrip = trendsTabStrip(trainingRelevant);
+  // THREE entries since #3512 — Fitness retired into Training → Analyze.
+  const tabStrip = trendsTabStrip();
 
   // The phone range trigger is built from the SAME predicates the pills light
   // themselves with, so its compact label can never disagree with the expanded
@@ -229,8 +227,6 @@ export default async function TrendsPage(props: {
     switch (activeTab) {
       case "nutrition":
         return <NutritionSection range={range} />;
-      case "fitness":
-        return <FitnessSection range={range} />;
       case "insights":
         // The hub's "derived views" tab: AI insights + situation analytics plus
         // the compare overlay.
@@ -322,7 +318,7 @@ export default async function TrendsPage(props: {
           compacted width, tabs directly beneath. */}
       <PageHeader
         title="Trends"
-        subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."
+        subtitle="Your analytics lens — body, nutrition, and insights under one date range."
         compactBelowSm
       />
 

@@ -6,17 +6,14 @@ import { settledFill } from "./helpers";
 // layers a windowed cardio ride with per-minute HR (50 min Zone 2 + 10 min Zone 4)
 // plus one out-of-window resting bucket that must NOT count (both dated within the
 // hub's 90-day default window, so the section's shared range includes them). These
-// specs prove the Trends → Fitness zone section renders that distribution, and that the Settings →
+// specs prove the Training → Analyze zone section renders that distribution, and that the Settings →
 // Profile inputs persist. Reads only + a self-cleaning settings round-trip, so no
 // rows other specs assert on are disturbed.
 
-test("Trends → Fitness renders the HR training-intensity section (#159)", async ({
+test("Training → Analyze renders the HR training-intensity section (#159/#3512)", async ({
   page,
 }) => {
-  // #1492: the nested `?ftab=cardio` strip retired — zones are a SECTION of the
-  // windowed Fitness lens now (and the old link still lands here, covered by
-  // e2e/trends-fitness-lens.mobile.spec.ts).
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/training?tab=analyze");
   const main = page.getByRole("main");
 
   const zones = main.getByTestId("training-zones");

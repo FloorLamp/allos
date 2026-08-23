@@ -163,7 +163,7 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // surface (digest → starred grid → here), reachable at `/trends#body` and streamed
 // into its own Suspense boundary so the head never waits on the ~30 reads below.
 // Nothing about the census itself changed — same skeleton, same membership gates,
-// same ★-first-then-ranked order. Fitness, Nutrition and Insights stay tabs.
+// same ★-first-then-ranked order. Nutrition and Insights stay tabs.
 
 type Point = { date: string; value: number };
 

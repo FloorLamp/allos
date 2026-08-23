@@ -26,13 +26,17 @@ import {
   parseLooseValue,
 } from "../reference-range";
 import { convertToCanonical, sameUnit } from "../unit-conversions";
-import type { ClinicalObservation } from "../types";
+import type { ClinicalObservation, MedicalFlag } from "../types";
 
 export interface BiomarkerPlot {
   // The family's readings, oldest→newest (the detail page's table).
   rows: ClinicalObservation[];
   // The plottable numeric points, in `unit`.
   points: { date: string; value: number }[];
+  // The stored domain verdict riding each point, kept parallel to `points`. This
+  // lets pure consumers compare endpoint notability without another query or a
+  // value-vs-range re-derivation.
+  pointFlags: { date: string; flag: MedicalFlag | null }[];
   // The unit `points` are expressed in, or null when the analyte has neither a
   // canonical unit nor a unit on its latest reading.
   unit: string | null;
@@ -142,17 +146,21 @@ function shapePlot(
   });
 
   let unit: string | null;
-  let points: { date: string; value: number }[];
+  let plotted: { date: string; value: number; flag: MedicalFlag | null }[];
   let rng: { low: number | null; high: number | null } | null = null;
 
   if (cb && cb.unit) {
     unit = cb.unit;
-    points = plottable
+    plotted = plottable
       .map((x) => ({
         date: x.r.date,
         value: convertToCanonical(x.value, x.r.unit, cb),
+        flag: x.r.flag,
       }))
-      .filter((x): x is { date: string; value: number } => x.value != null);
+      .filter(
+        (x): x is { date: string; value: number; flag: MedicalFlag | null } =>
+          x.value != null
+      );
     const ref = referenceRange(cb, sex, age, status);
     if (ref.low != null || ref.high != null) {
       rng = { low: ref.low, high: ref.high };
@@ -162,16 +170,22 @@ function shapePlot(
       ? (plottable[plottable.length - 1].r.unit ?? null)
       : null;
     unit = latestUnit;
-    points = plottable
+    plotted = plottable
       .filter((x) => sameUnit(x.r.unit, latestUnit))
-      .map((x) => ({ date: x.r.date, value: x.value }));
+      .map((x) => ({ date: x.r.date, value: x.value, flag: x.r.flag }));
     const parsed = parseReferenceRange(
       series[series.length - 1].reference_range
     );
     if (parsed) rng = { low: parsed.low ?? null, high: parsed.high ?? null };
   }
 
-  return { rows: series, points, unit, rng };
+  return {
+    rows: series,
+    points: plotted.map(({ date, value }) => ({ date, value })),
+    pointFlags: plotted.map(({ date, flag }) => ({ date, flag })),
+    unit,
+    rng,
+  };
 }
 
 // The unit a biomarker TARGET must be captured in for this profile: the unit the

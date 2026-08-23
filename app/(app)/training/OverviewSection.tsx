@@ -116,8 +116,7 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
   return formatMinutes(p.durationMin);
 }
 
-// Training → Overview: the DOING surface (#1496, the other half of #1492's rule —
-// analyze on Trends, do here). Order is deliberate and static, doing-first:
+// Training → Overview is the doing surface. Order is deliberate and static:
 //   1. Today's session (the daily payload leads)
 //   2. This week — the WEEK SPINE (#2566): the seven-day band, captioned by the
 //      week's counts and the weekly routine's cadence chips, as ONE card
@@ -125,8 +124,9 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 //   4. Muscle coverage + mobility
 //   5. Injuries / event plans (the descriptive copy renders only when they're live)
 //   6. Recent cardio PRs — top 3 + "show all → Analyze"
-// The chart block LEFT: strength/cardio volume + intensity mix live windowed on
-// Trends → Fitness (#1492), with no mini duplicates here.
+// Aggregate volume/cadence and intensity-mix charts stay retired here (#3512):
+// muscle coverage carries the volume judgment, while HR zones live on Analyze's
+// data-gated All training view.
 export default async function OverviewSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);

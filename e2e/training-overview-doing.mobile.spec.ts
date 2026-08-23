@@ -202,7 +202,7 @@ test("the desktop Training header keeps the Equipment door beside the title (#16
   expect(doorBox.y).toBeLessThan(titleBox.y + titleBox.height);
 });
 
-test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({
+test("no chart card renders on Overview — aggregate volume stays retired", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");

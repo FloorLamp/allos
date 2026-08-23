@@ -205,7 +205,9 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
   test("the training analyze sessions table stacks as flat rows too", async ({
     page,
   }) => {
-    await page.goto("/training?tab=analyze");
+    await page.goto(
+      "/training?tab=analyze&kind=strength&item=Barbell%20Bench%20Press"
+    );
     const table = page.getByTestId("analyze-sessions");
     await expect(table).toBeVisible();
     await expect(table.locator("thead")).toBeHidden();
