@@ -505,16 +505,6 @@ at once:
   `app/globals.css`. A call site does not pass `heightClass`; that is what keeps
   a card's loading, error and offline-fallback states on one footprint, so a
   stack does not reflow while a chunk is still arriving.
-- **…which means the plot slot takes EXACTLY ONE child (#3233).** `> *` has no
-  notion of "the second one is smaller": every direct child is sized to 100% of
-  the box, so two siblings are two full-height children and the second stacks out
-  of the card and paints over the next one. Trends → Fitness shipped three (a
-  chart, a gains list, a caption) — ~768px of children in a 256px box, with the
-  PR-rate card's header rendering garbled underneath. Under-plot content goes in
-  `footer`, which renders outside the plot box inside the card's own gutter.
-  `expectPlotContentInsidePlot` (e2e/helpers.ts) measures the box rather than the
-  classes, because every class in that tree was the intended one — what was wrong
-  was the arithmetic of three of them.
 - **…except an absence, which is not a plot (#2399).** Reserving the whole chart
   footprint for the one sentence saying there is no chart meant that on a lens
   the profile has not set up, roughly half the page was ~400px empty states

@@ -114,58 +114,6 @@ export default async function FitnessStrengthSection({
         detailTitle="estimated 1RM"
         detailHref="/training?tab=analyze"
         description="Best estimated one-rep max per session in this window, for your most-trained lift. Variants of a lift count as one; each piece of registry equipment is tracked separately, since two machines' loads aren't comparable."
-        // Under-plot content goes HERE, not into the plot slot (#3233). The slot
-        // is a fixed box and `.chart-card-plot > *` sizes EVERY direct child to
-        // 100% of it, so a second and third sibling each claimed the full height
-        // and the gains rows overprinted the next card.
-        footer={
-          lead ? (
-            <>
-              {movers.length > 0 && (
-                <ul
-                  className="mt-4 space-y-1 text-sm"
-                  data-testid="fitness-strength-movers"
-                >
-                  {movers.map((m) => {
-                    const delta = dispWeight(m.deltaKg, wu, 1);
-                    return (
-                      <li
-                        key={m.label}
-                        className="flex items-baseline justify-between gap-3"
-                      >
-                        <span className="text-slate-700 dark:text-slate-200">
-                          {m.label}
-                        </span>
-                        <span
-                          className={`tabular-nums font-medium ${
-                            m.deltaKg > 0
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : m.deltaKg < 0
-                                ? "text-rose-600 dark:text-rose-400"
-                                : "text-slate-500 dark:text-slate-400"
-                          }`}
-                        >
-                          {m.deltaKg > 0 ? "+" : ""}
-                          {delta} {wu}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                Per-lift session tables and the full history live on{" "}
-                <Link
-                  href="/training?tab=analyze"
-                  className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-                >
-                  Training → Analyze
-                </Link>
-                .
-              </p>
-            </>
-          ) : null
-        }
       >
         {!lead ? (
           <EmptyState
@@ -173,17 +121,61 @@ export default async function FitnessStrengthSection({
             action={{ href: "/training?tab=log", label: "Go to Log" }}
           />
         ) : (
-          <LineChartCard
-            // gap-exempt: one point per SESSION of the lead lift, not per
-            // calendar day — the index is the event (#2258 out-of-scope list).
-            data={lead.points.map((p) => ({
-              date: p.date,
-              value: dispWeight(p.value, wu, 1),
-            }))}
-            label="Est. 1RM"
-            unit={` ${wu}`}
-            color={chartSeries.violet}
-          />
+          <>
+            <LineChartCard
+              // gap-exempt: one point per SESSION of the lead lift, not per
+              // calendar day — the index is the event (#2258 out-of-scope list).
+              data={lead.points.map((p) => ({
+                date: p.date,
+                value: dispWeight(p.value, wu, 1),
+              }))}
+              label="Est. 1RM"
+              unit={` ${wu}`}
+              color={chartSeries.violet}
+            />
+            {movers.length > 0 && (
+              <ul
+                className="mt-4 space-y-1 text-sm"
+                data-testid="fitness-strength-movers"
+              >
+                {movers.map((m) => {
+                  const delta = dispWeight(m.deltaKg, wu, 1);
+                  return (
+                    <li
+                      key={m.label}
+                      className="flex items-baseline justify-between gap-3"
+                    >
+                      <span className="text-slate-700 dark:text-slate-200">
+                        {m.label}
+                      </span>
+                      <span
+                        className={`tabular-nums font-medium ${
+                          m.deltaKg > 0
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : m.deltaKg < 0
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-slate-500 dark:text-slate-400"
+                        }`}
+                      >
+                        {m.deltaKg > 0 ? "+" : ""}
+                        {delta} {wu}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Per-lift session tables and the full history live on{" "}
+              <Link
+                href="/training?tab=analyze"
+                className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                Training → Analyze
+              </Link>
+              .
+            </p>
+          </>
         )}
       </ChartCard>
 

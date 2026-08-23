@@ -136,9 +136,7 @@ export default function ChartCard({
   plotHeightClass?: string;
   // Rendered under the plot (a goal-projection caption, a legend, a footnote).
   footer?: ReactNode;
-  // The plot: EXACTLY ONE element. Never wrapped in a link — see the tap
-  // contract above — and never a list of siblings, which the plot box sizes to
-  // 100% each (#3233). Under-plot content is `footer`.
+  // The plot. Never wrapped in a link — see the tap contract above.
   children: ReactNode;
 }) {
   const Heading = headingLevel;
@@ -227,18 +225,7 @@ export default function ChartCard({
       )}
 
       {/* The plot. A plain sibling of the header link — no anchor wraps it, so a tap
-          here is tooltip inspection, not navigation.
-
-          ONE CHILD. `.chart-card-plot > *` (app/globals.css) sizes EVERY DIRECT
-          child to 100% of this fixed box — that rule is what makes the card's
-          ownership of the plot height real, and it has no notion of "the second
-          one is smaller". Pass two siblings and each claims the full height, so
-          everything after the first stacks out of the card and paints over the
-          next one (#3233: a chart + a gains list + a caption, ~768px of children
-          in a 256px box). Under-plot content — a legend, a footnote, a movers
-          list — goes in `footer` below, which sits outside this box inside the
-          card's own gutter. `expectPlotContentInsidePlot` in e2e/helpers.ts
-          measures it. */}
+          here is tooltip inspection, not navigation. */}
       <div
         data-testid="chart-card-plot"
         className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
