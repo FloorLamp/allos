@@ -878,8 +878,9 @@ no formula designed that, and the person got there by editing a prefilled dose.
 
 The closing sentence is separate, because the catalog knows the product and not the
 stack. `reason` says only what is true of the bottle; `formulationUlNote` appends "The
-total is expected for this product" only when the by-design contributions ARE the total,
-each at a serving its own label states. Anything else in the stack and it appends "The
+total is expected for this product" only when ONE by-design product IS the whole total,
+at a serving its own label states — two bottles adding up to a number, even two rows for
+the same bottle, is a number nobody formulated. Anything else in the stack and it appends "The
 rest of this total comes from your other items" instead — an AREDS 2 beside a
 multivitamin, an immune blend and a cold lozenge at 8 mg each is 120 mg, and no
 arrangement of other people's bottles makes 120 mg something AREDS 2 expects. This also

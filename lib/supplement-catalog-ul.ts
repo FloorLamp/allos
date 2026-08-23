@@ -117,16 +117,17 @@ function contributionIsByDesign(
   return amount > ul && amount <= Math.max(...statedTotals) + AMOUNT_EPSILON;
 }
 
-// The one sentence that speaks about the TOTAL rather than about a product, appended
-// only when the by-design contributions ARE the total and each sits at a serving its own
-// label states. Everything else gets `REST_ELSEWHERE`, which explains nothing about the
-// total and points at what the note does not cover — the difference between a line a
-// person can act on and a line that quietly reassures them about someone else's zinc.
-// Plural keys on how many PRODUCTS explained, not on how many sentences were joined:
-// two entries can carry the same wording, and one sentence covering two bottles is
-// still two bottles.
+// The one sentence that speaks about the TOTAL rather than about a product. It needs ONE
+// product to be the whole of that total, at a serving its own label states — a number two
+// bottles add up to is a number nobody formulated, whether they are two different
+// products or the same one logged as a morning item and an evening item.
+//
+// When something else IS in the total, `REST_ELSEWHERE` says so: it explains nothing
+// about the total and points at what the note does not cover, which is the difference
+// between a line a person can act on and a line that quietly reassures them about
+// someone else's zinc. And when several by-design products make up the whole total,
+// neither sentence is true, so the note ends with the product facts and stops.
 const TOTAL_EXPECTED = "The total is expected for this product.";
-const TOTAL_EXPECTED_PLURAL = "The total is expected for these products.";
 const REST_ELSEWHERE = "The rest of this total comes from your other items.";
 
 // The fields of a UL warning this join reads. Taken as ONE argument rather than as
@@ -188,8 +189,8 @@ export function formulationUlNote(
   if (notes.length === 0) return null;
   if (total - byDesign > AMOUNT_EPSILON) {
     notes.push(REST_ELSEWHERE);
-  } else if (everyShareIsAStatedServing) {
-    notes.push(explainers > 1 ? TOTAL_EXPECTED_PLURAL : TOTAL_EXPECTED);
+  } else if (explainers === 1 && everyShareIsAStatedServing) {
+    notes.push(TOTAL_EXPECTED);
   }
   return notes.join(" ");
 }

@@ -265,7 +265,9 @@ describe("catalog UL reasons — what a person reads", () => {
     const note = formulationUlNote(warning);
     expect(note).toContain("by design");
     expect(note).not.toContain("expected");
-    expect(note).toContain("The rest of this total comes from your other items.");
+    expect(note).toContain(
+      "The rest of this total comes from your other items."
+    );
   });
 
   it("cannot contradict the as-needed sentence it sits beside", () => {
@@ -368,7 +370,8 @@ describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => 
   // The shipped product moves in 40 mg steps, which cannot land ON either boundary.
   // These do: a blend stating 41 mg per capsule at one or two capsules, so the stated
   // serving totals are exactly 41 and 82 against an adult zinc UL of 40.
-  const REASON = "Made-Up Zinc Blend is above the general zinc limit by design.";
+  const REASON =
+    "Made-Up Zinc Blend is above the general zinc limit by design.";
   const synthetic: SupplementCatalogEntry[] = [
     {
       name: "Made-Up Zinc Blend",
@@ -392,16 +395,22 @@ describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => 
 
   it("pins the stated servings this bound is read from", () => {
     // So the four boundary cases below cannot silently stop being boundaries.
-    expect(catalogUlExceedances(synthetic).map((x) => x.total)).toEqual([41, 82]);
+    expect(catalogUlExceedances(synthetic).map((x) => x.total)).toEqual([
+      41, 82,
+    ]);
   });
 
   it("is silent AT the limit and speaks one milligram past it", () => {
     expect(soleNote(40)).toBeNull();
-    expect(soleNote(41)).toBe(`${REASON} The total is expected for this product.`);
+    expect(soleNote(41)).toBe(
+      `${REASON} The total is expected for this product.`
+    );
   });
 
   it("speaks AT the largest stated serving and is silent one milligram past it", () => {
-    expect(soleNote(82)).toBe(`${REASON} The total is expected for this product.`);
+    expect(soleNote(82)).toBe(
+      `${REASON} The total is expected for this product.`
+    );
     expect(soleNote(83)).toBeNull();
   });
 
@@ -411,7 +420,9 @@ describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => 
     expect(soleNote(60)).toBe(REASON);
   });
 
-  it("says 'these products' when two of them account for the whole total", () => {
+  it("says nothing about the total when two products add up to it", () => {
+    // 82 mg is 41 + 41. Neither bottle's label states it and no formula produced it, so
+    // the product facts stand and the sentence about the total does not.
     const OTHER_REASON = "Made-Up Zinc Blend Two is above it by design too.";
     const other = {
       ...synthetic[0],
@@ -430,9 +441,26 @@ describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => 
       },
       [synthetic[0], other]
     );
-    expect(note).toBe(
-      `${REASON} ${OTHER_REASON} The total is expected for these products.`
+    expect(note).toBe(`${REASON} ${OTHER_REASON}`);
+  });
+
+  it("says nothing about the total when the SAME product is logged twice", () => {
+    // Two rows for one bottle — a morning item and an evening item — is 82 mg of a
+    // 41 mg serving. One sentence, because the reason is the same; no claim about a
+    // total that is two servings of it.
+    const note = formulationUlNote(
+      {
+        key: "zinc",
+        total: 82,
+        ul: 40,
+        contributors: [
+          { name: "Made-Up Zinc Blend", amount: 41 },
+          { name: "Made-Up Zinc Blend", amount: 41 },
+        ],
+      },
+      synthetic
     );
+    expect(note).toBe(REASON);
   });
 
   it("points at the rest as soon as anything else is in the total", () => {
