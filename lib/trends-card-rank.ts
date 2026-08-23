@@ -67,8 +67,7 @@ export type BodyCardId = TrendMetricSlug | "growth" | "sleep" | "hr-day";
 // daily subjective/environment pair, then clinical vitals, then the synced
 // composition tail. Clinical cards are not demoted — they are lifted BY SIGNAL when
 // they matter (a monitored condition promotes BP/SpO₂/respiratory rate), which is
-// the signal's job rather than the base order's. The Today strip (#1486) keeps the
-// vitals-first narrative; the card stack stops inheriting it.
+// the signal's job rather than the base order's.
 export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   // Composition — what people check daily. `height`/`head-circ` only exist for a
   // growth-tracked profile (membership is still planBodyCharts'); their ADULT-layout
@@ -371,7 +370,7 @@ const STRUCTURAL_SIGNAL = "life-stage";
 // their saved order, then the ranked default for everything unpinned.
 //
 // There is ONE arrangement substrate on Trends — `saved_items`, the store the
-// Overview grid's star, drag and ⋯-menu arrows already write. The body census used to
+// pinned census run's star, drag and ⋯-menu arrows write. The body census used to
 // have a second, order-only one (`trends_card_order` in profile settings) that no UI
 // ever wrote; #1643 retired it rather than completing a parallel language for one job
 // (#1485-C's convergence, at the data model instead of the interaction).

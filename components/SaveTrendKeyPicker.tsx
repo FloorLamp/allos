@@ -8,7 +8,6 @@ import {
   SERIES_PICKER_GROUP_ORDER,
   type SeriesPickerInput,
 } from "@/lib/series-picker-options";
-import { biomarkerSearchTerms } from "@/lib/canonical-name";
 
 // The ★ picker's control (#1675). It replaces a flat alphabetical `<select>` over
 // metrics + ~200 analytes with the shared Combobox: an empty query is the RELEVANCE
@@ -56,7 +55,7 @@ export default function SaveTrendKeyPicker({
           htmlFor="star-trend"
           className="hidden text-slate-500 sm:inline dark:text-slate-400"
         >
-          Add to your overview:
+          Pin metric:
         </label>
         <select
           id="star-trend"
@@ -89,7 +88,7 @@ export default function SaveTrendKeyPicker({
         htmlFor="star-trend"
         className="hidden text-slate-500 sm:inline dark:text-slate-400"
       >
-        Add to your overview:
+        Pin metric:
       </label>
       {/* The posted field. The combobox itself is unnamed so a half-typed query can
           never be submitted as a key — only a real pick reaches the action. */}
@@ -101,17 +100,13 @@ export default function SaveTrendKeyPicker({
       >
         <Combobox
           id="star-trend"
-          ariaLabel="Add to your overview"
+          ariaLabel="Pin metric"
           value={label}
           onChange={setLabel}
           options={options.map((o) => o.label)}
           groupFor={(option) => byLabel.get(option)?.group ?? null}
-          // #2382. Mixed list, one prop: a metric label names no analyte, so
-          // biomarkerSearchTerms answers [] for it and only the biomarker rows
-          // gain their acronym and alias keys.
-          searchTermsFor={biomarkerSearchTerms}
-          placeholder="Search metrics and biomarkers"
-          emptyLabel="No matching metric or biomarker"
+          placeholder="Search metrics"
+          emptyLabel="No matching metric"
         />
       </div>
       {star}

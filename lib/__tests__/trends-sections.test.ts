@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  TRENDS_LANDING_ALIASES,
   TRENDS_LANDING_SECTIONS,
   trendsSectionHref,
 } from "@/lib/trends-sections";
 import { TRENDS_TABS, parseTab } from "@/lib/trends-tabs";
 
-// The Trends landing surface's anchored parts (#1644, #2151): the starred grid
-// and the body census that merged onto it. Small on purpose —
+// The Trends landing surface's anchored part (#3387): one Body census beneath the
+// conditional digest, plus a legacy Starred alias at the same position. Small on purpose —
 // this registry answers
 // "where does a deep link land", while lib/trends-tabs.ts answers "which tabs
 // exist"; the tests below pin that the two vocabularies stay separate.
 
 describe("the landing surface's parts", () => {
-  it("is the grid then the census, in reading order", () => {
-    expect([...TRENDS_LANDING_SECTIONS]).toEqual(["starred", "body"]);
+  it("names only the body census", () => {
+    expect([...TRENDS_LANDING_SECTIONS]).toEqual(["body"]);
   });
 
   it("names no tab — the strip is a different vocabulary", () => {
@@ -32,9 +33,10 @@ describe("trendsSectionHref", () => {
     }
   });
 
-  it("names the anchors the landing surface renders", () => {
+  it("keeps the retired #starred fragment as an alias of Body", () => {
     expect(trendsSectionHref("body")).toBe("/trends#body");
     expect(trendsSectionHref("starred")).toBe("/trends#starred");
+    expect(TRENDS_LANDING_ALIASES.starred).toBe("body");
   });
 
   // The half of the retirement a link sweep can't see: a body deep link now says

@@ -842,9 +842,9 @@ default), so gating only kicks in once you've listed some gear.
 Charts and analysis live in three tabs:
 
 - **Overview** is the landing surface, and answers "how am I doing" in one
-  scroll: the **"what's trending" digest**, then your **starred grid** — your own
-  cross-domain set of saved, drag-orderable tiles, the one curated area where
-  nothing appears unless you put it there — then the **body census**: vitals,
+  scroll: the conditional **"what's trending" digest**, then the **body census**:
+  saved metric cards pin to its head in saved order and can be re-sequenced there;
+  the ranked remainder follows. The census covers vitals,
   acute temperature, sleep and outdoor-time
   signals, body composition, and the shared **Log measurements** form — which
   groups its fields into **Vitals**, **Body** and **Sleep & recovery**, opening the
@@ -861,8 +861,8 @@ the same completed-week verdicts, cadence band, consistency rate, and optional
 session-length trend beside logging, editing, and session history. The retired
 `/trends#practices` fragment has no shim.
 
-The body census **streams in below** the digest and starred grid, so the landing
-surface paints as fast as it did when Body was its own tab. Links that used to
+The body census **streams in below** the digest, so the landing surface paints as
+fast as it did when Body was its own tab. Links that used to
 target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
 lands on the Overview surface that carries the census. Fitness analytics live in
 **Training → Analyze**; old Fitness and `ftab` links redirect there. The Trends
@@ -913,13 +913,15 @@ honestly empty rather than showing today's number under an average's label. The
 Steps-today card declines the fallback — its question is today versus prior days,
 and today cannot be its own baseline.
 
-### The Overview surface: starred grid and body census
+### The Overview surface: one body census
 
-The starred grid answers two questions: **what you saved** and **what changed**.
-Tiles
-lead with the latest reading and its age, distinguish current value from trend,
-and can be pinned and reordered. The mobile layout uses compact cards; the
-overflow menu owns secondary controls instead of crowding the chart.
+The movers digest answers **what changed**. The census answers **what is tracked**:
+each metric appears once, with saved cards pinned at the head. A pinned tile's
+overflow menu owns unstar and arrow fallback controls; drag reorders that same
+saved run. The final dashed cell is **+ Add tile** and pins a metric without
+entering the ranked card list itself. In the desktop full-chart view there is no
+tile flow, so the picker is omitted; each chart still opens the metric page whose
+star owns pinning.
 
 The census is organized into Vitals, acute temperature, sun/outdoor time, composition,
 and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
@@ -941,12 +943,19 @@ are branched by sex _and by population_ (≥94 cm for European men against ≥90
 for South Asian ones), and judging every profile against one population's
 threshold would be worse than showing the trend and saying nothing.
 
-The star is the **one arrangement gesture** across both halves of the surface —
-which is why they are one surface. Starring a body metric — on its own page, which
-every card opens — is the same save as starring a grid tile, and starred cards
-lead the census in the order the grid holds them, so pinned cards are re-sequenced
-by dragging them (or using their overflow arrows) in the grid one scroll above.
-There is no second reorder surface in the census.
+The star is the **one arrangement gesture**. Starring a body metric on its own
+page — which every card opens — pins that same card at the census head. Pinned
+cards are re-sequenced by dragging them or using their overflow arrows in place.
+Unstarring removes the pin, not the metric from the census. A selected window with
+no readings does not pull a pin out of the run; its detail-page star remains the
+way to remove it.
+
+Clinical-result saves no longer render a second copy on Trends. Their star still
+controls the Results status card and profile passport, where those readings belong.
+The retired `/trends#starred` fragment resolves to the Body census so saved links
+do not dangle. The retired Today snapshot is also gone: Standing owns the current
+instrument cluster, census tiles carry their latest value, and **View today on
+Timeline** remains at the Body section head.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has

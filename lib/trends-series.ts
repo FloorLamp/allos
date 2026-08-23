@@ -431,16 +431,13 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
 // retest-due or flagged analyte leads every picker rather than whatever starts with
 // "A". MEMBERSHIP is untouched: the age gates above and the body-metric exclusion below
 // still decide what is offered at all, so a gated metric is neither tile nor option.
-export function listCompareOptions(profileId: number): {
-  metrics: TrendOption[];
-  biomarkers: TrendOption[];
-} {
+export function listTrendMetricOptions(profileId: number): TrendOption[] {
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
   const strengthTrainingRelevant = isStrengthTrainingRelevant(
     getProfileAge(profileId)
   );
-  const metrics = METRIC_DEFS.filter(
+  return METRIC_DEFS.filter(
     (d) =>
       !(d.id === "bodyfat" && hideBodyFat) &&
       (trainingRelevant || d.id !== "volume") &&
@@ -450,6 +447,13 @@ export function listCompareOptions(profileId: number): {
     label: d.label,
     kind: "metric" as const,
   }));
+}
+
+export function listCompareOptions(profileId: number): {
+  metrics: TrendOption[];
+  biomarkers: TrendOption[];
+} {
+  const metrics = listTrendMetricOptions(profileId);
   const names = getUsedCanonicalNamesWithDerived(profileId).filter(
     (name) => bodyMetricKindForBiomarker(name) == null
   );

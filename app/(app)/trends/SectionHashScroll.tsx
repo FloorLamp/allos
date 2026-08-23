@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 
-// Keep a `/trends#body` deep link honest on a STREAMED surface (#1644).
+// Keep `/trends#body` and the retired `/trends#starred` alias honest on a
+// STREAMED surface (#1644/#3387).
 //
 // The browser resolves a URL fragment when it parses the element. On the landing
 // surface the body census streams in through Suspense, so at parse time `#body` is

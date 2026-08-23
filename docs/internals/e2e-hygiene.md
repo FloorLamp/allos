@@ -465,8 +465,8 @@ content-only matcher will happily read.
 
 ## Streamed sections: the harness settles the reveal (#1644)
 
-The Trends Overview surface streams its body census below a fast head (digest +
-starred grid), behind a `<Suspense>` boundary. In the streamed HTML the census
+The Trends Overview surface streams its body census below a fast conditional
+digest, behind a `<Suspense>` boundary. In the streamed HTML the census
 arrives in a `<div hidden id="S:n">` staging node at the end of `<body>`, and
 React moves it into its section on a schedule of its own — a rAF, or a coalescing
 timeout that a loaded CI shard can stretch to SECONDS past the load event. During

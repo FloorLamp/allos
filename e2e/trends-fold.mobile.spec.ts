@@ -129,7 +129,7 @@ test.describe("Overview leads with charts (B)", () => {
     page,
   }) => {
     await page.goto("/trends");
-    await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: any tile proves the Overview grid rendered before asserting an absence
+    await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: any tile proves the Body census rendered before asserting an absence
     await expect(page.getByTestId("starred-results")).toHaveCount(0);
 
     // Its one remaining card surface still renders it — the store and the lens are

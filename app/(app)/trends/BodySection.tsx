@@ -32,7 +32,6 @@ import {
 import {
   getBiomarkerSeries,
   getBodyMetricDailySeries,
-  getBodyMetricsOnDate,
   getBodyMetricsPage,
   getManualBodyMetricStatedAt,
   getDaylightOutdoorMinutesSeries,
@@ -56,7 +55,7 @@ import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
 import { ordinalPercentile } from "@/lib/growth-format";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { dayFillWindow } from "@/lib/day-fill";
-import { metricSeriesKey } from "@/lib/saved-items";
+import { isSeriesKeySaved, metricSeriesKey } from "@/lib/saved-items";
 import {
   SLEEP_DURATION_SERIES_KEY,
   type DayFillSpec,
@@ -64,6 +63,7 @@ import {
 import { applyCardOrder, bodyCardOrder } from "@/lib/trends-card-rank";
 import {
   TREND_METRIC_META,
+  bodyCardIdForSeriesKey,
   trendMetricChartScale,
   buildTrendMetricTile,
   savedMetricIdForTrendSlug,
@@ -77,13 +77,12 @@ import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
+  listTrendMetricOptions,
 } from "@/lib/trends-series";
 import {
-  buildTodayVitalsStrip,
   hrSlotSeries,
   intradayVitalPoints,
   toIntradaySlotSeries,
-  type VitalReadingRow,
 } from "@/lib/vitals-day";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import {
@@ -119,7 +118,6 @@ import TrendMetricCharts, {
 } from "@/components/TrendMetricCharts";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
-import VitalsTodayStrip from "./VitalsTodayStrip";
 import type { ChartChip } from "./ChartJumpChips";
 import ChartJumpMenu from "./ChartJumpMenu";
 import TrendMetricTiles from "./TrendMetricTiles";
@@ -132,6 +130,8 @@ import {
 import BodyMetricRowMenu from "./BodyMetricRowMenu";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
+import SaveTrendPicker from "@/components/SaveTrendPicker";
+import { getSavedItems } from "@/lib/queries/saved";
 
 // The Trends hub's **Body** census — the ONE physiology surface (issue #1486).
 //
@@ -141,17 +141,14 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // with a goal overlay on only one of them). #1486 retires the Vitals tab into this
 // one, in the order a reader actually wants:
 //
-//   1. **Today** — today's body composition + latest vital readings (the evolved
-//      #1466 strip), plus the 1D pill's intraday swap and the desktop "+ Log"
-//      expander.
-//   2. **Vitals** — blood pressure, oxygen saturation, respiratory rate, resting
+//   1. **Vitals** — blood pressure, oxygen saturation, respiratory rate, resting
 //      heart rate (its ONE home now: Body's copy retired and its goal overlay +
 //      event annotations moved HERE, so the two copies' affordances are unioned
 //      rather than one of them being dropped), HRV, sun/outdoor time, and body
 //      temperature in its ACUTE recent-readings view with the fever line.
-//   3. **Composition** — weight and body fat with their goal overlays (height and
+//   2. **Composition** — weight and body fat with their goal overlays (height and
 //      head circumference instead, for a growth-tracked profile).
-//   4. The growth-percentile card (minors), the mood + synced-metric charts, the
+//   3. The growth-percentile card (minors), the mood + synced-metric charts, the
 //      per-source comparison, and the full history table (whose resting-HR COLUMN
 //      stays — that table is the record editor, not a chart).
 //
@@ -159,8 +156,8 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // `tiles` they are sparkline tiles like every other metric, in `all` they are full
 // charts. One view-mode semantic, not two.
 //
-// #1644 retired the Body TAB: this census is the third part of the Trends landing
-// surface (digest → starred grid → here), reachable at `/trends#body` and streamed
+// #1644 retired the Body TAB; #3387 makes this census the only part below the digest,
+// reachable at `/trends#body` (with `#starred` as a legacy alias) and streamed
 // into its own Suspense boundary so the head never waits on the ~30 reads below.
 // Nothing about the census itself changed — same skeleton, same membership gates,
 // same ★-first-then-ranked order. Nutrition and Insights stay tabs.
@@ -176,25 +173,6 @@ function vitalPoints(rows: ClinicalObservation[], decimals = 0): Point[] {
       date: r.date,
       value: round(r.value_num as number, decimals),
     }));
-}
-
-// A daily aggregate ({date,value}) in the row shape the Today strip reads. These
-// series carry no clock time by construction (they ARE the day's number), which is
-// why they show a value without a time rather than being charted at 1D.
-//
-// EXCEPT today's, optionally (#2235): when the day's number is one physical row's
-// reading and that row states an `occurred_at`, the strip may honestly say "at
-// 07:12" — so the caller can attach that one stated instant to the matching entry.
-// It never invents one: a fold of several rows keeps rendering "today".
-function dailyRows(
-  series: Point[],
-  todayAt?: { date: string; occurredAt: string | null }
-): VitalReadingRow[] {
-  return series.map((d) =>
-    todayAt && d.date === todayAt.date && todayAt.occurredAt
-      ? { date: d.date, value_num: d.value, occurred_at: todayAt.occurredAt }
-      : { date: d.date, value_num: d.value }
-  );
 }
 
 // Fahrenheit fever threshold (100.4 °F / 38 °C) — the reference line on the acute
@@ -286,7 +264,7 @@ export default async function BodySection({
   const restingHrChart = filterSeriesByRange(restingHrAll, range);
 
   // The vitals' RAW, unwindowed reading rows (absorbed from the retired Vitals
-  // section). The charts window them below; the Today strip and the intraday charts
+  // section). The charts window them below; the intraday charts
   // read today out of these same arrays, so a past custom window never hides today's
   // answer — and no extra query is issued either way.
   const systolicRows = getBiomarkerSeries(
@@ -350,8 +328,8 @@ export default async function BodySection({
   // per-surface rules.
   //
   // The USER's half of that order is the ★ (#1643): the profile's starred cards lead
-  // in their SAVED order — the same `saved_items` sequence the Overview grid's drag
-  // and ⋯-menu arrows write — and the ranker sequences everything unpinned. There is
+  // in their SAVED order — the same `saved_items` sequence the pinned census run's
+  // drag and ⋯-menu arrows write — and the ranker sequences everything unpinned. There is
   // no second arrangement store; #1490's writerless `trends_card_order` key retired
   // with this change.
   const ageYears = getProfileAge(profile.id);
@@ -361,30 +339,36 @@ export default async function BodySection({
     : null;
   const plan = planBodyCharts({ ageYears, ageMonths });
   const pins = getBodyCardPins(profile.id);
+  const savedRefs = getSavedItems(profile.id);
   const cardOrder = bodyCardOrder(
     buildTrendsSubjectContext(profile.id, todayStr),
     pins
   );
 
-  // WHERE THE ★ LIVES ON THIS TAB (#1643). Nowhere new — and that is the decision,
-  // not an omission. Every card here already taps through to its metric detail page
-  // (#1488's contract: the card's header IS one edge-to-edge target), and that page
-  // has carried the shipped ★ since #1456 for every registered trend slug. So the
-  // pinning gesture is one tap from every card in the census, through the affordance
-  // the card already promises.
-  //
-  // A corner ⋯ menu on each card was the obvious alternative and is the wrong trade:
-  // on a Body chart card and on a Body tile it takes ~40px out of exactly the link
-  // #1488 measures (e2e/chart-tap-through.spec.ts holds both to ≥95% of the card
-  // width), so twenty cards would pay a real tap-target cost for a second route to a
-  // gesture that is already one tap away. Overview's tiles keep their menu because
-  // membership is what that grid is for. The hint under the census names the path.
+  // WHERE THE ★ LIVES (#1643/#3387). Every card still opens its metric page, where
+  // the star pins or unpins it. Only an ALREADY-pinned tile gets a corner menu here,
+  // because that run now owns drag, arrow fallback and direct unstar reachability.
+  // Unpinned cards keep #1488's full-width header target untouched.
   // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
   // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
   // the entry field, and the history column — so "not tracked" is consistent instead
   // of hidden-from-charts-but-still-enterable. (The raw data export keeps the column,
   // a complete-record contract distinct from this display choice.)
   const bodyFatShown = showBodyFat(ageYears);
+
+  // The former cross-domain picker now trails the one Body census grid (#3387).
+  // It offers only metric keys that map to a census card: starring a clinical
+  // result here would change Results/passport state without producing the tile the
+  // affordance promises, and training volume has no Body card to pin.
+  const unsavedCensusMetrics = listTrendMetricOptions(profile.id).filter(
+    (option) =>
+      bodyCardIdForSeriesKey(option.key) != null &&
+      !isSeriesKeySaved(savedRefs, option.key)
+  );
+  const addTile =
+    unsavedCensusMetrics.length > 0 ? (
+      <SaveTrendPicker metrics={unsavedCensusMetrics} />
+    ) : undefined;
 
   // Height + head-circumference series (canonical cm, from metric_samples — the same
   // store the growth charts read). Read the WHOLE series (ALL_ROWS) before windowing
@@ -477,94 +461,6 @@ export default async function BodySection({
       projectionNote,
     };
   };
-
-  // ── 1. Today ────────────────────────────────────────────────────────────────
-  // A formatter over the arrays above. Body-composition rows already carry the
-  // source-prioritized daily rollup; raw vitals resolve their latest clock time.
-  // Oxygen saturation and respiratory rate stay in the Vitals charts/detail
-  // surface, but are deliberately omitted here so this concise snapshot leads
-  // with composition + core readings.
-  //
-  // The stated time for today's composition cells (#2235): honest ONLY when the
-  // day's number is one physical row's reading — then that row's `occurred_at` is
-  // the time the value was taken and the cell may say "at 07:12". When several
-  // rows fold into the number (two devices, or a legacy stacked manual day), no
-  // single instant describes it, so the cell keeps its day-grain "today" rather
-  // than borrowing one row's clock for a blended value. Display only — nothing
-  // ranks, filters, or schedules off this (constraint 2).
-  //
-  // Its own read (#2530): "how many rows recorded this column today" is a question
-  // about TODAY, and answering it from the history table's rows would have made it
-  // depend on which page of that table is open.
-  const todayBodyRows = getBodyMetricsOnDate(profile.id, todayStr);
-  const soleTodayOccurredAt = (
-    col: "weight_kg" | "body_fat_pct" | "resting_hr"
-  ): { date: string; occurredAt: string | null } => {
-    const rows = todayBodyRows.filter((r) => r[col] != null);
-    return {
-      date: todayStr,
-      occurredAt: rows.length === 1 ? (rows[0].occurred_at ?? null) : null,
-    };
-  };
-  const todayVitals = buildTodayVitalsStrip(
-    [
-      {
-        key: "weight",
-        label: TREND_METRIC_META.weight.title,
-        unit: wu,
-        rows: dailyRows(weightAll, soleTodayOccurredAt("weight_kg")),
-        decimals: 1,
-      },
-      ...(bodyFatShown
-        ? [
-            {
-              key: "body-fat",
-              label: TREND_METRIC_META["body-fat"].title,
-              unit: "%",
-              rows: dailyRows(bodyFatAll, soleTodayOccurredAt("body_fat_pct")),
-              decimals: 1,
-            },
-          ]
-        : []),
-      {
-        key: "steps",
-        label: TREND_METRIC_META.steps.title,
-        unit: "steps",
-        rows: dailyRows(stepsAll),
-        groupThousands: true,
-      },
-      {
-        key: "bp",
-        label:
-          TREND_METRIC_META.systolic.summaryTitle ??
-          TREND_METRIC_META.systolic.title,
-        unit: "mmHg",
-        rows: systolicRows,
-        pairRows: diastolicRows,
-      },
-      {
-        key: "resting-hr",
-        label: TREND_METRIC_META["resting-hr"].title,
-        unit: "bpm",
-        rows: dailyRows(restingHrAll, soleTodayOccurredAt("resting_hr")),
-      },
-      {
-        key: "temperature",
-        label: TREND_METRIC_META.temperature.title,
-        unit: "°F",
-        rows: temperatureRows,
-        decimals: 1,
-      },
-      {
-        key: "hrv",
-        label: TREND_METRIC_META.hrv.title,
-        unit: "ms",
-        rows: dailyRows(hrvAll),
-      },
-    ],
-    todayStr,
-    tz
-  );
 
   // The 1D swap. Built ONLY at 1D, so an ordinary window never pays for the day's
   // minute scan. HR comes from the SAME getHrMinutes read + downsampleHr model the
@@ -830,13 +726,13 @@ export default async function BodySection({
         )}
 
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          A reading logged without a clock time stays in the Today strip above —
-          it can&rsquo;t be placed on a clock axis honestly.{" "}
+          A reading logged without a clock time stays off this clock axis. It
+          remains available on today&rsquo;s{" "}
           <Link
             href={timelineDayHref(todayStr)}
             className="font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            See today&rsquo;s timeline
+            Timeline
           </Link>
           .
         </p>
@@ -1425,9 +1321,7 @@ export default async function BodySection({
   // whose lead is the life-stage boost's job, and the 1D intraday swap is an
   // ordinary member at `hr-day`.
   //
-  // The page's FIXED anatomy is untouched: the Today strip stays at the head (it
-  // keeps #1486's vitals-first narrative; the stack stops inheriting it) and the
-  // source comparison + history table stay at the foot — skeleton, not cards.
+  // The source comparison + history table stay at the foot — skeleton, not cards.
   //
   // The check-in's THREE ratings share ONE card builder (#1408). They are the same
   // kind of reading asked three ways — a 1–5 self-rating from the same daily card,
@@ -1669,8 +1563,16 @@ export default async function BodySection({
 
   return (
     <div className="space-y-6" data-testid="trends-body">
-      {/* 1. TODAY — the day's answer comes first, then the way to add to it. */}
-      <VitalsTodayStrip rows={todayVitals} date={todayStr} />
+      {/* The retired Today card's real navigation stays at the section head. */}
+      <div className="flex justify-end">
+        <Link
+          href={timelineDayHref(todayStr)}
+          data-testid="body-timeline-link"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+        >
+          View today on Timeline <IconArrowRight size={14} stroke={1.75} />
+        </Link>
+      </div>
 
       {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
           day-over-day weight jumps — a safety-ish signal, so shown above the toggle
@@ -1744,28 +1646,17 @@ export default async function BodySection({
           growth={growthGridTiles}
           sleep={sleepGridTile}
           order={cardOrder}
+          pinned={pins}
+          addTile={addTile}
         />
 
-        {/* How the arrangement works, said once (#1643) — under the census
-                rather than above it, so it explains what the reader just scanned
-                without pushing the census down. The ★ is the ONLY thing that
-                reorders this census, and the sequence of what you pin is the
-                starred grid's saved order — one scroll up the same page since
-                #1644 — so the hint names BOTH halves and where each gesture lives
-                instead of adding a second reorder affordance here. */}
+        {/* How the arrangement works, said once under the census (#1643/#3387). */}
         <p
           className="mt-3 text-xs text-slate-500 dark:text-slate-400"
           data-testid="body-pin-hint"
         >
-          Star a metric on its own page — open any card — to pin it to the top
-          of this section. Pinned cards follow your{" "}
-          <Link
-            href="/trends#starred"
-            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            starred grid
-          </Link>{" "}
-          order; drag them there to re-sequence them.
+          Star a metric on its own page — open any card — to pin it to the top.
+          Drag pinned cards here, or use their menu arrows, to re-sequence them.
         </p>
       </div>
 

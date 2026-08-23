@@ -618,14 +618,43 @@ export function stableEmptyLast<T>(
 // changes, not when a watch uploads.
 export function orderTrendMetricTiles<T extends OrderableTile>(
   tiles: readonly T[],
-  order: readonly BodyCardId[]
+  order: readonly BodyCardId[],
+  pinned: readonly BodyCardId[] = []
 ): T[] {
   const ranked = applyCardOrder(
     tiles.filter((t) => t.present),
     order,
     (t) => t.id
   );
-  return stableEmptyLast(ranked, (tile) => tile.empty === true);
+  if (pinned.length === 0) {
+    return stableEmptyLast(ranked, (tile) => tile.empty === true);
+  }
+
+  // #3387: an empty-window PIN remains inside the saved run. The old blanket
+  // empty-last partition could pull it below the ranked census, contradicting the
+  // star's now-single visible meaning. Structural life-stage cards may still lead
+  // that run (#1643's unchanged precedence); only the ranked tail sinks empties.
+  const pinnedSet = new Set<BodyCardId>(pinned);
+  const firstPinned = ranked.findIndex((tile) =>
+    pinnedSet.has(tile.id as BodyCardId)
+  );
+  if (firstPinned < 0) {
+    return stableEmptyLast(ranked, (tile) => tile.empty === true);
+  }
+  let afterPinned = firstPinned;
+  while (
+    afterPinned < ranked.length &&
+    pinnedSet.has(ranked[afterPinned].id as BodyCardId)
+  ) {
+    afterPinned += 1;
+  }
+  return [
+    ...ranked.slice(0, afterPinned),
+    ...stableEmptyLast(
+      ranked.slice(afterPinned),
+      (tile) => tile.empty === true
+    ),
+  ];
 }
 
 // Period statistics for a metric detail page: latest / average / min / max / net

@@ -238,6 +238,41 @@ describe("orderTrendMetricTiles", () => {
       "bmi",
     ]);
   });
+
+  it("keeps an empty-window saved metric inside the pinned run (#3387)", () => {
+    const ordered = orderTrendMetricTiles(
+      [
+        {
+          slug: "steps",
+          id: "steps",
+          label: "Steps",
+          present: true,
+          empty: true,
+        },
+        {
+          slug: "weight",
+          id: "weight",
+          label: "Weight",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "sleep",
+          id: "sleep",
+          label: "Sleep",
+          present: true,
+          empty: false,
+        },
+      ],
+      ["steps", "weight", "sleep"],
+      ["steps", "weight"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "steps",
+      "weight",
+      "sleep",
+    ]);
+  });
 });
 
 describe("stableEmptyLast", () => {

@@ -25,6 +25,7 @@ import {
   cleanupOrphanSavedClinicalResults,
   migrateRenamedBiomarker,
   getSavedItems,
+  setSavedKindOrder,
   setSavedOrder,
   toggleItemSaved,
 } from "@/lib/queries";
@@ -277,6 +278,26 @@ describe("saved order", () => {
     ]);
 
     expect(getSavedItems(p).map((r) => r.key)).toEqual(before);
+  });
+
+  it("reorders one kind without moving the other kind's slots (#3387)", () => {
+    const p = newProfile("Saved Kind Order");
+    toggleItemSaved(p, "trend-metric", "weight");
+    saveClinicalResult(p, "ApoB");
+    toggleItemSaved(p, "trend-metric", "steps");
+    saveClinicalResult(p, "Ferritin");
+    const before = getSavedItems(p);
+
+    setSavedKindOrder(p, "trend-metric", [
+      { kind: "trend-metric", key: "weight" },
+      { kind: "trend-metric", key: "steps" },
+    ]);
+
+    const after = getSavedItems(p);
+    expect(after.map((row) => row.kind)).toEqual(before.map((row) => row.kind));
+    expect(
+      after.filter((row) => row.kind === "trend-metric").map((row) => row.key)
+    ).toEqual(["weight", "steps"]);
   });
 
   it("getSavedClinicalResults honours that same order", () => {

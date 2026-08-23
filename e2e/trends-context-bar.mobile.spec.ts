@@ -196,7 +196,7 @@ test.describe("the tab-and-range context bar", () => {
     );
     await expect(page.getByTestId("trends-context-controls")).toBeVisible();
     // And the charts came with it (the tiles re-render under the new range).
-    await expect(page.getByTestId("saved-tiles")).toBeVisible();
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
   });
 });
 

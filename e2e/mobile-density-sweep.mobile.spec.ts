@@ -104,7 +104,7 @@ test("class C: a section seam is one notch tighter ON SCREEN, not just in the ca
   // section — not from the wrapper around it. The wrapper (`longevity-bio-age`)
   // has no padding or border of its own today, so reading off it would give the
   // same number; but that is an UNPINNED PREMISE of exactly the shape this file
-  // already refuses to accept on `VitalsTodayStrip`'s `p-0!`. Give that wrapper a
+  // already refuses to accept on a card's own `p-0!` gutter. Give that wrapper a
   // `pb-2` and a wrapper-based reading still says 16 while the reader sees 24.
   // Measuring from the seam's own element needs no premise: whatever any ancestor
   // adds lands INSIDE the quantity and the assertion fails, which is what tight
