@@ -158,6 +158,30 @@ The proven workflow for an all-pages consistency audit:
    loud shape-mismatch warning instead of a wall of false regressions when
    seeds differ. Sweep 2–3 seeds when hunting; keep one seed when diffing.
 
+   **The unbounded-name corpus (`SEED_RNG=3`, #3631)**: the `long names` dial is
+   the one to reach for when auditing GEOMETRY, and it is worth knowing why. A
+   control whose intrinsic width is set by data nobody chose — a `select` of item
+   names, a chip carrying a portal-imported title, a cell holding a lab analyte's
+   full name — cannot be found by a census whose longest medication label is
+   `Atorvastatin (inactive)`, 23 characters, which fits a phone at any width. That
+   is what happened to #3478: the geometry probe was never blind, the corpus was.
+   `SEED_RNG=3` is "past illness + long names", the smallest seed that turns the
+   dial on with the least other perturbation:
+
+   ```bash
+   SEED_RNG=3 UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages
+   ```
+
+   The values it plants, the data families that still need one, and the controls
+   each family sizes are the roster in `scripts/seed-long-names.ts` — read it
+   before concluding a geometry census came back clean, and add an entry there
+   when you ship a control whose width comes from user-uncontrolled data.
+
+   **A clean geometry table means one of two things**, and they read identically:
+   nothing is broken, or nothing in the corpus could be. So when a run reports no
+   clipped elements, say which — the run's own `SEED_RNG` line in `audit.md` is
+   the answer, and an unset one has NOT exercised this class.
+
    `UX_SEED=thin` (#1544) runs `scripts/seed.ts` and then
    `scripts/ux-thin-data.ts`, which trims every dated observation store to the
    last ~7 days (`UX_THIN_DAYS` overrides). Seven days is the point where the
