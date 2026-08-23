@@ -194,7 +194,11 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
     const profileId = newProfile("Resend Stages", NEW_YORK);
     const stages = [
       { stage: "deep", start: NIGHT_START, end: "2026-05-02T00:00:00Z" },
-      { stage: "rem", start: "2026-05-02T00:00:00Z", end: "2026-05-02T03:00:00Z" },
+      {
+        stage: "rem",
+        start: "2026-05-02T00:00:00Z",
+        end: "2026-05-02T03:00:00Z",
+      },
       { stage: "light", start: "2026-05-02T03:00:00Z", end: NIGHT_END },
     ];
     const payload = {

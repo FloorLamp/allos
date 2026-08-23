@@ -1097,11 +1097,7 @@ function resendDay(
 ): string {
   if (!twin) return incoming.date;
   if (
-    isSupersedingWindow(
-      incoming.metric,
-      incoming.started_at,
-      incoming.ended_at
-    )
+    isSupersedingWindow(incoming.metric, incoming.started_at, incoming.ended_at)
   )
     return incoming.date;
   return twin.date;
