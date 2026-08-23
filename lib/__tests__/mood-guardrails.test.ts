@@ -10,6 +10,7 @@ import {
 } from "@/lib/mood-observation";
 import { tierForDedupeKey } from "@/lib/rule-finding-prefixes";
 import canonical from "@/lib/canonical-result-definitions.json";
+import { stripComments } from "./strip-comments";
 
 // The #992 sensitivity guardrails, pinned STRUCTURALLY (the source-scan pattern of
 // profile-scoping / telegram-chokepoint / e2e-hygiene):
@@ -26,13 +27,6 @@ import canonical from "@/lib/canonical-result-definitions.json";
 //      tier (#449), so they can never ride a push or dashboard Now.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-
-// Strip comments so a module's own prose ("never import the reference-range
-// engine", this guard's raison d'être) can't trip the code-level scan — the same
-// comment-stripping discipline the copy-lint scanner uses.
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 function read(rel: string): string {
   return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));

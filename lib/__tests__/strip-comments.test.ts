@@ -218,8 +218,8 @@ describe("the four spans the old stripper deleted", () => {
 // not a member yet.
 //
 // WHY IT IS A RATCHET AND NOT A SWEEP. Measured 2026-08-23: FORTY-SEVEN files still
-// carry a hand-rolled comment deleter, 57 sites between them, and all but a handful
-// spell the exact ordered pair this module was written to replace —
+// carried a hand-rolled comment deleter, 57 sites between them, and all but a handful
+// spelled the exact ordered pair this module was written to replace —
 //
 //   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
 //
@@ -229,11 +229,84 @@ describe("the four spans the old stripper deleted", () => {
 // watch it, and it hid them in the direction where everything stays green.
 //
 // Converting forty-seven guards in one pass would change what each of them SEES,
-// which is a verdict change per file and needs each one re-measured. So this pass
-// freezes the population instead: the list below is exactly who hand-rolls one
-// today, and the assertion is set EQUALITY. A new one cannot be written without
-// this going red, and converting one means deleting its line — the list is a work
-// queue that can only shrink.
+// which is a verdict change per file and needs each one re-measured. So that pass
+// froze the population instead: the list below is exactly who hand-rolls one today,
+// and the assertion is set EQUALITY. A new one cannot be written without this going
+// red, and converting one means deleting its line — the list is a work queue that
+// can only shrink.
+//
+// EIGHT CAME OFF IT IN #3621, AND THE RULE THEY CAME OFF BY IS WORTH MORE THAN THE
+// EIGHT. The two strippers never agree byte-for-byte — the hand-rolled pair DELETES,
+// this module BLANKS — so "the output is the same" is not the question. The question
+// is whether they removed the same CHARACTERS, which is decidable: compare the
+// non-whitespace projections of both outputs over the corpus that scanner actually
+// walks. Equal everywhere ⇒ the conversion is verdict-preserving by proof, not by
+// hope. Unequal on N files ⇒ the guard now reads those N differently and the test
+// result is a re-measurement rather than a formality. Both cases were converted, and
+// the numbers, per file, at this head:
+//
+//   mood-guardrails            7 named modules            0 of 7 differ
+//   nav-routes                 4 named modules            0 of 4 differ
+//   mobility-coverage-apart    1 named module             0 of 1 differ
+//   records-action-grammar     app/(app)/records          0 of 73 differ
+//   one-tap-call-sites         components + app        19 of 1042 differ
+//   one-tap                    sql-scan sourceFiles    38 of 1610 differ
+//   cadence-home               app/(app)/training         9 of 70 differ
+//   cadence-registry           lib                    342 of 1475 differ
+//
+// EVERY ONE OF THEM STAYED GREEN, and the direction of the difference is why that is
+// reassuring rather than suspicious. The hand-rolled line regex is unanchored, so it
+// deletes from any `//` — including the one inside `"https://…"` — and takes the rest
+// of that line with it. The old strippers therefore saw LESS code than the file
+// contains; converting makes each guard see MORE. A guard that was going to fire on
+// something newly visible would have gone red here. None did.
+//
+// The two cadence entries had a NARROWER hand-roll (`^\s*//.*$` — whole-line comments
+// only), so a trailing `// …` survived it entirely; their numbers above are measured
+// against that spelling, not the common one.
+//
+// THE INSTRUMENT IS COMMITTED, because the rule is only worth having if the next
+// conversion can re-run it: `scripts/strip-comments-equivalence.ts <pathspec>`, with
+// `--narrow` for the other spelling. Reading a number out of a lane's transcript is
+// not a measurement anybody can repeat.
+//
+// ── THE OTHER POPULATION: SCANNERS THAT BLANK NOTHING AT ALL ────────────────────
+//
+// The larger half of #3621 and the harder one. Measured at this head: 153 files under
+// lib/__tests__ read source text and neither import this module nor hand-roll a
+// stripper. (#3621 filed it as ~106 over a narrower reader predicate; the number moves
+// with how "reads source" is spelled, which is itself a reason to say what you counted.)
+//
+// THE RULE, STATED SO IT CAN BE ARGUED WITH RATHER THAN APPLIED BY FEEL:
+//
+//   A scanner needs blanking when its pattern is one this repo's PROSE can write.
+//   Not "could a comment contain these characters" — everything could — but "does
+//   this tree write that shape in sentences". Three tests, in order:
+//
+//     1. Can the pattern match with NO delimiter a sentence would have to carry?
+//        `<table`, `btn`, a bare identifier, a class token: yes. A pattern anchored
+//        on a quoted literal — `data-testid="fitness-tile-title"`, `from "@/lib/db"`
+//        — mostly cannot, because prose quoting a testid quotes it in BACKTICKS, and
+//        the scanner is looking for the double quotes.
+//     2. Is the pattern the file's OWN SUBJECT? A guard about buttons has comments
+//        full of `btn`; a guard about the card boundary has comments full of `sm:`.
+//        Documentation clusters exactly where the pattern does, so this is the
+//        signal that a green scan is a scan of its own explanation (#3509).
+//     3. Which direction does a surviving comment fail in? A comment adding a match
+//        is a false FINDING — noise someone investigates. A comment that makes a
+//        guard stop being able to FAIL is silent, and that one is not optional:
+//        #3600's last failing direction went green because a page gained a JSX
+//        comment naming the convention its guard hunted for.
+//
+//   Rule 3 outranks the other two. A scanner whose failure direction is silent gets
+//   blanked whatever its pattern looks like.
+//
+// WHAT #3621 DID NOT DO, SAID PLAINLY RATHER THAN LEFT TO INFERENCE: the 153 are not
+// decided. The rule above is the criterion, `hygieneScanText` in e2e-hygiene.test.ts
+// is the first application of it (frequency counts over spec text, where a sentence
+// explaining a banned call counted as one), and the rest is a queue nobody has walked.
+// A list of undecided files is the TODO this ratchet's own design refuses, so there
+// is no second frozen list here — only the rule and the count.
 //
 // NOT EVERY ENTRY IS A BUG. `lib/__tests__/card-mode-boundary.test.ts` strips CSS,
 // where `//` is not a comment at all and this module's scanner would blank the rest
@@ -267,8 +340,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
   const HAND_ROLLED_TODAY = [
     "lib/__tests__/actions-write-access.test.ts",
     "lib/__tests__/bio-age-inputs-card-scan.test.ts",
-    "lib/__tests__/cadence-home.test.ts",
-    "lib/__tests__/cadence-registry.test.ts",
     "lib/__tests__/card-mode-boundary.test.ts",
     "lib/__tests__/chip-primitive-census.test.ts",
     "lib/__tests__/chrome-refresh-scan.test.ts",
@@ -290,18 +361,12 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/instant-writer-scan.test.ts",
     "lib/__tests__/migration-historical-fixture-scan.test.ts",
     "lib/__tests__/mobile-density-convention.test.ts",
-    "lib/__tests__/mobility-coverage-apart.test.ts",
-    "lib/__tests__/mood-guardrails.test.ts",
-    "lib/__tests__/nav-routes.test.ts",
     "lib/__tests__/notes-text.test.ts",
     "lib/__tests__/observation-substrate.test.ts",
     "lib/__tests__/offline-queue.test.ts",
-    "lib/__tests__/one-tap-call-sites.test.ts",
-    "lib/__tests__/one-tap.test.ts",
     "lib/__tests__/overlay-motion-chokepoint.test.ts",
     "lib/__tests__/protocol-offer-renderers.test.ts",
     "lib/__tests__/reconcile-registry.test.ts",
-    "lib/__tests__/records-action-grammar.test.ts",
     "lib/__tests__/settings-groups.test.ts",
     "lib/__tests__/sql-clock-seam.test.ts",
     "lib/__tests__/telegram-chokepoint.test.ts",
