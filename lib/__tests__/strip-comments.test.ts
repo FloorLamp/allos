@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -206,5 +207,200 @@ describe("the four spans the old stripper deleted", () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+});
+
+// ── WHO ELSE STILL ROLLS THEIR OWN (#3595) ──────────────────────────────────────
+//
+// #3595 asks a question this module cannot answer by existing: is any other source
+// scanner still reading raw text, or stripping comments with a pair of regexes of
+// its own? Membership should be the import, and this is the census that says who is
+// not a member yet.
+//
+// WHY IT IS A RATCHET AND NOT A SWEEP. Measured 2026-08-23: FORTY-SEVEN files still
+// carry a hand-rolled comment deleter, 57 sites between them, and all but a handful
+// spell the exact ordered pair this module was written to replace —
+//
+//   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+//
+// — which strips BLOCK comments first, so a `/*` written inside a `//` sentence
+// opens a span that runs to the next unrelated `*/`. That is the defect that hid
+// 1,244 lines of components/ActivityForm.tsx from the census whose whole job was to
+// watch it, and it hid them in the direction where everything stays green.
+//
+// Converting forty-seven guards in one pass would change what each of them SEES,
+// which is a verdict change per file and needs each one re-measured. So this pass
+// freezes the population instead: the list below is exactly who hand-rolls one
+// today, and the assertion is set EQUALITY. A new one cannot be written without
+// this going red, and converting one means deleting its line — the list is a work
+// queue that can only shrink.
+//
+// NOT EVERY ENTRY IS A BUG. `lib/__tests__/card-mode-boundary.test.ts` strips CSS,
+// where `//` is not a comment at all and this module's scanner would blank the rest
+// of a line on a `url(https://…)`. A converted-away entry and a legitimately
+// separate one both leave the list the same way — by being argued about — which is
+// the point of naming them.
+//
+// THE CENSUS READS ITS OWN CORPUS COMMENT-BLANKED, which is what keeps it from
+// firing on prose: strip-comments.ts itself quotes the retired regex twice in the
+// header above in order to argue against it, and lib/__tests__/tmp-dir-census.ts
+// makes the same move for its own construct. A guard that fired on the
+// documentation explaining it would teach the next author to stop writing the
+// documentation (#3509).
+describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
+  const CENSUS_ROOTS = ["lib", "components", "app", "e2e", "scripts"];
+
+  /**
+   * The regex literals that DELETE comment syntax. Both halves of the retired pair,
+   * in every spelling the tree actually uses — `[^\n]*` and `.*$` for the line half.
+   */
+  const HAND_ROLLED = [
+    [/\/\\\/\\\*\[\\s\\S\]\*\?\\\*\\\//, "a block-comment deleter"],
+    [/\/\\\/\\\/[^/]*\//, "a line-comment deleter"],
+  ] as const;
+
+  /**
+   * Every file that still carries one, measured 2026-08-23. This is the work queue
+   * for converting them to `stripComments`, and the assertion below is set equality
+   * so it cannot grow. Delete a line when its file starts importing this module.
+   */
+  const HAND_ROLLED_TODAY = [
+    "lib/__tests__/actions-write-access.test.ts",
+    "lib/__tests__/bio-age-inputs-card-scan.test.ts",
+    "lib/__tests__/cadence-home.test.ts",
+    "lib/__tests__/cadence-registry.test.ts",
+    "lib/__tests__/card-mode-boundary.test.ts",
+    "lib/__tests__/chip-primitive-census.test.ts",
+    "lib/__tests__/chrome-refresh-scan.test.ts",
+    "lib/__tests__/copy-lint.test.ts",
+    "lib/__tests__/cycle-offer-renderers.test.ts",
+    "lib/__tests__/date-locale-guard.test.ts",
+    "lib/__tests__/db-template-key.test.ts",
+    "lib/__tests__/disclaimers.test.ts",
+    "lib/__tests__/e2e-hygiene.test.ts",
+    "lib/__tests__/fasting-standdown.test.ts",
+    "lib/__tests__/fiber-symptom-panel.test.ts",
+    "lib/__tests__/flag-notability.test.ts",
+    "lib/__tests__/food-habit-observation.test.ts",
+    "lib/__tests__/food-limit-note.test.ts",
+    "lib/__tests__/goal-liveness.test.ts",
+    "lib/__tests__/icon-button-tooltip-scan.test.ts",
+    "lib/__tests__/immediate-tx.test.ts",
+    "lib/__tests__/ingest-narrowing-scan.test.ts",
+    "lib/__tests__/instant-writer-scan.test.ts",
+    "lib/__tests__/migration-historical-fixture-scan.test.ts",
+    "lib/__tests__/mobile-density-convention.test.ts",
+    "lib/__tests__/mobility-coverage-apart.test.ts",
+    "lib/__tests__/mood-guardrails.test.ts",
+    "lib/__tests__/nav-routes.test.ts",
+    "lib/__tests__/notes-text.test.ts",
+    "lib/__tests__/observation-substrate.test.ts",
+    "lib/__tests__/offline-queue.test.ts",
+    "lib/__tests__/one-tap-call-sites.test.ts",
+    "lib/__tests__/one-tap.test.ts",
+    "lib/__tests__/overlay-motion-chokepoint.test.ts",
+    "lib/__tests__/protocol-offer-renderers.test.ts",
+    "lib/__tests__/reconcile-registry.test.ts",
+    "lib/__tests__/records-action-grammar.test.ts",
+    "lib/__tests__/settings-groups.test.ts",
+    "lib/__tests__/sql-clock-seam.test.ts",
+    "lib/__tests__/telegram-chokepoint.test.ts",
+    "lib/__tests__/telegram-command-authority.test.ts",
+    "lib/__tests__/test-clock-freeze-scan.test.ts",
+    "lib/__tests__/time-columns.test.ts",
+    "lib/__tests__/trailing-average-boundary.test.ts",
+    "lib/__tests__/typed-route-props.test.ts",
+    "lib/__tests__/ux-geometry-census.test.ts",
+    "lib/user-error-copy-census.ts",
+  ] as const;
+
+  /** This census must quote the construct in order to look for it. */
+  const SELF = "lib/__tests__/strip-comments.test.ts";
+
+  const sources = (): { rel: string; code: string }[] =>
+    execFileSync("git", ["ls-files", "-z", "--", ...CENSUS_ROOTS], {
+      cwd: REPO,
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .toString("utf8")
+      .split("\0")
+      .filter((f) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f))
+      .map((rel) => ({
+        rel,
+        code: stripComments(fs.readFileSync(path.join(REPO, rel), "utf8")),
+      }));
+
+  const rollsOwn = (
+    files: readonly { rel: string; code: string }[]
+  ): string[] =>
+    files
+      .filter(
+        ({ rel, code }) =>
+          rel !== SELF && HAND_ROLLED.some(([re]) => re.test(code))
+      )
+      .map((f) => f.rel)
+      .sort();
+
+  it("reads the corpus it is about to pronounce on", () => {
+    const files = sources();
+    expect(
+      files.length,
+      `The census read ${files.length} source files under ${CENSUS_ROOTS.join(", ")}. ` +
+        "A walk that has stopped reaching them reports that nobody hand-rolls a " +
+        "stripper any more, which is the reassuring direction."
+    ).toBeGreaterThanOrEqual(2000);
+    for (const root of CENSUS_ROOTS)
+      expect(
+        files.filter((f) => f.rel.startsWith(`${root}/`)).length,
+        `No file at all under \`${root}/\`.`
+      ).toBeGreaterThan(0);
+  });
+
+  it("finds exactly the files already known to hand-roll one", () => {
+    expect(
+      rollsOwn(sources()),
+      "The set of files stripping comments by hand has changed. If a file was " +
+        "ADDED, route it through lib/__tests__/strip-comments.ts instead — the " +
+        "ordered pair of regexes strips block comments first, so a `/*` inside a " +
+        "`//` sentence swallows everything to the next unrelated `*/` (#3087, " +
+        "1,244 lines of components/ActivityForm.tsx). If one was CONVERTED, delete " +
+        "its line from HAND_ROLLED_TODAY above — this list can only shrink."
+    ).toEqual([...HAND_ROLLED_TODAY]);
+  });
+
+  it("sees a hand-rolled stripper planted in the corpus, and not one in prose", () => {
+    // A green sweep over a tree that already complies says nothing about what the
+    // sweep can SEE (#3325). The prose case is the one that matters: this file and
+    // strip-comments.ts both QUOTE the retired pair in order to argue against it,
+    // and a census that counted those would fire on its own explanation.
+    const planted = [
+      {
+        rel: "lib/__tests__/zz-planted-block.test.ts",
+        code: stripComments(
+          'const code = src.replace(/\\/\\*[\\s\\S]*?\\*\\//g, "");\n'
+        ),
+      },
+      {
+        rel: "lib/__tests__/zz-planted-line.test.ts",
+        code: stripComments(
+          'const code = src.replace(/\\/\\/[^\\n]*/g, "");\n'
+        ),
+      },
+      {
+        rel: "lib/__tests__/zz-planted-prose.test.ts",
+        code: stripComments(
+          '// Do not write src.replace(/\\/\\*[\\s\\S]*?\\*\\//g, "") — use stripComments.\n' +
+            "const code = stripComments(src);\n"
+        ),
+      },
+      {
+        rel: "lib/__tests__/zz-planted-member.test.ts",
+        code: stripComments("const code = stripComments(src);\n"),
+      },
+    ];
+    expect(rollsOwn(planted)).toEqual([
+      "lib/__tests__/zz-planted-block.test.ts",
+      "lib/__tests__/zz-planted-line.test.ts",
+    ]);
   });
 });
