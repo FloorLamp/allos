@@ -858,28 +858,28 @@ caveat so the Supplements tab and the Upcoming finding cannot disagree, and
 and never shrinks it — same total, same limit, same close — and product identity is an
 exact name match, so a renamed or look-alike item gets the ordinary generic warning.
 
+`catalogUlExceedances` is the computed reverse-lookup behind
+`lib/__tests__/catalog-ul-notes.test.ts`, which binds it both ways: an entry that trips
+a UL at one of its own stated servings must carry a reason, and a reason must name a
+nutrient its entry really trips. (Ruling 1 of the same issue — the seeded per-unit
+amounts stay transcribed from typical labels, NOT held to the cited-source standard and
+NOT marked unverified — is a deliberate no-op with its accepted cost stated on the
+issue.)
+
 It also only speaks where it is true. The reason ends "the total is expected for this
 product", so `formulationUlNote` renders it only when the declaring product ACCOUNTS
 for the exceedance: its own contribution must be above the limit, AND the rest of the
 stack must not be over the limit without it. Both halves are needed and they catch
 different stacks. AREDS 2 at one softgel is 40 mg — exactly at the adult UL, over
 nothing — so adding a separate 50 mg zinc puts the person at 90 mg because of the other
-bottle, and the note stays silent. Two products each over the limit (80 + 50 = 130) get
-no note either: neither explains 130 mg. Three products sharing an exceedance (40 + 10
-
-- 5 = 55) get none: removing AREDS 2 drops the stack under the limit, but its own
-  serving is not above it, so a shared exceedance is nobody's by design. A note that
-  explained someone else's total would teach a person to dismiss a real warning — the
-  same "looks like a bug, so it gets ignored" failure the ruling exists to prevent, read
-  the other way. OPEN: on a pediatric band the adult sentence still renders against a
-  child's lower limit; that is an unruled wording call.
-  `catalogUlExceedances` is the computed reverse-lookup behind
-  `lib/__tests__/catalog-ul-notes.test.ts`, which binds it both ways: an entry that trips
-  a UL at one of its own stated servings must carry a reason, and a reason must name a
-  nutrient its entry really trips. (Ruling 1 of the same issue — the seeded per-unit
-  amounts stay transcribed from typical labels, NOT held to the cited-source standard and
-  NOT marked unverified — is a deliberate no-op with its accepted cost stated on the
-  issue.)
+bottle, and the note stays silent. Two products each over the limit (80 mg and 50 mg,
+130 mg together) get no note either: neither explains 130 mg. Three products sharing an
+exceedance (40 mg, 10 mg and 5 mg, 55 mg together) get none: removing AREDS 2 drops the
+stack under the limit, but its own serving is not above it, so a shared exceedance is
+nobody's by design. A note that explained someone else's total would teach a person to
+dismiss a real warning — the same "looks like a bug, so it gets ignored" failure the
+ruling exists to prevent, read the other way. OPEN: on a pediatric band the adult
+sentence still renders against a child's lower limit; that is an unruled wording call.
 
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the
