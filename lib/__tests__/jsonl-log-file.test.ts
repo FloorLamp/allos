@@ -8,10 +8,10 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
+import { makeTmpDir } from "./tmp-dir";
 import {
   appendJsonlLine,
   clearJsonlFile,
@@ -30,7 +30,7 @@ const KEEP_ALL: JsonlBudgets = {
 };
 
 function tmpFile(name: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-jsonl-"));
+  const dir = makeTmpDir("jsonl");
   return path.join(dir, name);
 }
 

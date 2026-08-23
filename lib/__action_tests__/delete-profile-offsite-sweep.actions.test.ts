@@ -10,7 +10,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { OFFSITE_SENTINEL } from "@/lib/backup-offsite";
@@ -22,6 +21,7 @@ import {
   fd,
   type TestProfile,
 } from "./harness";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 let destDir: string;
 const prevDest = process.env.BACKUP_DEST_DIR;
@@ -34,7 +34,7 @@ function plant(abs: string, body = "phi"): string {
 }
 
 beforeEach(() => {
-  destDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-offsite-sweep-"));
+  destDir = makeTmpDir("offsite-sweep");
   // Mark the destination mounted+verified so the readiness gate lets the sweep run.
   fs.writeFileSync(path.join(destDir, OFFSITE_SENTINEL), "sentinel");
   process.env.BACKUP_DEST_DIR = destDir;

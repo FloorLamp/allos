@@ -1,5 +1,4 @@
 import fsMod from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -10,6 +9,7 @@ import {
   originFromToken,
   withChatOrigin,
 } from "@/lib/notifications/chat-origin";
+import { makeTmpDir } from "./tmp-dir";
 
 // The pure half of the chat origin marker (#3087). The round trip — a real send, a
 // real tap, a real rebuild — is lib/__db_tests__/logged-via-chat-origin.test.ts;
@@ -212,7 +212,7 @@ describe("every rebuild of a food nudge re-applies the origin", () => {
     // so the offender is planted on disk and the whole walker runs over it — including
     // the two spellings the formatter actually produces, and a comment that merely
     // names the builder.
-    const root = fsMod.mkdtempSync(path.join(os.tmpdir(), "food-rebuild-"));
+    const root = makeTmpDir("food-rebuild");
     fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
     fsMod.writeFileSync(
       path.join(root, "lib/notifications/handlers.ts"),

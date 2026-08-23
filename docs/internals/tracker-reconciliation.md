@@ -19,7 +19,8 @@ never changes scope or a decision. Judgment calls are FLAGGED, not made.
 | `scripts/orchestration/reconcile-tracker-core.ts` | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
 | `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock, watermark.   |
 | `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, three kinds wide, refuses by default.   |
-| `scripts/orchestration/reconcile-apply.ts`        | The one writer. Sends exactly one field, `body`.                           |
+| `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
+| `scripts/orchestration/reconcile-labels.ts`       | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
 | `.claude/skills/reconcile-tracker/SKILL.md`       | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
 | `lib/__tests__/reconcile-tracker.test.ts`         | Parsers, false-positive floor, guardrails, capability scan.                |
 
@@ -158,8 +159,19 @@ is the majority and would bury the first.
 - **No close capability in the granted toolchain.** Not "the prompt says not
   to" — that is the same theatre as gating a Server Action in the UI only
   (#1279/#2107). The skill's `allowed-tools` grants no `issue_write`, no
-  `gh issue close`, no general `Bash`; the only writer sends a payload built
-  from one field. A source scan in the pure tier fails any of those appearing.
+  `gh issue close`, no general `Bash`. There are exactly TWO writers, and each
+  sends a payload built from one field: `reconcile-apply.ts` sends `body`,
+  `reconcile-labels.ts` sends `labels` (its removal path sends no body at all —
+  the label rides in the URL). Neither endpoint has a field an issue's `state`
+  could travel in. A source scan in the pure tier fails any of those appearing.
+- **A domain add may only FILL A GAP.** `reconcile-labels.ts` never re-classifies
+  an issue that already carries a domain label, and "already" includes a label
+  this same run just added — a plan file listing two domains for one issue gets
+  one write and one logged refusal, in a dry run exactly as under `--apply`
+  (#3122). `decideDomainAdd` in the core is the whole judgment;
+  `lib/__tests__/reconcile-labels-script.test.ts` drives the script itself
+  against a stub `curl` so the read-modify-write loop is tested, not just the
+  function it calls.
 
 ## Prevention: two conventions that shrink the problem at the source
 

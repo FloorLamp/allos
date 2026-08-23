@@ -18,7 +18,6 @@
 // crash-loop reuse that stops a failing migration re-VACUUMing on every restart.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, it, expect, afterEach } from "vitest";
@@ -44,13 +43,14 @@ import {
 } from "@/lib/backup-verify";
 import { restoreCore, readSnapshotUserVersion } from "@/lib/restore";
 import { listBackupNames, readVerification } from "@/lib/backup";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
 const tmpRoots: string[] = [];
 
 function tmpDb(): { root: string; dbPath: string; snapDir: string } {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "allos-premigrate-"));
+  const root = makeTmpDir("premigrate");
   tmpRoots.push(root);
   const dbPath = path.join(root, "allos.db");
   return { root, dbPath, snapDir: migrationSnapshotDir(dbPath) };

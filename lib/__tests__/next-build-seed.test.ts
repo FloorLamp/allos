@@ -7,7 +7,6 @@
 // fact that licenses a seed at all: identical build inputs.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,13 +29,14 @@ import {
   EXIT_REFUSED,
   EXIT_SEEDED,
 } from "../../scripts/orchestration/seed-next-build.mjs";
+import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const temps: string[] = [];
 
 function tempRoot(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-seed-"));
+  const dir = makeTmpDir("seed");
   temps.push(dir);
   return dir;
 }

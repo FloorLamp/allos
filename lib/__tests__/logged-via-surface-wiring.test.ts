@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { stripComments } from "./strip-comments";
+import { makeTmpDir } from "./tmp-dir";
 
 // THE WEB-SURFACE WIRING CENSUS (#3087).
 //
@@ -664,7 +664,7 @@ describe("the census's reach", () => {
   // the offenders are planted on disk and the WHOLE walker runs over them — the file
   // selection, the "use client" test, the export attribution and the import match.
   function corpus(files: Record<string, string>): string {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "logged-via-wiring-"));
+    const root = makeTmpDir("logged-via-wiring");
     for (const [rel, body] of Object.entries(files)) {
       const abs = path.join(root, rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
