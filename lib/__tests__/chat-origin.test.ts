@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 import {
   keyboardChatOrigin,
   markToken,
@@ -131,11 +132,14 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 /** The builder's own module — the definition, not a rebuild. */
 const BUILDER_MODULE = "lib/notifications/food.ts";
 
-/** Comments name this builder constantly; only a CALL is a call. */
+/**
+ * Comments name this builder constantly; only a CALL is a call.
+ *
+ * Shared with the surface-wiring census — see lib/__tests__/strip-comments.ts for
+ * why one scanner replaced the pair of ordered regexes both files used to carry.
+ */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return stripComments(src);
 }
 
 function sources(root: string): { rel: string; src: string }[] {

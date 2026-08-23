@@ -36,6 +36,7 @@ import {
 } from "@/lib/log-sheet";
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
+import type { WebLoggedVia } from "@/lib/logged-via";
 
 // The log sheet — what the dock's raised puck opens (issue #2651). Since #2745
 // the puck is the one phone-chrome route here; the duplicate top-bar cluster is
@@ -105,6 +106,15 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   document: IconFileText,
 };
 
+// The sheet's own surface, named once so the region it declares over its body and the
+// surface it opens the activity editor from cannot drift apart (#3087). Told to the
+// editor rather than read from the context, because a component is not inside the
+// provider it renders: the declaration below is in this component's OWN returned JSX,
+// so `useLoggedVia()` here would answer whatever is above the sheet — `page` — and a
+// workout started from the sheet's bolt would record `page` like one started from the
+// Training page. Which is the sentence this mechanism exists to make false.
+const SHEET_SURFACE: WebLoggedVia = "quick-log";
+
 export default function QuickLogSheet({
   open,
   onClose,
@@ -134,7 +144,7 @@ export default function QuickLogSheet({
     workoutOffer,
     canStartWorkout,
     trainingRelevant,
-  } = useActivityEditor();
+  } = useActivityEditor(SHEET_SURFACE);
   const { open: openQuickEntry } = useQuickEntry();
 
   const segments = logSheetSegments(cycleRelevant, substanceRelevant)
@@ -192,7 +202,7 @@ export default function QuickLogSheet({
           renders, posting the SAME action, so the server can only tell the puck from
           the dashboard atom if the puck says so. Declared here at the region root
           rather than on the control, which is mounted in both places. */}
-      <LoggedViaSurface value="quick-log">
+      <LoggedViaSurface value={SHEET_SURFACE}>
         {context && (context.routine || context.dueDoses.count > 0) && (
           <section
             data-testid="log-sheet-context"

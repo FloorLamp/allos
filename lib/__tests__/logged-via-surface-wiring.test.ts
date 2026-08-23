@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 
 // THE WEB-SURFACE WIRING CENSUS (#3087).
 //
@@ -222,11 +223,19 @@ const CLAIMING_SURFACES = [
 ] as const;
 const LITERAL_RE = new RegExp(`["'](${CLAIMING_SURFACES.join("|")})["']`, "g");
 
-/** Comments name these surfaces constantly; only source is source. */
+/**
+ * Comments name these surfaces constantly; only source is source.
+ *
+ * The scanner is SHARED with the chat-origin census (lib/__tests__/strip-comments.ts).
+ * Two copies of a comment stripper is how they drift, and they did: both carried a
+ * pair of ordered regexes that stripped block comments first, so a `/*` written
+ * inside a `//` line comment opened a block comment nothing closed. In
+ * components/ActivityForm.tsx that deleted lines 108-1352 — `useLoggedViaStamp()` at
+ * :220 with them — which is the ONE stamper the editor's region exists to serve, so
+ * `stampersOutsideEveryRegion` swept a file it could not see and reported a pass.
+ */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return stripComments(src);
 }
 
 /**
@@ -258,8 +267,17 @@ export function hardcodingActions(
   return out;
 }
 
-/** A route file is one mounting of itself — the router renders it. */
-const ROUTE_RE = /^app\/.*(?:page|layout|template)\.tsx$/;
+/**
+ * A router ENTRY file is one mounting of itself — Next renders it, nothing imports it.
+ *
+ * All of them, not just the three the first version listed: `error`, `global-error`
+ * and `not-found` are rendered by the router exactly as `page` is, and the metadata
+ * entries (`icon`, `apple-icon`, `opengraph-image`, …) are route handlers Next invokes.
+ * Leaving them out made five real router entries look like files nothing mounts, which
+ * with the fail-closed rule below is the difference between a finding and a fact.
+ */
+const ROUTE_RE =
+  /^app\/.*(?:page|layout|template|loading|error|global-error|not-found|default|icon|apple-icon|opengraph-image|twitter-image|sitemap|robots|manifest)\.tsx$/;
 
 /** Where each file's component is rendered, as `<host> -> <Tag>`. */
 function mountingsOf(
@@ -353,6 +371,44 @@ function resolveSpec(
   return null;
 }
 
+/**
+ * `export { X } from "./x"` / `export { default as X } from "./x"` / `export * from …`
+ * — a BARREL's promise to hand on someone else's component under a name of its own.
+ *
+ * Without following it the graph attributes the mounting to the barrel: `BottomSheet`
+ * renders `<OverlayDragHandle>` imported from `./overlay`, so `components/overlay/index.ts`
+ * came out mounted and `components/overlay/OverlayDragHandle.tsx` — the file that
+ * actually renders — came out mounted by nothing. A chain through a barrel is a chain
+ * the walker cannot follow, and with the fail-closed rule below that is a finding
+ * rather than the silence it used to be.
+ */
+function reexportMap(
+  root: string,
+  rel: string,
+  src: string,
+  known: Set<string>
+): { named: Map<string, string>; stars: string[] } {
+  const named = new Map<string, string>();
+  const stars: string[] = [];
+  for (const m of src.matchAll(
+    /export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g
+  )) {
+    const target = resolveSpec(root, rel, m[2], known);
+    if (!target) continue;
+    for (const part of m[1].split(",")) {
+      const t = part.trim().replace(/^type\s+/, "");
+      if (!t) continue;
+      // `default as X` and `A as B` both bind the LOCAL name on the right.
+      named.set(/\s+as\s+/.test(t) ? t.split(/\s+as\s+/)[1].trim() : t, target);
+    }
+  }
+  for (const m of src.matchAll(/export\s*\*\s*from\s*["']([^"']+)["']/g)) {
+    const target = resolveSpec(root, rel, m[1], known);
+    if (target) stars.push(target);
+  }
+  return { named, stars };
+}
+
 /** Who renders whom: `file -> the files whose components it mounts as JSX`. */
 export function mountGraph(root: string): {
   files: { rel: string; src: string }[];
@@ -366,6 +422,33 @@ export function mountGraph(root: string): {
   );
   const known = new Set(files.map((f) => f.rel));
   const mountedBy = new Map(files.map((f) => [f.rel, new Set<string>()]));
+  const byRel = new Map(files.map((f) => [f.rel, f]));
+  const reexports = new Map(
+    files.map((f) => [f.rel, reexportMap(root, f.rel, f.src, known)] as const)
+  );
+  /** Follow a name through any barrels to the file that actually defines it. */
+  const defining = (
+    target: string,
+    name: string,
+    seen = new Set<string>()
+  ): string => {
+    if (seen.has(target)) return target;
+    seen.add(target);
+    const re = reexports.get(target);
+    if (!re) return target;
+    const direct = re.named.get(name);
+    if (direct) return defining(direct, name, seen);
+    for (const star of re.stars) {
+      const src = byRel.get(star)?.src ?? "";
+      if (
+        new RegExp(
+          `export\\s+(?:default\\s+)?(?:async\\s+)?(?:function|const|class)\\s+${name}\\b`
+        ).test(src)
+      )
+        return defining(star, name, seen);
+    }
+    return target;
+  };
   for (const { rel, src } of files) {
     const local = new Map<string, string>();
     for (const im of src.matchAll(
@@ -392,14 +475,19 @@ export function mountGraph(root: string): {
     // `next/dynamic` is how the quick-log sheet mounts four of its five bodies, so a
     // graph that saw only static imports would report them unreachable and stay quiet
     // about exactly the region this assertion exists for.
+    // `React.lazy` is the same deferred mount in React's own spelling. There is no
+    // instance of it in this tree today, and it is handled rather than registered on
+    // purpose: registering "nobody uses React.lazy" is a claim that rots the first
+    // time somebody does, silently, in the direction of a green sweep.
     for (const dy of src.matchAll(
-      /(?:const|let)\s+([A-Za-z0-9_$]+)\s*=\s*dynamic\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["']([^"']+)["']/g
+      /(?:const|let)\s+([A-Za-z0-9_$]+)\s*=\s*(?:dynamic|(?:React\.)?lazy)\s*\(\s*(?:async\s*)?\(\)\s*=>\s*import\s*\(\s*["']([^"']+)["']/g
     )) {
       const target = resolveSpec(root, rel, dy[2], known);
       if (target) local.set(dy[1], target);
     }
     for (const j of src.matchAll(/<([A-Z][A-Za-z0-9_]*)/g)) {
-      const target = local.get(j[1]);
+      const via = local.get(j[1]);
+      const target = via ? defining(via, j[1]) : undefined;
       if (target && target !== rel) mountedBy.get(target)!.add(rel);
     }
   }
@@ -407,6 +495,31 @@ export function mountGraph(root: string): {
 }
 
 /** Every stamping control that can render outside any page and outside any region. */
+/**
+ * Files a chain may legitimately dead-end at that are NOT router entries, each with
+ * the reason it renders nowhere. A registry, not a filter: adding a line is a claim
+ * somebody has to write down and review, which is the whole difference between this
+ * and the silence it replaces.
+ */
+const UNMOUNTED_ROOTS: Record<string, string> = {
+  "components/illness/SymptomLogCard.tsx":
+    "dead code — no file in app/ or components/ imports it, confirmed by review on " +
+    "PR #3560. Deleting it is out of that PR's scope, so it is registered rather " +
+    "than removed; delete the component and this line together.",
+};
+
+/**
+ * Every stamping control that can render outside any page and outside any region —
+ * AND every chain the walker could not resolve, which is the same finding.
+ *
+ * UNRESOLVED FAILS CLOSED. The first version reported a dead-ended chain only when it
+ * stopped at a file matching `ROUTE_RE`, and dropped every other dead end in silence.
+ * That is an absence assertion answering "no" for two different reasons — "this
+ * control is covered" and "I lost the thread" — and the second one is exactly what a
+ * missed barrel re-export or an unlisted router entry looks like. So a chain that ends
+ * at a file nothing mounts is now a finding unless that file is a router entry (the
+ * router mounts it) or is registered above with a reason.
+ */
 export function stampersOutsideEveryRegion(root: string): string[] {
   const { files, mountedBy } = mountGraph(root);
   const byRel = new Map(files.map((f) => [f.rel, f]));
@@ -423,6 +536,8 @@ export function stampersOutsideEveryRegion(root: string): string[] {
       const parents = [...mountedBy.get(cur)!];
       if (parents.length === 0) {
         if (ROUTE_RE.test(cur)) out.push(chain.join(" <- "));
+        else if (!(cur in UNMOUNTED_ROOTS))
+          out.push(`${chain.join(" <- ")} (nothing mounts ${cur})`);
         continue;
       }
       for (const p of parents) {
@@ -433,6 +548,15 @@ export function stampersOutsideEveryRegion(root: string): string[] {
     }
   }
   return [...new Set(out)].sort();
+}
+
+/** A registered root that no longer exists, or that something mounts after all. */
+export function staleUnmountedRoots(root: string): string[] {
+  const { files, mountedBy } = mountGraph(root);
+  const known = new Set(files.map((f) => f.rel));
+  return Object.keys(UNMOUNTED_ROOTS)
+    .filter((rel) => !known.has(rel) || (mountedBy.get(rel)?.size ?? 0) > 0)
+    .sort();
 }
 
 describe("every surface-reading action has a mounting that declares itself", () => {
@@ -507,6 +631,18 @@ describe("every surface-reading action has a mounting that declares itself", () 
         "page's own form\" — from somewhere that is not a page. Either a region root " +
         "lost its wrapper, or a new always-mounted host needs one. The chain below " +
         "reads control first, host last."
+    ).toEqual([]);
+  });
+
+  it("keeps every registered unmounted root real and still unmounted", () => {
+    // The registry above is the ONE place this guard is allowed to be quiet, so it is
+    // itself pinned: a registered file that has been deleted, or that something now
+    // mounts, is a line stating something untrue about the tree.
+    expect(
+      staleUnmountedRoots(REPO),
+      "A file registered in `UNMOUNTED_ROOTS` is either gone or is mounted after " +
+        "all (#3087). Delete its line — the registry exists to record chains that " +
+        "genuinely end nowhere, and a stale entry silences a real one."
     ).toEqual([]);
   });
 
@@ -686,6 +822,93 @@ export async function logThing(formData: FormData) {
       "components/Sheet.tsx":
         '"use client";\nimport dynamic from "next/dynamic";\n' +
         'const Lazy = dynamic(() => import("./Lazy"));\nexport default () => <Lazy />;\n',
+      "components/Lazy.tsx":
+        '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+        "export default function Lazy() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",
+    });
+    expect(stampersOutsideEveryRegion(root)).toEqual([
+      "components/Lazy.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+    ]);
+  });
+
+  it("follows a BARREL re-export to the file that actually renders", () => {
+    // `BottomSheet` renders `<OverlayDragHandle>` imported from `./overlay`, whose
+    // index.ts re-exports it from its own file. Attributing the mounting to the barrel
+    // left the real component looking like something nothing mounts.
+    const root = corpus({
+      "app/(app)/layout.tsx":
+        'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n',
+      "components/Sheet.tsx":
+        '"use client";\nimport { Handle } from "./overlay";\nexport default () => <Handle />;\n',
+      "components/overlay/index.ts":
+        'export { default as Handle } from "./Handle";\n',
+      "components/overlay/Handle.tsx":
+        '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+        "export default function Handle() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",
+    });
+    const { mountedBy } = mountGraph(root);
+    expect([...(mountedBy.get("components/overlay/Handle.tsx") ?? [])]).toEqual(
+      ["components/Sheet.tsx"]
+    );
+    // …and the chain reads through to the router, rather than dead-ending at a barrel.
+    expect(stampersOutsideEveryRegion(root)).toEqual([
+      "components/overlay/Handle.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+    ]);
+  });
+
+  it("REPORTS a chain it cannot resolve instead of dropping it", () => {
+    // The failure this ends: a chain that stops at a file nothing mounts used to be
+    // silence, indistinguishable from "covered". Registering the root — with a reason
+    // — is the only way to make it quiet.
+    const files = {
+      "components/Orphan.tsx":
+        '"use client";\nimport Bar from "@/components/Bar";\nexport default () => <Bar />;\n',
+      "components/Bar.tsx":
+        '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+        "export default function Bar() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",
+    };
+    expect(stampersOutsideEveryRegion(corpus(files))).toEqual([
+      "components/Bar.tsx <- components/Orphan.tsx (nothing mounts components/Orphan.tsx)",
+    ]);
+  });
+
+  it("knows the router entries that are not `page`, `layout` or `template`", () => {
+    // Five real ones in this tree — `app/(app)/error.tsx`, `app/(app)/not-found.tsx`,
+    // `app/not-found.tsx`, `app/global-error.tsx`, `app/share/[token]/not-found.tsx` —
+    // that the first version of `ROUTE_RE` did not match. With unresolved failing
+    // closed, an unlisted router entry becomes a false finding rather than a silence,
+    // so both directions have to be right.
+    for (const entry of [
+      "app/(app)/error.tsx",
+      "app/(app)/not-found.tsx",
+      "app/not-found.tsx",
+      "app/global-error.tsx",
+      "app/share/[token]/not-found.tsx",
+    ]) {
+      const root = corpus({
+        [entry]:
+          'import Bar from "@/components/Bar";\nexport default () => <Bar />;\n',
+        "components/Bar.tsx":
+          '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+          "export default function Bar() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",
+      });
+      // Reported as a ROUTER chain — "a stamper mounted from a router entry with no
+      // region above it" — and never as an unresolved one.
+      expect(stampersOutsideEveryRegion(root), entry).toEqual([
+        `components/Bar.tsx <- ${entry}`,
+      ]);
+    }
+  });
+
+  it("follows a `React.lazy` mount, which nothing uses yet", () => {
+    // Handled rather than registered: an absence recorded in a list rots silently, and
+    // it rots toward a green sweep.
+    const root = corpus({
+      "app/(app)/layout.tsx":
+        'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n',
+      "components/Sheet.tsx":
+        '"use client";\nimport { lazy } from "react";\n' +
+        'const Lazy = lazy(() => import("./Lazy"));\nexport default () => <Lazy />;\n',
       "components/Lazy.tsx":
         '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
         "export default function Lazy() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",

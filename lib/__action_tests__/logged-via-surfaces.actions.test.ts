@@ -16,6 +16,8 @@
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
+import { setTimezone } from "@/lib/settings";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { SLEEP_METRIC } from "@/lib/vitals-input";
 import { actAs, createLogin, createProfile } from "./harness";
@@ -54,6 +56,42 @@ function morningDose(profileId: number, name: string): number {
       )
       .run(itemId).lastInsertRowid
   );
+}
+
+/**
+ * Twelve mornings of the same two food groups, which is what makes the composed
+ * one-tap's FOOD half offer anything at all. Without a standing habit
+ * `getUsualFoodOffer` is empty and the food half writes nothing — which is exactly how
+ * a fixture that drives only the dose half can leave the food half's surface unpinned.
+ */
+function seedUsualFoodHabit(profileId: number, anchor: string): string[] {
+  const groups = ["berries", "fermented"];
+  for (let d = 1; d <= 12; d++) {
+    const date = shiftDateStr(anchor, -d);
+    for (const [i, group] of groups.entries()) {
+      db.prepare(
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT(profile_id, date, group_key)
+         DO UPDATE SET servings = servings + 1`
+      ).run(profileId, date, group);
+      db.prepare(
+        `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+         VALUES (?, ?, ?, ?)`
+      ).run(profileId, group, date, `${date}T08:0${i}:00Z`);
+    }
+  }
+  return groups;
+}
+
+/** What the food half of the composed one-tap wrote, per group, for a date. */
+function foodOrigins(profileId: number, date: string) {
+  return db
+    .prepare(
+      `SELECT group_key, logged_via FROM food_log_events
+        WHERE profile_id = ? AND date = ? ORDER BY group_key`
+    )
+    .all(profileId, date) as { group_key: string; logged_via: string | null }[];
 }
 
 /** A scheduled dose that nothing has been logged against yet. */
@@ -171,34 +209,55 @@ describe("each web surface stores its OWN value, through its own real action", (
     // attention card". So the surface has to ride the post like every other control
     // with more than one mounting.
     //
-    // The DOSE half is what this drives: the food half re-derives a habitual offer
-    // from three weeks of history, and both halves take the same `loggedVia` argument
-    // by the core's signature — one tap is one tap — so the value is pinned once here
-    // and the two-halves-one-transaction shape stays with the core's own tests.
-    const { profile } = seat("lv usual");
+    // BOTH HALVES, because the tap is one tap and the column has to say so twice.
+    // The earlier version of this drove only the dose half and rested on "both halves
+    // take the same `loggedVia` argument by the core's signature" — which is exactly
+    // the premise the previous round shipped on: replacing the food half's argument in
+    // lib/usual-routine-write.ts with the literal `"dashboard-hero"` left every tier
+    // green, because nothing anywhere read a food event's `logged_via` back on this
+    // path. The food half needs a standing habit before it offers anything, which is
+    // why the fixture is three lines longer rather than one assertion shorter.
+    const { login, profile } = seat("lv usual");
+    setTimezone(profile.id, "UTC");
     const date = today(profile.id);
     for (const [surface, name] of [
       ["dashboard-widget", "lv usual atom"],
       ["quick-log", "lv usual puck"],
     ] as const) {
-      const doseId = morningDose(profile.id, name);
+      // A fresh profile per surface: the food half collapses once the window is
+      // logged, so the second surface needs its own standing offer.
+      const { profile: p } = seat(name);
+      setTimezone(p.id, "UTC");
+      const day = today(p.id);
+      const groups = seedUsualFoodHabit(p.id, day);
+      const doseId = morningDose(p.id, name);
       const fd = new FormData();
       fd.set("meal_slot", "Morning");
-      fd.set("groups", "");
+      fd.set("groups", groups.join(","));
       fd.set("dose_ids", String(doseId));
       fd.set(LOGGED_VIA_FIELD, surface);
       expect((await logUsualRoutine(fd)).ok, surface).toBe(true);
-      expect(doseOrigin(doseId, date), surface).toBe(surface);
+      expect(doseOrigin(doseId, day), surface).toBe(surface);
+      // THE FOOD HALF, read back off the per-tap ledger rows the same tap wrote.
+      expect(foodOrigins(p.id, day), surface).toEqual(
+        groups.map((group_key) => ({ group_key, logged_via: surface }))
+      );
     }
     // And with nothing posted it falls back to the action's home, exactly as every
     // other reading action does — never to a surface of its own choosing.
+    // Back in the seat: the loop above acted as a fresh profile per surface.
+    actAs(login, profile);
+    const bareGroups = seedUsualFoodHabit(profile.id, date);
     const bare = morningDose(profile.id, "lv usual bare");
     const fd = new FormData();
     fd.set("meal_slot", "Morning");
-    fd.set("groups", "");
+    fd.set("groups", bareGroups.join(","));
     fd.set("dose_ids", String(bare));
     expect((await logUsualRoutine(fd)).ok).toBe(true);
     expect(doseOrigin(bare, date)).toBe("page");
+    expect(foodOrigins(profile.id, date)).toEqual(
+      bareGroups.map((group_key) => ({ group_key, logged_via: "page" }))
+    );
   });
 
   it("the practice button's four mountings are told apart by the post alone", async () => {

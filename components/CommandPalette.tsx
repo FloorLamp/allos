@@ -144,8 +144,10 @@ type PaletteItem =
   | { kind: "action"; action: PaletteAction }
   | { kind: "hit"; hit: SearchHit };
 
-// The palette's own surface, named once so its declaration to descendants and the
-// stamp on its own posts cannot drift apart (#3087).
+// The palette's own surface, named once so its declaration to descendants, the stamp
+// on its own posts, and the surface it opens the activity editor from cannot drift
+// apart (#3087). The palette is not mounted inside the region it declares, so the
+// third of those has to be told rather than read.
 const PALETTE_SURFACE: WebLoggedVia = "quick-log";
 
 export default function CommandPalette({
@@ -165,7 +167,7 @@ export default function CommandPalette({
     canStartWorkout,
     trainingRelevant,
     workoutOffer,
-  } = useActivityEditor();
+  } = useActivityEditor(PALETTE_SURFACE);
   const { open: openQuickEntry } = useQuickEntry();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
