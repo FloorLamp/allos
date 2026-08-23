@@ -249,13 +249,39 @@ describe("integration_sync_events: Strava network throw is recorded (#476)", () 
     // Simulate the DNS/ECONNRESET/TLS/timeout rejection the bug report describes.
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
 
-    const res = await runStravaSync(p);
+    // THE CAUSE SPLIT IN TWO (#3592), so this test now watches both halves. It used
+    // to assert `ev.error` CONTAINED "ECONNRESET" — which was #476's guarantee that
+    // the rejection does not vanish, spelled as "the raw text is on the column". The
+    // column is rendered to a person, so the raw text moved to the operator log and
+    // the column carries the house sentence. #476's actual guarantee — nothing is
+    // swallowed — is unchanged and is asserted on BOTH halves below; dropping the
+    // log half would have left "the cause vanished" indistinguishable from a pass.
+    const logged: string[] = [];
+    const sink = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) =>
+        logged.push(args.map(String).join(" "))
+      );
+    let res: Awaited<ReturnType<typeof runStravaSync>>;
+    try {
+      res = await runStravaSync(p);
+    } finally {
+      sink.mockRestore();
+    }
     expect(res).toHaveProperty("error");
 
     const ev = getLatestSyncEvent(p, "strava");
     expect(ev?.ok).toBe(0);
-    // The real cause is threaded into the event message, not swallowed as "(0)".
-    expect(ev?.error).toContain("ECONNRESET");
+    // What a person reads: a house sentence, never the errno.
+    expect(ev?.error).toBe("Couldn't reach Strava. Try again.");
+    expect(ev?.error).not.toContain("ECONNRESET");
+    // What an operator reads: the real cause AND which request it was.
+    const line = logged.find((l) => l.includes("ECONNRESET"));
+    expect(
+      line,
+      `no logged line carried the cause: ${logged.join(" | ")}`
+    ).toBeDefined();
+    expect(line).toContain("/athlete/activities");
   });
 });
 

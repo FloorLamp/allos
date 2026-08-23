@@ -18,17 +18,13 @@ import { rawErrorCopySites } from "@/lib/user-error-copy-census";
 //        (`medical_documents.extraction_error`), lib/medical-extract/**, and
 //        lib/integrations/backfill-error.ts
 //        (`integration_backfill_jobs.error`).
-//
-//   OUT  the rest of lib/integrations/** — a real sixth family that #3198's
-//        five-path census missed, kept out of scope rather than half-fixed because
-//        several of those strings carry an authored prefix an operator reads
-//        ("Strava activities request failed: ECONNRESET") and deciding what a
-//        person should see instead is the work of its own change (#3592).
-//        THE EXCLUSION IS ENUMERATED AND ASSERTED, not described: see
-//        SYNC_EVENT_EXCLUSIONS below. A prose glob cannot be checked — the one
-//        that stood here named the wrong files (it missed open-meteo.ts, which
-//        matches neither `*-sync.ts` nor `pull-sync.ts`) and claimed a count that
-//        reconciles with no reading of the tree.
+//   IN   lib/integrations/** — the SIXTH family, `integration_sync_events.error`
+//        and `.details`, which #3198's five-path census missed and #3588 froze as
+//        an enumerated nine-site exclusion. #3592 closed it: all nine sites now
+//        log the raw cause and put house copy on the column, so the directory is
+//        in scope like any other sink and the exclusion list is gone. The list
+//        was the right shape for a set that still existed; an EMPTY frozen list
+//        is not a guard, and scanning the directory is the guard it stood in for.
 //
 // A wider scope would report on a question this change did not ask; a narrower one
 // would report on nothing. Both failures are the same bug.
@@ -50,7 +46,13 @@ const SCAN_DIRS = [
   "lib/health-record-doc.ts",
   "lib/extraction-reaper.ts",
   "lib/document-upload-api.ts",
-  "lib/integrations/backfill-error.ts",
+  // The whole sixth-family directory, not only backfill-error.ts. Every writer of
+  // `integration_sync_events.error` / `.details` lives here (#3592), and keying the
+  // scope to the DIRECTORY rather than to the seven files that happened to hold a
+  // site is what stops the family re-opening in an eighth one — `open-meteo.ts`
+  // matched neither `*-sync.ts` nor `pull-sync.ts`, which is exactly how the prose
+  // glob that used to describe this set missed two of its nine members.
+  "lib/integrations",
 ];
 const EXCLUDE_PREFIX = ["app/api/"];
 
@@ -112,108 +114,6 @@ const ALLOW: { file: string; substring: string; why: string }[] = [
       "a blocked or unsupported push service, and it is shown on the very control " +
       "that just failed. Nothing in this string comes from the app's schema or " +
       "stack. Raised with the class above.",
-  },
-];
-
-// THE EXCLUSION, FROZEN AND ASSERTED (#3592).
-//
-// `integration_sync_events` is the sixth family, and it is out of scope above. It
-// used to be excluded in PROSE, which nothing could check: a ninth site could
-// appear, all nine could be fixed, or the family could grow a file, and this test
-// stayed green either way. The paragraph was also wrong three ways — it named
-// `lib/integrations/*-sync.ts` and `pull-sync.ts`, a glob that covers seven of the
-// nine sites and misses `open-meteo.ts` entirely, and it claimed "eight", a number
-// that matches neither the nine raw sites nor the seven that reach `.error`.
-//
-// So the set is ENUMERATED here in the same (file, substring) shape as ALLOW, and
-// the assertion below is a MULTISET EQUALITY against what the rule actually finds
-// in lib/integrations/**. The count is `SYNC_EVENT_EXCLUSIONS.length`, never a
-// number in a sentence. A tenth site goes red (unlisted). Fixing one goes red
-// (stale entry) — which is the direction that matters, because #3592 closing this
-// family must delete its entries here rather than leave a paragraph describing a
-// tree that moved on.
-//
-// `column` is the sink each site actually reaches, traced rather than assumed —
-// two of the nine never touch `.error` at all.
-const SYNC_EVENT_EXCLUSIONS: {
-  file: string;
-  substring: string;
-  column: "error" | "details";
-  why: string;
-}[] = [
-  {
-    file: "lib/integrations/open-meteo.ts",
-    substring: "error: err instanceof Error ? err.message : String(err),",
-    column: "error",
-    why:
-      "openMeteoFetch (the HOURLY fetch). Its `error` is read at " +
-      'weather-sync.ts\'s `res.error ?? "weather fetch failed …"` and passed ' +
-      "straight to recordSyncEvent as `error`.",
-  },
-  {
-    file: "lib/integrations/open-meteo.ts",
-    substring: "error: err instanceof Error ? err.message : String(err),",
-    column: "details",
-    why:
-      "getJson, used only by openMeteoFetchDaily. BOTH of its paths — the weather " +
-      "half's `daily.error` and the air half's `daily.partial` — land in " +
-      "weather-sync's `partial`, which is written to `details` through " +
-      "weatherPartialWarning, never to `error`. The prose count treated this as " +
-      "an `.error` site; it is not one.",
-  },
-  {
-    file: "lib/integrations/oura-sync.ts",
-    substring: "error: err instanceof Error ? err.message : String(err),",
-    column: "error",
-    why:
-      "The Oura fetch's non-HTTP failure (status 0). Surfaces as the PullSpec " +
-      "gather outcome's `error`, which pull-sync writes to `error`.",
-  },
-  {
-    file: "lib/integrations/pull-sync.ts",
-    substring:
-      "const message = err instanceof Error ? err.message : String(err);",
-    column: "error",
-    why: "The authorize() throw. Written to `error` on the same line.",
-  },
-  {
-    file: "lib/integrations/pull-sync.ts",
-    substring:
-      "const message = err instanceof Error ? err.message : String(err);",
-    column: "error",
-    why: "The write-transaction throw. Written to `error` in the same block.",
-  },
-  {
-    file: "lib/integrations/strava-sync.ts",
-    substring: "error: err instanceof Error ? err.message : String(err),",
-    column: "error",
-    why:
-      "The Strava fetch's non-HTTP failure (status 0). Same gather-outcome route " +
-      "to `error` as Oura and Withings.",
-  },
-  {
-    file: "lib/integrations/weather-sync.ts",
-    substring:
-      "const message = err instanceof Error ? err.message : String(err);",
-    column: "error",
-    why: "The upsertUvHours write failure. Written to `error` in the same block.",
-  },
-  {
-    file: "lib/integrations/weather-sync.ts",
-    substring: "partial = err instanceof Error ? err.message : String(err);",
-    column: "details",
-    why:
-      "The upsertWeatherDays write failure. It sets `partial`, which reaches " +
-      "`details` (and the returned summary), never `error` — the run is still " +
-      "recorded `ok: true` and degraded (#2567).",
-  },
-  {
-    file: "lib/integrations/withings-sync.ts",
-    substring: "error: err instanceof Error ? err.message : String(err),",
-    column: "error",
-    why:
-      "The Withings fetch's non-HTTP failure (status 0). Same gather-outcome " +
-      "route to `error`.",
   },
 ];
 
@@ -390,32 +290,46 @@ describe("no caught error's text reaches a user-facing string in the declared sc
     ).toEqual([]);
   });
 
-  it("the integration_sync_events exclusion is the set it says it is", () => {
-    // Multiset equality: every site the rule finds in lib/integrations/** must be
-    // listed, and every listed entry must still match a site. `lib/integrations/
-    // backfill-error.ts` is IN scope above and carries no raw site, so it needs no
-    // carve-out here — if it ever regressed, it would surface as an unlisted site.
-    const key = (file: string, substring: string) => `${file} :: ${substring}`;
-    const found: string[] = [];
-    for (const full of walk(path.join(REPO, "lib/integrations"))) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
-      if (rel.includes("__tests__")) continue;
-      if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) continue;
-      for (const site of rawErrorCopySites(fs.readFileSync(full, "utf8"))) {
-        found.push(key(rel, site.text));
-      }
+  it("scans the sixth family's directory, by name", () => {
+    // A NAMED SUBJECT for the scope change (#3592). `integration_sync_events` was
+    // excluded as a frozen nine-entry list; the entries are gone because the sites
+    // are fixed, and what replaces them is this directory being IN the scan. That
+    // is only true while these files are actually reached — a SCAN_DIRS edit, a
+    // rename, or a walk that stops descending would otherwise turn the guard off
+    // silently and leave the sweep above reporting a clean tree it never read.
+    const rels = new Set(scanned().map((f) => f.rel));
+    for (const file of [
+      "lib/integrations/connections.ts",
+      "lib/integrations/open-meteo.ts",
+      "lib/integrations/oura-sync.ts",
+      "lib/integrations/pull-sync.ts",
+      "lib/integrations/strava-sync.ts",
+      "lib/integrations/weather-sync.ts",
+      "lib/integrations/withings-sync.ts",
+    ]) {
+      expect(rels.has(file), `${file} is not in the scanned set`).toBe(true);
     }
-    const listed = SYNC_EVENT_EXCLUSIONS.map((e) => key(e.file, e.substring));
-    expect(
-      found.slice().sort(),
-      `The integration_sync_events exclusion is FROZEN and enumerated ` +
-        `(#3592). A site here that is not on SYNC_EVENT_EXCLUSIONS is a NEW ` +
-        `member of a family this change deliberately left alone — add it with ` +
-        `the column it reaches, or fix it. An entry that no longer matches ` +
-        `means the site was fixed or moved: delete the entry (or re-key it) ` +
-        `rather than leaving the list describing a tree that moved on. Listed ` +
-        `${listed.length}, found ${found.length}.`
-    ).toEqual(listed.slice().sort());
+  });
+
+  it("would still SEE a raw site in that directory (the rule, on a forgery)", () => {
+    // The sweep above is green because the family is fixed, and a green sweep over
+    // a complying tree says nothing about what it can see. So the rule is run over
+    // a source authored in the exact shape the nine fixed sites had — the Oura /
+    // Withings / Strava fetch catch — and must flag it.
+    const forged = [
+      "async function providerGet(path: string) {",
+      "  try {",
+      "    return { ok: true, json: await fetch(path) };",
+      "  } catch (err) {",
+      "    return {",
+      "      ok: false,",
+      "      status: 0,",
+      "      error: err instanceof Error ? err.message : String(err),",
+      "    };",
+      "  }",
+      "}",
+    ].join("\n");
+    expect(rawErrorCopySites(forged)).toHaveLength(1);
   });
 
   it("still sees the one file it is most likely to be broken by", () => {

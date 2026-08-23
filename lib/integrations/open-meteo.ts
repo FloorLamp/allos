@@ -13,6 +13,11 @@
 // fully offline. Coordinates handed here are already the coarse (~0.1°/~11 km) home
 // location — nothing sharper ever reaches an outbound request.
 
+import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
+
+const log = createLogger("open-meteo");
+
 // One hour of the cached series (local wall-clock hour for the location's timezone, so
 // it crosses directly with the local-time daylight/activity windows). Any field may be
 // null when the source omits it for that hour.
@@ -469,11 +474,23 @@ export async function openMeteoFetch(
     const rows = parseOpenMeteoHourly(await res.json());
     return { ok: true, rows };
   } catch (err) {
+    // A network throw (DNS, TLS, the timeout above). THIS `error` IS THE RUN'S
+    // FAILURE LINE — weather-sync writes it to `integration_sync_events.error`, the
+    // integration card renders it in red, and "Sync now" shows it as
+    // "Sync failed: …". So the raw cause goes to the log and the column gets the
+    // house sentence (#3592).
+    log.error("weather hourly fetch failed", {
+      endpoint,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       ok: false,
       rows: [],
       status: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: userErrorCopy(err, {
+        doing: "refresh the weather forecast",
+        service: "Open-Meteo",
+      }),
     };
   }
 }
@@ -635,11 +652,18 @@ async function failureReason(res: Response): Promise<string | undefined> {
 }
 
 // One spelling of "this request failed, and here is what the other end said".
+//
+// Status 0 is this module's marker for "the request THREW — there was no HTTP
+// response at all" (a DNS failure, a TLS error, the timeout). It is spelled in words
+// because the bare `(0)` told a reader nothing, and since #3592 it is the line a
+// thrown daily/air-quality fetch actually shows: the throw's own text is logged, not
+// rendered.
 function fetchFailureLine(
   label: string,
   failure: { status: number; reason?: string }
 ): string {
-  return `${label} failed (${failure.status})${
+  const status = failure.status === 0 ? "no response" : String(failure.status);
+  return `${label} failed (${status})${
     failure.reason ? `: ${failure.reason}` : ""
   }`;
 }
@@ -647,10 +671,10 @@ function fetchFailureLine(
 // A JSON GET with the shared timeout, returning the parsed body or a failure. Never
 // throws — every weather fetch degrades rather than breaking the sync.
 async function getJson(
+  label: string,
   url: string
 ): Promise<
-  | { ok: true; json: unknown }
-  | { ok: false; status: number; reason?: string; error?: string }
+  { ok: true; json: unknown } | { ok: false; status: number; reason?: string }
 > {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -662,11 +686,15 @@ async function getJson(
       };
     return { ok: true, json: await res.json() };
   } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    // NO `error` FIELD ANY MORE (#3592). It used to carry the throw's own text, and
+    // that text was interpolated straight into weatherPartialWarning's parenthetical
+    // and rendered in Data → Review — "the daily forecast/air-quality half failed
+    // (fetch failed)". The cause goes to the log; the caller's fetchFailureLine
+    // names the half and says "no response", which is what a reader can use.
+    log.error(`${label} failed`, {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, status: 0 };
   }
 }
 
@@ -697,7 +725,10 @@ export async function openMeteoFetchDaily(
     start_date: startDate,
     end_date: endDate,
   });
-  const weather = await getJson(`${base}?${weatherQs.toString()}`);
+  const weather = await getJson(
+    "daily fetch",
+    `${base}?${weatherQs.toString()}`
+  );
   if (!weather.ok) {
     return {
       ok: false,
@@ -705,7 +736,7 @@ export async function openMeteoFetchDaily(
       status: weather.status,
       // Same rule as the air half: whatever the host said about the rejection
       // travels with the failure instead of being reduced to a status code.
-      error: weather.error ?? fetchFailureLine("daily fetch", weather),
+      error: fetchFailureLine("daily fetch", weather),
     };
   }
   const weatherRows = parseOpenMeteoDaily(weather.json);
@@ -721,12 +752,15 @@ export async function openMeteoFetchDaily(
     // which is the whole reason this request stopped being a guaranteed 400.
     end_date: airQualityEndDate(endDate, today),
   });
-  const air = await getJson(`${AIR_QUALITY_BASE}?${airQs.toString()}`);
+  const air = await getJson(
+    "air-quality fetch",
+    `${AIR_QUALITY_BASE}?${airQs.toString()}`
+  );
   if (!air.ok) {
     return {
       ok: true,
       rows: weatherRows,
-      partial: air.error ?? fetchFailureLine("air-quality fetch", air),
+      partial: fetchFailureLine("air-quality fetch", air),
       partialStatus: air.status,
     };
   }

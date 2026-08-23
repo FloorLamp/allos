@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import { utcInstant } from "@/lib/date";
 import { db, writeTx } from "@/lib/db";
 import { getTimezone } from "@/lib/settings";
@@ -120,12 +121,24 @@ async function stravaGet(
     // rejects `fetch`. Convert it to a non-ok result — the same shape Withings'
     // withingsPost returns (issue #476) — so the runner records an ok:false sync
     // event instead of letting the rejection escape unlogged, which left Review green
-    // while Strava had silently stopped syncing. status 0 marks "no HTTP response";
-    // the message carries the real cause for the event.
+    // while Strava had silently stopped syncing. status 0 marks "no HTTP response".
+    //
+    // THE CAUSE SPLITS IN TWO (#3592). It used to travel on `error` as raw caught
+    // text and end up rendered — "Strava activities request failed: ECONNRESET" on
+    // the integration card. WHICH request failed is what an operator reads, so the
+    // path goes to `log.error` with the raw cause; `error` carries the house sentence
+    // the card and the "Sync failed: …" toast show a person.
+    log.error("Strava request failed", {
+      path,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       ok: false,
       status: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: userErrorCopy(err, {
+        doing: "sync your Strava activities",
+        service: "Strava",
+      }),
     };
   }
 }
@@ -228,13 +241,14 @@ const stravaSpec: PullSpec<
           truncated = true;
           break; // rate-limited — keep what we processed, resume next run
         }
-        // status 0 = a network throw/timeout caught in stravaGet; surface its real
-        // cause (ECONNRESET / timeout) so the failed sync event is actionable, not a
-        // bare "(0)".
+        // status 0 = a network throw/timeout caught in stravaGet, which already
+        // logged the path and the real cause and put HOUSE COPY on `error` (#3592).
+        // It is passed through unprefixed: prefixing it would rebuild the raw-text
+        // sentence this change removed.
         return {
-          error: listRes.error
-            ? `Strava activities request failed: ${listRes.error}`
-            : `Strava activities request failed (${listRes.status})`,
+          error:
+            listRes.error ??
+            `Strava activities request failed (${listRes.status})`,
         };
       }
       const list = Array.isArray(listRes.json)
