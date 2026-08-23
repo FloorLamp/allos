@@ -48,10 +48,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, and add its hash
   to `manifest.json` via `npm run gen:migration-manifest`. Never edit a shipped
   migration, and never type a hash in by hand.
-- The generator refuses to rewrite an already-shipped hash, or to drop a
-  migration that is on main, and exits non-zero in `--check` too. `--allow-rehash`
-  records a file restored to its shipped bytes or a migration reverted off main;
-  anything else is an edit to released history and needs a new migration.
+- The generator refuses to rehash or drop a migration that is on main, and exits
+  non-zero in `--check` too. `--allow-rehash` records shipped bytes restored, or
+  a migration reverted off main; anything else needs a new migration.
 - Merge order defines migration order. Resolve `versions/index.ts` conflicts by
   keeping both entries and appending the later merge last.
 - Recreate development databases containing abandoned, unknown migration names.
