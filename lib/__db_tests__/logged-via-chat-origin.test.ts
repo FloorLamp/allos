@@ -43,6 +43,9 @@ import {
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
+import { PROTEIN_QUICKADD_LAST_KEY } from "@/lib/protein-daily-totals-write";
+import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
 import { seedLoginTelegram } from "./fixtures";
 import type { NotificationMessage } from "@/lib/notifications/types";
@@ -155,7 +158,11 @@ describe("a food tap records the KEYBOARD it came from, not the file it is handl
   });
   afterEach(() => vi.useRealTimers());
 
-  function seedChat(tag: string, chatId: string): number {
+  function seedChat(
+    tag: string,
+    chatId: string,
+    groups: readonly string[] = ["leafy_greens"]
+  ): number {
     const profileId = makeProfile(tag);
     seedLoginTelegram(profileId, chatId);
     setTelegramBotConfig({
@@ -171,7 +178,7 @@ describe("a food tap records the KEYBOARD it came from, not the file it is handl
       "notify_digest_hour",
     ])
       setProfileSetting(profileId, k, "");
-    seedHabit(profileId, ["leafy_greens"]);
+    seedHabit(profileId, groups);
     return profileId;
   }
 
@@ -256,6 +263,109 @@ describe("a food tap records the KEYBOARD it came from, not the file it is handl
       "telegram-command",
       "telegram-command",
     ]);
+  });
+
+  it("keeps the answer across a PROTEIN rebuild, and leaves the sweep nothing to edit", async () => {
+    // ONE FIXTURE PER REBUILD PATH IS WHAT LET A REGRESSION THROUGH. The test above
+    // drives the second tap through the food-GROUP button; `handleFoodProtein` is a
+    // separate rebuild site sixty lines further down the same file, and it shipped
+    // unwrapped. One tap on "+30 g" rewrote all seven buttons UNMARKED, so
+    // `keyboardChatOrigin` answered null for that keyboard for ever and every later
+    // tap on the message recorded `telegram-nudge` — a permanent, one-directional
+    // inflation of the nudge count.
+    //
+    // Three assertions, because the failure had three separable halves: the marker on
+    // the whole rebuilt keyboard, the value a FOLLOWING food-group tap stores, and the
+    // hourly sweep finding nothing to edit (a rebuild whose marker disagrees with the
+    // live keyboard spends one Telegram edit per live food message, which is the
+    // regression the null-preserving rule was written for).
+    const chat = "5559104";
+    const profileId = seedChat("LV3087-protein", chat, [
+      "leafy_greens",
+      PROTEIN_NUDGE_KEY,
+    ]);
+    // A protein tracker, so `buildFoodNudge` ranks the reserved __protein__
+    // pseudo-group onto the keyboard at all and the "+Xg" button exists to tap; the
+    // seeded history above is what carries it into the COMPACT window.
+    setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, "30");
+    await handleIncomingMessage({
+      message_id: 1,
+      chat: { id: chat },
+      text: "/food",
+    });
+    const reply = sentTo(chat).find((s) => s.msg.kind === "food")!;
+    const delivered = keyboardOf(reply.msg);
+    const protein = (reply.msg.actions ?? [])
+      .map((a) => a.data ?? "")
+      .find((d) => d.startsWith("foodprotein:"));
+    expect(protein, "the /food reply carried no protein button").toBeDefined();
+    // The delivered keyboard is marked end to end — the premise the rest rests on.
+    expect(
+      delivered
+        .flat()
+        .filter((b) => /^food(?:protein)?:c:/.test(b.callback_data ?? ""))
+        .length
+    ).toBe(
+      delivered
+        .flat()
+        .filter((b) => /^food(?:protein)?:/.test(b.callback_data ?? "")).length
+    );
+
+    editMock.mockClear();
+    await handleCallbackQuery(cq(protein!, chat, delivered, reply.id));
+    const rebuilt = (
+      editMock.mock.calls.at(-1)?.[3] as { keyboard?: Button[][] } | undefined
+    )?.keyboard;
+    expect(
+      rebuilt,
+      "the protein tap did not rebuild the keyboard"
+    ).toBeDefined();
+    const markable = rebuilt!
+      .flat()
+      .map((b) => b.callback_data ?? "")
+      .filter((d) => /^food(?:protein)?:/.test(d));
+    expect(markable.length).toBeGreaterThan(0);
+    expect(markable.filter((d) => /^food(?:protein)?:c:/.test(d))).toEqual(
+      markable
+    );
+
+    // The half that reaches the ledger: a food-group tap on the REBUILT keyboard.
+    const group = markable.find(
+      (d) => d.startsWith("food:") && d.endsWith(":leafy_greens")
+    );
+    expect(group).toBeDefined();
+    await handleCallbackQuery(cq(group!, chat, rebuilt!, reply.id));
+    expect(foodOrigin(profileId, "leafy_greens")).toBe("telegram-command");
+
+    // AND THE HOURLY SWEEP SETTLES. It re-renders from the live keyboard and edits
+    // only on a difference, so a marker that disagreed with what is on screen would
+    // cost one Telegram edit per live food message EVERY hour — the regression shape
+    // `keyboardChatOrigin`'s null answer exists to prevent. The first pass may edit
+    // for reasons of its own (the tap opened a fresh time-correction chip row, which
+    // a tap's own rebuild does not carry); the SECOND must find nothing, and whatever
+    // it renders must still be marked end to end.
+    editMock.mockClear();
+    await reconcileProfileMessages(profileId);
+    const swept = (
+      editMock.mock.calls.at(-1)?.[3] as { keyboard?: Button[][] } | undefined
+    )?.keyboard;
+    if (swept) {
+      const sweptMarkable = swept
+        .flat()
+        .map((b) => b.callback_data ?? "")
+        .filter((d) => /^food(?:protein)?:/.test(d));
+      expect(sweptMarkable.length).toBeGreaterThan(0);
+      expect(
+        sweptMarkable.filter((d) => /^food(?:protein)?:c:/.test(d))
+      ).toEqual(sweptMarkable);
+    }
+    editMock.mockClear();
+    const settled = await reconcileProfileMessages(profileId);
+    expect(
+      editMock.mock.calls.map((c) => JSON.stringify(c[3])),
+      "the sweep is still editing a keyboard it has already settled"
+    ).toEqual([]);
+    expect(settled.edited).toBe(0);
   });
 });
 

@@ -181,6 +181,260 @@ export function regionRoots(root: string): Map<string, string[]> {
   return out;
 }
 
+// ── THE UNIVERSE IS EVERY CALL SITE THAT PASSES A SURFACE, LITERAL INCLUDED ───
+//
+// The census above builds its universe from `parseWebOrigin` — actions that READ a
+// posted surface. An action that spells a LITERAL instead is invisible in both
+// directions: it is not a reading action, so no client of it is checked for
+// declaring; and its literal is never compared against the mountings that reach it.
+// That blind spot shipped `logUsualRoutine` recording `dashboard-hero` — the attention
+// card's act-now confirm — for a control mounted on the dashboard's usual-routine atom
+// and on the phone dock's raised puck, neither of which is that card.
+//
+// WHAT MAKES A LITERAL HONEST. It is a claim that every mounting able to reach the
+// action sits on that surface, so it is true only where there is exactly one mounting.
+// `markAttentionDose` and `undoAttentionDose` qualify: one importer, mounted once, on
+// the attention card they name. A second mounting makes the same literal a guess about
+// which one posted — and the mechanism for that question already exists, so the fix is
+// never a better literal, it is `parseWebOrigin` plus a region.
+//
+// WHAT IT ASKS AND WHAT IT DOES NOT. It asks whether the surface is DECIDABLE from
+// where the action stands — one mounting, one answer. It does not ask whether the one
+// answer is the right one: `markAttentionDose` could name `quick-log` and stay green,
+// because its single mounting means the literal is still a statement rather than a
+// guess. Checking the value would mean matching it against the region its mounting
+// sits in, and the one legitimate hardcoder is precisely the case that breaks — the
+// attention card lives inside the `dashboard-widget` canvas and correctly says
+// `dashboard-hero`. A guard that fired there would be deleted within a week.
+//
+// ONLY THE THREE NON-DEFAULT SURFACES. `page` is the context's default and every
+// action's fallback, so a `page` literal claims nothing that is not already true; it is
+// also the string this repo writes for `revalidateRoute(path, "page")` and for
+// `aria-current="page"`, which would make a literal sweep over it mostly noise. Stated
+// rather than filtered, because a census that does not say what it is not looking at
+// reports on a scope it never had.
+
+/** The surfaces a literal can make a positive claim about. */
+const CLAIMING_SURFACES = [
+  "dashboard-hero",
+  "dashboard-widget",
+  "quick-log",
+] as const;
+const LITERAL_RE = new RegExp(`["'](${CLAIMING_SURFACES.join("|")})["']`, "g");
+
+/** Comments name these surfaces constantly; only source is source. */
+function code(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+/**
+ * Every exported action in `app/` that NAMES a surface instead of reading one.
+ *
+ * `.ts` only: a Server Action is not a component, and the `.tsx` files carrying these
+ * strings are the region roots themselves (`<LoggedViaSurface value="dashboard-widget">`,
+ * the palette's `const PALETTE_SURFACE: WebLoggedVia = "quick-log"`), which are the
+ * DECLARATION side of the same mechanism rather than a claim needing justification.
+ */
+export function hardcodingActions(
+  root: string
+): { action: string; file: string; surface: string }[] {
+  const out: { action: string; file: string; surface: string }[] = [];
+  for (const file of walk(root, "app")) {
+    if (!file.endsWith(".ts")) continue;
+    const src = code(fs.readFileSync(file, "utf8"));
+    const rel = path.relative(root, file).split(path.sep).join("/");
+    const bounds: { name: string; at: number }[] = [];
+    for (const m of src.matchAll(EXPORT_RE))
+      bounds.push({ name: m[1], at: m.index ?? 0 });
+    for (const m of src.matchAll(LITERAL_RE)) {
+      const at = m.index ?? 0;
+      let owner: string | null = null;
+      for (const b of bounds) if (b.at < at) owner = b.name;
+      if (owner) out.push({ action: owner, file: rel, surface: m[1] });
+    }
+  }
+  return out;
+}
+
+/** A route file is one mounting of itself — the router renders it. */
+const ROUTE_RE = /^app\/.*(?:page|layout|template)\.tsx$/;
+
+/** Where each file's component is rendered, as `<host> -> <Tag>`. */
+function mountingsOf(
+  root: string,
+  rel: string,
+  every: { rel: string; src: string }[]
+): string[] {
+  if (ROUTE_RE.test(rel)) return [`${rel} (a route)`];
+  const tag = path.basename(rel).replace(/\.tsx?$/, "");
+  return every
+    .filter((f) => f.rel !== rel && new RegExp(`<${tag}[\\s/>]`).test(f.src))
+    .map((f) => `${f.rel} -> <${tag}>`);
+}
+
+/** Every hardcoded surface that more than one mounting can reach. */
+export function unjustifiedLiterals(root: string): string[] {
+  const every = [...walk(root, "app"), ...walk(root, "components")].map(
+    (file) => ({
+      rel: path.relative(root, file).split(path.sep).join("/"),
+      src: code(fs.readFileSync(file, "utf8")),
+    })
+  );
+  const out: string[] = [];
+  for (const { action, file, surface } of hardcodingActions(root)) {
+    const posters = every.filter(
+      (f) => f.rel !== file && importsSymbol(f.src, action)
+    );
+    const mounts = posters.flatMap((p) => mountingsOf(root, p.rel, every));
+    if (mounts.length > 1)
+      out.push(
+        `${file} names \`${surface}\` in ${action}, reachable from ${mounts.length} mountings: ${mounts.sort().join(", ")}`
+      );
+  }
+  return [...new Set(out)].sort();
+}
+
+// ── PER-REGION SURVIVAL, WITHOUT A LIST OF REGIONS ───────────────────────────
+//
+// The reachability assertion above says what it does not catch, and this closes it.
+// `quick-log` is declared by three roots; deleting ONE of them leaves reachability
+// green while every control under it silently reverts to `page`. Measured: deleting
+// `<LoggedViaSurface value="quick-log">` from `components/QuickEntryProvider.tsx`
+// left the whole suite green with the food bar, the measurements form, the dose list,
+// the substance row and the practice list all reporting `page` from inside a sheet.
+//
+// THE NAIVE FIX IS A LIST OF REGIONS, which is the shape this file exists to avoid —
+// it goes stale, and it says nothing about a region nobody thought to list. So ask the
+// question the mechanism actually answers instead:
+//
+//   A control that stamps its region reports `page` when nothing above it declares
+//   one. `page` means "the domain page's own form". So a stamping control whose
+//   mounting chain reaches the ROUTER — a layout or a template — without passing
+//   through a page or a region is claiming to be a page form from somewhere that is
+//   not a page. That is exactly the state a deleted wrapper produces, and it is a
+//   defect no matter which region was deleted or whether anyone listed it.
+//
+// The walk is over the real mount graph: each stamping control's importers that render
+// it as JSX, up through `dynamic(() => import(…))` as well as static imports, until a
+// path hits a region root (fine), an `app/**/page.tsx` (fine — `page` is the true
+// answer there), or a router root with neither (a finding). A path that dead-ends in a
+// component nothing mounts renders nowhere and is deliberately silent.
+//
+// WHAT IT CANNOT SEE, said plainly: a region root whose subtree contains no stamping
+// control at all. Deleting the command palette's wrapper is invisible here — and
+// correctly so today, because the palette sets `LOGGED_VIA_FIELD` from its own
+// file-local constant rather than from the context, so nothing under it reads the
+// region. Reachability above is what holds that one.
+
+/** A control that posts whatever region it is mounted in. */
+const STAMPS_RE = /useLoggedViaStamp\s*\(|<LoggedViaField/;
+
+function resolveSpec(
+  root: string,
+  fromRel: string,
+  spec: string,
+  known: Set<string>
+): string | null {
+  let base: string;
+  if (spec.startsWith("@/")) base = path.join(root, spec.slice(2));
+  else if (spec.startsWith("."))
+    base = path.resolve(path.join(root, path.dirname(fromRel)), spec);
+  else return null;
+  const rel = path.relative(root, base).split(path.sep).join("/");
+  for (const cand of [
+    `${rel}.tsx`,
+    `${rel}.ts`,
+    `${rel}/index.tsx`,
+    `${rel}/index.ts`,
+  ])
+    if (known.has(cand)) return cand;
+  return null;
+}
+
+/** Who renders whom: `file -> the files whose components it mounts as JSX`. */
+export function mountGraph(root: string): {
+  files: { rel: string; src: string }[];
+  mountedBy: Map<string, Set<string>>;
+} {
+  const files = [...walk(root, "app"), ...walk(root, "components")].map(
+    (file) => ({
+      rel: path.relative(root, file).split(path.sep).join("/"),
+      src: code(fs.readFileSync(file, "utf8")),
+    })
+  );
+  const known = new Set(files.map((f) => f.rel));
+  const mountedBy = new Map(files.map((f) => [f.rel, new Set<string>()]));
+  for (const { rel, src } of files) {
+    const local = new Map<string, string>();
+    for (const im of src.matchAll(
+      /import\s+([^;]*?)\s+from\s*["']([^"']+)["']/g
+    )) {
+      const target = resolveSpec(root, rel, im[2], known);
+      if (!target) continue;
+      const clause = im[1].trim();
+      const def = /^([A-Za-z0-9_$]+)\s*(?:,|$)/.exec(
+        clause.replace(/^type\s+/, "")
+      );
+      if (def && !clause.startsWith("{") && !clause.startsWith("*"))
+        local.set(def[1], target);
+      const named = /\{([^}]*)\}/.exec(clause);
+      for (const part of named?.[1].split(",") ?? []) {
+        const t = part.trim().replace(/^type\s+/, "");
+        if (!t) continue;
+        local.set(
+          /\s+as\s+/.test(t) ? t.split(/\s+as\s+/)[1].trim() : t,
+          target
+        );
+      }
+    }
+    // `next/dynamic` is how the quick-log sheet mounts four of its five bodies, so a
+    // graph that saw only static imports would report them unreachable and stay quiet
+    // about exactly the region this assertion exists for.
+    for (const dy of src.matchAll(
+      /(?:const|let)\s+([A-Za-z0-9_$]+)\s*=\s*dynamic\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["']([^"']+)["']/g
+    )) {
+      const target = resolveSpec(root, rel, dy[2], known);
+      if (target) local.set(dy[1], target);
+    }
+    for (const j of src.matchAll(/<([A-Z][A-Za-z0-9_]*)/g)) {
+      const target = local.get(j[1]);
+      if (target && target !== rel) mountedBy.get(target)!.add(rel);
+    }
+  }
+  return { files, mountedBy };
+}
+
+/** Every stamping control that can render outside any page and outside any region. */
+export function stampersOutsideEveryRegion(root: string): string[] {
+  const { files, mountedBy } = mountGraph(root);
+  const byRel = new Map(files.map((f) => [f.rel, f]));
+  const out: string[] = [];
+  for (const { rel, src } of files) {
+    if (rel === "components/LoggedViaSurface.tsx") continue;
+    if (!STAMPS_RE.test(src)) continue;
+    const stack: [string, string[]][] = [[rel, [rel]]];
+    const seen = new Set<string>();
+    while (stack.length) {
+      const [cur, chain] = stack.pop()!;
+      if (byRel.get(cur)!.src.includes("<LoggedViaSurface")) continue;
+      if (/^app\/.*page\.tsx$/.test(cur)) continue;
+      const parents = [...mountedBy.get(cur)!];
+      if (parents.length === 0) {
+        if (ROUTE_RE.test(cur)) out.push(chain.join(" <- "));
+        continue;
+      }
+      for (const p of parents) {
+        if (seen.has(`${rel}|${p}`)) continue;
+        seen.add(`${rel}|${p}`);
+        stack.push([p, [...chain, p]]);
+      }
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
 describe("every surface-reading action has a mounting that declares itself", () => {
   it("has a corpus to make a claim about", () => {
     // AN ABSENCE ASSERTION FAILS OPEN, so the floors come first: a broken walker
@@ -231,6 +485,29 @@ describe("every surface-reading action has a mounting that declares itself", () 
     // it themselves (app/(app)/actions.ts) rather than reading a post — so it has no
     // region root by design, and asserting one here would be asserting a fiction.
     expect(roots.get("dashboard-hero")).toBeUndefined();
+  });
+
+  it("lets no hardcoded surface outlive the single mounting that makes it true", () => {
+    expect(
+      unjustifiedLiterals(REPO),
+      "A Server Action NAMES a web surface that more than one mounting can reach " +
+        "(#3087). A literal is a claim that every mounting able to post this action " +
+        "sits on that surface, so a second mounting makes it a guess about which one " +
+        "did — and the two will differ in the column for ever. Read the posted " +
+        'surface with `parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")` and ' +
+        "let each mounting declare its own region instead."
+    ).toEqual([]);
+  });
+
+  it("keeps a region root over every control that reads one", () => {
+    expect(
+      stampersOutsideEveryRegion(REPO),
+      "A control that stamps its surface can render from a layout with no " +
+        '`<LoggedViaSurface>` above it (#3087), so it posts `page` — "the domain ' +
+        "page's own form\" — from somewhere that is not a page. Either a region root " +
+        "lost its wrapper, or a new always-mounted host needs one. The chain below " +
+        "reads control first, host last."
+    ).toEqual([]);
   });
 
   it("leaves no client posting a surface-reading action with no way to say where it is", () => {
@@ -318,6 +595,104 @@ export async function logThing(formData: FormData) {
         '"use client";\n// logThing is the action the bar over there posts.\n',
     });
     expect(unwiredPosters(root)).toEqual([]);
+  });
+
+  it("SEES a literal a second mounting can reach, and stays quiet on a lone one", () => {
+    const files = {
+      "app/(app)/actions.ts":
+        '"use server";\nexport async function logTwice(fd: FormData) {\n' +
+        '  return core(fd, "dashboard-hero");\n}\n' +
+        "export async function logOnce(fd: FormData) {\n" +
+        '  return core(fd, "dashboard-hero");\n}\n' +
+        "export async function logPage(fd: FormData) {\n" +
+        // `page` claims nothing a fallback does not already say, and it is the string
+        // `revalidateRoute(path, "page")` writes — deliberately outside the universe.
+        '  return revalidateRoute("/x/[id]", "page");\n}\n',
+      "components/Twice.tsx":
+        '"use client";\nimport { logTwice } from "@/app/(app)/actions";\n',
+      "components/Once.tsx":
+        '"use client";\nimport { logOnce } from "@/app/(app)/actions";\n',
+      "components/HostA.tsx":
+        '"use client";\nexport default () => <Twice />;\n',
+      "components/HostB.tsx":
+        '"use client";\nexport default () => <Twice />;\n',
+      "components/HostC.tsx": '"use client";\nexport default () => <Once />;\n',
+      // A comment that merely names the surface must not become a finding.
+      "app/(app)/notes.ts":
+        "// The palette IS the quick-log surface.\nexport function note() {}\n",
+    };
+    const root = corpus(files);
+    expect(unjustifiedLiterals(root)).toEqual([
+      "app/(app)/actions.ts names `dashboard-hero` in logTwice, reachable from 2 " +
+        "mountings: components/HostA.tsx -> <Twice>, components/HostB.tsx -> <Twice>",
+    ]);
+  });
+
+  it("SEES a stamping control left outside every region, and stays quiet when one covers it", () => {
+    // The acceptance test in miniature: one sheet mounted from a LAYOUT, one control
+    // inside it that stamps. With the wrapper the walk stops at the region; without
+    // it the chain runs to the router and the control posts `page` from a sheet.
+    const control =
+      '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+      "export default function Bar() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n";
+    const layout =
+      'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n';
+    const wrapped =
+      '"use client";\nimport { LoggedViaSurface } from "@/components/LoggedViaSurface";\n' +
+      'import Bar from "@/components/Bar";\n' +
+      'export default () => (<LoggedViaSurface value="quick-log"><Bar /></LoggedViaSurface>);\n';
+    const bare =
+      '"use client";\nimport Bar from "@/components/Bar";\nexport default () => <Bar />;\n';
+    expect(
+      stampersOutsideEveryRegion(
+        corpus({
+          "app/(app)/layout.tsx": layout,
+          "components/Sheet.tsx": bare,
+          "components/Bar.tsx": control,
+        })
+      )
+    ).toEqual([
+      "components/Bar.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+    ]);
+    expect(
+      stampersOutsideEveryRegion(
+        corpus({
+          "app/(app)/layout.tsx": layout,
+          "components/Sheet.tsx": wrapped,
+          "components/Bar.tsx": control,
+        })
+      )
+    ).toEqual([]);
+    // …and the same control mounted by a PAGE is silent with no region at all: `page`
+    // is the honest answer there, and a guard that cried wolf on every domain form
+    // would be deleted within a week.
+    expect(
+      stampersOutsideEveryRegion(
+        corpus({
+          "app/(app)/x/page.tsx":
+            'import Bar from "@/components/Bar";\nexport default () => <Bar />;\n',
+          "components/Bar.tsx": control,
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("follows a `dynamic(() => import(…))` mount, which is how the sheet loads its bodies", () => {
+    // Four of the quick-log sheet's five bodies arrive this way. A graph blind to it
+    // reports them unmounted and goes quiet about exactly the region it is here for.
+    const root = corpus({
+      "app/(app)/layout.tsx":
+        'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n',
+      "components/Sheet.tsx":
+        '"use client";\nimport dynamic from "next/dynamic";\n' +
+        'const Lazy = dynamic(() => import("./Lazy"));\nexport default () => <Lazy />;\n',
+      "components/Lazy.tsx":
+        '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
+        "export default function Lazy() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n",
+    });
+    expect(stampersOutsideEveryRegion(root)).toEqual([
+      "components/Lazy.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+    ]);
   });
 
   it("scans the TRACKED set it claims to be about", () => {
