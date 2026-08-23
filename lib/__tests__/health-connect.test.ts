@@ -23,6 +23,7 @@ describe("parseHealthConnectPayload — guards", () => {
       vitals: [],
       skipped: 0,
       details: { warnings: [], origins: [] },
+      pushedAt: null,
     };
     expect(parse(null)).toEqual(empty);
     expect(parse("nope")).toEqual(empty);
@@ -92,9 +93,22 @@ describe("parseHealthConnectPayload — body metrics", () => {
     });
     // The oldest day of a multi-day window is flagged partial (#606); it only guards
     // the averaged fields on upsert, so weight is unaffected (still last-of-day wins).
+    // Each measure carries ITS OWN instant (#3524) — here the instant of the weight
+    // that won its day, not of the day's latest reading of any kind. The ingest reconcile
+    // asks the day arithmetic one measure at a time, so a stamp that belonged to a
+    // different measure would re-key the wrong thing.
     expect(out.bodyMetrics).toEqual([
-      { date: "2026-06-15", partial_day: true, weight_kg: 81 },
-      { date: "2026-06-16", weight_kg: 82 },
+      {
+        date: "2026-06-15",
+        partial_day: true,
+        weight_kg: 81,
+        weight_at: "2026-06-15T20:00:00Z",
+      },
+      {
+        date: "2026-06-16",
+        weight_kg: 82,
+        weight_at: "2026-06-16T08:00:00Z",
+      },
     ]);
   });
 
@@ -117,7 +131,19 @@ describe("parseHealthConnectPayload — body metrics", () => {
     });
     // All three land in body_metrics (rounded), and NOT in metric_samples.
     expect(out.bodyMetrics).toEqual([
-      { date: "2026-06-15", weight_kg: 80, body_fat_pct: 18.5, resting_hr: 59 },
+      {
+        date: "2026-06-15",
+        weight_kg: 80,
+        body_fat_pct: 18.5,
+        resting_hr: 59,
+        // Three readings, one row, THREE stamps. The 07:00 weigh-in keeps 07:00 — the
+        // conflation this replaces would have called it 08:00, which is how an earlier
+        // draft of the reconcile came to destroy a weigh-in while re-keying a
+        // resting-HR reading (#3524).
+        weight_at: "2026-06-15T07:00:00Z",
+        body_fat_at: "2026-06-15T08:00:00Z",
+        resting_hr_at: "2026-06-15T08:00:00Z",
+      },
     ]);
     expect(
       out.samples.some(
@@ -135,7 +161,15 @@ describe("parseHealthConnectPayload — body metrics", () => {
       ],
     });
     expect(out.bodyMetrics).toEqual([
-      { date: "2026-06-16", body_fat_pct: 20, resting_hr: 62 },
+      {
+        date: "2026-06-16",
+        body_fat_pct: 20,
+        resting_hr: 62,
+        body_fat_at: "2026-06-16T08:00:00Z",
+        // The LATEST reading that contributed to the average, for the two measures that
+        // ARE averaged — the day's resting HR is 06:00 and 07:00 folded together.
+        resting_hr_at: "2026-06-16T07:00:00Z",
+      },
     ]);
   });
 
@@ -163,7 +197,13 @@ describe("parseHealthConnectPayload — body metrics", () => {
         { time: "2026-06-16T21:00:00Z", bpm: 64 },
       ],
     });
-    expect(out.bodyMetrics).toEqual([{ date: "2026-06-16", resting_hr: 62 }]);
+    expect(out.bodyMetrics).toEqual([
+      {
+        date: "2026-06-16",
+        resting_hr: 62,
+        resting_hr_at: "2026-06-16T21:00:00Z",
+      },
+    ]);
   });
 });
 
@@ -856,13 +896,27 @@ describe("parseHealthConnectPayload — timezone attribution", () => {
       ],
     };
     const tokyo = parse(body, "Asia/Tokyo");
-    expect(tokyo.bodyMetrics).toEqual([{ date: "2026-06-16", weight_kg: 80 }]);
+    // The DAY moves with the zone; the INSTANT does not, which is the whole basis of
+    // the ingest reconcile (#3524).
+    expect(tokyo.bodyMetrics).toEqual([
+      {
+        date: "2026-06-16",
+        weight_kg: 80,
+        weight_at: "2026-06-15T23:30:00Z",
+      },
+    ]);
     expect(tokyo.activities[0].date).toBe("2026-06-16");
     expect(tokyo.activities[0].start_time).toBe("08:30");
 
     // Same instant in New York (UTC-4 in June) is still the 15th at 19:30.
     const ny = parse(body, "America/New_York");
-    expect(ny.bodyMetrics).toEqual([{ date: "2026-06-15", weight_kg: 80 }]);
+    expect(ny.bodyMetrics).toEqual([
+      {
+        date: "2026-06-15",
+        weight_kg: 80,
+        weight_at: "2026-06-15T23:30:00Z",
+      },
+    ]);
     expect(ny.activities[0].date).toBe("2026-06-15");
     expect(ny.activities[0].start_time).toBe("19:30");
   });
@@ -907,7 +961,13 @@ describe("parseHealthConnectPayload — plausibility bounds (#132)", () => {
         { time: "2026-06-16T08:00:00Z", kilograms: 80 }, // fine
       ],
     });
-    expect(out.bodyMetrics).toEqual([{ date: "2026-06-16", weight_kg: 80 }]);
+    expect(out.bodyMetrics).toEqual([
+      {
+        date: "2026-06-16",
+        weight_kg: 80,
+        weight_at: "2026-06-16T08:00:00Z",
+      },
+    ]);
     expect(out.skipped).toBe(1);
   });
 

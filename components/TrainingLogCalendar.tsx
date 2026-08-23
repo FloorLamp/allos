@@ -23,15 +23,28 @@ const MONTHS = monthNames("short");
 // stays 16px and the day's circle stays 28px at every width; what grows on a phone is
 // the box a finger lands in. From `md` up the outer box collapses back onto the glyph,
 // so the desktop sidebar's density is unchanged.
+//
+// 44, NOT THE 40 THESE WERE BUILT AT. #3377 sized both boxes against the floor as it
+// stood then, and it sized them correctly; #3514 ruled the floor to 44px EFFECTIVE on
+// 2026-08-21 and these were left behind — 40px, neither registered mechanism, and
+// invisible to the census that enumerates exactly this population, because a hoisted
+// class list came back to it as the word `ARROW_HIT` (#3561).
 const ARROW_HIT =
-  "flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 md:h-6 md:w-6 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 md:h-6 md:w-6 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200";
 
-// The day cell's hit box: the FULL grid column and 40px tall on a phone (40.9 × 40 in
-// the drawer, measured), the bare 28px circle from `md` up. `w-full` rather than a
-// fixed width so the columns tile the grid with no dead pixels between them — a tap
-// that lands nowhere reads as a broken day just as a tap that lands next door does.
+// The day cell's hit box: the FULL grid column and 44px tall on a phone, the bare 28px
+// circle from `md` up. `w-full` rather than a fixed width so the columns tile the grid
+// with no dead pixels between them — a tap that lands nowhere reads as a broken day
+// just as a tap that lands next door does.
+//
+// THE HEIGHT REACHES THE FLOOR AND THE WIDTH CANNOT, and that is arithmetic rather
+// than a compromise: seven columns need 7 × 44 = 308px and the drawer is 288px wide.
+// The breakout below already spends the drawer's gutter and this card's padding to buy
+// the columns 40.9px, and there is nothing left to spend. Recorded rather than forced —
+// the #3536 precedent — and it is why e2e/mobile-ui-polish.spec.ts holds the day cell
+// to 44 in height and 40 in width, from the same measurement.
 const DAY_HIT =
-  "flex h-10 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
+  "flex h-11 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
 // The circle a reader sees. Unchanged at every width.
 const DAY_GLYPH =
   "flex h-7 w-7 items-center justify-center rounded-full text-xs";

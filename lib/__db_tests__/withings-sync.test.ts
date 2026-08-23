@@ -117,6 +117,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // Systolic + diastolic = 2 vitals.
     expect(first.vitals.counts).toEqual({
@@ -125,6 +126,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     // sleep_min + 4 stages = 5 sleep samples, plus 4 composition point samples
     // (lean/muscle/bone mass + body water) from the weigh-in = 9.
@@ -134,6 +136,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
 
     const second = apply();
@@ -143,6 +146,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(second.vitals.counts).toEqual({
       inserted: 0,
@@ -150,6 +154,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 2,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     expect(second.samples).toEqual({
       inserted: 0,
@@ -157,6 +162,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 9,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -219,6 +225,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const vo2 = db
       .prepare(
@@ -244,6 +251,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 1,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
   });
 
@@ -276,6 +284,7 @@ describe("Withings sync upsert/dedup", () => {
       unchanged: 0,
       suppressed: 0,
       edited: 1,
+      superseded: 0,
     });
     const bm = db
       .prepare(

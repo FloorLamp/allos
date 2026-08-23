@@ -185,9 +185,9 @@
   "184-care-plan-dangling-record-links.ts": "e3d82c9d980436afb374ede38eb7cdbda5fb0a7941baf05cf2dacab96fd323f8",
   "185-legacy-biomarker-category.ts": "8539301ee01f3f4782f704a3dec559849178fb10a8361d5046362065bdc04e8b",
   "20260812-saved-biomarker-backed.ts": "38ec4488cfe3cee0668dbe9b1fdf3e081c5bd5d0256aecf4d0f05290866bcf1b",
+  "20260813-encounter-diagnosis-ranks.ts": "4d8969ec00eb72a7cf5616fe38ee880788773865ae2bf097546f74e68d76ccf9",
   "20260813-bmi-derived-rows.ts": "352f1e8d004c23c8deaec908aced49673e80bc0bdb06b38c417be5e8a372dd87",
   "20260813-cascade-orphan-sweep.ts": "fd38b4d4e77f200d266e5d4de0dc069c05150d2bd39b139864ec5c591ddc5c4a",
-  "20260813-encounter-diagnosis-ranks.ts": "4d8969ec00eb72a7cf5616fe38ee880788773865ae2bf097546f74e68d76ccf9",
   "20260813-saved-backed-identity-repair.ts": "3d274702d6fa4696937a8f7ee1e816c9420132ef01865e17a5e28989527c6dcc",
   "20260814-canonical-result-definitions.ts": "1e7c35b98004fe319c667268608b2d91fb8dfedb83f3c944eeb504e4daf2a5d3",
   "20260814-saved-clinical-result-namespace.ts": "5752cc4e337853f387a1a21a7620fe3fc3f60a6b47485638b1a9645b6573cbd6",
@@ -212,5 +212,8 @@
   "20260819-niggles.ts": "81c2d2bff0a1e06ec1d6b3a8e6eac43657d984c8e5c9dd0ed123708fb160181c",
   "20260819-notify-offers.ts": "52b75c38409dd0a27a33413c7630ed98d07ec0774ba3bec0ba004d3972f49f0b",
   "20260820-rpe-column-opt-in.ts": "79091ccfe5f3f08ec8be3f1e1458b9d391cc52d8a02d414df3df27c1e2d530f8",
+  "20260821-hc-overlap-supersede.ts": "e85658d10c54ef41b277dbd7c9f92efc8330c1f4188d0c9a176149fb26c3a5bd",
+  "20260822-hc-pushed-at-index.ts": "03752ff5e7b9cffb976f16027fd70258dcd2c52599afd2f7f9eba3433f9b93a9",
+  "20260822-intake-source-name.ts": "d25206134a6cd6bc2befb2de54f6c116d269179295663a05492c03fe8a79e22b",
   "20260822-logged-via-provenance.ts": "75838bdeadb61fe5e359ba7a226d338a7440a411959f9c1c4f423c1bd19e7d9a"
 }

@@ -75,6 +75,7 @@ function supp(overrides: Partial<IntakeItem> = {}): IntakeItem {
     rxcui_ingredients: null,
     document_id: null,
     source: null,
+    source_name: null,
     provider_id: null,
     source_record_id: null,
     indication_condition_id: null,

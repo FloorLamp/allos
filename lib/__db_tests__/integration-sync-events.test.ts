@@ -167,6 +167,7 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
       unchanged: 0,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const skipped = 1; // pretend one payload record was malformed
     const tally = summarizeSplit(counts, skipped);
@@ -210,6 +211,7 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
       unchanged: 2,
       suppressed: 0,
       edited: 0,
+      superseded: 0,
     });
     const persistedAfter = db
       .prepare(

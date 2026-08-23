@@ -25,7 +25,6 @@ import {
   setTravelTell,
   switchProfileTimezone,
 } from "@/lib/settings";
-import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 
 export interface TravelSwitchResult {
   ok: boolean;
@@ -43,11 +42,16 @@ async function ownProfileForTravel(): Promise<number | null> {
   return isViewingSelf(scope) ? scope.ownProfileId : null;
 }
 
-// The shared tail of a travel switch: the ingest tables that key on profile-LOCAL
-// time re-key on a zone change, exactly as the Settings form's own path already
-// handles (#608), and every day-shaped surface has to re-render.
-function afterTimezoneMoved(profileId: number): void {
-  sweepIngestWindowForTimezoneChange(profileId);
+// The shared tail of a travel switch: every day-shaped surface has to re-render.
+//
+// IT DELETES NOTHING, and that is the fix for #3524. It used to sweep a trailing window
+// of Health Connect `body_metrics` rows on the way out, on the argument that the next
+// push would repopulate them under the new keys (#608). The exporter re-sends one day,
+// not three, so the sweep destroyed a day of resting HR per switch — four days on a real
+// profile across two travel switches. The re-key it existed to prevent is now handled
+// where the evidence for it is, at ingest: lib/integrations/ingest-timezone-reconcile.ts
+// deletes the row an incoming reading is actually re-keying, and only that row.
+function afterTimezoneMoved(): void {
   revalidateRoute("/", "layout");
 }
 
@@ -69,7 +73,7 @@ export async function acceptTravelTimezone(
   switchProfileTimezone(profileId, zone, home);
   // A new zone is a new question, so a dismissal from the last one is spent.
   clearDismissedTravelZone(profileId);
-  afterTimezoneMoved(profileId);
+  afterTimezoneMoved();
   return { ok: true, timezone: zone };
 }
 
@@ -104,7 +108,7 @@ export async function revertTravelTimezone(): Promise<TravelSwitchResult> {
   // write — not handed back for the caller to display. Whoever renders next says
   // it, including a page the person navigated to while this was in flight.
   setTravelTell(profileId, awayZone);
-  afterTimezoneMoved(profileId);
+  afterTimezoneMoved();
   return { ok: true, timezone: homeZone, homeZone, awayZone };
 }
 

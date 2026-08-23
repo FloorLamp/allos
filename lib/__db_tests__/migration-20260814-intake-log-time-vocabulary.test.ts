@@ -1,15 +1,15 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { migrationsBefore } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/20260814-intake-log-time-vocabulary";
 
 function beforeRename(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  const target = MIGRATIONS.findIndex(
-    (migration) => migration.name === "20260814-intake-log-time-vocabulary"
-  );
-  for (const migration of MIGRATIONS.slice(0, target)) migration.up(mem);
+  for (const migration of migrationsBefore(
+    "20260814-intake-log-time-vocabulary"
+  ))
+    migration.up(mem);
   return mem;
 }
 

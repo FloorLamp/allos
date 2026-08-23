@@ -33,10 +33,25 @@ export interface UpsertCounts {
   // who wonders why the scale "stopped updating" a weight can SEE the lock in Review
   // instead of it hiding behind an ordinary no-op re-send.
   edited: number;
+  // STORED rows an incoming row DELETED because its window overlapped theirs (#3424,
+  // Health Connect only). The odd one out in this interface, and deliberately so: every
+  // other segment classifies a row the SOURCE HANDED US, while this one counts a row we
+  // removed from our own store. That is why `summarizeSplit` leaves it out of
+  // `received` — a superseded row was never received — and why it still has to be
+  // visible: a supersede is the app deleting stored health data, and Review is where a
+  // person finds out it happened.
+  superseded: number;
 }
 
 export function emptyCounts(): UpsertCounts {
-  return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 0 };
+  return {
+    inserted: 0,
+    updated: 0,
+    unchanged: 0,
+    suppressed: 0,
+    edited: 0,
+    superseded: 0,
+  };
 }
 
 // Per-row sync provenance (issue #1333): a single record an upsert PERSISTED, so a
@@ -136,6 +151,7 @@ export function foldCounts(parts: UpsertCounts[]): UpsertCounts {
     out.unchanged += p.unchanged;
     out.suppressed += p.suppressed;
     out.edited += p.edited;
+    out.superseded += p.superseded;
   }
   return out;
 }
@@ -157,6 +173,7 @@ export function summarizeSplit(
   const unchanged = Math.max(0, Math.round(counts.unchanged));
   const suppressed = Math.max(0, Math.round(counts.suppressed));
   const edited = Math.max(0, Math.round(counts.edited));
+  const superseded = Math.max(0, Math.round(counts.superseded));
   const s = Math.max(0, Math.round(skipped));
   return {
     inserted,
@@ -164,10 +181,13 @@ export function summarizeSplit(
     unchanged,
     suppressed,
     edited,
+    superseded,
     skipped: s,
     // A tombstone-suppressed OR edit-locked row WAS handed to us by the source, so it
     // belongs in `received` (no silent cap) even though it was deliberately not
-    // persisted.
+    // persisted. `superseded` is NOT in this sum and must never be: those are STORED
+    // rows the push deleted, not rows the source sent, and folding them in would
+    // inflate `received` past the payload the sender can count.
     received: inserted + updated + unchanged + suppressed + edited + s,
   };
 }
@@ -224,6 +244,9 @@ export function formatSplitLabel(ev: {
   // Edit-locked skips (#133/#659): imported rows a re-sync left untouched because the
   // user hand-edited them. Absent on rows recorded before the column existed → 0.
   edited?: number | null;
+  // Stored rows the push DELETED as overlapped (#3424). Absent before the column
+  // existed → 0.
+  superseded?: number | null;
 }): { primary: string; muted: boolean } {
   const { inserted, updated, unchanged } = ev;
   if (inserted === null && updated === null && unchanged === null) {
@@ -235,6 +258,7 @@ export function formatSplitLabel(ev: {
   const unch = unchanged ?? 0;
   const supp = ev.suppressed ?? 0;
   const edited = ev.edited ?? 0;
+  const superseded = ev.superseded ?? 0;
   const segs: string[] = [];
   if (ins > 0) segs.push(`${ins} new`);
   if (upd > 0) segs.push(`${upd} changed`);
@@ -247,7 +271,11 @@ export function formatSplitLabel(ev: {
   // hand-corrected row and the lock kept it — so it shows (and un-mutes) too, which
   // is what lets a user find why the source "stopped updating" that row.
   if (edited > 0) segs.push(`${edited} edited`);
-  if (ins + upd + supp + edited === 0) {
+  // A supersede REMOVED a stored row, so it shows and un-mutes for the same reason a
+  // suppression does — it is the one place a person can find out that a re-anchored
+  // Health Connect bucket replaced an older one (#3424).
+  if (superseded > 0) segs.push(`${superseded} superseded`);
+  if (ins + upd + supp + edited + superseded === 0) {
     return { primary: "nothing new", muted: true };
   }
   return { primary: segs.join(" · "), muted: false };
@@ -315,6 +343,9 @@ export function isNoOpSyncEvent(ev: {
   // An edit-locked skip is likewise NOT a no-op — the sync actively held off an
   // overwrite of a hand-edited row, which the user should be able to find.
   edited?: number | null;
+  // Nor is a SUPERSEDE: the push deleted a stored row. A run whose only effect was
+  // collapsing a re-anchored duplicate must stay visible in Review (#3424).
+  superseded?: number | null;
   // Nor is a SKIP, for the same reason: `inserted 0 / skipped 3` is a run telling the
   // household about three things it could not bring in. Counting it here is what stops a
   // portal run whose entire content is three failures-to-push from reading as silence.
@@ -329,6 +360,7 @@ export function isNoOpSyncEvent(ev: {
       (ev.updated ?? 0) +
       (ev.suppressed ?? 0) +
       (ev.edited ?? 0) +
+      (ev.superseded ?? 0) +
       (ev.skipped ?? 0) ===
     0
   );

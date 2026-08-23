@@ -246,15 +246,23 @@ describe("the migration-free guarantee", () => {
   // columns are exactly what they were — the pin that makes "no schema change"
   // a build failure rather than a claim in a PR body.
   //
-  // EDITED TWICE, DELIBERATELY, and each edit is this pin working rather than this
-  // pin being in the way:
-  //   • #2237 (#2205 phase 2 wave 1): migration 165 adds a nullable `occurred_at` to
-  //     body_metrics and medical_records.
+  // EDITED THREE TIMES, DELIBERATELY, and each edit is this pin working rather
+  // than this pin being in the way:
+  //   • #2237 (#2205 phase 2 wave 1): migration 165 adds a nullable `occurred_at`
+  //     to body_metrics and medical_records. A real schema change, and this pin's
+  //     legitimate edit path — the announcement, not an obstacle.
+  //   • #3424: `20260821-hc-overlap-supersede` adds a nullable
+  //     `metric_samples.pushed_at`, the instant the exporter stamped on the push
+  //     that wrote the row. The store is still tall and still metric/value — the
+  //     column carries no reading, and no read path in phase 1 touches it. It
+  //     exists so the Health Connect overlap-supersede can decide freshness from
+  //     what the PAYLOAD states instead of from arrival order, which an ordinary
+  //     exporter retry defeats.
   //   • #3087: migration 20260822 adds a nullable `logged_via` — WHICH SURFACE a
-  //     person logged from — to both. Additive and nullable like the last one, so
-  //     "unrestructured" still holds; nothing moved, nothing was migrated onto it.
-  // `metric_samples` is untouched by both: it already had `started_at`, and it is
-  // outside #3087's first tranche.
+  //     person logged from — to body_metrics and medical_records. Additive and
+  //     nullable like the others, so "unrestructured" still holds; nothing moved,
+  //     nothing was migrated onto it. `metric_samples` does not get it: it is
+  //     outside #3087's first tranche.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -286,6 +294,7 @@ describe("the migration-free guarantee", () => {
       "metric",
       "origin",
       "profile_id",
+      "pushed_at",
       "source",
       "started_at",
       "value",
