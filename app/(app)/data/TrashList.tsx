@@ -31,17 +31,23 @@ function TrashRow({ entry }: { entry: TrashEntry }) {
   const prefs = useFormatPrefs();
 
   // BOTH DATES CROSS THE DISPLAY BOUNDARY HERE (#3491 item 3, #3492's rule). The
-  // entry carries storage dates — the payload's `YYYY-MM-DD` and the holding row's
-  // SQLite UTC stamp — and lib/trash.ts will not build a sentence out of either.
-  // Always-year, because a capture's own date is routinely from another year while
-  // the delete is always inside the retention window, and a list that carries the
-  // year on some rows and not others reads ragged (the #3492 judgment call).
+  // entry carries storage days — the payload's `YYYY-MM-DD` and, since #3546, the
+  // profile-local day the delete instant fell on — and lib/trash.ts will not build a
+  // sentence out of either. Always-year, because a capture's own date is routinely
+  // from another year while the delete is always inside the retention window, and a
+  // list that carries the year on some rows and not others reads ragged (the #3492
+  // judgment call).
+  //
+  // WHICH DAY THE DELETE IS NAMED BY IS SETTLED BEFORE IT GETS HERE (#3546). This
+  // line used to read `entry.deletedAt.slice(0, 10)` — the UTC day of an instant,
+  // which for a profile west of UTC stamped an evening delete with tomorrow, beside
+  // a countdown that was right. The entry no longer carries the instant at all, so
+  // the surface's only job is the one it should have: format a day it was handed.
   const { headline, subtitle } = trashEntryCopy(entry, {
     date: entry.date ? formatDateWithYear(entry.date, prefs) : null,
-    // The delete instant's calendar day. `deletedAt` is stored UTC and this is the
-    // UTC day, which is what this line has always shown — rendering it through the
-    // prefs changes the SHAPE, not which day is named.
-    deletedOn: formatDateWithYear(entry.deletedAt.slice(0, 10), prefs),
+    deletedOn: entry.deletedOnDay
+      ? formatDateWithYear(entry.deletedOnDay, prefs)
+      : null,
   });
 
   function onRestore() {
