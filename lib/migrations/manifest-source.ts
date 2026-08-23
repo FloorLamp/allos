@@ -415,9 +415,9 @@ export interface GenerateManifestOptions {
   /** Verify only: report what a write would do, and never write. */
   check?: boolean;
   /**
-   * Rewrite an already-shipped hash on purpose. Honoured in write mode only —
-   * `--check` reports the tree as it is, and a rehash is one of the things it
-   * exists to report.
+   * Move released history on purpose — rewrite an already-shipped hash, or drop
+   * an already-shipped migration. Honoured in write mode only: `--check` reports
+   * the tree as it is, and both of those are things it exists to report.
    */
   allowRehash?: boolean;
 }
@@ -439,6 +439,12 @@ export interface GenerateManifestResult {
    * against `shipped`, so deleting the working-tree manifest does not empty it.
    */
   rehashed: string[];
+  /**
+   * Entries that are on main and are GONE here. The other half of the same
+   * alarm: `rehashed` only ranges over files this tree still has, so a shipped
+   * migration deleted outright fell through it entirely.
+   */
+  unshipped: string[];
   unchanged: number;
   /** Where the shipped hashes came from, for the report and for review. */
   shipped: ShippedReference;
@@ -484,13 +490,30 @@ export function generateManifest(
   const rehashed = Object.keys(manifest).filter(
     (f) => f in shipped.manifest && shipped.manifest[f] !== manifest[f]
   );
+  // DELETING A SHIPPED MIGRATION IS NOT A MILDER VERSION OF EDITING ONE.
+  //
+  // `rehashed` ranges over the files this tree HAS, so a shipped migration removed
+  // outright — file deleted, registry entry deleted — produced `dropped: 1`,
+  // `REHASHED: 0`, a written manifest and exit 0. Measured on this repo's tree:
+  // the whole immutability suite stayed green on it, because the manifest and
+  // versions/ still agreed with each other. They had simply both forgotten.
+  //
+  // A database that already applied it keeps the schema the migration made and the
+  // applied row naming it; a fresh one now gets neither. That is the two-schemas
+  // outcome the append-only rule exists to prevent, reached from the other side,
+  // so it refuses through the same door.
+  const unshipped = Object.keys(shipped.manifest).filter(
+    (f) => !(f in manifest)
+  );
   const unchanged = Object.keys(manifest).length - added.length - edited.length;
 
   // The first four lines PARTITION the tree against the checked-in manifest —
   // unchanged + new + edited is the total — so a file cannot fall between them
-  // the way it did when "unchanged" was quietly netted against the alarm. REHASHED
-  // is not part of that partition: it is the same tree measured against MAIN, and
-  // it is printed last, next to the line naming where main's hashes were read.
+  // the way it did when "unchanged" was quietly netted against the alarm. The two
+  // UPPERCASE lines are not part of that partition: they are the same tree
+  // measured against MAIN, in both directions — a shipped file whose hash moved,
+  // and a shipped file that is not here at all — and they print last, next to the
+  // line naming where main's hashes were read.
   const list = (files: readonly string[]) =>
     files.length ? ` (${files.join(", ")})` : "";
   const report = [
@@ -500,7 +523,9 @@ export function generateManifest(
     `  edited:    ${edited.length}${list(edited)}`,
     `  dropped:   ${removed.length}${list(removed)}`,
     `  REHASHED:  ${rehashed.length}${list(rehashed)}`,
-    `Shipped hashes read from ${shipped.source}.`,
+    `  GONE:      ${unshipped.length}${list(unshipped)}`,
+    `Shipped hashes read from ${shipped.source} — REHASHED and GONE are the ` +
+      `two lines measured against it.`,
   ].join("\n");
 
   const base = {
@@ -509,15 +534,20 @@ export function generateManifest(
     removed,
     edited,
     rehashed,
+    unshipped,
     unchanged,
     shipped,
     report,
   };
 
-  // A REHASHED ENTRY IS THE ALARM, not a routine outcome. Shipped migrations are
-  // append-only, so a file whose bytes changed is either an edit to released
-  // history or a conflict resolved by editing the wrong side.
-  if (rehashed.length > 0 && !(options.allowRehash && !options.check)) {
+  // A SHIPPED MIGRATION THAT MOVED OR VANISHED IS THE ALARM, not a routine
+  // outcome. Shipped migrations are append-only, so a file whose bytes changed is
+  // either an edit to released history or a conflict resolved by editing the wrong
+  // side — and a file that is GONE is the same edit with the evidence taken away.
+  if (
+    (rehashed.length > 0 || unshipped.length > 0) &&
+    !(options.allowRehash && !options.check)
+  ) {
     const door = options.check
       ? `\`--allow-rehash\` records one of these on purpose, but it is a WRITING ` +
         `flag: --check reports the tree as it is, and a rehashed entry is one of ` +
@@ -527,21 +557,40 @@ export function generateManifest(
         `for the one case where main itself is wrong about these files. It is not ` +
         `the remedy for "I need to change this migration" — that is a new ` +
         `migration.`;
+    const clauses: string[] = [];
+    if (rehashed.length > 0) {
+      clauses.push(
+        `${rehashed.length} migration(s) already on main hash differently here:` +
+          `\n  ${rehashed.join("\n  ")}`
+      );
+    }
+    if (unshipped.length > 0) {
+      clauses.push(
+        `${unshipped.length} migration(s) on main are GONE from this tree:` +
+          `\n  ${unshipped.join("\n  ")}`
+      );
+    }
     const headline = options.check
-      ? `\n${rel} FAILS: ${rehashed.length} migration(s) already on main hash ` +
-        `differently here:`
-      : `\nREFUSING to write ${rel}: ${rehashed.length} migration(s) already on ` +
-        `main hash differently here:`;
+      ? `\n${rel} FAILS: `
+      : `\nREFUSING to write ${rel}: `;
+    const consequence =
+      unshipped.length > 0
+        ? `Migrations that have landed are APPEND-ONLY, in both directions. A ` +
+          `database that already ran one will never run it again, so an edit ` +
+          `reaches only the databases that have not — and a DELETION reaches none ` +
+          `of them: every database that applied it keeps the schema it made and ` +
+          `the applied row naming it, while every fresh one is now built without ` +
+          `either. Restore those files and append a corrective migration.`
+        : `Migrations that have landed are APPEND-ONLY: a database that already ` +
+          `ran one will never run it again, so an edit reaches only the databases ` +
+          `that have not. Revert those files and append a corrective migration.`;
     return {
       ...base,
       error:
-        `${headline}\n  ` +
-        `${rehashed.join("\n  ")}\n` +
+        `${headline}${clauses.join("\n")}\n` +
         `Shipped hashes read from ${shipped.source}, which is why deleting ` +
         `${rel} does not make this go away.\n` +
-        `Migrations that have landed are APPEND-ONLY: a database that already ran ` +
-        `one will never run it again, so an edit reaches only the databases that ` +
-        `have not. Revert those files and append a corrective migration.\n${door}`,
+        `${consequence}\n${door}`,
       wrote: false,
       exitCode: 1,
     };
@@ -579,15 +628,25 @@ export function generateManifest(
   return {
     ...base,
     report: `${report}\n\nWrote ${rel}.`,
-    // Said on stderr even though the run succeeded: --allow-rehash rewrites
-    // released history's hash, and the diff line is the whole claim.
+    // Said on stderr even though the run succeeded: --allow-rehash moves released
+    // history, and the diff line is the whole claim.
     error:
-      rehashed.length > 0
-        ? `\n--allow-rehash: rewrote ${rehashed.length} hash(es) that are already ` +
-          `on main, on purpose:\n  ${rehashed.join("\n  ")}\n` +
-          `Reviewers: these migration files differ from ${shipped.source}. Every ` +
-          `database that already ran them keeps the OLD behaviour — so the diff ` +
-          `has to be one that does not change what they did.`
+      rehashed.length > 0 || unshipped.length > 0
+        ? [
+            rehashed.length > 0 &&
+              `\n--allow-rehash: rewrote ${rehashed.length} hash(es) that are ` +
+                `already on main, on purpose:\n  ${rehashed.join("\n  ")}`,
+            unshipped.length > 0 &&
+              `\n--allow-rehash: dropped ${unshipped.length} migration(s) that ` +
+                `are on main, on purpose:\n  ${unshipped.join("\n  ")}`,
+            `Reviewers: these migrations differ from ${shipped.source}. Every ` +
+              `database that already ran them keeps the OLD behaviour, and a ` +
+              `deleted one keeps both the schema it made and the applied row ` +
+              `naming it while fresh databases get neither — so the diff has to ` +
+              `be one that does not change what they did.`,
+          ]
+            .filter((line): line is string => typeof line === "string")
+            .join("\n")
         : undefined,
     wrote: true,
     exitCode: 0,

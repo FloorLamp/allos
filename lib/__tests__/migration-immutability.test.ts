@@ -506,4 +506,87 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     ]);
     fs.rmSync(c.versionsDir, { recursive: true, force: true });
   });
+
+  // THE OTHER DIRECTION, WHICH THE REFUSAL DID NOT COVER AT ALL.
+  //
+  // `rehashed` ranges over the files this tree HAS, so a shipped migration deleted
+  // outright — file and registry entry both — was `dropped: 1`, `REHASHED: 0`, a
+  // written manifest and exit 0. Measured on the real tree at the time: the whole
+  // of this file stayed green on it, because manifest and versions/ still agreed
+  // with each other. They had simply both forgotten.
+  const deleteShipped = (c: ReturnType<typeof shipped>) => {
+    fs.rmSync(path.join(c.versionsDir, FIRST));
+    writeRegistry(c.registryPath, [SECOND]);
+  };
+
+  it("refuses the write when a migration that is on main is GONE from the tree", () => {
+    const c = shipped();
+    const before = fs.readFileSync(c.manifestPath, "utf8");
+    deleteShipped(c);
+
+    const result = generateManifest(c);
+    expect(result.unshipped).toEqual([FIRST]);
+    // Not caught by the rehash arm: nothing here hashes differently, because the
+    // file whose hash would differ is not there to hash.
+    expect(result.rehashed).toEqual([]);
+    expect(result.wrote).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("REFUSING to write");
+    expect(result.error).toContain("GONE from this tree");
+    expect(result.error).toContain(FIRST);
+    expect(fs.readFileSync(c.manifestPath, "utf8")).toBe(before);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("--check fails on the deletion too, and does not honour --allow-rehash", () => {
+    const c = shipped();
+    deleteShipped(c);
+    const result = generateManifest({ ...c, check: true, allowRehash: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.wrote).toBe(false);
+    expect(result.error).toContain("GONE from this tree");
+    // Not the stale-manifest advice: following that advice is what writes the
+    // deletion into the file.
+    expect(result.error).not.toContain("and commit the result");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("--allow-rehash records the deletion, and says on stderr what it dropped", () => {
+    // The one legitimate case: main itself carries a migration that is being
+    // reverted off it. It is a decision somebody types, and it leaves a line in
+    // the diff for review to argue with.
+    const c = shipped();
+    deleteShipped(c);
+    const result = generateManifest({ ...c, allowRehash: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.wrote).toBe(true);
+    expect(result.unshipped).toEqual([FIRST]);
+    expect(result.error).toContain("dropped 1 migration(s)");
+    expect(Object.keys(readManifest(c.manifestPath))).toEqual([SECOND]);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("does NOT fire on a migration THIS BRANCH added and then removed again", () => {
+    // The ordinary case that must stay quiet: a migration that never reached main
+    // is not in the shipped reference, so removing it is an ordinary `dropped`.
+    const c = shipped();
+    const third = "20260803-third.ts";
+    fs.writeFileSync(
+      path.join(c.versionsDir, third),
+      "export const migration = 3;\n",
+      "utf8"
+    );
+    writeRegistry(c.registryPath, [...REGISTERED, third]);
+    expect(generateManifest(c).exitCode).toBe(0);
+
+    fs.rmSync(path.join(c.versionsDir, third));
+    writeRegistry(c.registryPath, REGISTERED);
+    const result = generateManifest(c);
+    expect(result.unshipped).toEqual([]);
+    expect(result.removed).toEqual([third]);
+    expect(result.wrote).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.error).toBeUndefined();
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
 });

@@ -9,8 +9,9 @@ These instructions apply to the migration runner and migrations.
 - Run `npm run gen:migration-manifest` to write the hash. Never type one by hand.
 - After a migration merge conflict, keep BOTH sides of `index.ts` and re-run it.
   It refuses a tree where `index.ts` and `versions/` disagree, and refuses to
-  rewrite an already-shipped hash — that is an edited migration, not a stale
-  manifest. Use `--allow-rehash` only to restore a file to its shipped bytes.
+  rewrite an already-shipped hash, or to drop a migration that is on main — both
+  are edits to released history, not a stale manifest. Use `--allow-rehash` only
+  to restore a file to its shipped bytes or to record a revert off main.
 - `manifest.json` conflicts on EVERY two-migration merge — both sides append to
   the same tail, so git has nothing to interleave. Resolve it with
   `git checkout --ours -- lib/migrations/manifest.json` and re-run the generator;

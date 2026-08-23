@@ -313,6 +313,10 @@ These are not review taste; each retired a green that meant nothing.
   PASSED IN, so not one of them asks git what this repo shipped. The reference has
   to come from outside the tree being checked, which is why CI now runs
   `npm run gen:migration-manifest -- --check` against a fetched `origin/main`.
+  The same blind spot had a second half: the refusal ranged over the files the
+  tree HAS, so DELETING a shipped migration outright was `dropped: 1`,
+  `REHASHED: 0` and exit 0 — an alarm that only looks at what is in front of it
+  cannot fire on what was taken away.
 
 - **A comment can generate a real rule.** Tailwind's content scanner reads source
   as text, so a class name in an English sentence compiles to CSS: `.min-h-9`

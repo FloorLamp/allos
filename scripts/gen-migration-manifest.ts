@@ -23,11 +23,13 @@
  *   - It REFUSES a tree where index.ts and versions/ disagree. A migration in one
  *     and not the other is a conflict resolved wrong, and mid-conflict is exactly
  *     when this script runs.
- *   - It REFUSES to rewrite a hash that is already ON MAIN and exits non-zero, in
- *     both modes, unless `--allow-rehash` says to. "Already on main" is read from
- *     git — the manifest as of the merge-base with origin/main — not from the
- *     checked-in file, which `rm` used to erase along with the refusal.
- *   - Editing a migration YOUR OWN BRANCH added is not that, and says nothing.
+ *   - It REFUSES to rewrite a hash that is already ON MAIN, or to drop a migration
+ *     that is on main, and exits non-zero in both modes unless `--allow-rehash`
+ *     says to. "Already on main" is read from git — the manifest as of the
+ *     merge-base with origin/main — not from the checked-in file, which `rm` used
+ *     to erase along with the refusal.
+ *   - Adding, editing or removing a migration YOUR OWN BRANCH introduced is none
+ *     of that, and says nothing.
  *
  * The flags work with `--` in front of them, as npm requires. `--check` also
  * works without it (npm hides it in the environment, where this reads it);
