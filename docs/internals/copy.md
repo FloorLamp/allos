@@ -227,16 +227,22 @@ the record (`intake_items.source_name`, rendered as source detail under the
 medication's name and never as a heading). Ignoring the offer is a complete
 answer — the medication keeps the name it has.
 
-Accepting one is a RENAME, with a rename's consequences, and the copy says so at
-the moment of choosing rather than pretending otherwise. Nutrient recognition is
-name-keyed (`lib/dri.ts` matches by name substring), so a new name can change
-which warnings the medication carries — in either direction, exactly as typing
-the same name into the medication form would. One line above the candidate list
-carries it: `"Any warnings on this med follow its name — a new name can change
-them."` It appears only while somebody is choosing between two names, and never
-as a standing notice on the card: a paragraph about how matching works is the
-editorializing rule 6 forbids, and a person who is not renaming anything does
-not need it. The card's lead stays a lead.
+The candidate list carries NO caution copy, deliberately (owner, 2026-08-22),
+and the record is here because a caution is the obvious thing to add back. A
+line reading `"Any warnings on this med follow its name — a new name can change
+them."` shipped above the candidates and was retracted: it asserts a mechanism
+this tree does not have. Matching is RxCUI-FIRST with the name as fallback
+(`matchConceptKeysIn` `continue`s on a code hit; `lib/food-drug-interactions.ts`
+writes `const byName = !byRxcui && …`), and the accept button WRITES an
+authoritative rxcui — so pressing it takes the row from name-fallback to
+code-first and strengthens those warnings rather than moving them. The sentence
+was falsified by the control it sat above.
+
+No shorter line, tooltip or help affordance replaces it. Rule 6 forbids
+editorializing, and a person choosing between two names does not need a
+paragraph about how matching works — the rename is visible in the act itself.
+(`lib/dri.ts` matches nutrients by name substring and is the one name-keyed
+vocabulary here; that is #3553's subject, not copy on this card.)
 
 Three parts, and a new importer inherits the boundary by writing rows the same
 way any importer already does:
@@ -298,10 +304,11 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
   compare, sort or key a Map are correct, and a guard that flagged them would be
   deleted within the month. The bound-local half sees a template-literal
   right-hand side, an object right-hand side and a casing REASSIGNMENT with no
-  declarator; it deliberately still stops at a callback body, and what it cannot
-  see at all (a casing pass inside another component, a name that leaves the file
-  and comes back, an alias made by a destructure) is listed in the test's own
-  header rather than implied. Comments are blanked before the scan: that
+  declarator; it deliberately still stops at a callback body. What it cannot see
+  is FOUR entries — a casing pass inside another component, a name that leaves
+  the file and comes back, an alias made by a destructure, and that callback
+  body — and both the module's header and the test's now carry all four, because
+  the module listed three while the test listed four. Comments are blanked before the scan: that
   moves the count from 270 to 244, and `className` is excluded from the
   name-expression pattern because it ends in `Name` and was inflating the
   denominator by 118 sites that render no name at all.
@@ -327,7 +334,10 @@ rewrites, on every render, text nobody agreed to change. That is the same ruling
   `catch`: a Server Action that REJECTED left the button un-busied and said
   nothing at all, so a person was looking at a medicine they believed they had
   renamed. Both that and the returned-error branch are driven here; no other tier
-  can see either.
+  can see either. It also holds the retracted caution OUT — and because that is
+  an absence, the same case first asserts the candidate list, the candidate's
+  name, the stored name and the accept control are on screen, so a component
+  that stopped rendering reds instead of passing.
 
 ### 10. Lead + fold
 

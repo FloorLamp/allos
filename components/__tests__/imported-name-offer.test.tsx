@@ -197,20 +197,43 @@ describe("what the document said survives the rename on screen", () => {
   });
 });
 
-describe("the moment of choosing says what accepting costs", () => {
-  it("names the consequence beside the candidates, not before them", async () => {
-    // A person pressing "Use this name" is renaming the row the nutrient and
-    // interaction checks key on, so the offer must not read as free. It belongs
-    // HERE — with both names on screen and a button under it — and not as a standing
-    // line on a card somebody scrolls past.
+describe("the moment of choosing carries no caution copy", () => {
+  // THE RETRACTED SENTENCE (owner ruling, 2026-08-22). This slot used to hold
+  // "Any warnings on this med follow its name — a new name can change them." The
+  // sentence was false — the tree matches RxCUI first and falls back to the name,
+  // and the accept button writes an rxcui, so pressing it STRENGTHENS interaction
+  // warnings — and no replacement was wanted. This test is what stops one drifting
+  // back in.
+  //
+  // AN ABSENCE ASSERTION GOES GREEN ON A COMPONENT THAT NEVER RENDERED. A broken
+  // import, a renamed testid, a throw swallowed in a boundary: every one of those
+  // makes "the sentence is not on screen" true for the wrong reason. So this case
+  // asserts the OFFER IS SHOWING first — the candidate list, the candidate's own
+  // name, the current name and the accept control — and only then that the caution
+  // is not. Every positive here fails loudly if the render dies, which is what
+  // licenses the negative below it.
+  it("shows the candidates and the accept control, and no caution line", async () => {
     offer({ name: DOCUMENT_STRING, sourceName: null });
-    expect(screen.queryByTestId("imported-name-consequence")).toBeNull();
     await act(async () => {
       screen.getByTestId("imported-name-find").click();
     });
-    expect(screen.getByTestId("imported-name-consequence").textContent).toBe(
-      "Any warnings on this med follow its name — a new name can change them."
+
+    // The offer RENDERED. Without these four, the assertions after them are
+    // satisfied by an empty DOM.
+    const list = screen.getByTestId("imported-name-candidates");
+    expect(list.textContent).toContain("Cholecalciferol");
+    expect(screen.getByTestId("imported-name-current").textContent).toBe(
+      DOCUMENT_STRING
     );
+    expect(screen.getByTestId("imported-name-use-2418").textContent).toBe(
+      "Use this name"
+    );
+
+    // And it carries no caution. Both spellings, because the element could be
+    // dropped while the words stayed, or the words return without the testid.
+    expect(screen.queryByTestId("imported-name-consequence")).toBeNull();
+    expect(list.textContent).not.toContain("follow its name");
+    expect(list.textContent).not.toContain("warnings");
   });
 });
 

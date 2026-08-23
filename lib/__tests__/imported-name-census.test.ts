@@ -343,7 +343,11 @@ describe("the census rule stays quiet on the benign neighbours", () => {
       // pulled three shipped locals into the binding set — `filtered`,
       // `flatFiltered`, `canonicalLower`, all of them list filters lower-casing a
       // name to COMPARE. Only a `${…}` and a LEADING object literal are admitted
-      // now, so a block body still ends the match.
+      // now, so a block body still ends the match — which keeps `filtered` and
+      // `flatFiltered` out. `canonicalLower` is in the set anyway, by a route this
+      // restraint does not govern (a plain declarator, via the alias pass); it is
+      // never rendered, so it is a binding and not a hit. See the module's own
+      // note beside the RHS.
       "a list filter that lower-cases a name to compare, inside a callback body",
       `const filtered = useMemo(() => {\n  return xs.filter((p) => p.name.toLowerCase().includes(q));\n});\nreturn <ul>{filtered}</ul>;`,
     ],

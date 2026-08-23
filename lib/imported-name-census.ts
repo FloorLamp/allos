@@ -155,16 +155,24 @@ const CASING_ON_NAME = new RegExp(
 //     to a fixpoint, so a three-step hoist is caught as readily as a two-step one.
 //
 // WHAT IS STILL OUT OF REACH, said plainly rather than left for the next reviewer to
-// find, because this rule reads ONE FILE'S TEXT and is not a parser:
+// find, because this rule reads ONE FILE'S TEXT and is not a parser. FOUR entries,
+// and the fourth used to be missing here while the test's header carried it — which
+// is the worst place for a gap list to disagree with itself, since the module is
+// where a reader looks first:
 //   * a COMPONENT that cases its own children — `<Shout>{med.name}</Shout>` — because
 //     the casing lives in `Shout`'s definition and the call site is textually
 //     identical to correct code;
 //   * a cased name that leaves the file and comes back — through a prop, a helper's
 //     return value, a context, a module-level function in another file;
 //   * an alias chain that passes through a shape with no `=` in it, such as a
-//     destructure or a function parameter.
-// Deciding any of those takes a cross-file graph. The census claims what it measures
-// (see the test's own wording) and no more.
+//     destructure or a function parameter;
+//   * a casing call inside a CALLBACK BODY, which the right-hand side below stops at
+//     ON PURPOSE (see the RHS comment). That one is a choice rather than a limit:
+//     reaching in names shipped list filters that lower-case a name to COMPARE, and
+//     a guard that cries wolf on those does not survive to catch anything. It is
+//     still a shape the census cannot see, so it belongs on this list.
+// Deciding the first three takes a cross-file graph. The census claims what it
+// measures — these four mechanisms, in the spellings the test plants — and no more.
 
 // The right-hand side of an assignment: everything up to the statement's `;`. Two
 // brace shapes are admitted and no others, which is the whole of the widening:
@@ -178,6 +186,16 @@ const CASING_ON_NAME = new RegExp(
 // binding set on the first attempt (`filtered`, `flatFiltered`, `canonicalLower` —
 // list filters that lower-case a name to COMPARE), and a rule that starts naming
 // those is the rule that gets deleted for crying wolf, taking the real one with it.
+//
+// ONE OF THE THREE IS IN THE BINDING SET ANYWAY, and this was claimed the other way
+// round until review measured it. `canonicalLower` (app/(app)/results/clinical-results/
+// view/page.tsx:183) is `const canonicalLower = canonical.toLowerCase()` — a plain
+// declarator, no callback around it — so the ALIAS pass registers `canonical` and this
+// pass then marks `canonicalLower` cased. The restraint above never excluded it; only
+// `filtered` and `flatFiltered` are kept out by it. It costs nothing, because a
+// binding is not a hit: `canonicalLower` is a compare key and is never rendered, so
+// `nameCasingHits` stays empty for that file. Worth stating rather than leaving as a
+// surprise for whoever next reads this comment as a promise about the set.
 const BRACED = String.raw`\{(?:[^{}]|\{[^{}]*\})*\}`;
 // An optional leading object literal, then everything up to the `;` with `${…}`
 // admitted. The leading group is OUTSIDE the repetition on purpose — inside it, an

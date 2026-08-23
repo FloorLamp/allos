@@ -141,10 +141,19 @@ const STRENGTH_DIGITS_RE = /\p{Nd}/u;
 //     quiet because nothing lower-case follows it.
 //
 // STILL NOT CLOSED, said rather than implied: this is a shape rule over one token and
-// the ISMP list is a vocabulary. A rendering that capitalises a single interior
-// letter, or one whose capital run sits at the very end of a token with nothing after
-// it, is outside all three alternatives. The direction of the miss is the safe one —
-// a missed offer costs a person nothing.
+// the ISMP list is a vocabulary. A rendering that capitalises a single interior letter
+// is outside all three alternatives, and so is a TRAILING run preceded by fewer than
+// two lower-case letters — the "mRNA"/"GoLYTELY" shape named above, deliberately.
+//
+// AND THIS PARAGRAPH USED TO NAME THE WRONG GAP, which is worth keeping because it is
+// the shape a reader would trust. It said a capital run "at the very end of a token
+// with nothing after it" was outside all three alternatives. It is not: alternative 1
+// asks only for two lower-case letters BEFORE the run and needs no trailing tail, so
+// "predniSONE", "glipiZIDE", "chlorproMAZINE" and "cycloSPORINE" all fire on it, and
+// the first two are fixtures in the test beside this file. A review pass over 56 real
+// ISMP renderings found 18 of that exact shape and all 18 caught, 0 missed. The
+// direction of the remaining miss is the safe one — a missed offer costs a person
+// nothing.
 //
 // The classes are Unicode (`\p{Lu}`/`\p{Ll}`) for the same reason EDGE_PUNCT_RE is:
 // a cased alphabet is not only ASCII, and an ASCII class silently reads a non-ASCII
