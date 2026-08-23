@@ -105,6 +105,7 @@ import {
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
 import { isOnDemand } from "@/lib/intake-schedule";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
 // marker-agnostic next-window chip; `prnDayLabel`/`prnTimes` are the administration
@@ -564,6 +565,12 @@ export function loadMedicationsData(
   // Dormant-PRN sweep (#880 item 3): active PRN meds with no dose in 90+ days. Anchored on
   // the last 'taken' administration (or creation, if never dosed) via the ONE gather, then
   // filtered by the #203 bus dismissals (id-keyed).
+  //
+  // BOTH ANCHORS ARRIVE AS PROFILE-LOCAL DAYS (#3572). `intake_item_logs.date` already is
+  // one; `intake_items.created_at` is an INSTANT, so it goes through `dateFromCreatedAt`
+  // in the profile's zone rather than `.slice(0, 10)`, which answers with the UTC day.
+  // The threshold below is compared against `todayStr`, which is profile-local — two
+  // calendars meeting here moved the 90-day line by a day and changed the verdict.
   const lastAdminByItem = getLastAdministrationDateByItem(profileId);
   const dormantInputs: DormantPrnInput[] = intakeItems
     .filter((s) => s.kind === "medication")
@@ -573,7 +580,7 @@ export function loadMedicationsData(
       asNeeded: isOnDemand(s),
       active: !!s.active,
       lastAdministration: lastAdminByItem.get(s.id) ?? null,
-      createdOn: s.created_at.slice(0, 10),
+      createdOnLocalDay: dateFromCreatedAt(s.created_at, tz),
     }));
   const allDormant = dormantPrnCandidates(dormantInputs, todayStr);
   const isDormantDismissed = (d: DormantPrnSuggestion) => {

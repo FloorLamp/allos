@@ -19,7 +19,7 @@ function m(over: Partial<DormantPrnInput>): DormantPrnInput {
     asNeeded: true,
     active: true,
     lastAdministration: "2026-01-01", // ~151 days ago
-    createdOn: "2025-01-01",
+    createdOnLocalDay: "2025-01-01",
     ...over,
   };
 }
@@ -42,7 +42,7 @@ describe("dormantPrnCandidates", () => {
 
   it("uses the creation date when the med was never dosed", () => {
     const out = dormantPrnCandidates(
-      [m({ lastAdministration: null, createdOn: "2025-01-01" })],
+      [m({ lastAdministration: null, createdOnLocalDay: "2025-01-01" })],
       TODAY
     );
     expect(out).toHaveLength(1);
@@ -52,7 +52,7 @@ describe("dormantPrnCandidates", () => {
   it("does NOT flag a never-dosed med created recently", () => {
     expect(
       dormantPrnCandidates(
-        [m({ lastAdministration: null, createdOn: "2026-05-01" })],
+        [m({ lastAdministration: null, createdOnLocalDay: "2026-05-01" })],
         TODAY
       )
     ).toEqual([]);
@@ -67,6 +67,28 @@ describe("dormantPrnCandidates", () => {
     const med = m({ lastAdministration: "2026-04-01" }); // ~61 days
     expect(dormantPrnCandidates([med], TODAY, 90)).toEqual([]);
     expect(dormantPrnCandidates([med], TODAY, 30)).toHaveLength(1);
+  });
+
+  // A med that was never dosed AND whose created instant is unreadable has no day to
+  // measure from, so it is dropped rather than dated from a guess (#3572). The field is
+  // nullable precisely because the conversion out of an instant can fail; a suggest-only
+  // card is the wrong place to invent an anchor.
+  it("drops a never-dosed med whose created day could not be resolved", () => {
+    expect(
+      dormantPrnCandidates(
+        [m({ lastAdministration: null, createdOnLocalDay: null })],
+        TODAY
+      )
+    ).toEqual([]);
+  });
+
+  it("still measures from the administration when the created day is missing", () => {
+    const out = dormantPrnCandidates(
+      [m({ lastAdministration: "2026-01-01", createdOnLocalDay: null })],
+      TODAY
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].lastUsed).toBe("2026-01-01");
   });
 
   it("sorts longest-dormant first", () => {
