@@ -7,7 +7,9 @@ import {
   foodReduceSignalKey,
   FOOD_SUGGEST_PREFIX,
   FOOD_REDUCE_PREFIX,
+  foodSuggestionHeadline,
   type FoodSuggestInput,
+  type FoodSuggestion,
 } from "@/lib/food-suggest";
 
 // Pure-tier tests for the deterministic biomarker→food engine (issue #577). No DB —
@@ -627,5 +629,114 @@ describe("suggestFoods — target triggers (#2383)", () => {
   it("changes nothing for a caller that passes no targets", () => {
     expect(suggestFoods(baseInput({ flagged: [] }))).toEqual([]);
     expect(suggestFoods(baseInput({ targets: [] }))).toEqual([]);
+  });
+});
+
+// THE CARD'S HEADLINE (#3497 item 3). It is here rather than in a component test
+// because `components/**` has no test tier (#3446) and because both surfaces that
+// render suggestions have to say the same sentence.
+describe("foodSuggestionHeadline", () => {
+  function suggestion(
+    over: Partial<
+      Pick<FoodSuggestion, "triggeredBy" | "label" | "side" | "direction">
+    > = {}
+  ) {
+    return {
+      triggeredBy: ["Selenium"],
+      label: "Selenium",
+      side: "low" as const,
+      direction: "add" as const,
+      ...over,
+    };
+  }
+
+  it("one trigger: 'Selenium is low — eat more:'", () => {
+    expect(foodSuggestionHeadline(suggestion())).toBe(
+      "Selenium is low — eat more:"
+    );
+  });
+
+  it("the side word is sentence case, never shouted", () => {
+    // The card's green/amber tone already carries the verdict; caps were the app's
+    // loudest channel spent on the thing the reader can already see.
+    const line = foodSuggestionHeadline(suggestion());
+    expect(line).not.toContain("LOW");
+    expect(line).not.toContain("HIGH");
+  });
+
+  it("two triggers are spoken with 'and', not comma-joined (#3496's class)", () => {
+    expect(
+      foodSuggestionHeadline(
+        suggestion({
+          triggeredBy: ["LDL Cholesterol", "Apolipoprotein B (ApoB)"],
+          side: "high",
+        })
+      )
+    ).toBe(
+      "LDL Cholesterol and Apolipoprotein B (ApoB) are high — eat more:"
+    );
+  });
+
+  it("a comma-bearing lab name stays ONE name", () => {
+    // The failure this closes: ", " as a separator makes a name's own comma
+    // indistinguishable from a list comma, so two triggers read as four.
+    const line = foodSuggestionHeadline(
+      suggestion({
+        triggeredBy: ["Lymphocytes, Relative", "Neutrophils, Absolute"],
+        side: "high",
+      })
+    );
+    expect(line).toBe(
+      "Lymphocytes, Relative and Neutrophils, Absolute are high — eat more:"
+    );
+  });
+
+  it("three or more take the roster separator", () => {
+    expect(
+      foodSuggestionHeadline(
+        suggestion({ triggeredBy: ["Ferritin", "Iron", "TIBC"] })
+      )
+    ).toBe("Ferritin · Iron · TIBC are low — eat more:");
+  });
+
+  it("the SIDE comes from the declared trigger, never the verb (#2754)", () => {
+    // The soluble-fiber entry is an ADD that fires on a HIGH flag. A headline that
+    // derived "low" from "eat more" would state the opposite of the reading.
+    expect(
+      foodSuggestionHeadline(
+        suggestion({
+          triggeredBy: ["Apolipoprotein B (ApoB)"],
+          side: "high",
+          direction: "add",
+        })
+      )
+    ).toBe("Apolipoprotein B (ApoB) is high — eat more:");
+  });
+
+  it("a reduce suggestion says eat less", () => {
+    expect(
+      foodSuggestionHeadline(
+        suggestion({ side: "high", direction: "reduce" })
+      )
+    ).toBe("Selenium is high — eat less:");
+  });
+
+  it("falls back to the suggestion's own label when nothing named it", () => {
+    expect(
+      foodSuggestionHeadline(suggestion({ triggeredBy: [], label: "Fiber" }))
+    ).toBe("Fiber is low — eat more:");
+  });
+
+  it("every suggestion the engine emits gets a headline it can render", () => {
+    // A census floor, so this describe block cannot pass by testing only its own
+    // literals: the real engine's output goes through the same function.
+    const out = suggestFoods(
+      baseInput({ flagged: [{ name: "Selenium", flag: "low" }] })
+    );
+    expect(out.length).toBeGreaterThan(0);
+    for (const s of out)
+      expect(foodSuggestionHeadline(s)).toMatch(
+        / (is|are) (low|high) — eat (more|less):$/
+      );
   });
 });

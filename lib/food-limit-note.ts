@@ -129,6 +129,7 @@ import {
   type FoodDrugEventFinding,
 } from "./food-drug-ledger";
 import { foodGroupBySlug } from "./food-groups";
+import { joinNamesForSentence } from "./summarize-names";
 import type { FoodSuggestion } from "./food-suggest";
 
 // The mandatory tail every curated dietary string in the app carries, verbatim from the
@@ -292,7 +293,10 @@ export function foodLimitTapNote(
   const armed = input.dietary.find((c) => c.firstSinceActive);
   if (!armed) return null;
   const { limit } = armed;
-  const markers = joinNames(limit.triggeredBy);
+  // Biomarker names, so the shared name-join rule applies rather than the local
+  // comma-and serial above: a name that carries its own comma ("Vitamin D, 25-OH")
+  // must not read as two markers (#3496; docs/internals/copy.md §9).
+  const markers = joinNamesForSentence(limit.triggeredBy);
   return {
     kind: "dietary",
     groupKey: input.groupKey,

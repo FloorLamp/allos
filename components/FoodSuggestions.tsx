@@ -3,10 +3,15 @@ import {
   IconCircleMinus,
   IconAlertTriangle,
   IconInfoCircle,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import { NOTICE_TONE } from "@/components/Notice";
-import type { FoodSuggestion, FoodSafetyNoteKind } from "@/lib/food-suggest";
+import {
+  foodSuggestionHeadline,
+  type FoodSuggestion,
+  type FoodSafetyNoteKind,
+} from "@/lib/food-suggest";
 
 // Presentational renderer for the DETERMINISTIC food suggestions (issues #577/#775). A
 // pure formatter over the FoodSuggestion[] the ONE computation (getFoodSuggestions)
@@ -43,7 +48,6 @@ export default function FoodSuggestions({
     <div data-testid={testid} className="space-y-3">
       {suggestions.map((s) => {
         const reduce = s.direction === "reduce";
-        const reasons = s.triggeredBy.length > 0 ? s.triggeredBy : [s.label];
         return (
           <div
             key={s.dedupeKey}
@@ -61,18 +65,20 @@ export default function FoodSuggestions({
               )}
               <div className="min-w-0">
                 <p
+                  data-testid={`food-suggestion-headline-${s.key}`}
                   className={
                     reduce
                       ? "font-semibold text-amber-900 dark:text-amber-100"
                       : "font-semibold text-emerald-900 dark:text-emerald-100"
                   }
                 >
-                  {/* The flag side comes from the suggestion's declared trigger
-                      (#2754): the soluble-fiber ADD fires on a HIGH flag, so the
-                      side word may not be derived from the eat-more/eat-less verb. */}
-                  {reasons.join(", ")} {reasons.length > 1 ? "are" : "is"}{" "}
-                  {s.side === "high" ? "HIGH." : "LOW."}{" "}
-                  {reduce ? "Eat less:" : "Eat more:"}
+                  {/* One sentence, built once, in lib/food-suggest — including the
+                      #2754 rule that the side word comes from the declared trigger
+                      and never from the eat-more/eat-less verb. It is a string
+                      rather than markup here so the tier that can test it does
+                      (#3446), and so the coaching surface cannot phrase it
+                      differently from this one. */}
+                  {foodSuggestionHeadline(s)}
                 </p>
                 <ul
                   data-testid={`food-suggestion-foods-${s.key}`}
@@ -143,9 +149,38 @@ export default function FoodSuggestions({
                     {s.caveat}
                   </p>
                 )}
-                <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
-                  {s.evidence} Source: {s.source}.
-                </p>
+                {/* WHY THIS WORKS — the mechanism paragraph and its regulatory
+                    citation, folded (#3497 item 4). Both cards carried them open,
+                    and on a lab page that is two screens of prose between the
+                    reader and the next reading. The provenance is trust-building
+                    and stays FINDABLE — a native <details>, so in-page find still
+                    reaches it and it opens with JS off — but it stops leading.
+                    What stays visible is everything that is about the reader:
+                    the headline, the foods, every safety note, and the advisory. */}
+                <details
+                  className="group mt-1.5"
+                  data-testid={`food-suggestion-why-${s.key}`}
+                >
+                  <summary
+                    data-testid={`food-suggestion-why-toggle-${s.key}`}
+                    className={`flex cursor-pointer list-none items-center gap-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
+                      reduce
+                        ? "text-amber-800 dark:text-amber-300"
+                        : "text-emerald-800 dark:text-emerald-300"
+                    }`}
+                  >
+                    <span className="group-open:hidden">Why this works</span>
+                    <span className="hidden group-open:inline">Hide</span>
+                    <IconChevronDown
+                      className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
+                      stroke={2}
+                      aria-hidden="true"
+                    />
+                  </summary>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {s.evidence} Source: {s.source}.
+                  </p>
+                </details>
               </div>
             </div>
           </div>

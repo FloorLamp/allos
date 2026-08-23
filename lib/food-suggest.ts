@@ -57,6 +57,7 @@ import { conditionOrSituationMatches } from "./condition-nutrient";
 import type { ConditionInput } from "./condition-codes";
 import { stackFoodDrugHits } from "./food-drug-interactions";
 import { applyPreferenceFilter, isExcludedGroup } from "./dietary-preferences";
+import { joinNamesForSentence } from "./summarize-names";
 
 const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
 const REDUCE_ENTRIES: ReduceFoodEntry[] = REDUCE_FOOD_ENTRIES;
@@ -212,6 +213,50 @@ export interface FoodSuggestion {
   // screening. A caution never silently drops a food (except a "drop"-severity
   // condition tag, which withholds the whole suggestion — it never appears).
   safetyNotes: FoodSafetyNote[];
+}
+
+/**
+ * The suggestion card's headline sentence: "LDL Cholesterol and ApoB are high —
+ * eat more:".
+ *
+ * It lives here, beside the type, because the string a card leads with is the
+ * suggestion's own claim and both surfaces that render suggestions have to make it
+ * identically. It is also the only tier that can TEST it (#3446).
+ *
+ * TWO THINGS THE PHONE REVIEW FOUND WRONG WITH THE OLD TEMPLATE (#3497 item 3):
+ *
+ * 1. It joined the trigger names with ", " — the same ambiguity `summarizeNames`
+ *    carried (#3496), at a second site. "LDL Cholesterol, Apolipoprotein B (ApoB)"
+ *    reads as two names only if you already know the second one; a lab name with a
+ *    comma in it reads as three. The names now go through the shared
+ *    `joinNamesForSentence`.
+ * 2. It shouted the side word — "are HIGH." — on a card whose amber/green tone
+ *    already carries the verdict. Caps are the loudest channel this app has and it
+ *    was spending them on the thing the reader can see. Sentence case.
+ *
+ * THE SIDE WORD IS STILL THE DECLARED TRIGGER (#2754), NOT THE VERB. The
+ * soluble-fiber entry is an ADD that fires on a HIGH flag, so "eat more" and "is
+ * high" both being true in one sentence is correct and load-bearing. Nothing here
+ * derives one from the other.
+ *
+ * The names are NOT re-cased. A stored clinical name is the record ("LDL
+ * Cholesterol"), and a display casing pass over clinical names is the thing
+ * docs/internals/copy.md §9 rules out — an imported name is cleaned at the import
+ * boundary with the person confirming, never here.
+ */
+export function foodSuggestionHeadline(
+  suggestion: Pick<
+    FoodSuggestion,
+    "triggeredBy" | "label" | "side" | "direction"
+  >
+): string {
+  const reasons =
+    suggestion.triggeredBy.length > 0
+      ? suggestion.triggeredBy
+      : [suggestion.label];
+  const verb = reasons.length > 1 ? "are" : "is";
+  const eat = suggestion.direction === "reduce" ? "eat less" : "eat more";
+  return `${joinNamesForSentence(reasons)} ${verb} ${suggestion.side} — ${eat}:`;
 }
 
 // A food survives the allergy screen unless a recorded allergen (direct or cross-

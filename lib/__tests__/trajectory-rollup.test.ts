@@ -120,7 +120,7 @@ describe("rollupTrajectoryFindings", () => {
         finding(a, "velocity")
       )
     );
-    expect(rollup.names).toBe("eGFR, ALT, hs-CRP and 2 more");
+    expect(rollup.names).toBe("eGFR · ALT · hs-CRP and 2 more");
   });
 
   it("gives a finding with no acknowledgment key its own group", () => {
