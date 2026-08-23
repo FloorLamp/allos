@@ -245,10 +245,20 @@ export default function SharedSupplyCard({
               <label className="label" htmlFor={`pool-add-for-${pool.id}`}>
                 Add for another person
               </label>
+              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481). The select was a bare
+                  `.input` beside a `btn btn-sm` submit: 38px against 32px on desktop
+                  (the shape the phone review reported) and 38px against 44px at
+                  390px, where the `.btn` family's rendered tap floor (#3486/#3514)
+                  lifts the button and the select is left short. Dropping `btn-sm`
+                  fixes the desktop half; the select carries the other half — `h-9`
+                  puts it on the `.btn` desktop height (36px), and `min-h-11` puts it
+                  on the same 44px phone floor the button already holds, by the
+                  call-site mechanism #3514 registers for exactly this. Both readings
+                  are RENDERED boxes; the guard is e2e/shared-supply-pool.spec.ts. */}
               <select
                 id={`pool-add-for-${pool.id}`}
                 name="profileId"
-                className="input max-w-xs"
+                className="input h-9 min-h-11 max-w-xs sm:min-h-0"
                 data-testid="shared-supply-add-for-select"
                 defaultValue={String(pool.addTargets[0].id)}
               >
@@ -262,7 +272,7 @@ export default function SharedSupplyCard({
             <input type="hidden" name="returnTo" value={pool.addHref} />
             <button
               type="submit"
-              className="btn btn-sm"
+              className="btn"
               data-testid="shared-supply-add-for-submit"
             >
               Add this bottle

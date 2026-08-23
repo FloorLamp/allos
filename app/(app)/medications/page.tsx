@@ -131,6 +131,8 @@ export default async function MedicationsPage(props: {
     getSituations(actingProfileId)
   ).map((o) => o.name);
 
+  const cabinetCount = countVisiblePools(scope.ids);
+
   const medCount = actingData.current.length + actingData.past.length;
   const prnCount = actingData.current.filter((item) =>
     isOnDemand(item.med)
@@ -154,10 +156,6 @@ export default async function MedicationsPage(props: {
           >
             <MedicationAddWorkspace
               initialSupply={initialSupply}
-              // The medicine-cabinet door (#1522), counted over the WHOLE accessible
-              // set rather than the acting profile — the cabinet is household-scoped,
-              // and this is the number the /supplies page will list.
-              cabinetCount={countVisiblePools(scope.ids)}
               subtitle={
                 medCount === 0
                   ? "Track prescriptions, over-the-counter medications, doses, and refills."
@@ -188,6 +186,12 @@ export default async function MedicationsPage(props: {
                   profileId={pid}
                   isActing={pid === actingProfileId}
                   canWrite={scope.access.get(pid) === "write"}
+                  // The medicine-cabinet door's count (#1522), counted over the WHOLE
+                  // accessible set rather than the acting profile — the cabinet is
+                  // household-scoped, and this is the number the /supplies page will
+                  // list. The door itself moved from the page header into the Current
+                  // medications card in #3479; only the acting board renders it.
+                  cabinetCount={cabinetCount}
                 />
               ));
               return multi ? (

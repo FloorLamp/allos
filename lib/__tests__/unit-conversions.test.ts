@@ -1,10 +1,55 @@
 import { describe, expect, it } from "vitest";
 import {
   convertToCanonical,
+  displayUnit,
   isBareCountPerVolume,
   isConvertible,
   sameUnit,
 } from "@/lib/unit-conversions";
+
+// #3493 item 2. The equivalence machinery below has stripped UCUM's brackets and
+// annotations since #1018 — for MATCHING. The display side never did, so an imported
+// blood pressure was flagged against the canonical mmHg band and then rendered to a
+// person as "60 mm[Hg]". `displayUnit` is that same stripping at the display boundary,
+// sharing one implementation with `sameUnit` so the two cannot drift.
+describe("displayUnit (#3493)", () => {
+  it("renders the UCUM spellings documents ship as a person writes them", () => {
+    expect(displayUnit("mm[Hg]")).toBe("mmHg");
+    expect(displayUnit("[degF]")).toBe("degF");
+    expect(displayUnit("{beats}/min")).toBe("/min");
+    expect(displayUnit("[iU]/L")).toBe("iU/L");
+    expect(displayUnit("[in_i]")).toBe("in");
+  });
+
+  it("leaves an ordinary unit exactly as stored", () => {
+    // The overwhelming majority of rows. A display function that "tidied" these would
+    // be inventing a second spelling of every unit in the app.
+    for (const u of ["mg/dL", "mmHg", "%", "10*3/uL", "kg", "°C"]) {
+      expect(displayUnit(u)).toBe(u);
+    }
+  });
+
+  it("shows nothing where there is nothing to show", () => {
+    expect(displayUnit(null)).toBeNull();
+    expect(displayUnit(undefined)).toBeNull();
+    // A UCUM annotation with no atom is unity: the reading is a bare count and the
+    // count is already the value, so the braces are markup, not a unit.
+    expect(displayUnit("{cells}")).toBeNull();
+  });
+
+  it("is the SAME stripping the matcher uses — one rule, two readers", () => {
+    // The property that makes this reuse rather than a parallel concept: if a
+    // document spelling matches canonical, its displayed form is the canonical text.
+    for (const [raw, canonical] of [
+      ["mm[Hg]", "mmHg"],
+      ["[degF]", "degF"],
+      ["[lb_av]", "lb"],
+    ] as const) {
+      expect(sameUnit(raw, canonical)).toBe(true);
+      expect(displayUnit(raw)?.toLowerCase()).toBe(canonical.toLowerCase());
+    }
+  });
+});
 
 describe("sameUnit — UCUM bracket / annotation spellings (#1018)", () => {
   it("strips UCUM square brackets so document spellings match canonical text", () => {

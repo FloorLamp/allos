@@ -1,4 +1,5 @@
 import { IconCircleCheck } from "@tabler/icons-react";
+import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
@@ -47,6 +48,7 @@ export default function MedicationsTodayPanel({
   timezone,
   profileId,
   canWrite = true,
+  ledgerDoor = false,
 }: {
   // The current, due, SCHEDULED (non-PRN) meds with their doses.
   scheduled: MedCardData[];
@@ -76,6 +78,13 @@ export default function MedicationsTodayPanel({
   // PRN log rows (a pure write affordance) are omitted. Default true (acting board /
   // single-view) keeps the panel byte-identical.
   canWrite?: boolean;
+  // Whether this panel carries the door onto the cross-item dose ledger (#3479). The
+  // door left the page header and joined this card, because this card is what the
+  // ledger is the record OF. ACTING-ONLY, like every other affordance with no
+  // cross-profile seam (`doseLedgerHref` resolves to the acting profile's ledger, so
+  // a copy on each member's board in multi-view would be N doors to one place).
+  // Default false so a non-acting board renders exactly what it rendered before.
+  ledgerDoor?: boolean;
 }) {
   const dueScheduled = scheduled.filter(
     (d) => !isOnDemand(d.med) && d.due && d.doses.length > 0
@@ -199,13 +208,16 @@ export default function MedicationsTodayPanel({
 
   return (
     <section data-testid="medications-today" className="card">
-      <div>
-        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-          Today
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Check off scheduled doses or log an as-needed medication.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+            Today
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Check off scheduled doses or log an as-needed medication.
+          </p>
+        </div>
+        {ledgerDoor ? <DoseLedgerLink kind="medication" /> : null}
       </div>
       {model.allDone && (
         <div

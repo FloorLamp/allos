@@ -5,6 +5,9 @@ import Link from "next/link";
 import type { ClinicalObservation } from "@/lib/types";
 import { observationNameLink } from "@/lib/import-browser";
 import { formatDateWithYear } from "@/lib/format-date";
+// The read-only value cell renders its unit through the #1018 UCUM stripping (#3493);
+// the EDIT form below still binds the STORED string, so nothing normalizes on save.
+import { displayUnit } from "@/lib/unit-conversions";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { Tag, MedicalValue } from "./ui";
@@ -109,7 +112,11 @@ export default function EditableResultRow({
           {r.panel ?? "—"}
         </td>
         <Td slot="value">
-          <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+          <MedicalValue
+            value={r.value}
+            unit={displayUnit(r.unit)}
+            flag={r.flag}
+          />
         </Td>
         <Td
           slot="meta"

@@ -31,6 +31,10 @@
 // live DOM and requires them back, and asserts the probe's silence on the benign
 // neighbours that would get it deleted within a week if it cried wolf on them.
 //
+// #3481 HAS SINCE BEEN FIXED (2026-08-23), so the medicine cabinet's add row no
+// longer serves as a live example of the height class — the sentences above and
+// below describe what the probe was BUILT to find, not what is on main today.
+//
 // ── WHAT IT FOUND ON ITS FIRST RUN, so "it works" is not left as a claim ────────
 //
 // Measured 2026-08-22 against the e2e seed at 390px, by the guard spec itself. Both
@@ -75,9 +79,16 @@ export const GEOMETRY_THRESHOLDS = {
    * differ by at most this much before the row is reported. 2px is #3489's own
    * number, and it is a NOISE floor rather than a design tolerance: sub-pixel
    * layout and a 1px border difference are not what anybody means by "two control
-   * heights". The defects it must clear are much larger — #3481's `input` (40px)
-   * beside a `btn-sm` (32px) is 8px, and #3486's icon-only button was 4px short of
-   * its labeled siblings.
+   * heights". The defects it must clear are much larger — #3481's `input` beside a
+   * `btn-sm`, and #3486's icon-only button, 4px short of its labeled siblings.
+   *
+   * #3481's spread was MEASURED at 6px when it was fixed (2026-08-23), not the 8px
+   * this comment used to state from the issue's own prose — and it read 6px in BOTH
+   * directions: a 38px select against a 32px `btn-sm` at 1280px, and 38px against
+   * 44px at 390px once #3486's own fix put the button family on its tap floor. Both
+   * clear a 2px noise floor three-fold, which is the claim this number has to be
+   * able to make about itself; the correction is recorded because a threshold
+   * justified by a number nobody re-measured is a guess wearing a citation.
    */
   controlHeightTolerancePx: 2,
   /**

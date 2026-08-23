@@ -143,6 +143,47 @@ function parseCountConc(unit: string): number | null {
   return Math.pow(10, exp) / den.scale;
 }
 
+// UCUM spelling noise (#1018): `{annotation}` braces are UCUM's unity comment
+// ("{beats}/min" == "/min") and square brackets mark UCUM's non-metric atoms
+// ("mm[Hg]", "[degF]", "[iU]"). Strip the braces (with their content) and the
+// brackets (preserving the inner atom) so a document-shipped UCUM spelling compares
+// equal to the app's canonical text form: mm[Hg] ≡ mmHg, [degF] ≡ degF,
+// {beats}/min ≡ /min. Bracket REMOVAL, not token aliasing, keeps genuinely distinct
+// units apart — "[iU]" becomes IU (activity), never enzyme U. The suffixed non-metric
+// atoms follow the same clause: the international inch and avoirdupois pound/ounce
+// ("[in_i]" → "in_i" after bracket removal). Whole-token, so a legitimate "in"/"lb"/
+// "oz" is untouched and nothing else contains these atoms.
+//
+// EXTRACTED SO DISPLAY CAN REUSE IT (#3493). The matching path has done this since
+// #1018 while the display path never did, so an imported blood pressure was judged
+// against the canonical mmHg band and then RENDERED as "60 mm[Hg]". One function,
+// two readers — the alternative is a second copy of the rule that drifts.
+function stripUcumSyntax(s: string): string {
+  return s
+    .replace(/\{[^}]*\}/g, "")
+    .replace(/[[\]]/g, "")
+    .replace(/\bin_i\b/gi, "in")
+    .replace(/\blb_av\b/gi, "lb")
+    .replace(/\boz_av\b/gi, "oz");
+}
+
+/**
+ * A unit as a PERSON should read it (#3493): the #1018 UCUM stripping above, applied
+ * at the DISPLAY boundary. Stored values are untouched — this is a presentation
+ * function and nothing writes its output back.
+ *
+ * Returns null when there is nothing to show. Two ways that happens, and they mean
+ * the same thing: no unit at all, or a unit that was PURE ANNOTATION ("{cells}").
+ * UCUM says an annotation on its own is unity — the reading is a bare count, and the
+ * count is already the value — so rendering the braces would be showing the reader
+ * markup in place of a unit that does not exist.
+ */
+export function displayUnit(unit: string | null | undefined): string | null {
+  if (unit == null) return null;
+  const stripped = stripUcumSyntax(unit).trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
 // Real-world lab spellings the dimensional parser doesn't recognize on its own,
 // folded to a form it does (issue #759). Applied INSIDE each parse path AFTER the
 // whitespace/micro normalization but BEFORE the "/"-split, so the alias reaches
@@ -159,21 +200,7 @@ function parseCountConc(unit: string): number | null {
 //     so a legitimate "%" reading (hematocrit, O₂ saturation, a bare "42%") is left
 //     as "%" and never misclassified as a concentration.
 function aliasUnitTokens(s: string): string {
-  // UCUM spelling noise (#1018): `{annotation}` braces are UCUM's unity comment
-  // ("{beats}/min" == "/min") and square brackets mark UCUM's non-metric atoms
-  // ("mm[Hg]", "[degF]", "[iU]"). Strip the braces (with their content) and the
-  // brackets (preserving the inner atom) so a document-shipped UCUM spelling
-  // compares equal to the app's canonical text form: mm[Hg] ≡ mmHg, [degF] ≡ degF,
-  // {beats}/min ≡ /min. Bracket REMOVAL, not token aliasing, keeps genuinely
-  // distinct units apart — "[iU]" becomes IU (activity), never enzyme U.
-  s = s.replace(/\{[^}]*\}/g, "");
-  s = s.replace(/[[\]]/g, "");
-  // UCUM's suffixed non-metric atoms: the international inch and avoirdupois
-  // pound/ounce ("[in_i]" → "in_i" after bracket removal). Whole-token, so a
-  // legitimate "in"/"lb"/"oz" is untouched and nothing else contains these atoms.
-  s = s.replace(/\bin_i\b/gi, "in");
-  s = s.replace(/\blb_av\b/gi, "lb");
-  s = s.replace(/\boz_av\b/gi, "oz");
+  s = stripUcumSyntax(s);
   s = s.replace(/\bgms?\b/gi, "g");
   s = s.replace(/\bcu?mm\b/gi, "uL");
   // Volume-percent (a hematocrit spelling) is just percent.

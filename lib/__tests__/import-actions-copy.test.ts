@@ -9,10 +9,29 @@ describe("importActionExplainers", () => {
   it("deterministic imports: preview is FREE and EXACT, and NO re-apply narration", () => {
     for (const hasRaw of [true, false]) {
       const e = importActionExplainers({ deterministic: true, hasRaw });
-      expect(e.preview).toMatch(/no AI call, no quota/);
+      expect(e.preview).toMatch(/free/i);
       expect(e.preview).toMatch(/exact/);
       // Product-decided: deterministic docs get zero re-apply narration anywhere.
       expect(e.reapply).toBeNull();
+    }
+  });
+
+  // THE GUARD FOR #3493 ITEM 4, and it is an ABSENCE assertion on purpose.
+  //
+  // The defect was internals-speak, so no positive assertion can close the class: any
+  // wording that says what the button does for the reader would satisfy one, and the
+  // next person restoring "no AI call, no quota" would satisfy it too. What must not
+  // come back is our own accounting, on the branch where the reader pays nothing.
+  //
+  // Scoped to the DETERMINISTIC branch, which is the whole of #3493's finding. The AI
+  // branch's "costs one daily extraction" is a real price and is asserted below,
+  // unchanged — a sweep over both would delete the one cost warning #1340 exists to
+  // keep.
+  it("deterministic preview mentions neither AI calls nor quota (#3493)", () => {
+    for (const hasRaw of [true, false]) {
+      const e = importActionExplainers({ deterministic: true, hasRaw });
+      expect(e.preview).not.toMatch(/quota/i);
+      expect(e.preview).not.toMatch(/\bAI\b/);
     }
   });
 
