@@ -9,9 +9,10 @@
 // travel switches — the reason #3524 is a P1.
 //
 // The re-key the sweep existed to prevent (#608) is real and is still handled; it moved
-// to where the evidence for it is. On the next Health Connect push, each incoming reading
-// carries its instant, and the row that instant was filed under in a zone the profile has
-// left is the one that gets deleted — nothing else. That is pinned in
+// to where the evidence for it is. On the next Health Connect push, each incoming MEASURE
+// carries its own instant, and the one column that instant was filed under in a zone the
+// profile has left is the one that gets cleared — nothing else, and the row goes only if
+// clearing it left nothing behind. That is pinned in
 // lib/__db_tests__/hc-timezone-rekey-reconcile.test.ts; what belongs HERE is the action's
 // own half: driving the real Server Actions and showing that a zone change on its own
 // touches no row of anybody's.
