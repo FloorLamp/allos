@@ -154,8 +154,12 @@ describe("the goal target line is not dressed as a link (#3474 item 1)", () => {
   });
 
   it("the tab's one real link keeps the brand tone", () => {
-    // The absence above must not be bought by bleaching the link too.
-    expect(read(PLAN_SECTION)).toMatch(/text-brand-600/);
+    // The absence above must not be bought by bleaching the link too. The tone
+    // is now named rather than spelled: #3607 item 3 swept this line's
+    // hand-rolled `font-medium text-brand-600 hover:underline
+    // dark:text-brand-400` to `text-link`, the globals.css utility whose
+    // expansion is exactly those four declarations.
+    expect(read(PLAN_SECTION)).toMatch(/\btext-link\b/);
   });
 });
 

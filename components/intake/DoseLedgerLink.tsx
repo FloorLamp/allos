@@ -24,7 +24,7 @@ export default function DoseLedgerLink({
       href={doseLedgerHref(kind)}
       data-testid="dose-ledger-link"
       title="Dose history"
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-medium text-brand-600 hover:underline dark:text-brand-400 ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link ${className}`}
     >
       <IconHistory aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
       Dose history

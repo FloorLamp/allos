@@ -127,10 +127,7 @@ export default function InstrumentHistoryList({
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span>
-              <Link
-                href={r.href}
-                className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-              >
+              <Link href={r.href} className="text-link">
                 {r.instrument}
               </Link>{" "}
               <span className="text-slate-500 dark:text-slate-400">

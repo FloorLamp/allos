@@ -79,7 +79,7 @@ export default function SyncRowsDrilldown({
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
     >
-      <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+      <summary className="cursor-pointer text-xs text-link">
         What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
       </summary>
       {state === "loading" && (

@@ -96,10 +96,7 @@ export default function StreamLifecycleOfferRow({
           {declineLabel}
         </button>
         {offer.href && (
-          <Link
-            href={offer.href}
-            className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href={offer.href} className="text-sm text-link">
             {offer.sourceName} sync history →
           </Link>
         )}

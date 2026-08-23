@@ -28,7 +28,7 @@ export default function StrengthStandardsLadder({
         </h3>
         <Link
           href="/training?tab=analyze&kind=strength"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="text-xs text-link"
         >
           Full standards →
         </Link>

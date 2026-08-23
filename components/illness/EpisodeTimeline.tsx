@@ -355,10 +355,7 @@ export default function EpisodeTimeline({
       </>
     );
     return "href" in event && event.href ? (
-      <Link
-        href={event.href}
-        className="text-brand-600 hover:underline dark:text-brand-400"
-      >
+      <Link href={event.href} className="text-link">
         {content}
       </Link>
     ) : (
@@ -368,10 +365,7 @@ export default function EpisodeTimeline({
 
   function eventLabel(event: IllnessTimelineDisplayEvent) {
     return event.kind === "medication" ? (
-      <Link
-        href={medicationHref(event.itemId)}
-        className="text-brand-600 hover:underline dark:text-brand-400"
-      >
+      <Link href={medicationHref(event.itemId)} className="text-link">
         {event.label}
       </Link>
     ) : (
@@ -650,7 +644,7 @@ export default function EpisodeTimeline({
           {earlierGroupCount > 0 && (
             <button
               type="button"
-              className="mt-3 text-xs font-medium text-brand-600 hover:underline sm:hidden print:hidden dark:text-brand-400"
+              className="mt-3 text-xs text-link sm:hidden print:hidden"
               data-testid="illness-history-earlier-toggle"
               aria-expanded={showEarlierHistory}
               aria-controls="illness-history-events"

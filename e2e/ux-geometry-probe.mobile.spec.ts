@@ -262,6 +262,74 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
     expect(dirty.clippedTotal).toBe(clean.clippedTotal + 1);
   });
 
+  // #3607 item 1's shape, both ways round. `.truncate` puts `white-space: nowrap`
+  // on a box that clips with an ellipsis, so every inline run inside keeps its full
+  // natural width in `getBoundingClientRect()` — the rect leaves the viewport while
+  // the pixels do not. That is the layout working, and it is what the three
+  // `/supplies` rows #3529 recorded actually were.
+  //
+  // 250px of text inside a 190px box whose own right edge is 10px inside the
+  // viewport: the reader sees an ellipsis, nothing is off screen.
+  const TRUNCATED_BENIGN =
+    '<div data-testid="forged-truncated-benign" ' +
+    'style="position:fixed;top:200px;left:calc(100vw - 200px);width:190px;' +
+    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+    '<span data-testid="forged-truncated-inner" style="display:inline-block;width:250px">' +
+    "a name far too long for this chip</span></div>";
+
+  // The half the exemption must NOT swallow: the same ellipsis truncation, on a box
+  // that is itself 120px past the right edge. An ellipsis painted off screen rescues
+  // nobody, so the run inside is still copy the reader cannot reach.
+  const TRUNCATED_OFFSCREEN =
+    '<div data-testid="forged-truncated-offscreen" ' +
+    'style="position:fixed;top:260px;left:calc(100vw - 40px);width:160px;' +
+    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+    '<span data-testid="forged-truncated-offscreen-inner" style="display:inline-block;width:250px">' +
+    "a name nobody can read</span></div>";
+
+  test("stays quiet on text an ellipsis truncates inside the viewport, and still catches one truncated off the edge", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/wellness");
+    await expect(page.getByTestId("practice-create-trigger")).toBeVisible();
+
+    const clean = await runProbe(page, UNCAPPED);
+    expect(clean.clipCandidates).toBeGreaterThan(0);
+
+    // ── THE BENIGN NEIGHBOUR, ON ITS OWN FIRST ─────────────────────────────────
+    const benign = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [TRUNCATED_BENIGN],
+    });
+    expect(
+      benign.clipped.filter((c) => c.el.includes("forged-truncated-inner")),
+      "the probe flagged an inline run whose ancestor clips it with an ellipsis " +
+        "INSIDE the viewport — that is every truncated string in the app, and a " +
+        "census that reports those gets deleted (#3325)"
+    ).toEqual([]);
+    expect(benign.clippedTotal).toBe(clean.clippedTotal);
+    // …and it was genuinely measured, not skipped for some other reason.
+    expect(benign.clipCandidates).toBeGreaterThan(clean.clipCandidates);
+
+    // ── THE OFFENDER, BESIDE IT ────────────────────────────────────────────────
+    const dirty = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [TRUNCATED_BENIGN, TRUNCATED_OFFSCREEN],
+    });
+    const caught = dirty.clipped.filter((c) =>
+      c.el.includes("forged-truncated-offscreen-inner")
+    );
+    expect(
+      caught,
+      "the ellipsis exemption swallowed a run whose truncating ancestor is itself " +
+        "off the right edge. An ellipsis painted off screen is not a signal, and " +
+        "this is the half of the rule that keeps #3478's shape reportable."
+    ).toHaveLength(1);
+    expect(caught[0].side).toBe("right");
+    expect(dirty.clippedTotal).toBe(clean.clippedTotal + 1);
+  });
+
   test("catches two control heights in one forged row, and stays quiet on a 1px difference", async ({
     page,
   }) => {

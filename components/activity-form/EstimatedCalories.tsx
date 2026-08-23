@@ -40,11 +40,7 @@ export default function EstimatedCalories({
         />
         <span className="text-sm text-slate-500 dark:text-slate-400">kcal</span>
         {edited && autoEstimateKcal != null && (
-          <button
-            type="button"
-            onClick={onReset}
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <button type="button" onClick={onReset} className="text-xs text-link">
             reset
           </button>
         )}

@@ -477,7 +477,7 @@ export default function RoutineBuilder({
                     slots: [...d.slots, emptySlot()],
                   }))
                 }
-                className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                className="inline-flex items-center gap-1 text-sm text-link"
               >
                 <IconPlus className="h-4 w-4" /> Add slot
               </button>
@@ -491,7 +491,7 @@ export default function RoutineBuilder({
           type="button"
           data-testid="add-day"
           onClick={() => setDays((ds) => [...ds, emptyDay(ds.length + 1)])}
-          className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="inline-flex items-center gap-1 text-sm text-link"
         >
           <IconPlus className="h-4 w-4" /> Add day
         </button>

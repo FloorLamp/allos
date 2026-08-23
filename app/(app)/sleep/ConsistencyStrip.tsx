@@ -137,7 +137,7 @@ export default function ConsistencyStrip({
       {rows.length > 14 && (
         <button
           type="button"
-          className="mt-3 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="mt-3 text-sm text-link"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
           data-testid="sleep-consistency-toggle"

@@ -265,7 +265,7 @@ export default function SleepMoodSection({
                       <Td slot="title" className="whitespace-nowrap">
                         <Link
                           href={timelineDayHref(row.date)}
-                          className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                          className="text-link"
                         >
                           <span
                             className="sm:hidden"

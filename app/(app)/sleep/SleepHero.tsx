@@ -96,7 +96,7 @@ export default function SleepHero({
         </div>
         <Link
           href={timelineDayHref(summary.wakeDay)}
-          className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="inline-flex items-center gap-1 text-sm text-link"
           data-testid="sleep-hero-day-link"
         >
           See in day context

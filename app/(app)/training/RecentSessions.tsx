@@ -32,7 +32,7 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
         <Link
           href="/training?tab=log"
           data-testid="recent-sessions-log-link"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="text-xs text-link"
         >
           {view.more > 0 ? `${view.more} more in Log →` : "Open log →"}
         </Link>

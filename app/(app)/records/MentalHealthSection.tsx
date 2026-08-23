@@ -72,7 +72,7 @@ export default function MentalHealthSection({
         Need support now?{" "}
         <Link
           href="/crisis-resources"
-          className="text-brand-600 hover:underline dark:text-brand-400"
+          className="text-link"
           data-testid="instrument-crisis-support-link"
         >
           Crisis resources

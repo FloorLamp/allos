@@ -182,7 +182,7 @@ export default async function SleepPage() {
               today={todayStr}
               minDate={sleepMoodMinDate}
               label="Add entry →"
-              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+              className="text-sm text-link"
               testId="sleep-add-entry-stale"
             />
           </div>
@@ -292,14 +292,11 @@ export default async function SleepPage() {
             today={todayStr}
             minDate={sleepMoodMinDate}
             label="Add entry"
-            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-link"
             testId="sleep-add-entry-empty"
           />{" "}
           or{" "}
-          <Link
-            href="/data"
-            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href="/data" className="text-link">
             connect a source
           </Link>
           .

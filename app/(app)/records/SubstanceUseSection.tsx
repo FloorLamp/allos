@@ -199,10 +199,7 @@ export default function SubstanceUseSection({
             ? ` (quit ${smoking.quitYear})`
             : null}
           {" · "}
-          <Link
-            href="/records/care/overview"
-            className="text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href="/records/care/overview" className="text-link">
             Update in Background
           </Link>
         </p>

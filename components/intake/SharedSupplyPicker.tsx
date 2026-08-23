@@ -216,7 +216,7 @@ export default function SharedSupplyPicker({
           <Link
             href={SUPPLIES_HREF}
             data-testid="shared-supply-cabinet-link"
-            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-link"
           >
             See all shared bottles →
           </Link>

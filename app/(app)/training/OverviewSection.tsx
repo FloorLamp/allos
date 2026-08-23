@@ -576,7 +576,7 @@ export default async function OverviewSection() {
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <Link
               href="/training?tab=plan#targets"
-              className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              className="text-xs text-link"
             >
               Edit targets →
             </Link>

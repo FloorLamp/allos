@@ -70,7 +70,7 @@ export default function TimezoneSelect({
               const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
               if (detected) choose(detected);
             }}
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-xs text-link"
           >
             Detect from browser
           </button>
