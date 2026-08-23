@@ -30,7 +30,7 @@ import NotesText from "@/components/NotesText";
 import SubmitButton from "@/components/SubmitButton";
 import ScrollFade from "@/components/ScrollFade";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
-import { CARD_MODE_ONLY } from "@/lib/card-row";
+import { CARD_MODE_ONLY, CARD_MODE_TABLE_ONLY } from "@/lib/card-row";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
@@ -708,14 +708,20 @@ export default function EpisodeTimeline({
                       // no `block sm:table-row-group` twin left to drift; what remains
                       // is which groups are laid out (the chip, the phone's earlier-days
                       // fold) and the `print:` undo that brings every one of them back
-                      // for the doctor-visit artifact. `hidden!` because the card-mode
-                      // display rule is an element+class selector and would otherwise
-                      // outrank a bare utility (#2533 item 2).
+                      // for the doctor-visit artifact.
+                      //
+                      // The earlier-days branch is the ABOVE-boundary half of the fold
+                      // whose below-boundary half is the toggle above, so it takes the
+                      // boundary from CARD_MODE_TABLE_ONLY rather than spelling it
+                      // (#3620). Its `hidden!` and the `!` on the restore both ride in
+                      // that constant, for the reason recorded there. The FILTERED-OUT
+                      // branch is not part of that fold — the chip hides a group at
+                      // every width — so it carries no `sm:` and inherits nothing.
                       className={
                         filteredOutGroup
                           ? "hidden! print:table-row-group!"
                           : hiddenEarlierGroup
-                            ? "hidden! sm:table-row-group! print:table-row-group!"
+                            ? `${CARD_MODE_TABLE_ONLY.tableRowGroup} print:table-row-group!`
                             : ""
                       }
                       data-filtered-out={filteredOutGroup ? "true" : "false"}
