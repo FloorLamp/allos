@@ -48,6 +48,15 @@ otherwise be pinned by a browser.** The two first customers are the shape:
   not happen lives entirely in the client handler, and a stub that only ever
   answers `{ok: true}` observes neither branch.
 
+- `components/__tests__/event-ledger-frame.test.tsx` — the shared event-ledger
+  frame's body order (#3484 part 2, inheriting #3478). The rule — empty, the
+  state leads and the backfill slot follows it — used to live inside a bespoke
+  shell where the only tier that could see it was a phone-width Playwright run
+  against a dedicated fixture profile. It is now a property of a frame several
+  domains mount, which is what makes a two-second guard worth more than the
+  browser one it sits beside (the e2e still runs; it proves the real page over
+  the real Server/Client boundary).
+
 **Do not reach for it to test logic that could have been a pure function.** The
 #1210 reasoning below is why: a component tier invites leaving load-bearing logic
 _in_ the component, and the extraction discipline is worth more than the

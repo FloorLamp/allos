@@ -110,6 +110,15 @@ function bodyOrder(): string[] {
   );
 }
 
+/**
+ * How many boxes the body actually contains, which the id order above cannot see: an
+ * omitted slot and an EMPTY slot wrapper produce the same list of test ids and a
+ * different amount of vertical space.
+ */
+function bodyChildCount(): number {
+  return screen.getByTestId("probe-ledger").children.length;
+}
+
 describe("the event-ledger frame's body order", () => {
   it("leads with the state when the page is empty, and puts the backfill slot after it", () => {
     mount({
@@ -119,6 +128,7 @@ describe("the event-ledger frame's body order", () => {
 
     const order = bodyOrder();
     expect(order).toEqual(["probe-ledger-empty", "probe-backfill"]);
+    expect(bodyChildCount()).toBe(2);
     // The empty sentence carries the window; the populated note is NOT also printed,
     // which is the stacking #3478 removed.
     expect(screen.getByTestId("probe-ledger-empty")).toHaveProperty(
@@ -152,11 +162,15 @@ describe("the event-ledger frame's body order", () => {
     // empty box where the slot was.
     mount({ empty: false });
     expect(bodyOrder()).toEqual(["probe-ledger-window-note", "probe-rows"]);
+    // Nothing stands in for the slot. A wrapper rendered around `null` costs the
+    // reader a margin and shows up nowhere in the id order above.
+    expect(bodyChildCount()).toBe(2);
   });
 
   it("omits the window note when the mount states no window", () => {
     mount({ empty: false, note: undefined });
     expect(bodyOrder()).toEqual(["probe-rows"]);
+    expect(bodyChildCount()).toBe(1);
   });
 });
 
@@ -177,10 +191,14 @@ describe("the event-ledger frame names every part off one prefix", () => {
       expect(screen.getByTestId(id), id).toBeTruthy();
   });
 
-  it("renders the mount's footer outside the ledger card", () => {
+  it("hangs the mount's footer off the page, below the ledger card", () => {
+    // The footer is the mount's own aside — a cross-link to the same question asked
+    // as a chart, say. It belongs to the PAGE, not to the card: inside the card it
+    // reads as part of the record rather than as a way onward. Asserted as its
+    // parent, because "not inside the rows" is also true of a footer tucked into the
+    // card beside the pager.
     mount({ empty: false });
     const footer = screen.getByTestId("probe-footer");
-    expect(screen.getByTestId("probe-ledger").contains(footer)).toBe(false);
-    expect(screen.getByTestId("probe-ledger-page").contains(footer)).toBe(true);
+    expect(footer.parentElement).toBe(screen.getByTestId("probe-ledger-page"));
   });
 });
