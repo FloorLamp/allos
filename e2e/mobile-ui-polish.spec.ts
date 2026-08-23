@@ -145,10 +145,25 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
   });
 });
 
-test.describe("the phone drawer's month calendar clears the floor too (#3377)", () => {
+// #3514's floor, spelled the way e2e/button-height-floor.mobile.spec.ts spells it —
+// a rendered measurement cannot import the source census's constant without importing
+// the census, and the two numbers are held equal by that spec.
+const TAP_FLOOR_PX = 44;
+
+// THE FLOOR THIS MEASURES MOVED UNDER IT. #3377 built these boxes at 40 and this
+// test was written to that number; #3514 ruled the floor to 44px EFFECTIVE and the
+// assertion below kept passing, because 40 is not less than 40. A bound that survives
+// the rule it exists to enforce is not a bound (#3561).
+//
+// HEIGHT IS 44 AND WIDTH IS 40, and the gap is arithmetic rather than an exemption:
+// seven day columns need 7 × 44 = 308px and the drawer is 288px wide. The calendar
+// already spends the drawer's gutter and its own padding to reach 40.9px columns and
+// has nothing left — the #3536 shape, recorded in TrainingLogCalendar.tsx at the
+// constant. The ARROWS have the room and are held to 44 in both.
+test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 
-  test("every day cell and both month arrows have a >=40px hit area in the drawer", async ({
+  test("every day cell is >=44px tall and both month arrows are >=44px square in the drawer", async ({
     page,
   }) => {
     test.slow(); // opening the drawer costs a hydration wait on a cold route
@@ -185,17 +200,19 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377)", 
     });
     expect(cells.dayCount).toBeGreaterThanOrEqual(28);
     for (const day of cells.days) {
+      // Width: the widest seven equal columns the 288px drawer can hold. See the
+      // describe block — this one is short of the floor and cannot not be.
       expect(day.w).toBeGreaterThanOrEqual(40);
-      expect(day.h).toBeGreaterThanOrEqual(40);
+      expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
     // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
-    // idiom, not a bigger calendar: 28px circles, 40px targets.
+    // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
     expect(cells.glyph.w).toBeLessThanOrEqual(30);
 
     const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
     for (const arrow of [prevBox, nextBox]) {
-      expect(arrow.width).toBeGreaterThanOrEqual(40);
-      expect(arrow.height).toBeGreaterThanOrEqual(40);
+      expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
 
     // The destinations are untouched — growing a hit area must not re-point a day.
