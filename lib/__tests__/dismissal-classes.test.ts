@@ -23,6 +23,11 @@ import {
   dismissalKeyEntryFor,
 } from "@/lib/dismissal-classes";
 import { SUPPRESSION_DISPLAY_PREFIXES } from "@/lib/suppression-display";
+import {
+  LOGGING_DIGEST_PREFIX,
+  NUTRITION_DIGEST_PREFIX,
+} from "@/lib/trends-digest-series";
+import { digestDedupeKey } from "@/lib/findings";
 
 const LIB_ROOT = join(process.cwd(), "lib");
 
@@ -159,6 +164,20 @@ describe("dismissal-key classification registry (#1931)", () => {
       "pr:cardio:"
     );
     expect(dismissalKeyEntryFor("nonsense:1")).toBeNull();
+  });
+
+  it("classifies supplemental digest prefixes as nested series keys", () => {
+    for (const prefix of [NUTRITION_DIGEST_PREFIX, LOGGING_DIGEST_PREFIX]) {
+      expect(
+        NON_DISMISSAL_PREFIXES.find((entry) => entry.prefix === prefix)?.what
+      ).toContain("digest SERIES key namespace");
+      const storedKey = digestDedupeKey({
+        key: `${prefix}example`,
+        direction: "down",
+      });
+      expect(storedKey).toBe(`digest:${prefix}example:down`);
+      expect(dismissalKeyEntryFor(storedKey)?.prefix).toBe("digest:");
+    }
   });
 });
 
