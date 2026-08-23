@@ -1642,12 +1642,17 @@ async function handleFoodProtein(
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (chatId == null || messageId == null || rows.length === 0) return;
   const visibleCount = countVisibleFoodButtons(rows) || undefined;
-  const rebuilt = buildFoodNudge(
-    profileId,
-    token.window,
-    token.date,
-    visibleCount,
-    { ref: { chatId, messageId } }
+  // The re-render carries the origin forward, exactly as the food-group tap sixty
+  // lines above does (#3087). Without it ONE "+30 g" tap rewrites all seven buttons
+  // UNMARKED, `keyboardChatOrigin` answers null for that keyboard for ever, the hourly
+  // sweep re-renders it unmarked too, and every later tap on the message records
+  // `telegram-nudge` — a permanent, one-directional inflation of the nudge count on
+  // the exact axis this column exists to measure.
+  const rebuilt = withChatOrigin(
+    buildFoodNudge(profileId, token.window, token.date, visibleCount, {
+      ref: { chatId, messageId },
+    }),
+    token.origin
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }

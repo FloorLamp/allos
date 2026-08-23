@@ -35,6 +35,7 @@ import {
   type SegmentLogDays,
 } from "@/lib/log-sheet";
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
+import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 
 // The log sheet — what the dock's raised puck opens (issue #2651). Since #2745
 // the puck is the one phone-chrome route here; the duplicate top-bar cluster is
@@ -185,107 +186,115 @@ export default function QuickLogSheet({
       title="Log"
       testId="quick-log-sheet"
     >
-      {context && (context.routine || context.dueDoses.count > 0) && (
-        <section
-          data-testid="log-sheet-context"
-          className="mb-4 border-b border-black/5 pb-3 dark:border-white/5"
-        >
-          <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-            Due &amp; usual now
-          </h3>
-          {/* The dashboard's own control, unchanged: it names every serving and
+      {/* EVERY control inside this sheet IS the quick-log sheet (#3087) — the same
+          declaration `QuickEntryProvider` makes over the overlay this sheet opens.
+          The composed one-tap below is the SAME <UsualRoutineControl> the dashboard
+          renders, posting the SAME action, so the server can only tell the puck from
+          the dashboard atom if the puck says so. Declared here at the region root
+          rather than on the control, which is mounted in both places. */}
+      <LoggedViaSurface value="quick-log">
+        {context && (context.routine || context.dueDoses.count > 0) && (
+          <section
+            data-testid="log-sheet-context"
+            className="mb-4 border-b border-black/5 pb-3 dark:border-white/5"
+          >
+            <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+              Due &amp; usual now
+            </h3>
+            {/* The dashboard's own control, unchanged: it names every serving and
           every dose the tap will write, and answers from the typed outcome. */}
-          {context.routine && <UsualRoutineControl {...context.routine} />}
-          <div className="flex flex-wrap gap-2">
-            {context.dueDoses.count > 0 && (
-              <ContextChip
-                testId="log-sheet-chip-doses"
-                icon={<IconPill className="h-4 w-4" stroke={1.75} />}
-                // Names come from the SAME due items the count used to summarize;
-                // the chip still opens the list and confirms nothing itself.
-                label={dueDoseChipLabel(context.dueDoses)!}
-                onClick={() => {
-                  onClose();
-                  openQuickEntry("dose");
-                }}
-              />
-            )}
-            {/* ONLY the `resume` arm. A `start` offer stands on every route at
+            {context.routine && <UsualRoutineControl {...context.routine} />}
+            <div className="flex flex-wrap gap-2">
+              {context.dueDoses.count > 0 && (
+                <ContextChip
+                  testId="log-sheet-chip-doses"
+                  icon={<IconPill className="h-4 w-4" stroke={1.75} />}
+                  // Names come from the SAME due items the count used to summarize;
+                  // the chip still opens the list and confirms nothing itself.
+                  label={dueDoseChipLabel(context.dueDoses)!}
+                  onClick={() => {
+                    onClose();
+                    openQuickEntry("dose");
+                  }}
+                />
+              )}
+              {/* ONLY the `resume` arm. A `start` offer stands on every route at
             every hour, and a permanently-present chip in a section headed "Due &
             usual now" would claim that starting a workout is DUE — which is
             exactly the campaigning this chrome refuses. A live or just-abandoned
             session genuinely is now, and "Log activity" stays one segment away
             regardless (#2419: dueness gates nudging, never logging). */}
-            {workoutOffer.kind === "resume" && (
-              <ContextChip
-                testId="log-sheet-chip-session"
-                workoutOffer={workoutOffer.kind}
-                icon={<IconBolt className="h-4 w-4" stroke={1.75} />}
-                // The LABEL is the offer (#1893) — "Resume workout" with a
-                // session already live, so the tap can never silently reset a
-                // running clock.
-                label={workoutOffer.label}
-                onClick={() => {
-                  onClose();
-                  openLive();
-                }}
-              />
-            )}
-          </div>
-        </section>
-      )}
-
-      {segments.length > 1 && (
-        <SegmentedControl<LogSegmentId>
-          options={segments.map((s) => ({
-            value: s.id,
-            label: s.label,
-            testId: `log-sheet-segment-${s.id}`,
-          }))}
-          value={shown?.id ?? segments[0]!.id}
-          onChange={setSegment}
-          ariaLabel="What are you logging?"
-          testId="log-sheet-segments"
-          className="mb-3 flex w-full"
-        />
-      )}
-
-      <ul className="flex flex-col gap-1 pb-1" data-testid="log-sheet-items">
-        {(shown?.items ?? []).map((item) => {
-          const Icon = ICONS[item.icon];
-          const label =
-            item.target.kind === "live" ? workoutOffer.label : item.label;
-          return (
-            <li key={item.id}>
-              <button
-                type="button"
-                data-testid={`quick-log-${item.id}`}
-                data-workout-offer={
-                  item.target.kind === "live" ? workoutOffer.kind : undefined
-                }
-                onClick={() => run(item)}
-                className="tap-target press flex w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                  <Icon className="h-5 w-5" stroke={1.75} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {label}
-                  </span>
-                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {item.hint}
-                  </span>
-                </span>
-                <IconChevronRight
-                  className="h-4 w-4 shrink-0 text-slate-400"
-                  stroke={1.75}
+              {workoutOffer.kind === "resume" && (
+                <ContextChip
+                  testId="log-sheet-chip-session"
+                  workoutOffer={workoutOffer.kind}
+                  icon={<IconBolt className="h-4 w-4" stroke={1.75} />}
+                  // The LABEL is the offer (#1893) — "Resume workout" with a
+                  // session already live, so the tap can never silently reset a
+                  // running clock.
+                  label={workoutOffer.label}
+                  onClick={() => {
+                    onClose();
+                    openLive();
+                  }}
                 />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+              )}
+            </div>
+          </section>
+        )}
+
+        {segments.length > 1 && (
+          <SegmentedControl<LogSegmentId>
+            options={segments.map((s) => ({
+              value: s.id,
+              label: s.label,
+              testId: `log-sheet-segment-${s.id}`,
+            }))}
+            value={shown?.id ?? segments[0]!.id}
+            onChange={setSegment}
+            ariaLabel="What are you logging?"
+            testId="log-sheet-segments"
+            className="mb-3 flex w-full"
+          />
+        )}
+
+        <ul className="flex flex-col gap-1 pb-1" data-testid="log-sheet-items">
+          {(shown?.items ?? []).map((item) => {
+            const Icon = ICONS[item.icon];
+            const label =
+              item.target.kind === "live" ? workoutOffer.label : item.label;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  data-testid={`quick-log-${item.id}`}
+                  data-workout-offer={
+                    item.target.kind === "live" ? workoutOffer.kind : undefined
+                  }
+                  onClick={() => run(item)}
+                  className="tap-target press flex w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+                    <Icon className="h-5 w-5" stroke={1.75} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
+                      {label}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                      {item.hint}
+                    </span>
+                  </span>
+                  <IconChevronRight
+                    className="h-4 w-4 shrink-0 text-slate-400"
+                    stroke={1.75}
+                  />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </LoggedViaSurface>
     </BottomSheet>
   );
 }
