@@ -253,6 +253,8 @@ export const HOVER_CAPTURES = [
 export const HUB_VARIANTS = [
   { route: "/training", target: "/training?tab=log", slug: "training-tab-log" },
   {
+    // #3512: the default Analyze variant is now All training (workout history +
+    // data-gated zones). Per-entity views remain reachable through its picker.
     route: "/training",
     target: "/training?tab=analyze",
     slug: "training-tab-analyze",
@@ -261,11 +263,6 @@ export const HUB_VARIANTS = [
     route: "/training",
     target: "/training?tab=plan",
     slug: "training-tab-plan",
-  },
-  {
-    route: "/trends",
-    target: "/trends?tab=fitness",
-    slug: "trends-tab-fitness",
   },
   {
     route: "/trends",

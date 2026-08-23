@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutActivityDays } from "@/lib/queries";
@@ -12,7 +11,8 @@ import { fitnessWindowWeeks, type FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 
-// Trends → Fitness leads with the workout history: the generalized day-history
+// Training → Analyze's All training view leads with workout history: the
+// generalized day-history
 // (lib/day-history.ts) over the window's sessions — a CALENDAR (how often, the
 // #186 density question, replacing the bespoke WorkoutHeatmap) and a MATRIX
 // (training WHAT — one row per NAMED activity, keyed on the canonical
@@ -65,17 +65,15 @@ export default async function WorkoutHistorySection({
     }));
 
   return (
-    <section data-testid="workout-history">
-      <div className="mb-1 flex items-center justify-between">
+    <section
+      id="workout-history"
+      className="scroll-mt-28"
+      data-testid="workout-history"
+    >
+      <div className="mb-1">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Workout history
         </h2>
-        <Link
-          href="/training"
-          className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-        >
-          Training →
-        </Link>
       </div>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
         {DAY_HISTORY_DOMAINS.workout.helperText}

@@ -37,7 +37,11 @@ import {
   type LoggableDomain,
 } from "./loggable-domains";
 import type { MeasurementGroup } from "./measurements-deeplink";
-import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
+import {
+  DEFAULT_TRENDS_TAB,
+  parseTab,
+  retiredFitnessTabTarget,
+} from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
@@ -331,11 +335,15 @@ export function primaryQuickLog(
   // (Overview) tab — so the rule is still a tab rule, it just names a different
   // tab: `?tab=body` is gone, and the census now rides the view a paramless /trends
   // shows. Resolved through parseTab so a retired `?tab=body`/`?tab=vitals` link
-  // (which lands on that same default) gets the same answer, and so a Fitness or
-  // Nutrition tab still falls through to "log activity". (#1486 folded the former
-  // Vitals tab into this census, so the one form covers both.)
+  // (which lands on that same default) gets the same answer. Fitness is different:
+  // #3512 redirects that retired surface to Training → Analyze, whose promoted log
+  // remains activity, so exclude it before the unknown-value fallback can mistake
+  // it for Overview. Nutrition and Insights still fall through as live non-body
+  // tabs. (#1486 folded the former Vitals tab into this census, so the one form
+  // covers both.)
   if (
     under(pathname, "/trends") &&
+    retiredFitnessTabTarget(tab ?? undefined) == null &&
     parseTab(tab ?? undefined) === DEFAULT_TRENDS_TAB
   ) {
     return quickLogItem("log-measurements");
