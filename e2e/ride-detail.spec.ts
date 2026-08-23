@@ -989,25 +989,33 @@ test("a ride with a max heart rate but no average still shows the Max heart rate
   page,
 }) => {
   const db = new Database(workerDbPath());
-  db.prepare(
-    `INSERT INTO activities
+  const rideId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities
        (profile_id, date, type, title, duration_min, distance_km, components,
         avg_hr, max_hr, avg_speed_kmh, source, external_id)
      VALUES (1, ?, 'cardio', ?, ?, ?, ?, NULL, ?, ?, 'manual', ?)`
-  ).run(
-    "2026-07-24",
-    "Fictional max-only ride",
-    40,
-    18,
-    JSON.stringify([{ name: "Cycling", type: "cardio" }]),
-    166,
-    22,
-    "e2e:max-hr-only"
+      )
+      .run(
+        "2026-07-24",
+        "Fictional max-only ride",
+        40,
+        18,
+        JSON.stringify([{ name: "Cycling", type: "cardio" }]),
+        166,
+        22,
+        "e2e:max-hr-only"
+      ).lastInsertRowid
   );
   db.close();
 
-  await page.goto("/training?tab=log");
-  await openRideRecord(page, "Fictional max-only ride");
+  // Straight to the activity, not through the Log feed: the feed's default
+  // window is a product decision this test has no business depending on, and a
+  // row that falls outside it reads as "the box did not render" — which is the
+  // very thing being measured here.
+  await page.goto(`/training/activity/${rideId}`);
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
 
   const summary = page.getByTestId("ride-summary-line");
   await expect(summary).toBeVisible();
