@@ -16,7 +16,7 @@ import {
   readVersion,
   type Migration,
 } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
 
 // bootstrapAuth is a per-boot task (not the runner), but importing lib/db.ts is
 // unnecessary here — the runner never touches auth. Keep the env quiet regardless.
@@ -83,6 +83,35 @@ describe("migration runner — registry shape (the real registry)", () => {
     }
     // Names are the ledger's primary key.
     expect(new Set(MIGRATIONS.map((m) => m.name)).size).toBe(MIGRATIONS.length);
+  });
+});
+
+describe("migrationsBefore — historical fixtures slice by NAME (#3565)", () => {
+  it("returns the prefix that ends immediately before the named migration", () => {
+    const name = "20260814-remove-legacy-schema-shells";
+    const before = migrationsBefore(name);
+    const index = MIGRATIONS.findIndex((m) => m.name === name);
+
+    expect(index).toBeGreaterThan(0);
+    expect(before).toEqual(MIGRATIONS.slice(0, index));
+    // The named migration is EXCLUDED, and so is everything merged after it —
+    // the property `MIGRATIONS.slice(0, -1)` lost the day anything landed later.
+    expect(before.map((m) => m.name)).not.toContain(name);
+    expect(before.length).toBeLessThan(MIGRATIONS.length - 1);
+    expect(before[before.length - 1]).toBe(MIGRATIONS[index - 1]);
+  });
+
+  it("throws on a name that is not registered rather than widening the slice", () => {
+    // The failure mode being bought off: findIndex answers -1, and slicing at -1
+    // returns "all but the newest" — a fixture that quietly becomes the whole
+    // registry and keeps passing. It must be loud instead.
+    expect(() => migrationsBefore("29991231-never-registered")).toThrow(
+      /29991231-never-registered/
+    );
+  });
+
+  it("returns an empty prefix for the first migration, not the whole array", () => {
+    expect(migrationsBefore(MIGRATIONS[0].name)).toEqual([]);
   });
 });
 
