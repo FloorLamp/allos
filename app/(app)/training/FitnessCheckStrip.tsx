@@ -61,7 +61,7 @@ export default function FitnessCheckStrip({
           href="/training/fitness-check"
           testId="fitness-check-strip-link"
           label="fitness check"
-          className="ml-auto text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="ml-auto text-sm text-link"
         >
           {action}
         </PendingTextLink>

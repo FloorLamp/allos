@@ -266,7 +266,7 @@ export default function SleepMoodSection({
                       <Td slot="title" className="whitespace-nowrap">
                         <Link
                           href={timelineDayHref(row.date)}
-                          className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                          className="text-link"
                         >
                           {/* The short date is the CARD's date: below the
                               card-mode boundary the row is a standalone card and

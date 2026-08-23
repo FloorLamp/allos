@@ -180,7 +180,7 @@ export default function LesionPhotoStrip({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+          className="text-xs text-link"
           data-testid={`add-lesion-photo-${lesionId}`}
         >
           + Add photo

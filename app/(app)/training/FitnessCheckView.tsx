@@ -564,7 +564,7 @@ function EntryModal({
           <p className="mb-2 text-xs">
             <Link
               href={clinicalResultDetailHref(def.store.canonical)}
-              className="text-brand-600 hover:underline dark:text-brand-400"
+              className="text-link"
               data-testid={`fitness-history-${def.key}`}
             >
               View history &amp; percentile →

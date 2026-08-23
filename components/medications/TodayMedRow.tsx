@@ -58,7 +58,7 @@ export default function TodayMedRow({
               {href ? (
                 <Link
                   href={href}
-                  className="flex min-w-0 items-baseline gap-1 overflow-hidden text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  className="flex min-w-0 items-baseline gap-1 overflow-hidden text-sm text-link"
                 >
                   <Identity name={name} detail={detail} />
                 </Link>

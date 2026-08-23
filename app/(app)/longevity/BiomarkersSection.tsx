@@ -100,10 +100,7 @@ export default async function BiomarkersSection({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {section.title}
         </h2>
-        <Link
-          href="/results/clinical-results"
-          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
+        <Link href="/results/clinical-results" className="text-sm text-link">
           All biomarkers
         </Link>
       </div>

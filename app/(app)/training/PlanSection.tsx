@@ -99,7 +99,7 @@ export default async function PlanSection() {
           <Link
             href="/equipment"
             data-testid="plan-equipment-link"
-            className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-sm text-link"
           >
             Open registry →
           </Link>

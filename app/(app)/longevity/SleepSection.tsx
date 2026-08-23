@@ -41,10 +41,7 @@ export default async function SleepSection({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {section.title}
         </h2>
-        <Link
-          href="/sleep"
-          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
+        <Link href="/sleep" className="text-sm text-link">
           Sleep page
         </Link>
       </div>

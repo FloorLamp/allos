@@ -55,10 +55,7 @@ export default function CrisisResources({
         >
           No crisis resources are configured yet. Add your region’s crisis
           line(s) on{" "}
-          <Link
-            href="/settings/server"
-            className="text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <Link href="/settings/server" className="text-link">
             Settings → Server
           </Link>
           .

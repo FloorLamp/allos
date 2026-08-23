@@ -64,7 +64,7 @@ export default function EditLockNotice({
           type="button"
           onClick={() => void resumeSyncUpdates()}
           disabled={busy}
-          className="text-xs font-medium text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-400"
+          className="text-xs text-link disabled:opacity-50"
           data-testid="edit-lock-resume"
         >
           Resume sync updates

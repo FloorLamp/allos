@@ -35,7 +35,7 @@ export default function EnduranceDepthSuite({
         </h3>
         <Link
           href="/training?tab=analyze&kind=cardio"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="text-xs text-link"
         >
           Analyze →
         </Link>
@@ -108,7 +108,7 @@ export default function EnduranceDepthSuite({
               </p>
               <Link
                 href="/training/fitness-check"
-                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                className="text-xs text-link"
               >
                 Fitness check →
               </Link>

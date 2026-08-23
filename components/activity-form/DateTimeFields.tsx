@@ -74,7 +74,7 @@ export default function DateTimeFields({
               <button
                 type="button"
                 onClick={() => onDate(yesterday)}
-                className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
               >
                 yesterday?
               </button>
@@ -143,7 +143,7 @@ export default function DateTimeFields({
                   data-testid="start-time-shortcut"
                   onClick={() => onStartTime(derivedStart)}
                   title={`Set start to end − ${derivableDurationMin} min`}
-                  className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   −{derivableDurationMin}m
                 </button>
@@ -153,7 +153,7 @@ export default function DateTimeFields({
                     type="button"
                     data-testid="start-time-shortcut"
                     onClick={() => onStartTime(nowHHMM(tz))}
-                    className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                   >
                     now
                   </button>
@@ -179,7 +179,7 @@ export default function DateTimeFields({
                   data-testid="end-time-shortcut"
                   onClick={() => onEndTime(derivedEnd)}
                   title={`Set end to start + ${derivableDurationMin} min`}
-                  className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   +{derivableDurationMin}m
                 </button>
@@ -189,7 +189,7 @@ export default function DateTimeFields({
                     type="button"
                     data-testid="end-time-shortcut"
                     onClick={() => onEndTime(nowHHMM(tz))}
-                    className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                   >
                     now
                   </button>

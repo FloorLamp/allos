@@ -200,7 +200,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(doseWorkingRow).toHaveCSS("border-radius", "0px");
     const doseLink = doseWorkingRow.getByRole("link").first(); // first-ok: the med link inside the scoped PRN row — order-agnostic
     await expect(doseLink).toHaveCSS("font-size", "14px");
-    await expect(doseLink).toHaveClass(/text-brand-600/);
+    // The ONE inline action-link treatment, now named rather than spelled out:
+    // #3607 item 3 swept the hand-rolled `font-medium text-brand-600
+    // hover:underline dark:text-brand-400` to the `text-link` utility that
+    // produces exactly those declarations, so the literal tone class is no
+    // longer in any className. The claim is unchanged.
+    await expect(doseLink).toHaveClass(/text-link/);
     await expect(doseWorkingRow).toContainText(/\d+(?:\.\d+)?\s*(?:mg|mL)/i);
     await expect(
       doseWorkingRow.getByTestId("prn-log-now")
@@ -273,7 +278,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(dosedMedicationRow).toContainText(/mg|mL/i);
     const dosedLink = dosedMedicationRow.getByRole("link").first(); // first-ok: the med link inside the content-filtered dosed row — order-agnostic
     await expect(dosedLink).toHaveAttribute("href", /^\/medications\/\d+$/);
-    await expect(dosedLink).toHaveClass(/text-brand-600/);
+    await expect(dosedLink).toHaveClass(/text-link/); // #3607 item 3: the tone is `text-link` now
     await expect(
       page
         .getByTestId("illness-event-appointment")

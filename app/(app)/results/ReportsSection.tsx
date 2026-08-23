@@ -66,10 +66,7 @@ export default function ReportsSection({
           />
           {r.document_id != null && (
             <p className="text-xs">
-              <Link
-                href={importHref(r.document_id)}
-                className="text-brand-600 hover:underline dark:text-brand-400"
-              >
+              <Link href={importHref(r.document_id)} className="text-link">
                 View source document →
               </Link>
             </p>

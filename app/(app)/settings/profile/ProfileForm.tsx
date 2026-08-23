@@ -428,7 +428,7 @@ export default function ProfileForm({
                   () => setGeoError("Couldn’t get your location.")
                 );
               }}
-              className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              className="text-xs text-link"
             >
               Use my location
             </button>

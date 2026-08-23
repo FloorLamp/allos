@@ -34,7 +34,7 @@ export default function SportDepthSuite({
         </h3>
         <Link
           href="/training?tab=analyze&kind=sport"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="text-xs text-link"
         >
           Analyze →
         </Link>

@@ -24,6 +24,7 @@ import { CARDIO_METRICS, RANGES } from "@/lib/analyze-view";
 import { isCyclingActivityName } from "@/lib/cycling-activity";
 import { getRideDetailData } from "@/lib/queries";
 import type { ActivityDetailData } from "@/lib/training-activity-detail";
+import { heartRateTextStatesMax } from "@/lib/training-log-card";
 import {
   sessionHeartRateSeries,
   cyclingHighlights,
@@ -167,12 +168,22 @@ function RideSummaryComparisonDelta({
     metric.median,
     distanceUnit
   );
-  // Only speed has a clear performance direction among these like-for-like
-  // ride deltas. More HR, power, elevation, cadence, or effort is context, not
-  // automatically “better”, so those comparisons keep a neutral blue tone.
+  // Only speed has a clear performance direction among these like-for-like ride
+  // deltas. More HR, power, elevation, cadence, or effort is context, not
+  // automatically “better”, so those comparisons render WITHOUT a verdict.
+  //
+  // THE NEUTRAL TONE IS SLATE, NOT SKY (#3500 item 1). The reasoning above is
+  // unchanged; the colour was fighting it. Sky at `font-medium` is this app's
+  // most link-like non-link — the same affordance collision #3487 item 2 filed
+  // against the household setup's links — and five or six of these stack inside
+  // one card, so a page of static text read as a column of tappable rows. Slate
+  // states “no verdict” at least as well and cannot be mistaken for a link; it
+  // is also already the tone this function gives a ZERO delta, so “no verdict”
+  // now has one spelling instead of two. Speed's emerald/amber direction tones
+  // are untouched.
   const tone =
     metric.key !== "speed"
-      ? "text-sky-700 dark:text-sky-300"
+      ? "text-slate-600 dark:text-slate-300"
       : difference.relation === "above"
         ? "text-emerald-700 dark:text-emerald-300"
         : difference.relation === "below"
@@ -429,10 +440,28 @@ export default async function CyclingActivityDetail(props: {
     base.card.activity.imported_metrics?.relative_effort != null ||
     base.card.calorieText != null ||
     base.card.activity.intensity != null;
+  // MAX HEART RATE IS STATED ONCE (#3500 item 3). The headline HEART RATE stat
+  // is the house avg/max composite — “♥ 148/171 bpm”, the same format the
+  // Training Overview strip uses — and this block used to repeat the max as its
+  // own box a few rows below it. The composite is only a composite when an
+  // average exists, so the box is not deleted: it renders exactly when the
+  // headline is NOT already saying the number, which is a ride with a max and no
+  // average, or one whose summary line does not render at all.
+  //
+  // The predicate reads the RENDERED headline string rather than re-deriving the
+  // condition from `avg_hr`/`max_hr`, so it cannot drift from what the page
+  // actually shows if `activityHeartRateText` changes shape.
+  //
+  // Max SPEED's box stays: the headline speed is the AVERAGE, so a top speed is
+  // new information there — this is a duplication fix, not a density one.
+  const headlineStatesMaxHr =
+    hasPrimarySummary && heartRateTextStatesMax(base.card.heartRateText);
+  const showSecondaryMaxHr =
+    data.activity.imported_metrics?.max_hr != null && !headlineStatesMaxHr;
   const hasRecordedMeasurements =
     hasPausedTime ||
     detailStats.length > 0 ||
-    data.activity.imported_metrics?.max_hr != null ||
+    showSecondaryMaxHr ||
     data.activity.imported_metrics?.max_speed_kmh != null;
   const hasRideDetails =
     hasPrimarySummary ||
@@ -501,8 +530,16 @@ export default async function CyclingActivityDetail(props: {
                 className="mt-3"
               />
               {hasRecordedMeasurements ? (
+                // TWO COLUMNS AT PHONE WIDTH (#3500 item 4). This block used
+                // to be `sm:grid-cols-2`, so below 640px every stat was a
+                // full-width row with an empty right half — half the phone
+                // spent on whitespace, directly under a summary grid that
+                // already renders two columns there. It now carries the same
+                // column count as that grid at every width; `sm:` and up are
+                // unchanged, because two was already the count above the
+                // breakpoint.
                 <dl
-                  className="mt-4 grid gap-x-8 gap-y-4 border-b border-black/5 pb-4 sm:grid-cols-2 dark:border-white/10"
+                  className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 border-b border-black/5 pb-4 dark:border-white/10"
                   data-testid="ride-recorded-measurements"
                 >
                   {hasPausedTime ? (
@@ -525,10 +562,10 @@ export default async function CyclingActivityDetail(props: {
                       data-testid="ride-stat-max-speed"
                     />
                   ) : null}
-                  {data.activity.imported_metrics?.max_hr != null ? (
+                  {showSecondaryMaxHr ? (
                     <StatBox
                       label="Max heart rate"
-                      value={`${data.activity.imported_metrics.max_hr} bpm`}
+                      value={`${data.activity.imported_metrics?.max_hr} bpm`}
                       variant="plain"
                       data-testid="ride-stat-max-heart-rate"
                     />
@@ -540,6 +577,22 @@ export default async function CyclingActivityDetail(props: {
                       value={stat.value}
                       sub={summaryStatSub(stat.key, stat.detail)}
                       variant="plain"
+                      // THE ONE BOX THAT SPANS BOTH COLUMNS, AND ONLY ON THE
+                      // PHONE (#3500 item 4). Power is the only secondary stat
+                      // carrying more than one sub-line — a detail line plus two
+                      // comparison sentences — and a half-width column sets each
+                      // of them across 146px at 390. It keeps the full row there.
+                      // `sm:col-span-1` puts it back in one column from the
+                      // breakpoint up, because that is what desktop already did
+                      // and #3500 changes nothing above `sm`: measured
+                      // 2026-08-23, an unscoped `col-span-2` widened this box
+                      // from 347px to 726px at 1280 and reflowed the four boxes
+                      // under it.
+                      className={
+                        stat.key === "power"
+                          ? "col-span-2 sm:col-span-1"
+                          : undefined
+                      }
                       data-testid={statTestId(stat)}
                     />
                   ))}

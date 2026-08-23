@@ -279,6 +279,22 @@ export function activityHeartRateText(
   return `♥ ${avgHr}${maxHr != null ? `/${maxHr}` : ""} bpm`;
 }
 
+/**
+ * Does the composite above already STATE the max, or only the average?
+ *
+ * A surface that shows the headline heart-rate string and a separate "Max heart
+ * rate" stat says the same number twice whenever the composite carries a max
+ * (#3500 item 3, on the ride detail page). This answers that question for such a
+ * surface, and it answers it FROM THE RENDERED STRING rather than re-deriving it
+ * from `avg_hr`/`max_hr` — the caller is deciding whether to repeat what the
+ * reader can already see, so the thing to consult is what the reader sees. If
+ * `activityHeartRateText` ever changes the composite's shape, this moves with it
+ * and its call sites cannot silently fall out of step.
+ */
+export function heartRateTextStatesMax(text: string | null): boolean {
+  return text != null && text.includes("/");
+}
+
 // Compact stored wall-clock range for the Training Log summary. `activities.start_time` /
 // `end_time` are a profile-local HH:MM (lib/time-columns.ts), read through the one
 // activity-clock reading so this surface does not hand-roll its own parse; never

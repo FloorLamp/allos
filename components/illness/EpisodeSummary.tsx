@@ -259,7 +259,7 @@ export default function EpisodeSummary({
             {collapseSymptoms ? (
               <>
                 <details className="mt-2 print:hidden">
-                  <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+                  <summary className="cursor-pointer text-xs text-link">
                     Show {remainingSymptoms.length} more
                   </summary>
                   <ul className="mt-2 flex flex-wrap gap-2">
