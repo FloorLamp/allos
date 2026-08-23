@@ -8,6 +8,7 @@ import {
   regionsForMove,
   type MobilitySessionInput,
 } from "@/lib/mobility-coverage";
+import { stripComments } from "./strip-comments";
 
 // Mobility coverage is DELIBERATELY APART from strength trained-coverage (#482: trained ≠
 // mobilized). This test pins BOTH the separation (a source-scan reflection guard that the
@@ -20,8 +21,9 @@ const RAW = fs.readFileSync(
   "utf8"
 );
 // Strip comments so the scan checks actual CODE, not the header prose that explains the
-// separation (which necessarily names the very tokens we forbid in code).
-const CODE = RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+// separation (which necessarily names the very tokens we forbid in code). The shared
+// scanner (#3621) blanks in place, so a reported offset still points at the real line.
+const CODE = stripComments(RAW);
 
 describe("mobility coverage stays apart from strength coverage (#482)", () => {
   it("never reads strength sets or imports the strength coverage engine", () => {

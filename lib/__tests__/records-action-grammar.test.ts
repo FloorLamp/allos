@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // One primary action per Records pane (issue #3408, item G).
 //
@@ -86,9 +87,11 @@ const STACKED_PANE_ALLOW = new Map<string, string>([
 ]);
 
 // Comment prose says `btn` a lot — this file's own subject matter is buttons —
-// so the scan reads code only. Block comments and line comments both.
+// so the scan reads code only. The shared scanner (#3621), which reads the file
+// once in order rather than running two regexes that disagree about which of a
+// `//` and a `/*` came first.
 export function withoutComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return stripComments(text);
 }
 
 // How many pane-level primaries a file draws. Both spellings, deduplicated by

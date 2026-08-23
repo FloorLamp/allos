@@ -36,18 +36,13 @@ import {
   type CadenceHome,
 } from "@/lib/cadence";
 import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
+import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const TRAINING_DIR = path.join(REPO, "app", "(app)", "training");
 
 const read = (rel: string) =>
   fs.readFileSync(path.join(REPO, rel), "utf8") as string;
-
-// Strip comments so the prose in this domain's module headers — which quotes scope
-// kinds constantly — is never read as code.
-function stripComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-}
 
 function tsxFiles(dir: string): string[] {
   const out: string[] = [];

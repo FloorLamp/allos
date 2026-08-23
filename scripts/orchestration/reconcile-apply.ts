@@ -23,11 +23,19 @@
 // The re-read before each patch is not politeness, it is the anchor contract: the
 // evidence may be hours old, the tracker moves hourly, and a drifted anchor
 // must refuse rather than land on whatever now occupies that text.
+//
+// THE CHECKOUT IS RE-READ FOR THE SAME REASON (#3619). A `symbol-refresh` claims
+// a rename — `a` is now called `b` — and that is a claim about main, not about
+// the body. It is checked here, at apply time, against the working tree this
+// process is standing in, with the SAME `symbolExists` the scan half used. So a
+// plan whose replacement was itself renamed (or mistyped) between the gather and
+// the apply refuses rather than writing a name nobody can find.
 import "../load-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { buildRepoIndex } from "./reconcile-repo-index";
 import { applyPatchPlan, type AnchoredPatch } from "./reconcile-patch";
-import { resolveRunConfig } from "./reconcile-tracker-core";
+import { resolveRunConfig, symbolExists } from "./reconcile-tracker-core";
 
 const config = resolveRunConfig(process.env, process.argv.slice(2));
 const [planFile] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -102,6 +110,11 @@ const plan = JSON.parse(fs.readFileSync(planFile, "utf8")) as Record<
   AnchoredPatch[]
 >;
 
+// Built once and lazily read, so a plan with no symbol-refresh in it pays for a
+// `git ls-files` and nothing more.
+const index = buildRepoIndex(process.cwd());
+const resolveSymbol = (symbol: string): boolean => symbolExists(index, symbol);
+
 let applied = 0;
 let refused = 0;
 let skipped = 0;
@@ -114,7 +127,7 @@ for (const [issue, patches] of Object.entries(plan)) {
     );
     continue;
   }
-  const { body, entries } = applyPatchPlan(before, patches);
+  const { body, entries } = applyPatchPlan(before, patches, { resolveSymbol });
   for (const entry of entries) {
     if (entry.outcome.ok) {
       applied++;

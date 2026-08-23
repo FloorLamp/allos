@@ -293,12 +293,9 @@ describe("the re-log confirm copy", () => {
 // ---------------------------------------------------------------------------
 
 import { readSource, relPath, sourceFiles } from "./sql-scan";
+import { stripComments } from "./strip-comments";
 
 const DOSE_RESOLVERS = ["markDoseTaken", "markDoseSkipped"] as const;
-
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 // The resolver calls in `src` whose result nothing captures: statement position —
 // preceded (after whitespace) by `;`, `{`, `}`, `)` or nothing, with `await`
