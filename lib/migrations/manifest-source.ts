@@ -55,9 +55,11 @@ export function sha256OfMigration(
 // REGISTRY ORDER IS THE MANIFEST'S ORDER, and it is read out of index.ts rather
 // than guessed. `MIGRATIONS` is an array of import ALIASES, so the order is only
 // recoverable by pairing each alias with the module specifier it was imported
-// from — filename sort is NOT the same list (`20260813-encounter-diagnosis-ranks`
-// already sits two positions off its import order on main, which is how we know
-// nothing was enforcing this).
+// from — and filename sort is NOT the same list. Measured on main 2026-08-23: of
+// 219 migrations, 23 register at a different position than they sort at, and
+// `20260813-encounter-diagnosis-ranks.ts` registers 186th but sorts 188th, two
+// positions off. (Import order, `MIGRATIONS` order and the manifest's key order
+// agree at all 219 — those three are the same list; the sorted one is not.)
 //
 // Text, not import: this must be readable by a script that refuses a tree where
 // index.ts and versions/ disagree, and an import of a registry naming a file that
@@ -177,4 +179,177 @@ export function readManifest(
     string,
     string
   >;
+}
+
+// ---------------------------------------------------------------------------
+// ONE RUN OF THE GENERATOR, so its REFUSAL is behavior a test can drive.
+//
+// The refusal used not to be a refusal. The script detected an already-shipped
+// migration whose bytes had changed, printed a warning saying that rewriting the
+// manifest "would only make the edit invisible" — and then wrote it anyway and
+// exited 0, which made the edit invisible. `--check` could not catch it either:
+// once the manifest had been rewritten the file WAS what the bytes produce.
+//
+// That matters because the docs now send people here mid-conflict
+// (lib/migrations/AGENTS.md, docs/orchestration/review-merge.md). A conflict
+// resolved by editing the wrong side used to leave the manifest mismatched and CI
+// red — a loud accident. A one-command remedy that rehashes turns the same
+// accident into a fresh, correct-looking hash, with the only signal a warning in
+// stdout that a mid-conflict reader is not reading.
+//
+// So: a rehash REFUSES and exits non-zero, in both modes. The one legitimate
+// rehash — the manifest entry is the wrong side and the bytes on disk are the
+// shipped ones — gets a door with a name, `--allow-rehash`, because a refusal
+// with no door is routed around within the hour and a named flag is a decision
+// somebody has to type into a diff.
+//
+// It lives here rather than in the script body because a script body cannot be
+// tested, and the refusal is the part most worth testing.
+
+export interface GenerateManifestOptions {
+  versionsDir?: string;
+  registryPath?: string;
+  manifestPath?: string;
+  /** Verify only: report what a write would do, and never write. */
+  check?: boolean;
+  /**
+   * Rewrite an already-shipped hash on purpose. Honoured in write mode only —
+   * `--check` reports the tree as it is, and a rehash is one of the things it
+   * exists to report.
+   */
+  allowRehash?: boolean;
+}
+
+export interface GenerateManifestResult {
+  manifest: Record<string, string>;
+  /** Keys the manifest gained, i.e. the ordinary "a migration was added" case. */
+  added: string[];
+  /** Keys the checked-in manifest has that the tree no longer does. */
+  removed: string[];
+  /** ALREADY-SHIPPED entries whose bytes hash differently. The alarm. */
+  rehashed: string[];
+  unchanged: number;
+  /** What the caller prints to stdout. */
+  report: string;
+  /** What the caller prints to stderr, when there is something to say. */
+  error?: string;
+  wrote: boolean;
+  exitCode: 0 | 1;
+}
+
+export function generateManifest(
+  options: GenerateManifestOptions = {}
+): GenerateManifestResult {
+  const manifestPath = options.manifestPath ?? MANIFEST_PATH;
+  const rel = manifestPath === MANIFEST_PATH ? MANIFEST_REL : manifestPath;
+
+  const manifest = buildManifest({
+    versionsDir: options.versionsDir,
+    registryPath: options.registryPath,
+  });
+  const next = serializeManifest(manifest);
+  const exists = fs.existsSync(manifestPath);
+  const previous = exists ? readManifest(manifestPath) : {};
+  const current = exists ? fs.readFileSync(manifestPath, "utf8") : "";
+
+  const added = Object.keys(manifest).filter((f) => !(f in previous));
+  const removed = Object.keys(previous).filter((f) => !(f in manifest));
+  const rehashed = Object.keys(manifest).filter(
+    (f) => f in previous && previous[f] !== manifest[f]
+  );
+  const unchanged =
+    Object.keys(manifest).length - added.length - rehashed.length;
+
+  const report = [
+    `${Object.keys(manifest).length} migrations hashed from disk, in registry order.`,
+    `  unchanged: ${unchanged}`,
+    `  new:       ${added.length}${added.length ? ` (${added.join(", ")})` : ""}`,
+    `  REHASHED:  ${rehashed.length}${rehashed.length ? ` (${rehashed.join(", ")})` : ""}`,
+    `  dropped:   ${removed.length}${removed.length ? ` (${removed.join(", ")})` : ""}`,
+  ].join("\n");
+
+  const base = {
+    manifest,
+    added,
+    removed,
+    rehashed,
+    unchanged,
+    report,
+  };
+
+  // A REHASHED ENTRY IS THE ALARM, not a routine outcome. Shipped migrations are
+  // append-only, so a file whose bytes changed is either an edit to released
+  // history or a conflict resolved by editing the wrong side.
+  if (rehashed.length > 0 && !(options.allowRehash && !options.check)) {
+    const door = options.check
+      ? `\`--allow-rehash\` writes one of these on purpose, but it is a WRITING ` +
+        `flag: --check reports the tree as it is, and a rehashed entry is one of ` +
+        `the things it exists to report. A tree where a shipped migration was ` +
+        `edited AND the manifest regenerated is not up to date.`
+      : `If the bytes on disk are the SHIPPED ones and the manifest holds the wrong ` +
+        `side — you restored a file to what it shipped as, or a bad hash was ` +
+        `committed — re-run with \`npm run gen:migration-manifest -- --allow-rehash\` ` +
+        `to record that on purpose. Nothing else should use it.`;
+    const headline = options.check
+      ? `\n${rel} FAILS: ${rehashed.length} ALREADY-SHIPPED migration(s) hash ` +
+        `differently than the checked-in manifest:`
+      : `\nREFUSING to write ${rel}: ${rehashed.length} ALREADY-SHIPPED ` +
+        `migration(s) hash differently than the checked-in manifest:`;
+    return {
+      ...base,
+      error:
+        `${headline}\n  ` +
+        `${rehashed.join("\n  ")}\n` +
+        `Shipped migrations are APPEND-ONLY. Revert those files and append a ` +
+        `corrective migration instead — rewriting the manifest here would only ` +
+        `make the edit invisible.\n${door}`,
+      wrote: false,
+      exitCode: 1,
+    };
+  }
+
+  if (options.check) {
+    if (current === next) {
+      return {
+        ...base,
+        report: `${report}\n\n${rel} is up to date.`,
+        wrote: false,
+        exitCode: 0,
+      };
+    }
+    return {
+      ...base,
+      error:
+        `\n${rel} is NOT what the bytes on disk produce. Run ` +
+        `\`npm run gen:migration-manifest\` and commit the result.`,
+      wrote: false,
+      exitCode: 1,
+    };
+  }
+
+  if (current === next) {
+    return {
+      ...base,
+      report: `${report}\n\n${rel} already up to date — nothing written.`,
+      wrote: false,
+      exitCode: 0,
+    };
+  }
+
+  fs.writeFileSync(manifestPath, next, "utf8");
+  return {
+    ...base,
+    report: `${report}\n\nWrote ${rel}.`,
+    // Said on stderr even though the run succeeded: --allow-rehash rewrites
+    // released history's hash, and the diff line is the whole claim.
+    error:
+      rehashed.length > 0
+        ? `\n--allow-rehash: rewrote ${rehashed.length} ALREADY-SHIPPED hash(es) ` +
+          `on purpose:\n  ${rehashed.join("\n  ")}\n` +
+          `Reviewers: check those files are back to their shipped bytes, not ` +
+          `carrying new work.`
+        : undefined,
+    wrote: true,
+    exitCode: 0,
+  };
 }

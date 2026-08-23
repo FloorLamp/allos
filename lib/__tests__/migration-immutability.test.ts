@@ -12,6 +12,7 @@ import {
   NAMED_FILE_RE,
   REGISTRY_REL,
   buildManifest,
+  generateManifest,
   migrationFilesOnDisk,
   readManifest,
   registryOrder,
@@ -127,39 +128,60 @@ describe("migration immutability — hash manifest", () => {
 // The registry/disk disagreement is not a hypothetical: this script's whole reason
 // to exist is being run mid-merge, and "a migration in index.ts that is not in
 // versions/" is precisely what a migration conflict resolved wrong leaves behind.
-describe("the manifest writer over a corpus authored to break it", () => {
-  const corpus = (
-    files: Record<string, string>,
-    registered: readonly string[]
-  ): { versionsDir: string; registryPath: string } => {
-    const versionsDir = makeTmpDir("manifest-corpus");
-    for (const [name, body] of Object.entries(files)) {
-      fs.writeFileSync(path.join(versionsDir, name), body, "utf8");
-    }
-    const registryPath = path.join(versionsDir, "index.ts");
-    const alias = (f: string) => `m${f.replace(/[^a-z0-9]/gi, "")}`;
-    fs.writeFileSync(
-      registryPath,
-      [
-        ...registered.map(
-          (f) =>
-            `import { migration as ${alias(f)} } from "./${f.replace(/\.ts$/, "")}";`
-        ),
-        "",
-        "export const MIGRATIONS: Migration[] = [",
-        ...registered.map((f) => `  ${alias(f)},`),
-        "];",
-        "",
-      ].join("\n"),
-      "utf8"
-    );
-    return { versionsDir, registryPath };
-  };
+/** Write a registry naming `registered`, in that order, at `registryPath`. */
+const writeRegistry = (
+  registryPath: string,
+  registered: readonly string[]
+): void => {
+  const alias = (f: string) => `m${f.replace(/[^a-z0-9]/gi, "")}`;
+  fs.writeFileSync(
+    registryPath,
+    [
+      ...registered.map(
+        (f) =>
+          `import { migration as ${alias(f)} } from "./${f.replace(/\.ts$/, "")}";`
+      ),
+      "",
+      "export const MIGRATIONS: Migration[] = [",
+      ...registered.map((f) => `  ${alias(f)},`),
+      "];",
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+};
 
+/**
+ * A throwaway versions/ directory, its registry and a manifest path — NEVER the
+ * live tree, which is what everything above reads.
+ */
+const corpus = (
+  files: Record<string, string>,
+  registered: readonly string[]
+): { versionsDir: string; registryPath: string; manifestPath: string } => {
+  const versionsDir = makeTmpDir("manifest-corpus");
+  for (const [name, body] of Object.entries(files)) {
+    fs.writeFileSync(path.join(versionsDir, name), body, "utf8");
+  }
+  const registryPath = path.join(versionsDir, "index.ts");
+  writeRegistry(registryPath, registered);
+  // Outside versions/ in the real tree; here it just has to not end in .ts, which
+  // is what `migrationFilesOnDisk` selects on.
+  return {
+    versionsDir,
+    registryPath,
+    manifestPath: path.join(versionsDir, "manifest.json"),
+  };
+};
+
+describe("the manifest writer over a corpus authored to break it", () => {
   it("keys the manifest in REGISTRY order even when that is not filename order", () => {
     // The distinguishing corpus, and the reason the order case above is not just a
     // sort in disguise: a migration dated earlier that merged later registers LAST
-    // and sorts FIRST. Today's tree cannot tell the two rules apart; this can.
+    // and sorts FIRST. The real tree does distinguish them today — 23 of its 219
+    // migrations register at a position they do not sort at, measured 2026-08-23 —
+    // but that is an accident of merge history and one re-sort away from being
+    // untrue, whereas this corpus separates the two rules by construction.
     const { versionsDir, registryPath } = corpus(
       {
         "20260815-later-date.ts": "export const migration = 1;\n",
@@ -268,5 +290,146 @@ describe("the manifest writer over a corpus authored to break it", () => {
       "20260801-present.ts",
     ]);
     fs.rmSync(versionsDir, { recursive: true, force: true });
+  });
+});
+
+// THE REFUSAL THAT KEEPS A LAUNDERED EDIT OUT OF A GREEN TREE (#3579).
+//
+// The generator used to DETECT a rehashed entry, print a warning saying that
+// rewriting the manifest "would only make the edit invisible" — and then write it
+// anyway and exit 0. After that write there is nothing left to detect: the manifest
+// IS what the edited bytes produce, so `--check` is green and so is every case
+// above. The docs send people here mid-conflict, so the one-command remedy for
+// "keep both sides of index.ts" doubled as a one-command remedy for "I edited a
+// shipped migration", and the only signal was a line of stdout.
+//
+// Which is why these cases assert THE BYTES ON DISK DID NOT MOVE, not merely that
+// something was printed: a warning that precedes the write is exactly what was
+// there before. Same corpus discipline as above — a throwaway versions/ directory
+// and its own manifest, never the live tree.
+describe("the generator refuses to launder an edit to a shipped migration", () => {
+  const FIRST = "20260801-first.ts";
+  const SECOND = "20260802-second.ts";
+  const REGISTERED = [FIRST, SECOND];
+
+  /** A corpus whose manifest is written and agrees with the bytes: shipped. */
+  const shipped = () => {
+    const c = corpus(
+      {
+        [FIRST]: "export const migration = 1;\n",
+        [SECOND]: "export const migration = 2;\n",
+      },
+      REGISTERED
+    );
+    const seed = generateManifest(c);
+    expect(seed.wrote).toBe(true);
+    expect(seed.exitCode).toBe(0);
+    return c;
+  };
+
+  const editShipped = (versionsDir: string) =>
+    fs.appendFileSync(
+      path.join(versionsDir, FIRST),
+      "\n// laundered edit\n",
+      "utf8"
+    );
+
+  it("refuses the write and exits non-zero when a shipped migration's bytes changed", () => {
+    const c = shipped();
+    const before = fs.readFileSync(c.manifestPath, "utf8");
+    editShipped(c.versionsDir);
+
+    const result = generateManifest(c);
+    expect(result.rehashed).toEqual([FIRST]);
+    expect(result.wrote).toBe(false);
+    expect(result.exitCode).toBe(1);
+
+    // The manifest still holds the SHIPPED hash, so the immutability guard above
+    // is still red on this tree. That is the whole point: the accident stays loud.
+    expect(fs.readFileSync(c.manifestPath, "utf8")).toBe(before);
+    expect(readManifest(c.manifestPath)[FIRST]).not.toBe(
+      sha256OfMigration(FIRST, c.versionsDir)
+    );
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("names the door in the refusal, so the legitimate case is not left guessing", () => {
+    // A refusal with no door is routed around within the hour — by hand-editing
+    // the manifest, which is the thing this file exists to make unnecessary.
+    const c = shipped();
+    editShipped(c.versionsDir);
+    const result = generateManifest(c);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("REFUSING to write");
+    expect(result.error).toContain("--allow-rehash");
+    expect(result.error).toContain(FIRST);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("--check exits non-zero on a rehash, and calls it an edit rather than a stale manifest", () => {
+    const c = shipped();
+    editShipped(c.versionsDir);
+    const result = generateManifest({ ...c, check: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.wrote).toBe(false);
+    expect(result.error).toContain("ALREADY-SHIPPED");
+    // NOT the stale-manifest advice. `--check` could always tell that the file
+    // disagreed with the bytes; what it used to say was "run the generator and
+    // commit the result", and following that advice was the laundering.
+    expect(result.error).not.toContain("and commit the result");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("--check does not honour --allow-rehash: it reports the tree as it is", () => {
+    const c = shipped();
+    editShipped(c.versionsDir);
+    const result = generateManifest({ ...c, check: true, allowRehash: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.wrote).toBe(false);
+    // And for the rehash reason, not incidentally because the file is also stale.
+    expect(result.error).toContain("ALREADY-SHIPPED");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("--allow-rehash writes, and says on stderr exactly what it rewrote", () => {
+    // The one legitimate rehash: the bytes on disk are the shipped ones and the
+    // MANIFEST holds the wrong side. It is a decision somebody has to type, and it
+    // leaves a line in the diff for review to argue with.
+    const c = shipped();
+    editShipped(c.versionsDir);
+    const result = generateManifest({ ...c, allowRehash: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.wrote).toBe(true);
+    expect(result.rehashed).toEqual([FIRST]);
+    expect(result.error).toContain("--allow-rehash: rewrote 1");
+    expect(readManifest(c.manifestPath)[FIRST]).toBe(
+      sha256OfMigration(FIRST, c.versionsDir)
+    );
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("does NOT refuse the ordinary append — a new migration is `added`, not `rehashed`", () => {
+    // The case that must stay one command. A refusal that also fired here would be
+    // turned off within a week, taking the real refusal with it.
+    const c = shipped();
+    const third = "20260803-third.ts";
+    fs.writeFileSync(
+      path.join(c.versionsDir, third),
+      "export const migration = 3;\n",
+      "utf8"
+    );
+    writeRegistry(c.registryPath, [...REGISTERED, third]);
+
+    const result = generateManifest(c);
+    expect(result.rehashed).toEqual([]);
+    expect(result.added).toEqual([third]);
+    expect(result.wrote).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.error).toBeUndefined();
+    expect(Object.keys(readManifest(c.manifestPath))).toEqual([
+      ...REGISTERED,
+      third,
+    ]);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
   });
 });

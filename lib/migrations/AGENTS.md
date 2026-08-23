@@ -8,7 +8,9 @@ These instructions apply to the migration runner and migrations.
   Name-keyed migrations have no numeric `id`.
 - Run `npm run gen:migration-manifest` to write the hash. Never type one by hand.
 - After a migration merge conflict, keep BOTH sides of `index.ts` and re-run it.
-  It refuses a tree where `index.ts` and `versions/` disagree.
+  It refuses a tree where `index.ts` and `versions/` disagree, and refuses to
+  rewrite an already-shipped hash — that is an edited migration, not a stale
+  manifest. Use `--allow-rehash` only to restore a file to its shipped bytes.
 - Use a rebuild migration to grow a `CHECK` enum or add a foreign key. Null
   dangling links before enforcing a new foreign key.
 - Put one-shot data moves in migrations, not settings flags. Per-boot

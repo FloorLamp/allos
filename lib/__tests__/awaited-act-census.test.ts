@@ -155,10 +155,9 @@ describe("the awaited-act census (#3578)", () => {
   });
 
   it("the exempted file really does quote the construct", () => {
-    // An exemption nobody checks is a blanket. Both entries are excused because
-    // they must WRITE the broken spellings — this one in its corpora, the matcher
-    // in its header — so if either stops containing one, it stops needing the
-    // excuse and the entry should go.
+    // An exemption nobody checks is a blanket. The single entry is excused because
+    // it must WRITE the broken spellings, in the corpora below — so the day it
+    // stops containing one it stops needing the excuse, and the entry should go.
     for (const rel of ALLOWED) {
       const source = readFileSync(path.join(REPO, rel), "utf8");
       expect(
