@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
 import { openGlobalSearch } from "@/components/CommandPalette";
@@ -13,6 +13,12 @@ import {
   wipeDeviceForSignOut,
 } from "@/components/device-wipe";
 import { logoutAction } from "@/app/(app)/session-actions";
+import {
+  clearQueuedLogoutTap,
+  hasQueuedLogoutTap,
+  LOGOUT_BUTTON_ATTR,
+  LOGOUT_PENDING_ATTR,
+} from "@/lib/logout-tap";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
 import TrainingLogCalendar from "@/components/TrainingLogCalendar";
@@ -130,6 +136,14 @@ export default function SidebarContent({
   onClose?: () => void;
 }) {
   const logoutFormRef = useRef<HTMLFormElement>(null);
+  const logoutButtonRef = useRef<HTMLButtonElement>(null);
+  // A logout STARTS ONCE. Two callers can reach `logoutAfterWipe` (the queued-tap
+  // effect below and the button's own onClick), and there is a real interval —
+  // React attached, its effect not yet run — in which a single tap reaches both.
+  // A ref rather than the `pending` state because the guard must hold WITHIN one
+  // render, before any re-render could have been committed.
+  const logoutStarted = useRef(false);
+  const [logoutPending, setLogoutPending] = useState(false);
 
   // Wipe this device's PHI, THEN log out. `wipeDeviceForSignOut` (components/device-wipe)
   // is the shared one — the family screen's "delete your own login" and "sign my login out
@@ -156,10 +170,44 @@ export default function SidebarContent({
   // record in the database the writes land in, read inside each write's own transaction,
   // and it stays closed until a DIFFERENT session opens it — not merely until some tab
   // mounts, because every tab open right now is about to do exactly that.
-  async function logoutAfterWipe(): Promise<void> {
-    await wipeDeviceForSignOut();
-    logoutFormRef.current?.requestSubmit();
-  }
+  //
+  // PENDING IS SET FIRST, AND ON EVERY PATH, not only the queued one (#3515). The
+  // person who taps early and the person who taps late must see the same control
+  // do the same thing; a pending state that appeared only after a tap that was
+  // nearly lost would be a tell about the app's internals and nothing else. The
+  // accessible NAME is deliberately unchanged — it is still "Log out", because the
+  // control has not become a different control, and `aria-busy` is the attribute
+  // that carries "working on it".
+  const logoutAfterWipe = useCallback(async (): Promise<void> => {
+    if (logoutStarted.current) return;
+    logoutStarted.current = true;
+    setLogoutPending(true);
+    try {
+      await wipeDeviceForSignOut();
+      logoutFormRef.current?.requestSubmit();
+    } catch (err) {
+      // Nothing is in flight any more, so stop claiming otherwise — and drop the
+      // boot script's marker too, since it is the other half of the same claim and
+      // React does not own it. The happy path never lands here: it navigates away
+      // still pending, which is the truth.
+      logoutStarted.current = false;
+      setLogoutPending(false);
+      clearQueuedLogoutTap(logoutButtonRef.current);
+      throw err;
+    }
+  }, []);
+
+  // REPLAY A TAP THAT ARRIVED BEFORE THE HANDLER DID (#3515). `LOGOUT_BOOT_SCRIPT`
+  // (lib/logout-tap.ts) marks the control from the document head; this is the first
+  // moment the click could have done anything at all, so it is when it happens.
+  //
+  // Reading the marker off THIS instance's own node is what keeps it correct on a
+  // phone: SidebarContent renders TWICE — the desktop sidebar and the mobile drawer
+  // are the same component — and the mark sits on whichever button was actually
+  // tapped, so the other instance sees nothing and does nothing.
+  useEffect(() => {
+    if (hasQueuedLogoutTap(logoutButtonRef.current)) void logoutAfterWipe();
+  }, [logoutAfterWipe]);
 
   // AND IF THE LOGOUT NEVER LANDS, THE CLOSE COMES BACK OFF.
   //
@@ -362,11 +410,56 @@ export default function SidebarContent({
               // simply never been observed because localStorage (the emergency
               // card) is synchronous and the queue's own leftovers are invisible.
               // So: wipe first, await it, THEN submit.
+              //
+              // THAT TRADE COST THIS CONTROL ITS PRE-HYDRATION FALLBACK, and
+              // #3515 is what was put back in its place. type="button" + a React
+              // onClick + a client `action` means a tap before React attaches
+              // used to do nothing at all and say nothing either. It is now
+              // CAPTURED by LOGOUT_BOOT_SCRIPT and replayed by the effect above,
+              // and the two markers below are what makes it visible meanwhile.
+              ref={logoutButtonRef}
               type="button"
+              // The boot script's selector, the effect's marker, and the CSS
+              // hook for the pending state — one attribute, three readers.
+              {...{ [LOGOUT_BUTTON_ATTR]: "" }}
+              {...(logoutPending ? { [LOGOUT_PENDING_ATTR]: "" } : {})}
+              aria-busy={logoutPending || undefined}
+              // The boot script may have set data-logout-tapped and aria-busy on
+              // this node before React ever saw it. That disagreement with the
+              // server HTML is the feature, not a bug to be warned about.
+              suppressHydrationWarning
               onClick={() => void logoutAfterWipe()}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
             >
-              <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />
+              {/* Both icons are always in the DOM and CSS decides which one shows
+                  (app/globals.css). It has to be CSS: the pending state must be
+                  paintable by an inline script in the head, with no React and no
+                  bundle, which rules out rendering the spinner conditionally. */}
+              <IconLogout
+                className="logout-idle-icon h-4 w-4 shrink-0"
+                stroke={1.75}
+              />
+              <svg
+                data-testid="logout-pending"
+                className="logout-pending-spinner h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
               Log out
             </button>
           </form>
