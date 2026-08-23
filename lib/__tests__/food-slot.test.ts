@@ -3,6 +3,8 @@ import {
   foodSlotBoundaries,
   deriveFoodSlot,
   foodSlotForHhmm,
+  foodSlotWindow,
+  FOOD_SLOTS,
   DEFAULT_MIDDAY_BOUNDARY_MIN,
   DEFAULT_EVENING_BOUNDARY_MIN,
 } from "@/lib/food-slot";
@@ -138,3 +140,91 @@ function foodSlotForHhmmInZone(
   const { hhmm } = zonedDateParts(tz, new Date(iso));
   return foodSlotForHhmm(hhmm, b);
 }
+
+// ── THE SPAN A WINDOW OWNS (#3265) ───────────────────────────────────────────
+//
+// `foodSlotWindow` is `deriveFoodSlot` turned round: instead of "which window does this
+// minute fall in", it answers "which minutes does this window hold". The dashboard needs
+// the second form to say how long a food-anchored offer STANDS, and the two have to be
+// the same three splits or the offer's own window and its placement window disagree —
+// which is the defect: the composed usual-routine one-tap borrowed the meal-REMINDER
+// windows (each intake anchor ±60 min, last close 21:00) while the offer itself is
+// `currentFoodSlot`-anchored and Evening runs to midnight.
+//
+// So the property that matters is not any single boundary but ROUND-TRIPPING: every
+// minute of the local day belongs to exactly one window, and it is the window
+// `deriveFoodSlot` puts it in.
+describe("foodSlotWindow", () => {
+  const b = foodSlotBoundaries({ morning: null, midday: null, evening: null });
+
+  it("spans the default 11:00 / 15:00 splits, with Evening running to midnight", () => {
+    expect(foodSlotWindow("Morning", b)).toEqual({
+      opensAt: 0,
+      endsBefore: 660,
+    });
+    expect(foodSlotWindow("Midday", b)).toEqual({
+      opensAt: 660,
+      endsBefore: 900,
+    });
+    // 1440, not 1439: the span is half-open, so the last minute it holds is 23:59.
+    expect(foodSlotWindow("Evening", b)).toEqual({
+      opensAt: 900,
+      endsBefore: 1440,
+    });
+  });
+
+  // The three windows partition the day: no minute in two of them, no minute in none.
+  it("round-trips deriveFoodSlot for every minute of the local day", () => {
+    for (let minute = 0; minute < 1440; minute++) {
+      const slot = deriveFoodSlot(minute, b);
+      const w = foodSlotWindow(slot, b);
+      expect(
+        minute >= w.opensAt && minute < w.endsBefore,
+        `minute ${minute}`
+      ).toBe(true);
+      const holders = FOOD_SLOTS.filter((s) => {
+        const other = foodSlotWindow(s, b);
+        return minute >= other.opensAt && minute < other.endsBefore;
+      });
+      expect(holders, `minute ${minute}`).toEqual([slot]);
+    }
+  });
+
+  // 21:00 is the whole point: the meal-reminder windows have closed for the day and the
+  // Evening food window has three hours left, which is the disagreement #3265 names.
+  it("still holds 22:30 in Evening, three hours after the last meal window closes", () => {
+    expect(deriveFoodSlot(22 * 60 + 30, b)).toBe("Evening");
+    const evening = foodSlotWindow("Evening", b);
+    expect(22 * 60 + 30 < evening.endsBefore).toBe(true);
+    expect(23 * 60 + 59 < evening.endsBefore).toBe(true);
+  });
+
+  it("follows a configured schedule's midpoints rather than the defaults", () => {
+    // 14:00 / 18:00 / 21:00 → midpoints 16:00 and 19:30.
+    const shifted = foodSlotBoundaries({
+      morning: 14 * 60,
+      midday: 18 * 60,
+      evening: 21 * 60,
+    });
+    expect(foodSlotWindow("Morning", shifted).endsBefore).toBe(16 * 60);
+    expect(foodSlotWindow("Midday", shifted)).toEqual({
+      opensAt: 16 * 60,
+      endsBefore: 19 * 60 + 30,
+    });
+    expect(foodSlotWindow("Evening", shifted).opensAt).toBe(19 * 60 + 30);
+  });
+
+  // The one degenerate span, declared rather than discovered: a midnight morning slot
+  // puts the midday boundary on minute 0, and Morning then holds nothing. That is the
+  // same configuration in which `deriveFoodSlot` can never answer Morning, since no
+  // minute is below zero — so an empty span is the honest answer, not a hole.
+  it("gives Morning an EMPTY span when the midday boundary lands on minute 0", () => {
+    const midnight = foodSlotBoundaries({ morning: 0, midday: 0, evening: 60 });
+    expect(midnight.midday).toBe(0);
+    const w = foodSlotWindow("Morning", midnight);
+    expect(w.endsBefore).toBe(w.opensAt);
+    for (let minute = 0; minute < 1440; minute++) {
+      expect(deriveFoodSlot(minute, midnight)).not.toBe("Morning");
+    }
+  });
+});
