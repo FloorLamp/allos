@@ -86,6 +86,12 @@ export type FloorMechanism =
   | "rendered"
   /** `.tap-target`'s hit-area overlay. */
   | "tap-target"
+  /**
+   * The class list could not be read, so NO mechanism can be established. This
+   * is not a verdict — it is the absence of one, made countable. See
+   * `UNREADABLE` below.
+   */
+  | "unreadable"
   /** Neither. This is the defect the class exists to enumerate. */
   | "none";
 
@@ -127,8 +133,18 @@ export type FlooredControl = {
    * assumed, so a bare unlabelled box is still a finding.
    */
   labelled: boolean;
-  /** The class list as written, for the failure message. */
+  /**
+   * The class list this scan judged: literal text where it could be resolved,
+   * and the EXPRESSION AS WRITTEN where it could not. Read it with `readable`.
+   */
   className: string;
+  /**
+   * Whether `className` is class text or an expression nobody resolved. False
+   * means every field above is the absence of a verdict rather than one:
+   * `belowSmPx` is null because nothing was read, not because nothing is pinned
+   * (#3561). The census rosters these; it does not clear them.
+   */
+  readable: boolean;
 };
 
 /** Raised when the scan meets a control whose height it cannot read. */
@@ -249,18 +265,29 @@ export function elementSpan(
 }
 
 /**
- * The `className` value as written — the quoted string, or everything inside the
- * braces of a `className={…}` expression (a template literal or a ternary, both
- * of which this app uses constantly and both of which carry the tokens we need).
+ * The `className` as written, and WHICH OF TWO THINGS it is: the text of a quoted
+ * string, or the SOURCE of a `className={…}` expression.
+ *
+ * Keeping those apart is the whole of #3561. A quoted string IS the class list; an
+ * expression is a program that produces one, and reading its source as though it
+ * were class text is how `className={ARROW_HIT}` came back as the class list
+ * `"ARROW_HIT"` — a nine-letter word with no height token in it, indistinguishable
+ * from a control that pins no height. `resolveClassName` below is what turns the
+ * second kind into the first, or refuses.
  */
-export function classNameOf(tag: string): string | null {
+export function classNameExpression(
+  tag: string
+): { literal: boolean; text: string } | null {
   const m = /(?<![\w-])className\s*=\s*/.exec(tag);
   if (!m) return null;
   const at = m.index + m[0].length;
   const quote = tag[at];
   if (quote === '"' || quote === "'") {
     const end = tag.indexOf(quote, at + 1);
-    return end < 0 ? tag.slice(at + 1) : tag.slice(at + 1, end);
+    return {
+      literal: true,
+      text: end < 0 ? tag.slice(at + 1) : tag.slice(at + 1, end),
+    };
   }
   if (quote === "{") {
     let depth = 0;
@@ -268,11 +295,714 @@ export function classNameOf(tag: string): string | null {
       if (tag[i] === "{") depth += 1;
       else if (tag[i] === "}") {
         depth -= 1;
-        if (depth === 0) return tag.slice(at + 1, i);
+        if (depth === 0) return { literal: false, text: tag.slice(at + 1, i) };
       }
     }
   }
   return null;
+}
+
+// ── Reading a class list that is not written where the control is ───────────
+//
+// WHY THIS EXISTS, AND WHICH DIRECTION IT USED TO FAIL. `classNameOf` returns
+// what is written inside `className={…}` VERBATIM, so a hoisted constant came
+// back as its own IDENTIFIER — `className={ARROW_HIT}` yielded the nine-letter
+// string `"ARROW_HIT"`. No height token matched, `belowSmHeightPx` returned
+// null, and `floorMiss` returned null on its first line: no throw, no finding,
+// no record that the control had ever been considered. The module threw on an
+// unreadable HEIGHT TOKEN and stayed silent on an unreadable CLASS LIST, which
+// is the wrong half — an unreadable token is one control the scan knows it
+// lost, an unreadable class list is one it does not (#3561).
+//
+// It was hiding three live controls at the time: `TrainingLogCalendar`'s two
+// month arrows and its day link, all `h-10` (40px) below `sm`, sized correctly
+// against the floor as it stood at #3377 and left behind when #3514 ruled it to
+// 44. Exactly the population the ruling was meant to sweep, invisible to the
+// instrument built to enumerate it.
+//
+// `lib/__tests__/mobile-density-convention.test.ts` carries the same remedy for
+// the same reason and is worth reading beside this (#3509): resolve, then read
+// only literal text, and never let unresolved text pass as read.
+//
+// TWO WAYS TO FAIL, AND WHICH ONE IS WHOSE FAULT DECIDES THE DIRECTION:
+//
+//   THE SCAN CANNOT PARSE WHAT IT WAS GIVEN — an unterminated string, template
+//   or `${…}` hole. That is this module being wrong about the language, not the
+//   tree being unusual, and it THROWS `UnreadableControlError`, exactly as an
+//   unpriceable height token does. A parser that quietly returns nothing on
+//   source it does not understand is the failure this whole file is built
+//   against.
+//
+//   THE CLASS TEXT IS COMPOSED SOMEWHERE ELSE — a forwarded `className` prop, a
+//   `.map()` variable, a field of an imported data table, a helper that returns
+//   a computed plan. Resolution bottoms out on an identifier with no text behind
+//   it, and NO edit to the file being scanned can change that. Those controls
+//   come back `readable: false` with `mechanism: "unreadable"`, and the census
+//   rosters them EXACTLY — so the blind spot has a size, and a new one is red
+//   until someone records it. That is the shape `UNJUDGED_TAP_TARGETS` already
+//   uses one level down, and it is fail-closed in the sense that matters: the
+//   number can only move when a person looks at it.
+//
+// The outcome that must never come back is the third one, which is what this
+// module used to do: an unreadable class list reported as a readable one that
+// pins no height.
+
+/**
+ * A module reached by following an import: its (comment-blanked) source, and a
+ * reader for ITS OWN specifiers.
+ *
+ * The second half is what makes a BARREL readable, and the tree is full of them.
+ * `BottomSheet` imports `OVERLAY_SCRIM` from `"./overlay"`, which is an
+ * `index.ts` holding `export { OVERLAY_SCRIM } from "./tokens"`; `CardioFields`
+ * imports `blockedField` from `"./model"`, which is `export * from
+ * "@/lib/activity-form-model"`. Resolving `"./tokens"` against the file that
+ * started the chain points at the wrong directory, so each module carries the
+ * reader for the next hop rather than the scan guessing.
+ */
+export type ImportedModule = { source: string; readModule: ModuleReader };
+
+/**
+ * Reads the module a specifier names, written exactly as the importer wrote it
+ * (`"@/components/OverflowMenu"`, `"./tokens"`). Returns null when it is not one
+ * this corpus can follow — a package, a `.css` file.
+ *
+ * The caller owns path resolution because it owns the corpus: the census points
+ * the same walk at the tree and at a temp directory, and neither this module nor
+ * this signature should know which.
+ *
+ * The source handed back MUST be `withoutComments`-blanked, like the source
+ * being scanned.
+ */
+export type ModuleReader = (specifier: string) => ImportedModule | null;
+
+/**
+ * A declaration this scan can substitute: the identifier, and the EXPRESSION
+ * SOURCE it stands for.
+ *
+ * A function declaration whose body is a single `return` is normalised to an
+ * arrow, so the call path below has one shape to handle rather than two. Both
+ * spellings are in the tree — `function chipClass(pressed) { return … }` and
+ * `const rowClass = (active) => …` — and they are the same thing.
+ */
+export type ClassDeclarations = Map<string, string | typeof AMBIGUOUS>;
+
+/** Marks a name declared more than once: which one a call site meant is a guess. */
+const AMBIGUOUS = Symbol("declared more than once");
+
+const CONST_DECL = /^[ \t]*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=[ \t]*/gm;
+const FN_DECL =
+  /^[ \t]*(?:export\s+)?function\s+([A-Za-z_$][\w$]*)\s*(\([^)]*\))[^{]*\{/gm;
+
+/**
+ * The expression a declaration is bound to: everything from `from` up to the `;`
+ * that ends the statement, at bracket depth zero.
+ *
+ * SCANNED, NOT MATCHED, and the difference is not stylistic. A non-greedy
+ * `([\s\S]*?);$` stops at the first `;` that ends a line, which inside a block
+ * body is a statement in the MIDDLE of the declaration — `StrengthSets`'
+ * `const sideFlags = (w, r, d) => {` came back truncated at its first inner
+ * statement, brackets unbalanced, and every scan downstream then reported the
+ * class list unreadable. A declaration read wrong is worse than one not read.
+ */
+function declarationValue(source: string, from: number): string | null {
+  let depth = 0;
+  let i = from;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === "/" && source[i + 1] === "/") {
+      const end = source.indexOf("\n", i);
+      i = end < 0 ? source.length : end;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      i = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < source.length && source[i] !== c)
+        i += source[i] === "\\" ? 2 : 1;
+      i += 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(source, i) + 1;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth += 1;
+    else if (c === ")" || c === "]" || c === "}") {
+      depth -= 1;
+      if (depth < 0) return null;
+    } else if (c === ";" && depth === 0) return source.slice(from, i);
+    i += 1;
+  }
+  return null;
+}
+
+function collectDeclarations(source: string, into: ClassDeclarations): void {
+  const record = (name: string, text: string | null) => {
+    if (text === null) return;
+    into.set(
+      name,
+      into.has(name)
+        ? AMBIGUOUS
+        : text.includes("//") || text.includes("/*")
+          ? blankExpressionComments(text)
+          : text
+    );
+  };
+  for (const m of source.matchAll(CONST_DECL))
+    record(m[1], declarationValue(source, m.index + m[0].length));
+  for (const m of source.matchAll(FN_DECL)) {
+    // The opening brace is the last character the pattern matched.
+    const brace = m.index + m[0].length - 1;
+    const shut = closingBracket(source, brace);
+    if (shut < 0) continue;
+    const body = source.slice(brace + 1, shut).trim();
+    // Only a single-`return` helper is a class-text function; anything else is
+    // a program, and this scan does not run programs.
+    if (!/^return\s/.test(body) || !body.endsWith(";")) continue;
+    record(m[1], `${m[2]} => ${body.slice(6, -1)}`);
+  }
+}
+
+/**
+ * Every name whose class text this scan can reach from one file: the file's own
+ * `const`s and single-`return` functions, plus the named exports it imports from
+ * a module the reader can supply.
+ *
+ * ONE HOP, NOT A GRAPH — but the imported module's own constants are folded into
+ * its exports first, because that is how the tree actually writes them:
+ * `export const OVERLAY_SCRIM` is built from a `OVERLAY_SCRIM_TINT` that never
+ * crosses the import, and a reader stopping at the export gets nothing.
+ *
+ * FILE-LOCAL AND MODULE-LOCAL ARE BOTH COLLECTED, deliberately. The precedent in
+ * `mobile-density-convention` anchors on `^const` and so takes module scope only;
+ * here a component's own `const STEP_CLASS = …` inside the function body is the
+ * commonest spelling of the very thing this rule needs to read, and refusing it
+ * would leave `PaginationControls`' three steppers unreadable for no gain. The
+ * safety that gives up is bought back by AMBIGUOUS: a name declared twice in one
+ * file resolves to nothing, because which one a call site meant is a guess.
+ */
+export function classDeclarations(
+  source: string,
+  readModule?: ModuleReader
+): ClassDeclarations {
+  const declared: ClassDeclarations = new Map();
+  collectDeclarations(source, declared);
+  if (!readModule) return declared;
+  for (const m of source.matchAll(
+    /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s*from\s*"([^"]+)"/g
+  )) {
+    const names = importedNames(m[1]);
+    if (names.size === 0) continue;
+    const dependency = readModule(m[2]);
+    if (dependency === null) continue;
+    const reached = reachableExports([...names.values()], dependency, IMPORT_HOPS);
+    for (const [local, exported] of names) {
+      const value = reached.get(exported);
+      if (value === undefined) continue;
+      declared.set(local, declared.has(local) ? AMBIGUOUS : value);
+    }
+  }
+  return declared;
+}
+
+/** How many `export … from` hops a barrel may add. `./overlay` needs one. */
+const IMPORT_HOPS = 3;
+
+/** `{ A, B as C, type D }` -> local name -> exported name, types dropped. */
+function importedNames(list: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const part of list.split(",")) {
+    const text = part.trim();
+    if (text === "" || text.startsWith("type ")) continue;
+    const [exported, local] = text.split(/\s+as\s+/).map((x) => x.trim());
+    const name = local ?? exported;
+    if (/^[A-Za-z_$][\w$]*$/.test(exported) && /^[A-Za-z_$][\w$]*$/.test(name))
+      out.set(name, exported);
+  }
+  return out;
+}
+
+/**
+ * The class text behind each requested export of one module, following its own
+ * `export … from` re-exports when it does not declare them itself.
+ *
+ * A module's constants are folded into its exports BEFORE they cross the import,
+ * because the importing file cannot see them and never could.
+ */
+function reachableExports(
+  wanted: string[],
+  module: ImportedModule,
+  hops: number
+): ClassDeclarations {
+  const own: ClassDeclarations = new Map();
+  collectDeclarations(module.source, own);
+  const out: ClassDeclarations = new Map();
+  for (const name of wanted) {
+    const value = own.get(name);
+    if (value === undefined) continue;
+    out.set(name, value === AMBIGUOUS ? AMBIGUOUS : substitute(value, own));
+  }
+  if (hops <= 0) return out;
+  for (const m of module.source.matchAll(
+    /export\s+(?:\{([^}]*)\}|\*)\s*from\s*"([^"]+)"/g
+  )) {
+    const still = wanted.filter((name) => !out.has(name));
+    if (still.length === 0) break;
+    // A named re-export forwards only what it lists; `export *` forwards all.
+    const listed = m[1] === undefined ? null : importedNames(m[1]);
+    const ask =
+      listed === null ? still : still.filter((name) => listed.has(name));
+    if (ask.length === 0) continue;
+    const next = module.readModule(m[2]);
+    if (next === null) continue;
+    const under = listed === null ? ask : ask.map((name) => listed.get(name)!);
+    const reached = reachableExports(under, next, hops - 1);
+    for (let i = 0; i < ask.length; i += 1) {
+      const value = reached.get(under[i]);
+      if (value !== undefined) out.set(ask[i], value);
+    }
+  }
+  return out;
+}
+
+/**
+ * The same expression with every comment blanked to spaces, offsets intact.
+ *
+ * `withoutComments` cannot do this and should not try: it treats a template
+ * literal as OPAQUE, which is right for a file (a `//` inside a string is not a
+ * comment) and wrong for a `${…}` hole, which is code. This app writes comments
+ * inside those holes — `StarButton`, `IntensityPicker` and `StrengthSets` all
+ * explain a class choice there — and an unblanked one is a live hazard rather
+ * than noise: its prose carries apostrophes and backticks, which every scanner
+ * below reads as an unterminated string and gives up on. Three controls were
+ * lost to exactly that before this existed.
+ */
+function blankExpressionComments(expression: string): string {
+  const out = expression.split("");
+  // A stack of what we are inside: template TEXT, or the CODE of a `${…}` hole.
+  const stack: ("text" | "code")[] = ["code"];
+  let depth = 0;
+  let i = 0;
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to && k < out.length; k += 1)
+      if (out[k] !== "\n") out[k] = " ";
+  };
+  while (i < expression.length) {
+    const c = expression[i];
+    const here = stack[stack.length - 1];
+    if (here === "text") {
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === "`") {
+        stack.pop();
+        i += 1;
+        continue;
+      }
+      if (c === "$" && expression[i + 1] === "{") {
+        stack.push("code");
+        depth = 0;
+        i += 2;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+    if (c === "/" && expression[i + 1] === "/") {
+      const end = expression.indexOf("\n", i);
+      blank(i, end < 0 ? expression.length : end);
+      i = end < 0 ? expression.length : end;
+      continue;
+    }
+    if (c === "/" && expression[i + 1] === "*") {
+      const end = expression.indexOf("*/", i + 2);
+      blank(i, end < 0 ? expression.length : end + 2);
+      i = end < 0 ? expression.length : end + 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      i += 1;
+      continue;
+    }
+    if (c === "`") {
+      stack.push("text");
+      i += 1;
+      continue;
+    }
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      if (depth === 0 && stack.length > 1) {
+        stack.pop();
+        i += 1;
+        continue;
+      }
+      depth -= 1;
+    }
+    i += 1;
+  }
+  return out.join("");
+}
+
+/**
+ * The index of the bracket closing the one that opens at `open`, or -1.
+ *
+ * STRING-AWARE, and it has to be: a class list is mostly quoted text, and a
+ * brace-counting scan that reads `"}"` as a closer walks off the end of the
+ * expression and reports the whole thing unreadable.
+ */
+function closingBracket(text: string, open: number): number {
+  const shut = { "(": ")", "[": "]", "{": "}" }[text[open]];
+  if (shut === undefined) return -1;
+  let depth = 0;
+  let i = open;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < text.length && text[i] !== c) i += text[i] === "\\" ? 2 : 1;
+      i += 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(text, i) + 1;
+      continue;
+    }
+    if (c === text[open]) depth += 1;
+    else if (c === shut) {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+/** The index of the backtick closing the template opening at `open`, or the end. */
+function endOfTemplate(text: string, open: number): number {
+  let i = open + 1;
+  while (i < text.length && text[i] !== "`") {
+    if (text[i] === "\\") {
+      i += 2;
+      continue;
+    }
+    if (text[i] === "$" && text[i + 1] === "{") {
+      const shut = closingBracket(text, i + 1);
+      i = shut < 0 ? text.length : shut + 1;
+      continue;
+    }
+    i += 1;
+  }
+  return i;
+}
+
+/** The top-level values of an object literal, or null when it is not one. */
+function objectValues(expression: string): string[] | null {
+  const text = expression.trim();
+  if (!text.startsWith("{") || closingBracket(text, 0) !== text.length - 1)
+    return null;
+  const inner = text.slice(1, -1);
+  const values: string[] = [];
+  let depth = 0;
+  let colon = -1;
+  for (let i = 0; i <= inner.length; i += 1) {
+    const c = inner[i];
+    if (c === "(" || c === "[" || c === "{") depth += 1;
+    else if (c === ")" || c === "]" || c === "}") depth -= 1;
+    else if (c === ":" && depth === 0 && colon < 0) colon = i;
+    if (i === inner.length || (c === "," && depth === 0)) {
+      if (colon >= 0) values.push(inner.slice(colon + 1, i));
+      colon = -1;
+    }
+  }
+  return values.length > 0 ? values : null;
+}
+
+/**
+ * The body of an arrow function `(a, b) => body`, or null — including when the
+ * body is a BLOCK, which is a program rather than an expression this scan can
+ * read.
+ */
+function arrowBody(expression: string): string | null {
+  const text = expression.trim();
+  if (!text.startsWith("(")) return null;
+  const shut = closingBracket(text, 0);
+  if (shut < 0) return null;
+  const rest = text.slice(shut + 1).trimStart();
+  if (!rest.startsWith("=>")) return null;
+  const body = rest.slice(2).trim();
+  return body.startsWith("{") ? null : body;
+}
+
+/** Bounded, so a cyclic or self-referential declaration dies instead of hanging. */
+const SUBSTITUTION_LIMIT = 400;
+
+/**
+ * The expression with every reachable identifier replaced by the class text it
+ * stands for.
+ *
+ * A CALL and an INDEX both collapse to the text they COULD produce:
+ * `chipClass(active)` becomes the whole body of `chipClass`, and
+ * `INPUT_CLASS[variant]` becomes every value of the record. This scan reads every
+ * token a class list could carry rather than guessing which branch runs — the
+ * same trade `belowSmHeightPx` already makes across a ternary's two arms, and
+ * the direction that can only ever produce a false finding, never a missed one.
+ */
+function substitute(
+  expression: string,
+  declared: ClassDeclarations
+): string {
+  let out = expression;
+  for (let step = 0; step < SUBSTITUTION_LIMIT; step += 1) {
+    const next = substituteOnce(out, declared);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
+function substituteOnce(
+  expression: string,
+  declared: ClassDeclarations
+): string {
+  const skip = literalSpans(expression);
+  for (const m of expression.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
+    const at = m.index;
+    if (skip.some((span) => at >= span.start && at < span.end)) continue;
+    const value = declared.get(m[0]);
+    if (value === undefined || value === AMBIGUOUS) continue;
+    // AN IDENTIFIER IN A CONDITION IS LEFT ALONE, and this is not an
+    // optimisation. `MoodValencePicker` writes `selected ? … : …`, where
+    // `selected` is `value === score` and `score` is `index + 1` and `index` is a
+    // `.map()` parameter — expanding a test that could never contribute class text
+    // walked the resolver into an identifier with no text behind it and reported a
+    // wholly literal class list as unreadable. Substitute what a browser would
+    // CONCATENATE, not what it would evaluate.
+    if (IDENTIFIER_IN_CONDITION.test(afterPostfix(expression, at + m[0].length)))
+      continue;
+    let end = at + m[0].length;
+    let replacement = `(${value})`;
+    const rest = expression.slice(end);
+    const gap = rest.length - rest.trimStart().length;
+    const next = rest.trimStart();
+    if (next.startsWith("(")) {
+      const body = arrowBody(value);
+      const shut = closingBracket(expression, end + gap);
+      if (body === null || shut < 0) continue;
+      replacement = `(${body})`;
+      end = shut + 1;
+    } else if (next.startsWith("[") || next.startsWith(".")) {
+      const values = objectValues(value);
+      if (values === null) continue;
+      const shut =
+        next.startsWith("[") ? closingBracket(expression, end + gap) : -1;
+      if (next.startsWith("[") && shut < 0) continue;
+      replacement = values.map((v) => `(${v})`).join(" + ");
+      end = next.startsWith("[")
+        ? shut + 1
+        : end + gap + /^\.[\w$]*/.exec(next)![0].length;
+    }
+    return expression.slice(0, at) + replacement + expression.slice(end);
+  }
+  return expression;
+}
+
+/**
+ * The spans of literal TEXT in an expression — a quoted string, and the text
+ * chunks of a template literal but NOT its `${…}` holes, which are code.
+ *
+ * IT MUST DESCEND INTO A HOLE rather than skip it, and the first draft skipped
+ * it. A hole's own strings are literals too, so `(variant === "cell")` — itself
+ * the result of a substitution — had its `"cell"` read as substitutable code, and
+ * `cell` was replaced inside its own replacement, forever, until the bound
+ * stopped it. A substitution that can re-enter what it just wrote is not
+ * bounded by anything the source contains.
+ */
+function literalSpans(
+  expression: string,
+  offset = 0,
+  spans: { start: number; end: number }[] = []
+): { start: number; end: number }[] {
+  let i = 0;
+  while (i < expression.length) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      const start = i;
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      spans.push({ start: offset + start, end: offset + i + 1 });
+      i += 1;
+      continue;
+    }
+    if (c === "`") {
+      i += 1;
+      let chunk = i;
+      while (i < expression.length && expression[i] !== "`") {
+        if (expression[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (expression[i] === "$" && expression[i + 1] === "{") {
+          spans.push({ start: offset + chunk, end: offset + i });
+          const shut = closingBracket(expression, i + 1);
+          const stop = shut < 0 ? expression.length : shut;
+          literalSpans(expression.slice(i + 2, stop), offset + i + 2, spans);
+          i = stop + 1;
+          chunk = i;
+          continue;
+        }
+        i += 1;
+      }
+      spans.push({ start: offset + chunk, end: offset + i });
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return spans;
+}
+
+// An identifier may REMAIN in a resolved expression only where it cannot
+// contribute class text: a ternary test, a logical operand, a comparison, a
+// member base, an index, an argument list.
+const IDENTIFIER_IN_CONDITION =
+  /^\s*(\?\?|\?\.|\?|&&|\|\||===|!==|==|!=|>=|<=|>|<|\)|,|\.|\[)/;
+const NOT_A_VALUE = new Set([
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "typeof",
+  "in",
+]);
+
+/**
+ * What follows an identifier once its calls, indexes and member accesses are
+ * consumed — so the question asked of it is "does this WHOLE thing sit in a
+ * condition", not "does the bare name". `sideFlags(w, r, d).weight ? a : b` is a
+ * test; `chipClass(active)` on its own is class text.
+ */
+function afterPostfix(residue: string, from: number): string {
+  let i = from;
+  for (;;) {
+    const rest = residue.slice(i);
+    const gap = rest.length - rest.trimStart().length;
+    const next = rest.trimStart();
+    if (next.startsWith("(") || next.startsWith("[")) {
+      const shut = closingBracket(residue, i + gap);
+      if (shut < 0) return rest;
+      i = shut + 1;
+      continue;
+    }
+    const member = /^\??\.[\w$]+/.exec(next);
+    if (member) {
+      i += gap + member[0].length;
+      continue;
+    }
+    return rest;
+  }
+}
+
+/** What a control's class list turned out to be. */
+export type ClassText =
+  | { readable: true; text: string }
+  /** The identifier whose class text is not in this file. */
+  | { readable: false; name: string };
+
+/**
+ * The class text a browser would actually see — or a refusal naming what stopped
+ * it. Throws `UnreadableControlError` when the text IS reachable from this file
+ * and this scan still cannot read it.
+ */
+function readClassText(
+  expression: string,
+  declared: ClassDeclarations
+): ClassText {
+  const parts: string[] = [];
+  let residue = "";
+  let i = 0;
+  while (i < expression.length) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      const end = expression.indexOf(c, i + 1);
+      if (end < 0)
+        throw new UnreadableControlError(
+          "unterminated string in a class list expression"
+        );
+      parts.push(expression.slice(i + 1, end));
+      i = end + 1;
+      continue;
+    }
+    if (c === "`") {
+      let j = i + 1;
+      let chunk = "";
+      while (j < expression.length && expression[j] !== "`") {
+        if (expression[j] === "\\") {
+          chunk += expression.slice(j, j + 2);
+          j += 2;
+          continue;
+        }
+        if (expression[j] === "$" && expression[j + 1] === "{") {
+          parts.push(chunk);
+          chunk = "";
+          const shut = closingBracket(expression, j + 1);
+          if (shut < 0)
+            throw new UnreadableControlError(
+              "unterminated template hole in a class list expression"
+            );
+          const inner = readClassText(expression.slice(j + 2, shut), declared);
+          if (!inner.readable) return inner;
+          parts.push(inner.text);
+          j = shut + 1;
+          continue;
+        }
+        chunk += expression[j];
+        j += 1;
+      }
+      if (j >= expression.length)
+        throw new UnreadableControlError(
+          "unterminated template literal in a class list expression"
+        );
+      parts.push(chunk);
+      i = j + 1;
+      continue;
+    }
+    residue += c;
+    i += 1;
+  }
+
+  for (const m of residue.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
+    if (NOT_A_VALUE.has(m[0])) continue;
+    if (IDENTIFIER_IN_CONDITION.test(afterPostfix(residue, m.index + m[0].length)))
+      continue;
+    return { readable: false, name: m[0] };
+  }
+  return { readable: true, text: parts.join(" ") };
+}
+
+/**
+ * The class list of one opening tag, resolved as far as its file allows.
+ *
+ * `null` means the tag carries no `className` at all — a different thing from a
+ * `className` that cannot be read, which is `{ readable: false }`.
+ */
+export function resolveClassName(
+  openTag: string,
+  declared: ClassDeclarations
+): ClassText | null {
+  const written = classNameExpression(openTag);
+  if (written === null) return null;
+  if (written.literal) return { readable: true, text: written.text };
+  const expression = blankExpressionComments(written.text);
+  return readClassText(substitute(expression, declared), declared);
 }
 
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
@@ -385,9 +1115,15 @@ function kindOf(tag: string, openTag: string): ControlKind {
  * filed about, and an absence assertion over a shrinking corpus is the failure
  * mode this whole module is built against.
  */
-export function findFlooredControls(source: string): FlooredControl[] {
+export function findFlooredControls(
+  source: string,
+  readModule?: ModuleReader
+): FlooredControl[] {
   const found: FlooredControl[] = [];
   const lineOf = (i: number) => source.slice(0, i).split("\n").length;
+  // Collected ONCE per file: every control in it resolves against the same
+  // declarations, and the import hop reads other files off disk.
+  const declared = classDeclarations(source, readModule);
 
   // Every `<label>` span in the file, and every id a `htmlFor` names. Both
   // spellings of "a label takes the tap for this box" are in the tree.
@@ -413,8 +1149,36 @@ export function findFlooredControls(source: string): FlooredControl[] {
     const byHandler =
       /(?<![\w-])onClick\s*=/.test(openTag) || INTERACTIVE_ROLE.test(openTag);
     if (!byTag && !byHandler) continue;
-    const className = classNameOf(openTag);
-    if (className === null) continue;
+    let resolved: ClassText | null;
+    try {
+      resolved = resolveClassName(openTag, declared);
+    } catch (error) {
+      if (error instanceof UnreadableControlError)
+        throw new UnreadableControlError(
+          `line ${lineOf(m.index)}: <${tag}>'s ${error.message}`
+        );
+      throw error;
+    }
+    if (resolved === null) continue;
+
+    // THE CLASS LIST NOBODY CAN READ FROM HERE. Its text is at the call site (a
+    // forwarded `className` prop), in a `.map()` variable, or in an imported data
+    // table. No verdict is possible and none is invented: the control is recorded
+    // with the expression it was written as, so the census can count it.
+    if (!resolved.readable) {
+      found.push({
+        line: lineOf(m.index),
+        tag,
+        kind: kindOf(tag, openTag),
+        belowSmPx: null,
+        mechanism: "unreadable",
+        labelled: false,
+        className: classNameExpression(openTag)!.text.replace(/\s+/g, " ").trim(),
+        readable: false,
+      });
+      continue;
+    }
+    const className = resolved.text;
 
     // The unreadable case: a height token in a shape this scan cannot price.
     for (const token of className.matchAll(HEIGHT_TOKEN)) {
@@ -460,6 +1224,7 @@ export function findFlooredControls(source: string): FlooredControl[] {
       mechanism,
       labelled,
       className: className.replace(/\s+/g, " ").trim(),
+      readable: true,
     });
   }
 
@@ -484,6 +1249,11 @@ export function findFlooredControls(source: string): FlooredControl[] {
  * what this scan can see. That is a stated bound, not a silent skip.
  */
 export function floorMiss(control: FlooredControl): string | null {
+  // NOT A CLEARANCE — the absence of a reading. `readable: false` means the class
+  // text is not in the file this control lives in, so there is nothing to judge;
+  // the census rosters these EXACTLY rather than letting them look like the line
+  // below, which is a control that was read and pins no height (#3561).
+  if (!control.readable) return null;
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "btn-family" || control.mechanism === "rendered")
     return null;
