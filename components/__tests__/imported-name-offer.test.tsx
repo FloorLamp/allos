@@ -146,15 +146,26 @@ describe("both versions are on screen before anything is accepted", () => {
     expect(use.textContent).toBe("Use this name");
   });
 
-  it("does not offer a candidate that is itself a document string", () => {
+  it("does not offer a candidate that is itself a document string", async () => {
     // `isCleanerName` runs for real here. Trading a document string for a document
     // string is not a fix, and the stub returns one on purpose.
+    //
+    // The clean concept is asserted PRESENT first, for the same reason the caution
+    // case does it: "9999 is not offered" is also true of a list that never
+    // rendered, so on its own it proves the filter ran only by accident. With 2418
+    // on screen beside it, the missing 9999 is the filter's doing.
+    //
+    // `await`, not `.then()`. This case was the file's one `return act(…).then(…)`
+    // and the rejection did not reach the runner: with the component stubbed to
+    // return null, the `getByTestId` inside the act callback threw and the test
+    // still reported GREEN — the exact swallow that makes an absence assertion
+    // meaningless. Every other case here awaits; this one now does too.
     offer({ name: DOCUMENT_STRING, sourceName: null });
-    return act(async () => {
+    await act(async () => {
       screen.getByTestId("imported-name-find").click();
-    }).then(() => {
-      expect(screen.queryByTestId("imported-name-use-9999")).toBeNull();
     });
+    expect(screen.getByTestId("imported-name-use-2418")).not.toBeNull();
+    expect(screen.queryByTestId("imported-name-use-9999")).toBeNull();
   });
 
   it("sends the concept the person pressed, for this row and this document", async () => {
@@ -229,11 +240,17 @@ describe("the moment of choosing carries no caution copy", () => {
       "Use this name"
     );
 
-    // And it carries no caution. Both spellings, because the element could be
-    // dropped while the words stayed, or the words return without the testid.
+    // And it carries no caution. Read over the WHOLE offer, not the candidate
+    // list: the retracted sentence sat inside the list, but the slot a
+    // replacement would drift into is anywhere on this card — beside the kept
+    // label, under the current name, above the find button. Scoping the negative
+    // to the list would green a caution line that simply moved.
+    const offerEl = screen.getByTestId("imported-name-offer");
+    // Both spellings, because the element could be dropped while the words
+    // stayed, or the words return without the testid.
     expect(screen.queryByTestId("imported-name-consequence")).toBeNull();
-    expect(list.textContent).not.toContain("follow its name");
-    expect(list.textContent).not.toContain("warnings");
+    expect(offerEl.textContent).not.toContain("follow its name");
+    expect(offerEl.textContent).not.toContain("warnings");
   });
 });
 
