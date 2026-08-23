@@ -26,14 +26,33 @@
 // reads `rec.id` through a NUMBER reader — so the gate is also what stops this from
 // turning every activity into a skip.
 //
+// THE GATE IS EXACT AT 2^53, both directions (measured): `9007199254740992` is
+// left alone because it is exactly representable, while `9007199254740993` and
+// `-9007199254740993` are quoted.
+//
+// ONE INPUT CHANGES A THROW INTO A VALUE, and it is recorded here so the next
+// reader does not have to rediscover it: `{"id":003500000000000000123}` is invalid
+// JSON (the spec forbids leading zeros) and `JSON.parse` rejects it, but the digit
+// run matches, fails the round-trip gate, and comes back as the STRING
+// `"003500000000000000123"`. Not a defect and not reachable from Strava — no
+// compliant serializer emits a leading zero — but it is the one shape where this
+// pass is not outcome-preserving.
+//
 // PURE (no db, no fs, no fetch): it sits in the unit tier beside the directory's
 // other pure/impure splits (raw-log-format.ts vs raw-log.ts, backfill-error.ts vs
 // backfill-jobs.ts).
 
 // An id-shaped key in KEY position — preceded by `{` or `,` — holding an unquoted
-// integer. Requiring the opening brace or comma is what keeps the pass off digits
-// that merely sit inside a string value; `parseJsonPreservingIds` covers the
-// residue by falling back when the rewrite does not parse.
+// integer.
+//
+// WHAT KEEPS THIS OFF STRING VALUES is the unescaped `"` this pattern requires
+// right after the `{` or `,`, and JSON's own escaping rule. Inside a string value
+// every `"` is written `\"`, so the byte following any `{` or `,` that sits inside
+// a string is a backslash, never a quote — the pattern cannot match there at all.
+// A ride NAMED `,"id":12345678901234567,` reaches the wire as
+// `"name":",\"id\":12345678901234567,"` and is left completely alone (measured).
+// So this is not "usually safe on string values"; it is unreachable on them for
+// any input that is valid JSON.
 const ID_KEY_INTEGER_RE =
   /([{,]\s*"(?:id|[A-Za-z0-9]+_id)"\s*:\s*)(-?\d+)(?=\s*[,}])/g;
 
@@ -60,11 +79,20 @@ export function parseJsonPreservingIds(text: string): unknown {
   try {
     return JSON.parse(rewritten);
   } catch {
-    // The rewrite is a TEXT pass, so a payload carrying an id-shaped key inside a
-    // STRING value (an athlete who named a ride `,"id":12345678901234567,`) could
-    // be made invalid by it. The original text is what this app parsed before
-    // #3194 — fall back to it rather than turning a readable response into a
-    // thrown sync. The ids in that payload are mangled exactly as they were.
+    // THIS FALLBACK CANNOT RESCUE A VALID PAYLOAD, and the comment that stood here
+    // said otherwise — it claimed the rewrite could break a response carrying an
+    // id-shaped key inside a string value, and gave an example that is not
+    // rewritten at all (see the escaping note on ID_KEY_INTEGER_RE). Every match
+    // this pass makes is in a real value position, and swapping a number for a
+    // string there always leaves valid JSON. No input was found where the rewrite
+    // fires and the result stops parsing while the original still parses.
+    //
+    // What it DOES do, measured: on a body that was already broken — a truncated
+    // response, say — it re-parses the ORIGINAL, so the SyntaxError names the
+    // offset in the bytes the server actually sent instead of a shifted one.
+    // `{"id":3500000000000000123,` reports position 26 through here and 28 from
+    // the rewritten text. That is small, and it is the whole of the reason to keep
+    // a belt on untrusted upstream bytes; it is not a rescue path.
     return JSON.parse(text);
   }
 }

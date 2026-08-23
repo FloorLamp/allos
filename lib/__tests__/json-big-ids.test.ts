@@ -36,6 +36,22 @@ describe("idSurvivesJsNumber", () => {
     expect(idSurvivesJsNumber(LAP_ID)).toBe(false);
   });
 
+  it("is EXACT at 2^53, in both directions", () => {
+    // The boundary itself is exactly representable, so it is left alone; its
+    // odd neighbours on either side are not, so they are quoted. A gate that was
+    // off by one here would either mangle a real id or restring a faithful one.
+    expect(idSurvivesJsNumber("9007199254740992")).toBe(true);
+    expect(idSurvivesJsNumber("-9007199254740992")).toBe(true);
+    expect(idSurvivesJsNumber("9007199254740993")).toBe(false);
+    expect(idSurvivesJsNumber("-9007199254740993")).toBe(false);
+    expect(quoteUnsafeIntegerIds(`{"id":9007199254740992}`)).toBe(
+      `{"id":9007199254740992}`
+    );
+    expect(quoteUnsafeIntegerIds(`{"id":9007199254740993}`)).toBe(
+      `{"id":"9007199254740993"}`
+    );
+  });
+
   it("is true for the ids this app already stores faithfully", () => {
     // A Strava activity id (~1.5×10^10) and a segment id (~10^7): both exact.
     expect(idSurvivesJsNumber("15308821234")).toBe(true);
@@ -98,16 +114,43 @@ describe("parseJsonPreservingIds", () => {
     ]);
   });
 
-  it("falls back to the plain parse when the rewrite would not parse", () => {
-    // An id-shaped key sitting INSIDE a string value is the one shape a text pass
-    // can break. It must degrade to the pre-#3194 behaviour, not throw.
+  it("leaves an id-shaped key INSIDE a string value completely alone", () => {
+    // This test used to be called "falls back to the plain parse when the rewrite
+    // would not parse", and it never reached the fallback. JSON escapes every `"`
+    // inside a string, so the `[{,]\\s*"` anchor cannot match there: the rewrite
+    // makes no change at all and the plain-parse branch runs. Asserting that is
+    // the honest version of what this input proves.
     const text = `{"name":"a ride called {\\"lap_id\\": ${EFFORT_A}}","id":9}`;
-    expect(() => parseJsonPreservingIds(text)).not.toThrow();
+    expect(quoteUnsafeIntegerIds(text)).toBe(text);
     expect((parseJsonPreservingIds(text) as { id: number }).id).toBe(9);
+  });
+
+  it("reports a broken body's SyntaxError against the ORIGINAL offsets", () => {
+    // The fallback's real (and only) effect, and the reason to keep it. A
+    // truncated response IS rewritten — the id is past 2^53 — and the rewritten
+    // text does not parse either, so the fallback fires and re-parses the
+    // original. The two texts differ in length by the two quotes it inserted, so
+    // the error's position differs too: 26 here, 28 from the rewrite.
+    const truncated = `{"id":${EFFORT_A},`;
+    expect(quoteUnsafeIntegerIds(truncated)).not.toBe(truncated);
+    expect(() => parseJsonPreservingIds(truncated)).toThrow(/position 26\b/);
+    expect(() => JSON.parse(quoteUnsafeIntegerIds(truncated))).toThrow(
+      /position 28\b/
+    );
   });
 
   it("still throws on genuinely malformed JSON", () => {
     expect(() => parseJsonPreservingIds("{not json")).toThrow();
+  });
+
+  it("turns ONE invalid payload into a value: a leading-zero id", () => {
+    // Recorded, not fixed. JSON forbids leading zeros, so no compliant serializer
+    // (Strava's included) can emit this and it is unreachable in practice — but it
+    // is the single input where this pass is not outcome-preserving, and the next
+    // reader should meet it here rather than discover it.
+    const text = `{"id":00${EFFORT_A}}`;
+    expect(() => JSON.parse(text)).toThrow();
+    expect(parseJsonPreservingIds(text)).toEqual({ id: `00${EFFORT_A}` });
   });
 });
 
