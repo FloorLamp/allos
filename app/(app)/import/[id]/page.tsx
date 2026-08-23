@@ -57,6 +57,7 @@ import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
 import {
   documentFormatLabel,
+  documentSourceLabel,
   isProvenanceMismatch,
   producedTotal,
   formatRawExtraction,
@@ -65,6 +66,7 @@ import {
   reconcileProduced,
   detailReconciliationLine,
 } from "@/lib/produced-count";
+import { displayUnit } from "@/lib/unit-conversions";
 import { importActionExplainers } from "@/lib/import-actions-copy";
 import { isDeterministicReprocess } from "@/lib/reprocess-cost";
 import BackLink from "@/components/BackLink";
@@ -473,8 +475,16 @@ export default async function ImportDetailPage(props: {
                   value={formatDateWithYear(doc.document_date, formatPrefs)}
                 />
               )}
+              {/* Through the label map (#3493): `source` is the parser's own internal
+                  key for a health record ("ccda"), so this row read "Source: ccda" to
+                  a person. An AI-extracted lab/provider name is unmapped and survives
+                  verbatim. */}
               {doc.source && (
-                <ProvenanceRow label="Source" value={doc.source} />
+                <ProvenanceRow
+                  label="Source"
+                  value={documentSourceLabel(doc.source)}
+                  testId="doc-source"
+                />
               )}
               {/* ACQUIRED VIA (#1748): which portal the companion tool pushed this in
                   from. Rendered under the absent-pillar rule like every row here — a
@@ -756,9 +766,9 @@ export default async function ImportDetailPage(props: {
                         {u.loinc}
                       </code>
                       <span>{u.name}</span>
-                      {u.unit && (
+                      {displayUnit(u.unit) && (
                         <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {u.unit}
+                          {displayUnit(u.unit)}
                         </span>
                       )}
                       {u.count > 1 && (
@@ -811,9 +821,9 @@ export default async function ImportDetailPage(props: {
                       className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
                     >
                       <span className="font-medium">{u.name}</span>
-                      {u.unit && (
+                      {displayUnit(u.unit) && (
                         <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {u.unit}
+                          {displayUnit(u.unit)}
                         </span>
                       )}
                       {u.count > 1 && (
@@ -863,9 +873,9 @@ export default async function ImportDetailPage(props: {
                     >
                       <div className="flex flex-wrap items-baseline gap-x-2">
                         <span className="font-medium">{d.name}</span>
-                        {d.unit && (
+                        {displayUnit(d.unit) && (
                           <span className="text-xs text-slate-500 dark:text-slate-400">
-                            {d.unit}
+                            {displayUnit(d.unit)}
                           </span>
                         )}
                         {d.count > 1 && (
@@ -1109,18 +1119,16 @@ export default async function ImportDetailPage(props: {
                   filename={doc.filename}
                 />
               ) : doc.stored_path ? (
-                // File is stored but this type can't inline-preview — one line with the
-                // open-original affordance, not a prose wall (#1340).
+                // File is stored but this type can't inline-preview — one line, not a
+                // prose wall (#1340).
+                //
+                // ONE DOOR (#3493 item 3). This sentence used to END in a second
+                // "Open the original" link, three lines under the card header's own
+                // "Open original ↗" — the same destination stated twice inside one
+                // small card. The header keeps the door; this states the limitation
+                // and nothing else.
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Inline preview isn’t available for this file type.{" "}
-                  <a
-                    href={src}
-                    target="_blank"
-                    rel="noopener"
-                    className="text-brand-700 hover:underline dark:text-brand-400"
-                  >
-                    Open the original
-                  </a>
+                  Inline preview isn’t available for this file type.
                 </p>
               ) : (
                 // Nothing to show at all — collapse to a single line (#1340).

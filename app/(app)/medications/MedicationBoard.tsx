@@ -3,6 +3,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
+import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { MEDICATIONS_HREF, type MedicationFilter } from "@/lib/hrefs";
 import type { TimeFormat } from "@/lib/format-date";
 import type { SubjectInfo } from "@/lib/scope";
@@ -42,6 +43,7 @@ export default function MedicationBoard({
   profileId,
   isActing,
   canWrite,
+  cabinetCount,
 }: {
   data: MedicationsData;
   timeFormat: TimeFormat;
@@ -55,6 +57,12 @@ export default function MedicationBoard({
   // Whether the viewer may WRITE this member (dose-confirm reach). A read-only member
   // → view-only board.
   canWrite: boolean;
+  // Shared bottles the caller can see in the medicine cabinet (#1522). Resolved at the
+  // page's auth boundary (countVisiblePools(scope.ids)) and passed as a plain number.
+  // The cabinet door used to sit in the page header beside "Add medication"; #3479
+  // moved it into the Current medications card — the cabinet is what stands behind
+  // that list. Household-scoped and acting-only, like the ledger door above.
+  cabinetCount: number;
 }) {
   // Dose confirms carry the member's profileId ONLY on a non-acting board; on the
   // acting board they omit it (fall back to the active profile — byte-identical).
@@ -86,6 +94,7 @@ export default function MedicationBoard({
         timezone={data.tz}
         profileId={confirmProfileId}
         canWrite={canWrite}
+        ledgerDoor={isActing}
       />
 
       {/* 2. Safety strip — this member's own interaction (#144) / PGx / ototoxic /
@@ -127,6 +136,16 @@ export default function MedicationBoard({
         }
         data-testid="medication-list"
       >
+        {/* The medicine-cabinet door (#1522), relocated here by #3479. Its own line
+            under the description rather than the card's action slot: that slot already
+            holds print + share, and at 390px a ~140px counted door beside two icon
+            buttons leaves the title ~120px and breaks "Current medications" over two
+            lines. A quiet door on its own line costs no width from anything. */}
+        {isActing ? (
+          <div className="mt-3">
+            <SharedSuppliesLink count={cabinetCount} />
+          </div>
+        ) : null}
         <CardGroupSection>
           {shownCurrent.length > 0 ? (
             <div className="divide-y divide-black/5 dark:divide-white/5">

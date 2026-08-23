@@ -7,6 +7,12 @@ import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { groupContiguous } from "@/lib/table-sort";
 import { observationNameLink } from "@/lib/import-browser";
 import { formatDateWithYear } from "@/lib/format-date";
+// Units render as a PERSON reads them (#3493): the same UCUM bracket/annotation
+// stripping unit MATCHING has done since #1018, applied here at the display boundary.
+// A vitals row imported from a C-CDA carries "mm[Hg]" verbatim in storage and used to
+// render it verbatim too, three rows under a heading that says "Vitals". Storage is
+// untouched — nothing writes this back and no matcher reads it.
+import { displayUnit } from "@/lib/unit-conversions";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";
@@ -84,7 +90,11 @@ function ReadonlyObservationRow({
       {/* Self-describing headline — a reading with its unit and flag needs no
           "VALUE" label above it (the Td label rule). */}
       <Td slot="value">
-        <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+        <MedicalValue
+          value={r.value}
+          unit={displayUnit(r.unit)}
+          flag={r.flag}
+        />
       </Td>
       <Td
         slot="meta"

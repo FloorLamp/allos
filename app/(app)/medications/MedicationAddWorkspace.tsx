@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
-import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
-import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -14,7 +12,6 @@ import type { SupplyOption } from "@/lib/supply-product";
 
 export default function MedicationAddWorkspace({
   subtitle,
-  cabinetCount,
   action,
   allIntakeItems,
   stackItems,
@@ -26,10 +23,6 @@ export default function MedicationAddWorkspace({
   initialSupply = null,
 }: {
   subtitle: string;
-  // Shared bottles the caller can see in the medicine cabinet (#1522). Resolved at
-  // the page's auth boundary (countVisiblePools(scope.ids)) and passed as a plain
-  // number — the cabinet door beside "Add medication" replaced its nav row.
-  cabinetCount: number;
   action: (formData: FormData) => Promise<FormResult>;
   allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
@@ -53,21 +46,22 @@ export default function MedicationAddWorkspace({
       <PageHeader
         title="Medications"
         subtitle={subtitle}
-        // The action group takes its OWN LINE on a phone (#1522 follow-up, restated
-        // by #3403). Three affordances do not fit 390px beside "Medications" and its
-        // subtitle, and the app shell clips horizontal overflow — an un-wrapping row
-        // would push the Add button off-screen entirely rather than scroll to it. The
-        // group used to buy that by SHRINKING and wrapping inside itself while the page
-        // title shrank beside it; `stackActionBelowSm` gives it the whole line instead,
-        // so the title gets the full width too and the group still wraps within it —
-        // `PageHeader` deliberately withholds `shrink-0` from a STACKED action for
-        // exactly this. Beside the title from `sm` up, exactly as before. One content
-        // tree, both viewports.
+        // ONE affordance in the header now (#3479, owner-approved 2026-08-21). It
+        // carried three — the dose-ledger door, the cabinet door, and this primary —
+        // and below `sm` the group took its own line and wrapped INSIDE that line into
+        // two right-aligned rows, leaving ~150px of ragged chrome with an empty left
+        // half between the subtitle and the first card. The two quiet doors moved into
+        // the cards they serve (Today carries "Dose history", Current medications
+        // carries the cabinet), which is the pattern this page already demonstrated
+        // with print/share.
+        //
+        // `stackActionBelowSm` STAYS, and it is not vestigial: it is the #1522
+        // follow-up rule restated by #3403, and with a single 152px button beside a
+        // title and a counts subtitle at 390px the group would still be sharing a line
+        // it does not fit on. The rule is untouched; only its content shrank.
         stackActionBelowSm
         action={
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-            <DoseLedgerLink kind="medication" />
-            <SharedSuppliesLink count={cabinetCount} />
             <button
               type="button"
               className={`${open ? "btn-ghost" : "btn"} whitespace-nowrap`}

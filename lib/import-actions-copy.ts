@@ -10,9 +10,19 @@
 // Product decision (#1340): DETERMINISTIC imports (CCD/XDM/SHC/FHIR) get ZERO
 // re-apply narration anywhere — they store no AI extraction, so the control never
 // renders and its copy must never appear — and their "Preview changes" says the
-// re-run is FREE and EXACT (no AI call, no quota; the diff footnote already states
-// deterministic imports diff exactly), while an AI document's "Preview changes"
-// carries the daily-extraction cost note whether or not re-apply is present.
+// re-run is FREE and EXACT (the diff footnote already states deterministic imports
+// diff exactly), while an AI document's "Preview changes" carries the daily-extraction
+// cost note whether or not re-apply is present.
+//
+// WHAT "FREE" IS ALLOWED TO SAY (#3493 item 4). The deterministic line used to spend
+// its second half on OUR accounting — "no AI call, no quota, and the re-import is
+// exact" — which is bookkeeping about a cost the reader was never going to pay. It now
+// states the three things that are true FOR THEM: quick, free, same result. Exactness
+// is kept, because that is the reason to press the button.
+//
+// The AI branch is UNCHANGED and deliberately so: "costs one daily extraction" is not
+// internals-speak, it is the one real price this control has, and #1340 exists partly
+// because that warning used to disappear exactly when it mattered.
 //
 // Pure (no db/network) → lives in the unit tier. The `deterministic` flag is the
 // same classification as isDeterministicReprocess (lib/reprocess-cost.ts); callers
@@ -20,8 +30,8 @@
 
 export interface ImportActionExplainers {
   // Subtext under "Preview changes" (ReprocessDiffPanel). Deterministic health
-  // records re-import exactly with no AI call or quota; AI documents spend one daily
-  // extraction on the re-read.
+  // records re-import exactly and for free; AI documents spend one daily extraction on
+  // the re-read and say so.
   preview: string;
   // Subtext under "Re-apply saved extraction". Null when that control isn't
   // rendered — a deterministic import (no saved extraction, product-decided zero
@@ -39,7 +49,7 @@ export function importActionExplainers(input: {
   const { deterministic, hasRaw } = input;
   return {
     preview: deterministic
-      ? "Re-imports this health record and shows the diff before saving — no AI call, no quota, and the re-import is exact."
+      ? "Re-imports this health record and shows the diff before saving — it’s quick, free, and gives exactly the same result."
       : "Re-runs the AI to re-read this document and shows the diff before saving — costs one daily extraction.",
     // Belt-and-braces: gate on BOTH the product rule (never for deterministic) and
     // the structural fact (nothing to replay without a saved raw). Deterministic

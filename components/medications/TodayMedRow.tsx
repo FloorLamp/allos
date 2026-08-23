@@ -102,12 +102,23 @@ export default function TodayMedRow({
 //
 // The detail is a reference, not the document — the full text is on the medication
 // detail page the name links to (#852).
+//
+// THE NAME WRAPS; IT DOES NOT TRUNCATE (#3479 item 2). It used to carry `truncate`,
+// so a portal-imported name — "Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)" —
+// rendered as "Calcium Carb-Cholecalciferol (CALCIUM 5…" on one line beside the row's
+// two 32px action buttons, while the Current medications list below wrapped the SAME
+// name in full. #2858's rule keeps the full name where the surface is the record, and
+// its short-label resolver does not reach an uncurated imported product, so the name
+// this row is FOR was the one thing the row would not show. `break-words` keeps a
+// single unbroken token (a long chemical name with no spaces) inside the cell instead
+// of pushing the controls off; the width cap and `shrink-0` are #2940's priority
+// inversion, unchanged — the DETAIL is still the element that gives up its width.
 function Identity({ name, detail }: { name: string; detail?: string | null }) {
   return (
     <>
       <span
         data-testid="today-med-name"
-        className="max-w-full shrink-0 truncate"
+        className="max-w-full shrink-0 break-words"
       >
         {name}
       </span>
