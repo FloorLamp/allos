@@ -196,9 +196,7 @@ describe("the vocabulary is lib/injury-model's, with no parallel list (#2948)", 
       expect(chip(s, "regions")?.label).toBe(r);
     }
     for (const l of INJURY_LATERALITIES)
-      expect(lateralityFactLabel(l)).toContain(
-        l === "bilateral" ? "both" : l
-      );
+      expect(lateralityFactLabel(l)).toContain(l === "bilateral" ? "both" : l);
   });
 });
 

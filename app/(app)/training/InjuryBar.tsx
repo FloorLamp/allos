@@ -385,9 +385,6 @@ function InjuryScopeFields({
   openEditor,
   onOpen,
   onDone,
-  rowTestId,
-  editorTestId,
-  doneTestId,
   statusPanel,
 }: {
   // DOM ids must stay unique when the log form and an edit form are open together.
@@ -399,9 +396,6 @@ function InjuryScopeFields({
   openEditor: InjuryOpenPanel | null;
   onOpen: (key: InjuryOpenPanel, focusKey?: string) => void;
   onDone: () => void;
-  rowTestId: string;
-  editorTestId: string;
-  doneTestId: string;
   // The status editor, rendered between the precision and the load preference exactly
   // where the select used to sit. Only the log form has one: an existing injury's status
   // is the chip's own lifecycle buttons, and `updateInjury` never names it (#2359).
@@ -414,15 +408,15 @@ function InjuryScopeFields({
           display:none while none is. */}
       {openEditor == null && (
         <InjuryFactRow
-          testId={rowTestId}
+          testId="injury-fact-row"
           summary={summary}
           openEditor={openEditor}
           onOpen={onOpen}
         />
       )}
       <FactEditorHost
-        testId={editorTestId}
-        doneTestId={doneTestId}
+        testId="injury-editor"
+        doneTestId="injury-editor-done"
         panel={openEditor}
         onDone={onDone}
         bodyClassName="space-y-3"
@@ -668,9 +662,6 @@ function LogInjuryForm({
         openEditor={openEditor}
         onOpen={openPanel}
         onDone={closePanel}
-        rowTestId="injury-fact-row"
-        editorTestId="injury-editor"
-        doneTestId="injury-editor-done"
         statusPanel={
           <div hidden={openEditor !== "status"}>
             <label className="section-label" htmlFor="injury-status">
@@ -824,9 +815,6 @@ function EditInjuryForm({
         openEditor={openEditor}
         onOpen={openPanel}
         onDone={closePanel}
-        rowTestId="injury-edit-fact-row"
-        editorTestId="injury-edit-editor"
-        doneTestId="injury-edit-editor-done"
       />
       {(change.released.length > 0 || change.added.length > 0) && (
         <p
