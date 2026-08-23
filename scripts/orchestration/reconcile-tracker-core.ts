@@ -933,6 +933,64 @@ export function decidePriorityLabel(issue: TrackerIssue): PriorityOutcome {
   return { ok: true, from: slots[0] ?? null, to: stated };
 }
 
+export type DomainAddRefusal =
+  "not-a-domain" | "issue-closed" | "already-classified";
+
+export type DomainAddOutcome =
+  { ok: true } | { ok: false; refusal: DomainAddRefusal; detail: string };
+
+/**
+ * Whether ONE domain label may be added to ONE issue — the whole judgment, as a
+ * pure function, so the script has no read-modify-write logic of its own left to
+ * get wrong (#3122).
+ *
+ * An add may only FILL A GAP: an issue carrying no domain label at all. It can
+ * never re-classify an issue that already has one, because that is an argument
+ * about where work belongs and this routine does not have those.
+ *
+ * `alreadyAdded` IS THE FIX, AND IT IS NOT BOOKKEEPING. The script used to read
+ * each issue ONCE per plan key and then check every add for that issue against
+ * that one stale snapshot, so a plan listing two domains for the same issue —
+ * an agent hedging between `wellness` and `training` instead of asking — passed
+ * the gap check twice and landed BOTH labels, silently. Re-reading between writes
+ * closes it when `--apply` is on; nothing closes it in a DRY RUN, where no write
+ * happens and every re-read returns the same labels, so the dry run would keep
+ * promising a pair of writes that the real run could never perform. The set of
+ * labels this run has already decided on is the state the re-read cannot supply,
+ * and passing it in makes the dry run and the apply agree by construction.
+ */
+export function decideDomainAdd(
+  issue: TrackerIssue,
+  label: string,
+  alreadyAdded: readonly string[] = []
+): DomainAddOutcome {
+  if (!(DOMAIN_LABELS as readonly string[]).includes(label)) {
+    return {
+      ok: false,
+      refusal: "not-a-domain",
+      detail: "only a domain label may be added",
+    };
+  }
+  if (issue.state !== "open") {
+    return {
+      ok: false,
+      refusal: "issue-closed",
+      detail: "the issue is closed",
+    };
+  }
+  const carried = [...issue.labels, ...alreadyAdded].filter((l) =>
+    (DOMAIN_LABELS as readonly string[]).includes(l)
+  );
+  if (carried.length > 0) {
+    return {
+      ok: false,
+      refusal: "already-classified",
+      detail: `carries ${[...new Set(carried)].join(", ")}; re-classifying is not this routine's call`,
+    };
+  }
+  return { ok: true };
+}
+
 export function planLabelRemovals(
   issues: readonly TrackerIssue[]
 ): LabelRemoval[] {

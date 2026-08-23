@@ -1,13 +1,11 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { specsNeedingIsolation } from "../../vitest.isolation";
+import { makeTmpDir } from "./tmp-dir";
 
 function scan(sources: Record<string, string>): string[] {
-  const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "allos-vitest-isolation-")
-  );
+  const root = makeTmpDir("vitest-isolation");
   const dir = path.join(root, "specs");
   fs.mkdirSync(dir);
   try {

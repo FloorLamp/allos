@@ -18,10 +18,10 @@ import {
   vi,
 } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
+import { makeTmpDir } from "./tmp-dir";
 import { parseNotifyLine, type NotifyEvent } from "../notify-log-format";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +36,7 @@ let sink: typeof import("../notify-log");
 let logger: typeof import("../log");
 
 beforeAll(async () => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-notify-log-"));
+  tmpDir = makeTmpDir("notify-log");
   process.chdir(tmpDir);
   sink = await import("../notify-log");
   logger = await import("../log");

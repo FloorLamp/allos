@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { makeTmpDir } from "./tmp-dir";
 
 // A historical-shape fixture must name the migration it stops before (#3565).
 //
@@ -274,9 +274,7 @@ describe("the census walk reaches a planted offender", () => {
   // one fixture that already offends, one that is clean, and the plant in a
   // SUBDIRECTORY of a root added in this round — so finding it proves the walk
   // recurses AND that `e2e/` is really being entered.
-  const base = fs.mkdtempSync(
-    path.join(os.tmpdir(), "migration-fixture-corpus-")
-  );
+  const base = makeTmpDir("migration-fixture-corpus");
   const corpus: Corpus = { base, roots: ROOTS };
   const plantedRel = "e2e/planted/zz-planted-fixture.ts";
   const planted = path.join(base, plantedRel);
@@ -381,9 +379,7 @@ describe("the walk's own reach", () => {
   });
 
   it("does not wander outside the scanned roots", () => {
-    const dir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "migration-fixture-out-")
-    );
+    const dir = makeTmpDir("migration-fixture-out");
     try {
       fs.writeFileSync(
         path.join(dir, "Outside.ts"),

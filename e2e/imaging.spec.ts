@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_RECS_ENRICH, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -392,7 +392,14 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // assertion — the shared seed and neighbor tests contribute rows too.
     const card = page.getByTestId("radiation-dose-card");
     await expect(card).toBeVisible();
-    await expect(card).toContainText("Estimated:");
+    // This record has no recorded dose at all, so the recorded/estimated split has
+    // nothing to split and the estimated portion is carried in the headline's own
+    // context instead of on a sub-line restating the same figure (#3498 item 2).
+    // Same fact, stated once.
+    await expect(card.getByTestId("radiation-dose-context")).toContainText(
+      /\d+ estimated stud/
+    );
+    await expect(card).not.toContainText("Estimated:");
     await expect(card.getByTestId("radiation-dose-total")).toContainText("≈");
 
     // Clean up the study we created.
@@ -505,10 +512,16 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const card = page.getByTestId("radiation-dose-card");
     await expect(card).toBeVisible();
     const details = card.getByTestId("radiation-dose-breakdown");
+    // The closed label is a whole sentence (#3498 item 1) — it read "What this adds
+    // up", which stops one word short of being one.
+    await expect(details.locator("summary")).toContainText(
+      "What this adds up to"
+    );
     if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
       await details.locator("summary").click();
     }
     await expect(details).toHaveJSProperty("open", true);
+    await expect(details.locator("summary")).toContainText("Hide the studies");
 
     const contribution = details
       .getByTestId("radiation-dose-contribution")
@@ -609,4 +622,52 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       details.getByTestId("radiation-dose-exclusion").filter({ hasText: "MRI" })
     ).toContainText("No ionizing radiation.");
   });
+});
+
+// THE TAB'S OPENING BLOCK, at phone width (#3498 item 4, #3486's grammar).
+//
+// "＋ Add imaging study" used to render as a lone left-aligned primary on its own
+// row ABOVE the dose card, so the tab opened with a button instead of with the
+// thing the tab is about. It now sits in the list's own filter toolbar, beside the
+// controls that act on the same list.
+//
+// Read-only: nothing is created, so this needs no cleanup and is repeat-safe.
+test("the imaging tab opens with the dose card, and the create action sits in the filter toolbar (#3498)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_RECS_ENRICH,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/results/imaging");
+
+  const card = page.getByTestId("radiation-dose-card");
+  const list = page.getByTestId("imaging-study-list");
+  const add = page.getByTestId("add-imaging-panel-toggle");
+  const modality = page.getByLabel("Filter by modality");
+
+  // Wait for the real content before measuring: a geometry read taken against a
+  // half-mounted page is a claim about whatever happened to be there.
+  await expect(card).toBeVisible();
+  await expect(add).toBeVisible();
+  await expect(modality).toBeVisible();
+
+  const [cardBox, addBox] = await settledBoxes([card, add]);
+
+  // The dose card is the first block; the create action is below it.
+  expect(addBox.y).toBeGreaterThan(cardBox.y + cardBox.height);
+
+  // And it is IN the toolbar, not floating: a descendant of the list's own filter
+  // toolbar, beside the controls that act on the same list. Containment rather
+  // than a same-ROW claim — at 390px three controls wrap onto two lines, and the
+  // defect was a button on a row of its own ABOVE the tab, not a wrap.
+  await expect(
+    list
+      .getByTestId("imaging-filter-toolbar")
+      .getByTestId("add-imaging-panel-toggle")
+  ).toBeVisible();
+  await expect(modality).toBeVisible();
+
+  await page.context().close();
 });

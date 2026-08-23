@@ -27,7 +27,9 @@ import {
 import { chartBand } from "@/lib/chart-colors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import { roundChartValue } from "@/lib/chart-format";
-import { formatLongDate } from "@/lib/format-date";
+import { loneReading } from "@/lib/trend-sparkline";
+import SingleReadingMark from "./SingleReadingMark";
+import { formatDateWithYear, formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   dateToEpoch,
@@ -91,6 +93,50 @@ export default function BiomarkerChart({
     return (
       <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
         No numeric readings to chart yet
+      </div>
+    );
+  }
+
+  // ONE READING IS A MARK, NOT A PLOT (docs/internals/charts.md, #1485 G / #2615).
+  //
+  // The convergence that rule describes reached the tiles and the LineChartCard
+  // family and stopped there: this chart went on drawing the exact render charts.md
+  // names as "reads as a rendering failure" — a full-height band, empty apart from
+  // one dot, under an axis that subdivided a sub-day span into "07-09 · 07-09 ·
+  // 07-09 · 07-10 · 07-10 · 07-11". A tile and the detail page it taps through to
+  // were drawing the identical situation two ways, which is the one thing the shared
+  // predicate exists to prevent, so this family joins over the SAME `loneReading`
+  // and the SAME `SingleReadingMark` rather than growing a variant of either.
+  //
+  // Ahead of the domain build on purpose: the mark returns before any axis exists,
+  // so the repeated day ticks cannot be drawn behind it (`timeAxisTicks` also stops
+  // emitting duplicate labels, for the genuine two-point sub-day span this branch
+  // does not cover).
+  //
+  // THE CAPTION carries the YEAR, where the funnel's says "Jul 13". A lab series is
+  // the sparsest one this app draws — a single reading here is regularly years old,
+  // and the chart's own axis already switches to a year-bearing tick for that
+  // reason. charts.md pins the caption's SHAPE ("Single reading · <when>") and
+  // leaves the words per surface; the date still renders through the display
+  // boundary (copy.md §9), never as stored.
+  const lone = loneReading(data);
+  if (lone) {
+    return (
+      <div className="h-64 w-full">
+        <SingleReadingMark
+          fill
+          color={c.line}
+          testid="chart-single-reading"
+          readingScope="inside"
+          caption={
+            <>
+              Single reading ·{" "}
+              <time dateTime={lone.date}>
+                {formatDateWithYear(lone.date, formatPrefs)}
+              </time>
+            </>
+          }
+        />
       </div>
     );
   }

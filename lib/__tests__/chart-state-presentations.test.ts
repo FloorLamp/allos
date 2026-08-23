@@ -221,6 +221,69 @@ describe("state 3 — an over-limit hole earns a hole", () => {
   });
 });
 
+// THE FAMILY THAT NEVER JOINED (#3497 item 1).
+//
+// #2615's convergence covered the tiles and the LineChartCard funnel above, and its
+// whole claim is that "a tile and the surface it taps through to cannot render the
+// identical situation two ways". `BiomarkerChartInner` is that surface for every lab
+// analyte and it was not in the convergence: a one-reading ApoB drew a full-height
+// band, empty apart from one dot, under an axis that printed the same day three
+// times. Nothing could see it, because the funnel's guard above reads the funnel and
+// this chart does not go through the funnel.
+//
+// It is a SECOND file to scan rather than a widening of the block above, because the
+// property is not "the funnel decides" — it is "every full-size chart family decides
+// the same way". #3235 owns the third instance (EquipmentTrend) and is deliberately
+// NOT asserted here; when it lands it adds its own block.
+const BIOMARKER = "components/BiomarkerChartInner.tsx";
+const biomarker = fs.readFileSync(path.join(REPO, BIOMARKER), "utf8");
+
+describe("the biomarker detail chart draws a mark, not a plot (#3497)", () => {
+  it("it asks the SHARED predicate, not a length check of its own", () => {
+    // `data.length === 1` is the tempting local spelling and it is wrong for a
+    // densified series: `loneReading` counts NON-NULL points, which is the
+    // distinction that makes a tile and this chart agree.
+    expect(
+      /\bloneReading\(/.test(biomarker),
+      `${BIOMARKER} must ask lib/trend-sparkline's loneReading`
+    ).toBe(true);
+    expect(/<SingleReadingMark\b/.test(biomarker)).toBe(true);
+    expect(
+      /data\.length === 1/.test(biomarker),
+      "a local one-point check would disagree with the tiles on a densified series"
+    ).toBe(false);
+  });
+
+  it("the mark returns BEFORE the plot, so no band is drawn behind it", () => {
+    const mark = biomarker.indexOf("<SingleReadingMark");
+    const plot = biomarker.indexOf("<LineChart");
+    expect(mark).toBeGreaterThan(-1);
+    expect(plot).toBeGreaterThan(-1);
+    expect(
+      mark,
+      "the one-reading branch must return its own mark — the empty band behind a " +
+        "single dot is the render docs/internals/charts.md calls a failure"
+    ).toBeLessThan(plot);
+  });
+
+  it("the mark returns before the AXIS is even built", () => {
+    // The duplicate day ticks ("07-09 · 07-09 · 07-09") were the same defect's
+    // second symptom. A lone reading now draws no axis at all, so they cannot
+    // appear on it however the tick maths changes.
+    const branch = biomarker.slice(0, biomarker.indexOf("<SingleReadingMark"));
+    expect(branch).not.toContain("timeAxisTicks(");
+  });
+
+  it("the caption names the reading and its day, and claims nothing else", () => {
+    expect(biomarker).toContain("Single reading ·");
+    // With the YEAR, unlike the funnel's formatMonthDay: a lab series is the
+    // sparsest this app draws and a single reading is regularly years old. Still
+    // through the display boundary (copy.md §9), never a stored string.
+    expect(/formatDateWithYear\(lone\.date/.test(biomarker)).toBe(true);
+    expect(biomarker).not.toContain("Trend unavailable");
+  });
+});
+
 describe("nothing here is carried by motion (#2654)", () => {
   it("no state presentation introduces an animation of its own", () => {
     // Reduced motion is the designed state. Every mark added by #2653 — the

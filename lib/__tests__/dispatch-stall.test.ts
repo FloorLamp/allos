@@ -29,7 +29,6 @@
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,6 +40,7 @@ import {
   stallVerdict,
   worktreeIdleMs,
 } from "../../scripts/orchestration/dispatch-brief.mjs";
+import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCRIPT = path.join(REPO, "scripts/orchestration/dispatch-brief.mjs");
@@ -54,7 +54,7 @@ const THRESHOLD = 3 * 85 * MINUTE;
 const temps: string[] = [];
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-stall-"));
+  const dir = makeTmpDir("stall");
   temps.push(dir);
   return dir;
 }

@@ -30,7 +30,6 @@
 // an excerpt chosen by the person writing the assertion proves the excerpt.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -47,6 +46,7 @@ import {
   shipsRuntimeCode,
   vocabularyHits,
 } from "../../scripts/orchestration/adversarial-review-brief.mjs";
+import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCRIPT = path.join(
@@ -626,7 +626,7 @@ describe("the exit codes", () => {
   // first applied — and it is reachable here without a network by putting a stub
   // `curl` in front of the real one.
   const withStubCurl = (script: string) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "adversarial-curl-"));
+    const dir = makeTmpDir("adversarial-curl");
     fs.writeFileSync(path.join(dir, "curl"), script, { mode: 0o755 });
     try {
       return spawnSync(process.execPath, [SCRIPT, "4242", "--check"], {

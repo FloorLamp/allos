@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -16,6 +15,7 @@ import {
   type FlooredControl,
   type ImportedModule,
 } from "../tap-floor-reach";
+import { makeTmpDir } from "./tmp-dir";
 
 // THE TAP FLOOR'S REACH, SWEPT OVER THE TREE (#3486 part 3, under #3514).
 //
@@ -1356,7 +1356,7 @@ describe("the census walk reaches a planted offender", () => {
   // both roots the tree uses, one already-missing control, one compliant one,
   // and the plant in a SUBDIRECTORY so finding it also proves the walk recurses
   // rather than reading one directory's entries.
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), "tap-floor-corpus-"));
+  const base = makeTmpDir("tap-floor-corpus");
   const corpus: Corpus = { base, roots: ROOTS };
   const plantedRel = "components/planted/__tap_floor_planted.tsx";
   const planted = path.join(base, plantedRel);
@@ -1528,7 +1528,7 @@ describe("the census walk reaches a planted offender", () => {
 // the planted-offender case above so a failure says which of the two broke.
 describe("the walk's filters", () => {
   it("does not wander outside the scanned roots", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tap-floor-"));
+    const dir = makeTmpDir("tap-floor");
     try {
       fs.writeFileSync(
         path.join(dir, "Outside.tsx"),

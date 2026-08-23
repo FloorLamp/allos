@@ -696,9 +696,23 @@ echo
 # 5. Cheap environment facts a restart can change.
 echo "--- environment ---"
 df -h / | awk 'NR==2 {print "  disk: " $4 " free (" $5 " used)"}'
-shared=$(find /tmp -maxdepth 1 -type d -name 'allos-db-shared-*' 2>/dev/null | wc -l | tr -d ' ')
-takeout=$(find /tmp -maxdepth 1 -name 'allos-takeout-*' 2>/dev/null | wc -l | tr -d ' ')
-echo "  tmp: allos-db-shared=$shared allos-takeout=$takeout"
+# EVERY prefix, with a per-prefix breakdown of the worst offenders — not the two
+# hand-picked counters this used to print. #3248 was diagnosed on a container whose
+# backlog was 76% `allos-db-shared-*`; by the time it was re-measured that prefix was
+# 0.4% and the leak had moved entirely to per-spec temp dirs nothing counted. Two
+# named counters cannot see a leak move, and #3248's author lost the A/B that would
+# have named the new leaker because nothing had ever recorded the shape. Anything
+# older than an hour is stranded by definition — lib/__tests__/tmp-dir.ts sweeps at
+# that threshold, so a non-zero count here means either a very recent kill or a temp
+# path that is not going through makeTmpDir.
+stale=$(find /tmp -maxdepth 1 -name 'allos-*' -mmin +60 2>/dev/null | wc -l | tr -d ' ')
+echo "  tmp: $stale stranded /tmp/allos-* (older than 60 min)"
+if [ "$stale" -gt 0 ]; then
+  find /tmp -maxdepth 1 -name 'allos-*' -mmin +60 -printf '%f\n' 2>/dev/null |
+    sed -E 's/-[A-Za-z0-9]{6}$//; s/-[0-9]+\.zip$//' |
+    sort | uniq -c | sort -rn | head -5 |
+    awk '{print "        " $1 " x " $2 "-*"}'
+fi
 if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "  GH_TOKEN: present"
 else

@@ -13,7 +13,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { db } from "@/lib/db";
 import {
@@ -28,6 +27,7 @@ import {
   resolveEmailRecipients,
   sendTestEmailToLogin,
 } from "@/lib/notifications/email";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 function newProfile(name: string): number {
   return Number(
@@ -87,10 +87,7 @@ beforeEach(() => {
     from: "allos@example.com",
   });
   setSetting("public_url", "https://allos.example");
-  captureFile = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), "allos-email-notify-")),
-    "mailbox.jsonl"
-  );
+  captureFile = path.join(makeTmpDir("email-notify"), "mailbox.jsonl");
   process.env.EMAIL_TEST_CAPTURE = captureFile;
 });
 
