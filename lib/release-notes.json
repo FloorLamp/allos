@@ -104,6 +104,12 @@
           "title": "The ride detail page reads better, and stray text links look like links",
           "kind": "fix",
           "issues": [3500, 3607]
+        },
+        {
+          "pr": 3643,
+          "title": "The reminder-rules editor no longer runs off the side of a phone screen on a long item name",
+          "kind": "fix",
+          "issues": [3631]
         }
       ]
     },
