@@ -131,13 +131,25 @@ export function hasTelemetryAnswer(
     .get(profileId, externalId, source);
 }
 
+// What the SOURCE said it holds for this session (#3037). A caller only writes a
+// telemetry row once the source has ANSWERED — the sync guards on `answeredNow ||
+// answered`, the backfill on two 200s — so the stored bytes are the answer:
+// something means `streams`, nothing means `none`. Derived from what is actually
+// STORED, never from the incoming payload, because a partial pull can arrive empty
+// over a row that already holds a series.
+export type TelemetryAnswer = "streams" | "none";
+
+function answerFor(streamsJson: string): TelemetryAnswer {
+  return streamsJson && streamsJson !== "{}" ? "streams" : "none";
+}
+
 export function upsertActivityTelemetry(
   profileId: number,
   rows: NormActivityTelemetry[],
   source: string
 ): UpsertCounts {
   const find = db.prepare(
-    `SELECT streams_json, ftp_w, heart_rate_zones_json, power_zones_json, snapshot_at
+    `SELECT streams_json, ftp_w, heart_rate_zones_json, power_zones_json, snapshot_at, answer
        FROM activity_telemetry
       WHERE profile_id = ? AND activity_id = ? AND source = ?`
   );
@@ -145,15 +157,16 @@ export function upsertActivityTelemetry(
     `INSERT INTO activity_telemetry
        (profile_id, activity_id, source, streams_json, ftp_w,
         heart_rate_zones_json, power_zones_json, snapshot_at,
-        stream_summary_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        stream_summary_json, answer)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
        streams_json = excluded.streams_json,
        ftp_w = excluded.ftp_w,
        heart_rate_zones_json = excluded.heart_rate_zones_json,
        power_zones_json = excluded.power_zones_json,
        snapshot_at = excluded.snapshot_at,
-       stream_summary_json = excluded.stream_summary_json`
+       stream_summary_json = excluded.stream_summary_json,
+       answer = excluded.answer`
   );
   const counts = emptyCounts();
   for (const row of rows) {
@@ -167,7 +180,7 @@ export function upsertActivityTelemetry(
       snapshot_at: row.snapshot_at,
     };
     const prior = find.get(profileId, activityId, source) as
-      typeof incoming | undefined;
+      (typeof incoming & { answer: TelemetryAnswer | null }) | undefined;
     // The stream, athlete, and zones calls fail independently. Empty/null values
     // therefore mean "not available in this pull", not "erase the last good
     // artifact". FTP and zone values are also historical snapshots: once present
@@ -187,12 +200,19 @@ export function upsertActivityTelemetry(
           snapshot_at: incoming.snapshot_at,
         }
       : incoming;
+    const answer = answerFor(post.streams_json);
+    // `answer` is part of what makes a row equal, and that is load-bearing rather
+    // than tidy (#3037). A pre-column row holds `{}` with a NULL answer; a re-ask
+    // that returns the same `{}` would otherwise be "unchanged", nothing would be
+    // written, and the session would stay a candidate forever — which is the very
+    // badge-cannot-reach-zero defect this column exists to end.
     const equal =
       !!prior &&
       prior.streams_json === post.streams_json &&
       prior.ftp_w === post.ftp_w &&
       prior.heart_rate_zones_json === post.heart_rate_zones_json &&
-      prior.power_zones_json === post.power_zones_json;
+      prior.power_zones_json === post.power_zones_json &&
+      prior.answer === answer;
     const disposition = classifyUpsert(!!prior, equal);
     // snapshot_at describes when values changed; don't churn it on an identical
     // trailing-window re-fetch.
@@ -216,7 +236,8 @@ export function upsertActivityTelemetry(
         // reconcile re-derives it.
         serializeCyclingStreamSummary(
           summarizeCyclingStreams(post.streams_json, post.power_zones_json)
-        )
+        ),
+        answer
       );
     }
     tallyUpsert(counts, disposition);
@@ -244,6 +265,21 @@ function fieldsEqual(
   fields: string[]
 ): boolean {
   return fields.every((field) => prior[field] === post[field]);
+}
+
+// One incoming row per external id, LAST WINS (#3194).
+//
+// The source's own payload can carry the same child id twice — a twin upload
+// merged upstream, or (before ids were preserved through the parse) two int64 ids
+// that rounded onto one string. `byExternalId` below is built from EXISTING rows
+// only, so both copies looked new and both were inserted: the second insert hit
+// `UNIQUE(profile_id, source, external_id)` and threw, aborting a whole backfill
+// sweep. A group with a duplicate is a payload defect, not a reason to refuse the
+// ride, so it collapses here and the ride still lands.
+function dedupeByExternalId<T>(rows: T[], keyOf: (row: T) => string): T[] {
+  const byExternalId = new Map<string, T>();
+  for (const row of rows) byExternalId.set(keyOf(row), row);
+  return [...byExternalId.values()];
 }
 
 export function replaceActivityLaps(
@@ -293,9 +329,29 @@ export function replaceActivityLaps(
   const remove = db.prepare(
     "DELETE FROM activity_laps WHERE id = ? AND profile_id = ?"
   );
-  for (const [externalId, group] of groupedChildren(rows, parentExternalIds)) {
+  // The UNIQUE is (profile_id, source, external_id) — it spans EVERY activity, so
+  // an id this ride now claims may still be filed under a different one. See
+  // reparent below.
+  const findAnywhere = db.prepare(
+    `SELECT id FROM activity_laps
+      WHERE profile_id = ? AND source = ? AND external_id = ?`
+  );
+  const reparent = db.prepare(
+    `UPDATE activity_laps SET
+       activity_id = ?, lap_index = ?, name = ?, distance_m = ?,
+       moving_time_sec = ?, elapsed_time_sec = ?, start_index = ?, end_index = ?,
+       elevation_gain_m = ?, average_speed_mps = ?, max_speed_mps = ?,
+       average_cadence = ?, average_watts = ?, average_heartrate = ?,
+       max_heartrate = ?
+     WHERE id = ? AND profile_id = ?`
+  );
+  for (const [externalId, rawGroup] of groupedChildren(
+    rows,
+    parentExternalIds
+  )) {
     const activityId = resolveActivity(profileId, externalId);
     if (activityId == null) continue;
+    const group = dedupeByExternalId(rawGroup, (row) => row.lap_external_id);
     const existing = find.all(profileId, activityId, source) as (Record<
       string,
       unknown
@@ -329,13 +385,26 @@ export function replaceActivityLaps(
       );
       const prior = byExternalId.get(row.lap_external_id);
       if (!prior) {
-        insert.run(
+        // A lap id filed under ANOTHER activity is a re-parent, not a crash
+        // (#3194). The source re-issued this id against this ride — an upstream
+        // merge of twin uploads is the observed way that happens — and the row
+        // belongs where the source now says it does. Inserting instead threw
+        // `UNIQUE constraint failed`, which aborted the whole backfill sweep.
+        const elsewhere = findAnywhere.get(
           profileId,
-          activityId,
           source,
-          row.lap_external_id,
-          ...values
-        );
+          row.lap_external_id
+        ) as { id: number } | undefined;
+        if (elsewhere)
+          reparent.run(activityId, ...values, elsewhere.id, profileId);
+        else
+          insert.run(
+            profileId,
+            activityId,
+            source,
+            row.lap_external_id,
+            ...values
+          );
       } else if (!fieldsEqual(prior, post, fields)) {
         update.run(...values, prior.id, profileId);
       }
@@ -388,9 +457,28 @@ export function replaceSegmentEfforts(
   const remove = db.prepare(
     "DELETE FROM activity_segment_efforts WHERE id = ? AND profile_id = ?"
   );
-  for (const [externalId, group] of groupedChildren(rows, parentExternalIds)) {
+  // The UNIQUE is (profile_id, source, external_id) — it spans EVERY activity, so
+  // an id this ride now claims may still be filed under a different one. See
+  // reparent below.
+  const findAnywhere = db.prepare(
+    `SELECT id FROM activity_segment_efforts
+      WHERE profile_id = ? AND source = ? AND external_id = ?`
+  );
+  const reparent = db.prepare(
+    `UPDATE activity_segment_efforts SET
+       activity_id = ?, segment_id = ?, name = ?, distance_m = ?,
+       moving_time_sec = ?, elapsed_time_sec = ?, start_index = ?, end_index = ?,
+       average_cadence = ?, average_watts = ?, average_heartrate = ?,
+       max_heartrate = ?, pr_rank = ?, kom_rank = ?
+     WHERE id = ? AND profile_id = ?`
+  );
+  for (const [externalId, rawGroup] of groupedChildren(
+    rows,
+    parentExternalIds
+  )) {
     const activityId = resolveActivity(profileId, externalId);
     if (activityId == null) continue;
+    const group = dedupeByExternalId(rawGroup, (row) => row.effort_external_id);
     const existing = find.all(profileId, activityId, source) as (Record<
       string,
       unknown
@@ -423,13 +511,26 @@ export function replaceSegmentEfforts(
       );
       const prior = byExternalId.get(row.effort_external_id);
       if (!prior) {
-        insert.run(
+        // An effort id filed under ANOTHER activity is a re-parent, not a crash
+        // (#3194). This is the write that threw `UNIQUE constraint failed:
+        // activity_segment_efforts.profile_id, …source, …external_id` and killed
+        // the prod ride-detail backfill at 48 of 208 — for a fortnight, on every
+        // retry, because the candidate order is stable.
+        const elsewhere = findAnywhere.get(
           profileId,
-          activityId,
           source,
-          row.effort_external_id,
-          ...values
-        );
+          row.effort_external_id
+        ) as { id: number } | undefined;
+        if (elsewhere)
+          reparent.run(activityId, ...values, elsewhere.id, profileId);
+        else
+          insert.run(
+            profileId,
+            activityId,
+            source,
+            row.effort_external_id,
+            ...values
+          );
       } else if (!fieldsEqual(prior, post, fields)) {
         update.run(...values, prior.id, profileId);
       }

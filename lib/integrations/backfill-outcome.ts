@@ -30,6 +30,24 @@
 // The cost is bounded by the thing this fixes: once a job reaches `completed`,
 // nothing retries it automatically, so the re-ask happens only when a person asks.
 //
+// AMENDED BY #3037 (owner ruling, 2026-08-16), and the amendment KEEPS both
+// properties above rather than trading them away. One class of candidate turned
+// out to be permanent: a HAND-ENTERED or indoor session has no telemetry and never
+// will, so "recompute the verdict every run" meant re-asking forever, at two
+// requests each — ~800 a run on a profile with 400 of them, against Strava's
+// 1000/day ceiling — while the badge could never reach zero. So the source's own
+// answer IS now stored, on `activity_telemetry.answer`.
+//
+// What that does NOT do is give up: reversibility moved from "free on every run"
+// to "explicit, and a person chooses" (`recheckStravaAnsweredSessions`), which is
+// the same condition this module already names as making the re-ask affordable. And
+// the marker is stricter than the recomputed verdict, per #3034 — it is written
+// only from a settled answer, never from a transient failure, and the migration
+// that added it deliberately left every pre-existing empty row UNCLASSIFIED rather
+// than reading it as "nothing".
+//
+// The HTTP half below is unchanged: no 403/404/410 verdict is persisted anywhere.
+//
 // ---------------------------------------------------------------------------------
 // #2385 — how this would learn it should stop:
 //

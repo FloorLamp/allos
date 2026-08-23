@@ -22,12 +22,17 @@ import {
   looksLikeExtractionInput,
 } from "./normalize";
 import { reconcileAgainstSource } from "./reconcile";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import type { ExtractionResult, ExtractionMeta } from "./types";
 
 // Prefix server logs so extraction activity is easy to grep in the dev/prod
 // console. One line per lifecycle event (start / done / skipped / failed).
 const log = createLogger("medical-extract");
 
+// Every branch here is AUTHORED for a reader, and the two that used to append the
+// client's own `err.message` no longer do (#3198): the raw text added nothing a
+// person could act on and everything a stack frame or a request URL carries. The
+// caller logs the error, which is where the detail belongs.
 export function describeError(err: unknown): string {
   if (err instanceof APIConnectionTimeoutError) {
     return "The AI request timed out before responding. The document may be large or the model took too long — try again, or split it into smaller files.";
@@ -44,10 +49,10 @@ export function describeError(err: unknown): string {
     if (s === 429)
       return "Rate limited by the AI. Wait a moment, then delete this document and re-upload.";
     if (typeof s === "number" && s >= 500)
-      return `The AI service returned a server error (${s}). Try again shortly. (${err.message})`;
-    return `AI request failed${s ? ` (HTTP ${s})` : ""}: ${err.message}`;
+      return `The AI service returned a server error (${s}). Try again shortly.`;
+    return `The AI request didn\u2019t go through${s ? ` (HTTP ${s})` : ""}. Try again.`;
   }
-  return err instanceof Error ? err.message : "AI request failed.";
+  return userErrorCopy(err, { doing: "read this document", service: "the AI" });
 }
 
 // The successful arm of the union — what a parsed tool input reduces to.
@@ -155,11 +160,11 @@ export async function extractMedicalDocument(
       feature: "extraction",
       status: "failed",
       detail: filename,
-      error: `Could not read file: ${err instanceof Error ? err.message : "unknown error"}`,
+      error: "Couldn't read that file.",
     });
     return {
       status: "failed",
-      error: `Could not read file: ${err instanceof Error ? err.message : "unknown error"}`,
+      error: "Couldn't read that file.",
     };
   }
 

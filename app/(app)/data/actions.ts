@@ -3,6 +3,7 @@ import { requireSession, requireWriteAccess } from "@/lib/auth";
 import { IMPORTED } from "@/lib/logged-via";
 
 import { revalidateRoute } from "@/lib/revalidate";
+import { userErrorCopy } from "@/lib/user-error-copy";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
@@ -262,11 +263,15 @@ async function runImportJob(
       ).run(JSON.stringify(res), resultSummary(res), jobId, profileId);
     }
   } catch (err) {
+    // The raw cause goes to the operator log; the import surface renders this
+    // column, so it gets house copy (#3198). It used to read
+    // `Extraction crashed: <whatever was thrown>` — a sentence minted by code that
+    // never considered a reader.
     log.error("import job crashed", { jobId, err });
     db.prepare(
       "UPDATE import_jobs SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? AND profile_id = ?"
     ).run(
-      `Extraction crashed: ${err instanceof Error ? err.message : "unknown error"}`,
+      userErrorCopy(err, { doing: "read this import" }),
       jobId,
       profileId
     );
