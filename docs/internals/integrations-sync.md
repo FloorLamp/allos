@@ -744,6 +744,29 @@ those secondary consumers from disagreeing with authoritative totals.
 Metric-sample tombstones use the same origin/start identity, so deleting an
 in-progress snapshot remains sticky when its next push has a later end.
 
+**A RE-SENT ROW KEEPS THE DAY IT WAS ATTRIBUTED TO (#3428, write side).**
+`metric_samples.date` is a profile-local day the app derives at ingest under
+`getTimezone(profileId)` — the zone in force at the moment of the push. The natural
+key omits `date`, so a re-send lands as an ON CONFLICT UPDATE, and the update used to
+re-derive that day under whatever zone the profile holds NOW. The Health Connect
+exporter re-sends a sleep session on EVERY push while it is inside its 48 h window,
+not only on change, so after a travel switch a whole night is re-dated on every push
+for two days and a hand repair does not survive one push (measured on prod: the 08-21
+night was repaired at 03:13Z and put back on 08-20 by the 03:19:59Z push). `resendDay`
+in `lib/integrations/normalize.ts` keeps the stored day — #3428's decision 4, "a day
+attribution is a decision the app already made", which `rowLocalDay` already applies on
+READ, moved to the write. A first insert is untouched, so a genuinely new row still
+buckets under the zone in force at its instant. It is NOT `zoneAt`: that resolver needs
+the complete, unbounded switch history of #3428 item 2, which does not exist yet and is
+blocked on the owner's `kind: travel | settings` discriminator (#3524 / PR #3551).
+
+THE ONE CARVE-OUT is a re-anchorable day bucket (`isSupersedingWindow`), whose `date`
+is the DEVICE's local day label rather than an attribution of an instant. Those keep
+re-deriving, because the supersede below can only collapse a stale anchoring over
+candidates filed under the bucket's own `date`; freezing them strands the stale row on
+a day nothing reaches, and its double count becomes permanent AND unreported. Measured
+by removing the carve-out: 6500 stored for 3500 walked, split over two days.
+
 **A re-anchored day bucket SUPERSEDES what it overlaps (#3424).** #1101's key
 answers the moving-END case and cannot see the moving-START one. The exporter cuts
 each `daily` record at DEVICE-local midnight, so a timezone change re-anchors
