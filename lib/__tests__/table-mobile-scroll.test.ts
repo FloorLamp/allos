@@ -279,7 +279,7 @@ describe("the scan can see, and stays quiet on the prose that explains it", () =
         "  // This used to be a bare <table> before #1426 moved it to cards.",
         "  return (",
         "    <div>",
-        "      {/* the old <table className=\"w-full\"> lived here */}",
+        '      {/* the old <table className="w-full"> lived here */}',
         "      <p>no table</p>",
         "    </div>",
         "  );",
@@ -298,7 +298,7 @@ describe("the scan can see, and stays quiet on the prose that explains it", () =
       "app/(app)/planted/WrapperInProse.tsx",
       [
         "export function P() {",
-        "  // The wrapper below used to be <div className=\"overflow-x-auto\">.",
+        '  // The wrapper below used to be <div className="overflow-x-auto">.',
         "  return (",
         "    <div>",
         "      <table>",

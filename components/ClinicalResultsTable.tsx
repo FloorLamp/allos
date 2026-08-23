@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconChevronRight } from "@tabler/icons-react";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
+import { CARD_MODE_ONLY } from "@/lib/card-row";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
 import NotesText from "./NotesText";
 import SourceDocumentLink from "./SourceDocumentLink";
@@ -363,11 +364,15 @@ function ClinicalResultRow({
   ) : null;
   // The name cell. In TABLE mode the group's name shows once, on the group's start
   // row (the classic run-heading). A CARD is a standalone row, so a continuation
-  // card with no name would be unreadable — it repeats the name below `sm`. Same
+  // card with no name would be unreadable — it repeats the name in card mode. Same
   // authored cell, one visibility rule; never a second, separately-written tree.
+  // The rule is CARD_MODE_ONLY (lib/card-row.ts, #3457) rather than a `sm:` literal:
+  // this is exactly what that constant is for — markup that exists only on a card —
+  // and a second copy of the number would have to keep agreeing with the
+  // `table-cards` CSS that lays this row out.
   const titleCell = (
     <Td slot="title">
-      <span className={isStart ? undefined : "sm:hidden"}>
+      <span className={isStart ? undefined : CARD_MODE_ONLY}>
         {nameCell({ ...r, stale })}
       </span>
     </Td>

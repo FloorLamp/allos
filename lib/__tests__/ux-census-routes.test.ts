@@ -237,7 +237,10 @@ describe("ux census hover-capture registry", () => {
    */
   const readCorpus = (
     roots: readonly string[]
-  ): { markup: { file: string; source: string }[]; style: { file: string; source: string }[] } => {
+  ): {
+    markup: { file: string; source: string }[];
+    style: { file: string; source: string }[];
+  } => {
     const markup: { file: string; source: string }[] = [];
     const style: { file: string; source: string }[] = [];
     const collect = (dir: string): void => {
@@ -285,15 +288,17 @@ describe("ux census hover-capture registry", () => {
    * noise. What is checked is the part somebody can rename in one commit.
    */
   const markersIn = (selector: string): Marker[] => [
-    ...[...selector.matchAll(/data-testid="([^"]+)"/g)].map(
-      (m): Marker => ({ kind: "testid", name: m[1] })
-    ),
+    ...[...selector.matchAll(/data-testid="([^"]+)"/g)].map((m): Marker => ({
+      kind: "testid",
+      name: m[1],
+    })),
     ...[...selector.matchAll(/(?:^|[\s,>+~])\.?[a-z]*\.([a-zA-Z][\w-]*)/g)].map(
       (m): Marker => ({ kind: "class", name: m[1] })
     ),
   ];
 
-  const escape = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escape = (v: string): string =>
+    v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   /**
    * How a marker must be written to count as RENDERED.
@@ -306,7 +311,9 @@ describe("ux census hover-capture registry", () => {
    */
   const renderedPattern = (marker: Marker): RegExp =>
     marker.kind === "testid"
-      ? new RegExp(`data-testid=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`)
+      ? new RegExp(
+          `data-testid=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`
+        )
       : new RegExp(`(?<![\\w-])${escape(marker.name)}(?![\\w-])`);
 
   /** Files that put the marker on an element, by name. */
@@ -493,7 +500,8 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
     };
     for (const d of ["app", "components"]) collect(path.join(base, d));
     const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const token = (name: string) => new RegExp(`(?<![\\w-])${esc(name)}(?![\\w-])`);
+    const token = (name: string) =>
+      new RegExp(`(?<![\\w-])${esc(name)}(?![\\w-])`);
     return {
       markupCount: markupFiles.length,
       rendered: (kind, name) =>
@@ -577,7 +585,7 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
     ]);
   });
 
-  it("accepts the `{\"x\"}` spelling of a static testid", () => {
+  it('accepts the `{"x"}` spelling of a static testid', () => {
     // 575 of this tree's testids are written `data-testid={…}`. A static one in
     // braces is the same claim as a quoted one and must not read as a rename.
     expect(corpus().rendered("testid", "standing-door")).toEqual([
