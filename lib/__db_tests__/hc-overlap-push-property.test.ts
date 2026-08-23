@@ -275,6 +275,17 @@ const SCENARIOS: Scenario[] = [
       steps: [stepsRec(...LA_19, 9100), stepsRec(...LA_20, 11721)],
       distance: [distRec(...LA_19, 7180), distRec(...LA_20, 9300)],
     },
+    // STATED ABSOLUTELY, because everything else in this file is a comparison BETWEEN
+    // runs and #3424's ruling of 2026-08-23 narrowed what may be deleted. A rule that
+    // collapsed NOTHING would still be order-independent, and this is the incident's own
+    // pair: each LA bucket is filed under the same profile-local `date` as the NY bucket
+    // it replaces, so each one covers its day and each NY row goes.
+    survivors: [
+      `distance_km@${LA_19[0]}`,
+      `distance_km@${LA_20[0]}`,
+      `steps@${LA_19[0]}`,
+      `steps@${LA_20[0]}`,
+    ],
   },
   {
     // THE RE-ANCHORED HISTORICAL BUCKET BESIDE THE CURRENT ONE. The owner measured this
@@ -301,6 +312,14 @@ const SCENARIOS: Scenario[] = [
       active_calories: [activeRec(...LA_19, 305), activeRec(...LA_20, 410)],
       steps: [stepsRec(...LA_20, 11721)],
     },
+    // The historical 08-19 bucket covers 08-19 and the current one covers 08-20, so both
+    // NY rows go — the second row of the owner's acceptance table, stated absolutely for
+    // the same reason as the pair above.
+    survivors: [
+      `active_kcal@${LA_19[0]}`,
+      `active_kcal@${LA_20[0]}`,
+      `steps@${LA_20[0]}`,
+    ],
   },
   {
     // THE QUEUED STALE RETRY — B3's shape. The store is the deploy-day state: BOTH
