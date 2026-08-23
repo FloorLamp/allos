@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
+import { UNMOUNTED_ROOTS } from "./unmounted-roots";
 
 // THE WEB-SURFACE WIRING CENSUS (#3087).
 //
@@ -113,11 +114,22 @@ function clientFiles(root: string): { rel: string; src: string }[] {
 }
 
 /**
- * Does this client file IMPORT the named action?
+ * Does this file REACH the named action?
  *
  * Matching on the IMPORT — not on a bare `name(` — is what keeps the census from
  * over-matching a comment that mentions the symbol: a client cannot post a Server
  * Action it has not imported.
+ *
+ * BOTH SPELLINGS OF THE IMPORT, because a guard that sees one of them fails open on
+ * the other and reports clean because it cannot see (#3580). `import { logThing }` is
+ * what this tree writes today; `import * as A from "…"` then `A.logThing(…)` posts the
+ * identical action and used to return `false`, which silenced the poster check for
+ * that file entirely AND made a surface literal look justified — the namespace
+ * importer simply did not count as a mounting.
+ *
+ * The namespace form is matched on the USE, not on the import alone: a file that
+ * imports a whole module and never touches this member has not reached this action,
+ * and counting it would be the over-matching direction.
  */
 function importsSymbol(src: string, name: string): boolean {
   for (const m of src.matchAll(
@@ -133,6 +145,11 @@ function importsSymbol(src: string, name: string): boolean {
       )
       .filter(Boolean);
     if (named.includes(name)) return true;
+  }
+  for (const m of src.matchAll(
+    /import\s*\*\s*as\s+([A-Za-z0-9_$]+)\s*from\s*["'][^"']+["']/g
+  )) {
+    if (new RegExp(`\\b${m[1]}\\.${name}\\b`).test(src)) return true;
   }
   return false;
 }
@@ -239,21 +256,58 @@ function code(src: string): string {
 }
 
 /**
- * Every exported action in `app/` that NAMES a surface instead of reading one.
+ * How a module says it is IN the `logged_via` mechanism at all.
+ *
+ * The universe below reaches into `lib/`, and `lib/` writes these three words for
+ * things that are not web surfaces: `lib/pwa-shortcuts.ts` returns
+ * `{ kind: "quick-log", item }`, a discriminated-union tag for a `?quick=` route. A
+ * census that fired there would be crying wolf on a `?quick=` handler and would be
+ * deleted within a week, taking the real guard with it — so a `lib/` literal is a
+ * claim about a surface only where the module handles the value: `loggedVia`, the
+ * `LoggedVia` type, or the `logged_via` column.
+ */
+const MECHANISM_RE = /\bloggedVia\b|\bLoggedVia\b|\blogged_via\b/;
+
+/**
+ * Every exported function that NAMES a surface instead of reading one.
+ *
+ * THE UNIVERSE IS `app/` AND `lib/`, and the second half is not decoration (#3580).
+ * The reach used to be `app/**\/*.ts` alone, which is where Server Actions live — but
+ * a Server Action is a thin shape check over a WRITE CORE in `lib/`, and a literal in
+ * the core is as final as a literal in the action. That is not hypothetical: it is
+ * why `logUsualRoutineCore` accepting `"dashboard-hero"` could not be caught here,
+ * and the fix at the time pinned the one site rather than closing the reach.
  *
  * `.ts` only: a Server Action is not a component, and the `.tsx` files carrying these
  * strings are the region roots themselves (`<LoggedViaSurface value="dashboard-widget">`,
  * the palette's `const PALETTE_SURFACE: WebLoggedVia = "quick-log"`), which are the
  * DECLARATION side of the same mechanism rather than a claim needing justification.
+ *
+ * The `app/` half is unconditional, exactly as it was. The `lib/` half is bounded by
+ * `MECHANISM_RE` above, and the bound is STATED rather than accidental — which was
+ * the whole complaint about the previous reach.
  */
+export function literalUniverse(root: string): { rel: string; src: string }[] {
+  const out: { rel: string; src: string }[] = [];
+  for (const sub of ["app", "lib"] as const) {
+    for (const file of walk(root, sub)) {
+      if (!file.endsWith(".ts")) continue;
+      const src = code(fs.readFileSync(file, "utf8"));
+      if (sub === "lib" && !MECHANISM_RE.test(src)) continue;
+      out.push({
+        rel: path.relative(root, file).split(path.sep).join("/"),
+        src,
+      });
+    }
+  }
+  return out;
+}
+
 export function hardcodingActions(
   root: string
 ): { action: string; file: string; surface: string }[] {
   const out: { action: string; file: string; surface: string }[] = [];
-  for (const file of walk(root, "app")) {
-    if (!file.endsWith(".ts")) continue;
-    const src = code(fs.readFileSync(file, "utf8"));
-    const rel = path.relative(root, file).split(path.sep).join("/");
+  for (const { rel, src } of literalUniverse(root)) {
     const bounds: { name: string; at: number }[] = [];
     for (const m of src.matchAll(EXPORT_RE))
       bounds.push({ name: m[1], at: m.index ?? 0 });
@@ -292,7 +346,18 @@ function mountingsOf(
     .map((f) => `${f.rel} -> <${tag}>`);
 }
 
-/** Every hardcoded surface that more than one mounting can reach. */
+/**
+ * Every hardcoded surface that more than one mounting can reach — and every one in a
+ * WRITE CORE, which has no mounting at all.
+ *
+ * A literal is honest only where there is exactly one mounting, so the `app/` half
+ * counts mountings. A `lib/` core cannot pass that test in either direction: nothing
+ * mounts a module in `lib/`, it stands behind every action that calls it, and the
+ * count would be zero for the same reason it is zero for a file nobody has wired yet.
+ * So the rule there is the one the mechanism already implies — a core takes the
+ * surface as a PARAMETER (`loggedVia: LoggedVia`, which is how every write core in
+ * this tree is spelled) and never names one.
+ */
 export function unjustifiedLiterals(root: string): string[] {
   const every = [...walk(root, "app"), ...walk(root, "components")].map(
     (file) => ({
@@ -302,6 +367,12 @@ export function unjustifiedLiterals(root: string): string[] {
   );
   const out: string[] = [];
   for (const { action, file, surface } of hardcodingActions(root)) {
+    if (file.startsWith("lib/")) {
+      out.push(
+        `${file} names \`${surface}\` in ${action}, a write core with no mounting of its own`
+      );
+      continue;
+    }
     const posters = every.filter(
       (f) => f.rel !== file && importsSymbol(f.src, action)
     );
@@ -494,20 +565,6 @@ export function mountGraph(root: string): {
   return { files, mountedBy };
 }
 
-/** Every stamping control that can render outside any page and outside any region. */
-/**
- * Files a chain may legitimately dead-end at that are NOT router entries, each with
- * the reason it renders nowhere. A registry, not a filter: adding a line is a claim
- * somebody has to write down and review, which is the whole difference between this
- * and the silence it replaces.
- */
-const UNMOUNTED_ROOTS: Record<string, string> = {
-  "components/illness/SymptomLogCard.tsx":
-    "dead code — no file in app/ or components/ imports it, confirmed by review on " +
-    "PR #3560. Deleting it is out of that PR's scope, so it is registered rather " +
-    "than removed; delete the component and this line together.",
-};
-
 /**
  * Every stamping control that can render outside any page and outside any region —
  * AND every chain the walker could not resolve, which is the same finding.
@@ -571,6 +628,25 @@ describe("every surface-reading action has a mounting that declares itself", () 
     // The named subject: the action #3087's own illustration turns on.
     expect([...actions.keys()]).toContain("logFoodServing");
     expect(clientFiles(REPO).length).toBeGreaterThanOrEqual(50);
+
+    // THE LITERAL UNIVERSE HAS ITS OWN FLOOR, PER ROOT (#3580). Its reach was
+    // `app/` alone and now covers the `lib/` write cores; a total that still looks
+    // healthy while one root has collapsed to nothing is the same fail-open the
+    // whole file is about, so both roots are asserted separately. Measured
+    // 2026-08-23: 148 files under `app/`, 26 under `lib/`, floors set below.
+    const universe = literalUniverse(REPO);
+    expect(universe.length).toBeGreaterThanOrEqual(100);
+    for (const [root, floor] of [
+      ["app/", 80],
+      ["lib/", 15],
+    ] as const)
+      expect(
+        universe.filter((f) => f.rel.startsWith(root)).length,
+        `The literal universe reads nothing under \`${root}\`.`
+      ).toBeGreaterThanOrEqual(floor);
+    // The write core the reach was widened FOR, named so a rename cannot quietly
+    // drop it: it takes `loggedVia` as a parameter, so it is in scope.
+    expect(universe.map((f) => f.rel)).toContain("lib/usual-routine-write.ts");
   });
 
   it("has a REGION ROOT producing every non-default web surface", () => {
@@ -762,6 +838,92 @@ export async function logThing(formData: FormData) {
       "app/(app)/actions.ts names `dashboard-hero` in logTwice, reachable from 2 " +
         "mountings: components/HostA.tsx -> <Twice>, components/HostB.tsx -> <Twice>",
     ]);
+  });
+
+  it("SEES a poster that reaches its action through a NAMESPACE import", () => {
+    // FAIL-OPEN ON AN INDIRECTION (#3580). `import * as A` then `A.logThing(…)` posts
+    // the identical action; matching only `import { logThing }` returned `[]` and the
+    // guard reported clean because it could not see, not because there was nothing.
+    const root = corpus({
+      "app/(app)/x/actions.ts": ACTION,
+      "components/NamespaceBar.tsx":
+        '"use client";\nimport * as A from "@/app/(app)/x/actions";\n' +
+        "export default function NamespaceBar() {\n  return A.logThing(new FormData());\n}\n",
+    });
+    expect(unwiredPosters(root)).toEqual([
+      "components/NamespaceBar.tsx posts logThing (app/(app)/x/actions.ts)",
+    ]);
+  });
+
+  it("STAYS QUIET on a namespace import that never touches the action", () => {
+    // The over-matching direction: importing a whole module is not reaching every
+    // member of it. A file that imports the module and posts something else has not
+    // posted this action, and counting it would make every barrel importer a finding.
+    const root = corpus({
+      "app/(app)/x/actions.ts":
+        ACTION + "export async function plainOne(fd: FormData) { return 1; }\n",
+      "components/OtherBar.tsx":
+        '"use client";\nimport * as A from "@/app/(app)/x/actions";\n' +
+        "export default function OtherBar() {\n  return A.plainOne(new FormData());\n}\n",
+    });
+    expect(unwiredPosters(root)).toEqual([]);
+  });
+
+  it("counts a NAMESPACE importer as a mounting a literal has to answer for", () => {
+    // The same indirection seen from the literal side: one named importer and one
+    // namespace importer is TWO mountings, so the literal is a guess about which one
+    // posted. Blind to the second, the guard saw one mounting and called it honest.
+    const root = corpus({
+      "app/(app)/actions.ts":
+        '"use server";\nexport async function logTwice(fd: FormData) {\n' +
+        '  return core(fd, "dashboard-hero");\n}\n',
+      "components/Named.tsx":
+        '"use client";\nimport { logTwice } from "@/app/(app)/actions";\n',
+      "components/Spaced.tsx":
+        '"use client";\nimport * as A from "@/app/(app)/actions";\n' +
+        "export const post = () => A.logTwice(new FormData());\n",
+      "components/HostA.tsx":
+        '"use client";\nexport default () => <Named />;\n',
+      "components/HostB.tsx":
+        '"use client";\nexport default () => <Spaced />;\n',
+    });
+    expect(unjustifiedLiterals(root)).toEqual([
+      "app/(app)/actions.ts names `dashboard-hero` in logTwice, reachable from 2 " +
+        "mountings: components/HostA.tsx -> <Named>, components/HostB.tsx -> <Spaced>",
+    ]);
+  });
+
+  it("SEES a surface named in a `lib/` WRITE CORE, which no mounting can justify", () => {
+    // THE UNIVERSE GAP (#3580 item 4). A Server Action is a shape check over a core in
+    // `lib/`, and a literal in the core is as final as one in the action — but `app/`
+    // was the whole reach, so `logUsualRoutineCore` accepting `"dashboard-hero"`
+    // could not be seen from here at all.
+    const root = corpus({
+      "lib/usual-write.ts":
+        "export function logUsualCore(profileId: number, loggedVia: LoggedVia) {\n" +
+        '  return write(profileId, "dashboard-hero");\n}\n',
+      "app/(app)/actions.ts":
+        '"use server";\nimport { logUsualCore } from "@/lib/usual-write";\n' +
+        "export async function logUsual(fd: FormData) { return logUsualCore(1, x); }\n",
+    });
+    expect(unjustifiedLiterals(root)).toEqual([
+      "lib/usual-write.ts names `dashboard-hero` in logUsualCore, a write core with " +
+        "no mounting of its own",
+    ]);
+  });
+
+  it("STAYS QUIET on a `lib/` module that spells a surface for something else", () => {
+    // The cry-wolf case, and it is a real file: `lib/pwa-shortcuts.ts` returns
+    // `{ kind: "quick-log", item }` — a discriminated-union tag for a `?quick=` route,
+    // not a web surface. It handles no `loggedVia` value, so it is out of the
+    // universe by the stated rule rather than by an exemption.
+    const root = corpus({
+      "lib/pwa-routes.ts":
+        "export function shortcutAction(value: string) {\n" +
+        '  return value === "search" ? { kind: "search" } : { kind: "quick-log", value };\n}\n',
+    });
+    expect(hardcodingActions(root)).toEqual([]);
+    expect(unjustifiedLiterals(root)).toEqual([]);
   });
 
   it("SEES a stamping control left outside every region, and stays quiet when one covers it", () => {

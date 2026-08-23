@@ -141,7 +141,7 @@ export function seedSleep(): void {
     "e2e: seeded sleep stages (14 nights) + a tz-correct 5h night & nap for profile 1 (#1066)"
   );
 
-  // ── A THREE-NAP WAKE-DAY, so the sleep history CAN express #3517 ─────────────
+  // ── A NIGHT AND THREE NAPS ON ONE WAKE-DAY, so the history CAN express #3517 ──
   //
   // The naps regression (#3517): a card-mode meta cell is a flex line since #3499,
   // so naps passed as several loose sibling nodes became several ITEMS on that line
@@ -155,20 +155,58 @@ export function seedSleep(): void {
   //     `mainSleepSession`'s duration-tie → earliest-END tiebreak are pinned by
   //     sleep-page.spec, and the block above owns that day entirely on purpose.
   //   * `today-2` already HAS a history row — the #160 SRI block seeds a nightly
-  //     `sleep_min` session for every wake-day today-1 … today-28 — so this adds
-  //     naps to an existing row rather than creating one. `data-history-count`,
-  //     the 10-row page size and `sleep-mood-history-row` counts (sleep-page.spec
+  //     `sleep_min` session for every wake-day today-1 … today-28 — and every row
+  //     this block writes carries `date = today-2`, so it adds sessions to an
+  //     existing row rather than creating one. `data-history-count`, the 10-row
+  //     page size and `sleep-mood-history-row` counts (sleep-page.spec
   //     :384/:437/:443) are therefore all unchanged, and today-2 sits on page 1.
-  //   * The naps are AFTERNOON windows (14:00/16:00/18:00 local), well clear of the
-  //     23:00 → 07:00 overnight that owns the same wake-day, so the SRI window and
-  //     the night's own summary read exactly as before.
+  //   * The naps are AFTERNOON windows (14:00/16:00/18:00 local), and the block
+  //     seeds THE NIGHT THEY BELONG TO as well (#3636). It cannot borrow one from
+  //     the #160 SRI series above: wake-day is the profile-LOCAL calendar date of a
+  //     session's END, and those nights are written as RAW-UTC windows
+  //     (23:00Z → 07:00Z) keyed by the `date` column, so under a profile west of
+  //     UTC — the suite pins a fixed-offset zone chosen from the run's UTC start
+  //     hour (e2e/pinned-timezone.ts), e.g. UTC−8 for a run starting at 21:00Z —
+  //     07:00Z is still the PREVIOUS local day and the night is attributed a
+  //     wake-day one EARLIER than its `date`. Nothing here may assume an SRI night
+  //     lands on this wake-day.
   //
-  // Durations are all under NAP_MAX so none of them is elected an overnight.
+  // AND THE NIGHT IS WHAT MAKES THEM NAPS AT ALL. Alone on their wake-day the three
+  // naps are not three naps: `mainSleepSession` seeds on the longest (40 min), which
+  // is under MERGE_CORE_MINUTES (360), so the siesta guard does not fire and the
+  // fragment merge runs instead — and the gaps between them are 80 and 85 minutes,
+  // both inside FRAGMENT_MERGE_GAP_MAX_MIN (120). All three are absorbed as co-equal
+  // fragments of one night, `napSessions` returns ZERO, and the cell renders empty
+  // (main was red on exactly this). An 8h block that ENDS on this wake-day in the
+  // profile's zone reaches MERGE_CORE_MINUTES, so the siesta guard fires: the night
+  // is the whole main period on its own and every other session that day stays a
+  // nap, whatever the spacing. Respacing the naps past 120 min instead would not
+  // do — one of them is then elected main and only TWO remain naps.
+  //
+  // Nap durations are all under NAP_MAX so none of them is elected the overnight.
   const NAP_DAY = shiftDateStr(COACH_TODAY, -2);
-  const napWindows: [string, string, number][] = [
-    ["14:00", "14:40", 40],
-    ["16:00", "16:35", 35],
-    ["18:00", "18:25", 25],
+  const napDayWindows: [string, string, number][] = [
+    // The night: 23:00 (NAP_DAY−1) → 07:00 (NAP_DAY), profile-LOCAL, built through
+    // zonedWallTimeToUtc exactly as the naps below are.
+    [
+      iso(zonedWallTimeToUtc(sleepTz, shiftDateStr(NAP_DAY, -1), "23:00")!),
+      iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, "07:00")!),
+      480,
+    ],
+    ...(
+      [
+        ["14:00", "14:40", 40],
+        ["16:00", "16:35", 35],
+        ["18:00", "18:25", 25],
+      ] as [string, string, number][]
+    ).map(
+      ([startWall, endWall, minutes]) =>
+        [
+          iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, startWall)!),
+          iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, endWall)!),
+          minutes,
+        ] as [string, string, number]
+    ),
   ];
   // Idempotent: clear only THIS block's own windows, never the SRI overnight that
   // shares the wake-day.
@@ -177,14 +215,12 @@ export function seedSleep(): void {
       WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
         AND date = ? AND started_at = ?`
   );
-  for (const [startWall, endWall, minutes] of napWindows) {
-    const start = iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, startWall)!);
-    const end = iso(zonedWallTimeToUtc(sleepTz, NAP_DAY, endWall)!);
+  for (const [start, end, minutes] of napDayWindows) {
     napDelete.run(PROFILE_ID, NAP_DAY, start);
     sleepSessionInsert.run(PROFILE_ID, NAP_DAY, start, end, minutes);
   }
   console.log(
-    `e2e: seeded a three-nap wake-day (${NAP_DAY}) for profile 1 (#3517)`
+    `e2e: seeded a night + three naps on wake-day ${NAP_DAY} for profile 1 (#3517)`
   );
 
   // Bedtime-supplement context for the same two most-recent overnight sessions.
