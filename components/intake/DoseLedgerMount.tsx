@@ -1,19 +1,18 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/ui";
-import DateRangeControl from "@/components/DateRangeControl";
-import FilterPills, { type FilterPillOption } from "@/components/FilterPills";
-import DoseLedgerItemFilter from "@/components/intake/DoseLedgerItemFilter";
-import DoseLedgerTable, {
-  type DoseLedgerEntry,
-  type DoseLedgerItem,
-} from "@/components/intake/DoseLedgerTable";
+import EventLedgerFrame from "@/components/ledger/EventLedgerFrame";
+import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
+import DoseLedgerRows from "@/components/intake/DoseLedgerRows";
+import type {
+  DoseLedgerEntry,
+  DoseLedgerItem,
+} from "@/components/intake/dose-ledger-entry";
+import type { FilterPillOption } from "@/components/FilterPills";
 import { today } from "@/lib/db";
 import {
   getIntakeDoseLedgerPage,
   getIntakeItems,
   getIntakeDoses,
 } from "@/lib/queries";
-import PaginationControls from "@/components/PaginationControls";
 import { HISTORY_PAGE_SIZE, clampPage, pageCount } from "@/lib/pagination";
 import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
 import { zonedDateParts } from "@/lib/date";
@@ -40,7 +39,6 @@ import {
 } from "@/lib/timeline-format";
 import { doseLedgerHref, intakeHref } from "@/lib/hrefs";
 import type { IntakeItemKind } from "@/lib/types";
-import BackLink from "@/components/BackLink";
 
 // The ISO floor an all-time window reads from — the ledger's reader takes a `since`
 // day, and "all time" is a window with no lower bound rather than a second query.
@@ -50,8 +48,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-// The cross-item dose ledger (#2417), rendered by BOTH intake surfaces
-// (/nutrition/dose-history and /medications/dose-history) over one component.
+// THE DOSE MOUNT of the shared event-ledger frame (#3484 part 2), rendered by BOTH
+// intake surfaces (/nutrition/dose-history and /medications/dose-history) — #2417's
+// one-ledger-two-doors, now expressed as one mount opened at two pre-filters rather
+// than as a bespoke shell.
 //
 // The rest of intake_items already refuses to split its machinery by kind — dose,
 // adherence, refill, interaction and warning behavior are shared, and historical dose
@@ -60,11 +60,16 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // two routes is exactly one thing: which kind the page opens PRE-FILTERED to, which is
 // the same kind→surface seam `intakeHref` encodes one level up.
 //
+// WHAT THIS FILE OWNS, and the frame therefore does not: the dose READ and its bound
+// (#2445), the kind and item vocabularies, the window and empty sentences, the row
+// renderer, the amend contract (#2228) and the backfill slot's contents. The frame
+// owns the box — see components/ledger/EventLedgerFrame.tsx.
+//
 // Auth is the PAGE's: each route resolves its own scope and hands this component an
 // already-authorized profileId, the login whose display preferences format the clocks,
 // and whether that caller may write. This component reads and renders; it imports no
 // auth module.
-export default function DoseLedgerView({
+export default function DoseLedgerMount({
   profileId,
   loginId,
   canWrite,
@@ -187,6 +192,7 @@ export default function DoseLedgerView({
     asNeeded: isOnDemand(item),
     doses: dosesByItem.get(item.id) ?? [],
   }));
+  const loggable = ledgerItems.filter((item) => item.doses.length > 0);
 
   // The default backfill clock: the profile's current wall time, exactly as the
   // per-item panels seed it.
@@ -206,6 +212,8 @@ export default function DoseLedgerView({
       }),
     }));
 
+  // Every other control drops the page — a narrowed ledger re-pages from its first
+  // row rather than landing the reader on a page the new filter may not have.
   const pageHref = (page: number) =>
     isAllTimeRange(range)
       ? doseLedgerHref(surface, {
@@ -237,111 +245,96 @@ export default function DoseLedgerView({
         });
 
   return (
-    <div data-testid="dose-ledger-page">
-      {/* A forward link is not a back (#3237). The header action still offers the
-          onward door to the item list; this is the way out of the ledger. */}
-      <BackLink
-        href={intakeHref(surface)}
-        label={
+    <EventLedgerFrame
+      idPrefix="dose-ledger"
+      back={{
+        href: intakeHref(surface),
+        label:
           surface === "medication"
             ? "Back to medications"
-            : "Back to supplements"
-        }
-      />
-      <PageHeader
-        title="Dose history"
-        subtitle="Every dose you confirmed, across items. What was taken — not an adherence verdict."
-      />
-
-      <div className="mb-4 space-y-3">
-        <DateRangeControl
-          basePath={
-            surface === "medication"
-              ? "/medications/dose-history"
-              : "/nutrition/dose-history"
-          }
-          range={range}
-          todayStr={todayStr}
-          hiddenParams={{
-            kind: kindFilter,
-            item: itemId ? String(itemId) : undefined,
-            // "All time" is a real answer here too, and an empty query string means
-            // the DOSE_HISTORY_DAYS default — so the sentinel has to ride the form.
-            [ALL_TIME_RANGE_PARAM]: isAllTimeRange(range)
-              ? ALL_TIME_RANGE_VALUE
-              : undefined,
-          }}
-          buildHref={rangeHref}
-          idPrefix="dose-ledger"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <FilterPills
-            options={kindOptions}
-            value={kindFilter}
-            label="Filter dose history by kind"
-            testId="dose-ledger-kind-filter"
+            : "Back to supplements",
+      }}
+      title="Dose history"
+      subtitle="Every dose you confirmed, across items. What was taken — not an adherence verdict."
+      basePath={
+        surface === "medication"
+          ? "/medications/dose-history"
+          : "/nutrition/dose-history"
+      }
+      range={range}
+      todayStr={todayStr}
+      rangeHiddenParams={{
+        kind: kindFilter,
+        item: itemId ? String(itemId) : undefined,
+        // "All time" is a real answer here too, and an empty query string means the
+        // DOSE_HISTORY_DAYS default — so the sentinel has to ride the form.
+        [ALL_TIME_RANGE_PARAM]: isAllTimeRange(range)
+          ? ALL_TIME_RANGE_VALUE
+          : undefined,
+      }}
+      buildRangeHref={rangeHref}
+      chips={{
+        options: kindOptions,
+        value: kindFilter,
+        label: "Filter dose history by kind",
+      }}
+      itemFilter={{
+        options: filterItems.map((item) => ({
+          id: item.id,
+          label: item.active ? item.name : `${item.name} (inactive)`,
+        })),
+        value: itemId,
+      }}
+      pagination={{
+        page: ledger.page,
+        pageCount: ledgerPages,
+        pageSize: HISTORY_PAGE_SIZE,
+        total: ledger.total,
+        visibleCount: rows.length,
+        prevHref: ledger.page > 1 ? pageHref(ledger.page - 1) : null,
+        nextHref: ledger.page < ledgerPages ? pageHref(ledger.page + 1) : null,
+      }}
+      empty={entries.length === 0}
+      note={doseLedgerWindowNote(range, formatPrefs, todayStr)}
+      emptyNote={doseLedgerEmptyNote(range, kindFilter, formatPrefs, todayStr)}
+      backfill={
+        canWrite && loggable.length > 0 ? (
+          // Keyed on the item filter: a filter change is a NAVIGATION within one
+          // route segment, so React keeps the client subtree's state across it — and
+          // the backfill picker, which opens on the filtered item, would otherwise
+          // keep pointing at whichever item the page first mounted with.
+          <DoseBackfillLauncher
+            key={`dose-ledger-item-${itemId ?? 0}`}
+            loggable={loggable}
+            maxDate={todayStr}
+            defaultTime={defaultTime}
+            defaultItemId={itemId}
           />
-          <DoseLedgerItemFilter
-            items={filterItems.map((item) => ({
-              id: item.id,
-              label: item.active ? item.name : `${item.name} (inactive)`,
-            }))}
-            value={itemId}
-          />
-        </div>
-      </div>
-
-      <div className="card">
-        {/* Keyed on the item filter: a filter change is a NAVIGATION within one route
-            segment, so React keeps the client table's state across it — and the
-            backfill picker, which opens on the filtered item, would otherwise keep
-            pointing at whichever item the page first mounted with. */}
-        <DoseLedgerTable
-          key={`dose-ledger-item-${itemId ?? 0}`}
-          rows={entries}
-          items={ledgerItems}
-          canWrite={canWrite}
-          maxDate={todayStr}
-          defaultTime={defaultTime}
-          defaultItemId={itemId}
-          note={doseLedgerWindowNote(range, formatPrefs, todayStr)}
-          emptyNote={doseLedgerEmptyNote(
-            range,
-            kindFilter,
-            formatPrefs,
-            todayStr
-          )}
-        />
-        {/* A LINK pager: the page rides the URL, so what it turns is the read.
-            Every other control here (kind, item, range) drops the page — a
-            narrowed ledger re-pages from its first row rather than landing the
-            reader on a page the new filter may not have. */}
-        <PaginationControls
-          page={ledger.page}
-          pageCount={ledgerPages}
-          pageSize={HISTORY_PAGE_SIZE}
-          total={ledger.total}
-          visibleCount={rows.length}
-          prevHref={ledger.page > 1 ? pageHref(ledger.page - 1) : null}
-          nextHref={
-            ledger.page < ledgerPages ? pageHref(ledger.page + 1) : null
-          }
-          testId="dose-ledger-pagination"
-        />
-      </div>
-
-      {/* The chart half of the same question (#2415): this table is what a day in
-          that calendar held. */}
-      <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-        Looking for the pattern rather than the rows?{" "}
-        <Link
-          href="/trends?tab=nutrition#dose-history"
-          className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-          data-testid="dose-ledger-trends-link"
-        >
-          Dose history chart
-        </Link>
-      </p>
-    </div>
+        ) : null
+      }
+      footer={
+        // The chart half of the same question (#2415): this table is what a day in
+        // that calendar held.
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+          Looking for the pattern rather than the rows?{" "}
+          <Link
+            href="/trends?tab=nutrition#dose-history"
+            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+            data-testid="dose-ledger-trends-link"
+          >
+            Dose history chart
+          </Link>
+        </p>
+      }
+    >
+      <DoseLedgerRows
+        key={`dose-ledger-item-${itemId ?? 0}`}
+        rows={entries}
+        items={ledgerItems}
+        canWrite={canWrite}
+        maxDate={todayStr}
+        defaultTime={defaultTime}
+      />
+    </EventLedgerFrame>
   );
 }
