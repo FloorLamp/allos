@@ -11,6 +11,11 @@ These instructions apply to the migration runner and migrations.
   It refuses a tree where `index.ts` and `versions/` disagree, and refuses to
   rewrite an already-shipped hash — that is an edited migration, not a stale
   manifest. Use `--allow-rehash` only to restore a file to its shipped bytes.
+- `manifest.json` conflicts on EVERY two-migration merge — both sides append to
+  the same tail, so git has nothing to interleave. Resolve it with
+  `git checkout --ours -- lib/migrations/manifest.json` and re-run the generator;
+  it recomputes every entry, so either side is a fine starting point. Never
+  delete it — a missing manifest is not a clean slate.
 - Use a rebuild migration to grow a `CHECK` enum or add a foreign key. Null
   dangling links before enforcing a new foreign key.
 - Put one-shot data moves in migrations, not settings flags. Per-boot

@@ -304,6 +304,16 @@ These are not review taste; each retired a green that meant nothing.
   file carries 67 rules, none promise-related, and `no-floating-promises` inspects
   expression statements, so the `return` form is invisible to it even when enabled.
 
+- **A guard that recomputes the file it checks cannot see an edit that was
+  recomputed too.** `lib/__tests__/migration-immutability.test.ts` asserts
+  `manifest.json` is byte-identical to what hashing `versions/` produces. Append a
+  line to `001-baseline.ts`, run the generator with `--allow-rehash`, and all 19
+  cases stay green — measured on a CI-shaped shallow checkout. The suite's own
+  rehash cases are green too: they drive synthetic corpora with the shipped hashes
+  PASSED IN, so not one of them asks git what this repo shipped. The reference has
+  to come from outside the tree being checked, which is why CI now runs
+  `npm run gen:migration-manifest -- --check` against a fetched `origin/main`.
+
 - **A comment can generate a real rule.** Tailwind's content scanner reads source
   as text, so a class name in an English sentence compiles to CSS: `.min-h-9`
   shipped because a comment mentioned it (#3523), and deleting the sentence

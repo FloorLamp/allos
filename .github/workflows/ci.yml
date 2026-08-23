@@ -155,6 +155,32 @@ jobs:
       - name: Verify the e2e shard plan covers the whole suite
         run: ./node_modules/.bin/tsx scripts/e2e-shard-plan.ts --verify
 
+      # THE HALF OF THE MANIFEST NO TEST TIER COVERS ON THE REAL TREE.
+      #
+      # lib/__tests__/migration-immutability.test.ts proves manifest.json is what
+      # hashing versions/ produces. That stays true after somebody edits a shipped
+      # migration and regenerates — measured on a CI-shaped checkout: append a line
+      # to 001-baseline.ts, `gen:migration-manifest -- --allow-rehash`, and all 19
+      # cases in that file are green. The suite's own rehash cases drive synthetic
+      # corpora with the shipped hashes PASSED IN, so none of them ever asks git
+      # about this repo.
+      #
+      # `--check` asks the question that is missing: is any hash here different
+      # from the one on MAIN? It reads main from git, and it deliberately does not
+      # honour --allow-rehash, so the laundered rehash above exits 1 here.
+      #
+      # The fetch is what makes "on main" answerable at all — actions/checkout
+      # leaves this checkout with no origin/main ref. Depth 1 is enough and costs
+      # ~1s: the shallow tip has no merge-base with the PR's merge commit, and the
+      # generator's documented fallback for that is main's tip itself, which is the
+      # right reference here anyway. Entries only on main are not compared, so a
+      # branch behind main raises nothing.
+      - name: Fetch main, the reference for what has shipped
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+
+      - name: Migration manifest agrees with the tree and with main
+        run: npm run gen:migration-manifest -- --check
+
   # Pure unit suite AND the coverage regression floor in one pass. This runs
   # the same test set as `npm test` — ALL THREE vitest.config.ts projects: the two
   # over lib/**, plus the jsdom tier over components/** (#3446) — just under v8
