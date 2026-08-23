@@ -46,7 +46,12 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // dashboard-placement-manifest imports the real async page and needs private
 // request-session/auth substitutions plus a no-op scheduled-AI boundary. Making
 // those substitutions shared would change the behavior exercised by every DB spec.
-const DB_ISOLATED = 30;
+// 31 since #3265: usual-routine-late-evening-placement renders that same real page at
+// 22:30 local, for the same private substitutions and the same reason. It is a second
+// file rather than another case in the manifest spec because the manifest spec is a
+// QUERY BUDGET pinned at one frozen 13:00 instant, and a second render at a different
+// hour would move the number it exists to measure.
+const DB_ISOLATED = 31;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs
