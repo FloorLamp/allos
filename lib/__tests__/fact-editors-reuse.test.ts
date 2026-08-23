@@ -139,6 +139,27 @@ const CONSUMERS = [
     chips: "components/training/GoalFactRow.tsx",
     host: "app/(app)/training/GoalForm.tsx",
   },
+  {
+    // THE SEVENTH ADOPTER, and the first arriving after the five #3218 queued (#3221).
+    // Its host file holds TWO forms — the quick-log and the per-chip scope correction —
+    // which between them render one shared `InjuryScopeFields` (#2297), so the chips are
+    // written once here and both Server Actions behind them are untouched. That makes it
+    // the mirror of the visit pair above at a different address: one chips file behind
+    // two WRITES rather than behind two files.
+    //
+    // It is DOM-collected, so its closed panels stay mounted and merely hidden for the
+    // reason the protocol row records. Its fields were ALREADY React-controlled (#2297
+    // gave both forms one draft), so unlike #3219/#3220/#3223 this adoption converts no
+    // field's ownership in either direction — the #3352 hazard has nothing to reach here,
+    // and the registry's own fix is what makes that true rather than luck.
+    //
+    // THE ONE FACT THE ROW DOES NOT STATE ON THE EDIT FORM IS `status`, and that is the
+    // contract rather than an omission: `updateInjury` is a PARTIAL naming the
+    // declaration only (#2359), so a status chip would state a fact Save does not write.
+    name: "the injury bar's log and scope-correction forms (#3221)",
+    chips: "components/training/InjuryFactRow.tsx",
+    host: "app/(app)/training/InjuryBar.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

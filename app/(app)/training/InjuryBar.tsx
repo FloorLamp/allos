@@ -1,11 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { IconPencil, IconPlus, IconX } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
 import Combobox from "@/components/Combobox";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
+import InjuryFactRow, {
+  type InjuryOpenPanel,
+} from "@/components/training/InjuryFactRow";
+import {
+  firstInjuryProblem,
+  injuryFactSummary,
+  INJURY_FACT_NOUNS,
+  type InjuryFactSummary,
+} from "@/lib/injury-facts";
 import {
   baseLiftName,
   exerciseDisplayName,
@@ -340,170 +353,256 @@ function toggle<T>(xs: readonly T[], v: T): T[] {
 // what they submit alongside it (a new row's status; an existing row's id and untouched
 // lifecycle) and in nothing else — a correction offers exactly the vocabulary the original
 // declaration did.
+//
+// #3221 — THE FIELDS ARE NOW FACTS WITH EDITORS (#3218). The row of chips states what Save
+// will write and each chip is the door to one editor; the fields below are unchanged, and
+// so are both Server Actions and every `name=` the browser collects. What changed is that
+// the person reads a sentence instead of eight fieldsets, and pays a tap only for the fact
+// they disagree with. `lib/injury-facts.ts` carries the trade and the reason this surface
+// qualifies.
+//
+// THE PANELS ARE HIDDEN, NEVER UNMOUNTED, and that is a write-path decision rather than a
+// styling one. Both of these forms are DOM-COLLECTED — `<form action={…}>` hands the
+// action whatever FormData the browser gathers from the inputs mounted AT SUBMIT — so a
+// field that unmounts when its panel closes is a field the save clears. It would also
+// vanish from the dirty-form registry, which prunes anything not connected to the
+// document, and the "Discard your changes?" prompt would stop appearing with nothing on
+// screen to say why. This is the primitive's other documented reading (#2014).
+//
+// THE FIELDS' OWNERSHIP IS UNTOUCHED, which is the other half of that hazard and the one
+// that has no shared symptom (#3352). Every control here was ALREADY React-controlled
+// (`value` + `onChange` off the owning form's draft, since #2297) — nothing is converted
+// in either direction by this change — and the registry now keeps the default it read at
+// registration rather than believing a live `defaultValue` React has synced onto the typed
+// value, so a controlled field in a named form is dirty-visible again. The one field that
+// was DOM-owned, the log form's status select, stays DOM-owned.
 function InjuryScopeFields({
   idPrefix,
   liftOptions,
   draft,
   onChange,
-  children,
+  summary,
+  openEditor,
+  onOpen,
+  onDone,
+  rowTestId,
+  editorTestId,
+  doneTestId,
+  statusPanel,
 }: {
   // DOM ids must stay unique when the log form and an edit form are open together.
   idPrefix: string;
   liftOptions: string[];
   draft: ScopeDraft;
   onChange: (patch: Partial<ScopeDraft>) => void;
-  // The status control, rendered between the side and the load preference. Only the log
-  // form has one: an existing injury's status is the chip's own lifecycle buttons.
-  children?: React.ReactNode;
+  summary: InjuryFactSummary;
+  openEditor: InjuryOpenPanel | null;
+  onOpen: (key: InjuryOpenPanel, focusKey?: string) => void;
+  onDone: () => void;
+  rowTestId: string;
+  editorTestId: string;
+  doneTestId: string;
+  // The status editor, rendered between the precision and the load preference exactly
+  // where the select used to sit. Only the log form has one: an existing injury's status
+  // is the chip's own lifecycle buttons, and `updateInjury` never names it (#2359).
+  statusPanel?: React.ReactNode;
 }) {
   return (
     <>
-      <div>
-        <label className="section-label" htmlFor={`${idPrefix}-label`}>
-          What&apos;s hurt?
-        </label>
-        <input
-          id={`${idPrefix}-label`}
-          name="label"
-          required
-          maxLength={120}
-          placeholder="e.g. Right shoulder"
-          className="input mt-1 w-full"
-          data-testid="injury-label-input"
-          value={draft.label}
-          onChange={(e) => onChange({ label: e.target.value })}
+      {/* THE SENTENCE, and the one open editor behind it (#3218). At most one editor is
+          on screen: the row is unmounted while a panel is open, and the host is
+          display:none while none is. */}
+      {openEditor == null && (
+        <InjuryFactRow
+          testId={rowTestId}
+          summary={summary}
+          openEditor={openEditor}
+          onOpen={onOpen}
         />
-      </div>
-      <fieldset>
-        <legend className="section-label">Affected regions</legend>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {REGION_SCOPES.map((r) => (
-            <label
-              key={r}
-              className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
-            >
-              <input
-                type="checkbox"
-                name="regions"
-                value={r}
-                data-testid={`injury-region-${r}`}
-                checked={draft.regions.includes(r)}
-                onChange={() => onChange({ regions: toggle(draft.regions, r) })}
-              />
-              {r}
-            </label>
-          ))}
+      )}
+      <FactEditorHost
+        testId={editorTestId}
+        doneTestId={doneTestId}
+        panel={openEditor}
+        onDone={onDone}
+        bodyClassName="space-y-3"
+        className={openEditor == null ? "hidden" : undefined}
+      >
+        <div hidden={openEditor !== "label"}>
+          <label className="section-label" htmlFor={`${idPrefix}-label`}>
+            What&apos;s hurt?
+          </label>
+          <input
+            id={`${idPrefix}-label`}
+            name="label"
+            maxLength={120}
+            placeholder="e.g. Right shoulder"
+            className="input mt-1 w-full"
+            data-testid="injury-label-input"
+            value={draft.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+          />
+          {/* `required` came OFF this input (#3221). A required control inside a
+              display:none panel makes the browser refuse the submit with "An invalid
+              form control is not focusable" and show the person nothing — so the form
+              asks the question itself through `firstInjuryProblem` and OPENS the fact
+              that needs answering. The chip states the same absence as a dashed MISSING
+              fact, and the actions' own refusal is unchanged behind it. */}
         </div>
-      </fieldset>
-      {/* The #2024 precision — all OPTIONAL. Leaving every field alone records
-          exactly the region-scoped constraint this form always recorded; filling one
-          in narrows the constraint to what the user actually means, so one sore
-          movement stops deleting a whole region of suggestions. Nothing here is a
-          diagnosis, a severity, or a prohibition: it is the user saying what they
-          want left alone. */}
-      <fieldset>
-        <legend className="section-label">
-          Narrow it (optional) — movements
-        </legend>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Pick patterns if only some movements are affected. Naming movements
-          keeps the rest of the region in your suggestions.
-        </p>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {INJURY_MOVEMENT_PATTERNS.map((m) => (
-            <label
-              key={m}
-              className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
-            >
-              <input
-                type="checkbox"
-                name="movements"
-                value={m}
-                data-testid={`injury-movement-${m}`}
-                checked={draft.movements.includes(m)}
-                onChange={() =>
-                  onChange({ movements: toggle(draft.movements, m) })
-                }
-              />
-              {MOVEMENT_PATTERN_LABEL[m]}
-            </label>
-          ))}
+        <fieldset hidden={openEditor !== "regions"}>
+          <legend className="section-label">Affected regions</legend>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {REGION_SCOPES.map((r) => (
+              <label
+                key={r}
+                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+              >
+                <input
+                  type="checkbox"
+                  name="regions"
+                  value={r}
+                  data-testid={`injury-region-${r}`}
+                  checked={draft.regions.includes(r)}
+                  onChange={() =>
+                    onChange({ regions: toggle(draft.regions, r) })
+                  }
+                />
+                {r}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {/* The #2024 precision — all OPTIONAL, which is why all three sit behind the
+            trailing affordance until they say something. Leaving every field alone
+            records exactly the region-scoped constraint this form always recorded;
+            filling one in narrows the constraint to what the user actually means, so one
+            sore movement stops deleting a whole region of suggestions. Nothing here is a
+            diagnosis, a severity, or a prohibition: it is the user saying what they want
+            left alone. Each one's paragraph travels with it into its own editor, so the
+            explanation is there when it is wanted and costs nothing when it is not. */}
+        <fieldset hidden={openEditor !== "movements"}>
+          <legend className="section-label">
+            Narrow it (optional) — movements
+          </legend>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Pick patterns if only some movements are affected. Naming movements
+            keeps the rest of the region in your suggestions.
+          </p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {INJURY_MOVEMENT_PATTERNS.map((m) => (
+              <label
+                key={m}
+                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+              >
+                <input
+                  type="checkbox"
+                  name="movements"
+                  value={m}
+                  data-testid={`injury-movement-${m}`}
+                  checked={draft.movements.includes(m)}
+                  onChange={() =>
+                    onChange({ movements: toggle(draft.movements, m) })
+                  }
+                />
+                {MOVEMENT_PATTERN_LABEL[m]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div hidden={openEditor !== "exercises"}>
+          <InjuryExercisePicker
+            liftOptions={liftOptions}
+            picked={draft.exercises}
+            onPicked={(exercises) => onChange({ exercises })}
+          />
         </div>
-      </fieldset>
-      <InjuryExercisePicker
-        liftOptions={liftOptions}
-        picked={draft.exercises}
-        onPicked={(exercises) => onChange({ exercises })}
-      />
-      <div>
-        <label className="section-label" htmlFor={`${idPrefix}-laterality`}>
-          Side (optional)
-        </label>
-        <select
-          id={`${idPrefix}-laterality`}
-          name="laterality"
-          className="input mt-1 w-full"
-          data-testid="injury-laterality"
-          value={draft.laterality}
-          onChange={(e) =>
-            onChange({ laterality: e.target.value as InjuryLaterality | "" })
-          }
-        >
-          <option value="">Not specified</option>
-          <option value="left">Left</option>
-          <option value="right">Right</option>
-          <option value="bilateral">Both sides</option>
-        </select>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Recorded and shown. Suggestions are picked per exercise, not per side,
-          so on a two-sided lift we say the constraint applies to the whole lift
-          rather than pretending we worked around it.
-        </p>
-      </div>
-      {children}
-      <div>
-        <label className="section-label" htmlFor={`${idPrefix}-load-factor`}>
-          While recovering, ease to (optional)
-        </label>
-        <select
-          id={`${idPrefix}-load-factor`}
-          name="loadFactor"
-          className="input mt-1 w-full"
-          data-testid="injury-load-factor-input"
-          value={draft.loadFactor}
-          onChange={(e) => onChange({ loadFactor: e.target.value })}
-        >
-          {loadFactorOptions(draft.loadFactor).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Our 60% is a conservative default, not a recommendation about your
-          recovery. Your setting always wins.
-        </p>
-      </div>
-      <div>
-        <label className="section-label" htmlFor={`${idPrefix}-review-date`}>
-          Remind me to revisit (optional)
-        </label>
-        <DateField
-          id={`${idPrefix}-review-date`}
-          name="reviewDate"
-          data-testid="injury-review-date"
-          value={draft.reviewDate}
-          onChange={(v) => onChange({ reviewDate: v })}
-        />
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          We&apos;ll ask whether it&apos;s still current. We never change it for
-          you.
-        </p>
-      </div>
+        <div hidden={openEditor !== "laterality"}>
+          <label className="section-label" htmlFor={`${idPrefix}-laterality`}>
+            Side (optional)
+          </label>
+          <select
+            id={`${idPrefix}-laterality`}
+            name="laterality"
+            className="input mt-1 w-full"
+            data-testid="injury-laterality"
+            value={draft.laterality}
+            onChange={(e) =>
+              onChange({ laterality: e.target.value as InjuryLaterality | "" })
+            }
+          >
+            <option value="">Not specified</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="bilateral">Both sides</option>
+          </select>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Recorded and shown. Suggestions are picked per exercise, not per
+            side, so on a two-sided lift we say the constraint applies to the
+            whole lift rather than pretending we worked around it.
+          </p>
+        </div>
+        {statusPanel}
+        <div hidden={openEditor !== "loadFactor"}>
+          <label className="section-label" htmlFor={`${idPrefix}-load-factor`}>
+            While recovering, ease to (optional)
+          </label>
+          <select
+            id={`${idPrefix}-load-factor`}
+            name="loadFactor"
+            className="input mt-1 w-full"
+            data-testid="injury-load-factor-input"
+            value={draft.loadFactor}
+            onChange={(e) => onChange({ loadFactor: e.target.value })}
+          >
+            {loadFactorOptions(draft.loadFactor).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Our 60% is a conservative default, not a recommendation about your
+            recovery. Your setting always wins.
+          </p>
+        </div>
+        <div hidden={openEditor !== "reviewDate"}>
+          <label className="section-label" htmlFor={`${idPrefix}-review-date`}>
+            Remind me to revisit (optional)
+          </label>
+          <DateField
+            id={`${idPrefix}-review-date`}
+            name="reviewDate"
+            data-testid="injury-review-date"
+            value={draft.reviewDate}
+            onChange={(v) => onChange({ reviewDate: v })}
+          />
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            We&apos;ll ask whether it&apos;s still current. We never change it
+            for you.
+          </p>
+        </div>
+        {/* The trailing affordance's panel is a MENU, not an editor: it names the
+            optional facts with nothing to state and hands off to one of them, so opening
+            it still leaves exactly one editor on screen. */}
+        <div hidden={openEditor !== "more"}>
+          <div className="flex flex-wrap gap-1.5">
+            {summary.more.map((key) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`injury-more-${key}`}
+                onClick={() => onOpen(key)}
+                className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+              >
+                {INJURY_FACT_NOUNS[key]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </FactEditorHost>
     </>
   );
 }
-
 // The one-tap quick-log form: the shared scope fields plus the STATUS a new injury is born
 // with (an existing one's status is the chip's lifecycle buttons, never restated here).
 function LogInjuryForm({
@@ -515,13 +614,48 @@ function LogInjuryForm({
 }) {
   const [draft, setDraft] = useState<ScopeDraft>(blankDraft);
   const patch = (p: Partial<ScopeDraft>) => setDraft((d) => ({ ...d, ...p }));
+  // The status select stays DOM-OWNED — `defaultValue` plus an `onChange` mirror that
+  // feeds the chip label only. It was uncontrolled before #3221 and it stays uncontrolled:
+  // the ordinary tidy-up is safe now (#3352 is fixed in the registry) but it is still
+  // unnecessary, and keeping one genuinely DOM-owned field in this form is what lets the
+  // e2e spec measure both ownerships against the same guard.
+  const [status, setStatus] = useState<InjuryStatus>("active");
+  const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const prefs = useFormatPrefs();
+  const {
+    openEditor,
+    open: openPanel,
+    close: closePanel,
+    onKeyDown,
+  } = useFactEditor<InjuryOpenPanel>({ scopeRef: formRef });
+
+  const summary = injuryFactSummary({ ...draft, status }, prefs);
+  const problem = firstInjuryProblem(draft);
+
+  async function submit(fd: FormData) {
+    setError(null);
+    // The `required` attribute cannot do this any more — a required control inside a
+    // hidden panel blocks the submit with an error the browser refuses to show. So the
+    // form asks, says which fact is missing, and OPENS it.
+    if (problem) {
+      setError(problem.message);
+      openPanel(problem.fact);
+      return;
+    }
+    const res = await logInjury(fd);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onDone();
+  }
 
   return (
     <form
-      action={async (fd) => {
-        await logInjury(fd);
-        onDone();
-      }}
+      ref={formRef}
+      action={submit}
+      onKeyDown={onKeyDown}
       className="mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
       data-testid="injury-form"
     >
@@ -530,24 +664,44 @@ function LogInjuryForm({
         liftOptions={liftOptions}
         draft={draft}
         onChange={patch}
-      >
-        <div>
-          <label className="section-label" htmlFor="injury-status">
-            Status
-          </label>
-          <select
-            id="injury-status"
-            name="status"
-            defaultValue="active"
-            className="input mt-1 w-full"
-          >
-            <option value="active">Active — set the affected work aside</option>
-            <option value="recovering">
-              Recovering — ease back at lighter loads
-            </option>
-          </select>
-        </div>
-      </InjuryScopeFields>
+        summary={summary}
+        openEditor={openEditor}
+        onOpen={openPanel}
+        onDone={closePanel}
+        rowTestId="injury-fact-row"
+        editorTestId="injury-editor"
+        doneTestId="injury-editor-done"
+        statusPanel={
+          <div hidden={openEditor !== "status"}>
+            <label className="section-label" htmlFor="injury-status">
+              Status
+            </label>
+            <select
+              id="injury-status"
+              name="status"
+              defaultValue="active"
+              className="input mt-1 w-full"
+              data-testid="injury-status"
+              onChange={(e) => setStatus(e.target.value as InjuryStatus)}
+            >
+              <option value="active">
+                Active — set the affected work aside
+              </option>
+              <option value="recovering">
+                Recovering — ease back at lighter loads
+              </option>
+            </select>
+          </div>
+        }
+      />
+      {error && (
+        <p
+          className="text-xs text-rose-600 dark:text-rose-400"
+          data-testid="injury-error"
+        >
+          {error}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <SubmitButton pendingLabel="Saving…" data-testid="injury-submit">
           Log injury
@@ -596,6 +750,21 @@ function EditInjuryForm({
   const [draft, setDraft] = useState<ScopeDraft>(() => draftOf(injury));
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<ScopeDraft>) => setDraft((d) => ({ ...d, ...p }));
+  const formRef = useRef<HTMLFormElement>(null);
+  const prefs = useFormatPrefs();
+  const {
+    openEditor,
+    open: openPanel,
+    close: closePanel,
+    onKeyDown,
+  } = useFactEditor<InjuryOpenPanel>({ scopeRef: formRef });
+
+  // NO STATUS FACT ON THIS FORM. The row states exactly what Save will write, and Save
+  // here is a PARTIAL that names the declaration only (#2359) — the lifecycle belongs to
+  // the chip's own Recovering/Resolve buttons. A status chip would state a fact this
+  // form does not write.
+  const summary = injuryFactSummary({ ...draft, status: null }, prefs);
+  const problem = firstInjuryProblem(draft);
 
   // What saving would change, over the lifts this profile actually trains, resolved
   // through the same precedence the engine applies. Narrowing re-permits lifts the
@@ -619,7 +788,17 @@ function EditInjuryForm({
 
   return (
     <form
+      ref={formRef}
+      onKeyDown={onKeyDown}
       action={async (fd) => {
+        setError(null);
+        // See `firstInjuryProblem`: `required` cannot live inside a hidden panel, so the
+        // form asks and opens the fact that needs answering.
+        if (problem) {
+          setError(problem.message);
+          openPanel(problem.fact);
+          return;
+        }
         const res = await updateInjury(fd);
         if (!res.ok) {
           setError(res.error);
@@ -641,6 +820,13 @@ function EditInjuryForm({
         liftOptions={liftOptions}
         draft={draft}
         onChange={patch}
+        summary={summary}
+        openEditor={openEditor}
+        onOpen={openPanel}
+        onDone={closePanel}
+        rowTestId="injury-edit-fact-row"
+        editorTestId="injury-edit-editor"
+        doneTestId="injury-edit-editor-done"
       />
       {(change.released.length > 0 || change.added.length > 0) && (
         <p
