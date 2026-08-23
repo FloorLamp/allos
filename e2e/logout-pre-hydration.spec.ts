@@ -33,8 +33,15 @@ import { LOGOUT_TAPPED_ATTR } from "@/lib/logout-tap";
 // band proving that. Instead the JS chunks are HELD at the network until this spec
 // releases them, so React provably cannot have attached, and `serviceWorkers: "block"`
 // is what makes that hold reachable at all (it is the exact obstacle #3513 recorded).
-// The CSS is deliberately NOT held: the pending state is painted by app/globals.css, so
-// holding the stylesheet would hide the very thing being asserted.
+//
+// HOLD `.js` ONLY, AND THE PATTERN IS LOAD-BEARING RATHER THAN TIDY. In this Turbopack
+// build the STYLESHEETS ALSO LIVE UNDER `/_next/static/chunks/`, so the obvious glob
+// (`**/_next/static/chunks/**`) holds them too — and React 19 will not reveal a shell
+// whose `<link rel=stylesheet data-precedence>` has not loaded, so the document stops at
+// its <head> and the control never arrives at all. Measured here: 4.6 KB of HTML and no
+// Log out button, failing as `element(s) not found` — the SAME symptom a swallowed tap
+// produces, from a completely different cause. Holding only `.js` leaves the stylesheet
+// alone, which is also what the assertions need: the pending state is painted by CSS.
 test.describe("Log out tapped before hydration (#3515)", () => {
   test.use({
     // Its own unauthenticated context, logging in by hand, for the same reason
@@ -64,16 +71,19 @@ test.describe("Log out tapped before hydration (#3515)", () => {
       timeout: 20_000,
     });
 
-    // Hold every JS chunk. `chunks/**` and not `static/**`: the stylesheet lives under
-    // /_next/static/css and carries the pending state's rules.
+    // Hold every JS chunk, and ONLY the JS — see the `.js` note in the header comment;
+    // the stylesheets share this directory and holding one stalls the whole shell.
     let releaseChunks = (): void => {};
     const chunksReleased = new Promise<void>((resolve) => {
       releaseChunks = resolve;
     });
-    await page.route("**/_next/static/chunks/**", async (route) => {
-      await chunksReleased;
-      await route.continue();
-    });
+    await page.route(
+      /\/_next\/static\/chunks\/[^?]*\.js(\?|$)/,
+      async (route) => {
+        await chunksReleased;
+        await route.continue();
+      }
+    );
 
     // `commit` — the document is what is wanted, and waiting for `load` would wait for
     // the very chunks being held.

@@ -2119,6 +2119,83 @@ click nor the thing it was waiting for. That is #890's causeless timeout, and it
 is what #2729's two failures were read through. `openConfirm` (`e2e/helpers.ts`)
 is the shared repair for the confirm case; `hydratedClick` is the rest of it.
 
+### Holding the window OPEN beats making it PROBABLE (2026-08-23, #3515/#3400)
+
+The throttle above makes a pre-hydration window WIDER. It does not make it
+certain, and there is a class of question that needs certainty: not "does this
+flake" but "does the app do the right thing for a person whose tap lands in that
+window". #3513 hit the wall from the other side — diagnosing #3400 it could not
+force the window at all, and recorded both failures:
+
+- **CPU throttling at 20× and 50× navigated every time**, and past ~100× the
+  `goto` itself blows the 15 s navigation bound, so the usable band is exhausted.
+- **`page.route` never fired.** `public/sw.js` serves `/_next/static/*`
+  `cacheFirst`, and route interception does not see a service-worker-mediated
+  fetch. Once the SW is controlling — which it is on every page after the first
+  load — `page.route` cannot be used to stress hydration ANYWHERE in this app.
+
+So it shipped an instrument with no test that fails without the fix, and said so.
+Both obstacles are removable, and together they give a window that is held open
+rather than sampled:
+
+```ts
+test.use({ serviceWorkers: "block" }); // now page.route can see the chunks
+
+let releaseChunks = (): void => {};
+const chunksReleased = new Promise<void>((r) => (releaseChunks = r));
+await page.route(/\/_next\/static\/chunks\/[^?]*\.js(\?|$)/, async (route) => {
+  await chunksReleased;
+  await route.continue();
+});
+
+await page.goto("/", { waitUntil: "commit" }); // `load` would wait for what is held
+// … the control is in the server HTML; React provably has not attached …
+await locator.click();
+// … assert what the app does with a tap that has no handler behind it …
+releaseChunks(); // React attaches; assert the tap was not lost
+```
+
+**Assert the precondition, or the spec passes vacuously.** Read the node's own
+React markers before the tap and require their ABSENCE — the same probe
+`awaitHydrated` waits FOR:
+
+```ts
+const hydrated = await locator.evaluate((node) =>
+  Object.keys(node).some(
+    (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+  )
+);
+expect(
+  hydrated,
+  "not in the pre-hydration window; this spec proves nothing"
+).toBe(false);
+```
+
+It is an absence assertion with NO ceiling on purpose — one instantaneous
+question about the node in front of the tap, not a state being waited for. It is
+also the assertion that fails toward "this test is vacuous", which is the
+direction an absence assertion is safe in.
+
+**`.js` ONLY, and the glob is load-bearing rather than tidy.** In this Turbopack
+build the STYLESHEETS also live under `/_next/static/chunks/`, so the obvious
+`**/_next/static/chunks/**` holds them too — and React 19 will not reveal a shell
+whose `<link rel=stylesheet data-precedence>` has not loaded. Measured on #3515:
+**4.6 KB of HTML, no body, and the control never arrives**, failing as
+`element(s) not found` — the SAME symptom a swallowed tap produces, from a
+completely different cause, which is exactly the kind of false reproduction that
+convicts the wrong thing. Match `\.js` explicitly.
+
+**Still run a base-tree control.** The comparison is the verdict here too, and
+because this form is deterministic rather than sampled, the control is unusually
+cheap to read: #3515's guard ran 3/3 green on the branch and 3/3 red on
+`origin/main` with only the spec applied, and a control variant that dropped the
+new assertions and kept the bare click reproduced #3400's own signature —
+`TimeoutError: page.waitForURL: Timeout 30000ms exceeded` — on `main`, with no
+diff, for the first time.
+
+Reach for the throttle when the question is "does this flake, and whose fault";
+reach for this when the question is "what does the app do in that window".
+
 ### "The page produced no traffic" was two findings wearing one message (#3029)
 
 `cycle-guards.spec.ts:69` failed `e2e (2)` about half the time on one branch and
