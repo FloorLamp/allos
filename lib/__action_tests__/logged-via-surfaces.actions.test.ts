@@ -20,7 +20,7 @@ import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { SLEEP_METRIC } from "@/lib/vitals-input";
 import { actAs, createLogin, createProfile } from "./harness";
 
-import { markAttentionDose } from "@/app/(app)/actions";
+import { logUsualRoutine, markAttentionDose } from "@/app/(app)/actions";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { saveSleepMoodEntry } from "@/app/(app)/sleep/actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
@@ -34,6 +34,26 @@ function seat(name: string) {
   const profile = createProfile(name, login.id);
   actAs(login, profile);
   return { login, profile };
+}
+
+/** A pending MORNING dose — what the composed one-tap's dose half re-derives. */
+function morningDose(profileId: number, name: string): number {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+         VALUES (?, ?, 'supplement', 1, 'should', 'daily')`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, sort)
+         VALUES (?, '1', 'morning', 0)`
+      )
+      .run(itemId).lastInsertRowid
+  );
 }
 
 /** A scheduled dose that nothing has been logged against yet. */
@@ -141,6 +161,44 @@ describe("each web surface stores its OWN value, through its own real action", (
     expect(row?.logged_via).toBe("dashboard-widget");
     // And `source` keeps its own meaning beside it: no importer produced this row.
     expect(row?.source).toBeNull();
+  });
+
+  it("the composed ONE-TAP is told apart by the post — it is on no attention card", async () => {
+    // #2458's flagship write, and the case that shipped naming `dashboard-hero` with
+    // no branch at all. `UsualRoutineControl` is mounted TWICE — the dashboard's
+    // usual-routine atom and the phone dock's raised puck inside the quick-log sheet —
+    // and neither is the attention card, whose meaning record reads "a confirm on the
+    // attention card". So the surface has to ride the post like every other control
+    // with more than one mounting.
+    //
+    // The DOSE half is what this drives: the food half re-derives a habitual offer
+    // from three weeks of history, and both halves take the same `loggedVia` argument
+    // by the core's signature — one tap is one tap — so the value is pinned once here
+    // and the two-halves-one-transaction shape stays with the core's own tests.
+    const { profile } = seat("lv usual");
+    const date = today(profile.id);
+    for (const [surface, name] of [
+      ["dashboard-widget", "lv usual atom"],
+      ["quick-log", "lv usual puck"],
+    ] as const) {
+      const doseId = morningDose(profile.id, name);
+      const fd = new FormData();
+      fd.set("meal_slot", "Morning");
+      fd.set("groups", "");
+      fd.set("dose_ids", String(doseId));
+      fd.set(LOGGED_VIA_FIELD, surface);
+      expect((await logUsualRoutine(fd)).ok, surface).toBe(true);
+      expect(doseOrigin(doseId, date), surface).toBe(surface);
+    }
+    // And with nothing posted it falls back to the action's home, exactly as every
+    // other reading action does — never to a surface of its own choosing.
+    const bare = morningDose(profile.id, "lv usual bare");
+    const fd = new FormData();
+    fd.set("meal_slot", "Morning");
+    fd.set("groups", "");
+    fd.set("dose_ids", String(bare));
+    expect((await logUsualRoutine(fd)).ok).toBe(true);
+    expect(doseOrigin(bare, date)).toBe("page");
   });
 
   it("the practice button's four mountings are told apart by the post alone", async () => {
