@@ -389,7 +389,8 @@ export type ClassDeclarations = Map<string, string | typeof AMBIGUOUS>;
 /** Marks a name declared more than once: which one a call site meant is a guess. */
 const AMBIGUOUS = Symbol("declared more than once");
 
-const CONST_DECL = /^[ \t]*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=[ \t]*/gm;
+const CONST_DECL =
+  /^[ \t]*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=[ \t]*/gm;
 const FN_DECL =
   /^[ \t]*(?:export\s+)?function\s+([A-Za-z_$][\w$]*)\s*(\([^)]*\))[^{]*\{/gm;
 
@@ -499,7 +500,11 @@ export function classDeclarations(
     if (names.size === 0) continue;
     const dependency = readModule(m[2]);
     if (dependency === null) continue;
-    const reached = reachableExports([...names.values()], dependency, IMPORT_HOPS);
+    const reached = reachableExports(
+      [...names.values()],
+      dependency,
+      IMPORT_HOPS
+    );
     for (const [local, exported] of names) {
       const value = reached.get(exported);
       if (value === undefined) continue;
@@ -755,10 +760,7 @@ const SUBSTITUTION_LIMIT = 400;
  * same trade `belowSmHeightPx` already makes across a ternary's two arms, and
  * the direction that can only ever produce a false finding, never a missed one.
  */
-function substitute(
-  expression: string,
-  declared: ClassDeclarations
-): string {
+function substitute(expression: string, declared: ClassDeclarations): string {
   let out = expression;
   for (let step = 0; step < SUBSTITUTION_LIMIT; step += 1) {
     const next = substituteOnce(out, declared);
@@ -785,7 +787,9 @@ function substituteOnce(
     // walked the resolver into an identifier with no text behind it and reported a
     // wholly literal class list as unreadable. Substitute what a browser would
     // CONCATENATE, not what it would evaluate.
-    if (IDENTIFIER_IN_CONDITION.test(afterPostfix(expression, at + m[0].length)))
+    if (
+      IDENTIFIER_IN_CONDITION.test(afterPostfix(expression, at + m[0].length))
+    )
       continue;
     let end = at + m[0].length;
     let replacement = `(${value})`;
@@ -801,8 +805,9 @@ function substituteOnce(
     } else if (next.startsWith("[") || next.startsWith(".")) {
       const values = objectValues(value);
       if (values === null) continue;
-      const shut =
-        next.startsWith("[") ? closingBracket(expression, end + gap) : -1;
+      const shut = next.startsWith("[")
+        ? closingBracket(expression, end + gap)
+        : -1;
       if (next.startsWith("[") && shut < 0) continue;
       replacement = values.map((v) => `(${v})`).join(" + ");
       end = next.startsWith("[")
@@ -981,7 +986,9 @@ function readClassText(
 
   for (const m of residue.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
     if (NOT_A_VALUE.has(m[0])) continue;
-    if (IDENTIFIER_IN_CONDITION.test(afterPostfix(residue, m.index + m[0].length)))
+    if (
+      IDENTIFIER_IN_CONDITION.test(afterPostfix(residue, m.index + m[0].length))
+    )
       continue;
     return { readable: false, name: m[0] };
   }
@@ -1173,7 +1180,9 @@ export function findFlooredControls(
         belowSmPx: null,
         mechanism: "unreadable",
         labelled: false,
-        className: classNameExpression(openTag)!.text.replace(/\s+/g, " ").trim(),
+        className: classNameExpression(openTag)!
+          .text.replace(/\s+/g, " ")
+          .trim(),
         readable: false,
       });
       continue;

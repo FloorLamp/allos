@@ -14,6 +14,7 @@ import {
   usesTapTarget,
   withoutComments,
   type FlooredControl,
+  type ImportedModule,
 } from "../tap-floor-reach";
 
 // THE TAP FLOOR'S REACH, SWEPT OVER THE TREE (#3486 part 3, under #3514).
@@ -50,14 +51,22 @@ import {
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
 //      works, and `.chip` — which app/globals.css declares floor-free ON PURPOSE.
-//   5. A RATCHET over what already misses. 104 controls miss today — 59 once the
-//      45 native boxes with a `<label>` taking the tap are licensed — and this PR
+//   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
+//      45 native boxes with a `<label>` taking the tap are licensed — and this file
 //      does not pretend otherwise; what it does is stop the number growing, and
 //      record what each group is waiting on.
-//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 19 `.tap-target`
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 21 `.tap-target`
 //      controls pin no height in source, so `floorMiss` returns null at its first
 //      line and they are neither findings nor cleared. Counting them is what
 //      turns a silent blind spot into a number that can go up (#3557 review).
+//   7. AND A THIRD FOR WHAT IT CANNOT EVEN READ. A control whose class list is
+//      composed somewhere else — a forwarded `className` prop, a `.map()`
+//      variable — comes back `readable: false`, and those are rostered EXACTLY
+//      too. Until #3561 they were not a roster and not a finding: a hoisted
+//      constant reached the scan as its own IDENTIFIER, matched no height token,
+//      and read as a control that simply pins no height. Three live 40px controls
+//      were behind that (`TrainingLogCalendar`, raised here) and a fourth turned
+//      up the moment it closed (`ActivityOverlay`, registered below).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components"];
@@ -88,10 +97,17 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // THE FLOOR THE CENSUS MUST CLEAR. Not the exact count — controls arrive with
 // every feature — but a number well above zero, so a sweep that has stopped
 // seeing them fails LOUDLY instead of passing over an empty list. Measured
-// 2026-08-22: 1456 interactive controls with a readable class list, of which 342
-// are `.btn`-family members and 39 carry `.tap-target` (38 of those take it as
-// their mechanism; the odd one out also names `btn-ghost`, which is checked
-// first). It only ever moves up, and only when someone has looked.
+// 2026-08-23: 1456 interactive controls carrying a `className`, of which 345 are
+// `.btn`-family members and 51 take `.tap-target` as their mechanism. It only
+// ever moves up, and only when someone has looked.
+//
+// The same 1456 measured 2026-08-22, before #3561 taught the scan to resolve a
+// hoisted class list. The TOTAL did not move, because an unreadable class list was
+// always counted here — it is what the scan then DID with it that changed. What
+// moved is underneath: 159 controls could receive a verdict and now 178 can, and
+// `.tap-target` as a mechanism went 38 -> 51. A headline that holds still across
+// that is a headline measuring the wrong population, which is #3563's third item
+// and is not fixed here.
 const CENSUS_FLOOR = 1200;
 
 /**
@@ -271,6 +287,25 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   },
   { file: "components/DataTableManager.tsx", controls: 2, why: BARE_BOX },
 
+  // ── the drag affordance that doubles as a control ────────────────────────
+  {
+    file: "components/ActivityOverlay.tsx",
+    controls: 1,
+    // FOUND BY FAILING CLOSED (#3561), not by anyone looking. Its class list is
+    // `OVERLAY_DRAG_HANDLE_HIT`, an identifier imported through the `./overlay`
+    // barrel from `./tokens` — three hops the scan could not take, so a 24px
+    // `<button>` read as a control pinning no height.
+    why:
+      "the workout overlay's minimize handle, `h-6 w-16` (24px) from " +
+      "`OVERLAY_DRAG_HANDLE_HIT` in components/overlay/tokens.ts. That constant is the " +
+      "SHARED drag affordance — `OverlayDragHandle` renders it `aria-hidden` on the " +
+      "sheet, the drawer and the dock, where it is a gesture hint and not a target — so " +
+      "raising it to 44 changes the handle's box on every overlay in the app, which is a " +
+      "visual decision for the overlay vocabulary (#1469) rather than a height edit. What " +
+      "closes this is either a 44px box for the one site where the handle IS the button, " +
+      "or the token growing everywhere on purpose",
+  },
+
   // ── the one range track ──────────────────────────────────────────────────
   {
     file: "components/ImageCropper.tsx",
@@ -287,7 +322,7 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
  * see the module header on what a class-list scan can see. That is a stated
- * bound and it is honest, but until now it was also SILENT: nineteen controls
+ * bound and it is honest, but until now it was also SILENT: twenty-one controls
  * wearing the token that says "the floor was reached by hit area" were neither
  * findings nor cleared, and nothing counted them. A blind spot with no number
  * cannot grow visibly, which is the #3206 shape one level down.
@@ -300,8 +335,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the nineteen have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other sixteen are UNMEASURED — nobody
+ * declare. Three of the twenty-one have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other eighteen are UNMEASURED — nobody
  * has looked, and this file says so rather than implying they are fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
@@ -312,14 +347,57 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
   { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
   { file: "components/IntakeItemForm.tsx", controls: 2 },
+  // Two arrived with #3561: this file's dock button and one more chip in
+  // FactChipRow, both of whose class lists were hoisted constants the scan
+  // returned as identifiers. They were always unjudged; now they are counted.
+  { file: "components/MobileDock.tsx", controls: 1 },
   { file: "components/ProfileIdentityBar.tsx", controls: 1 },
   { file: "components/QuickLogSheet.tsx", controls: 2 },
   { file: "components/encounters/VisitFactRow.tsx", controls: 1 },
-  { file: "components/facts/FactChipRow.tsx", controls: 2 },
+  { file: "components/facts/FactChipRow.tsx", controls: 3 },
   { file: "components/intake/CadenceEditor.tsx", controls: 1 },
   { file: "components/intake/IntakeKindChip.tsx", controls: 1 },
   { file: "components/intake/IntakeRulesEditor.tsx", controls: 1 },
   { file: "components/video/VideoClipGrid.tsx", controls: 2 },
+];
+
+/**
+ * THE CLASS LISTS THIS CENSUS CANNOT READ AT ALL, ENUMERATED.
+ *
+ * A control whose `className` is composed somewhere else — `className={className}`
+ * forwarded from a caller, a field of a `.map()` variable, a class returned by a
+ * motion plan — has no class text in the file it lives in. `findFlooredControls`
+ * marks it `readable: false`; nothing about it is judged, and nothing about it is
+ * cleared.
+ *
+ * WHY IT IS A ROSTER AND NOT A THROW. The module throws when it cannot PARSE what
+ * it was handed — that is the scan being wrong about the language. This is the
+ * other case: no edit to `SubmitButton.tsx` can tell it what class its caller will
+ * pass. Demanding one would be a red nobody can clear, and the fix for a red
+ * nobody can clear is always to delete the check. So the blind spot is given a
+ * SIZE instead: this list is asserted to be exactly what the sweep finds, so a new
+ * one is red until someone records it, and one that becomes readable is red until
+ * someone removes it.
+ *
+ * Before #3561 there was no list, because there was no way to tell these apart
+ * from a control that had been read and pinned no height. Thirteen is the number
+ * after the resolver reaches module constants, imported constants, barrel
+ * re-exports, record lookups and single-`return` helpers; without those it was 153.
+ */
+const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
+  { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
+  { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
+  { file: "components/Combobox.tsx", controls: 1 },
+  { file: "components/CustomRangeDisclosure.tsx", controls: 1 },
+  { file: "components/DateField.tsx", controls: 1 },
+  { file: "components/DoseStatusControl.tsx", controls: 1 },
+  { file: "components/ExerciseDetailPanel.tsx", controls: 1 },
+  { file: "components/HrefSelect.tsx", controls: 1 },
+  { file: "components/LogActivityButton.tsx", controls: 1 },
+  { file: "components/SubmitButton.tsx", controls: 1 },
+  { file: "components/activity-form/IntensityPicker.tsx", controls: 1 },
+  { file: "components/illness/EndEpisodeReconcile.tsx", controls: 1 },
+  { file: "components/illness/ReopenEpisodeReconcile.tsx", controls: 1 },
 ];
 
 /**
@@ -385,11 +463,12 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
 ];
 
 /**
- * The sixteen nobody has measured. Stated as a number rather than left as
+ * The eighteen nobody has measured. Stated as a number rather than left as
  * subtraction, because "we have not looked" is the fact worth being able to
- * read off this file.
+ * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
+ * readable — the controls did not change, the scan's sight did.
  */
-const UNMEASURED_TAP_TARGETS = 16;
+const UNMEASURED_TAP_TARGETS = 18;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
@@ -417,6 +496,47 @@ function sourceFiles(root: string, base: string = REPO): string[] {
 
 type Found = FlooredControl & { file: string };
 
+/**
+ * HOW THE SCAN FOLLOWS AN IMPORT, and why the corpus owns this rather than the
+ * module. `lib/tap-floor-reach.ts` resolves a class constant it can reach; where
+ * `"@/components/overlay"` LIVES is a fact about the tree, and the planted-offender
+ * case below points the identical walk at a temp directory. So the corpus hands the
+ * scan a reader, and each module it reaches hands on a reader of its own — which is
+ * what makes a barrel readable at all (`./overlay` -> `index.ts` -> `./tokens`).
+ *
+ * Cached because the same handful of token modules is imported by hundreds of
+ * files, and `withoutComments` over each of them is the expensive part.
+ */
+const moduleCache = new Map<string, ImportedModule | null>();
+
+function moduleReader(corpus: Corpus, dir: string) {
+  return (specifier: string): ImportedModule | null => {
+    let base: string;
+    if (specifier.startsWith("@/"))
+      base = path.join(corpus.base, specifier.slice(2));
+    else if (specifier.startsWith(".")) base = path.resolve(dir, specifier);
+    // A package, a stylesheet, anything not in this corpus. Not an error: the
+    // control is simply one whose class text is not here, which the roster counts.
+    else return null;
+    for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+      const file = base + suffix;
+      if (!moduleCache.has(file))
+        moduleCache.set(
+          file,
+          fs.existsSync(file)
+            ? {
+                source: withoutComments(fs.readFileSync(file, "utf8")),
+                readModule: moduleReader(corpus, path.dirname(file)),
+              }
+            : null
+        );
+      const found = moduleCache.get(file)!;
+      if (found !== null) return found;
+    }
+    return null;
+  };
+}
+
 function census(corpus: Corpus = TREE): Found[] {
   const out: Found[] = [];
   for (const root of corpus.roots)
@@ -424,7 +544,8 @@ function census(corpus: Corpus = TREE): Found[] {
       let controls: FlooredControl[];
       try {
         controls = findFlooredControls(
-          withoutComments(read(file, corpus.base))
+          withoutComments(read(file, corpus.base)),
+          moduleReader(corpus, path.dirname(path.join(corpus.base, file)))
         );
       } catch (error) {
         if (error instanceof UnreadableControlError)
@@ -492,9 +613,10 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     ];
     for (const subject of SUBJECTS) {
       const source = withoutComments(read(subject.file));
-      const controls = findFlooredControls(source).filter(
-        (c) => c.mechanism === "tap-target" && c.belowSmPx !== null
-      );
+      const controls = findFlooredControls(
+        source,
+        moduleReader(TREE, path.dirname(path.join(REPO, subject.file)))
+      ).filter((c) => c.mechanism === "tap-target" && c.belowSmPx !== null);
       expect(
         controls.length,
         `${subject.file} has no \`.tap-target\` control pinning a height at all`
@@ -617,8 +739,12 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
 });
 
 describe("the `.tap-target` controls this census cannot judge", () => {
+  // `readable` matters here: an UNREADABLE control also has `belowSmPx === null`,
+  // and its `className` is the expression as written, which can contain the word
+  // `tap-target` without the control carrying the class. Two blind spots, two
+  // rosters, and neither may absorb the other.
   const unjudged = found.filter(
-    (c) => usesTapTarget(c.className) && c.belowSmPx === null
+    (c) => c.readable && usesTapTarget(c.className) && c.belowSmPx === null
   );
 
   it("rosters every one of them, exactly", () => {
@@ -693,6 +819,87 @@ describe("the `.tap-target` controls this census cannot judge", () => {
   });
 });
 
+describe("the class lists this census cannot read (#3561)", () => {
+  const unreadable = found.filter((c) => !c.readable);
+
+  it("rosters every one of them, exactly", () => {
+    const byFile = new Map<string, number>();
+    for (const c of unreadable)
+      byFile.set(c.file, (byFile.get(c.file) ?? 0) + 1);
+    const actual = [...byFile]
+      .map(([file, controls]) => ({ file, controls }))
+      .sort((a, b) => a.file.localeCompare(b.file));
+    const rostered = [...UNREADABLE_CLASS_LISTS].sort((a, b) =>
+      a.file.localeCompare(b.file)
+    );
+    expect(
+      actual,
+      "A control's class list could not be resolved to any class text, so the tap floor " +
+        "renders no verdict on it. That USED to be silent — a hoisted `className={CONST}` " +
+        "reached this scan as the identifier, matched no height token, and was " +
+        "indistinguishable from a control that had been read and pinned no height " +
+        "(#3561). If this list grew, either the control's classes moved somewhere this " +
+        "scan cannot follow, or the resolver lost a shape it used to handle — record it " +
+        "in UNREADABLE_CLASS_LISTS, or make the class list readable. If it shrank, one " +
+        "became readable and its entry should go.\n\n" +
+        unreadable
+          .map((c) => `${c.file}:${c.line} <${c.tag}> ${c.className}`)
+          .join("\n")
+    ).toEqual(rostered);
+  });
+
+  it("renders no verdict on them, and does not pretend to", () => {
+    for (const c of unreadable) {
+      expect(c.mechanism, `${c.file}:${c.line}`).toBe("unreadable");
+      expect(c.belowSmPx, `${c.file}:${c.line}`).toBeNull();
+      expect(floorMiss(c), `${c.file}:${c.line}`).toBeNull();
+    }
+    // And they are a small fraction of the corpus, which is the claim that makes
+    // every verdict above worth reading. A resolver that quietly stopped resolving
+    // would move controls into this list by the hundred and the roster above would
+    // say so — this bound says the sweep is not living on the edge of that.
+    expect(unreadable.length).toBeLessThan(found.length / 50);
+  });
+
+  it("still reads the controls whose class list is a hoisted constant", () => {
+    // THE SUBJECT OF #3561, asserted from the tree rather than from a fixture.
+    // `TrainingLogCalendar` hoists ARROW_HIT and DAY_HIT and every control in it
+    // uses one; before the resolver, all three came back as identifiers.
+    const calendar = found.filter(
+      (c) => c.file === "components/TrainingLogCalendar.tsx"
+    );
+    const arrows = calendar.filter((c) => c.tag === "button");
+    expect(
+      arrows.length,
+      "components/TrainingLogCalendar.tsx no longer holds the two month arrows this " +
+        "resolver was written for. If they moved, point this at where they went."
+    ).toBe(2);
+    for (const arrow of arrows) {
+      expect(arrow.readable, `${arrow.line}`).toBe(true);
+      expect(
+        arrow.belowSmPx,
+        `components/TrainingLogCalendar.tsx:${arrow.line} pins ${arrow.belowSmPx}px below ` +
+          "`sm` through the hoisted `ARROW_HIT`. It was 40 — correct under the floor as " +
+          "#3377 left it, and short under #3514's 44 — and no census could see it."
+      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    }
+    // The day cell is a `next/link`, which this scan does not walk (a capitalised
+    // component tag is not a DOM tag). Its class list is the same hoisted constant,
+    // so the constant is asserted directly — the height is real either way.
+    expect(
+      belowSmHeightPx(
+        /const DAY_HIT =\s*"([^"]*)"/.exec(
+          read("components/TrainingLogCalendar.tsx")
+        )![1]
+      ),
+      "components/TrainingLogCalendar.tsx's DAY_HIT is the day cell's hit box on a " +
+        "phone. It tiles a grid column, so its WIDTH is the 40.9px seven columns fit " +
+        "into a 288px drawer and cannot reach the floor (#3536); its HEIGHT has the " +
+        "room and must."
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  });
+});
+
 // ── THE HALF THAT MAKES THE GREEN ABOVE WORTH ANYTHING ──────────────────────
 //
 // A green sweep over a complying tree says nothing about what the sweep can see.
@@ -725,6 +932,25 @@ describe("the height reader", () => {
 });
 
 const scan = (source: string) => findFlooredControls(withoutComments(source));
+
+/**
+ * The same scan with a handful of in-memory modules behind it, so an import hop
+ * can be exercised without a temp directory. Each module can itself import from
+ * this same set, which is what a barrel needs.
+ */
+function scanWith(
+  source: string,
+  modules: Record<string, string>
+): FlooredControl[] {
+  const reader = (specifier: string): ImportedModule | null =>
+    specifier in modules
+      ? {
+          source: withoutComments(modules[specifier]),
+          readModule: reader,
+        }
+      : null;
+  return findFlooredControls(withoutComments(source), reader);
+}
 
 describe("the sweep can see an offender", () => {
   it("catches a hand-rolled control outside the family — #3486's own shape", () => {
@@ -812,6 +1038,225 @@ describe("the sweep can see an offender", () => {
     );
     expect(control.belowSmPx).toBe(32);
     expect(floorMiss(control)).not.toBeNull();
+  });
+});
+
+// ── THE CLASS LIST IS RESOLVED, OR THE CONTROL IS COUNTED (#3561) ──────────
+//
+// Every case below is a class list this scan USED to read as the literal text of
+// its own expression — `className={ARROW_HIT}` was the class list "ARROW_HIT" —
+// which matched no height token and came back indistinguishable from a control
+// that pins none. A green sweep over a complying tree says nothing about that, so
+// each shape is planted here with a height UNDER the floor: if the resolver stops
+// reading it, the assertion that it is a finding fails.
+
+describe("the sweep resolves a class list written somewhere else", () => {
+  it("reads a module-scope constant, which is the shape #3561 was filed about", () => {
+    const [control] = scan(
+      `const ARROW_HIT = "flex h-10 w-10 items-center justify-center";
+       export default function X() {
+         return <button type="button" className={ARROW_HIT}>*</button>;
+       }`
+    );
+    expect(control.readable).toBe(true);
+    expect(control.belowSmPx).toBe(40);
+    expect(control.className).toContain("h-10");
+    expect(floorMiss(control)).toContain("40px rendered below `sm`");
+  });
+
+  it("reads a constant declared inside the component, not only at module scope", () => {
+    // `PaginationControls` writes its steppers this way and the precedent in
+    // mobile-density-convention takes module scope only. Refusing this shape
+    // would leave the commonest spelling of a hoisted class list unread.
+    const [control] = scan(
+      `export default function X() {
+         const STEP = "flex h-9 w-9 items-center";
+         return <button type="button" className={STEP}>*</button>;
+       }`
+    );
+    expect(control.belowSmPx).toBe(36);
+    expect(floorMiss(control)).not.toBeNull();
+  });
+
+  it("refuses to guess when a name is declared twice in one file", () => {
+    // The safety the file-local rule gives up, bought back. Which declaration a
+    // call site meant is a guess, and a guess here silently prices a control.
+    const [control] = scan(
+      `function A() {
+         const HIT = "h-11 w-11";
+         return <span className={HIT} />;
+       }
+       export default function X() {
+         const HIT = "h-8 w-8";
+         return <button type="button" className={HIT}>*</button>;
+       }`
+    );
+    expect(control.readable).toBe(false);
+    expect(control.mechanism).toBe("unreadable");
+    expect(floorMiss(control)).toBeNull();
+  });
+
+  it("follows a named import into the module that declares it", () => {
+    const [control] = scanWith(
+      `import { MENU_ITEM } from "./menu";
+       export default function X() {
+         return <button type="button" className={MENU_ITEM}>*</button>;
+       }`,
+      { "./menu": `export const MENU_ITEM = "block h-9 w-full px-3";` }
+    );
+    expect(control.belowSmPx).toBe(36);
+    expect(floorMiss(control)).not.toBeNull();
+  });
+
+  it("follows a BARREL, which is how this tree actually writes its tokens", () => {
+    // `ActivityOverlay` imports `OVERLAY_DRAG_HANDLE_HIT` from "./overlay", an
+    // index that re-exports it from "./tokens", whose value is composed from a
+    // constant that never crosses either hop. Stopping at the first module reads
+    // nothing; the 24px button behind those three hops is a real finding.
+    const [control] = scanWith(
+      `import { HANDLE } from "./overlay";
+       export default function X() {
+         return <button type="button" className={HANDLE}>*</button>;
+       }`,
+      {
+        "./overlay": `export { HANDLE } from "./tokens";`,
+        "./tokens": [
+          `const BOX = "mx-auto flex w-16";`,
+          "export const HANDLE = `${BOX} h-6 items-center`;",
+        ].join("\n"),
+      }
+    );
+    expect(control.className).toContain("mx-auto");
+    expect(control.belowSmPx).toBe(24);
+    expect(floorMiss(control)).toContain("24px rendered below `sm`");
+  });
+
+  it("follows an `export *` re-export too", () => {
+    const [control] = scanWith(
+      `import { FIELD } from "./model";
+       export default function X() {
+         return <input type="text" className={FIELD} />;
+       }`,
+      {
+        "./model": `export * from "@/lib/form-model";`,
+        "@/lib/form-model": `export const FIELD = "input h-8 w-full";`,
+      }
+    );
+    expect(control.belowSmPx).toBe(32);
+  });
+
+  it("reads every value of a record a class list indexes into", () => {
+    // `PhotoPicker` picks its class by variant. Which branch runs is not a thing
+    // a source scan knows, so it reads all of them — the same trade a ternary
+    // already makes, and the one that can only produce a FALSE finding.
+    const [control] = scan(
+      `const BY_VARIANT = { default: "h-11 w-11", compact: "h-7 w-7" };
+       export default function X({ variant }: { variant: "default" | "compact" }) {
+         return <button type="button" className={BY_VARIANT[variant]}>*</button>;
+       }`
+    );
+    expect(control.readable).toBe(true);
+    expect(control.className).toContain("h-7");
+    expect(floorMiss(control)).not.toBeNull();
+  });
+
+  it("reads a single-`return` helper and an arrow, called with an argument", () => {
+    for (const helper of [
+      'function chip(on: boolean): string { return `h-8 w-8 ${on ? "bg-brand-50" : ""}`; }',
+      'const chip = (on: boolean) => `h-8 w-8 ${on ? "bg-brand-50" : ""}`;',
+    ]) {
+      const [control] = scan(
+        `${helper}
+         export default function X({ on }: { on: boolean }) {
+           return <button type="button" className={chip(on)}>*</button>;
+         }`
+      );
+      expect(control.belowSmPx, helper).toBe(32);
+      expect(floorMiss(control), helper).not.toBeNull();
+    }
+  });
+
+  it("is not walked into an unreadable state by a condition it never had to read", () => {
+    // `MoodValencePicker`'s shape. `selected` is `value === score` is `index + 1`
+    // is a `.map()` parameter — expanding a TEST that cannot contribute class text
+    // walked the resolver off the end of a wholly literal class list and reported
+    // it unreadable. Substitute what a browser would concatenate, not what it
+    // would evaluate.
+    const [control] = scan(
+      `export default function X({ value }: { value: number }) {
+         return [1, 2].map((face, index) => {
+           const score = index + 1;
+           const selected = value === score;
+           return (
+             <button
+               key={score}
+               type="button"
+               className={\`flex h-9 w-9 \${selected ? "border-brand-500" : "opacity-60"}\`}
+             >
+               {face}
+             </button>
+           );
+         });
+       }`
+    );
+    expect(control.readable).toBe(true);
+    expect(control.belowSmPx).toBe(36);
+  });
+
+  it("ignores a comment written inside a `${…}` hole", () => {
+    // `withoutComments` treats a template literal as opaque, which is right for a
+    // file and wrong for a hole — and this app explains its class choices there.
+    // An unblanked comment is not noise: its prose carries apostrophes and
+    // backticks, which every scanner downstream reads as an unterminated string.
+    const [control] = scan(
+      "export default function X({ on }: { on: boolean }) {\n" +
+        "  return (\n" +
+        "    <button\n" +
+        '      type="button"\n' +
+        "      className={`h-8 w-8 ${\n" +
+        "        on\n" +
+        "          ? // the row's own colour — see #3486's note about `sm`\n" +
+        '            "bg-brand-50"\n' +
+        '          : ""\n' +
+        "      }`}\n" +
+        "    >\n" +
+        "      x\n" +
+        "    </button>\n" +
+        "  );\n" +
+        "}"
+    );
+    expect(control.readable).toBe(true);
+    expect(control.belowSmPx).toBe(32);
+    expect(control.className).toContain("bg-brand-50");
+    expect(control.className).not.toContain("#3486");
+  });
+
+  it("counts a class list composed at the CALL SITE instead of inventing a verdict", () => {
+    const [control] = scan(
+      `export default function X({ className }: { className: string }) {
+         return <button type="button" className={className}>*</button>;
+       }`
+    );
+    expect(control.readable).toBe(false);
+    expect(control.mechanism).toBe("unreadable");
+    expect(control.belowSmPx).toBeNull();
+    // NOT a clearance. The census rosters this; `floorMiss` only declines to
+    // speak, and the difference is the whole of #3561.
+    expect(floorMiss(control)).toBeNull();
+  });
+
+  it("throws on a class list it cannot parse, rather than reporting a clean read", () => {
+    // The OTHER failure, and the one that does throw: this is not a class list
+    // composed elsewhere, it is source this scan does not understand. Returning
+    // "no height pinned" from a parser that gave up is the #3561 defect in its
+    // purest form, so the parser says so instead.
+    expect(() =>
+      scan(
+        "export default function X() {\n" +
+          '  return <button type="button" className={\'h-8 w-8}>x</button>;\n' +
+          "}"
+      )
+    ).toThrow(UnreadableControlError);
   });
 });
 
@@ -997,6 +1442,68 @@ describe("the census walk reaches a planted offender", () => {
     ).toBe(before.length);
     // …and it really was scanned, rather than silently skipped.
     expect(census(corpus).some((c) => c.file === plantedRel)).toBe(true);
+  });
+
+  it("flags one whose class list is a constant in ANOTHER file it had to open", () => {
+    // THE #3561 SHAPE, END TO END. Everything in the resolver's own describe is
+    // handed its modules in memory; this one makes the walk find the component on
+    // disk AND makes the scan open the module beside it, through the corpus's own
+    // reader. A reader that resolved `@/` against the wrong base, or stopped at a
+    // barrel, would leave the class list unread — and unread is exactly the state
+    // that used to look like "pins no height".
+    if (fs.existsSync(planted)) fs.unlinkSync(planted);
+    const before = misses(census(corpus));
+    fs.mkdirSync(path.join(base, "components", "tokens"), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, "components", "tokens", "index.ts"),
+      'export { HANDLE } from "./hit";\n',
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(base, "components", "tokens", "hit.ts"),
+      'const BOX = "mx-auto flex w-16";\n' +
+        "export const HANDLE = `${BOX} h-6 items-center`;\n",
+      "utf8"
+    );
+    fs.writeFileSync(
+      planted,
+      'import { HANDLE } from "@/components/tokens";\n' +
+        "export default function PlantedHoisted() {\n" +
+        '  return <button type="button" className={HANDLE}>x</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+    const after = misses(census(corpus));
+    const caught = after.filter((m) => m.control.file === plantedRel);
+    expect(
+      caught,
+      "The census did not flag a control whose class list is a constant re-exported " +
+        "from a module beside it. That is the #3561 defect: the class list came back as " +
+        "the identifier `HANDLE`, matched no height token, and read as a control that " +
+        "pins none. Check the corpus's module reader before the resolver."
+    ).toHaveLength(1);
+    expect(caught[0].control.readable).toBe(true);
+    expect(caught[0].control.belowSmPx).toBe(24);
+    expect(after.length).toBe(before.length + 1);
+  });
+
+  it("counts, rather than clears, a plant whose class list comes from its caller", () => {
+    if (fs.existsSync(planted)) fs.unlinkSync(planted);
+    const before = misses(census(corpus));
+    fs.writeFileSync(
+      planted,
+      "export default function PlantedForwarded({ className }: { className: string }) {\n" +
+        '  return <button type="button" className={className}>x</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+    const scanned = census(corpus).filter((c) => c.file === plantedRel);
+    expect(scanned).toHaveLength(1);
+    expect(scanned[0].readable).toBe(false);
+    expect(scanned[0].mechanism).toBe("unreadable");
+    // It is not a finding — there is nothing to find — and it is not silence
+    // either: the tree's own roster above is what gives it a number.
+    expect(misses(census(corpus)).length).toBe(before.length);
   });
 
   // AND THE CORPUS PARAMETER IS NOT A SEPARATE CODE PATH. The two tests above
