@@ -126,6 +126,94 @@ test("a long dose detail never costs the medication its name (#2940)", async ({
   await expectNoClippedContent(page);
 });
 
+// #3479 fix 2 — A NAME TOO LONG FOR ONE LINE WRAPS; IT DOES NOT TRUNCATE.
+//
+// `truncatedNames` above has always been able to see this, and on a tree with no
+// long-named medication it has always had nothing to see. #2940 fixed the priority
+// (the DETAIL gives up its width) and left the name `truncate`, so once a name was on
+// its own too wide for the cell — the portal-imported shape, "Calcium
+// Carb-Cholecalciferol (CALCIUM 500 + D OR)" — the row rendered "Calcium
+// Carb-Cholecalciferol (CALCIUM 5…" and the one thing the row is FOR was the one thing
+// it would not show. The Current medications list below wraps the same name in full.
+//
+// This spec plants that name and asserts three things a class-string check cannot
+// reach: the name is whole (scrollWidth ≤ rendered width), it took MORE THAN ONE LINE
+// to be whole, and the row's action buttons kept their size and their top alignment.
+//
+// Fixture (#868 hygiene): SPEC-OWNED, named per repeat index like the case above.
+const LONG_NAME_STEM = "Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)";
+
+test("a name too long for one line wraps instead of truncating (#3479)", async ({
+  page,
+}, testInfo) => {
+  const medName = `${LONG_NAME_STEM} ${testInfo.repeatEachIndex} (e2e)`;
+
+  await page.goto("/medications");
+  await page.getByTestId("medication-add-toggle").click();
+  const addCard = page.getByTestId("medication-add-panel");
+  await expect(addCard).toBeVisible();
+
+  const nameInput = addCard.getByRole("combobox", { name: "Name" });
+  await nameInput.fill(medName);
+  await nameInput.press("Escape");
+  // As-needed, so the row lands on the Today panel with a Log control beside it — the
+  // two buttons whose size and alignment the acceptance criterion protects.
+  // setObligation opens and CLOSES the importance fact itself; nothing else is opened
+  // here, so there is no editor left to close.
+  await setObligation(page, "may", addCard);
+  await settledClick(
+    page,
+    addCard.getByRole("button", { name: "Add", exact: true })
+  );
+
+  const row = page
+    .locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
+    .filter({ hasText: LONG_NAME_STEM });
+  await expect(row).toBeVisible();
+
+  const measured = await row.evaluate((node) => {
+    const name = node.querySelector('[data-testid="today-med-name"]')!;
+    const nameBox = name.getBoundingClientRect();
+    const controls = node.querySelectorAll("button");
+    const line = parseFloat(getComputedStyle(name).lineHeight);
+    return {
+      width: nameBox.width,
+      scrollWidth: name.scrollWidth,
+      height: nameBox.height,
+      lineHeight: line,
+      controls: Array.from(controls).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { w: r.width, h: r.height, top: r.top };
+      }),
+      rowTop: node.getBoundingClientRect().top,
+    };
+  });
+  // KEEP THIS, reviewer: a red here is "the name did not wrap" or "the name is still
+  // clipped", and the two need different fixes.
+  console.log(`[#3479] long name: ${JSON.stringify(measured)}`);
+
+  // WHOLE: nothing is hidden horizontally any more.
+  expect(measured.scrollWidth).toBeLessThanOrEqual(Math.ceil(measured.width));
+  // AND IT TOOK MORE THAN ONE LINE to be whole — without this the assertion above
+  // passes on any name that happens to fit, which is every name in the seed.
+  expect(measured.height).toBeGreaterThan(measured.lineHeight * 1.5);
+  // The whole panel still holds: no other row's name lost, no detail across the
+  // controls column, nothing past the viewport edge.
+  const truncated = await truncatedNames(page);
+  expect(truncated, truncated.join("\n")).toEqual([]);
+  await expectNoClippedContent(page);
+
+  // THE BUTTONS ARE UNAFFECTED: same 32px box the shared style declares, and still
+  // top-aligned with the start of the row rather than dragged to the wrapped name's
+  // centre (the grid is `items-start`).
+  expect(measured.controls.length).toBeGreaterThan(0);
+  for (const c of measured.controls) {
+    expect(c.h).toBe(32);
+    expect(c.w).toBeGreaterThan(0);
+    expect(Math.abs(c.top - measured.rowTop)).toBeLessThanOrEqual(16);
+  }
+});
+
 // Both row BRANCHES: the medications page links the name to the med detail page, the
 // dashboard's PRN atom renders the same pair unlinked. Both VARIANTS (inset,
 // embedded) render on those two surfaces. The claim here is that nothing was paid for

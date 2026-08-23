@@ -338,11 +338,20 @@ test("the medications page reaches the dose ledger, pre-filtered to medications"
   page,
 }) => {
   await page.goto("/medications");
-  await followLink(
-    page,
-    page.getByTestId("dose-ledger-link"),
-    /\/medications\/dose-history/
-  );
+  const ledgerDoor = page.getByTestId("dose-ledger-link");
+  // Since #3479 the door lives in the Today card rather than the page header — the
+  // ledger is the record of exactly what that card checks off. The containment is the
+  // half of the move a URL assertion cannot see.
+  expect(
+    await ledgerDoor.evaluate((node) =>
+      Boolean(
+        document
+          .querySelector('[data-testid="medications-today"]')
+          ?.contains(node)
+      )
+    )
+  ).toBe(true);
+  await followLink(page, ledgerDoor, /\/medications\/dose-history/);
 
   // The kind filter opens on this surface's own kind.
   const kinds = page.getByTestId("dose-ledger-kind-filter");

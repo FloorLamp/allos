@@ -279,6 +279,80 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   await expectNoClippedContent(page);
 });
 
+// ── THE PHONE HEADER CARRIES ONE AFFORDANCE (#3479 fix 1) ────────────────────────
+//
+// It carried three: the dose-ledger door, the cabinet door, and the "Add medication"
+// primary. Below `sm` the group takes its own line (`stackActionBelowSm`, the #1522
+// follow-up restated by #3403) and is `justify-end flex-wrap`, so at 390px it wrapped
+// INSIDE that line into two right-aligned rows — the two quiet text doors, then the
+// button — with the left half of both rows empty. Measured on origin/main at 390px,
+// 2026-08-23: the doors on a row at y=141, the primary at y=169, header block 140px
+// tall, first card at y=229.
+//
+// The doors moved into the cards they serve, so the assertions are (a) they are gone
+// from the header, (b) they are still on the page, inside those cards, and (c) the
+// content above the fold moved UP. (c) is measured as a box, not asserted as a class:
+// the whole finding was about rendered vertical cost.
+test("the medications phone header carries title, subtitle and one action (#3479)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/medications");
+
+  const workspace = page.getByTestId("medication-add-workspace");
+  await expect(workspace.getByTestId("medication-add-toggle")).toBeVisible();
+
+  // (a) The header's own subtree holds exactly one interactive affordance.
+  // Scoped to the HEADER BAND, not to the workspace: the add panel is the header's
+  // sibling inside this workspace, and PageHeader renders no testid of its own, so the
+  // band is the workspace's first element child (components/ui.tsx, PageHeader's root).
+  const inHeader = async (testId: string) =>
+    workspace.evaluate(
+      (node, id) => Boolean(node.firstElementChild?.querySelector(id)),
+      `[data-testid="${testId}"]`
+    );
+  expect(await inHeader("dose-ledger-link")).toBe(false);
+  expect(await inHeader("shared-supplies-link")).toBe(false);
+  expect(await inHeader("medication-add-toggle")).toBe(true);
+
+  // (b) Both doors are still reachable on this page, each inside the card it serves.
+  const ledgerDoor = page.getByTestId("dose-ledger-link");
+  await expect(ledgerDoor).toBeVisible();
+  expect(
+    await ledgerDoor.evaluate((node) =>
+      Boolean(
+        document
+          .querySelector('[data-testid="medications-today"]')
+          ?.contains(node)
+      )
+    )
+  ).toBe(true);
+  const cabinetDoor = page.getByTestId("shared-supplies-link");
+  await expect(cabinetDoor).toBeVisible();
+  // The count stays ON the door — that is what makes it worth its line.
+  await expect(cabinetDoor).toHaveAttribute("aria-label", /Medicine cabinet/);
+  expect(
+    await cabinetDoor.evaluate((node) =>
+      Boolean(
+        document
+          .querySelector('[data-testid="medication-list"]')
+          ?.contains(node)
+      )
+    )
+  ).toBe(true);
+
+  // (c) The first card starts higher than the header used to let it. 229px was the
+  // measured origin/main top of `medications-today` at this viewport; a header that
+  // still wrapped its actions onto a second row cannot clear this bound. Stated as an
+  // inequality with the control reading in the comment, not as a pinned number, so an
+  // unrelated change to the subtitle does not read as this regression coming back.
+  const top = (await page.getByTestId("medications-today").boundingBox())!.y;
+  console.log(`[#3479] medications-today top at 390px: ${top}px (main: 229px)`);
+  expect(top).toBeLessThan(229);
+
+  await expectNoClippedContent(page);
+});
+
 test("a medication row links to its clinical-record detail page", async ({
   page,
 }) => {

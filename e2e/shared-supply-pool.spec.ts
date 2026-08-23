@@ -271,9 +271,22 @@ test.describe("shared supply pools", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      // Medications: the door sits in the page header beside "Add medication".
+      // Medications: the door sits in the Current medications card since #3479 — it
+      // used to be in the page header beside "Add medication", where at 390px it and
+      // the dose-ledger door wrapped onto their own right-aligned row above the
+      // primary. It is inside the card it serves now, and that containment is part of
+      // the assertion, not incidental.
       await page.goto("/medications");
       const medDoor = page.getByTestId("shared-supplies-link");
+      expect(
+        await medDoor.evaluate((node) =>
+          Boolean(
+            document
+              .querySelector('[data-testid="medication-list"]')
+              ?.contains(node)
+          )
+        )
+      ).toBe(true);
       // A count, not a bare label — this login's two profiles draw from the three
       // bottles this spec owns. Asserted as a PATTERN, never an exact number: other
       // specs' bottles are orphan-visible to everyone and exact-counting shared seed
@@ -441,3 +454,76 @@ test.describe("shared supply pools", () => {
     }
   });
 });
+
+// ── ONE CONTROL HEIGHT IN THE ADD-FOR ROW (#3481) ────────────────────────────────
+//
+// The cabinet's "Add for another person" row paired a `.input` select with a
+// `btn btn-sm` submit, and the mismatch had two different shapes depending on where
+// you looked — which is why the class needs a RENDERED measurement rather than a class
+// string, and at BOTH widths rather than one. Measured on origin/main, 2026-08-23:
+//
+//   1280px — select 38px, submit 32px, spread 6. The direction the phone review
+//            reported ("the select is visibly taller than 'Add this bottle'").
+//    390px — select 38px, submit 44px, spread 6, OPPOSITE DIRECTION. The button
+//            family's rendered tap floor (#3486, ruled at 44 by #3514) lifts the
+//            submit below `sm` and nothing reaches the select, so the row that was
+//            filed as "button too short" is now "select too short". A guard written
+//            only at desktop would have gone green on a phone the day the floor
+//            landed, which is the same day the defect changed direction.
+//
+// The tolerance is the geometry census's own (scripts/ux-geometry-census.mjs,
+// GEOMETRY_THRESHOLDS.controlHeightTolerancePx = 2 PIXELS OF RENDERED HEIGHT): a
+// noise floor for sub-pixel layout and 1px borders, not a design allowance. Both
+// readings above clear it three-fold.
+const CONTROL_HEIGHT_TOLERANCE_PX = 2;
+
+for (const [label, viewport] of [
+  ["390px", { width: 390, height: 844 }],
+  ["1280px", { width: 1280, height: 900 }],
+] as const) {
+  test(`the cabinet's add-for row has ONE control height at ${label} (#3481)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(CABINET);
+    // WAIT FOR THE CONTENT, AND MEASURE ALL OF IT. A box read before the rows exist is
+    // a box of zeros, and zeros compare EQUAL — the direction that flatters. So: wait
+    // for the rows to be there, then require every reading to be a real rendered box
+    // below, which is what actually closes that hole. Nothing here picks an arbitrary
+    // row: every add-for row on the surface is measured and asserted.
+    const rows = page.getByTestId("shared-supply-add-for");
+    await expect(rows).not.toHaveCount(0);
+
+    const spreads = await rows.evaluateAll((forms) =>
+      forms.map((form) => {
+        const select = form.querySelector(
+          '[data-testid="shared-supply-add-for-select"]'
+        )!;
+        const submit = form.querySelector(
+          '[data-testid="shared-supply-add-for-submit"]'
+        )!;
+        const s = select.getBoundingClientRect().height;
+        const b = submit.getBoundingClientRect().height;
+        return { select: s, submit: b, spread: Math.abs(s - b) };
+      })
+    );
+    expect(spreads.length).toBeGreaterThan(0);
+    // KEEP THIS, reviewer: it is how the numbers in the comment above were taken, and
+    // it is what makes a red here say WHICH control moved instead of only that one did.
+    console.log(`[#3481] ${label} add-for rows: ${JSON.stringify(spreads)}`);
+    for (const r of spreads) {
+      expect(
+        r.select,
+        `select measured ${r.select}px at ${label}`
+      ).toBeGreaterThan(0);
+      expect(
+        r.submit,
+        `submit measured ${r.submit}px at ${label}`
+      ).toBeGreaterThan(0);
+      expect(
+        r.spread,
+        `select ${r.select}px vs submit ${r.submit}px at ${label}`
+      ).toBeLessThanOrEqual(CONTROL_HEIGHT_TOLERANCE_PX);
+    }
+  });
+}
