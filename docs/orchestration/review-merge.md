@@ -46,7 +46,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 - Applied migrations are keyed by name; numbered migrations 001–185 are closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, and add its hash
-  to `manifest.json`. Never edit a shipped migration.
+  to `manifest.json` via `npm run gen:migration-manifest`. Never edit a shipped
+  migration, and never type a hash in by hand.
 - Merge order defines migration order. Resolve `versions/index.ts` conflicts by
   keeping both entries and appending the later merge last.
 - Recreate development databases containing abandoned, unknown migration names.

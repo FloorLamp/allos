@@ -36,9 +36,11 @@ migrations 1..V):
   first name-keyed one.
 - **A new migration is `versions/YYYYMMDD-slug.ts`**, exports
   `{ name, up }` with no `id`, is appended LAST to the array, and adds its
-  sha256 to `manifest.json`. Names are the ledger's primary key; uniqueness and
-  the two filename shapes are enforced by `assertRegistry` at boot and
-  `lib/__tests__/migration-immutability.test.ts` in CI.
+  sha256 to `manifest.json` — written by `npm run gen:migration-manifest`
+  (`scripts/gen-migration-manifest.ts`), never by hand. Names are the ledger's
+  primary key; uniqueness and the two filename shapes are enforced by
+  `assertRegistry` at boot and `lib/__tests__/migration-immutability.test.ts`
+  in CI.
 - **The array stays the single ordering authority** (deliberately not filename
   sort: date prefixes from parallel branches interleave, and fresh databases
   must replay in the same order deployed ones received). Production applied
@@ -480,11 +482,15 @@ Existing tiers keep their roles; the DB tier gets stronger and simpler:
   `user_version === MIGRATIONS.length`; ids are contiguous and match array
   position; re-running is a total no-op; a DB stamped at version N only receives
   N+1…; `user_version` ahead of code fails with the downgrade error.
-- **Immutability guard** (new, pure tier): recompute sha-256 of each
-  `versions/*.ts` and compare to `manifest.json`. A hash mismatch fails CI with
-  "shipped migrations are append-only — add a new migration instead". Adding a
-  file requires adding its hash line (same diff), so review sees both.
-  Baseline's hash is pinned like any other.
+- **Immutability guard** (pure tier): recompute sha-256 of each `versions/*.ts`
+  and compare to `manifest.json`. A hash mismatch fails CI with "shipped
+  migrations are append-only — add a new migration instead". Adding a file
+  requires adding its hash line (same diff), so review sees both. Baseline's
+  hash is pinned like any other. The guard also pins the manifest's KEY ORDER to
+  registry order and asserts the file is byte-identical to the generator's
+  output — the hash, the file set and the ordering are spelled once, in
+  `lib/migrations/manifest-source.ts`, which the guard and the generator both
+  import (#3579).
 - **Upgrade-path test**: `lib/__db_tests__/migrate.test.ts`'s "strip
   `ADDITIVE_COLUMNS`, re-run" reconstruction becomes obsolete for the
   post-runner era — the real old schema **is** "replay migrations 1…N". Keep the
