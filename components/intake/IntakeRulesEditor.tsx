@@ -225,11 +225,18 @@ function OtherItemSelect({
   onChange: (id: number) => void;
 }) {
   return (
+    // THE SAME SHAPE AS #3478's item filter, on the other intake surface that
+    // offers item NAMES as options: a `w-auto` select sizes to its widest option,
+    // and an imported name ("Calcium Carb-Cholecalciferol (CALCIUM 500 + D OR)")
+    // has no bound the page controls. `min-w-0` releases the flex content floor so
+    // the wrapping rule row can shrink it; `truncate` gives the shortened value an
+    // ellipsis instead of a hard clip. Fixed alongside the ledger deliberately —
+    // leaving the sibling is how this class comes back.
     <select
       aria-label="Other item"
       value={value || others[0]?.id}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="input w-auto"
+      className="input w-auto min-w-0 truncate"
     >
       {others.map((o) => (
         <option key={o.id} value={o.id}>
