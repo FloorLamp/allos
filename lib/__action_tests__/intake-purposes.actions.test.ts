@@ -161,7 +161,7 @@ describe("the write boundary", () => {
         ]),
       })
     );
-    expect(result.error).toBeFalsy();
+    expect(result).toEqual({ ok: true });
     const id = lastItemId(profile.id);
     expect(storedFor(profile.id, id)).toEqual([]);
     expect(

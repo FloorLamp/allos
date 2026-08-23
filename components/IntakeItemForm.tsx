@@ -1035,7 +1035,6 @@ export default function IntakeItemForm({
     [ingredients]
   );
 
-
   return (
     <form
       ref={formRef}

@@ -614,10 +614,14 @@ function parsePurposes(formData: FormData): PurposeWrite[] | null {
     if (kind === "goal") {
       drafts.push({
         kind: "goal",
-        goalKey: typeof (p as any).goalKey === "string" ? (p as any).goalKey : "",
+        goalKey:
+          typeof (p as any).goalKey === "string" ? (p as any).goalKey : "",
       });
     } else if (kind === "condition") {
-      drafts.push({ kind: "condition", conditionId: Number((p as any).conditionId) });
+      drafts.push({
+        kind: "condition",
+        conditionId: Number((p as any).conditionId),
+      });
     } else if (kind === "biomarker") {
       drafts.push({
         kind: "biomarker",

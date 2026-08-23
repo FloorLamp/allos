@@ -347,6 +347,10 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
   { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
   { file: "components/IntakeItemForm.tsx", controls: 2 },
+  // The purpose chips (#2857): the goal buttons and the suggestion offer, both
+  // rounded-full chips whose padding decides their height. Nobody has measured them —
+  // they sit beside the fact chips this roster already carries unmeasured.
+  { file: "components/intake/PurposesEditor.tsx", controls: 2 },
   // Two arrived with #3561: this file's dock button and one more chip in
   // FactChipRow, both of whose class lists were hoisted constants the scan
   // returned as identifiers. They were always unjudged; now they are counted.
@@ -463,12 +467,14 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
 ];
 
 /**
- * The eighteen nobody has measured. Stated as a number rather than left as
+ * The twenty nobody has measured. Stated as a number rather than left as
  * subtraction, because "we have not looked" is the fact worth being able to
  * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
- * readable — the controls did not change, the scan's sight did.
+ * readable — the controls did not change, the scan's sight did. It went 18 -> 20
+ * with #2857's two purpose chips, which is the other kind of increase: two new
+ * controls nobody has put a ruler to.
  */
-const UNMEASURED_TAP_TARGETS = 18;
+const UNMEASURED_TAP_TARGETS = 20;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
