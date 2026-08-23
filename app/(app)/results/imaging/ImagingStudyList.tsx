@@ -236,7 +236,10 @@ export default function ImagingStudyList({
 
   return (
     <div data-testid="imaging-study-list" className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        data-testid="imaging-filter-toolbar"
+        className="flex flex-wrap items-center gap-2"
+      >
         <select
           aria-label="Filter by modality"
           className="input w-auto"

@@ -672,9 +672,7 @@ describe("foodSuggestionHeadline", () => {
           side: "high",
         })
       )
-    ).toBe(
-      "LDL Cholesterol and Apolipoprotein B (ApoB) are high — eat more:"
-    );
+    ).toBe("LDL Cholesterol and Apolipoprotein B (ApoB) are high — eat more:");
   });
 
   it("a comma-bearing lab name stays ONE name", () => {
@@ -715,9 +713,7 @@ describe("foodSuggestionHeadline", () => {
 
   it("a reduce suggestion says eat less", () => {
     expect(
-      foodSuggestionHeadline(
-        suggestion({ side: "high", direction: "reduce" })
-      )
+      foodSuggestionHeadline(suggestion({ side: "high", direction: "reduce" }))
     ).toBe("Selenium is high — eat less:");
   });
 

@@ -105,7 +105,9 @@ test("the mechanism paragraph and its regulatory cite sit behind 'Why this works
 
   // The headline, the foods and the advisory never fold.
   await expect(suggestion).toContainText("Selenium is low — eat more:");
-  await expect(suggestion.getByTestId("food-suggestion-foods-selenium")).toBeVisible();
+  await expect(
+    suggestion.getByTestId("food-suggestion-foods-selenium")
+  ).toBeVisible();
 
   await page.getByTestId("food-suggestion-why-toggle-selenium").click();
   await expect(cite).toBeVisible();
@@ -123,5 +125,7 @@ test("the headline names each trigger once and never shouts the side (#3497)", a
   // capitals. (The trigger names themselves keep their stored casing — a display
   // casing pass over a clinical name is what copy.md §9 rules out.)
   await expect(headline).not.toContainText("HIGH");
-  await expect(headline).toContainText(/ is high — eat less:$| are high — eat less:$/);
+  await expect(headline).toContainText(
+    / is high — eat less:$| are high — eat less:$/
+  );
 });

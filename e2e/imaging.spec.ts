@@ -392,7 +392,14 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // assertion — the shared seed and neighbor tests contribute rows too.
     const card = page.getByTestId("radiation-dose-card");
     await expect(card).toBeVisible();
-    await expect(card).toContainText("Estimated:");
+    // This record has no recorded dose at all, so the recorded/estimated split has
+    // nothing to split and the estimated portion is carried in the headline's own
+    // context instead of on a sub-line restating the same figure (#3498 item 2).
+    // Same fact, stated once.
+    await expect(card.getByTestId("radiation-dose-context")).toContainText(
+      /\d+ estimated stud/
+    );
+    await expect(card).not.toContainText("Estimated:");
     await expect(card.getByTestId("radiation-dose-total")).toContainText("≈");
 
     // Clean up the study we created.
@@ -646,21 +653,21 @@ test("the imaging tab opens with the dose card, and the create action sits in th
   await expect(add).toBeVisible();
   await expect(modality).toBeVisible();
 
-  const [cardBox, addBox, modalityBox] = await settledBoxes([
-    card,
-    add,
-    modality,
-  ]);
+  const [cardBox, addBox] = await settledBoxes([card, add]);
 
   // The dose card is the first block; the create action is below it.
   expect(addBox.y).toBeGreaterThan(cardBox.y + cardBox.height);
 
-  // And it is IN the toolbar, not floating above it: same row as the modality
-  // select, and inside the list's own subtree.
-  const mid = addBox.y + addBox.height / 2;
-  expect(mid).toBeGreaterThanOrEqual(modalityBox.y - 1);
-  expect(mid).toBeLessThanOrEqual(modalityBox.y + modalityBox.height + 1);
-  await expect(list.getByTestId("add-imaging-panel-toggle")).toBeVisible();
+  // And it is IN the toolbar, not floating: a descendant of the list's own filter
+  // toolbar, beside the controls that act on the same list. Containment rather
+  // than a same-ROW claim — at 390px three controls wrap onto two lines, and the
+  // defect was a button on a row of its own ABOVE the tab, not a wrap.
+  await expect(
+    list
+      .getByTestId("imaging-filter-toolbar")
+      .getByTestId("add-imaging-panel-toggle")
+  ).toBeVisible();
+  await expect(modality).toBeVisible();
 
   await page.context().close();
 });

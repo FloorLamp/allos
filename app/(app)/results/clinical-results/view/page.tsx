@@ -988,8 +988,8 @@ export default async function ClinicalResultDetailPage(props: {
           Clinical results
         </h2>
         {/* THE SHARED RESPONSIVE TABLE, not a hand-rolled one (#3497 item 2).
-            This was a bespoke `<table className="w-full whitespace-nowrap">` inside
-            a fade, so the card branch below `sm` never existed here at any width and
+            This was a hand-rolled table element, nowrap, inside a fade, so the
+            card branch below `sm` never existed here at any width and
             the Source column clipped to "Sou…" behind the fade on a phone. Adopting
             `ResponsiveTable` inherits that branch — and inherits #3457's breakpoint
             fix whenever it lands — the same way the catalog table on the sibling
