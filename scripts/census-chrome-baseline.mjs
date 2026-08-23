@@ -225,6 +225,11 @@ export function surfaceKey(surface) {
   return `${surface.viewport} ${surface.route}`;
 }
 
+/** The key the census harness files the same surface under (see `censusRoute`). */
+export function censusSurfaceKey(surface) {
+  return `${surface.viewport} ${surface.censusRoute ?? surface.route}`;
+}
+
 /**
  * THE IN-PAGE PROBE. Runs inside the browser, under `page.evaluate`, in both the
  * e2e recorder and the census harness.
@@ -477,7 +482,21 @@ export function serializeBaseline(baseline) {
       const landmarks = {};
       for (const name of CHROME_LANDMARK_NAMES)
         if (name in s.landmarks) landmarks[name] = s.landmarks[name];
-      return { route: s.route, viewport: s.viewport, why: s.why, landmarks };
+      return {
+        route: s.route,
+        viewport: s.viewport,
+        // The key the CENSUS files this surface under, when it differs. The census
+        // keys a dynamic route by its PATTERN (`/trends/metric/[kind]`) because the
+        // instance id changes run to run, while this baseline is recorded against one
+        // pinned instance. Without this field the census would report that surface as
+        // unreached on every single run, and a line that is always there is a line
+        // nobody reads.
+        ...(s.censusRoute && s.censusRoute !== s.route
+          ? { censusRoute: s.censusRoute }
+          : {}),
+        why: s.why,
+        landmarks,
+      };
     });
   return (
     JSON.stringify(
@@ -496,6 +515,75 @@ export function serializeBaseline(baseline) {
 export const BASELINE_NOTE =
   `Rendered chrome geometry, in CSS pixels, recorded by e2e/census-chrome-baseline.spec.ts. ` +
   `Regenerate with \`${REFRESH_COMMAND}\` and commit the diff — never hand-edit a number.`;
+
+/**
+ * Every route `app/(app)` actually serves, as route patterns — `/trends/metric/[kind]`
+ * and not `/trends/metric/weight`.
+ *
+ * Here rather than in the test that uses it so that the walk which VALIDATES the
+ * committed file is the same walk the census enumerates routes with
+ * (`scripts/ux-walkthrough.mjs` reads the same tree the same way). A second copy is
+ * how a validator goes on agreeing with itself while the app moves.
+ *
+ * @param {string} appDir
+ * @returns {string[]}
+ */
+export function appRoutePatterns(appDir) {
+  /** @type {string[]} */
+  const out = [];
+  const walk = (dir, route) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        if (entry.name === "page.tsx") out.push(route || "/");
+        continue;
+      }
+      walk(path.join(dir, entry.name), `${route}/${entry.name}`);
+    }
+  };
+  walk(appDir, "");
+  return out;
+}
+
+/** The path half of a censused route — `/nutrition?tab=supplements` is served by `/nutrition`. */
+export function routePathOf(route) {
+  return route.split("?")[0].split("#")[0] || "/";
+}
+
+/** Does a concrete path land on this route pattern? `[kind]` matches exactly one segment. */
+export function matchesRoutePattern(concretePath, pattern) {
+  const a = concretePath.split("/");
+  const b = pattern.split("/");
+  if (a.length !== b.length) return false;
+  return b.every((seg, i) =>
+    /^\[.+\]$/.test(seg) ? a[i].length > 0 : seg === a[i]
+  );
+}
+
+/**
+ * Recorded routes that `app/(app)` no longer serves.
+ *
+ * A baseline surface whose page was deleted or renamed is the quiet failure this
+ * catches: the e2e recorder would navigate to it, land on a 404 rendered INSIDE the
+ * app shell (which is what app/(app)/not-found.tsx does), measure a perfectly real
+ * shell, and agree with the committed numbers. The route existing is a fact about
+ * the tree, so it is checked against the tree.
+ *
+ * @param {Array<{route: string}>} surfaces
+ * @param {string} appDir
+ */
+export function unresolvedBaselineRoutes(surfaces, appDir) {
+  const patterns = appRoutePatterns(appDir);
+  const seen = new Set();
+  const missing = [];
+  for (const s of surfaces) {
+    const concrete = routePathOf(s.route);
+    if (seen.has(concrete)) continue;
+    seen.add(concrete);
+    if (!patterns.some((p) => matchesRoutePattern(concrete, p)))
+      missing.push(s.route);
+  }
+  return missing;
+}
 
 /** Read the committed file. Throws loudly rather than returning an empty baseline. */
 export function readCommittedBaseline(file = baselinePath()) {
@@ -520,13 +608,21 @@ export function readCommittedBaseline(file = baselinePath()) {
  *
  * @param {Array<{route: string, viewport: string, drift: Array<object>}>} compared
  */
-export function chromeBaselineAuditSection(compared) {
+export function chromeBaselineAuditSection(compared, unreached = []) {
   const lines = ["## Committed chrome baseline", ""];
+  const sayUnreached = () => {
+    if (!unreached.length) return;
+    lines.push(
+      `Recorded but NOT reached on this run: ${unreached.join(", ")}. On a scoped \`UX_ROUTES\` run that is expected; on a full one it means the census did not visit a surface this file makes a claim about.`,
+      ""
+    );
+  };
   if (!compared.length) {
     lines.push(
       "No surface in this run matched a surface in `scripts/census-chrome-baseline.json`, so nothing was compared. That is expected on a scoped `UX_ROUTES` run and a blind spot on a full one.",
       ""
     );
+    sayUnreached();
     return lines;
   }
   const drifted = compared.filter((c) => c.drift.length);
@@ -534,9 +630,11 @@ export function chromeBaselineAuditSection(compared) {
     `Compared ${compared.length} surface(s) against the committed baseline (tolerance ${CHROME_TOLERANCE_PX}px). ` +
       (drifted.length
         ? `${drifted.length} drifted.`
-        : "None drifted — the shell renders where the committed file says it does."),
+        : "None drifted — the shell renders where the committed file says it does.") +
+      " This table is advisory: the file is ENFORCED by e2e/census-chrome-baseline.spec.ts, which measures a pinned fixture, while a census run measures whatever shape it was seeded with.",
     ""
   );
+  sayUnreached();
   if (drifted.length) {
     lines.push(
       "| route | viewport | landmark | was | now | delta |",

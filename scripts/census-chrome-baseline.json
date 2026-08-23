@@ -59,6 +59,7 @@
     {
       "route": "/trends/metric/weight",
       "viewport": "desktop",
+      "censusRoute": "/trends/metric/[kind]",
       "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
       "landmarks": {
         "sidebarWidth": 240,
@@ -135,6 +136,7 @@
     {
       "route": "/trends/metric/weight",
       "viewport": "mobile",
+      "censusRoute": "/trends/metric/[kind]",
       "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
       "landmarks": {
         "shellChromeHeight": 57,

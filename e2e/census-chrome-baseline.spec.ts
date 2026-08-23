@@ -59,6 +59,13 @@ const REFRESH = !!process.env.CENSUS_BASELINE_REFRESH;
 
 interface Surface {
   route: string;
+  /**
+   * The key the CENSUS harness files this surface under, when it is not the route
+   * itself. The census keys a dynamic route by its pattern, because the instance id
+   * changes run to run; recording the mapping here is what stops the census's audit
+   * reporting this surface as unreached on every run.
+   */
+  censusRoute?: string;
   /** What this surface is in the baseline FOR — the shell shape it exercises. */
   why: string;
   /**
@@ -87,6 +94,7 @@ const SURFACES: Surface[] = [
   },
   {
     route: "/trends/metric/weight",
+    censusRoute: "/trends/metric/[kind]",
     why: "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
     subject: '[data-testid="metric-measurement-toggle"]',
   },
@@ -137,6 +145,7 @@ test.describe("the committed chrome baseline still describes the app (#3390)", (
 
     const measured: Array<{
       route: string;
+      censusRoute?: string;
       viewport: string;
       why: string;
       landmarks: Record<string, number>;
@@ -190,6 +199,7 @@ test.describe("the committed chrome baseline still describes the app (#3390)", (
 
         measured.push({
           route: surface.route,
+          censusRoute: surface.censusRoute,
           viewport,
           why: surface.why,
           landmarks: r.landmarks,
