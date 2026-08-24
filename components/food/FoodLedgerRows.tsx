@@ -14,6 +14,7 @@ import {
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import { formatClockValue, formatLongDate } from "@/lib/format-date";
+import { foodLedgerOccurredAtPatch } from "@/lib/event-ledger";
 
 export interface FoodLedgerEntry {
   id: number;
@@ -54,6 +55,11 @@ export default function FoodLedgerRows({
     setPendingId(row.id);
     const fd = new FormData(event.currentTarget);
     fd.set("event_id", String(row.id));
+    const occurredAt = foodLedgerOccurredAtPatch(
+      row,
+      String(fd.get("date") ?? "")
+    );
+    if (occurredAt) fd.set("occurred_at", occurredAt);
     const outcome = await updateFoodLogEvent(fd);
     setPendingId(null);
     if (!outcome.ok) {

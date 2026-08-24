@@ -4,6 +4,25 @@ import { formatMonthDay, type DisplayFormatPrefs } from "./format-date";
 
 export const EVENT_LEDGER_DEFAULT_DAYS = 90;
 
+/**
+ * Moving a food row with a stated eating instant moves the (day, wall-time) pair,
+ * rather than stranding the old instant on a different profile-local day. An
+ * unchanged row omits the patch so its stored second precision stays byte-identical;
+ * a logged-at-only row still has no eating-time statement to invent.
+ */
+export function foodLedgerOccurredAtPatch(
+  row: {
+    date: string;
+    clock: string | null;
+    clockKind: "eaten" | "logged";
+  },
+  nextDate: string
+): string | undefined {
+  return nextDate !== row.date && row.clockKind === "eaten" && row.clock
+    ? row.clock
+    : undefined;
+}
+
 export function resolveEventLedgerRange(
   parsed: DateRange,
   today: string,

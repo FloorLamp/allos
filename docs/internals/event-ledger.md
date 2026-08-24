@@ -79,6 +79,10 @@ The primitive **inherits** the time model as it stands and re-derives nothing.
 applied to what it replaces; a mount that wanted a different answer would be
 answering #3428 in one surface.
 
+Food corrections preserve the existing contract's pair semantics: changing a
+row's local day re-anchors a stated eating wall time on that day, while an
+unchanged row omits the instant patch so its stored precision is untouched.
+
 ## The seam, as a measurement
 
 `lib/__tests__/event-ledger-seam.test.ts` scans both sides:
