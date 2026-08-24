@@ -475,8 +475,6 @@ function staticStringExpression(
   return null;
 }
 
-type ProjectionEdit = { start: number; end: number } & ProjectedText;
-
 type LexicalBinding = {
   name: string;
   scope: ts.Node;
@@ -488,7 +486,7 @@ type LexicalBinding = {
 // strings. JSX expressions resolve only lexical const bindings they actually
 // render, transitively and with a cycle guard. Every projected character retains
 // an original offset so diagnostics keep exact lines after projection.
-function projectStaticRenderedCopy(source: string): ProjectedText {
+function projectStaticRenderedCopy(source: string): ProjectedText[] {
   const file = ts.createSourceFile(
     "copy-lint.tsx",
     source,
@@ -496,9 +494,6 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
     true,
     ts.ScriptKind.TSX
   );
-  // The shared lexical stripper intentionally has no JSX mode, so restore the
-  // parser-proven JSX text ranges where `//` and `/*` are rendered characters.
-  const visibleSource = stripComments(source).split("");
   const bindings: LexicalBinding[] = [];
 
   const enclosingScope = (node: ts.Node): ts.Node => {
@@ -547,10 +542,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
       const blockScoped =
         declarationList &&
         (declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
+      const scope = ts.isCatchClause(node.parent)
+        ? node.parent
+        : blockScoped
+          ? enclosingScope(node)
+          : enclosingVarScope(node);
       for (const name of bindingNames(node.name)) {
         bindings.push({
           name,
-          scope: blockScoped ? enclosingScope(node) : enclosingVarScope(node),
+          scope,
           declaration: eligible,
         });
       }
@@ -597,106 +597,179 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
     );
   };
 
-  const edits: ProjectionEdit[] = [];
-  const staticDeclarations = new Set(
-    bindings.flatMap((binding) =>
-      binding.declaration ? [binding.declaration] : []
-    )
-  );
-  for (const declaration of staticDeclarations) {
-    const initializer = declaration.initializer!;
-    const rendered = staticStringExpression(
-      initializer,
-      file,
-      source,
-      resolveIdentifier,
-      new Set([declaration])
-    );
-    if (!rendered) continue;
-    // Static initializer syntax is not itself rendered. A JSX expression that
-    // reaches this binding will add its evaluated value back as a separate edit.
-    edits.push({
-      start: initializer.getStart(file),
-      end: initializer.end,
-      text: "",
-      origins: [],
-    });
-  }
-  const addHtmlWhitespaceEdits = (start: number, end: number) => {
+  const sourceProjection = (start: number, end: number): ProjectedText => ({
+    text: source.slice(start, end),
+    origins: Array.from({ length: end - start }, (_, index) => start + index),
+  });
+  const htmlTextProjection = (start: number, end: number): ProjectedText => {
     const raw = source.slice(start, end);
     const references = /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g;
+    const parts: ProjectedText[] = [];
+    let cursor = 0;
     let match: RegExpExecArray | null;
     while ((match = references.exec(raw)) !== null) {
       const decoded = decodeHtmlCharacterReference(match[0]);
       if (!whitespaceOnly(decoded)) continue;
-      edits.push({
-        start: start + match.index,
-        end: start + match.index + match[0].length,
+      parts.push(sourceProjection(start + cursor, start + match.index));
+      parts.push({
         text: decoded!,
         origins: Array.from(
           { length: decoded!.length },
           () => start + match!.index
         ),
       });
+      cursor = match.index + match[0].length;
+    }
+    parts.push(sourceProjection(start + cursor, end));
+    return concatProjected(parts);
+  };
+
+  const uniqueVariants = (variants: ProjectedText[]): ProjectedText[] => {
+    const seen = new Set<string>();
+    return variants.filter((variant) => {
+      if (seen.has(variant.text)) return false;
+      seen.add(variant.text);
+      return true;
+    });
+  };
+  const combineVariants = (
+    left: ProjectedText[],
+    right: ProjectedText[]
+  ): ProjectedText[] =>
+    uniqueVariants(
+      left.flatMap((leftPart) =>
+        right.map((rightPart) => concatProjected([leftPart, rightPart]))
+      )
+    ).slice(0, 128);
+
+  const empty: ProjectedText = { text: "", origins: [] };
+  const attributeCandidates: ProjectedText[] = [];
+  const collectAttributeCandidates = (attributes: ts.JsxAttributes): void => {
+    for (const property of attributes.properties) {
+      if (!ts.isJsxAttribute(property) || !property.initializer) continue;
+      if (ts.isStringLiteral(property.initializer)) {
+        const start = property.initializer.getStart(file) + 1;
+        attributeCandidates.push(
+          htmlTextProjection(start, property.initializer.end - 1)
+        );
+      } else if (
+        ts.isJsxExpression(property.initializer) &&
+        property.initializer.expression
+      ) {
+        attributeCandidates.push(
+          ...expressionVariants(property.initializer.expression)
+        );
+      }
     }
   };
-  const visit = (node: ts.Node): void => {
+
+  const renderChildren = (
+    children: ts.NodeArray<ts.JsxChild>
+  ): ProjectedText[] => {
+    let variants = [empty];
+    for (const child of children) {
+      variants = combineVariants(variants, renderChild(child));
+    }
+    return variants;
+  };
+  const renderElement = (
+    node: ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment,
+    root: boolean
+  ): ProjectedText[] => {
+    if (ts.isJsxSelfClosingElement(node)) {
+      collectAttributeCandidates(node.attributes);
+      return [empty];
+    }
+    if (ts.isJsxFragment(node)) return renderChildren(node.children);
+
+    collectAttributeCandidates(node.openingElement.attributes);
+    const children = renderChildren(node.children);
+    if (!root) return children;
+    const tag = node.openingElement.tagName.getText(file);
+    const start = node.openingElement.getStart(file);
+    const opening = {
+      text: `<${tag}>`,
+      origins: Array.from({ length: tag.length + 2 }, () => start),
+    };
+    const closingStart = node.closingElement.getStart(file);
+    const closing = {
+      text: `</${tag}>`,
+      origins: Array.from({ length: tag.length + 3 }, () => closingStart),
+    };
+    return children.map((child) => concatProjected([opening, child, closing]));
+  };
+  const renderChild = (node: ts.JsxChild): ProjectedText[] => {
+    if (ts.isJsxText(node)) {
+      return [htmlTextProjection(node.getStart(file), node.end)];
+    }
     if (ts.isJsxExpression(node)) {
-      if (!node.expression) {
-        edits.push({
-          start: node.getStart(file),
-          end: node.end,
-          text: "",
-          origins: [],
-        });
-        return;
+      return node.expression ? expressionVariants(node.expression) : [empty];
+    }
+    return renderElement(node, false);
+  };
+  const expressionVariants = (node: ts.Expression): ProjectedText[] => {
+    const rendered = staticStringExpression(
+      node,
+      file,
+      source,
+      resolveIdentifier
+    );
+    if (rendered) return [rendered];
+    if (ts.isParenthesizedExpression(node)) {
+      return expressionVariants(node.expression);
+    }
+    if (ts.isConditionalExpression(node)) {
+      return uniqueVariants([
+        ...expressionVariants(node.whenTrue),
+        ...expressionVariants(node.whenFalse),
+      ]);
+    }
+    if (ts.isBinaryExpression(node)) {
+      if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+        return uniqueVariants([empty, ...expressionVariants(node.right)]);
       }
-      const rendered = staticStringExpression(
-        node.expression,
-        file,
-        source,
-        resolveIdentifier
-      );
-      if (rendered) {
-        edits.push({ start: node.getStart(file), end: node.end, ...rendered });
-        return;
+      if (
+        node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return uniqueVariants([
+          ...expressionVariants(node.left),
+          ...expressionVariants(node.right),
+        ]);
       }
     }
-    if (ts.isJsxText(node)) {
-      const start = node.getStart(file);
-      for (let offset = start; offset < node.end; offset++) {
-        visibleSource[offset] = source[offset];
+    if (ts.isArrayLiteralExpression(node)) {
+      let variants = [empty];
+      for (const element of node.elements) {
+        if (ts.isSpreadElement(element)) continue;
+        variants = combineVariants(variants, expressionVariants(element));
       }
-      addHtmlWhitespaceEdits(start, node.end);
+      return variants;
     }
     if (
-      ts.isJsxAttribute(node) &&
-      node.initializer &&
-      ts.isStringLiteral(node.initializer)
+      ts.isJsxElement(node) ||
+      ts.isJsxSelfClosingElement(node) ||
+      ts.isJsxFragment(node)
     ) {
-      const start = node.initializer.getStart(file) + 1;
-      addHtmlWhitespaceEdits(start, node.initializer.end - 1);
+      return renderElement(node, false);
     }
-    ts.forEachChild(node, visit);
+    return [empty];
   };
-  visit(file);
 
-  const text: string[] = [];
-  const origins: number[] = [];
-  let cursor = 0;
-  const appendIdentity = (end: number) => {
-    text.push(visibleSource.slice(cursor, end).join(""));
-    for (let offset = cursor; offset < end; offset++) origins.push(offset);
+  const renderedRoots: ProjectedText[] = [];
+  const visitRoots = (node: ts.Node): void => {
+    if (
+      ts.isJsxElement(node) ||
+      ts.isJsxSelfClosingElement(node) ||
+      ts.isJsxFragment(node)
+    ) {
+      renderedRoots.push(...renderElement(node, true));
+      return;
+    }
+    ts.forEachChild(node, visitRoots);
   };
-  for (const edit of edits.sort((a, b) => a.start - b.start)) {
-    if (edit.start < cursor) continue;
-    appendIdentity(edit.start);
-    text.push(edit.text);
-    origins.push(...edit.origins);
-    cursor = edit.end;
-  }
-  appendIdentity(source.length);
-  return { text: text.join(""), origins };
+  visitRoots(file);
+  return [...renderedRoots, ...attributeCandidates];
 }
 
 // A line is a non-user-facing context (internal logging / thrown error / import) —
@@ -741,25 +814,26 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
 function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
-  const projection = projectStaticRenderedCopy(text);
+  const projections = projectStaticRenderedCopy(text);
   const violations = new Set<string>();
-  for (const phrasing of DISCLAIMER_PHRASINGS) {
-    const flags = `${phrasing.flags.replace(/g/g, "")}g`;
-    const matcher = new RegExp(phrasing.source, flags);
-    let match: RegExpExecArray | null;
-    while ((match = matcher.exec(projection.text)) !== null) {
-      const sourceOffset = projection.origins[match.index] ?? 0;
-      const line = text.slice(0, sourceOffset).split("\n").length;
-      const lineStart = projection.text.lastIndexOf("\n", match.index - 1) + 1;
-      const lineEnd = projection.text.indexOf(
-        "\n",
-        match.index + match[0].length
-      );
-      const snippet = projection.text
-        .slice(lineStart, lineEnd === -1 ? projection.text.length : lineEnd)
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!isInternalLine(snippet)) {
+  for (const projection of projections) {
+    for (const phrasing of DISCLAIMER_PHRASINGS) {
+      const flags = `${phrasing.flags.replace(/g/g, "")}g`;
+      const matcher = new RegExp(phrasing.source, flags);
+      let match: RegExpExecArray | null;
+      while ((match = matcher.exec(projection.text)) !== null) {
+        const sourceOffset = projection.origins[match.index] ?? 0;
+        const line = text.slice(0, sourceOffset).split("\n").length;
+        const lineStart =
+          projection.text.lastIndexOf("\n", match.index - 1) + 1;
+        const lineEnd = projection.text.indexOf(
+          "\n",
+          match.index + match[0].length
+        );
+        const snippet = projection.text
+          .slice(lineStart, lineEnd === -1 ? projection.text.length : lineEnd)
+          .replace(/\s+/g, " ")
+          .trim();
         violations.add(`${rel}:${line} — disclaimer prose in: ${snippet}`);
       }
     }
@@ -908,7 +982,7 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>{disclaimer}</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
-      "synthetic.tsx:1 — disclaimer prose in: return <p>Informational only.</p>;",
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
     ]);
   });
 
@@ -919,7 +993,7 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>{disclaimer}</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", rendered)).toEqual([
-      "synthetic.tsx:2 — disclaimer prose in: return <p>Informational only.</p>;",
+      "synthetic.tsx:2 — disclaimer prose in: <p>Informational only.</p>",
     ]);
 
     const internal = [
@@ -953,6 +1027,45 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
 
+  it("projects a const from a conditionally rendered JSX branch", () => {
+    const sample = [
+      'const spacing = " ";',
+      "const disclaimer = `Informational${spacing}only.`;",
+      "return <p>{show && disclaimer}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:2 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
+  it("ignores internal-only strings nested in objects and diagnostic functions", () => {
+    const sample = [
+      'const diagnostic = { message: "Informational only." };',
+      "function getDiagnostic() {",
+      '  return "Consult a clinician.";',
+      "}",
+      "console.debug(diagnostic, getDiagnostic);",
+      "return <p>Status</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
+  });
+
+  it("limits a catch binding to its catch-clause scope", () => {
+    const sample = [
+      'const spacing = " ";',
+      "const disclaimer = `Informational${spacing}only.`;",
+      "try {",
+      "  run();",
+      "} catch (disclaimer) {",
+      "  console.debug(disclaimer);",
+      "}",
+      "return <p>{disclaimer}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:2 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
   it("stops safely when rendered const bindings form a cycle", () => {
     const sample = [
       "const first = `${second}`;",
@@ -976,15 +1089,22 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       '<button aria-label="Consult&#32;a clinician.">Help</button>',
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
-      'synthetic.tsx:1 — disclaimer prose in: <p title="Informational only.">Status</p>',
-      'synthetic.tsx:2 — disclaimer prose in: <button aria-label="Consult a clinician.">Help</button>',
+      "synthetic.tsx:1 — disclaimer prose in: Informational only.",
+      "synthetic.tsx:2 — disclaimer prose in: Consult a clinician.",
     ]);
   });
 
   it("keeps comment-like URL text visible inside JSX text", () => {
     const sample = "<p>See https://example.test. Informational only.</p>";
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
-      "synthetic.tsx:1 — disclaimer prose in: <p>See https://example.test. Informational only.",
+      "synthetic.tsx:1 — disclaimer prose in: <p>See https://example.test. Informational only.</p>",
+    ]);
+  });
+
+  it("detects disclaimer prose split by inline JSX descendants", () => {
+    const sample = "<p>Informational <strong>only</strong>.</p>";
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
     ]);
   });
 
