@@ -111,15 +111,16 @@ export default function TrainingLogCalendar({
     // under the old 40px tap floor (#644). Seven columns need 308px of grid to give
     // each day a 44px-wide hit area. #3536 raised the drawer to a 320px preferred
     // width that grows with any left safe-area inset, so this full-bleed band can
-    // give all seven columns at least 44px. Below `md` the card gives up the drawer's gutter
-    // (`-mx-4` cancels exactly the
-    // `pl-[max(1rem,…)] pr-4` the drawer sets) and its own horizontal padding,
-    // making the columns at least 44px. The side borders and the corner radius go with it,
+    // give all seven columns at least 44px. Below `md` the card gives up the
+    // drawer's right gutter and only the part of its left gutter outside the
+    // safe-area inset. Its left edge therefore lands exactly on
+    // `env(safe-area-inset-left)`, never behind it, while the drawer width pays
+    // for all 308px of grid. The side borders and the corner radius go with it,
     // so it reads as a band rather than a card jammed against the drawer's edges.
     //
     // From `md` up every one of those is put back and the desktop sidebar renders
     // byte-identically to before: same card, same 28px days, same density.
-    <div className="-mx-4 border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
+    <div className="-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
       <div className="mb-2 flex items-center justify-between gap-1">
         <button
           type="button"
