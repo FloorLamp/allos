@@ -57,10 +57,13 @@ const DAY: FoodLogDay = {
   events: [],
 };
 
-function mediaQuery(): MediaQueryList {
+function mediaQuery(query: string): MediaQueryList {
   return {
-    matches: false,
-    media: "",
+    // This test owns the provider projection and guarded inverse, not animation
+    // scheduling. Make the accessibility end state deterministic under the full
+    // unit suite's loaded event loop; motion behavior has its own focused tests.
+    matches: query.includes("prefers-reduced-motion: reduce"),
+    media: query,
     onchange: null,
     addListener: () => {},
     removeListener: () => {},
