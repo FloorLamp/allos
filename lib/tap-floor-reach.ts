@@ -158,6 +158,10 @@ export type FlooredControl = {
    * (#3561). The census rosters these; it does not clear them.
    */
   readable: boolean;
+  /** At least one reachable class-expression arm receives a source verdict. */
+  governedAlternative?: boolean;
+  /** Registered mechanisms authenticated by any reachable class arm. */
+  reachableMechanisms?: FloorMechanism[];
 };
 
 /** Raised when the scan meets a control whose height it cannot read. */
@@ -1304,7 +1308,7 @@ function afterPostfix(residue: string, from: number): string {
 
 /** What a control's class list turned out to be. */
 export type ClassText =
-  | { readable: true; text: string }
+  | { readable: true; text: string; alternatives: string[] }
   /** The identifier whose class text is not in this file. */
   | { readable: false; name: string };
 
@@ -1378,7 +1382,93 @@ function readClassText(
       continue;
     return { readable: false, name: m[0] };
   }
-  return { readable: true, text: parts.join(" ") };
+  const text = parts.join(" ");
+  return { readable: true, text, alternatives: [text] };
+}
+
+function uniqueAlternatives(values: string[]): string[] | null {
+  const unique = [
+    ...new Set(values.map((value) => value.replace(/\s+/g, " ").trim())),
+  ];
+  return unique.length <= 64 ? unique : null;
+}
+
+function combineAlternatives(left: string[], right: string[]): string[] | null {
+  return uniqueAlternatives(left.flatMap((a) => right.map((b) => `${a} ${b}`)));
+}
+
+/** Every class string a resolved expression can produce. */
+function classAlternatives(expression: string): string[] | null {
+  const file = ts.createSourceFile(
+    "tap-floor-class-expression.ts",
+    `const __tapFloorClass = (${expression});`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const statement = file.statements[0];
+  if (!statement || !ts.isVariableStatement(statement)) return null;
+  const initializer = statement.declarationList.declarations[0]?.initializer;
+  if (!initializer) return null;
+
+  const read = (node: ts.Expression, condition = false): string[] | null => {
+    if (ts.isParenthesizedExpression(node))
+      return read(node.expression, condition);
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))
+      return read(node.expression, condition);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      return [node.text];
+    if (
+      node.kind === ts.SyntaxKind.TrueKeyword ||
+      node.kind === ts.SyntaxKind.FalseKeyword ||
+      node.kind === ts.SyntaxKind.NullKeyword ||
+      (ts.isIdentifier(node) && node.text === "undefined")
+    )
+      return [""];
+    if (ts.isIdentifier(node)) return condition ? [""] : null;
+    if (ts.isTemplateExpression(node)) {
+      let out = [node.head.text];
+      for (const span of node.templateSpans) {
+        const hole = read(span.expression);
+        if (hole === null) return null;
+        const withHole = combineAlternatives(out, hole);
+        if (withHole === null) return null;
+        const withText = combineAlternatives(withHole, [span.literal.text]);
+        if (withText === null) return null;
+        out = withText;
+      }
+      return out;
+    }
+    if (ts.isConditionalExpression(node)) {
+      const yes = read(node.whenTrue);
+      const no = read(node.whenFalse);
+      return yes === null || no === null
+        ? null
+        : uniqueAlternatives([...yes, ...no]);
+    }
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.PlusToken) {
+        const left = read(node.left);
+        const right = read(node.right);
+        return left === null || right === null
+          ? null
+          : combineAlternatives(left, right);
+      }
+      if (
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        const left = read(node.left, true) ?? [""];
+        const right = read(node.right);
+        return right === null ? null : uniqueAlternatives([...left, ...right]);
+      }
+      return condition ? [""] : null;
+    }
+    return condition ? [""] : null;
+  };
+  return read(initializer);
 }
 
 /**
@@ -1396,10 +1486,18 @@ export function resolveClassName(
   // A quoted class list IS the class text, and asking for the file's declarations
   // to reach that conclusion is what made the census walk every import of every
   // file for the 1223 controls in 1456 that need none.
-  if (written.literal) return { readable: true, text: written.text };
+  if (written.literal)
+    return { readable: true, text: written.text, alternatives: [written.text] };
   const reachable = typeof declared === "function" ? declared() : declared;
   const expression = blankExpressionComments(written.text);
-  return readClassText(substitute(expression, reachable), reachable);
+  const substituted = substitute(expression, reachable);
+  const alternatives = classAlternatives(substituted);
+  if (alternatives !== null)
+    return { readable: true, text: alternatives.join(" "), alternatives };
+  const fallback = readClassText(substituted, reachable);
+  return fallback.readable
+    ? { ...fallback, alternatives: [fallback.text] }
+    : fallback;
 }
 
 /** The expressions spread directly onto one JSX opening tag. */
@@ -1664,7 +1762,7 @@ export function resolveJsxClassNameBindings(
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
 // `max-sm:min-h-11`, `h-[38px]`, or `[min-height:2rem]`.
 const HEIGHT_TOKEN =
-  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(!)?(?![\w.[-])/g;
+  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|\([^)]+\)|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(!)?(?![\w.[-])/g;
 
 function heightTokenParts(match: RegExpMatchArray): {
   variants: string[];
@@ -1691,6 +1789,19 @@ function heightScope(variants: string[]): "base" | "narrow" | null {
   )
     return "narrow";
   return null;
+}
+
+function minimumScope(
+  variants: string[]
+): "base" | "narrow" | "possibly-phone" | null {
+  const known = heightScope(variants);
+  if (known !== null) return known;
+  // Tailwind's min-width breakpoint variants cannot apply below `sm`. Every
+  // other variant is conservatively phone-applicable: dark, landscape and
+  // max-md are all reachable at 390px and may lower the family floor.
+  if (variants.some((variant) => /^(?:sm|md|lg|xl|2xl)$/.test(variant)))
+    return null;
+  return "possibly-phone";
 }
 
 /** A Tailwind spacing value as CSS pixels, or null when it is not a length. */
@@ -1763,7 +1874,7 @@ type MinimumOverride =
 /** A call-site `min-height` that can replace the button family's CSS floor. */
 function belowSmMinimum(className: string): MinimumOverride {
   const candidates: Array<{
-    scope: "base" | "narrow";
+    scope: "base" | "narrow" | "possibly-phone";
     px: number | null;
     important: boolean;
     token: string;
@@ -1771,7 +1882,7 @@ function belowSmMinimum(className: string): MinimumOverride {
   for (const m of className.matchAll(HEIGHT_TOKEN)) {
     const { variants, utility, value, important } = heightTokenParts(m);
     if (utility !== "min-h" && utility !== "[min-height]") continue;
-    const scope = heightScope(variants);
+    const scope = minimumScope(variants);
     if (scope === null) continue;
     const prefix = variants.length === 0 ? "" : `${variants.join(":")}:`;
     const body =
@@ -1786,6 +1897,14 @@ function belowSmMinimum(className: string): MinimumOverride {
     });
   }
   if (candidates.length === 0) return { kind: "absent" };
+  const possiblyPhone = candidates.filter(
+    (candidate) => candidate.scope === "possibly-phone"
+  );
+  if (possiblyPhone.length > 0)
+    return {
+      kind: "ambiguous",
+      tokens: possiblyPhone.map((candidate) => candidate.token),
+    };
 
   // Importance beats both source order and a narrower non-important variant.
   // Within the winning importance tier, max-sm is the below-sm specialization.
@@ -1939,6 +2058,28 @@ function kindOf(tag: string, openTag: string): ControlKind {
   return "handler";
 }
 
+function inlineMinimumTokens(
+  openTag: string,
+  declared: ClassDeclarations | (() => ClassDeclarations)
+): string[] {
+  let materialized = openTag;
+  const spreads = jsxSpreadExpressions(openTag);
+  if (spreads.length > 0) {
+    const reachable = typeof declared === "function" ? declared() : declared;
+    materialized += ` ${spreads
+      .map((spread) => substitute(spread, reachable))
+      .join(" ")}`;
+  }
+  const tokens: string[] = [];
+  const property = /(?:\bminHeight\b|["']min-height["'])\s*:\s*([^,}\n]+)/g;
+  for (const match of materialized.matchAll(property)) {
+    const raw = match[1].trim().replace(/^(["'])(.*)\1$/, "$2");
+    const value = /^\d+(?:\.\d+)?$/.test(raw) ? `${raw}px` : raw;
+    tokens.push(`[min-height:${value}]`);
+  }
+  return tokens;
+}
+
 /**
  * Every interactive control in one file's source, with what the tap floor makes
  * of it.
@@ -2024,35 +2165,11 @@ export function findFlooredControls(
       });
       continue;
     }
-    const className = resolved.text;
-
-    // The unreadable case: a height token in a shape this scan cannot price.
-    for (const token of className.matchAll(HEIGHT_TOKEN)) {
-      const { variants, utility, value } = heightTokenParts(token);
-      if (heightScope(variants) === null) continue;
-      if (/^(auto|full|screen|fit|min|max)$/.test(value)) continue;
-      if (scaleToPx(value) === null) {
-        throw new UnreadableControlError(
-          `line ${lineOf(m.index)}: <${tag}> pins its below-\`sm\` height with ` +
-            `\`${utility}-${value}\`, which this scan cannot turn into pixels. The tap ` +
-            `floor is ${TAP_FLOOR_PX}px effective (#3514) and a control whose height ` +
-            "cannot be read is a control the floor has stopped governing. Use a scale " +
-            "step, or an arbitrary value in `px` or `rem`."
-        );
-      }
-    }
-
-    const belowSmPx = belowSmHeightPx(className);
+    const inlineMinimum = inlineMinimumTokens(openTag, declarations);
+    const alternatives = resolved.alternatives.map((className) =>
+      [...inlineMinimum, className].join(" ").trim()
+    );
     const kind = kindOf(tag, openTag);
-    const mechanism: FloorMechanism = inButtonFamily(className, buttonFamily)
-      ? "btn-family"
-      : usesChipSm(className)
-        ? "chip-sm"
-        : usesTapTarget(className)
-          ? "tap-target"
-          : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
-            ? "rendered"
-            : "none";
     const id = /(?<![\w-])id\s*=\s*("[^"]*"|\{[^}]*\})/
       .exec(openTag)?.[1]
       ?.replace(/\s+/g, "");
@@ -2060,17 +2177,60 @@ export function findFlooredControls(
       labelSpans.some((s) => m.index > s.start && m.index < s.end) ||
       (id !== undefined && labelledIds.has(id));
 
+    const candidates = alternatives.map((className): FlooredControl => {
+      // The unreadable case: a height token in a shape this scan cannot price.
+      for (const token of className.matchAll(HEIGHT_TOKEN)) {
+        const { variants, utility, value } = heightTokenParts(token);
+        if (minimumScope(variants) === null) continue;
+        if (/^(auto|full|screen|fit|min|max)$/.test(value)) continue;
+        if (scaleToPx(value) === null) {
+          throw new UnreadableControlError(
+            `line ${lineOf(m.index)}: <${tag}> pins its possibly-phone height with ` +
+              `\`${utility}-${value}\`, which this scan cannot turn into pixels. The tap ` +
+              `floor is ${TAP_FLOOR_PX}px effective (#3514) and a control whose height ` +
+              "cannot be read is a control the floor has stopped governing. Use a scale " +
+              "step, or an arbitrary value in `px` or `rem`."
+          );
+        }
+      }
+
+      const belowSmPx = belowSmHeightPx(className);
+      const mechanism: FloorMechanism = inButtonFamily(className, buttonFamily)
+        ? "btn-family"
+        : usesChipSm(className)
+          ? "chip-sm"
+          : usesTapTarget(className)
+            ? "tap-target"
+            : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
+              ? "rendered"
+              : "none";
+      return {
+        line: lineOf(m.index),
+        tag,
+        kind,
+        belowSmPx,
+        mechanism,
+        selectedState: selectedAttribute(openTag) !== undefined,
+        selectedAttribute: selectedAttribute(openTag),
+        labelled,
+        className: className.replace(/\s+/g, " ").trim(),
+        readable: true,
+      };
+    });
+    const governedAlternative = candidates.some(
+      (candidate) =>
+        candidate.mechanism === "btn-family" ||
+        candidate.mechanism === "chip-sm" ||
+        candidate.belowSmPx !== null
+    );
+    const chosen =
+      candidates.find((candidate) => floorMiss(candidate)) ?? candidates[0];
     found.push({
-      line: lineOf(m.index),
-      tag,
-      kind,
-      belowSmPx,
-      mechanism,
-      selectedState: selectedAttribute(openTag) !== undefined,
-      selectedAttribute: selectedAttribute(openTag),
-      labelled,
-      className: className.replace(/\s+/g, " ").trim(),
-      readable: true,
+      ...chosen,
+      governedAlternative,
+      reachableMechanisms: [
+        ...new Set(candidates.map((candidate) => candidate.mechanism)),
+      ],
     });
   }
 

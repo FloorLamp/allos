@@ -296,7 +296,7 @@ export default function DoseStatusControl({
 
   const takeClass =
     variant === "circle"
-      ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
+      ? `flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isTaken
             ? "cursor-default border-(--seg-active-bg) bg-(--seg-active-bg) text-(--seg-active-fg)"
             : isSkipped
@@ -313,7 +313,7 @@ export default function DoseStatusControl({
 
   const skipClass =
     variant === "circle"
-      ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
+      ? `flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isSkipped
             ? "cursor-default border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
             : isTaken

@@ -603,6 +603,7 @@ function governedControls<T extends FlooredControl>(found: T[]): T[] {
     // The associated label is the target, so the native box itself is outside
     // this rule's verdict population. Its exact licensed inventory is pinned.
     if (control.kind === "native-box" && control.labelled) return false;
+    if (control.governedAlternative) return true;
     // These mechanisms receive their floor from CSS even when the call site
     // writes no height. The other mechanisms need an explicit rendered height
     // before a source-only rule can prove their arithmetic.
@@ -646,7 +647,9 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       MECHANISM_CENSUS_FLOORS
     ) as [FloorMechanism, number][]) {
       const population = found.filter(
-        (control) => control.mechanism === mechanism
+        (control) =>
+          control.mechanism === mechanism ||
+          control.reachableMechanisms?.includes(mechanism)
       ).length;
       expect(
         population,
@@ -1479,6 +1482,37 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
+  it("requires every reachable conditional or logical class arm to be safe", () => {
+    for (const expression of [
+      `ok ? "btn" : "h-7"`,
+      `"h-7 " + (ok && "btn")`,
+      `ok ? "h-7" : "tap-target h-8"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(control.belowSmPx, expression).toBe(28);
+      expect(floorMiss(control), expression).toContain(
+        "with neither registered mechanism"
+      );
+    }
+
+    for (const expression of [
+      `ok ? "btn" : "min-h-11"`,
+      `"min-h-11 " + (ok && "btn")`,
+      `ok ? "min-h-11" : "tap-target h-8"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(floorMiss(control), expression).toBeNull();
+    }
+  });
+
   it("fails closed on explicit and important button-family minimum overrides", () => {
     for (const [classes, fragment] of [
       ["btn min-h-auto h-7", "cannot prove"],
@@ -1501,6 +1535,57 @@ describe("the sweep is quiet on the benign neighbours", () => {
        }`
     );
     expect(floorMiss(safe)).toBeNull();
+  });
+
+  it("rejects phone-applicable, custom-property and inline family minima", () => {
+    for (const token of [
+      "max-md:min-h-7",
+      "dark:min-h-7",
+      "landscape:min-h-7",
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button className="btn h-7 ${token}">x</button>;
+         }`
+      );
+      expect(floorMiss(control), token).toContain("cannot prove");
+    }
+
+    expect(() =>
+      scan(
+        `export default function X() {
+           return <button className="btn h-7 min-h-(--compact)">x</button>;
+         }`
+      )
+    ).toThrow(UnreadableControlError);
+
+    for (const source of [
+      `export default function X() {
+         return <button className="btn h-7" style={{ minHeight: 28 }}>x</button>;
+       }`,
+      `const LOW = { style: { minHeight: 28 } };
+       export default function X() {
+         return <button {...LOW} className="btn h-7">x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+    }
+
+    const [desktopOnly] = scan(
+      `export default function X() {
+         return <button className="btn h-7 sm:min-h-7">x</button>;
+       }`
+    );
+    expect(floorMiss(desktopOnly)).toBeNull();
+    const [inlineSafe] = scan(
+      `export default function X() {
+         return <button className="btn h-7" style={{ minHeight: 44 }}>x</button>;
+       }`
+    );
+    expect(floorMiss(inlineSafe)).toBeNull();
   });
 
   it("says nothing about `.tap-target` where its arithmetic works", () => {
