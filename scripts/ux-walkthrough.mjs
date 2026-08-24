@@ -2013,12 +2013,8 @@ if (serve) {
   // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
   // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
   // SEED_PERSONA makes the seed write a persona character instead of the
-  // baseline story; it still belongs only to UX_SEED=1.
-  if (process.env.SEED_PERSONA && UX_SEED_SHAPE.name !== "1") {
-    throw new Error(
-      `SEED_PERSONA=${process.env.SEED_PERSONA} is set but UX_SEED=${process.env.UX_SEED ?? "unset"} — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.`
-    );
-  }
+  // baseline story; uxSeedShapeFromEnv rejects incompatible labels before any
+  // journey mode reaches this lifecycle branch.
   if (UX_SEED_SHAPE.seed) {
     log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
     const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {

@@ -18,17 +18,21 @@ export const UX_SEED_SHAPES = [
 
 export function uxSeedShapeFromEnv(env) {
   const raw = env.UX_SEED?.trim();
-  if (!raw)
-    return {
-      kind: "found",
-      shape: { name: null, label: "fresh", seed: false },
-    };
-  const shape = UX_SEED_SHAPES.find((entry) => entry.name === raw);
+  const shape = raw
+    ? UX_SEED_SHAPES.find((entry) => entry.name === raw)
+    : { name: null, label: "fresh", seed: false };
   if (!shape)
     return {
       kind: "unknown",
       raw,
       known: UX_SEED_SHAPES.map((entry) => entry.name),
+    };
+  const persona = env.SEED_PERSONA?.trim();
+  if (persona && shape.name !== "1")
+    return {
+      kind: "conflict",
+      raw,
+      reason: `SEED_PERSONA=${persona} is set but UX_SEED=${raw || "unset"} — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.`,
     };
   if (shape.seedDialShape && env.SEED_RNG?.trim())
     return {

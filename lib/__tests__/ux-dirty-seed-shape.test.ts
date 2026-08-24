@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { seedDialsFromEnv } from "../../scripts/seed-rng";
@@ -61,6 +62,36 @@ describe("UX_SEED=dirty", () => {
       raw: "dirty",
       reason: "UX_SEED=dirty pins a complete dial vector; remove SEED_RNG",
     });
+    expect(
+      uxSeedShapeFromEnv({ UX_SEED: "dirty", SEED_PERSONA: "household" })
+    ).toEqual({
+      kind: "conflict",
+      raw: "dirty",
+      reason:
+        "SEED_PERSONA=household is set but UX_SEED=dirty — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.",
+    });
+  });
+
+  it.each([
+    ["without --serve", ["pages"]],
+    ["with --serve", ["--serve", "pages"]],
+  ])("rejects a dirty/persona conflict %s", (_label, args) => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      UX_SEED: "dirty",
+      SEED_PERSONA: "household",
+    };
+    delete env.SEED_RNG;
+    delete env.SEED_DIAL_SHAPE;
+    const result = spawnSync(
+      process.execPath,
+      [path.join(repo, "scripts", "ux-walkthrough.mjs"), ...args],
+      { cwd: repo, env, encoding: "utf8" }
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "SEED_PERSONA=household is set but UX_SEED=dirty — persona runs need UX_SEED=1"
+    );
   });
 
   it("records the named shape independently in run.json data", () => {
