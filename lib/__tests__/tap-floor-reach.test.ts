@@ -334,8 +334,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty-two have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other nineteen are UNMEASURED — nobody
+ * declare. Three of the twenty-one have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other eighteen are UNMEASURED — nobody
  * has looked, and this file says so rather than implying they are fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
@@ -343,13 +343,12 @@ type UnjudgedTapTarget = { file: string; controls: number };
 const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
   { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
-  { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
+  { file: "app/(app)/training/GoalForm.tsx", controls: 1 },
   // The injury bar's trailing-affordance MENU (#3221), the same control ProtocolForm
   // and GoalForm are rostered for: a `.tap-target` chip whose height is whatever its
   // padding and text come to. Unjudged for the same reason and counted for the same one.
   { file: "app/(app)/training/InjuryBar.tsx", controls: 1 },
-  { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
-  { file: "components/IntakeItemForm.tsx", controls: 2 },
+  { file: "components/IntakeItemForm.tsx", controls: 1 },
   // The purpose chips (#2857): the goal buttons and the suggestion offer, both
   // rounded-full chips whose padding decides their height. Nobody has measured them —
   // they sit beside the fact chips this roster already carries unmeasured.
@@ -408,7 +407,7 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
 ];
 
 /**
- * THE THREE OF THOSE NINETEEN THAT HAVE BEEN MEASURED, and all three are short.
+ * THE THREE OF THOSE TWENTY-ONE THAT HAVE BEEN MEASURED, and all three are short.
  *
  * Measured against the app's own compiled CSS at a 390px viewport with a coarse
  * pointer (#3557 review). These are the same defect this module is named for —
@@ -478,7 +477,7 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
  * #3221's trailing-affordance menu on the injury bar, which the other
  * facts-with-editors hosts already had, and #2857's two purpose chips.
  */
-const UNMEASURED_TAP_TARGETS = 21;
+const UNMEASURED_TAP_TARGETS = 18;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");

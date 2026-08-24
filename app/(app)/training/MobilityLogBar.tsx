@@ -192,11 +192,7 @@ export default function MobilityLogBar({
                     aria-pressed={on}
                     title={m.description}
                     onClick={() => toggle(m.slug)}
-                    className={`tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                      on
-                        ? "border-brand-600 bg-brand-600 text-white"
-                        : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-                    }`}
+                    className="chip chip-filter"
                   >
                     {on && <IconCheck className="h-3.5 w-3.5" stroke={2.5} />}
                     {m.name}

@@ -274,11 +274,7 @@ function SoftwareChips({
           onClick={() => onChoose(o.value)}
           disabled={disabled}
           data-testid={`software-chip-${o.value || "unsure"}`}
-          className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
-            chosen === o.value
-              ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
-              : "border-black/10 text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-850"
-          }`}
+          className="chip chip-filter chip-sm"
         >
           {o.label}
         </button>

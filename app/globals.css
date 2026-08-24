@@ -635,6 +635,13 @@
   border: 1px solid transparent;
 }
 
+/* The dense in-row size records the tree-wide consensus from #3525. Its
+   painted box stays compact; on coarse pointers the shared hit-area mechanism
+   below extends the effective target to the 44px floor ruled in #3514. */
+@utility chip-sm {
+  @apply px-2.5 py-0.5 text-xs;
+}
+
 @utility chip-nav {
   @apply rounded-full text-slate-600 dark:text-slate-300;
   /* The structural-grey border pair, not a literal (#794). */
@@ -2024,6 +2031,16 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     content: "";
     position: absolute;
     inset: -6px;
+  }
+  /* `chip-sm` uses the same registered hit-area overlay, with the inset its
+     smaller painted box needs: 22px + 11px on each side = 44px effective. */
+  .chip-sm {
+    position: relative;
+  }
+  .chip-sm::after {
+    content: "";
+    position: absolute;
+    inset: -0.6875rem;
   }
 }
 

@@ -33,11 +33,7 @@ export default function AnnotationToggleBar({
             type="button"
             aria-pressed={on}
             onClick={() => onToggle(kind)}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-              on
-                ? "border-(--border) bg-surface text-slate-700 dark:text-slate-200"
-                : "border-black/10 bg-transparent text-slate-500 dark:border-white/10 dark:text-slate-400"
-            }`}
+            className="chip chip-filter chip-sm"
           >
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"

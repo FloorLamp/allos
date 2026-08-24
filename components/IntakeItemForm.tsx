@@ -1125,11 +1125,7 @@ export default function IntakeItemForm({
               data-slug={choice.slug || DEFAULT_FORMULATION_SLUG}
               aria-pressed={choice.slug === activeSlug}
               onClick={() => pickFormulation(choice.slug)}
-              className={`tap-target rounded-full px-3 py-1.5 text-sm transition ${
-                choice.slug === activeSlug
-                  ? "bg-brand-600 font-medium text-white"
-                  : "border border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-              }`}
+              className="chip chip-filter"
             >
               {choice.label}
             </button>

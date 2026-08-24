@@ -261,11 +261,8 @@ export default function ProgressPhotosView({
               <button
                 key={p}
                 type="button"
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  comparePose === p
-                    ? "bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
+                aria-pressed={comparePose === p}
+                className="chip chip-filter chip-sm"
                 onClick={() => {
                   setSeriesFilter(p);
                   setPose(p);

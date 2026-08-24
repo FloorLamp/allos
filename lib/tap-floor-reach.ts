@@ -26,7 +26,8 @@
 //   2.75rem`).
 //
 //   HIT AREA — a deliberately smaller rendered control extended to >= 44
-//   effective by `.tap-target`'s `inset: -6px` overlay (#644).
+//   effective by the shared overlay: `.tap-target` uses `inset: -6px` around a
+//   32px box (#644), while `chip-sm` uses 11px around its 22px painted box.
 //
 // Rendered height and hit area are different guarantees, so a rule says which it
 // means. A control using NEITHER mechanism is the defect.
@@ -86,6 +87,8 @@ export type FloorMechanism =
   | "rendered"
   /** `.tap-target`'s hit-area overlay. */
   | "tap-target"
+  /** `chip-sm`'s measured 11px-per-side variant of the hit-area overlay. */
+  | "chip-sm"
   /**
    * The class list could not be read, so NO mechanism can be established. This
    * is not a verdict — it is the absence of one, made countable. See
@@ -1130,6 +1133,11 @@ export function usesTapTarget(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])tap-target(?![\w-])/.test(className);
 }
 
+/** True when this class list carries the dense chip hit-area mechanism. */
+export function usesChipSm(className: string): boolean {
+  return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
+}
+
 const INTERACTIVE_TAGS = new Set([
   "button",
   "a",
@@ -1263,11 +1271,13 @@ export function findFlooredControls(
     const kind = kindOf(tag, openTag);
     const mechanism: FloorMechanism = inButtonFamily(className)
       ? "btn-family"
-      : usesTapTarget(className)
-        ? "tap-target"
-        : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
-          ? "rendered"
-          : "none";
+      : usesChipSm(className)
+        ? "chip-sm"
+        : usesTapTarget(className)
+          ? "tap-target"
+          : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
+            ? "rendered"
+            : "none";
     const id = /(?<![\w-])id\s*=\s*("[^"]*"|\{[^}]*\})/
       .exec(openTag)?.[1]
       ?.replace(/\s+/g, "");
@@ -1316,6 +1326,7 @@ export function floorMiss(control: FlooredControl): string | null {
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "btn-family" || control.mechanism === "rendered")
     return null;
+  if (control.mechanism === "chip-sm") return null;
   if (control.mechanism === "tap-target") {
     if (control.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX) return null;
     return (

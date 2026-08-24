@@ -16,8 +16,9 @@ import { describe, expect, it } from "vitest";
 // written, so this test is what makes that checkable.
 //
 // Four rules:
-//   1. app/globals.css declares the primitive once — `chip` plus the two roles
-//      #3408 already ruled (`chip-nav`, `chip-filter`) and `stat-tile` — and each
+//   1. app/globals.css declares the primitive once — `chip`, its dense `chip-sm`
+//      size, the two roles #3408 ruled (`chip-nav`, `chip-filter`), and
+//      `stat-tile` — and each
 //      role paints its LIT STATE FROM THE ARIA rather than from a call site's
 //      ternary, so a chip cannot look selected without announcing that it is.
 //   2. The declared adopters render through it, and hand-roll nothing locally.
@@ -137,26 +138,10 @@ function scan(): Scan {
 
 // ── The census (rule 3) ─────────────────────────────────────────────────────
 //
-// Every hand-rolled chip-shaped class string LEFT IN THE TREE after #3475's
-// sweep, with its count and why it stayed. The list is a census, not a
-// changelog: converting one of these is a change to this list, and so is adding
-// a twenty-sixth.
-//
-// TWO TAGS, and the distinction is the whole reason the list is readable at 22
-// entries rather than deletable at 22 entries:
-//
-//   `chip`        — a real selectable strip that the primitive's SHAPE and
-//                   SELECTED STATE already fit, held back only by SIZE. Every
-//                   one of them is a dense in-row control at the `text-xs` /
-//                   `px-2.5` / `py-0.5` scale, and the primitive ships ONE size
-//                   (`text-sm px-3 py-1.5`, 32px — the height FilterPills had
-//                   already measured). Converting them would step a row control
-//                   up two notches, which #3475 does not license: it asks for one
-//                   shape and one selected shade, not a density change. A `chip-sm`
-//                   modifier is the row that would close these, and choosing its
-//                   numbers is a second ruling rather than an implementer's call.
-//
-//   `not-a-chip`  — the pattern's KNOWN over-match. A pill radius plus padding
+// Every chip-shaped conditional LEFT after #3525's dense-strip sweep. The list
+// is a census, not a changelog: a new entry must be either converted or named.
+// `deferred` is Timeline's independently owned chrome lane; `not-a-chip` is a
+// known pattern over-match. A pill radius plus padding
 //                   plus a ternary also describes a severity badge, a menu row,
 //                   a count bubble, and `components/SegmentedControl.tsx`, which
 //                   is a registered primitive of its own with its own `--seg-*`
@@ -166,27 +151,9 @@ function scan(): Scan {
 const CENSUS: readonly (readonly [
   string,
   number,
-  "chip" | "not-a-chip" | "mixed",
+  "deferred" | "not-a-chip",
   string,
 ])[] = [
-  [
-    "app/(app)/integrations/patient-portals/PortalsSurface.tsx",
-    1,
-    "chip",
-    "portal chooser; text-xs px-2.5 py-0.5, and its selected state adds a ring",
-  ],
-  [
-    "app/(app)/nutrition/FoodLogBar.tsx",
-    1,
-    "chip",
-    "quick-log toggles in a dense bar; text-xs px-2.5 py-1",
-  ],
-  [
-    "app/(app)/progress/ProgressPhotosView.tsx",
-    1,
-    "chip",
-    "pose picker; text-xs",
-  ],
   [
     "app/(app)/timeline/TimelineScrubber.tsx",
     1,
@@ -196,57 +163,14 @@ const CENSUS: readonly (readonly [
   [
     "app/(app)/timeline/page.tsx",
     2,
-    "chip",
-    "the category filter strip; text-sm but a borderless fill language of its own — a filter-role conversion, sized right, and deliberately left to the lane that owns Timeline's chrome",
-  ],
-  [
-    "app/(app)/training/GoalForm.tsx",
-    2,
-    "chip",
-    "form option pills at text-xs, plus a DASHED freeform affordance the primitive has no dashed state for",
-  ],
-  ["app/(app)/training/MobilityLogBar.tsx", 1, "chip", "dense log bar toggle"],
-  [
-    "app/(app)/training/RoutineBuilder.tsx",
-    1,
-    "chip",
-    "text-xs px-2.5 py-0.5 — the smallest chip in the app",
-  ],
-  [
-    "app/(app)/training/TrainingLogView.tsx",
-    2,
-    "mixed",
-    "a ROSE-tinted fault filter (tint encodes meaning, and #3475 keeps such tints) plus the count bubble inside it, which is not a chip",
-  ],
-  [
-    "app/(app)/training/activity/[id]/SessionTelemetryChart.tsx",
-    1,
-    "chip",
-    "a THREE-state series toggle; the primitive's roles are two-state",
-  ],
-  [
-    "components/AnnotationToggleBar.tsx",
-    1,
-    "chip",
-    "text-xs, and each pill carries a per-series colour swatch its tint must agree with",
-  ],
-  [
-    "components/DayHistory.tsx",
-    1,
-    "chip",
-    "text-xs px-2.5 py-0.5 with a min-h-7 of its own",
+    "deferred",
+    "category filter strip; explicitly owned by Timeline's chrome lane",
   ],
   [
     "components/DuplicateReview.tsx",
     1,
     "not-a-chip",
     "a severity badge — non-interactive, and `badge` is its primitive",
-  ],
-  [
-    "components/IntakeItemForm.tsx",
-    1,
-    "chip",
-    "choice pills inside a form row",
   ],
   [
     "components/ProfileSwitcherPanel.tsx",
@@ -262,9 +186,9 @@ const CENSUS: readonly (readonly [
   ],
   [
     "components/SessionComparisonChart.tsx",
-    2,
-    "mixed",
-    "a series toggle at the primitive's own scale but inside a chart legend, plus a GRID ROW the pattern over-matches",
+    1,
+    "not-a-chip",
+    "a grid row whose current-state background makes the pattern over-match",
   ],
   [
     "components/SessionRecapView.tsx",
@@ -272,25 +196,6 @@ const CENSUS: readonly (readonly [
     "not-a-chip",
     "a tone badge (emerald/amber) — `badge`'s family",
   ],
-  [
-    "components/activity-form/RestTimer.tsx",
-    1,
-    "chip",
-    "text-xs with a `pointer-coarse:text-sm` step the primitive does not have",
-  ],
-  [
-    "components/household/HouseholdHistoryTimeline.tsx",
-    1,
-    "chip",
-    "SKY-tinted per-member chips; the tint encodes the member, not a state",
-  ],
-  [
-    "components/illness/EpisodeTimeline.tsx",
-    1,
-    "chip",
-    "a bare rounded-md text toggle with no fill at rest",
-  ],
-  ["components/photo/PhotoGallery.tsx", 1, "chip", "series picker; text-xs"],
 ];
 
 // The primitive's declared adopters (#3475's sweep). Each renders through the
@@ -304,12 +209,40 @@ const ADOPTERS: readonly (readonly [string, string])[] = [
   ["app/(app)/training/AnalyzeSection.tsx", "chip chip-nav"],
   ["app/(app)/trends/ChartJumpChips.tsx", "chip chip-nav"],
   ["app/(app)/settings/SettingsSubPageNav.tsx", "chip chip-nav"],
+  ["components/ImportTabStrip.tsx", "chip chip-nav chip-sm"],
+  [
+    "app/(app)/integrations/patient-portals/PortalsSurface.tsx",
+    "chip chip-filter chip-sm",
+  ],
+  ["app/(app)/nutrition/FoodLogBar.tsx", "chip chip-filter chip-sm"],
+  ["app/(app)/progress/ProgressPhotosView.tsx", "chip chip-filter chip-sm"],
+  ["app/(app)/training/GoalForm.tsx", "chip chip-filter chip-sm"],
+  ["app/(app)/training/MobilityLogBar.tsx", "chip chip-filter"],
+  ["app/(app)/training/RoutineBuilder.tsx", "chip chip-filter chip-sm"],
+  ["app/(app)/training/TrainingLogView.tsx", "chip chip-filter"],
+  [
+    "app/(app)/training/activity/[id]/SessionTelemetryChart.tsx",
+    "chip chip-filter",
+  ],
+  ["components/AnnotationToggleBar.tsx", "chip chip-filter chip-sm"],
+  ["components/DayHistory.tsx", "chip chip-filter chip-sm"],
+  ["components/IntakeItemForm.tsx", "chip chip-filter"],
+  ["components/activity-form/RestTimer.tsx", "chip chip-filter chip-sm"],
+  ["components/household/HouseholdHistoryTimeline.tsx", "chip chip-filter"],
+  ["components/illness/EpisodeTimeline.tsx", "chip chip-filter chip-sm"],
+  ["components/photo/PhotoGallery.tsx", "chip chip-filter chip-sm"],
 ];
 
 describe("the chip primitive and the stat tile (#3475)", () => {
   it("rule 1: app/globals.css declares the primitive once, and each role paints its lit state FROM the aria", () => {
     const css = read(GLOBALS);
-    for (const name of ["chip", "chip-nav", "chip-filter", "stat-tile"]) {
+    for (const name of [
+      "chip",
+      "chip-sm",
+      "chip-nav",
+      "chip-filter",
+      "stat-tile",
+    ]) {
       const declarations = css.split(`@utility ${name} {`).length - 1;
       expect(
         declarations,
@@ -325,6 +258,16 @@ describe("the chip primitive and the stat tile (#3475)", () => {
       /\bpx-3\b/
     );
     expect(base).toMatch(/\bpy-1\.5\b/);
+    const small = utilityBody(css, "chip-sm");
+    expect(small, "chip-sm records the existing dense scale (#3525)").toMatch(
+      /\bpx-2\.5\b/
+    );
+    expect(small).toMatch(/\bpy-0\.5\b/);
+    expect(small).toMatch(/\btext-xs\b/);
+    expect(
+      css,
+      "chip-sm uses the shared hit-area mechanism with an 11px extension, making its 22px paint box 44px effective"
+    ).toMatch(/\.chip-sm::after\s*\{[\s\S]*?inset:\s*-0\.6875rem/);
     for (const role of ["chip-nav", "chip-filter"]) {
       const body = utilityBody(css, role);
       expect(
@@ -428,16 +371,13 @@ describe("the chip primitive and the stat tile (#3475)", () => {
       "a hand-rolled chip is either converted to `chip chip-nav` / `chip chip-filter` or recorded in CENSUS with the reason it cannot be"
     ).toEqual(expected);
 
-    // And the tags are load-bearing rather than decorative: the `chip` entries
-    // are the outstanding work-list #3475 leaves behind, so the count of them is
-    // a number a follow-up can watch go down.
-    const outstanding = CENSUS.filter(
-      ([, , tag]) => tag === "chip" || tag === "mixed"
-    ).length;
+    // The dense-strip work-list is closed; only Timeline's separately owned
+    // category strip may remain as a selectable-chip hit.
+    const outstanding = CENSUS.filter(([, , tag]) => tag === "deferred").length;
     expect(
       outstanding,
-      "the outstanding chip work-list — this should SHRINK, and a `chip-sm` size modifier is what would close most of it"
-    ).toBe(17);
+      "only Timeline's explicitly deferred chrome lane remains"
+    ).toBe(1);
   });
 
   // A green sweep over a COMPLYING tree says nothing about what the sweep can

@@ -165,11 +165,8 @@ export default function PhotoGallery({
               <button
                 key={s.key ?? "__all"}
                 type="button"
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  series === s.key
-                    ? "bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
+                aria-pressed={series === s.key}
+                className="chip chip-filter chip-sm"
                 onClick={() => setSeries(s.key)}
                 data-testid={`photo-gallery-series-${s.key ?? "all"}`}
               >

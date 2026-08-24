@@ -17,6 +17,7 @@ import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
 import { useResettableState } from "@/components/useResettableState";
+import SegmentedControl from "@/components/SegmentedControl";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // TrainingLogCardData / DayGroup moved to lib/training-log-card.ts (issue #334), built by the
@@ -666,35 +667,19 @@ export default function TrainingLogView({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">
-            <div
-              role="group"
-              aria-label="Activity type"
-              className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-field divide-x divide-black/10 dark:border-white/10 dark:divide-white/10"
-            >
-              {TYPE_FILTERS.map((f) => {
-                const active = (activeFilters.type ?? "all") === f.value;
-                return (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        type: f.value === "all" ? null : f.value,
-                      }))
-                    }
-                    aria-pressed={active}
-                    className={`px-3 py-1.5 text-sm font-medium transition ${
-                      active
-                        ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
-                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Mutually exclusive client-state views use the registry's
+                SegmentedControl button binding (#2730). */}
+            <SegmentedControl
+              options={TYPE_FILTERS}
+              value={activeFilters.type ?? "all"}
+              onChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  type: value === "all" ? null : value,
+                }))
+              }
+              ariaLabel="Activity type"
+            />
             {/* Source (issue #1634): the providers this ledger ACTUALLY contains,
               labelled by the same activityProvenanceLabel the cards render, so the
               filter and the chip can't name one provider two ways. Filtering happens
@@ -738,21 +723,11 @@ export default function TrainingLogView({
                 aria-pressed={activeFilters.faultOnly}
                 data-testid="training-log-fault-filter"
                 title="Show only rows that can't be saved as-is"
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
-                  activeFilters.faultOnly
-                    ? "border-rose-500 bg-rose-500 text-white"
-                    : "border-rose-300 bg-surface text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                }`}
+                className="chip chip-filter"
               >
                 <IconAlertTriangle className="h-4 w-4" stroke={2} />
                 Can’t be saved
-                <span
-                  className={`rounded-full px-1.5 text-xs tabular-nums ${
-                    activeFilters.faultOnly
-                      ? "bg-white/25"
-                      : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                  }`}
-                >
+                <span className="rounded-full bg-black/10 px-1.5 text-xs tabular-nums dark:bg-white/15">
                   {faultCount}
                 </span>
               </button>

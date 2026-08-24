@@ -159,24 +159,10 @@ function FoodRowLabel({
   );
 }
 
-// A pressed/unpressed eating-time chip (#2053). Pressed reads as the brand-tinted
-// selection the meal cards already use, so "a statement is in force" is legible at a
-// glance rather than only from the note under the row.
-// `min-h-8` is the `.tap-target` claim made true (#3486's reach). `text-xs` over
-// `py-1` inside a border is 26px, and the overlay adds a fixed 12px — 38
-// effective, under #3514's 44px floor, on a control whose class list says the
-// floor is met. 32px rendered is the smallest box the mechanism can lift, and it
-// is `min-h-` rather than `h-` so the chip still grows with its own label.
-// Found by the rendered sweep in e2e/button-height-floor.mobile.spec.ts, which is
-// the half lib/tap-floor-reach.ts cannot see: this chip pins no height in source,
-// so only a measurement knows how tall it is.
-function chipClass(pressed: boolean): string {
-  return `tap-target inline-flex min-h-8 items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-    pressed
-      ? "border-brand-400 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-200"
-      : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-  }`;
-}
+// The shared dense filter size keeps this correction row compact. Its registered
+// coarse-pointer overlay reaches 44px effective; `min-h-8` preserves the larger
+// painted box this surface already shipped after the rendered tap-floor sweep.
+const FOOD_TIME_CHIP = "chip chip-filter chip-sm min-h-8";
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
 // above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row
@@ -1587,7 +1573,7 @@ export default function FoodLogBar({
                     prev?.kind === "now" ? null : { kind: "now" }
                   );
                 }}
-                className={chipClass(statedChoice?.kind === "now")}
+                className={FOOD_TIME_CHIP}
               >
                 Now
               </button>
@@ -1595,10 +1581,11 @@ export default function FoodLogBar({
                 <button
                   type="button"
                   data-testid="food-eating-earlier"
+                  aria-pressed={statedChoice?.kind === "at"}
                   aria-expanded={earlierOpen}
                   title="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
-                  className={chipClass(statedChoice?.kind === "at")}
+                  className={FOOD_TIME_CHIP}
                 >
                   {/* The pressed chip keeps announcing the filing (#2269): the hour
                       wins over the tab, so `19:00 \u00b7 Evening` is what the next "+"
@@ -1631,10 +1618,7 @@ export default function FoodLogBar({
                           : { kind: "at", hhmm: option.hhmm }
                       );
                     }}
-                    className={chipClass(
-                      statedChoice?.kind === "at" &&
-                        statedChoice.hhmm === option.hhmm
-                    )}
+                    className={FOOD_TIME_CHIP}
                   >
                     {/* The chip states the CONSEQUENCE before the tap (#2269): the
                         hour AND the meal window it files under \u2014 the #2268 correction

@@ -340,6 +340,8 @@ export default function DoseStatusControl({
       data-variant={variant}
       data-reduced-motion={reduced ? "true" : "false"}
     >
+      {/* Selected-state registry keep (#2730): these buttons WRITE typed dose
+          outcomes; they do not select a view, destination, or list filter. */}
       <button
         type="button"
         onClick={() => apply(isTaken ? "clear" : "taken")}

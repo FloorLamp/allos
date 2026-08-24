@@ -905,11 +905,7 @@ export default function DayHistory({
                 aria-label={g.label}
                 title={g.label}
                 onClick={() => toggle(g.key)}
-                className={`flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition ${
-                  isOn(g.key)
-                    ? "border-brand-500 bg-brand-500/10 font-medium text-slate-800 dark:text-slate-100"
-                    : "border-black/10 text-slate-500 dark:border-white/15 dark:text-slate-400"
-                }`}
+                className="chip chip-filter chip-sm min-h-7"
               >
                 {g.foodSlug && (
                   <FoodGroupIcon
