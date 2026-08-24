@@ -24,7 +24,7 @@ export default async function DisclaimerPage() {
       />
       <div className="card space-y-6" data-testid="disclaimer-full">
         {DISCLAIMER_SECTIONS.map((s) => (
-          <section key={s.title} className="space-y-1">
+          <section id={s.id} key={s.title} className="space-y-1 scroll-mt-6">
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {s.title}
             </h2>

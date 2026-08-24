@@ -102,8 +102,8 @@ export default function IntakeInteractionNotices({
               </p>
             ))}
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              Informational only — discuss with your prescriber or pharmacist.
-              You can still save this item.
+              Talk with your prescriber or pharmacist. You can still save this
+              item.
             </p>
           </div>
         </div>

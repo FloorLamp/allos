@@ -377,11 +377,12 @@ export default async function UpcomingPage(props: {
             className="mt-0.5 h-3.5 w-3.5 shrink-0"
             stroke={1.75}
           />
-          <span>
-            Preventive visit &amp; screening suggestions are based on general
-            guidelines and are informational only — individual clinician
-            guidance wins.
-          </span>
+          <Link
+            href="/disclaimer#suggestions-and-reference-ranges"
+            className="text-link"
+          >
+            About these suggestions →
+          </Link>
         </p>
       )}
     </div>
