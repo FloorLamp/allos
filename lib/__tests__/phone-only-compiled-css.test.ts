@@ -44,7 +44,7 @@ describe("compiled phone-only CSS proof (#3518)", () => {
   it("fails loudly when compilation fails or returns an empty artifact", async () => {
     const broken = globals.replace(
       "@apply max-sm:p-3!;",
-      "@apply utility-that-does-not-exist;"
+      "@apply max-sm:p-3! utility-that-does-not-exist;"
     );
     await expect(
       compilePhoneOnlyCssText(broken, { root: repo, label: "broken" })
@@ -59,12 +59,38 @@ describe("compiled phone-only CSS proof (#3518)", () => {
       "subpanel-inset-xs",
       "subpanel-inset-xxs"
     );
-    const css = await compilePhoneOnlyCssText(renamed, {
-      root: repo,
-      label: "renamed",
-    });
-    expect(() => inspectPhoneOnlyCss(css, { label: "renamed" })).toThrow(
-      "registered utility subpanel-inset-xs compiled 0 declarations"
+    await expect(
+      compilePhoneOnlyCssText(renamed, {
+        root: repo,
+        label: "renamed",
+      })
+    ).rejects.toThrow(
+      "renamed: phone-contributing utility subpanel-inset-xxs is not registered"
+    );
+  });
+
+  it("preserves whitespace-sensitive values and declaration winner order", async () => {
+    const css = await compilePhoneOnlyCss(repo);
+    const desktop = (extra: string) =>
+      inspectPhoneOnlyCss(`${css}\n${extra}`, { label: "semantic desktop" })
+        .desktop;
+
+    expect(desktop('.proof-copy::after { content: "a  b"; }')).not.toBe(
+      desktop('.proof-copy::after { content: "a b"; }')
+    );
+    expect(
+      desktop("@layer properties { .proof-order { color: red; color: blue; } }")
+    ).not.toBe(
+      desktop("@layer properties { .proof-order { color: blue; color: red; } }")
+    );
+  });
+
+  it("fails closed when a phone-contributing utility is omitted from the registry", async () => {
+    const omitted = `${globals}\n@utility omitted-phone-utility { color: red; @apply max-sm:p-2; }`;
+    await expect(
+      compilePhoneOnlyCssText(omitted, { root: repo, label: "omitted" })
+    ).rejects.toThrow(
+      "omitted: phone-contributing utility omitted-phone-utility is not registered"
     );
   });
 

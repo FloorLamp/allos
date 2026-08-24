@@ -27,6 +27,63 @@ function isPhoneMedia(params) {
   );
 }
 
+function contributesAtPhone(atRule) {
+  if (atRule.name === "media") return isPhoneMedia(atRule.params);
+  if (atRule.name === "variant")
+    return normalizeSpace(atRule.params) === "max-sm";
+  return atRule.name === "apply" && /(?:^|[\s:])max-sm:/.test(atRule.params);
+}
+
+export function phoneOnlyUtilityCandidates(source, label = "app/globals.css") {
+  let root;
+  try {
+    root = postcss.parse(source);
+  } catch (error) {
+    throw new Error(
+      `${label}: cannot parse custom utilities: ${error.message}`,
+      {
+        cause: error,
+      }
+    );
+  }
+  const candidates = [];
+  root.walkAtRules("utility", (utility) => {
+    let contributes = false;
+    utility.walkAtRules((atRule) => {
+      if (contributesAtPhone(atRule)) contributes = true;
+    });
+    if (contributes) candidates.push(normalizeSpace(utility.params));
+  });
+  return candidates;
+}
+
+function assertPhoneOnlyRegistry(source, registry, label, requireRegistry) {
+  const registered = registry.map(({ name }) => name);
+  const duplicate = registered.find(
+    (name, index) => registered.indexOf(name) !== index
+  );
+  if (duplicate)
+    throw new Error(
+      `${label}: duplicate phone-only registry entry ${duplicate}`
+    );
+
+  const candidates = phoneOnlyUtilityCandidates(source, label);
+  if (requireRegistry) {
+    const omitted = candidates.find((name) => !registered.includes(name));
+    if (omitted) {
+      throw new Error(
+        `${label}: phone-contributing utility ${omitted} is not registered`
+      );
+    }
+    const missing = registered.find((name) => !candidates.includes(name));
+    if (missing) {
+      throw new Error(
+        `${label}: registered utility ${missing} has no phone contribution in the source sheet`
+      );
+    }
+  }
+}
+
 function deterministicInput(source, registry) {
   const occurrences = source.split(TAILWIND_IMPORT).length - 1;
   if (occurrences !== 1) {
@@ -54,9 +111,15 @@ export function assertCompiledSheet(css, label) {
 
 export async function compilePhoneOnlyCssText(
   source,
-  { root, label = root, registry = PHONE_ONLY_UTILITIES }
+  {
+    root,
+    label = root,
+    registry = PHONE_ONLY_UTILITIES,
+    requireRegistry = true,
+  }
 ) {
   if (!root) throw new Error("compilePhoneOnlyCssText requires a root");
+  assertPhoneOnlyRegistry(source, registry, label, requireRegistry);
   const css = deterministicInput(source, registry);
   try {
     const compiled = (
@@ -78,7 +141,7 @@ export async function compilePhoneOnlyCssText(
 
 export async function compilePhoneOnlyCss(
   root,
-  { label = root, registry = PHONE_ONLY_UTILITIES } = {}
+  { label = root, registry = PHONE_ONLY_UTILITIES, requireRegistry = true } = {}
 ) {
   const globals = path.join(root, "app", "globals.css");
   let source;
@@ -93,6 +156,7 @@ export async function compilePhoneOnlyCss(
     root,
     label,
     registry,
+    requireRegistry,
   });
 }
 
@@ -158,37 +222,28 @@ export function stripPhoneContributions(css) {
   return { root, blocks, declarations };
 }
 
-function canonicalChildren(container, inPropertyFallback = false) {
-  const ordinary = [];
-  const properties = [];
-  const propertyFallback =
-    inPropertyFallback ||
-    (container.type === "atrule" &&
-      container.name === "layer" &&
-      normalizeSpace(container.params) === "properties");
+function semanticChildren(container) {
+  const children = [];
   for (const node of container.nodes ?? []) {
     if (node.type === "comment") continue;
-    let value;
     if (node.type === "decl") {
-      value = `decl:${node.prop}:${normalizeSpace(node.value)}:${node.important ? "!" : ""}`;
+      children.push(["decl", node.prop, node.value, node.important]);
     } else if (node.type === "rule") {
-      const children = canonicalChildren(node, propertyFallback);
-      if (!children.length) continue;
-      value = `rule:${normalizeSpace(node.selector)}{${children.join("|")}}`;
+      const descendants = semanticChildren(node);
+      if (!descendants.length) continue;
+      children.push(["rule", node.selector, descendants]);
     } else if (node.type === "atrule") {
-      const children = canonicalChildren(node, propertyFallback);
-      value = `at:${node.name}:${normalizeSpace(node.params)}${children.length ? `{${children.join("|")}}` : ";"}`;
+      children.push([
+        "atrule",
+        node.name,
+        node.params,
+        node.nodes ? semanticChildren(node) : null,
+      ]);
     } else {
-      continue;
+      throw new Error(`unsupported compiled CSS node type: ${node.type}`);
     }
-    if (node.type === "atrule" && node.name === "property")
-      properties.push(value);
-    else ordinary.push(value);
   }
-  return [
-    ...(propertyFallback ? ordinary.sort() : ordinary),
-    ...properties.sort(),
-  ];
+  return children;
 }
 
 export function inspectPhoneOnlyCss(
@@ -261,14 +316,20 @@ export function inspectPhoneOnlyCss(
     total,
     strippedBlocks: stripped.blocks,
     strippedDeclarations: stripped.declarations,
-    desktop: canonicalChildren(stripped.root).join("\n"),
+    // Serialize semantic AST fields, not presentation whitespace. Declaration
+    // values and every child stay in source order: spaces inside strings and a
+    // later declaration winning the cascade are both browser-visible.
+    desktop: JSON.stringify(semanticChildren(stripped.root)),
   };
 }
 
 export async function provePhoneOnlyCss({ branchRoot, controlRoot }) {
   const [branchCss, controlCss] = await Promise.all([
     compilePhoneOnlyCss(branchRoot, { label: "branch" }),
-    compilePhoneOnlyCss(controlRoot, { label: "control" }),
+    compilePhoneOnlyCss(controlRoot, {
+      label: "control",
+      requireRegistry: false,
+    }),
   ]);
   const branch = inspectPhoneOnlyCss(branchCss, { label: "branch" });
   const control = inspectPhoneOnlyCss(controlCss, {
