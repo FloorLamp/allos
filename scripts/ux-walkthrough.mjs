@@ -308,7 +308,12 @@ function writeAuditArtifacts(baselineDir) {
   // exactly one explicitly marked DEFAULT DESKTOP capture per reached route;
   // mobile, expanded and hover shots stay in index.html but cannot leak into the
   // between-page lane by filename convention or reviewer memory.
-  const consistencyEntries = consistencyReviewEntries(manifest);
+  const consistencyEntries = consistencyReviewEntries(
+    manifest,
+    metricsRows
+      .filter((row) => row.viewport === "desktop")
+      .map((row) => row.route)
+  );
   if (consistencyEntries.length) {
     fs.writeFileSync(
       path.join(SHOTS, "consistency.html"),

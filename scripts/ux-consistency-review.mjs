@@ -42,7 +42,7 @@ const escapeHtml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-export function consistencyReviewEntries(manifest) {
+export function consistencyReviewEntries(manifest, expectedDesktopRoutes = []) {
   const entries = manifest
     .filter(
       (entry) =>
@@ -62,6 +62,18 @@ export function consistencyReviewEntries(manifest) {
       );
     seen.add(entry.route);
   }
+
+  // The manifest mark is one side of the live boundary. Desktop metrics are
+  // recorded independently after the page shot, so they are the receipt that a
+  // route was actually reached. Cross-checking the two makes a missing mark a
+  // hard failure instead of a smaller contact sheet that still looks complete.
+  const missing = [...new Set(expectedDesktopRoutes)].filter(
+    (route) => !seen.has(route)
+  );
+  if (missing.length)
+    throw new Error(
+      `cross-page consistency review is missing default desktop captures for: ${missing.join(", ")}`
+    );
   return entries;
 }
 

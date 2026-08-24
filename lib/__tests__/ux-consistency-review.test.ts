@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 import {
   CONSISTENCY_REVIEW_DIMENSIONS,
   consistencyAuditSection,
@@ -19,6 +20,9 @@ const desktop = (route: string, file: string) => ({
   name: file.replace(/\.png$/, ""),
   consistency: { kind: "page-default", route, viewport: "desktop" },
 });
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repo = path.join(here, "..", "..");
 
 describe("cross-page consistency review", () => {
   it("pins the dimensions the owner named", () => {
@@ -63,6 +67,43 @@ describe("cross-page consistency review", () => {
     ).toThrow("two default desktop captures for /trends");
   });
 
+  it("fails when a reached desktop route has no marked capture", () => {
+    expect(() =>
+      consistencyReviewEntries([desktop("/", "01-home.png")], ["/", "/trends"])
+    ).toThrow("missing default desktop captures for: /trends");
+  });
+
+  it("keeps the executable capture and artifact boundaries wired", () => {
+    // This reads the LIVE harness, with comments blanked. It is deliberately in
+    // addition to the pure boundary test above: deleting the metadata passed to
+    // shot(), or disconnecting the writer, must fail the unit tier even though a
+    // synthetic marked manifest could still prove the filter in isolation.
+    const walkthrough = stripComments(
+      fs.readFileSync(path.join(repo, "scripts", "ux-walkthrough.mjs"), "utf8")
+    );
+    expect(
+      /await shot\(page, `page-\$\{tag\}-\$\{slug\}`, \{\s*consistency: \{\s*kind: "page-default",\s*route,\s*viewport: tag\s*\},\s*\}\);/.test(
+        walkthrough
+      ),
+      "the live default page shot must carry its route and viewport into the consistency manifest"
+    ).toBe(true);
+    expect(
+      /consistencyReviewEntries\(\s*manifest,\s*metricsRows\s*\.filter\(\(row\) => row\.viewport === "desktop"\)\s*\.map\(\(row\) => row\.route\)\s*\)/.test(
+        walkthrough
+      ),
+      "the artifact boundary must require every independently measured desktop route"
+    ).toBe(true);
+    expect(
+      /fs\.writeFileSync\(\s*path\.join\(SHOTS, "consistency\.html"\),\s*consistencyReviewHtml\(consistencyEntries\)\s*\)/.test(
+        walkthrough
+      ),
+      "the artifact writer must render the validated consistency entries"
+    ).toBe(true);
+    expect(walkthrough).toContain(
+      "consistencyAuditSection(consistencyEntries)"
+    );
+  });
+
   it("puts the full lane and its dimensions in both generated artifacts", () => {
     const entries = consistencyReviewEntries([
       desktop("/trends", "01-page-desktop-trends.png"),
@@ -80,7 +121,6 @@ describe("cross-page consistency review", () => {
   });
 
   it("keeps the skill's executable brief aligned with the pinned vocabulary", () => {
-    const here = path.dirname(fileURLToPath(import.meta.url));
     const skill = fs.readFileSync(
       path.join(
         here,
