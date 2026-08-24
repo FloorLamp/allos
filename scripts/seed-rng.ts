@@ -67,6 +67,38 @@ export const BASELINE_DIALS: SeedDials = {
   textLength: "short",
 };
 
+export interface NamedSeedDialShape {
+  /** The SEED_DIAL_SHAPE value handed to scripts/seed.ts. */
+  name: string;
+  /** One-line audit/log description of what this fixed look exercises. */
+  description: string;
+  /** A complete vector, never a seed whose sampled meaning can drift. */
+  dials: SeedDials;
+}
+
+// Named census looks that need to stay in the standard rotation. These are
+// complete vectors by construction: adding or reordering RNG draws cannot
+// change what a name means. Keep unrelated dimensions on the baseline so a
+// dirty-profile review is about imported residue and uncontrolled names, not a
+// simultaneous illness/volume/gap scenario.
+export const NAMED_SEED_DIAL_SHAPES: readonly NamedSeedDialShape[] = [
+  {
+    name: "dirty",
+    description: "portal import quirks + long uncontrolled names",
+    dials: {
+      ...BASELINE_DIALS,
+      importQuirks: "quirky",
+      textLength: "long",
+    },
+  },
+];
+
+export type SeedDialSelection =
+  | { kind: "entropy"; seed: number; dials: SeedDials }
+  | { kind: "named"; shape: NamedSeedDialShape; dials: SeedDials }
+  | { kind: "unknown"; raw: string; known: string[] }
+  | { kind: "conflict"; raw: string; reason: string };
+
 // Sample the dial vector for a seed. DEFAULT_SEED is special-cased to the
 // baseline BY CONSTRUCTION (not by hoping draws land right), so the pin cannot
 // rot as dials are appended. Every other seed draws one value per dial, in
@@ -115,4 +147,32 @@ export function seedFromEnv(env: Record<string, string | undefined>): number {
   if (!raw) return DEFAULT_SEED;
   const n = Number(raw);
   return Number.isInteger(n) ? n : DEFAULT_SEED;
+}
+
+// Resolve the vector scripts/seed.ts will actually use. A named shape and an
+// entropy seed are mutually exclusive: recording both would make a run claim a
+// sampled look while the fixed vector won. Unknown names fail at the entrypoint
+// instead of quietly producing baseline data under a dirty label.
+export function seedDialsFromEnv(
+  env: Record<string, string | undefined>
+): SeedDialSelection {
+  const raw = env.SEED_DIAL_SHAPE?.trim();
+  if (!raw) {
+    const seed = seedFromEnv(env);
+    return { kind: "entropy", seed, dials: sampleDials(seed) };
+  }
+  const shape = NAMED_SEED_DIAL_SHAPES.find((entry) => entry.name === raw);
+  if (!shape)
+    return {
+      kind: "unknown",
+      raw,
+      known: NAMED_SEED_DIAL_SHAPES.map((entry) => entry.name),
+    };
+  if (env.SEED_RNG?.trim())
+    return {
+      kind: "conflict",
+      raw,
+      reason: `SEED_DIAL_SHAPE=${raw} pins a complete vector; remove SEED_RNG`,
+    };
+  return { kind: "named", shape, dials: { ...shape.dials } };
 }

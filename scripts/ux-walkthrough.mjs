@@ -19,7 +19,7 @@
 //
 // Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
 // teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
-// then trims observations to the last ~7 days — the week-old-phone shape):
+// trims to a week, and UX_SEED=dirty pins import residue + long names):
 //
 //   node scripts/ux-walkthrough.mjs --serve onboarding pages
 //
@@ -103,6 +103,11 @@ import {
   consistencyReviewEntries,
   consistencyReviewHtml,
 } from "./ux-consistency-review.mjs";
+import {
+  applyUxSeedShapeEnv,
+  uxSeedRunInfo,
+  uxSeedShapeFromEnv,
+} from "./ux-seed-shapes.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -110,6 +115,14 @@ const SHOTS =
 const ADMIN_USER = process.env.UX_ADMIN_USER || "admin";
 const ADMIN_PASS = process.env.UX_ADMIN_PASS || "first-boot-pw-1";
 const MAIL_FILE = process.env.EMAIL_TEST_CAPTURE || "/tmp/ux-mail.jsonl";
+const UX_SEED_SELECTION = uxSeedShapeFromEnv(process.env);
+if (UX_SEED_SELECTION.kind === "unknown")
+  throw new Error(
+    `Unknown UX_SEED "${UX_SEED_SELECTION.raw}". Known seeded shapes: ${UX_SEED_SELECTION.known.join(", ")}; leave it unset for fresh.`
+  );
+if (UX_SEED_SELECTION.kind === "conflict")
+  throw new Error(UX_SEED_SELECTION.reason);
+const UX_SEED_SHAPE = UX_SEED_SELECTION.shape;
 // Invitee fixture — synthetic values only (no real PHI/emails, per repo policy).
 const INVITEE = {
   username: "jordan",
@@ -325,11 +338,7 @@ function writeAuditArtifacts(baselineDir) {
   // entropy seed shaped the data. Written beside metrics.json so a look is
   // reproducible from its artifacts, and so --baseline can refuse to compare
   // incomparable shapes below.
-  const runInfo = {
-    uxSeed: process.env.UX_SEED ?? null,
-    seedRng: process.env.SEED_RNG ?? null,
-    seedPersona: process.env.SEED_PERSONA ?? null,
-  };
+  const runInfo = uxSeedRunInfo(UX_SEED_SHAPE, process.env);
   fs.writeFileSync(
     path.join(SHOTS, "run.json"),
     JSON.stringify(runInfo, null, 1)
@@ -370,7 +379,7 @@ function writeAuditArtifacts(baselineDir) {
     "",
     // Name the data shape up front (#2594): a finding filed from this run must
     // say which look produced it, and a re-run needs both knobs.
-    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"} · SEED_PERSONA=${runInfo.seedPersona ?? "none (baseline character)"}`,
+    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"} · SEED_PERSONA=${runInfo.seedPersona ?? "none (baseline character)"} · SEED_DIAL_SHAPE=${runInfo.seedDialShape ?? "none"}`,
     "",
   ];
   // Render health first (#1544) — a route that rendered the error boundary or the
@@ -489,10 +498,11 @@ function writeAuditArtifacts(baselineDir) {
       oldRun &&
       ((oldRun.uxSeed ?? null) !== runInfo.uxSeed ||
         (oldRun.seedRng ?? null) !== runInfo.seedRng ||
-        (oldRun.seedPersona ?? null) !== runInfo.seedPersona)
+        (oldRun.seedPersona ?? null) !== runInfo.seedPersona ||
+        (oldRun.seedDialShape ?? null) !== runInfo.seedDialShape)
     ) {
       lines.push(
-        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"} SEED_PERSONA=${oldRun.seedPersona ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"} SEED_PERSONA=${runInfo.seedPersona ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
+        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"} SEED_PERSONA=${oldRun.seedPersona ?? "unset"} SEED_DIAL_SHAPE=${oldRun.seedDialShape ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"} SEED_PERSONA=${runInfo.seedPersona ?? "unset"} SEED_DIAL_SHAPE=${runInfo.seedDialShape ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
         ""
       );
     }
@@ -1976,7 +1986,7 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after. SEED_RNG=<int> (#2594) gives a seeded shape a distinct, reproducible scenario-dial look; unset = the pinned baseline.
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds, UX_SEED=thin seeds then trims to ~7 days, UX_SEED=dirty pins import quirks + long names) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
@@ -1988,27 +1998,29 @@ let server = null;
 if (serve) {
   const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
   const port = new URL(BASE).port || "3111";
-  const env = {
-    ...process.env,
-    ALLOS_DB_PATH: dbPath,
-    ADMIN_USERNAME: ADMIN_USER,
-    ADMIN_PASSWORD: ADMIN_PASS,
-    EMAIL_TEST_CAPTURE: MAIL_FILE,
-    PORT: port,
-  };
+  const env = applyUxSeedShapeEnv(
+    {
+      ...process.env,
+      ALLOS_DB_PATH: dbPath,
+      ADMIN_USERNAME: ADMIN_USER,
+      ADMIN_PASSWORD: ADMIN_PASS,
+      EMAIL_TEST_CAPTURE: MAIL_FILE,
+      PORT: port,
+    },
+    UX_SEED_SHAPE
+  );
   // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
   // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
-  // days (#1544) — the week-old-phone shape where trailing 7/30/90-day windows
-  // coincide, which neither pole reproduces. SEED_PERSONA (forwarded through
-  // the env spread) makes the seed write a persona character instead of the
-  // baseline story; it still needs UX_SEED=1 to trigger seeding at all.
-  if (process.env.SEED_PERSONA && process.env.UX_SEED !== "1") {
+  // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
+  // SEED_PERSONA makes the seed write a persona character instead of the
+  // baseline story; it still belongs only to UX_SEED=1.
+  if (process.env.SEED_PERSONA && UX_SEED_SHAPE.name !== "1") {
     throw new Error(
       `SEED_PERSONA=${process.env.SEED_PERSONA} is set but UX_SEED=${process.env.UX_SEED ?? "unset"} — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.`
     );
   }
-  if (process.env.UX_SEED === "1" || process.env.UX_SEED === "thin") {
-    log("seeding scratch DB…");
+  if (UX_SEED_SHAPE.seed) {
+    log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
     const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
       env,
       stdio: "inherit",
@@ -2016,13 +2028,13 @@ if (serve) {
     if (r.status !== 0) {
       // A persona run's label IS its persona — censusing an unseeded DB under
       // that label would be worse than no run, so fail instead of warning.
-      if (process.env.SEED_PERSONA)
+      if (process.env.SEED_PERSONA || UX_SEED_SHAPE.seedDialShape)
         throw new Error(
-          "seed exited non-zero on a SEED_PERSONA run — aborting instead of censusing a fresh DB under a persona label"
+          `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing a fresh DB under that label`
         );
       log("WARNING: seed exited non-zero — continuing unseeded");
     }
-    if (process.env.UX_SEED === "thin") {
+    if (UX_SEED_SHAPE.postSeed === "thin") {
       log("thinning scratch DB to the last ~7 days…");
       const t = spawnSync("npx", ["tsx", "scripts/ux-thin-data.ts"], {
         env,

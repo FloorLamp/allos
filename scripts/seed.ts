@@ -39,10 +39,10 @@ import {
   serializeOnboardingState,
 } from "../lib/onboarding";
 import {
+  DEFAULT_SEED,
   describeDials,
   jitterStream,
-  sampleDials,
-  seedFromEnv,
+  seedDialsFromEnv,
 } from "./seed-rng";
 import { personaFromEnv } from "./seed-personas";
 import { LONG_NAMES } from "./seed-long-names";
@@ -62,8 +62,20 @@ function daysAgo(n: number): string {
 // pinned baseline — exactly the hand-authored look below, which `npm run seed`,
 // the e2e template DB, and census `--baseline` diffing all rely on. The dial
 // hooks are inline at their data sites, each tagged "#2594 dial".
-const SEED_ENTROPY = seedFromEnv(process.env);
-const DIALS = sampleDials(SEED_ENTROPY);
+const DIAL_SELECTION = seedDialsFromEnv(process.env);
+if (DIAL_SELECTION.kind === "unknown") {
+  console.error(
+    `Unknown SEED_DIAL_SHAPE "${DIAL_SELECTION.raw}". Known shapes: ${DIAL_SELECTION.known.join(", ")}`
+  );
+  process.exit(1);
+}
+if (DIAL_SELECTION.kind === "conflict") {
+  console.error(DIAL_SELECTION.reason);
+  process.exit(1);
+}
+const SEED_ENTROPY =
+  DIAL_SELECTION.kind === "entropy" ? DIAL_SELECTION.seed : DEFAULT_SEED;
+const DIALS = DIAL_SELECTION.dials;
 const rand = jitterStream(SEED_ENTROPY);
 // Persona axis (SEED_PERSONA, scripts/seed-personas.ts): WHO the profile is,
 // orthogonal to the dial vector's HOW-the-baseline-varies. A persona run
@@ -78,9 +90,20 @@ if (PERSONA_SELECTION.kind === "unknown") {
   );
   process.exit(1);
 }
-if (PERSONA_SELECTION.kind === "none") {
+if (PERSONA_SELECTION.kind === "found" && DIAL_SELECTION.kind === "named") {
+  console.error(
+    `SEED_PERSONA=${PERSONA_SELECTION.persona.name} cannot be combined with SEED_DIAL_SHAPE=${DIAL_SELECTION.shape.name}`
+  );
+  process.exit(1);
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "entropy") {
   console.log(
     `seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`
+  );
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "named") {
+  console.log(
+    `seed shape: ${DIAL_SELECTION.shape.name} — ${DIAL_SELECTION.shape.description}`
   );
 }
 // The current illness episode's day offset (#2594 dial: illnessNow). "active"

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   BASELINE_DIALS,
   DEFAULT_SEED,
+  NAMED_SEED_DIAL_SHAPES,
   describeDials,
   jitterStream,
   mulberry32,
   sampleDials,
+  seedDialsFromEnv,
   seedFromEnv,
   type SeedDials,
 } from "../../scripts/seed-rng";
@@ -32,6 +34,40 @@ describe("mulberry32", () => {
 });
 
 describe("sampleDials", () => {
+  it("pins the historical baseline bytes and representative numbered vectors", () => {
+    // Equality to BASELINE_DIALS alone lets the constant and sampler drift
+    // together. These literals are the external contract: the demo/e2e look and
+    // existing documented SEED_RNG numbers do not move when named shapes grow.
+    expect(BASELINE_DIALS).toEqual({
+      illnessNow: "active",
+      importQuirks: "clean",
+      volume: "lean",
+      gapiness: "continuous",
+      textLength: "short",
+    });
+    expect(sampleDials(3)).toEqual({
+      illnessNow: "past",
+      importQuirks: "clean",
+      volume: "lean",
+      gapiness: "continuous",
+      textLength: "long",
+    });
+    expect(sampleDials(40)).toEqual({
+      illnessNow: "past",
+      importQuirks: "quirky",
+      volume: "lean",
+      gapiness: "gappy",
+      textLength: "short",
+    });
+    expect(sampleDials(99)).toEqual({
+      illnessNow: "active",
+      importQuirks: "quirky",
+      volume: "heavy",
+      gapiness: "gappy",
+      textLength: "short",
+    });
+  });
+
   it("pins DEFAULT_SEED to the baseline look, by construction", () => {
     // npm run seed, the e2e template DB, and census --baseline diffing all
     // rely on the unset/default seed producing the historical hand-authored
@@ -108,5 +144,47 @@ describe("seedFromEnv", () => {
   it("parses an integer seed", () => {
     expect(seedFromEnv({ SEED_RNG: "7" })).toBe(7);
     expect(seedFromEnv({ SEED_RNG: " 42 " })).toBe(42);
+  });
+});
+
+describe("named seed dial shapes", () => {
+  it("pins dirty directly to the two existing dirty-data dimensions", () => {
+    expect(NAMED_SEED_DIAL_SHAPES).toEqual([
+      {
+        name: "dirty",
+        description: "portal import quirks + long uncontrolled names",
+        dials: {
+          illnessNow: "active",
+          importQuirks: "quirky",
+          volume: "lean",
+          gapiness: "continuous",
+          textLength: "long",
+        },
+      },
+    ]);
+  });
+
+  it("selects a named vector without sampling or mutating the registry", () => {
+    const selection = seedDialsFromEnv({ SEED_DIAL_SHAPE: "dirty" });
+    expect(selection.kind).toBe("named");
+    if (selection.kind !== "named") return;
+    expect(selection.dials).toEqual(selection.shape.dials);
+    selection.dials.importQuirks = "clean";
+    expect(selection.shape.dials.importQuirks).toBe("quirky");
+  });
+
+  it("fails unknown names and conflicts instead of falling back", () => {
+    expect(seedDialsFromEnv({ SEED_DIAL_SHAPE: "dritty" })).toEqual({
+      kind: "unknown",
+      raw: "dritty",
+      known: ["dirty"],
+    });
+    expect(
+      seedDialsFromEnv({ SEED_DIAL_SHAPE: "dirty", SEED_RNG: "7" })
+    ).toEqual({
+      kind: "conflict",
+      raw: "dirty",
+      reason: "SEED_DIAL_SHAPE=dirty pins a complete vector; remove SEED_RNG",
+    });
   });
 });

@@ -36,7 +36,8 @@ PORT=3111 npm run dev
 Easiest: let the harness own the server lifecycle (`--serve` boots the dev
 server on the scratch DB, polls readiness, and tears it down; `UX_SEED=1`
 runs `scripts/seed.ts` first for a data-rich census, `UX_SEED=thin` seeds and
-then trims to the last ~7 days — see the three shapes in §3):
+then trims to the last ~7 days, and `UX_SEED=dirty` pins import residue plus
+long uncontrolled names — see the four shapes in §3):
 
 ```bash
 node scripts/ux-walkthrough.mjs --serve onboarding invite pages workflows
@@ -162,16 +163,26 @@ The proven workflow for an all-pages consistency audit:
    GOOD (proves coverage), and end with a top-5. Cross-check surprising claims
    against the code before filing (a "dead route" may be an intentional
    relevance redirect).
-7. **Run all three census shapes** — they surface disjoint finding sets, and a
+7. **Run all four census shapes** — they surface disjoint finding sets, and a
    whole class of degradation lives only in the middle one:
 
-   | shape  | command                                                      | what it shows                |
-   | ------ | ------------------------------------------------------------ | ---------------------------- |
-   | fresh  | `node scripts/ux-walkthrough.mjs --serve pages`              | empty states                 |
-   | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages` | a phone's first week         |
-   | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`    | ~3 weeks, full tables/charts |
+   | shape  | command                                                       | what it shows                       |
+   | ------ | ------------------------------------------------------------- | ----------------------------------- |
+   | fresh  | `node scripts/ux-walkthrough.mjs --serve pages`               | empty states                        |
+   | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages`  | a phone's first week                |
+   | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`     | ~3 weeks, full tables/charts        |
+   | dirty  | `UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages` | portal residue + uncontrolled names |
 
-   **Entropy (#2594)**: any seeded shape also takes `SEED_RNG=<int>` for a
+   **Dirty profile (#3489)** is a named, fixed vector rather than a numbered
+   random look: it keeps illness, volume and logging continuity at the baseline,
+   turns on the existing `importQuirks` and `textLength` hooks, and runs the
+   existing long-name corpus in `scripts/seed-long-names.ts`. Do not combine it
+   with `SEED_RNG`; the harness fails instead of recording two conflicting shape
+   labels. `run.json` and the audit header record both `UX_SEED=dirty` and its
+   fixed `SEED_DIAL_SHAPE=dirty` receipt.
+
+   **Entropy (#2594)**: the `seeded` and `thin` shapes also take
+   `SEED_RNG=<int>` for a
    distinct, REPRODUCIBLE look — a seeded PRNG samples five scenario dials
    (past/active illness, import quirks, heavy goal volume, logging gaps, long
    names), each mapped to a defect class the seeded baseline can't show. Unset
