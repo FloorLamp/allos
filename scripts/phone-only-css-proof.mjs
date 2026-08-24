@@ -25,6 +25,7 @@ const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
 );
+let moduleRuntimeCandidates;
 
 function normalizeSpace(value) {
   return value.replace(/\s+/g, " ").trim();
@@ -131,68 +132,240 @@ function runtimeSourceFiles(root, label) {
 }
 
 function runtimeClassCandidates(root, label) {
-  const declarations = new Map();
-  const classRoots = [];
+  if (path.resolve(root) === MODULE_ROOT && moduleRuntimeCandidates)
+    return moduleRuntimeCandidates;
   const sourceFiles = runtimeSourceFiles(root, label);
+  const program = ts.createProgram({
+    rootNames: sourceFiles,
+    options: {
+      allowJs: true,
+      checkJs: false,
+      jsx: ts.JsxEmit.Preserve,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+      baseUrl: root,
+      paths: { "@/*": ["*"] },
+    },
+  });
+  const checker = program.getTypeChecker();
+  const runtimeFiles = new Set(sourceFiles.map((file) => path.resolve(file)));
+  const classRoots = [];
   for (const file of sourceFiles) {
-    let source;
-    try {
-      source = fs.readFileSync(file, "utf8");
-    } catch (error) {
-      throw new Error(`${label}: cannot read ${file}: ${error.message}`, {
-        cause: error,
-      });
-    }
-    const sourceFile = ts.createSourceFile(
-      file,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-      file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-    );
-    const parseError = sourceFile.parseDiagnostics?.[0];
+    const sourceFile = program.getSourceFile(file);
+    if (!sourceFile)
+      throw new Error(
+        `${label}: TypeScript did not load runtime source ${file}`
+      );
+    const parseError = program.getSyntacticDiagnostics(sourceFile)[0];
     if (parseError) {
       throw new Error(
         `${label}: cannot parse runtime candidates in ${file}: ${ts.flattenDiagnosticMessageText(parseError.messageText, "\n")}`
       );
     }
-    const remember = (name, node) => {
-      const matches = declarations.get(name) ?? [];
-      matches.push(node);
-      declarations.set(name, matches);
-    };
     const visit = (node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer
-      )
-        remember(node.name.text, node.initializer);
-      else if (
-        (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
-        node.name
-      )
-        remember(node.name.text, node);
-
       if (
         ts.isJsxAttribute(node) &&
         (node.name.text === "className" || node.name.text === "class") &&
         node.initializer
-      ) {
+      )
         classRoots.push(node.initializer);
-      }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
   }
 
+  const location = (node) => {
+    const sourceFile = node.getSourceFile();
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+      node.getStart(sourceFile)
+    );
+    return `${path.relative(root, sourceFile.fileName)}:${line + 1}:${character + 1}`;
+  };
+  const bindingError = (node, detail) => {
+    throw new Error(
+      `${label}: cannot resolve class-bearing binding ${node.getText()} at ${location(node)}${detail ? ` (${detail})` : ""}`
+    );
+  };
   const fragments = [];
-  const visited = new Set();
-  const pending = [...classRoots];
-  while (pending.length) {
-    const node = pending.pop();
-    if (visited.has(node)) continue;
-    visited.add(node);
+  const visitedDeclarations = new Set();
+
+  const lookupSymbol = (node) => {
+    let symbol = checker.getSymbolAtLocation(node);
+    if (!symbol) return null;
+    if (symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = checker.getAliasedSymbol(symbol);
+      if (!symbol || symbol.flags & ts.SymbolFlags.Unknown) return null;
+    }
+    return symbol;
+  };
+
+  const unresolvedPackageOperator = (node) => {
+    const symbol = checker.getSymbolAtLocation(node);
+    if (!symbol || !(symbol.flags & ts.SymbolFlags.Alias)) return false;
+    for (const declaration of symbol.declarations ?? []) {
+      let current = declaration;
+      while (current && !ts.isImportDeclaration(current))
+        current = current.parent;
+      if (
+        current &&
+        ts.isStringLiteral(current.moduleSpecifier) &&
+        !current.moduleSpecifier.text.startsWith(".") &&
+        !current.moduleSpecifier.text.startsWith("@/")
+      )
+        return true;
+    }
+    return false;
+  };
+
+  const visitReturns = (body) => {
+    if (!body) return;
+    if (!ts.isBlock(body)) {
+      visitValue(body);
+      return;
+    }
+    const visit = (node) => {
+      if (ts.isFunctionLike(node) && node !== body) return;
+      if (ts.isReturnStatement(node) && node.expression) {
+        visitValue(node.expression);
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(body);
+  };
+
+  const visitDeclaration = (declaration) => {
+    if (visitedDeclarations.has(declaration)) return;
+    visitedDeclarations.add(declaration);
+    if (
+      ts.isVariableDeclaration(declaration) ||
+      ts.isPropertyDeclaration(declaration) ||
+      ts.isPropertyAssignment(declaration) ||
+      ts.isBindingElement(declaration) ||
+      ts.isParameter(declaration) ||
+      ts.isEnumMember(declaration)
+    ) {
+      if (declaration.initializer) visitValue(declaration.initializer);
+      return;
+    }
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      visitBinding(declaration.name);
+      return;
+    }
+    if (
+      ts.isFunctionDeclaration(declaration) ||
+      ts.isFunctionExpression(declaration) ||
+      ts.isMethodDeclaration(declaration) ||
+      ts.isGetAccessorDeclaration(declaration) ||
+      ts.isArrowFunction(declaration)
+    ) {
+      visitReturns(declaration.body);
+      return;
+    }
+    if (ts.isExportAssignment(declaration)) {
+      visitValue(declaration.expression);
+      return;
+    }
+    // Interface/type declarations and parameter properties describe values
+    // supplied by a caller. Their static call-site strings are separate JSX
+    // class roots, so they contribute no candidate from this binding.
+    if (
+      ts.isPropertySignature(declaration) ||
+      ts.isMethodSignature(declaration) ||
+      ts.isImportSpecifier(declaration) ||
+      ts.isImportClause(declaration) ||
+      ts.isNamespaceImport(declaration)
+    )
+      return;
+    bindingError(declaration, `unsupported ${ts.SyntaxKind[declaration.kind]}`);
+  };
+
+  const visitBinding = (node, { allowExternalDeclaration = false } = {}) => {
+    const symbol = lookupSymbol(node);
+    if (!symbol) {
+      if (allowExternalDeclaration && unresolvedPackageOperator(node)) return;
+      bindingError(node, "no lexical symbol or import target");
+    }
+    const declarations = symbol.declarations ?? [];
+    if (!declarations.length) {
+      if (allowExternalDeclaration && unresolvedPackageOperator(node)) return;
+      bindingError(node, "symbol has no declaration");
+    }
+    const runtimeDeclarations = declarations.filter((declaration) =>
+      runtimeFiles.has(path.resolve(declaration.getSourceFile().fileName))
+    );
+    if (!runtimeDeclarations.length) {
+      // Imported functions such as clsx are class-expression operators. Their
+      // arguments are walked by the call expression; package declarations do
+      // not themselves contain application candidates.
+      if (
+        allowExternalDeclaration &&
+        declarations.every(
+          (declaration) => declaration.getSourceFile().isDeclarationFile
+        )
+      )
+        return;
+      bindingError(node, "binding is outside the runtime source inventory");
+    }
+    for (const declaration of runtimeDeclarations)
+      visitDeclaration(declaration);
+  };
+
+  const unwrapExpression = (node) => {
+    while (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isSatisfiesExpression(node)
+    )
+      node = node.expression;
+    return node;
+  };
+
+  const visitNamedMember = (expression, nameNode) => {
+    const symbol = lookupSymbol(expression);
+    if (!symbol) bindingError(nameNode, "member owner has no lexical symbol");
+    const declarations = (symbol.declarations ?? []).filter((declaration) =>
+      runtimeFiles.has(path.resolve(declaration.getSourceFile().fileName))
+    );
+    let matched = false;
+    for (const declaration of declarations) {
+      if (!ts.isVariableDeclaration(declaration) || !declaration.initializer)
+        continue;
+      const initializer = unwrapExpression(declaration.initializer);
+      if (!ts.isObjectLiteralExpression(initializer)) continue;
+      for (const property of initializer.properties) {
+        if (
+          ts.isPropertyAssignment(property) &&
+          (ts.isIdentifier(property.name) ||
+            ts.isStringLiteral(property.name)) &&
+          property.name.text === nameNode.text
+        ) {
+          matched = true;
+          visitValue(property.initializer);
+        }
+      }
+    }
+    if (!matched)
+      bindingError(nameNode, "member declaration is not statically readable");
+  };
+
+  const visitPropertyName = (name) => {
+    if (ts.isIdentifier(name) || ts.isStringLiteral(name))
+      fragments.push(name.text);
+    else if (ts.isComputedPropertyName(name)) visitValue(name.expression);
+  };
+
+  function visitValue(node) {
+    if (!node) return;
+    if (ts.isJsxExpression(node)) {
+      visitValue(node.expression);
+      return;
+    }
     if (
       ts.isStringLiteral(node) ||
       ts.isNoSubstitutionTemplateLiteral(node) ||
@@ -201,17 +374,113 @@ function runtimeClassCandidates(root, label) {
       ts.isTemplateTail(node)
     ) {
       fragments.push(node.text);
-    } else if (ts.isIdentifier(node)) {
-      for (const declaration of declarations.get(node.text) ?? [])
-        pending.push(declaration);
+      return;
     }
-    ts.forEachChild(node, (child) => pending.push(child));
+    if (ts.isTemplateExpression(node)) {
+      fragments.push(node.head.text);
+      for (const span of node.templateSpans) {
+        visitValue(span.expression);
+        fragments.push(span.literal.text);
+      }
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      if (node.text === "undefined") return;
+      visitBinding(node);
+      return;
+    }
+    if (ts.isPropertyAccessExpression(node)) {
+      const propertySymbol = lookupSymbol(node.name);
+      if (propertySymbol?.declarations?.length)
+        visitBinding(node.name, { allowExternalDeclaration: true });
+      else visitNamedMember(node.expression, node.name);
+      return;
+    }
+    if (ts.isElementAccessExpression(node)) {
+      visitValue(node.expression);
+      return;
+    }
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      for (const argument of node.arguments ?? []) visitValue(argument);
+      const callee = ts.isPropertyAccessExpression(node.expression)
+        ? node.expression.name
+        : node.expression;
+      if (ts.isIdentifier(callee))
+        visitBinding(callee, { allowExternalDeclaration: true });
+      return;
+    }
+    if (ts.isTaggedTemplateExpression(node)) {
+      visitValue(node.template);
+      return;
+    }
+    if (ts.isConditionalExpression(node)) {
+      visitValue(node.whenTrue);
+      visitValue(node.whenFalse);
+      return;
+    }
+    if (ts.isBinaryExpression(node)) {
+      visitValue(node.left);
+      visitValue(node.right);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(node)) {
+      for (const element of node.elements)
+        visitValue(ts.isSpreadElement(element) ? element.expression : element);
+      return;
+    }
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const property of node.properties) {
+        if (ts.isPropertyAssignment(property)) {
+          visitPropertyName(property.name);
+          visitValue(property.initializer);
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          fragments.push(property.name.text);
+          visitBinding(property.name);
+        } else if (ts.isSpreadAssignment(property)) {
+          visitValue(property.expression);
+        } else if (ts.isMethodDeclaration(property)) {
+          visitReturns(property.body);
+        }
+      }
+      return;
+    }
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isAwaitExpression(node)
+    ) {
+      visitValue(node.expression);
+      return;
+    }
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      visitReturns(node.body);
+      return;
+    }
+    if (
+      ts.isPrefixUnaryExpression(node) ||
+      ts.isPostfixUnaryExpression(node) ||
+      ts.isNumericLiteral(node) ||
+      node.kind === ts.SyntaxKind.TrueKeyword ||
+      node.kind === ts.SyntaxKind.FalseKeyword ||
+      node.kind === ts.SyntaxKind.NullKeyword
+    )
+      return;
+    // Unsupported syntax inside a class value can hide a static binding, so an
+    // apparently empty candidate set is not a valid proof.
+    bindingError(node, `unsupported ${ts.SyntaxKind[node.kind]}`);
   }
 
+  for (const rootNode of classRoots) visitValue(rootNode);
+
   const scanner = new Scanner({ sources: [] });
-  return scanner
+  const candidates = scanner
     .scanFiles([{ content: fragments.join("\n"), extension: "html" }])
     .sort();
+  if (path.resolve(root) === MODULE_ROOT) moduleRuntimeCandidates = candidates;
+  return candidates;
 }
 
 function assertPhoneOnlyRegistry(source, registry, label, requireRegistry) {

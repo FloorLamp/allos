@@ -304,8 +304,12 @@ node scripts/phone-only-css-proof.mjs --control /path/to/origin-main-worktree
 The compiler disables Tailwind's prose scanner. Each worktree gets its own
 syntax-aware census of `className` values and the constants they reach across
 `app/`, `components/`, and `lib/`, plus every static custom utility in the
-sheet. A changed callsite or desktop-only custom utility therefore reaches its
-own artifact without treating visible copy as a class candidate. Before
+sheet. Constant and helper reachability follows the TypeScript checker's actual
+lexical and module symbols, including import aliases, defaults, and re-exports;
+same-named or shadowed declarations are not merged, and an unresolved
+class-bearing binding fails closed. A changed callsite or desktop-only custom
+utility therefore reaches its own artifact without treating visible copy as a
+class candidate. Before
 compilation the proof also derives every custom utility that uses `max-sm` or
 one of the two exact phone media scopes; an unregistered candidate fails instead
 of disappearing from both artifacts. It then removes those phone scopes

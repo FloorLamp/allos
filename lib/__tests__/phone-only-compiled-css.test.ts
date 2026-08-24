@@ -1,8 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   assertCompiledSheet,
   compilePhoneOnlyCss,
@@ -16,12 +15,15 @@ import {
   PHONE_DECLARATION_FLOOR,
   PHONE_ONLY_UTILITIES,
 } from "../../scripts/phone-only-css-registry.mjs";
+import { makeTmpDir } from "./tmp-dir";
 
 const repo = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const globals = fs.readFileSync(path.join(repo, "app", "globals.css"), "utf8");
+const proofRoots: string[] = [];
 
 function makeProofRoot(source: string) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "phone-css-proof-"));
+  const root = makeTmpDir("phone-css-proof");
+  proofRoots.push(root);
   for (const directory of ["app", "components", "lib"])
     fs.mkdirSync(path.join(root, directory), { recursive: true });
   fs.writeFileSync(path.join(root, "app", "globals.css"), globals);
@@ -29,7 +31,18 @@ function makeProofRoot(source: string) {
   return root;
 }
 
-describe("compiled phone-only CSS proof (#3518)", () => {
+afterAll(() => {
+  for (const root of proofRoots)
+    fs.rmSync(root, { force: true, recursive: true });
+});
+
+function writeRuntimeSource(root: string, file: string, source: string) {
+  const resolved = path.join(root, file);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, source);
+}
+
+describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
   it("compiles the deterministic registry and proves every declaration is below sm", async () => {
     const css = await compilePhoneOnlyCss(repo);
     const receipt = inspectPhoneOnlyCss(css, { label: "branch" });
@@ -192,6 +205,123 @@ describe("compiled phone-only CSS proof (#3518)", () => {
     await expect(
       provePhoneOnlyCss({ branchRoot, controlRoot })
     ).resolves.toBeDefined();
+  });
+
+  it("follows aliased named imports by symbol", async () => {
+    const candidate =
+      'import { DESKTOP_CLASS as BOX_CLASS } from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
+    const branchRoot = makeProofRoot(candidate);
+    const controlRoot = makeProofRoot(candidate);
+    writeRuntimeSource(
+      branchRoot,
+      "components/classes.ts",
+      'export const DESKTOP_CLASS = "m-8";\n'
+    );
+    writeRuntimeSource(
+      controlRoot,
+      "components/classes.ts",
+      'export const DESKTOP_CLASS = "m-4";\n'
+    );
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("does not merge shadowed or same-named declarations", async () => {
+    const candidate = (local: string, unrelated: string) => `
+      const BOX_CLASS = "${unrelated}";
+      export function Candidate() {
+        const BOX_CLASS = "${local}";
+        return <div className={BOX_CLASS} />;
+      }
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8", "m-4"));
+    const controlRoot = makeProofRoot(candidate("m-4", "m-8"));
+    writeRuntimeSource(
+      branchRoot,
+      "components/unrelated.ts",
+      'export const BOX_CLASS = "m-4";\n'
+    );
+    writeRuntimeSource(
+      controlRoot,
+      "components/unrelated.ts",
+      'export const BOX_CLASS = "m-8";\n'
+    );
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("follows default imports and re-export aliases", async () => {
+    const defaultCandidate =
+      'import BOX_CLASS from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
+    const defaultBranch = makeProofRoot(defaultCandidate);
+    const defaultControl = makeProofRoot(defaultCandidate);
+    writeRuntimeSource(
+      defaultBranch,
+      "components/classes.ts",
+      'const BOX_CLASS = "m-8";\nexport default BOX_CLASS;\n'
+    );
+    writeRuntimeSource(
+      defaultControl,
+      "components/classes.ts",
+      'const BOX_CLASS = "m-4";\nexport default BOX_CLASS;\n'
+    );
+    await expect(
+      provePhoneOnlyCss({
+        branchRoot: defaultBranch,
+        controlRoot: defaultControl,
+      })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+
+    const reexportCandidate =
+      'import { REEXPORTED_CLASS as BOX_CLASS } from "../components/bridge";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
+    const reexportBranch = makeProofRoot(reexportCandidate);
+    const reexportControl = makeProofRoot(reexportCandidate);
+    for (const [root, value] of [
+      [reexportBranch, "m-8"],
+      [reexportControl, "m-4"],
+    ] as const) {
+      writeRuntimeSource(
+        root,
+        "components/classes.ts",
+        `const BOX_CLASS = "${value}";\nexport default BOX_CLASS;\n`
+      );
+      writeRuntimeSource(
+        root,
+        "components/bridge.ts",
+        'export { default as REEXPORTED_CLASS } from "./classes";\n'
+      );
+    }
+    await expect(
+      provePhoneOnlyCss({
+        branchRoot: reexportBranch,
+        controlRoot: reexportControl,
+      })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("fails closed on an unresolved class-bearing import", async () => {
+    const brokenRoot = makeProofRoot(
+      'import { MISSING_CLASS } from "../components/missing";\nexport const Candidate = () => <div className={MISSING_CLASS} />;\n'
+    );
+    await expect(
+      compilePhoneOnlyCss(brokenRoot, { label: "unresolved" })
+    ).rejects.toThrow(
+      "unresolved: cannot resolve class-bearing binding MISSING_CLASS"
+    );
+  });
+
+  it("still reads arguments of an unresolved package class helper", async () => {
+    const candidate = (value: string) =>
+      `import clsx from "uninstalled-class-helper";\nexport const Candidate = () => <div className={clsx("${value}")} />;\n`;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
   });
 
   it("rejects a declaration leaked from a registered utility onto desktop", async () => {
