@@ -2,7 +2,7 @@
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -31,10 +31,15 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+import RollingNumber from "@/components/RollingNumber";
+import { useUndoableAction } from "@/components/useUndoableAction";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // The list-naming phrase is shared with the dashboard's composed control (#2458), so
 // the Food tab and the dashboard can never name a write differently.
 import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { foodServingFeedback } from "@/lib/food-serving-feedback";
+import { microMotionPlan } from "@/lib/micro-motion";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -296,6 +301,7 @@ export default function FoodLogBar({
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
+  const announceUndoable = useUndoableAction();
   // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
   // never a confirm-before-write, and the serving is on the counter whatever happens
   // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
@@ -360,14 +366,53 @@ export default function FoodLogBar({
   const tz = useTimezone();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
-  // The shared one-tap ledger (#2041): the optimistic bump, the rollback and the
-  // adoption of the server's authoritative counts, plus the post-success cooldown that
-  // absorbs a double-tap (#2007 layer 1). A serving is ADDITIVE and declares no expected
-  // interval, so a deliberate second serving a moment later still lands and — the rule
-  // this classification exists for — never raises a confirm.
+  // The shared one-tap ledger (#2041): optimistic bump, rollback, and adoption of
+  // the server's authoritative counts. A serving is ADDITIVE and declares no
+  // expected interval, so repeats never raise a confirm; #3611 keys each add tap
+  // independently so a rapid sequence lands in full.
   const ledger = useOptimisticLedger<{ day: number; meal: number }>(
     "food-serving"
   );
+  // Serving taps are ADDITIVE: three quick taps are three servings, not one tap
+  // plus two swallowed repeats (#3611). A per-tap key lets the existing ledger
+  // guard each request independently while the toast key below deliberately stays
+  // stable and cumulative.
+  const servingTapSequence = useRef(0);
+
+  // The row itself is the immediate receipt. A successful add gets the shipped
+  // settle token; reduced motion keeps the same count/button end state and simply
+  // schedules no class. One timer per slug keeps independent rows independent.
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settlingSlugs, setSettlingSlugs] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const settleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = settleTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  function settleServing(slug: string) {
+    if (!settlePlan.animate) return;
+    const running = settleTimers.current.get(slug);
+    if (running) clearTimeout(running);
+    setSettlingSlugs((current) => new Set(current).add(slug));
+    settleTimers.current.set(
+      slug,
+      setTimeout(() => {
+        settleTimers.current.delete(slug);
+        setSettlingSlugs((current) => {
+          const next = new Set(current);
+          next.delete(slug);
+          return next;
+        });
+      }, settlePlan.ms)
+    );
+  }
   // The "log my usual <window>" shortcut (#2380) is its OWN affordance, not a batch of
   // serving taps: it is idempotent (its contents are the habitual groups this window
   // still has nothing logged for, so a second tap has nothing to offer) and answered
@@ -804,7 +849,12 @@ export default function FoodLogBar({
   // — so the ledger carries them as one slice.
   type ServingCounts = { day: number; meal: number };
 
-  async function bump(slug: string, delta: 1 | -1) {
+  async function bump(
+    group: FoodGroup,
+    delta: 1 | -1,
+    expectedServings?: number
+  ): Promise<boolean> {
+    const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
     // stated time's derived window — the tab stays navigation, the chip stated the
     // consequence — so the optimistic bump moves THAT section's count, not the cell
@@ -860,12 +910,15 @@ export default function FoodLogBar({
       | { kind: "refused" }
       | { kind: "offline-undo" }
       | { kind: "wrote"; outcome: FoodLogResult };
-    await ledger.tap<ServingTap>({
+    const result = await ledger.tap<ServingTap>({
       // The key names the WRITE, not the row: a "−" correction straight after a "+"
-      // is a different write and must not be absorbed by its cooldown. Two taps of
-      // the same row's "+" — the accidental double — share this key and are. Keyed on
-      // the FILING slot (#2269), the coordinate the write actually moves.
-      key: `${activeDate}:${filingSlot}:${slug}:${delta}`,
+      // is a different write and must not be absorbed by its cooldown. Adds carry a
+      // tap sequence because each one is a serving; the cumulative TOAST, not the
+      // additive write, is what collapses by coordinate (#3611).
+      key:
+        delta === 1
+          ? `${activeDate}:${filingSlot}:${slug}:add:${++servingTapSequence.current}`
+          : `${activeDate}:${filingSlot}:${slug}:undo`,
       from: before,
       // Optimistic: reflect the tap immediately.
       optimistic: {
@@ -884,6 +937,8 @@ export default function FoodLogBar({
         fd.set("group_key", slug);
         fd.set("date", activeDate);
         fd.set("meal_slot", activeSlot);
+        if (expectedServings != null)
+          fd.set("expected_servings", String(expectedServings));
         // The CHOICE, not an instant: online the server resolves it against its own clock
         // and the profile's timezone, so a tab open since breakfast cannot stamp a stale
         // "now". Only an add states a time — an undo removes a serving and asserts
@@ -935,6 +990,26 @@ export default function FoodLogBar({
             });
           }
           offerEndFast(outcome.endFastOffer);
+          if (delta === 1) {
+            settleServing(slug);
+            const feedback = foodServingFeedback(
+              activeDate,
+              slug,
+              group.name,
+              outcome.servings,
+              activeDay.label
+            );
+            announceUndoable({
+              ...feedback,
+              undo: {
+                undoneMessage: "Serving undone.",
+                run: async () =>
+                  (await bump(group, -1, outcome.servings))
+                    ? { ok: true }
+                    : { ok: false, reason: "changed" },
+              },
+            });
+          }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {
@@ -956,9 +1031,11 @@ export default function FoodLogBar({
           };
         }
         // Roll back this tap and tell the user it didn't stick.
-        toast(outcome.error || "Couldn't save that serving — try again.", {
-          tone: "error",
-        });
+        if (expectedServings == null) {
+          toast(outcome.error || "Couldn't save that serving — try again.", {
+            tone: "error",
+          });
+        }
         return { kind: "rollback" };
       },
       onError: async (err) => {
@@ -976,6 +1053,11 @@ export default function FoodLogBar({
         return { kind: "rollback" };
       },
     });
+    return (
+      result.status === "settled" &&
+      result.result.kind === "wrote" &&
+      result.result.outcome.ok
+    );
   }
 
   // ---- "Log my usual <window>" (#2380) ----
@@ -1198,7 +1280,7 @@ export default function FoodLogBar({
               aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
               title="Remove a serving"
               disabled={mealCount <= 0}
-              onClick={() => bump(g.slug, -1)}
+              onClick={() => void bump(g, -1)}
               className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
             >
               <IconMinus className="h-4 w-4" stroke={2} />
@@ -1212,17 +1294,34 @@ export default function FoodLogBar({
                   : "text-slate-700 dark:text-slate-200"
               }`}
             >
-              {mealCount}
+              <RollingNumber
+                value={mealCount}
+                testId={`rolling-count-${g.slug}`}
+              />
             </span>
             <button
               type="button"
               data-testid={`log-${g.slug}`}
               aria-label={`Add a ${g.name} serving to ${activeSlot}`}
               title="Add a serving"
-              onClick={() => bump(g.slug, 1)}
-              className="tap-target flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
+              onClick={() => void bump(g, 1)}
+              className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
             >
-              <IconPlus className="h-4 w-4" stroke={2} />
+              {/* Keep the control's own class list static/readable to the tap-floor
+                  census; the full-size painted chip inside it carries the one-shot
+                  settle class. It is still the tapped chip people see, while the
+                  button keeps focus and its 44px effective target throughout. */}
+              <span
+                data-testid={`food-settle-${g.slug}`}
+                data-motion="settle"
+                data-reduced-motion={reducedMotion ? "true" : "false"}
+                data-settling={settlingSlugs.has(g.slug) ? "true" : "false"}
+                className={`flex h-full w-full items-center justify-center rounded-full bg-brand-600 transition group-hover:bg-brand-700${
+                  settlingSlugs.has(g.slug) ? ` ${settlePlan.className}` : ""
+                }`}
+              >
+                <IconPlus className="h-4 w-4" stroke={2} />
+              </span>
             </button>
           </li>
         );

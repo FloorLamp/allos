@@ -98,9 +98,13 @@ Deliberate gaps, not oversights:
   an undo would have to put back;
 - finding dismiss / snooze (which would also make #2386's dismissal-fatigue
   counting more honest: an undone dismissal was not an answer);
-- quick-log serving / protein / substance ticks, already ledger-backed by
-  `dayCounterLedger`;
+- quick-log protein / substance ticks, already ledger-backed by `dayCounterLedger`;
 - preventive mark-done, star and watch toggles.
+
+Food serving is wired through `FoodLogBar` (#3611): its keyed cumulative toast
+captures the authoritative day total, and the inverse re-checks that total under the
+same write lock as the guarded decrement. A newer serving therefore turns an older
+Undo into `changed` rather than removing a write the toast did not announce.
 
 Each is a candidate BECAUSE its inverse is complete and local. None of them is a
 confirm being removed.

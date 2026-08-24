@@ -132,6 +132,25 @@ function clearShellDocuments(prefix: string): void {
   }
 }
 
+function clearShellFoodGroup(groupKey: string): void {
+  const db = openDb();
+  try {
+    const profileId = shellProfileId();
+    const date = frozenNow().toISOString().slice(0, 10);
+    const clear = db.transaction(() => {
+      db.prepare(
+        "DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
+      ).run(profileId, date, groupKey);
+      db.prepare(
+        "DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
+      ).run(profileId, date, groupKey);
+    });
+    clear();
+  } finally {
+    db.close();
+  }
+}
+
 // Clear the shell profile's check-ins so the mood test owns its rows (#868).
 function clearShellMoodLogs(): void {
   const db = openDb();
@@ -440,6 +459,67 @@ test("the food and vitals overlays mount the same forms their pages carry", asyn
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     await expect(page).toHaveURL(/\/$/);
   } finally {
+    await page.context().close();
+  }
+});
+
+test("food serving taps settle, roll one cumulative Undo toast, and undo only the latest tap (#3611)", async ({
+  browser,
+}) => {
+  const group = "cruciferous";
+  clearShellFoodGroup(group);
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const food = await openQuickEntry(page, "log-food");
+    const row = food.getByTestId(`food-group-${group}`);
+    if (!(await row.isVisible())) {
+      await food.getByTestId("food-more-groups-summary").click();
+    }
+    await expect(row).toBeVisible();
+
+    const add = row.getByTestId(`log-${group}`);
+    const settle = row.getByTestId(`food-settle-${group}`);
+    const count = row.getByTestId(`count-${group}`);
+    const rolling = row.getByTestId(`rolling-count-${group}`);
+    await expect(count).toHaveText("0");
+
+    // Additive means additive even inside the former cooldown window. The one
+    // quiet slot is the TOAST: each authoritative result upgrades it in place.
+    await add.click();
+    await add.click();
+    await add.click();
+    await expect(count).toHaveText("3");
+    await expect(settle).toHaveAttribute("data-motion", "settle");
+    await expect(rolling).toHaveAttribute("data-motion", "count");
+
+    const toast = page.locator(
+      `[data-toast-key="food-serving:${frozenNow().toISOString().slice(0, 10)}:${group}"]`
+    );
+    await expect(toast).toHaveCount(1);
+    await expect(toast).toContainText(
+      "3 servings of Cruciferous vegetables today"
+    );
+    await settledClick(page, toast.getByRole("button", { name: "Undo" }));
+    await expect(count).toHaveText("2");
+
+    // Reduced motion changes only the path to the end state. The same write,
+    // cumulative toast, and guarded Undo remain; both motion tenants publish the
+    // branch the browser took.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await add.click();
+    await expect(count).toHaveText("3");
+    await expect(settle).toHaveAttribute("data-reduced-motion", "true");
+    await expect(settle).not.toHaveClass(/motion-settle/);
+    await expect(rolling).toHaveAttribute("data-reduced-motion", "true");
+    await expect(rolling).toHaveAttribute("data-rolling", "false");
+    await expect(toast).toContainText(
+      "3 servings of Cruciferous vegetables today"
+    );
+    await settledClick(page, toast.getByRole("button", { name: "Undo" }));
+    await expect(count).toHaveText("2");
+  } finally {
+    clearShellFoodGroup(group);
     await page.context().close();
   }
 });

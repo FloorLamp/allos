@@ -25,6 +25,10 @@ import {
 export interface UndoAnnouncement {
   message: string;
   tone?: "success" | "error";
+  // A repeated announcement for one logical slot replaces in place. The undo
+  // closure therefore upgrades with the message instead of pointing at an older
+  // write after a cumulative counter moves again (#3611).
+  key?: string;
   // Absent/null = no undo (a refusal, or a write with no complete local inverse).
   undo?: UndoOffer | null;
 }
@@ -41,12 +45,17 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         hasUndo: offer != null,
       });
       if (!plan.offerUndo || !offer) {
-        toast(plan.message, { tone: plan.tone, duration: plan.duration });
+        toast(plan.message, {
+          tone: plan.tone,
+          duration: plan.duration,
+          key: announcement.key,
+        });
         return;
       }
       toast(plan.message, {
         tone: plan.tone,
         duration: plan.duration,
+        key: announcement.key,
         action: {
           label: "Undo",
           onClick: () => {

@@ -96,6 +96,37 @@ describe("food_log_events ledger atomicity (#950)", () => {
     expect(evs[0].recorded_at).toBe(`${anchor}T08:00:00Z`);
   });
 
+  it("a toast-bound undo refuses after a newer serving changes the announced total", () => {
+    const { profileId, anchor } = makeProfile("food-events-undo-guard");
+    logFoodServingCore(
+      profileId,
+      "cruciferous",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`
+    );
+    // This is the total the first tap's toast announced. A second device/tap
+    // moves the counter before that older Undo is pressed.
+    logFoodServingCore(
+      profileId,
+      "cruciferous",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`
+    );
+
+    expect(
+      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 1)
+    ).toEqual({ kind: "changed", servings: 2 });
+    expect(counter(profileId, "cruciferous", anchor)).toBe(2);
+    expect(events(profileId)).toHaveLength(2);
+
+    expect(
+      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 2)
+    ).toMatchObject({ kind: "undone", servings: 1 });
+    expect(events(profileId)).toHaveLength(1);
+  });
+
   it("tolerates a pre-ledger counter row (popless decrement, no throw)", () => {
     const { profileId, anchor } = makeProfile("food-events-preledger");
     // Simulate history written BEFORE this migration: a counter row with NO events.

@@ -214,13 +214,23 @@ export async function undoFoodServing(
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
+  const rawExpected = String(formData.get("expected_servings") ?? "").trim();
+  const expectedServings = rawExpected === "" ? undefined : Number(rawExpected);
+  if (
+    expectedServings !== undefined &&
+    (!Number.isInteger(expectedServings) || expectedServings < 1)
+  )
+    return formError("That serving count has changed.");
   const outcome = undoFoodServingCore(
     profile.id,
     fields.group,
     fields.date,
-    fields.mealSlot
+    fields.mealSlot,
+    expectedServings
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
+  if (outcome.kind === "changed")
+    return formError("That serving count has changed.");
   revalidateRoute("/nutrition");
   revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");

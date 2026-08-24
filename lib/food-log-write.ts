@@ -85,6 +85,7 @@ export type FoodUndoOutcome =
       mealSlot?: FoodSlot;
       mealServings?: number;
     }
+  | { kind: "changed"; servings: number }
   | { kind: "unknown-group" };
 
 function mealServingCount(
@@ -207,13 +208,21 @@ export function undoFoodServingCore(
   profileId: number,
   group: string,
   date: string,
-  mealSlot?: FoodSlot
+  mealSlot?: FoodSlot,
+  // An Undo toast may name the total its originating tap produced. Re-check it
+  // under the same write lock as the decrement so a newer tap cannot be removed
+  // through an older toast. Plain minus controls omit it and keep their existing
+  // "remove the newest visible serving" behavior.
+  expectedServings?: number
 ): FoodUndoOutcome {
   // Canonicalize so undo targets the same row a canonical log wrote (#883).
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
     const current = foodDayCounter.total(profileId, date, [slug]);
+    if (expectedServings != null && current !== expectedServings) {
+      return { kind: "changed", servings: current };
+    }
     if (current <= 0)
       return {
         kind: "undone",
