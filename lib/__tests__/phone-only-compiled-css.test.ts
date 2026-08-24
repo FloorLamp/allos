@@ -42,7 +42,10 @@ function writeRuntimeSource(root: string, file: string, source: string) {
   fs.writeFileSync(resolved, source);
 }
 
-describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
+// Coverage can push a real Tailwind compile past 60 seconds. Keep this suite's
+// 120-second hang detector local so the general 15-second CI ceiling stays
+// strict.
+describe("compiled phone-only CSS proof (#3518)", { timeout: 120_000 }, () => {
   it("compiles the deterministic registry and proves every declaration is below sm", async () => {
     const css = await compilePhoneOnlyCss(repo);
     const receipt = inspectPhoneOnlyCss(css, { label: "branch" });
@@ -386,7 +389,9 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
       );
     `);
     await expect(
-      compilePhoneOnlyCss(wrappedDynamicRoot, { label: "wrapped-dynamic-key" })
+      compilePhoneOnlyCss(wrappedDynamicRoot, {
+        label: "wrapped-dynamic-key",
+      })
     ).rejects.toThrow("computed class owner is not statically enumerable");
 
     const ambiguousRoot = makeProofRoot(`
