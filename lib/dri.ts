@@ -1564,9 +1564,19 @@ export function ulConditionCaveat(
 // total they don't take every single day is explained rather than mysterious. An
 // optional condition caveat (ulConditionCaveat) is appended when the population UL
 // may be unreliable for an active condition (#657).
+//
+// `formulationNote` (#3156) is the per-product reason a contributing product is above
+// this limit ON PURPOSE — AREDS 2's zinc is the anchor case. It is resolved by
+// lib/supplement-catalog-ul.formulationUlNote (the catalog lives outside this engine),
+// which supplies it only for an amount the product is FORMULATED to deliver, and which
+// says something about the total only when that product's own serving IS the total —
+// placed BEFORE the clinician close, because it reframes the whole line: without
+// it, a warning firing on the app's own seeded serving reads like a bug. It explains
+// the number and never shrinks it — same total, same limit, same close.
 export function ulWarningDetail(
   w: UlWarning,
-  conditionCaveat?: string | null
+  conditionCaveat?: string | null,
+  formulationNote?: string | null
 ): string {
   const amt = `${fmtAmount(w.total)} ${w.unit}`;
   const ul = `${fmtAmount(w.ul)} ${w.unit}`;
@@ -1577,7 +1587,8 @@ export function ulWarningDetail(
   const inclusion = w.includesOptional
     ? " This total counts every item that supplements it, including as-needed items."
     : "";
-  const base = `${lead}${inclusion}${compoundNote(w.contributors, w.label)} Discuss with your clinician before changing anything.`;
+  const formulation = formulationNote ? ` ${formulationNote}` : "";
+  const base = `${lead}${inclusion}${compoundNote(w.contributors, w.label)}${formulation} Discuss with your clinician before changing anything.`;
   return conditionCaveat ? `${base} ${conditionCaveat}` : base;
 }
 

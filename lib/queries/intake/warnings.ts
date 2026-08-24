@@ -19,6 +19,7 @@ import {
   type UlWarning,
   type RdaAdequacy,
 } from "../../dri";
+import { formulationUlNote } from "../../supplement-catalog-ul";
 import { getConditions } from "../clinical";
 import {
   detectInteractions,
@@ -89,12 +90,19 @@ import {
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
 
-// A UL warning enriched with an optional condition caveat: when an active condition
+// A UL warning enriched with its two optional explanations: when an active condition
 // makes the population UL unreliable for the nutrient (CKD × magnesium, #657), the
 // caveat is computed here — the ONE place with the conditions in hand — and both
 // surfaces (the intake surface row, the Upcoming finding) format it, so they can't disagree.
+// `formulationNote` (#3156) is the same arrangement for the other explanation: a
+// catalogued product that is above this limit BY DESIGN (AREDS 2's zinc) says so, and
+// both surfaces render the one sentence rather than each deciding for itself. The
+// WHOLE warning goes to the join, not just its key and contributors: the limit decides
+// whether a product's own serving is above it, and the total decides whether anything
+// else is in the number.
 export type UlWarningWithCaveat = UlWarning & {
   conditionCaveat: string | null;
+  formulationNote: string | null;
 };
 
 // The active stack's nutrients whose summed daily supplemental intake exceeds the
@@ -119,6 +127,7 @@ export function getDietaryLimitWarnings(
   return stackUlWarnings(items, ageYears, sex).map((w) => ({
     ...w,
     conditionCaveat: ulConditionCaveat(w.key, conditions),
+    formulationNote: formulationUlNote(w),
   }));
 }
 

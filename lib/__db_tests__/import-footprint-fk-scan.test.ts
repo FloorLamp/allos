@@ -79,6 +79,10 @@ function deleteSetClosure(fks: Map<string, ForeignKey[]>): Set<string> {
 // allowlist. Anything not listed here fails the scan.
 const FREED_BEFORE_DELETE: { ref: string; why: string }[] = [
   {
+    ref: "intake_item_purposes.condition_id -> conditions",
+    why: "clearImportedDocumentRows DELETEs the purpose rows naming a condition this document produced, beside the sibling indication_condition_id null-out (#1052/#2857) — a purpose with no condition is not a purpose, and the table's CHECK refuses one; moveImportedDocumentRows re-enforces the same-profile invariant on reassign",
+  },
+  {
     ref: "appointments.encounter_id -> encounters",
     why: "clearImportedDocumentRows nulls the appointment→encounter back-link first (#288); moveImportedDocumentRows re-enforces the same-profile invariant on reassign",
   },

@@ -66,6 +66,11 @@ import {
   type IngredientDraftResult,
   type IngredientWrite,
 } from "@/lib/intake-ingredients";
+import {
+  normalizePurposeDrafts,
+  type PurposeDraft,
+  type PurposeWrite,
+} from "@/lib/intake-purposes";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
 import {
@@ -580,6 +585,105 @@ function reconcileIngredients(itemId: number, rows: IngredientWrite[] | null) {
   });
 }
 
+// Parse the purposes JSON the form submits (issue #2857) — the structured "why" of an
+// item. The posted shape is a list of typed targets (a goal key, a condition id, a
+// canonical biomarker name with an optional flag direction), normalized here at the
+// write boundary by the shared pure normalizer.
+//
+// ABSENT MEANS UNCHANGED, exactly as it does for the composition above and for the same
+// reason: `null` is "this form did not post purposes", which is not "this item has no
+// purposes" and must not clear one. Two forms share updateIntakeItem and only one
+// renders the control. An explicit empty array from a form that DOES render it still
+// clears every row, which is how somebody removes the last one.
+//
+// Nothing here can REFUSE a save. A purpose is an annotation; an unrenderable row is
+// dropped by the normalizer and the rest of the person's edit lands (see
+// normalizePurposeDrafts).
+function parsePurposes(formData: FormData): PurposeWrite[] | null {
+  if (!formData.has("purposes")) return null;
+  let raw: unknown = [];
+  try {
+    raw = JSON.parse(String(formData.get("purposes") ?? "[]"));
+  } catch {
+    raw = [];
+  }
+  const arr = Array.isArray(raw) ? raw : [];
+  const drafts: PurposeDraft[] = [];
+  for (const p of arr) {
+    const kind = (p as { kind?: unknown })?.kind;
+    if (kind === "goal") {
+      drafts.push({
+        kind: "goal",
+        goalKey:
+          typeof (p as any).goalKey === "string" ? (p as any).goalKey : "",
+      });
+    } else if (kind === "condition") {
+      drafts.push({
+        kind: "condition",
+        conditionId: Number((p as any).conditionId),
+      });
+    } else if (kind === "biomarker") {
+      drafts.push({
+        kind: "biomarker",
+        biomarkerKey:
+          typeof (p as any).biomarkerKey === "string"
+            ? (p as any).biomarkerKey
+            : "",
+        direction:
+          (p as any).direction === "low" || (p as any).direction === "high"
+            ? (p as any).direction
+            : null,
+      });
+    }
+  }
+  return normalizePurposeDrafts(drafts);
+}
+
+// Drop purpose rows naming a condition that is not this PROFILE's — the ownership
+// check the pure normalizer cannot make. Same posture as
+// resolveIndicationConditionId (#1052): an untrusted id is dropped, never stored and
+// never an error, so a stale picker option cannot link one person's item to another
+// person's condition.
+function ownedPurposes(
+  profileId: number,
+  rows: PurposeWrite[] | null
+): PurposeWrite[] | null {
+  if (rows == null) return null;
+  const owns = db.prepare(
+    "SELECT 1 FROM conditions WHERE id = ? AND profile_id = ?"
+  );
+  return rows.filter(
+    (r) => r.kind !== "condition" || !!owns.get(r.condition_id, profileId)
+  );
+}
+
+// Replace an item's purpose rows with the submitted set. The reconcileIngredients
+// posture verbatim: purposes are ATTRIBUTES of the item with no child data and no
+// identity of their own, restated in full on every save, so delete-and-reinsert is
+// both simpler than diffing and exactly right. A null `rows` leaves what is stored
+// alone. Must run inside a transaction; the caller has already proven the item belongs
+// to this profile.
+function reconcilePurposes(itemId: number, rows: PurposeWrite[] | null) {
+  if (rows == null) return;
+  db.prepare("DELETE FROM intake_item_purposes WHERE item_id = ?").run(itemId);
+  const ins = db.prepare(
+    `INSERT INTO intake_item_purposes
+       (item_id, kind, goal_key, condition_id, biomarker_key, direction, sort)
+     VALUES (?,?,?,?,?,?,?)`
+  );
+  rows.forEach((p, i) => {
+    ins.run(
+      itemId,
+      p.kind,
+      p.goal_key,
+      p.condition_id,
+      p.biomarker_key,
+      p.direction,
+      i
+    );
+  });
+}
+
 export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
@@ -631,6 +735,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     return formError(unreadableDoseAmountMessage(badDoseAmount));
   const pairs = parsePairs(formData);
   const ingredients = parseIngredients(formData);
+  const purposes = parsePurposes(formData);
   if (ingredients && !ingredients.ok) {
     return formError(
       unreadableAmountMessage(ingredients.name, ingredients.amountText)
@@ -731,6 +836,9 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     insertDoses(itemId, doses, todayStr);
     reconcilePairs(itemId, pairs, profile.id);
     reconcileIngredients(itemId, ingredients?.ok ? ingredients.rows : null);
+    // Purpose links (#2857). Inside the same write transaction as the item and its
+    // composition, so an item and its declared "why" land together or not at all.
+    reconcilePurposes(itemId, ownedPurposes(profile.id, purposes));
     // Ensure-course-on-create: a new medication opens an initial course
     // on the chosen date (today for quick-add). A no-op for supplements (kind
     // guard inside the helper).
@@ -797,6 +905,7 @@ export async function updateIntakeItem(
     return formError(unreadableDoseAmountMessage(badDoseAmount));
   const pairs = parsePairs(formData);
   const ingredients = parseIngredients(formData);
+  const purposes = parsePurposes(formData);
   if (ingredients && !ingredients.ok) {
     return formError(
       unreadableAmountMessage(ingredients.name, ingredients.amountText)
@@ -1090,6 +1199,7 @@ export async function updateIntakeItem(
     retireRemovedDoses(tx, profile.id, id, keptIds, todayStr);
     reconcilePairs(id, pairs, profile.id);
     reconcileIngredients(id, ingredients?.ok ? ingredients.rows : null);
+    reconcilePurposes(id, ownedPurposes(profile.id, purposes));
     // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
     // one or is a supplement. Uses the created_at-date fallback (no explicit start

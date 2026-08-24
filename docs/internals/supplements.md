@@ -808,6 +808,90 @@ gather), and the interaction / PGx / UL warnings fire identically for a `may`
 member. Adherence fractions re-scope to must+should for free — a `may` item has no
 occurrences, so it cannot drag an honest number down.
 
+**Purpose links: the structured "why" (#2857).** `intake_item_purposes` (migration
+`20260823-intake-item-purposes`) is a child of `intake_items` — no `profile_id`, scoped
+and deleted through `item_id`, the `intake_item_ingredients` shape. Medications had the
+indication link (#1052); a supplement's reason lived in `notes` as prose no engine could
+read ("taken for eye health"; "25-OH-D is 29 ng/mL, flagged LOW"). Many rows per item —
+an omega-3 is heart AND joints — in three kinds, exactly one target per row (a schema
+CHECK): a **goal** key from the closed vocabulary in `lib/intake-purposes.ts`
+(`GOAL_PURPOSES`), a **condition** by id, or a **biomarker** by canonical name under
+`COLLATE NOCASE` — the identity `saved_items` and the `biomarker:` dismissal keys
+already use — with an OPTIONAL `low`/`high` direction. Direction-agnostic on purpose:
+low 25-OH-D leading to D3 and high LDL/ApoB leading to psyllium (#2754) are both real
+starts, and a model that spoke only deficiency-repletion could not say the second.
+Ids and keys, never display names (#203), so a purpose survives a rename.
+
+Declared only, suggested at most (#559/#1505/#798): the control posts what the person
+tapped, and `suggestGoalPurposes` OFFERS the eye-health goal when the label carries
+lutein/zeaxanthin/astaxanthin — composition readable at all only since #2856 — through
+the shared `tokenContains`, never a second vocabulary. Nothing is back-filled and
+nothing is read out of `notes`. The rows ride on the item read as `purposes_json`
+(`getIntakePurposesByItem`), post as `purposes` through `intakeItemFormData`, reconcile
+delete-and-reinsert on save (absent field = unchanged; empty array = cleared), export as
+the `intake_item_purposes` dataset with the condition resolved to its live NAME, and are
+captured/restored with the item by `undo-delete`. `condition_id` carries NO
+`ON DELETE` — the `indication_condition_id` shape — so its detach is explicit in
+`lib/undo-delete-db.ts` beside the sibling clinical null-outs; the row is REMOVED (a
+purpose with no condition is not a purpose, and the CHECK refuses it) and, like every
+sibling detach, is not restored on undo. Recorded in `docs/internals/trash.md`.
+Rendering a purpose on the item row, grouping a stack by goal, and putting a
+biomarker-linked item beside its retest nudge are follow-ups #2857 names as separate
+issues; the surface here is the declaration, on the SUPPLEMENT form only — a medication
+already states its reason through the #1052 indication picker, and whether the two
+controls should merge is an open question rather than a settled one.
+
+**A catalogued product that is above a limit ON PURPOSE says so (#3156).** A
+`SupplementCatalogEntry` may carry `aboveUpperLimit: [{ nutrient, reason }]` — a DRI
+nutrient key and one plain sentence. `PreserVision AREDS 2` is the shipped case: 40 mg
+zinc per softgel over a two-softgel serving is 80 mg against an adult UL of 40 mg, so
+seeding the product and taking it as directed warns you about the product Allos itself
+prefilled. The owner ruling keeps that warning — AREDS 2 genuinely exceeds the zinc UL
+by design, and that is a real thing to know — and requires it to state why, because a
+generic exceedance on the app's own seeded serving reads like a bug, and "looks like a
+bug" is how a real warning gets ignored. `lib/supplement-catalog-ul.ts` is the
+catalog × UL join (neither `lib/dri.ts` nor `lib/supplement-catalog.ts` may import the
+other): `formulationUlNote` resolves the sentence for the nutrient and the CONTRIBUTING
+products only, `getDietaryLimitWarnings` computes it once beside the #657 condition
+caveat so the Supplements tab and the Upcoming finding cannot disagree, and
+`ulWarningDetail` places it BEFORE the clinician close. The note EXPLAINS the number
+and never shrinks it — same total, same limit, same close — and product identity is an
+exact name match, so a renamed or look-alike item gets the ordinary generic warning.
+
+`catalogUlExceedances` is the computed reverse-lookup behind
+`lib/__tests__/catalog-ul-notes.test.ts`, which binds it both ways: an entry that trips
+a UL at one of its own stated servings must carry a reason, and a reason must name a
+nutrient its entry really trips. (Ruling 1 of the same issue — the seeded per-unit
+amounts stay transcribed from typical labels, NOT held to the cited-source standard and
+NOT marked unverified — is a deliberate no-op with its accepted cost stated on the
+issue.)
+
+It also only speaks about what it can explain, and the bounds are the CATALOG's, not
+the limit's. A product earns its sentence when its own contribution is above the limit
+AND no larger than what the catalog says that product contains at its largest stated
+serving (`catalogUlExceedances` for that entry — so the bound moves with a
+reformulation). AREDS 2 at one softgel is 40 mg, exactly at the adult UL and over
+nothing, so a stack at 90 mg because of a separate 50 mg bottle gets no note: "above the
+limit by design" is not true of the 40 mg this person takes. Ten softgels is 400 mg —
+ten times the limit and five times any serving the label states — and gets none either:
+no formula designed that, and the person got there by editing a prefilled dose.
+
+The closing sentence is separate, because the catalog knows the product and not the
+stack. `reason` says only what is true of the bottle; `formulationUlNote` appends "The
+total is expected for this product" only when ONE by-design product IS the whole total,
+at a serving its own label states — two bottles adding up to a number, even two rows for
+the same bottle, is a number nobody formulated. Anything else in the stack and it
+appends "The rest of this total comes from your other items" instead — an AREDS 2 beside a
+multivitamin, an immune blend and a cold lozenge at 8 mg each is 120 mg, and no
+arrangement of other people's bottles makes 120 mg something AREDS 2 expects. This also
+removes a cliff: under the earlier predicate (rest-of-stack ≤ UL) a second 40 mg bottle
+got "expected" and a 50 mg one got the bare warning, so ten milligrams elsewhere decided
+whether the app reassured. A note that explained someone else's total would teach a
+person to dismiss a real warning — the same "looks like a bug, so it gets ignored"
+failure the ruling exists to prevent, read the other way. OPEN: on a pediatric band the
+adult sentence still renders against a child's lower limit (#3638); that is an unruled
+wording call.
+
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the
 test harness moved to the production ledger-gated startup path. Current storage has
