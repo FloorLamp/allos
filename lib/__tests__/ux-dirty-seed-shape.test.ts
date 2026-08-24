@@ -17,6 +17,7 @@ import {
 } from "../../scripts/ux-served-db.mjs";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
+import { runCleanupSteps } from "../../scripts/ux-cleanup.mjs";
 
 // #3489 D3. The dangerous failure is a label/data split: audit.md says "dirty"
 // while scripts/seed.ts received a sampled or baseline vector. Drive the same
@@ -79,7 +80,74 @@ describe("UX_SEED=dirty", () => {
       reason:
         "SEED_PERSONA=household is set but UX_SEED=dirty — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.",
     });
+    expect(uxSeedShapeFromEnv({ SEED_RNG: "3" })).toEqual({
+      kind: "conflict",
+      raw: undefined,
+      reason:
+        "SEED_RNG=3 is set but UX_SEED is fresh; use UX_SEED=1 or UX_SEED=thin so the sampled dial vector is actually seeded",
+    });
+    expect(
+      uxSeedShapeFromEnv({
+        UX_SEED: "1",
+        SEED_PERSONA: "household",
+        SEED_RNG: "3",
+      })
+    ).toEqual({
+      kind: "conflict",
+      raw: "1",
+      reason:
+        "SEED_PERSONA=household cannot be combined with SEED_RNG=3; persona seeding replaces the dial vector",
+    });
   });
+
+  it.each([
+    ["fresh RNG without --serve", ["pages"], "", "", "3", "UX_SEED is fresh"],
+    [
+      "fresh RNG with --serve",
+      ["--serve", "pages"],
+      "",
+      "",
+      "3",
+      "UX_SEED is fresh",
+    ],
+    [
+      "persona RNG without --serve",
+      ["pages"],
+      "1",
+      "household",
+      "3",
+      "persona seeding replaces the dial vector",
+    ],
+    [
+      "persona RNG with --serve",
+      ["--serve", "pages"],
+      "1",
+      "household",
+      "3",
+      "persona seeding replaces the dial vector",
+    ],
+  ])(
+    "rejects ineffective entropy at the real CLI boundary: %s",
+    (_label, args, uxSeed, persona, rng, reason) => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(repo, "scripts", "ux-walkthrough.mjs"), ...args],
+        {
+          cwd: repo,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            UX_SEED: uxSeed,
+            SEED_PERSONA: persona,
+            SEED_RNG: rng,
+          },
+        }
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(reason);
+      expect(result.stdout).not.toContain("claimed private scratch DB path");
+    }
+  );
 
   it.each([
     ["without --serve", ["pages"]],
@@ -127,6 +195,32 @@ describe("UX_SEED=dirty", () => {
     }
   });
 
+  it.each(["browser", "contact sheet", "audit artifacts"])(
+    "still tears down the process group and DB when %s cleanup fails",
+    async (failedStep) => {
+      const called: string[] = [];
+      const failure = new Error(`${failedStep} failed`);
+      const steps = [
+        "browser",
+        "contact sheet",
+        "audit artifacts",
+        "server process group",
+        "scratch database",
+      ].map(
+        (label) =>
+          [
+            label,
+            () => {
+              called.push(label);
+              if (label === failedStep) throw failure;
+            },
+          ] as const
+      );
+      await expect(runCleanupSteps(steps, () => {})).rejects.toBe(failure);
+      expect(called).toEqual(steps.map(([label]) => label));
+    }
+  );
+
   it("records the named shape independently in run.json data", () => {
     expect(uxSeedRunInfo(dirtyShape(), {})).toEqual({
       uxSeed: "dirty",
@@ -143,6 +237,14 @@ describe("UX_SEED=dirty", () => {
       seedPersona: null,
       seedDialShape: null,
     });
+    expect(
+      uxSeedRunInfo(dirtyShape(), { SEED_RNG: " ", SEED_PERSONA: " " })
+    ).toEqual({
+      uxSeed: "dirty",
+      seedRng: null,
+      seedPersona: null,
+      seedDialShape: "dirty",
+    });
   });
 
   it("keeps the live harness and seed entrypoint on these boundaries", () => {
@@ -156,7 +258,13 @@ describe("UX_SEED=dirty", () => {
     expect(walkthrough).toContain("servedDb = allocateUxServedDb();");
     expect(walkthrough).toContain("ALLOS_DB_PATH: dbPath");
     expect(walkthrough).toContain("UX_OWNED_DB_DIR: servedDb.dir");
-    expect(walkthrough).toContain("cleanupUxServedDb(servedDb);");
+    expect(walkthrough).toContain("cleanupUxServedDb(servedDb)");
+    expect(walkthrough).toContain('process.kill(-child.pid, "SIGTERM")');
+    expect(walkthrough).toContain('process.on("SIGTERM", onSigterm)');
+    expect(walkthrough).toContain('process.on("SIGINT", onSigint)');
+    expect(walkthrough).toContain(
+      'response.headers.get("x-allos-ux-census-nonce")'
+    );
     expect(walkthrough).toContain("if (UX_SEED_SHAPE.seed)");
     expect(walkthrough).toMatch(
       /spawnSync\(\s*process\.execPath,\s*\["--import", "tsx", "scripts\/seed\.ts"\]/

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -73,6 +73,80 @@ async function availablePort(): Promise<number> {
       server.close(() => resolve(address.port));
     });
   });
+}
+
+type ServerReceipt = {
+  event: string;
+  dbPath?: string;
+  descendantPid?: number;
+};
+
+function readServerReceipts(receipt: string): ServerReceipt[] {
+  if (!fs.existsSync(receipt)) return [];
+  return fs
+    .readFileSync(receipt, "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as ServerReceipt);
+}
+
+function writeFakeNpm(fakeBin: string): void {
+  fs.mkdirSync(fakeBin);
+  const listener = path.join(fakeBin, "fake-dev-listener.cjs");
+  fs.writeFileSync(
+    listener,
+    `const fs = require("node:fs");
+const http = require("node:http");
+const append = (value) => fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify(value) + "\\n");
+fs.writeFileSync(process.env.ALLOS_DB_PATH + "-wal", "owned wal");
+fs.writeFileSync(process.env.ALLOS_DB_PATH + "-shm", "owned shm");
+const server = http.createServer((req, res) => {
+  if (req.url === "/api/health") res.setHeader("x-allos-ux-census-nonce", process.env.UX_CENSUS_SERVER_NONCE);
+  res.statusCode = 200;
+  res.end("ok");
+});
+server.on("error", (error) => { append({ event: "listener-error", code: error.code }); process.exit(91); });
+server.listen(Number(process.env.PORT), "127.0.0.1", () => append({ event: "start", dbPath: process.env.ALLOS_DB_PATH, descendantPid: process.pid }));
+process.on("SIGTERM", () => server.close(() => { append({ event: "stop", descendantPid: process.pid }); process.exit(0); }));
+`
+  );
+  const fakeNpm = path.join(fakeBin, "npm");
+  fs.writeFileSync(
+    fakeNpm,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+const append = (value) => fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify(value) + "\\n");
+const child = spawn(process.execPath, [${JSON.stringify(listener)}], { env: process.env, stdio: "ignore" });
+append({ event: "wrapper-start", descendantPid: child.pid });
+child.once("exit", (code, signal) => process.exit(code ?? (signal ? 92 : 0)));
+process.on("SIGTERM", () => { append({ event: "wrapper-stop", descendantPid: child.pid }); process.exit(0); });
+setInterval(() => {}, 1000);
+`
+  );
+  fs.chmodSync(fakeNpm, 0o755);
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  message: string,
+  timeoutMs = 15_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(predicate(), message).toBe(true);
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
@@ -261,23 +335,7 @@ describe("named dirty seed data", () => {
     const dir = makeTmpDir("seed-shape-browser-failure");
     const fakeBin = path.join(dir, "bin");
     const receipt = path.join(dir, "server-receipt.jsonl");
-    fs.mkdirSync(fakeBin);
-    const fakeNpm = path.join(fakeBin, "npm");
-    fs.writeFileSync(
-      fakeNpm,
-      `#!/usr/bin/env node
-const fs = require("node:fs");
-const http = require("node:http");
-fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify({ event: "start", dbPath: process.env.ALLOS_DB_PATH }) + "\\n");
-const server = http.createServer((_req, res) => { res.statusCode = 200; res.end("ok"); });
-server.listen(Number(process.env.PORT), "127.0.0.1");
-process.on("SIGTERM", () => server.close(() => {
-  fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify({ event: "stop" }) + "\\n");
-  process.exit(0);
-}));
-`
-    );
-    fs.chmodSync(fakeNpm, 0o755);
+    writeFakeNpm(fakeBin);
     const port = await availablePort();
     const result = spawnSync(
       process.execPath,
@@ -302,16 +360,139 @@ process.on("SIGTERM", () => server.close(() => {
     );
 
     expect(result.status).not.toBe(0);
-    const events = fs
-      .readFileSync(receipt, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { event: string; dbPath?: string });
-    expect(events.map(({ event }) => event)).toEqual(["start", "stop"]);
-    const servedPath = events[0].dbPath!;
+    const events = readServerReceipts(receipt);
+    expect(events.map(({ event }) => event)).toEqual(
+      expect.arrayContaining(["wrapper-start", "start", "wrapper-stop", "stop"])
+    );
+    const started = events.find(({ event }) => event === "start")!;
+    const servedPath = started.dbPath!;
+    expect(processExists(started.descendantPid!)).toBe(false);
     expect(servedPath).not.toBe(":memory:");
     expect(fs.existsSync(path.dirname(servedPath))).toBe(false);
     expect(result.stdout).toContain("ignoring caller ALLOS_DB_PATH");
     expect(result.stdout).toContain("scratch DB and sidecars removed");
-  }, 30_000);
+  }, 40_000);
+
+  it("does not accept an unrelated prebound 200 server as its spawned instance", async () => {
+    const dir = makeTmpDir("seed-shape-prebound-sentinel");
+    const fakeBin = path.join(dir, "bin");
+    const receipt = path.join(dir, "server-receipt.jsonl");
+    writeFakeNpm(fakeBin);
+    const port = await availablePort();
+    const sentinelReady = path.join(dir, "sentinel-ready");
+    const sentinelScript = path.join(dir, "sentinel.cjs");
+    fs.writeFileSync(
+      sentinelScript,
+      `const fs = require("node:fs");
+const http = require("node:http");
+const server = http.createServer((_request, response) => { response.statusCode = 200; response.end("unrelated sentinel"); });
+server.listen(Number(process.env.PORT), "127.0.0.1", () => fs.writeFileSync(process.env.SENTINEL_READY, "ready"));
+process.on("SIGTERM", () => { server.close(() => process.exit(0)); server.closeAllConnections(); setTimeout(() => process.exit(0), 1000); });
+`
+    );
+    const sentinel = spawn(process.execPath, [sentinelScript], {
+      env: {
+        ...process.env,
+        PORT: String(port),
+        SENTINEL_READY: sentinelReady,
+      },
+      stdio: "ignore",
+    });
+    await waitFor(() => fs.existsSync(sentinelReady), "sentinel did not bind");
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+        {
+          cwd: repo,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+            FAKE_SERVER_RECEIPT: receipt,
+            UX_BASE: `http://127.0.0.1:${port}`,
+            UX_CHROMIUM: path.join(dir, "missing-chromium"),
+            UX_SHOTS: path.join(dir, "shots"),
+            UX_SEED: "dirty",
+            SEED_RNG: "",
+            SEED_PERSONA: "",
+          },
+        }
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).not.toContain("server ready");
+      expect(result.stderr).toContain("dev server exited before readiness");
+      expect(readServerReceipts(receipt).map(({ event }) => event)).toContain(
+        "listener-error"
+      );
+      const claimed = result.stdout.match(
+        /claimed private scratch DB path: (.+\/allos\.db)/
+      )?.[1];
+      expect(claimed).toBeTruthy();
+      expect(fs.existsSync(path.dirname(claimed!))).toBe(false);
+    } finally {
+      sentinel.kill("SIGTERM");
+      await new Promise<void>((resolve) =>
+        sentinel.once("exit", () => resolve())
+      );
+    }
+  }, 40_000);
+
+  it("routes SIGTERM through descendant and exact scratch-directory cleanup", async () => {
+    const dir = makeTmpDir("seed-shape-signal-cleanup");
+    const fakeBin = path.join(dir, "bin");
+    const receipt = path.join(dir, "server-receipt.jsonl");
+    writeFakeNpm(fakeBin);
+    const port = await availablePort();
+    const child = spawn(
+      process.execPath,
+      [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+      {
+        cwd: repo,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+          FAKE_SERVER_RECEIPT: receipt,
+          UX_BASE: `http://127.0.0.1:${port}`,
+          UX_SHOTS: path.join(dir, "shots"),
+          UX_CHROMIUM: path.join(dir, "missing-chromium"),
+          UX_SEED: "dirty",
+          SEED_RNG: "",
+          SEED_PERSONA: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    await waitFor(
+      () => readServerReceipts(receipt).some(({ event }) => event === "start"),
+      `descendant did not start\n${stdout}\n${stderr}`
+    );
+    const started = readServerReceipts(receipt).find(
+      ({ event }) => event === "start"
+    )!;
+    const servedPath = started.dbPath!;
+    expect(fs.existsSync(`${servedPath}-wal`)).toBe(true);
+    expect(fs.existsSync(`${servedPath}-shm`)).toBe(true);
+    child.kill("SIGTERM");
+    const exit = await new Promise<{
+      code: number | null;
+      signal: string | null;
+    }>((resolve) =>
+      child.once("exit", (code, signal) => resolve({ code, signal }))
+    );
+    expect(exit).toEqual({ code: 143, signal: null });
+    await waitFor(
+      () => !processExists(started.descendantPid!),
+      "descendant listener survived harness SIGTERM"
+    );
+    expect(fs.existsSync(path.dirname(servedPath))).toBe(false);
+    expect(fs.existsSync(`${servedPath}-wal`)).toBe(false);
+    expect(fs.existsSync(`${servedPath}-shm`)).toBe(false);
+    expect(stdout).toContain("SIGTERM received; cleaning up");
+    expect(stdout).toContain("scratch DB and sidecars removed");
+  }, 40_000);
 });

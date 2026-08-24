@@ -113,6 +113,7 @@ import {
   assertUxServedDbUnused,
   cleanupUxServedDb,
 } from "./ux-served-db.mjs";
+import { runCleanupSteps } from "./ux-cleanup.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -2003,6 +2004,7 @@ if (!picked.length) {
 let server = null;
 let servedDb = null;
 let browser = null;
+let cleanupPromise = null;
 
 function verifyServedDb(env) {
   const result = spawnSync(
@@ -2018,27 +2020,83 @@ function verifyServedDb(env) {
 }
 
 async function stopDevServer(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  const closed = new Promise((resolve) => child.once("close", resolve));
-  if (child.pid) {
+  if (!child?.pid) return;
+  const groupAlive = () => {
     try {
-      process.kill(-child.pid, "SIGTERM");
-    } catch {}
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      return error?.code !== "ESRCH";
+    }
+  };
+  const waitForGroup = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupAlive() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return !groupAlive();
+  };
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
   }
-  const stopped = await Promise.race([
-    closed.then(() => true),
-    new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
-  ]);
-  if (!stopped && child.pid) {
+  if (!(await waitForGroup(5000))) {
     try {
       process.kill(-child.pid, "SIGKILL");
-    } catch {}
-    await Promise.race([
-      closed,
-      new Promise((resolve) => setTimeout(resolve, 1000)),
-    ]);
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+    if (!(await waitForGroup(1000))) {
+      throw new Error(`dev server process group ${child.pid} survived SIGKILL`);
+    }
   }
 }
+
+function cleanupRun() {
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = (async () => {
+    const steps = [];
+    if (browser)
+      steps.push(
+        ["browser", () => browser.close()],
+        ["contact sheet", () => writeContactSheet()],
+        ["audit artifacts", () => writeAuditArtifacts(baselineDir)]
+      );
+    if (server)
+      steps.push([
+        "server process group",
+        async () => {
+          await stopDevServer(server);
+          log("dev server stopped");
+        },
+      ]);
+    if (servedDb)
+      steps.push([
+        "scratch database",
+        () => {
+          cleanupUxServedDb(servedDb);
+          log("scratch DB and sidecars removed");
+        },
+      ]);
+    await runCleanupSteps(steps);
+  })();
+  return cleanupPromise;
+}
+
+let receivedSignal = false;
+function handleSignal(signal) {
+  if (receivedSignal) return;
+  receivedSignal = true;
+  log(`${signal} received; cleaning up owned census resources`);
+  void cleanupRun()
+    .catch((error) => console.error(error))
+    .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+}
+const onSigint = () => handleSignal("SIGINT");
+const onSigterm = () => handleSignal("SIGTERM");
+process.on("SIGINT", onSigint);
+process.on("SIGTERM", onSigterm);
 
 try {
   if (serve) {
@@ -2055,6 +2113,7 @@ try {
         ADMIN_PASSWORD: ADMIN_PASS,
         EMAIL_TEST_CAPTURE: MAIL_FILE,
         PORT: port,
+        UX_CENSUS_SERVER_NONCE: crypto.randomUUID(),
       },
       UX_SEED_SHAPE
     );
@@ -2115,9 +2174,18 @@ try {
     // First compile can take minutes on a slow filesystem — poll patiently.
     for (let i = 0; i < 120 && !ready && !serverFailure; i++) {
       await new Promise((r) => setTimeout(r, 5000));
-      ready = await fetch(`${BASE}/login`)
-        .then((r) => r.status === 200)
+      const ownsConfiguredDb = await fetch(`${BASE}/api/health`)
+        .then(
+          (response) =>
+            response.headers.get("x-allos-ux-census-nonce") ===
+            env.UX_CENSUS_SERVER_NONCE
+        )
         .catch(() => false);
+      ready =
+        ownsConfiguredDb &&
+        (await fetch(`${BASE}/login`)
+          .then((response) => response.status === 200)
+          .catch(() => false));
     }
     if (!ready) {
       if (serverFailure) throw serverFailure;
@@ -2135,18 +2203,8 @@ try {
     await journeys[name](browser);
   }
 } finally {
-  if (browser) {
-    await browser.close();
-    writeContactSheet();
-    writeAuditArtifacts(baselineDir);
-  }
-  if (server) {
-    await stopDevServer(server);
-    log("dev server stopped");
-  }
-  if (servedDb) {
-    cleanupUxServedDb(servedDb);
-    log("scratch DB and sidecars removed");
-  }
+  await cleanupRun();
+  process.off("SIGINT", onSigint);
+  process.off("SIGTERM", onSigterm);
 }
 log("screenshots in", SHOTS);

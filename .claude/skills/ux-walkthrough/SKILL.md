@@ -191,6 +191,10 @@ The proven workflow for an all-pages consistency audit:
    `run.json` + the audit header record both knobs, and `--baseline` prints a
    loud shape-mismatch warning instead of a wall of false regressions when
    seeds differ. Sweep 2–3 seeds when hunting; keep one seed when diffing.
+   A `SEED_RNG` without `UX_SEED=1` or `UX_SEED=thin` fails loudly, because a
+   fresh DB cannot contain the sampled vector. It also cannot be combined with
+   `SEED_PERSONA`: persona seeding replaces that vector, so recording both would
+   make the run receipt claim entropy that never reached the database.
 
    **The unbounded-name corpus (`SEED_RNG=3`, #3631)**: the `long names` dial is
    the one to reach for when auditing GEOMETRY, and it is worth knowing why. A
@@ -234,7 +238,8 @@ The proven workflow for an all-pages consistency audit:
    surfaces its demographics most affect (whole page populations — growth
    charts, AAP pediatric BP, elderly fitness norms, polypharmacy warnings —
    are invisible from the baseline's one vantage). Needs `UX_SEED=1`
-   (the harness refuses other combinations); SEED_RNG dials do not apply.
+   (the harness refuses other combinations); combining it with `SEED_RNG` also
+   fails because persona data replaces the dial vector.
    An unknown name FAILS the seed and the run — a persona label must never
    sit on data that isn't that persona. Registry + per-persona `routes` (the
    UX_ROUTES targets) live in the module; run one as e.g.:

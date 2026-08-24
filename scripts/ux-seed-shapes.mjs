@@ -34,7 +34,20 @@ export function uxSeedShapeFromEnv(env) {
       raw,
       reason: `SEED_PERSONA=${persona} is set but UX_SEED=${raw || "unset"} — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.`,
     };
-  if (shape.seedDialShape && env.SEED_RNG?.trim())
+  const seedRng = env.SEED_RNG?.trim();
+  if (seedRng && !shape.seed)
+    return {
+      kind: "conflict",
+      raw,
+      reason: `SEED_RNG=${seedRng} is set but UX_SEED is fresh; use UX_SEED=1 or UX_SEED=thin so the sampled dial vector is actually seeded`,
+    };
+  if (persona && seedRng)
+    return {
+      kind: "conflict",
+      raw,
+      reason: `SEED_PERSONA=${persona} cannot be combined with SEED_RNG=${seedRng}; persona seeding replaces the dial vector`,
+    };
+  if (shape.seedDialShape && seedRng)
     return {
       kind: "conflict",
       raw,
@@ -59,8 +72,8 @@ export function applyUxSeedShapeEnv(env, shape) {
 export function uxSeedRunInfo(shape, env) {
   return {
     uxSeed: shape.name,
-    seedRng: env.SEED_RNG ?? null,
-    seedPersona: env.SEED_PERSONA ?? null,
+    seedRng: env.SEED_RNG?.trim() || null,
+    seedPersona: env.SEED_PERSONA?.trim() || null,
     seedDialShape: shape.seedDialShape ?? null,
   };
 }
