@@ -477,6 +477,32 @@ function collectDeclarations(source: string, into: ClassDeclarations): void {
     if (!/^return\s/.test(body) || !body.endsWith(";")) continue;
     record(m[1], `${m[2]} => ${body.slice(6, -1)}`);
   }
+
+  // Object rest excludes keys picked beside it. In a wrapper declared as
+  // `function Button({ className, ...rest })`, JavaScript has therefore proven
+  // that `rest` cannot supply a className; do not confuse it with an arbitrary
+  // unresolved identifier merely because both are written as JSX spreads.
+  for (const match of source.matchAll(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(/g)) {
+    const open = match.index + match[0].lastIndexOf("(");
+    const shut = closingBracket(source, open);
+    if (shut < 0) continue;
+    const parameters = source.slice(open + 1, shut);
+    for (let i = 0; i < parameters.length; i += 1) {
+      if (parameters[i] !== "{") continue;
+      const end = closingBracket(parameters, i);
+      if (end < 0) break;
+      const entries = topLevelCommaParts(parameters.slice(i + 1, end));
+      const excludesClassName = entries.some((entry) =>
+        /^\s*className\b/.test(entry)
+      );
+      if (excludesClassName)
+        for (const entry of entries) {
+          const rest = /^\s*\.\.\.\s*([A-Za-z_$][\w$]*)\s*$/.exec(entry);
+          if (rest) record(rest[1], "{}");
+        }
+      i = end;
+    }
+  }
 }
 
 /**
@@ -1413,6 +1439,7 @@ function hasUnresolvedMemberProjection(expression: string): boolean {
 function spreadClassNameExpressions(
   expression: string,
   declared: ClassDeclarations,
+  failOnUnresolved: boolean,
   seen = new Set<string>()
 ): string[] {
   const written = withoutOuterParentheses(blankExpressionComments(expression));
@@ -1423,11 +1450,16 @@ function spreadClassNameExpressions(
     const branches = objectExpressionBranches(written);
     if (branches !== null)
       return branches.flatMap((branch) =>
-        spreadClassNameExpressions(branch, declared, seen)
+        spreadClassNameExpressions(branch, declared, false, seen)
       );
     const helper = materializeHelperCall(written, declared);
     if (helper !== null)
-      return spreadClassNameExpressions(helper, declared, seen);
+      return spreadClassNameExpressions(
+        helper,
+        declared,
+        failOnUnresolved,
+        seen
+      );
     // Resolve only the expression that stands for the object, one lexical hop
     // at a time. Substituting the whole object would also visit its property
     // keys; a coincidentally named local `className` must not rewrite the key
@@ -1436,20 +1468,36 @@ function spreadClassNameExpressions(
       substituteOnce(written, declared, true)
     );
     if (materialized === written) {
-      if (hasUnresolvedMemberProjection(written))
+      if (written === "null" || written === "undefined") return [];
+      if (!failOnUnresolved) return [];
+      const isCallExpression =
+        /^[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*\s*\(/.test(written);
+      if (!isCallExpression && hasUnresolvedMemberProjection(written))
         throw new UnreadableControlError(
           "cannot resolve an unsupported object member projection"
         );
-      return [];
+      throw new UnreadableControlError(
+        `cannot resolve an unsupported JSX spread expression: ${written}`
+      );
     }
-    return spreadClassNameExpressions(materialized, declared, seen);
+    return spreadClassNameExpressions(
+      materialized,
+      declared,
+      failOnUnresolved,
+      seen
+    );
   }
 
   const values: string[] = [];
   for (const entry of entries) {
     if (entry.startsWith("...")) {
       values.push(
-        ...spreadClassNameExpressions(entry.slice(3), declared, seen)
+        ...spreadClassNameExpressions(
+          entry.slice(3),
+          declared,
+          failOnUnresolved,
+          seen
+        )
       );
       continue;
     }
@@ -1469,7 +1517,8 @@ function spreadClassNameExpressions(
  */
 export function resolveJsxClassNameBindings(
   openTag: string,
-  declared: ClassDeclarations | (() => ClassDeclarations)
+  declared: ClassDeclarations | (() => ClassDeclarations),
+  failOnUnresolvedSpreads = false
 ): ClassText[] {
   const bindings: ClassText[] = [];
   const direct = resolveClassName(openTag, declared);
@@ -1479,7 +1528,11 @@ export function resolveJsxClassNameBindings(
   if (spreads.length === 0) return bindings;
   const reachable = typeof declared === "function" ? declared() : declared;
   for (const spread of spreads) {
-    for (const expression of spreadClassNameExpressions(spread, reachable)) {
+    for (const expression of spreadClassNameExpressions(
+      spread,
+      reachable,
+      failOnUnresolvedSpreads
+    )) {
       bindings.push(
         readClassText(
           substitute(blankExpressionComments(expression), reachable),

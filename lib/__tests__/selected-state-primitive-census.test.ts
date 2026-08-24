@@ -90,6 +90,20 @@ type ForwardedChipSummary = Omit<ForwardedChipBinding, "line"> & {
   controls: number;
 };
 
+function classBindings(
+  open: string,
+  declared: Parameters<typeof resolveJsxClassNameBindings>[1],
+  file: string,
+  failOnUnresolvedSpreads: boolean
+) {
+  try {
+    return resolveJsxClassNameBindings(open, declared, failOnUnresolvedSpreads);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${file}: ${detail}`);
+  }
+}
+
 // A registered chip belongs on its native interactive element. DateRangeControl
 // has one deliberate indirection: its two quick-range links may render through
 // TimelineFilterLink so Timeline can preserve scroll. The binding is exact and
@@ -136,7 +150,13 @@ function customComponentClassBindings(
     // body that can append a second shell.
     if (nextLinks.has(match[1])) continue;
     const open = openingTag(source, match.index).tag;
-    for (const resolved of resolveJsxClassNameBindings(open, declarations)) {
+    const forwardedControl = /(?:Button|Link)$/.test(match[1]);
+    for (const resolved of classBindings(
+      open,
+      declarations,
+      file,
+      forwardedControl
+    )) {
       if (!resolved.readable || !isChipAdopter(resolved.text)) continue;
       findings.push({
         file,
@@ -256,7 +276,7 @@ export function scanUnapprovedChipVocabularyCorpus(
           open
         );
       if (!interactive) continue;
-      for (const resolved of resolveJsxClassNameBindings(open, declarations)) {
+      for (const resolved of classBindings(open, declarations, file, true)) {
         if (!resolved.readable || !isChipAdopter(resolved.text)) continue;
         const className = resolved.text.replace(/\s+/g, " ").trim();
         if (isApprovedChipAdopterClass(className)) continue;
@@ -484,6 +504,59 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           "<button aria-pressed {...OPTIONS.good} />",
           '<SubmitButton {...COMPUTED["good"]} />',
           "</>; }",
+        ].join("\n")
+      );
+      expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);
+      expect(scanForwardedChipBindings(base)).toEqual([]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on direct unresolved JSX spreads", () => {
+    const base = makeTmpDir("unresolved-direct-chip-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      for (const expression of [
+        "props",
+        "makeProps()",
+        "Object.assign({}, BAD)",
+      ] as const) {
+        fs.writeFileSync(
+          path.join(base, "components/UnresolvedDirect.tsx"),
+          [
+            'import SubmitButton from "./SubmitButton";',
+            'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };',
+            "export function UnresolvedDirect({ props }) { return <>",
+            `<button aria-pressed {...${expression}} />`,
+            `<SubmitButton {...${expression}} />`,
+            "</>; }",
+          ].join("\n")
+        );
+        expect(
+          () => scanUnapprovedChipVocabularyCorpus(base),
+          expression
+        ).toThrow(/cannot resolve an unsupported JSX spread expression/);
+        expect(() => scanForwardedChipBindings(base), expression).toThrow(
+          /cannot resolve an unsupported JSX spread expression/
+        );
+      }
+
+      fs.writeFileSync(
+        path.join(base, "components/UnresolvedDirect.tsx"),
+        [
+          'import SubmitButton from "./SubmitButton";',
+          'const SAFE = { className: "btn" };',
+          'const safeProps = () => ({ className: "btn" });',
+          "export function SupportedDirect() { return <>",
+          "<button aria-pressed {...SAFE} />",
+          "<button aria-pressed {...safeProps()} />",
+          "<SubmitButton {...SAFE} />",
+          "<SubmitButton {...safeProps()} />",
+          "</>; }",
+          "export function ClassExcludedRest({ className, ...rest }) {",
+          "return <button aria-pressed {...rest} />;",
+          "}",
         ].join("\n")
       );
       expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);
