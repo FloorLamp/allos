@@ -519,6 +519,13 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
     }
     return file;
   };
+  const enclosingVarScope = (node: ts.Node): ts.Node => {
+    for (let current = node.parent; current; current = current.parent) {
+      if (ts.isSourceFile(current) || ts.isFunctionLike(current))
+        return current;
+    }
+    return file;
+  };
   const bindingNames = (name: ts.BindingName): string[] => {
     if (ts.isIdentifier(name)) return [name.text];
     return name.elements.flatMap((element) =>
@@ -537,10 +544,13 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
         node.initializer
           ? node
           : null;
+      const blockScoped =
+        declarationList &&
+        (declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
       for (const name of bindingNames(node.name)) {
         bindings.push({
           name,
-          scope: enclosingScope(node),
+          scope: blockScoped ? enclosingScope(node) : enclosingVarScope(node),
           declaration: eligible,
         });
       }
@@ -588,6 +598,30 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
   };
 
   const edits: ProjectionEdit[] = [];
+  const staticDeclarations = new Set(
+    bindings.flatMap((binding) =>
+      binding.declaration ? [binding.declaration] : []
+    )
+  );
+  for (const declaration of staticDeclarations) {
+    const initializer = declaration.initializer!;
+    const rendered = staticStringExpression(
+      initializer,
+      file,
+      source,
+      resolveIdentifier,
+      new Set([declaration])
+    );
+    if (!rendered) continue;
+    // Static initializer syntax is not itself rendered. A JSX expression that
+    // reaches this binding will add its evaluated value back as a separate edit.
+    edits.push({
+      start: initializer.getStart(file),
+      end: initializer.end,
+      text: "",
+      origins: [],
+    });
+  }
   const addHtmlWhitespaceEdits = (start: number, end: number) => {
     const raw = source.slice(start, end);
     const references = /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g;
@@ -894,6 +928,29 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "console.debug(disclaimer);",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", internal)).toEqual([]);
+  });
+
+  it("does not project an unrendered direct const string", () => {
+    const sample = [
+      'const diagnostic = "Informational only.";',
+      "console.debug(diagnostic);",
+      "return <p>Status</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
+  });
+
+  it("uses function scope for var bindings that shadow an outer const", () => {
+    const sample = [
+      'const spacing = " ";',
+      "const diagnostic = `Informational${spacing}only.`;",
+      "function Status() {",
+      "  {",
+      '    var diagnostic = "safe";',
+      "  }",
+      "  return <p>{diagnostic}</p>;",
+      "}",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
 
   it("stops safely when rendered const bindings form a cycle", () => {
