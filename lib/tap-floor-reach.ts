@@ -868,22 +868,27 @@ function staticObjectKey(key: string): string | null {
 }
 
 /**
- * One statically selected property of an object literal. Unknown computed keys
- * and spreads refuse resolution because either could own the requested key.
+ * One statically selected property of an object literal. Read from right to left,
+ * matching JavaScript's last-write-wins object construction: an explicit key can
+ * settle the answer before an earlier spread or computed key, while a later
+ * unknown contributor still refuses resolution because it could overwrite it.
  */
-function staticObjectProperty(expression: string, key: string): string | null {
+function staticObjectProperty(
+  expression: string,
+  key: string
+): { kind: "selected"; value: string } | { kind: "ambiguous" } | null {
   const entries = objectEntries(expression);
   if (entries === null) return null;
-  let selected: string | null = null;
-  for (const entry of entries) {
-    if (entry.startsWith("...")) return null;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.startsWith("...")) return { kind: "ambiguous" };
     const colon = objectEntryColon(entry);
     const value = objectEntryValue(entry);
     const name = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
-    if (name === null) return null;
-    if (name === key) selected = value ?? name;
+    if (name === null) return { kind: "ambiguous" };
+    if (name === key) return { kind: "selected", value: value ?? name };
   }
-  return selected;
+  return null;
 }
 
 /** Split a comma-separated parameter or argument list at bracket depth zero. */
@@ -1022,7 +1027,11 @@ function substituteOnce(
       if (member !== null) {
         const selected = staticObjectProperty(value, member);
         if (selected === null) continue;
-        replacement = `(${selected})`;
+        if (selected.kind === "ambiguous")
+          throw new UnreadableControlError(
+            `member \`${member}\` may be overwritten by a spread or dynamic object key`
+          );
+        replacement = `(${selected.value})`;
       } else {
         const values = objectValues(value);
         if (values === null) continue;
