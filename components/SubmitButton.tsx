@@ -3,6 +3,21 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import { useFormStatus } from "react-dom";
 
+type NativeButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+type SubmitButtonProps = {
+  children: React.ReactNode;
+  className?: string;
+  pendingLabel?: React.ReactNode;
+  disabled?: boolean;
+  requireSelection?: string;
+  "aria-label"?: NativeButtonProps["aria-label"];
+  "data-testid"?: string;
+  name?: NativeButtonProps["name"];
+  title?: NativeButtonProps["title"];
+  value?: NativeButtonProps["value"];
+};
+
 // Shared pending-aware submit button. Drop it inside any <form> (server-action
 // or client-action) and useFormStatus disables it and shows a spinner while the
 // submission is in flight, so expensive writes can't be double-fired and the
@@ -15,14 +30,12 @@ export default function SubmitButton({
   pendingLabel,
   disabled = false,
   requireSelection,
-  ...rest
-}: {
-  children: React.ReactNode;
-  className?: string;
-  pendingLabel?: React.ReactNode;
-  disabled?: boolean;
-  requireSelection?: string;
-} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
+  "aria-label": ariaLabel,
+  "data-testid": testId,
+  name,
+  title,
+  value,
+}: SubmitButtonProps) {
   const { pending } = useFormStatus();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectionSnapshot = useCallback(() => {
@@ -59,8 +72,12 @@ export default function SubmitButton({
       type="submit"
       disabled={pending || disabled || selectionMissing}
       aria-busy={pending}
+      aria-label={ariaLabel}
       className={className}
-      {...rest}
+      data-testid={testId}
+      name={name}
+      title={title}
+      value={value}
     >
       {pending ? (
         <span className="inline-flex items-center gap-2">

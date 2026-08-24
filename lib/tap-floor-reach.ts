@@ -477,32 +477,6 @@ function collectDeclarations(source: string, into: ClassDeclarations): void {
     if (!/^return\s/.test(body) || !body.endsWith(";")) continue;
     record(m[1], `${m[2]} => ${body.slice(6, -1)}`);
   }
-
-  // Object rest excludes keys picked beside it. In a wrapper declared as
-  // `function Button({ className, ...rest })`, JavaScript has therefore proven
-  // that `rest` cannot supply a className; do not confuse it with an arbitrary
-  // unresolved identifier merely because both are written as JSX spreads.
-  for (const match of source.matchAll(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(/g)) {
-    const open = match.index + match[0].lastIndexOf("(");
-    const shut = closingBracket(source, open);
-    if (shut < 0) continue;
-    const parameters = source.slice(open + 1, shut);
-    for (let i = 0; i < parameters.length; i += 1) {
-      if (parameters[i] !== "{") continue;
-      const end = closingBracket(parameters, i);
-      if (end < 0) break;
-      const entries = topLevelCommaParts(parameters.slice(i + 1, end));
-      const excludesClassName = entries.some((entry) =>
-        /^\s*className\b/.test(entry)
-      );
-      if (excludesClassName)
-        for (const entry of entries) {
-          const rest = /^\s*\.\.\.\s*([A-Za-z_$][\w$]*)\s*$/.exec(entry);
-          if (rest) record(rest[1], "{}");
-        }
-      i = end;
-    }
-  }
 }
 
 /**

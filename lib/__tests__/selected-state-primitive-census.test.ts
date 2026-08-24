@@ -554,13 +554,43 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           "<SubmitButton {...SAFE} />",
           "<SubmitButton {...safeProps()} />",
           "</>; }",
-          "export function ClassExcludedRest({ className, ...rest }) {",
-          "return <button aria-pressed {...rest} />;",
-          "}",
         ].join("\n")
       );
       expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);
       expect(scanForwardedChipBindings(base)).toEqual([]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed after object-rest mutation or reassignment", () => {
+    const base = makeTmpDir("mutated-rest-chip-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      for (const write of [
+        "rest.className = BAD.className;",
+        "rest = BAD;",
+      ] as const) {
+        fs.writeFileSync(
+          path.join(base, "components/MutatedRest.tsx"),
+          [
+            'import SubmitButton from "./SubmitButton";',
+            'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };',
+            "export function MutatedRest({ className, ...rest }) {",
+            write,
+            "return <>",
+            "<button aria-pressed {...rest} />",
+            "<SubmitButton {...rest} />",
+            "</>; }",
+          ].join("\n")
+        );
+        expect(() => scanUnapprovedChipVocabularyCorpus(base), write).toThrow(
+          /cannot resolve an unsupported JSX spread expression/
+        );
+        expect(() => scanForwardedChipBindings(base), write).toThrow(
+          /cannot resolve an unsupported JSX spread expression/
+        );
+      }
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
