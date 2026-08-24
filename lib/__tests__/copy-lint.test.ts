@@ -540,8 +540,7 @@ type LexicalBinding = {
   scope: ts.Node;
   declaration: StaticBindingDeclaration | null;
   path: StaticPath;
-  defaultInitializer: ts.Expression | null;
-  defaultPath: StaticPath;
+  defaults: { initializer: ts.Expression; path: StaticPath }[];
 };
 
 // Project syntax that is statically known to become rendered text. HTML character
@@ -592,21 +591,21 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   const bindingEntries = (
     name: ts.BindingName,
     path: StaticPath = [],
-    defaultInitializer: ts.Expression | null = null,
-    defaultDepth: number | null = null
+    defaults: { initializer: ts.Expression; depth: number }[] = []
   ): {
     name: string;
     path: StaticPath;
-    defaultInitializer: ts.Expression | null;
-    defaultPath: StaticPath;
+    defaults: { initializer: ts.Expression; path: StaticPath }[];
   }[] => {
     if (ts.isIdentifier(name)) {
       return [
         {
           name: name.text,
           path,
-          defaultInitializer,
-          defaultPath: defaultDepth == null ? [] : path.slice(defaultDepth),
+          defaults: defaults.map((fallback) => ({
+            initializer: fallback.initializer,
+            path: path.slice(fallback.depth),
+          })),
         },
       ];
     }
@@ -624,8 +623,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           : bindingEntries(
               element.name,
               nextPath,
-              element.initializer ?? defaultInitializer,
-              element.initializer ? nextPath.length : defaultDepth
+              element.initializer
+                ? [
+                    ...defaults,
+                    {
+                      initializer: element.initializer,
+                      depth: nextPath.length,
+                    },
+                  ]
+                : defaults
             );
       });
     }
@@ -637,8 +643,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             return bindingEntries(
               element.name,
               nextPath,
-              element.initializer ?? defaultInitializer,
-              element.initializer ? nextPath.length : defaultDepth
+              element.initializer
+                ? [
+                    ...defaults,
+                    {
+                      initializer: element.initializer,
+                      depth: nextPath.length,
+                    },
+                  ]
+                : defaults
             );
           })()
     );
@@ -777,16 +790,16 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           nextSeen
         )
       : null;
-    return (
-      resolved ??
-      (binding.defaultInitializer
-        ? staticExpressionAtPath(
-            binding.defaultInitializer,
-            [...binding.defaultPath, ...path],
-            nextSeen
-          )
-        : null)
-    );
+    if (resolved) return resolved;
+    for (const fallback of binding.defaults) {
+      const candidate = staticExpressionAtPath(
+        fallback.initializer,
+        [...fallback.path, ...path],
+        nextSeen
+      );
+      if (candidate) return candidate;
+    }
+    return null;
   };
 
   const sourceProjection = (start: number, end: number): ProjectedText => ({
@@ -920,13 +933,16 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           nextSeen
         )
       : [];
-    return variants.length > 0 || !binding.defaultInitializer
-      ? variants
-      : staticVariantsAtPath(
-          binding.defaultInitializer,
-          [...binding.defaultPath, ...path],
-          nextSeen
-        );
+    if (variants.length > 0) return variants;
+    for (const fallback of binding.defaults) {
+      const candidates = staticVariantsAtPath(
+        fallback.initializer,
+        [...fallback.path, ...path],
+        nextSeen
+      );
+      if (candidates.length > 0) return candidates;
+    }
+    return [];
   }
   const combineVariants = (
     left: ProjectedText[],
@@ -1042,6 +1058,10 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     return renderElement(node, false);
   };
   const expressionVariants = (node: ts.Expression): ProjectedText[] => {
+    const jsxVariants = jsxNodesAtPath(node, [], new Set()).flatMap((jsx) =>
+      renderElement(jsx, false)
+    );
+    if (jsxVariants.length > 0) return jsxVariants;
     const staticVariants = staticVariantsAtPath(node, [], new Set());
     if (staticVariants.length > 0) return staticVariants;
     if (ts.isParenthesizedExpression(node)) {
@@ -1075,6 +1095,10 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       }
       return variants;
     }
+    if (ts.isCallExpression(node)) {
+      const variants = renderedCallVariants(node);
+      if (variants.length > 0) return variants;
+    }
     if (
       ts.isJsxElement(node) ||
       ts.isJsxSelfClosingElement(node) ||
@@ -1097,6 +1121,135 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     }
     return [empty];
   };
+
+  function jsxNodesAtPath(
+    expression: ts.Expression,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): (ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment)[] {
+    if (
+      path.length === 0 &&
+      (ts.isJsxElement(expression) ||
+        ts.isJsxSelfClosingElement(expression) ||
+        ts.isJsxFragment(expression))
+    ) {
+      return [expression];
+    }
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isTypeAssertionExpression(expression) ||
+      ts.isSatisfiesExpression(expression) ||
+      ts.isNonNullExpression(expression)
+    ) {
+      return jsxNodesAtPath(expression.expression, path, seen);
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return [
+        ...jsxNodesAtPath(expression.whenTrue, path, seen),
+        ...jsxNodesAtPath(expression.whenFalse, path, seen),
+      ];
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      ) {
+        return jsxNodesAtPath(expression.right, path, seen);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return [
+          ...jsxNodesAtPath(expression.left, path, seen),
+          ...jsxNodesAtPath(expression.right, path, seen),
+        ];
+      }
+    }
+    if (path.length > 0) {
+      const [head, ...tail] = path;
+      if (ts.isObjectLiteralExpression(expression)) {
+        for (const property of expression.properties) {
+          if (
+            ts.isPropertyAssignment(property) &&
+            propertyKey(property.name) === head
+          ) {
+            return jsxNodesAtPath(property.initializer, tail, seen);
+          }
+        }
+        return [];
+      }
+      if (ts.isArrayLiteralExpression(expression) && typeof head === "number") {
+        const element = expression.elements[head];
+        return element && !ts.isSpreadElement(element)
+          ? jsxNodesAtPath(element, tail, seen)
+          : [];
+      }
+    }
+    const reference = staticReference(expression);
+    if (!reference) return [];
+    const binding = lexicalBinding(reference.identifier);
+    const declaration = binding?.declaration;
+    if (!binding || !declaration || seen.has(declaration)) return [];
+    const nextSeen = new Set(seen).add(declaration);
+    const requestedPath = [...binding.path, ...reference.path, ...path];
+    const primary = declaration.initializer
+      ? jsxNodesAtPath(declaration.initializer, requestedPath, nextSeen)
+      : [];
+    if (primary.length > 0) return primary;
+    for (const fallback of binding.defaults) {
+      const candidates = jsxNodesAtPath(
+        fallback.initializer,
+        [...fallback.path, ...reference.path, ...path],
+        nextSeen
+      );
+      if (candidates.length > 0) return candidates;
+    }
+    return [];
+  }
+
+  function functionRenderedVariants(
+    node: ts.FunctionLikeDeclaration
+  ): ProjectedText[] {
+    if (!node.body) return [];
+    if (!ts.isBlock(node.body)) return expressionVariants(node.body);
+    const variants: ProjectedText[] = [];
+    const visitReturns = (child: ts.Node): void => {
+      if (child !== node.body && ts.isFunctionLike(child)) return;
+      if (ts.isReturnStatement(child) && child.expression) {
+        variants.push(...expressionVariants(child.expression));
+        return;
+      }
+      ts.forEachChild(child, visitReturns);
+    };
+    visitReturns(node.body);
+    return uniqueVariants(variants);
+  }
+
+  function renderedCallVariants(node: ts.CallExpression): ProjectedText[] {
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      (node.expression.name.text === "map" ||
+        node.expression.name.text === "flatMap")
+    ) {
+      const callback = node.arguments[0];
+      return callback &&
+        (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
+        ? functionRenderedVariants(callback)
+        : [];
+    }
+    if (!ts.isIdentifier(node.expression)) return [];
+    const initializer = lexicalBinding(node.expression)?.declaration
+      ?.initializer;
+    if (
+      initializer &&
+      (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
+    ) {
+      return functionRenderedVariants(initializer);
+    }
+    const declaration = functionDeclarations.get(node.expression.text);
+    return declaration ? functionRenderedVariants(declaration) : [];
+  }
 
   const renderedRoots: ProjectedText[] = [];
   const reachableJsx = new Set<
@@ -1176,12 +1329,9 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   const markExpression = (node: ts.Expression): void => {
     if (followedFlow.has(node)) return;
     followedFlow.add(node);
-    if (
-      ts.isJsxElement(node) ||
-      ts.isJsxSelfClosingElement(node) ||
-      ts.isJsxFragment(node)
-    ) {
-      reachableJsx.add(node);
+    const referencedJsx = jsxNodesAtPath(node, [], new Set());
+    if (referencedJsx.length > 0) {
+      for (const jsx of referencedJsx) reachableJsx.add(jsx);
       return;
     }
     if (
@@ -1225,12 +1375,6 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       }
       return;
     }
-    const reference = staticReference(node);
-    if (reference && reference.path.length === 0) {
-      const initializer = lexicalBinding(reference.identifier)?.declaration
-        ?.initializer;
-      if (initializer) markExpression(initializer);
-    }
   };
   const seedFlow = (node: ts.Node): void => {
     if (isFunctionImplementation(node) && isComponentFunction(node)) {
@@ -1245,7 +1389,21 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       markExpression(node.expression);
       return;
     }
-    if (ts.isExpressionStatement(node)) {
+    const containsJsx = (candidate: ts.Node): boolean => {
+      if (
+        ts.isJsxElement(candidate) ||
+        ts.isJsxSelfClosingElement(candidate) ||
+        ts.isJsxFragment(candidate)
+      ) {
+        return true;
+      }
+      let found = false;
+      ts.forEachChild(candidate, (child) => {
+        if (!found && containsJsx(child)) found = true;
+      });
+      return found;
+    };
+    if (ts.isExpressionStatement(node) && containsJsx(node.expression)) {
       markExpression(node.expression);
       return;
     }
@@ -1599,6 +1757,22 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     ]);
   });
 
+  it("applies nested destructuring defaults in runtime order", () => {
+    const outerBanned = [
+      'const { notice: { copy = "Status" } = { copy: "Informational only." } } = {};',
+      "return <p>{copy}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", outerBanned)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+
+    const innerBanned = [
+      'const { notice: { copy = "Informational only." } = { copy: "Status" } } = {};',
+      "return <p>{copy}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", innerBanned)).toEqual([]);
+  });
+
   it("ignores internal-only strings nested in objects and diagnostic functions", () => {
     const sample = [
       'const diagnostic = { message: "Informational only." };',
@@ -1710,6 +1884,54 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", unusedCallback)).toEqual(
       []
     );
+  });
+
+  it("traces JSX-producing calls only from rendered sinks", () => {
+    const renderedCall = [
+      "function renderNotice() {",
+      "  return <p>Informational only.</p>;",
+      "}",
+      "return <main>{renderNotice()}</main>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", renderedCall)).toEqual([
+      "synthetic.tsx:2 — disclaimer prose in: <main>Informational only.</main>",
+    ]);
+
+    const renderedMap =
+      "return <main>{items.map(() => <p>Consult a clinician.</p>)}</main>;";
+    expect(disclaimerCopyViolations("synthetic.tsx", renderedMap)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <main>Consult a clinician.</main>",
+    ]);
+
+    const discarded = [
+      "function diagnostic() {",
+      "  return <p>Informational only.</p>;",
+      "}",
+      "diagnostic();",
+      "return <p>Status</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", discarded)).toEqual([]);
+  });
+
+  it("follows JSX values through property, array, and destructuring paths", () => {
+    const samples = [
+      [
+        "const views = { main: <p>Informational only.</p> };",
+        "return views.main;",
+      ].join("\n"),
+      ["const views = [<p>Informational only.</p>];", "return views[0];"].join(
+        "\n"
+      ),
+      [
+        "const { main } = { main: <p>Informational only.</p> };",
+        "return main;",
+      ].join("\n"),
+    ];
+    for (const sample of samples) {
+      expect(disclaimerCopyViolations("synthetic.tsx", sample), sample).toEqual(
+        ["synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>"]
+      );
+    }
   });
 
   it("resolves rendered object properties and destructured const bindings", () => {
