@@ -193,10 +193,12 @@ export default function TrendMiniCard({
     return (
       <div
         className="card flex items-stretch overflow-hidden p-0!"
+        data-card-gutter="delegated"
         data-testid={testid}
       >
         <Link
           href={href}
+          data-card-gutter-cell="standard"
           data-testid="trend-mini-header-link"
           className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
         >

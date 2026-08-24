@@ -794,10 +794,14 @@ function PeriodStatsCard({
   return (
     <section
       className="card overflow-hidden p-0!"
+      data-card-gutter="delegated"
       data-testid="metric-period-stats"
       aria-labelledby="metric-period-stats-heading"
     >
-      <div className="border-b border-black/10 bg-slate-50/55 px-4 py-3.5 sm:px-5 dark:border-white/10 dark:bg-ink-900/35">
+      <div
+        className="border-b border-black/10 bg-slate-50/55 px-4 py-3.5 sm:px-5 dark:border-white/10 dark:bg-ink-900/35"
+        data-card-gutter-cell="standard"
+      >
         <h2
           id="metric-period-stats-heading"
           className="font-semibold text-slate-800 dark:text-slate-100"

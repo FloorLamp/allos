@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { makeTmpDir } from "./tmp-dir";
 
 // The phone density conventions (issue #3466) — a source scan in the tradition of
 // bottom-edge-tokens.test.ts, over the two spacing layers that #3466 stepped down.
@@ -294,10 +296,10 @@ const OWNED_STEP =
 // not a call site, and a guard that fires on its own source gets deleted.
 const NOT_A_CALL_SITE = /^lib\/__(tests|db_tests|action_tests)__\//;
 
-function sourceFiles(): string[] {
+function sourceFiles(root = REPO): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const e of fs.readdirSync(path.join(REPO, dir), {
+    for (const e of fs.readdirSync(path.join(root, dir), {
       withFileTypes: true,
     })) {
       const rel = `${dir}/${e.name}`;
@@ -305,8 +307,184 @@ function sourceFiles(): string[] {
       else if (e.name.endsWith(".tsx") || e.name.endsWith(".ts")) out.push(rel);
     }
   };
-  for (const d of ["app", "components", "lib"]) walk(d);
+  for (const d of ["app", "components", "lib"]) {
+    if (fs.existsSync(path.join(root, d))) walk(d);
+  }
   return out.filter((f) => !NOT_A_CALL_SITE.test(f));
+}
+
+type OpeningTag = ts.JsxOpeningElement | ts.JsxSelfClosingElement;
+
+type DelegatedGutterScan = {
+  cards: string[];
+  cells: { role: string; site: string }[];
+  offenders: string[];
+};
+
+function jsxAttribute(tag: OpeningTag, name: string): string | null {
+  const attribute = tag.attributes.properties.find(
+    (property): property is ts.JsxAttribute =>
+      ts.isJsxAttribute(property) && property.name.getText() === name
+  );
+  if (!attribute) return null;
+  if (!attribute.initializer) return "<boolean>";
+  if (ts.isStringLiteral(attribute.initializer))
+    return attribute.initializer.text;
+  if (
+    ts.isJsxExpression(attribute.initializer) &&
+    attribute.initializer.expression &&
+    (ts.isStringLiteral(attribute.initializer.expression) ||
+      ts.isNoSubstitutionTemplateLiteral(attribute.initializer.expression))
+  ) {
+    return attribute.initializer.expression.text;
+  }
+  return "<dynamic>";
+}
+
+function jsxAttributeSource(tag: OpeningTag, name: string): string | null {
+  const attribute = tag.attributes.properties.find(
+    (property): property is ts.JsxAttribute =>
+      ts.isJsxAttribute(property) && property.name.getText() === name
+  );
+  return attribute?.initializer?.getText() ?? null;
+}
+
+function directChildTags(tag: OpeningTag): OpeningTag[] {
+  if (!ts.isJsxOpeningElement(tag)) return [];
+  const children: OpeningTag[] = [];
+  for (const child of tag.parent.children) {
+    if (ts.isJsxElement(child)) children.push(child.openingElement);
+    else if (ts.isJsxSelfClosingElement(child)) children.push(child);
+  }
+  return children;
+}
+
+function directParentTag(tag: OpeningTag): OpeningTag | null {
+  const jsxNode = ts.isJsxOpeningElement(tag) ? tag.parent : tag;
+  const parent = jsxNode.parent;
+  return ts.isJsxElement(parent) ? parent.openingElement : null;
+}
+
+// One relationship owns every zero-padding card rather than a named assertion
+// for each current site. The attributes make the two halves visible at the tag:
+// the card declares that its gutter is delegated, and one or more DIRECT cells
+// declare which existing horizontal gutter they carry. The role preserves the
+// intentionally different phone values (16px or 8px) without pretending this
+// family has one number.
+function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
+  const result: DelegatedGutterScan = { cards: [], cells: [], offenders: [] };
+
+  for (const rel of sourceFiles(root).filter((file) => file.endsWith(".tsx"))) {
+    const source = fs.readFileSync(path.join(root, rel), "utf8");
+    const syntax = ts.createSourceFile(
+      rel,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX
+    );
+    const tags: OpeningTag[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        tags.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(syntax);
+
+    const site = (tag: OpeningTag) => {
+      const line =
+        syntax.getLineAndCharacterOfPosition(tag.getStart(syntax)).line + 1;
+      return `${rel}:${line}`;
+    };
+    const classes = (tag: OpeningTag) => {
+      const ownSite = site(tag);
+      try {
+        const expression = classNameExpression(tag.getText(syntax));
+        if (expression.literal) return expression.text;
+        return readClassText(
+          substituteModuleConsts(source, expression.text),
+          ownSite
+        );
+      } catch (error) {
+        result.offenders.push(`${ownSite}: ${String(error)}`);
+        return null;
+      }
+    };
+
+    for (const tag of tags) {
+      const declaration = jsxAttribute(tag, "data-card-gutter");
+      const cellRole = jsxAttribute(tag, "data-card-gutter-cell");
+      const classSource = jsxAttributeSource(tag, "className") ?? "";
+      // `card` is also a common data variable and prop name. `p-0!` is the
+      // distinctive half of this relationship: once it appears literally, the
+      // whole expression must resolve so a dynamic `card` cannot hide beside it.
+      const mentionsOwnedToken = classToken("p-0!").test(classSource);
+      if (declaration == null && cellRole == null && !mentionsOwnedToken)
+        continue;
+
+      const classText = classes(tag);
+      if (classText == null) continue;
+      const isCard = hasClass(classText, "card");
+      const hasNoPadding = hasClass(classText, "p-0!");
+      const ownSite = site(tag);
+
+      if (isCard && hasNoPadding) {
+        result.cards.push(ownSite);
+        if (declaration !== "delegated") {
+          result.offenders.push(
+            `${ownSite}: a \`card … p-0!\` must declare data-card-gutter="delegated" on that same tag`
+          );
+        }
+        if (
+          !directChildTags(tag).some(
+            (child) => jsxAttribute(child, "data-card-gutter-cell") != null
+          )
+        ) {
+          result.offenders.push(
+            `${ownSite}: a delegated card must name at least one direct gutter cell`
+          );
+        }
+      } else if (declaration != null) {
+        result.offenders.push(
+          `${ownSite}: data-card-gutter="${declaration}" is licensed only on the same tag as both \`card\` and \`p-0!\``
+        );
+      }
+
+      if (cellRole == null) continue;
+      result.cells.push({ role: cellRole, site: ownSite });
+      const parent = directParentTag(tag);
+      if (
+        parent == null ||
+        jsxAttribute(parent, "data-card-gutter") !== "delegated"
+      ) {
+        result.offenders.push(
+          `${ownSite}: a gutter cell must be a direct child of a delegated card`
+        );
+      }
+      const expectedPhone = cellRole === "standard" ? "px-4" : "px-2";
+      if (cellRole !== "standard" && cellRole !== "compact") {
+        result.offenders.push(
+          `${ownSite}: unknown delegated gutter role \`${cellRole}\``
+        );
+      } else if (
+        !hasClass(classText, expectedPhone) ||
+        !hasClass(classText, "sm:px-5")
+      ) {
+        result.offenders.push(
+          `${ownSite}: the ${cellRole} gutter cell must retain \`${expectedPhone} sm:px-5\``
+        );
+      }
+      for (const tier of TIERS.keys()) {
+        if (tier.startsWith("subpanel-") && hasClass(classText, tier)) {
+          result.offenders.push(
+            `${ownSite}: a delegated gutter cell is the card's own gutter, not a ${tier} sub-panel`
+          );
+        }
+      }
+    }
+  }
+  return result;
 }
 
 describe("phone density conventions (#3466)", () => {
@@ -472,6 +650,72 @@ describe("phone density conventions (#3466)", () => {
         () => classTextOf(tag(expression), 'data-testid="probe"'),
         `${expression} (${why}) must THROW — an absence assertion over it would pass while the class was present`
       ).toThrow(/cannot be read/);
+    }
+  });
+
+  it("every zero-padding card declares its delegated gutter and a direct cell role (#3507)", () => {
+    const scan = scanDelegatedCardGutters();
+    expect(
+      scan.offenders,
+      "A `card … p-0!` spends its gutter in direct inner cells. Declare both halves on their own tags; these are card gutters, not sub-panel insets."
+    ).toEqual([]);
+
+    // Corpus reach, not a frozen ceiling: the four wrappers #3507 found must
+    // remain visible, while a correctly declared sixth site inherits the scan.
+    expect(
+      scan.cards.length,
+      "the delegated-card census no longer reaches all four wrappers #3507 found"
+    ).toBeGreaterThanOrEqual(4);
+    const roles = scan.cells.map((cell) => cell.role);
+    expect(
+      roles.filter((role) => role === "standard").length,
+      "the two 16px-phone delegated gutters #3507 found must remain in the census"
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      roles.filter((role) => role === "compact").length,
+      "MetricReadingsTable's two 8px-phone branches must remain in the census"
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("the delegated-gutter scan catches an undeclared card, a stale premise, and a changed cell role", () => {
+    // Plant real TSX files in the same app/components corpus the production pass
+    // walks. Passing strings directly to a matcher would not exercise the walker,
+    // parser, tag anchoring, or direct-parent check.
+    const root = makeTmpDir("card-gutter-census");
+    try {
+      fs.mkdirSync(path.join(root, "app"));
+      fs.mkdirSync(path.join(root, "components"));
+      fs.writeFileSync(
+        path.join(root, "components", "Offenders.tsx"),
+        `export function MissingDeclaration() {
+          return <section className="card overflow-hidden p-0!">
+            <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
+          </section>;
+        }
+        export function StalePremise() {
+          return <section className="card overflow-hidden p-4" data-card-gutter="delegated">
+            <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
+          </section>;
+        }
+        export function ChangedCompactCell() {
+          return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
+            <div className="px-4 sm:px-5" data-card-gutter-cell="compact" />
+          </section>;
+        }\n`
+      );
+
+      const offenders = scanDelegatedCardGutters(root).offenders.join("\n");
+      expect(offenders).toContain(
+        'must declare data-card-gutter="delegated" on that same tag'
+      );
+      expect(offenders).toContain(
+        "is licensed only on the same tag as both `card` and `p-0!`"
+      );
+      expect(offenders).toContain(
+        "the compact gutter cell must retain `px-2 sm:px-5`"
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
