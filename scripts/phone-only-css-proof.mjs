@@ -153,6 +153,7 @@ function runtimeClassCandidates(root, label) {
   const checker = program.getTypeChecker();
   const runtimeFiles = new Set(sourceFiles.map((file) => path.resolve(file)));
   const classRoots = [];
+  const runtimeNodes = [];
   for (const file of sourceFiles) {
     const sourceFile = program.getSourceFile(file);
     if (!sourceFile)
@@ -166,6 +167,7 @@ function runtimeClassCandidates(root, label) {
       );
     }
     const visit = (node) => {
+      runtimeNodes.push(node);
       if (
         ts.isJsxAttribute(node) &&
         (node.name.text === "className" || node.name.text === "class") &&
@@ -209,6 +211,35 @@ function runtimeClassCandidates(root, label) {
     return symbol;
   };
 
+  let callsiteIndex;
+  const indexedCallsites = () => {
+    if (callsiteIndex) return callsiteIndex;
+    const calls = new Map();
+    const jsx = new Map();
+    const append = (index, symbol, node) => {
+      if (!symbol) return;
+      const nodes = index.get(symbol) ?? [];
+      nodes.push(node);
+      index.set(symbol, nodes);
+    };
+    for (const node of runtimeNodes) {
+      if (ts.isCallExpression(node))
+        append(
+          calls,
+          lookupSymbol(
+            ts.isPropertyAccessExpression(node.expression)
+              ? node.expression.name
+              : node.expression
+          ),
+          node
+        );
+      else if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+        append(jsx, lookupSymbol(node.tagName), node);
+    }
+    callsiteIndex = { calls, jsx };
+    return callsiteIndex;
+  };
+
   const unresolvedPackageOperator = (node) => {
     const symbol = checker.getSymbolAtLocation(node);
     if (!symbol || !(symbol.flags & ts.SymbolFlags.Alias)) return false;
@@ -243,9 +274,9 @@ function runtimeClassCandidates(root, label) {
     return expressions;
   };
 
-  const visitReturns = (body) => {
+  const visitReturns = (body, { allowDynamic = false } = {}) => {
     for (const expression of returnExpressions(body) ?? [])
-      visitValue(expression);
+      visitValue(expression, { allowDynamic });
   };
 
   const visitDeclaration = (declaration, { allowDynamic = false } = {}) => {
@@ -257,19 +288,54 @@ function runtimeClassCandidates(root, label) {
     if (ts.isBindingElement(declaration)) {
       if (declaration.initializer)
         visitValue(declaration.initializer, { allowDynamic });
-      const values = destructuredBindingValues(declaration);
-      for (const value of values) visitValue(value, { allowDynamic });
+      if (allowDynamic) return;
+      const values = bindingOwnerValues(declaration);
+      for (const value of values) visitValue(value);
+      const descriptor = bindingDescriptor(declaration);
+      if (
+        !values.length &&
+        !declaration.initializer &&
+        descriptor?.owner?.kind === ts.SyntaxKind.Parameter &&
+        !["className", "class"].includes(descriptor.pathSegments[0]) &&
+        !parameterHasStaticOwner(descriptor.owner, descriptor.pathSegments)
+      )
+        bindingError(
+          declaration,
+          "class-bearing parameter has no statically readable owner"
+        );
       return;
     }
     if (
       ts.isVariableDeclaration(declaration) ||
       ts.isPropertyDeclaration(declaration) ||
       ts.isPropertyAssignment(declaration) ||
-      ts.isParameter(declaration) ||
       ts.isEnumMember(declaration)
     ) {
       if (declaration.initializer)
         visitValue(declaration.initializer, { allowDynamic });
+      return;
+    }
+    if (ts.isParameter(declaration)) {
+      if (declaration.initializer)
+        visitValue(declaration.initializer, { allowDynamic });
+      if (allowDynamic) return;
+      const values = parameterBindingValues(declaration, []);
+      for (const value of values) visitValue(value);
+      if (
+        !values.length &&
+        !declaration.initializer &&
+        (ts.isArrowFunction(declaration.parent) ||
+          ts.isFunctionExpression(declaration.parent)) &&
+        ts.isCallExpression(declaration.parent.parent) &&
+        declaration.parent.parent.arguments[0] === declaration.parent &&
+        ts.isPropertyAccessExpression(declaration.parent.parent.expression) &&
+        declaration.parent.parent.expression.name.text === "map" &&
+        !parameterHasStaticOwner(declaration, [])
+      )
+        bindingError(
+          declaration,
+          "class-bearing parameter has no statically readable owner"
+        );
       return;
     }
     if (ts.isShorthandPropertyAssignment(declaration)) {
@@ -375,8 +441,12 @@ function runtimeClassCandidates(root, label) {
             callDepth
           );
         if (ts.isBindingElement(declaration))
-          return destructuredBindingValues(declaration, new Set(seen)).flatMap(
+          return bindingOwnerValues(declaration, new Set(seen)).flatMap(
             (value) => staticValues(value, new Set(seen), callDepth)
+          );
+        if (ts.isParameter(declaration))
+          return parameterBindingValues(declaration, []).flatMap((value) =>
+            staticValues(value, new Set(seen), callDepth)
           );
         if (ts.isExportAssignment(declaration))
           return staticValues(declaration.expression, new Set(seen), callDepth);
@@ -525,6 +595,23 @@ function runtimeClassCandidates(root, label) {
     return inspect(checker.getTypeAtLocation(node));
   };
 
+  const isSyntacticCallArgument = (node) => {
+    let current = node;
+    while (current.parent && !ts.isFunctionLike(current.parent)) {
+      const parent = current.parent;
+      if (ts.isCallExpression(parent) || ts.isNewExpression(parent))
+        return parent.arguments?.includes(current) ?? false;
+      if (
+        ts.isStatement(parent) ||
+        ts.isVariableDeclaration(parent) ||
+        ts.isJsxExpression(parent)
+      )
+        return false;
+      current = parent;
+    }
+    return false;
+  };
+
   const staticMemberValues = (
     expression,
     key,
@@ -532,6 +619,16 @@ function runtimeClassCandidates(root, label) {
     callDepth = 0
   ) => {
     const values = [];
+    const owner = unwrapExpression(expression);
+    if (ts.isIdentifier(owner)) {
+      const symbol = lookupSymbol(owner);
+      for (const declaration of symbol?.declarations ?? [])
+        if (ts.isParameter(declaration))
+          values.push(
+            ...parameterBindingValues(declaration, [key], new Set(seen))
+          );
+      if (values.length) return values;
+    }
     for (const initializer of staticValues(expression, seen, callDepth)) {
       if (ts.isArrayLiteralExpression(initializer)) {
         const index = Number(key);
@@ -610,36 +707,165 @@ function runtimeClassCandidates(root, label) {
     return values;
   };
 
-  const destructuredBindingValues = (binding, seen = new Set()) => {
+  const bindingDescriptor = (binding) => {
     const pathSegments = [];
     let current = binding;
     while (ts.isBindingElement(current)) {
-      if (current.dotDotDotToken) return [];
+      if (current.dotDotDotToken) return null;
       if (ts.isObjectBindingPattern(current.parent)) {
         const keyNode = current.propertyName ?? current.name;
         if (!ts.isIdentifier(keyNode) && !ts.isStringLiteral(keyNode))
-          return [];
+          return null;
         pathSegments.unshift(keyNode.text);
       } else if (ts.isArrayBindingPattern(current.parent)) {
         const index = current.parent.elements.indexOf(current);
-        if (index < 0) return [];
+        if (index < 0) return null;
         pathSegments.unshift(String(index));
       } else {
-        return [];
+        return null;
       }
       const owner = current.parent.parent;
-      if (ts.isVariableDeclaration(owner)) {
-        if (!owner.initializer) return [];
-        let values = [owner.initializer];
-        for (const key of pathSegments)
-          values = values.flatMap((value) =>
-            staticMemberValues(value, key, new Set(seen))
-          );
-        return values;
-      }
-      if (!ts.isBindingElement(owner)) return [];
+      if (!ts.isBindingElement(owner)) return { owner, pathSegments };
       current = owner;
     }
+    return null;
+  };
+
+  const applyStaticPath = (initialValues, pathSegments, seen = new Set()) => {
+    let values = initialValues.map((value) =>
+      ts.isJsxExpression(value) && value.expression ? value.expression : value
+    );
+    for (const key of pathSegments)
+      values = values.flatMap((value) =>
+        staticMemberValues(value, key, new Set(seen))
+      );
+    return values;
+  };
+
+  const callableSymbol = (callable) => {
+    if (callable.name && ts.isIdentifier(callable.name))
+      return lookupSymbol(callable.name);
+    if (
+      (ts.isArrowFunction(callable) || ts.isFunctionExpression(callable)) &&
+      ts.isVariableDeclaration(callable.parent) &&
+      ts.isIdentifier(callable.parent.name)
+    )
+      return lookupSymbol(callable.parent.name);
+    return null;
+  };
+
+  const jsxAttributeValues = (attributes, key) => {
+    let values = [];
+    for (const property of attributes.properties) {
+      if (
+        ts.isJsxAttribute(property) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === key
+      )
+        values = property.initializer ? [property.initializer] : [];
+      else if (ts.isJsxSpreadAttribute(property)) {
+        const spreadValues = staticMemberValues(property.expression, key);
+        if (spreadValues.length) values = spreadValues;
+      }
+    }
+    return values;
+  };
+
+  const parameterBindingValues = (
+    parameter,
+    pathSegments,
+    seen = new Set()
+  ) => {
+    const callable = parameter.parent;
+    if (!ts.isFunctionLike(callable)) return [];
+    const parameterIndex = callable.parameters.indexOf(parameter);
+    if (parameterIndex < 0) return [];
+
+    // Inline Array#map callbacks receive the values of their statically known
+    // receiver. The first callback parameter is the item; later parameters are
+    // runtime index/collection data and cannot carry a static class binding.
+    if (
+      parameterIndex === 0 &&
+      (ts.isArrowFunction(callable) || ts.isFunctionExpression(callable)) &&
+      ts.isCallExpression(callable.parent) &&
+      callable.parent.arguments[0] === callable &&
+      ts.isPropertyAccessExpression(callable.parent.expression) &&
+      callable.parent.expression.name.text === "map"
+    )
+      return applyStaticPath(
+        allStaticMemberValues(callable.parent.expression.expression),
+        pathSegments,
+        seen
+      );
+
+    const symbol = callableSymbol(callable);
+    if (!symbol) return [];
+    const values = [];
+    const callsites = indexedCallsites();
+    for (const node of callsites.calls.get(symbol) ?? []) {
+      const argument = node.arguments[parameterIndex];
+      if (argument)
+        values.push(...applyStaticPath([argument], pathSegments, seen));
+    }
+    if (parameterIndex === 0 && pathSegments.length)
+      for (const node of callsites.jsx.get(symbol) ?? []) {
+        const [propName, ...nestedPath] = pathSegments;
+        values.push(
+          ...applyStaticPath(
+            jsxAttributeValues(node.attributes, propName),
+            nestedPath,
+            seen
+          )
+        );
+      }
+    return values;
+  };
+
+  const parameterHasStaticOwner = (parameter, pathSegments) => {
+    const callable = parameter.parent;
+    if (!ts.isFunctionLike(callable)) return false;
+    const parameterIndex = callable.parameters.indexOf(parameter);
+    if (parameterIndex < 0) return false;
+    if (
+      parameterIndex === 0 &&
+      (ts.isArrowFunction(callable) || ts.isFunctionExpression(callable)) &&
+      ts.isCallExpression(callable.parent) &&
+      callable.parent.arguments[0] === callable &&
+      ts.isPropertyAccessExpression(callable.parent.expression) &&
+      callable.parent.expression.name.text === "map"
+    )
+      return staticValues(callable.parent.expression.expression).some(
+        ts.isArrayLiteralExpression
+      );
+
+    const symbol = callableSymbol(callable);
+    if (!symbol) return false;
+    const callsites = indexedCallsites();
+    return (
+      (callsites.calls.get(symbol)?.length ?? 0) > 0 ||
+      (parameterIndex === 0 &&
+        pathSegments.length > 0 &&
+        (callsites.jsx.get(symbol)?.length ?? 0) > 0)
+    );
+  };
+
+  const bindingOwnerValues = (binding, seen = new Set()) => {
+    const descriptor = bindingDescriptor(binding);
+    if (!descriptor) return [];
+    if (ts.isVariableDeclaration(descriptor.owner)) {
+      if (!descriptor.owner.initializer) return [];
+      return applyStaticPath(
+        [descriptor.owner.initializer],
+        descriptor.pathSegments,
+        seen
+      );
+    }
+    if (ts.isParameter(descriptor.owner))
+      return parameterBindingValues(
+        descriptor.owner,
+        descriptor.pathSegments,
+        seen
+      );
     return [];
   };
 
@@ -717,7 +943,11 @@ function runtimeClassCandidates(root, label) {
             staticMemberValues(node.expression, key)
           )
         : allStaticMemberValues(node.expression);
-      if (!values.length && (!allowDynamic || mayBeClassText(node)))
+      if (
+        !values.length &&
+        (!allowDynamic ||
+          (isSyntacticCallArgument(node) && mayBeClassText(node)))
+      )
         bindingError(
           node,
           resolution.keys.length
@@ -770,7 +1000,7 @@ function runtimeClassCandidates(root, label) {
         } else if (ts.isSpreadAssignment(property)) {
           visitChild(property.expression);
         } else if (ts.isMethodDeclaration(property)) {
-          visitReturns(property.body);
+          visitReturns(property.body, { allowDynamic });
         }
       }
       return;
@@ -787,7 +1017,7 @@ function runtimeClassCandidates(root, label) {
       return;
     }
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-      visitReturns(node.body);
+      visitReturns(node.body, { allowDynamic });
       return;
     }
     if (

@@ -399,6 +399,67 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
     ).rejects.toThrow("computed class key is ambiguous: small, large");
   });
 
+  it("follows renamed and nested component prop bindings to JSX callsites", async () => {
+    const candidate = (value: string) => `
+      function Frame({
+        classes: renamed,
+        layout: { classes: nested },
+      }: {
+        classes: string;
+        layout: { classes: string };
+      }) {
+        return <div className={renamed + " " + nested} />;
+      }
+      export const Candidate = () => (
+        <Frame classes="${value}" layout={{ classes: "${value}" }} />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("follows direct, renamed, and nested static map callback bindings", async () => {
+    const candidate = (value: string) => `
+      const direct = ["${value}"];
+      const records = [{
+        classes: "${value}",
+        nested: { classes: "${value}" },
+      }];
+      export const Candidate = () => (
+        <>
+          {direct.map((renamed) => <div className={renamed} />)}
+          {records.map(({ classes: renamed, nested: { classes: nested } }) => (
+            <div className={renamed + " " + nested} />
+          ))}
+        </>
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("fails closed when a class-bearing component parameter has no caller", async () => {
+    const root = makeProofRoot(`
+      export function Candidate({ classes: renamed }: { classes: string }) {
+        return <div className={renamed} />;
+      }
+    `);
+
+    await expect(
+      compilePhoneOnlyCss(root, { label: "unbound-component-prop" })
+    ).rejects.toThrow(
+      "class-bearing parameter has no statically readable owner"
+    );
+  });
+
   it("follows default imports and re-export aliases", async () => {
     const defaultCandidate =
       'import BOX_CLASS from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';

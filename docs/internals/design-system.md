@@ -307,7 +307,9 @@ syntax-aware census of `className` values and the constants they reach across
 sheet. Constant and helper reachability follows the TypeScript checker's actual
 lexical and module symbols, including import aliases, defaults, and re-exports;
 typed object and array members, local function-return members, and nested
-destructured aliases trace back to their static value owner. Computed keys pick
+destructured aliases trace back to their static value owner. Renamed component
+props follow the component symbol to JSX callsites, and inline `map` bindings
+follow their position in a finite static receiver. Computed keys pick
 only their statically selected member; finite runtime key unions enumerate only
 those members, while ambiguous or unbounded class-bearing owners fail closed.
 Same-named or shadowed declarations are not merged. A changed callsite or desktop-only custom
