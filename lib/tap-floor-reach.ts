@@ -871,7 +871,12 @@ type ArrowExpression = { parameters: string[]; body: string };
 /** A simple expression-bodied arrow, including its parameter names. */
 function arrowExpression(expression: string): ArrowExpression | null {
   const text = expression.trim();
-  if (!text.startsWith("(")) return null;
+  if (!text.startsWith("(")) {
+    const bare = /^([A-Za-z_$][\w$]*)\s*=>/.exec(text);
+    if (!bare) return null;
+    const body = text.slice(bare[0].length).trim();
+    return body.startsWith("{") ? null : { parameters: [bare[1]], body };
+  }
   const shut = closingBracket(text, 0);
   if (shut < 0) return null;
   const rest = text.slice(shut + 1).trimStart();
@@ -888,9 +893,9 @@ function arrowExpression(expression: string): ArrowExpression | null {
 }
 
 /**
- * The body of an arrow function `(a, b) => body`, or null — including when the
- * body is a BLOCK, which is a program rather than an expression this scan can
- * read.
+ * The body of an arrow function `(a, b) => body` or `a => body`, or null —
+ * including when the body is a BLOCK, which is a program rather than an
+ * expression this scan can read.
  */
 function arrowBody(expression: string): string | null {
   return arrowExpression(expression)?.body ?? null;
