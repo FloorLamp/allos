@@ -24,10 +24,10 @@ import { isMinor } from "@/lib/life-stage";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import {
   cycleLengths,
+  cycleLengthStatsState,
   cycleStats,
   CYCLE_PHASE_LABELS,
   CYCLE_REGULARITY_VARIATION_DAYS,
-  CYCLE_STATS_MIN_SAMPLES,
   CYCLE_SUSPENSION_NOTES,
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
@@ -100,6 +100,7 @@ export default async function CyclePage() {
   // maximum. The client component renders it and decides nothing.
   const control = cycleControlState(periods, todayStr, suspension);
   const stats = cycleStats(periods);
+  const lengthStatsState = cycleLengthStatsState(stats);
   const lengths = cycleLengths(periods); // oldest-first
   const trendData = lengths.map((l) => ({ date: l.start, value: l.days }));
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
@@ -195,13 +196,13 @@ export default async function CyclePage() {
             below FORECAST_MIN_CYCLES; the line below said "log a few cycles"), so the
             page disagreed with itself about what its own history could carry.
 
-            The gate is the regularity model's OWN verdict, not a second threshold:
-            `insufficient` is exactly "fewer than CYCLE_STATS_MIN_SAMPLES samples", and
-            reading it here means a change to that floor moves the tiles with it.
+            The gate is the cycle model's OWN presentation state, not a second
+            threshold: its `insufficient` branch follows the same regularity verdict,
+            so a change to that floor moves the tiles and count-aware line together.
 
             The trend CHART keeps its own `>= 2` gate on purpose: two plotted lengths
             are two readings a person can see, not a statistic asserted over them. */}
-        {stats.regularity !== "insufficient" ? (
+        {lengthStatsState.kind === "ready" ? (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatBox
@@ -238,7 +239,7 @@ export default async function CyclePage() {
             className="text-xs text-slate-500 dark:text-slate-400"
             data-testid="cycle-regularity"
           >
-            {insufficientLengthCopy(stats.cycleCount)}
+            {lengthStatsState.message}
           </p>
         )}
         {trendData.length >= 2 && (
@@ -347,17 +348,4 @@ export default async function CyclePage() {
 
 function fmtDays(n: number | null): string {
   return n == null ? "—" : `${n} d`;
-}
-
-// The one line that stands in for the tiles below the threshold (#3482 item 1), in the
-// voice the forecast card and the regularity line already use: it states what the history
-// HAS and when the stats arrive, and claims nothing about regularity. It replaces a
-// "Log at least two periods…" empty state that became false the moment the tiles moved
-// behind a three-cycle gate — two periods is one completed cycle.
-function insufficientLengthCopy(cycleCount: number): string {
-  const have =
-    cycleCount === 0
-      ? "No completed cycles yet"
-      : `${cycleCount} completed cycle${cycleCount === 1 ? "" : "s"}`;
-  return `${have} — cycle length stats appear after ${CYCLE_STATS_MIN_SAMPLES}.`;
 }

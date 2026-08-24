@@ -3,6 +3,12 @@ import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import {
+  cycleLengths,
+  cycleLengthStatsState,
+  cycleStats,
+  type CyclePeriod,
+} from "../lib/cycle";
 import { LONG_NAMES } from "./seed-long-names";
 
 const dbPath = process.env.ALLOS_DB_PATH;
@@ -57,6 +63,44 @@ try {
     if (missing.length) {
       throw new Error(
         `Dirty seed witnesses do not match: ${missing.join(", ")}`
+      );
+    }
+  }
+
+  if (process.env.UX_SEED === "one-cycle") {
+    const periods = db
+      .prepare(
+        `SELECT id, period_start, period_end, flow, note
+           FROM cycles
+          WHERE profile_id = 1
+          ORDER BY period_start, id`
+      )
+      .all() as CyclePeriod[];
+    const lengths = cycleLengths(periods);
+    const stats = cycleStats(periods);
+    const uiState = cycleLengthStatsState(stats);
+    const problems = [
+      periods.length === 2 ? null : `storedPeriods=${periods.length}`,
+      periods.every((period) => period.period_end != null)
+        ? null
+        : "openPeriod=true",
+      lengths.length === 1 ? null : `completedIntervals=${lengths.length}`,
+      lengths[0]?.days === 28
+        ? null
+        : `completedIntervalDays=${lengths[0]?.days ?? "missing"}`,
+      stats.cycleCount === 1 ? null : `modelCycleCount=${stats.cycleCount}`,
+      stats.regularity === "insufficient"
+        ? null
+        : `modelRegularity=${stats.regularity}`,
+      uiState.kind === "insufficient" &&
+      uiState.message ===
+        "1 completed cycle — cycle length stats appear after 3."
+        ? null
+        : `uiState=${JSON.stringify(uiState)}`,
+    ].filter((problem): problem is string => problem != null);
+    if (problems.length) {
+      throw new Error(
+        `One-cycle seed witnesses do not match: ${problems.join(", ")}`
       );
     }
   }

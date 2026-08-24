@@ -37,8 +37,9 @@ Easiest: let the harness own the server lifecycle (`--serve` boots the dev
 server on a unique private scratch DB, polls readiness, and tears the server and
 database down; a caller's `ALLOS_DB_PATH` is ignored in this mode. `UX_SEED=1`
 runs `scripts/seed.ts` first for a data-rich census, `UX_SEED=thin` seeds and
-then trims to the last ~7 days, and `UX_SEED=dirty` pins import residue plus
-long uncontrolled names — see the four shapes in §3):
+then trims to the last ~7 days, `UX_SEED=dirty` pins import residue plus long
+uncontrolled names, and `UX_SEED=one-cycle` pins the one-completed-cycle
+honesty boundary — see the five shapes in §3):
 
 ```bash
 node scripts/ux-walkthrough.mjs --serve onboarding invite pages workflows
@@ -164,15 +165,16 @@ The proven workflow for an all-pages consistency audit:
    GOOD (proves coverage), and end with a top-5. Cross-check surprising claims
    against the code before filing (a "dead route" may be an intentional
    relevance redirect).
-7. **Run all four census shapes** — they surface disjoint finding sets, and a
-   whole class of degradation lives only in the middle one:
+7. **Run all five census shapes** — they surface disjoint finding sets, and a
+   whole class of degradation lives only in the middle states:
 
-   | shape  | command                                                       | what it shows                       |
-   | ------ | ------------------------------------------------------------- | ----------------------------------- |
-   | fresh  | `node scripts/ux-walkthrough.mjs --serve pages`               | empty states                        |
-   | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages`  | a phone's first week                |
-   | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`     | ~3 weeks, full tables/charts        |
-   | dirty  | `UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages` | portal residue + uncontrolled names |
+   | shape     | command                                                           | what it shows                        |
+   | --------- | ----------------------------------------------------------------- | ------------------------------------ |
+   | fresh     | `node scripts/ux-walkthrough.mjs --serve pages`                   | empty states                         |
+   | thin      | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages`      | a phone's first week                 |
+   | seeded    | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`         | ~3 weeks, full tables/charts         |
+   | dirty     | `UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages`     | portal residue + uncontrolled names  |
+   | one-cycle | `UX_SEED=one-cycle node scripts/ux-walkthrough.mjs --serve pages` | one completed-cycle honesty boundary |
 
    **Dirty profile (#3489)** is a named, fixed vector rather than a numbered
    random look: it keeps illness, volume and logging continuity at the baseline,
@@ -181,6 +183,18 @@ The proven workflow for an all-pages consistency audit:
    with `SEED_RNG`; the harness fails instead of recording two conflicting shape
    labels. `run.json` and the audit header record both `UX_SEED=dirty` and its
    fixed `SEED_DIAL_SHAPE=dirty` receipt.
+
+   **One completed cycle (#3489 D5)** is the named middle-state boundary: it
+   stores exactly two periods, 28 days apart, which the shared cycle model reads
+   as exactly one completed start-to-start interval. That is intentionally
+   below the three-sample honesty gate, so `/medical/cycles` shows “1 completed
+   cycle — cycle length stats appear after 3.” and does not print Average /
+   Shortest / Longest / Variability tiles from one number. `run.json` records
+   `UX_SEED=one-cycle` and `SEED_DIAL_SHAPE=one-cycle`. The `middleState` dial is
+   a named-shape registration point: numbered `SEED_RNG` looks always keep its
+   baseline value and consume no extra random draw. Future exactly-one or
+   threshold−1 census states register there rather than shifting existing seed
+   vectors.
 
    **Entropy (#2594)**: the `seeded` and `thin` shapes also take
    `SEED_RNG=<int>` for a
