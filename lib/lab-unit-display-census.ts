@@ -167,6 +167,7 @@ function semanticModuleExports(
     ["lib/waist-circ-extract", ["waistCircToCm"]],
     ["lib/head-circ-extract", ["headCircToCm"]],
     ["lib/units", ["fmtTemp", "fmtWeight"]],
+    ["lib/goal-facts", ["goalFactSummary"]],
   ] as const;
   for (const [projectPath, exports] of modules)
     if (projectModule(moduleName, fileName, projectPath))
@@ -345,6 +346,16 @@ function isDeclarationIdentifier(node: ts.Identifier): boolean {
       break;
   }
   return false;
+}
+
+function isAssignmentTargetIdentifier(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  return (
+    ts.isBinaryExpression(parent) &&
+    parent.left === node &&
+    parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  );
 }
 
 function unitPropertyRead(
@@ -682,6 +693,22 @@ export function rawRenderedUnitExits(
         node.arguments[0]?.getText(sourceFile) === expectedSource
     );
   }
+  function markStoredUnitProvenance(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      authenticStoredUnitCall(node) &&
+      explicitStoredUnitTransfer(node)
+    ) {
+      const sink = storedUnitSink(node);
+      const match = /^(?:variable|assignment):(.+)$/.exec(sink ?? "");
+      if (match) {
+        const binding = resolve(node, match[1]);
+        if (binding) binding.rawUnit = true;
+      }
+    }
+    ts.forEachChild(node, markStoredUnitProvenance);
+  }
+  markStoredUnitProvenance(sourceFile);
   function directlyFormatted(node: ts.Node): boolean {
     let current = node;
     while (current.parent) {
@@ -759,6 +786,9 @@ export function rawRenderedUnitExits(
         ts.isParenthesizedExpression(parent) ||
         ts.isPropertyAccessExpression(parent) ||
         ts.isElementAccessExpression(parent) ||
+        ts.isPropertyAssignment(parent) ||
+        ts.isObjectLiteralExpression(parent) ||
+        ts.isConditionalExpression(parent) ||
         ts.isCallExpression(parent)
       )
         current = parent;
@@ -820,6 +850,43 @@ export function rawRenderedUnitExits(
       return false;
     const argument = parent.left.arguments[0];
     return ts.isIdentifier(argument) && argument.text === node.text;
+  }
+  function formattedMapUse(node: ts.Node): boolean {
+    if (
+      !ts.isIdentifier(node) ||
+      !ts.isPropertyAccessExpression(node.parent) ||
+      node.parent.expression !== node ||
+      node.parent.name.text !== "map" ||
+      !ts.isCallExpression(node.parent.parent) ||
+      node.parent.parent.expression !== node.parent
+    )
+      return false;
+    const callback = node.parent.parent.arguments[0];
+    if (
+      (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) ||
+      callback.parameters.length !== 1 ||
+      !ts.isIdentifier(callback.parameters[0].name)
+    )
+      return false;
+    const parameter = callback.parameters[0].name;
+    const binding = resolve(parameter, parameter.text);
+    if (!binding) return false;
+    let seen = false;
+    let safe = true;
+    function inspect(current: ts.Node) {
+      if (
+        ts.isIdentifier(current) &&
+        !isDeclarationIdentifier(current) &&
+        resolve(current, current.text) === binding
+      ) {
+        seen = true;
+        if (!directlyFormatted(current) && !sameFormatterFallback(current))
+          safe = false;
+      }
+      ts.forEachChild(current, inspect);
+    }
+    inspect(callback.body);
+    return seen && safe;
   }
   function unitJsxTransport(node: ts.Node): boolean {
     let current = node;
@@ -888,6 +955,7 @@ export function rawRenderedUnitExits(
       directlyStored(node) ||
       insideSemanticCall(node) ||
       comparisonOrGuard(node) ||
+      formattedMapUse(node) ||
       unitJsxTransport(node) ||
       unitExport(node) ||
       trustedDisplayInput(node) ||
@@ -934,6 +1002,7 @@ export function rawRenderedUnitExits(
       assignmentTarget ||
       (ts.isIdentifier(node) &&
         !isDeclarationIdentifier(node) &&
+        !isAssignmentTargetIdentifier(node) &&
         resolve(node, node.text)?.rawUnit === true);
     if (candidate && isLabDisplayContext(node, fileName) && !allowed(node))
       report(

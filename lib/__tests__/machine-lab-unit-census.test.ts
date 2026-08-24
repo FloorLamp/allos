@@ -498,6 +498,90 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     ).toEqual(["goal.unit"]);
   });
 
+  it("keeps permitted stored variables tainted until an authenticated display boundary", () => {
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function GoalForm({bioOption}) {
+           const bioUnit = storedLabUnit(bioOption?.unit) ?? null;
+           return <p>{bioUnit}</p>;
+         }`,
+        "/repo/app/(app)/training/GoalForm.tsx"
+      )
+    ).toEqual(["bioUnit"]);
+
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function ClinicalResultDetailPage({cb}) {
+           let chartUnit;
+           chartUnit = storedLabUnit(cb.unit);
+           return <p>{chartUnit}</p>;
+         }`,
+        "/repo/app/(app)/results/clinical-results/view/page.tsx"
+      )
+    ).toEqual(["chartUnit"]);
+
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function ClinicalResultDetailPage({rows}) {
+           let otherUnits;
+           otherUnits = rows.map((x) => storedLabUnit(x.r.unit) ?? "—");
+           return <p>{otherUnits.join(" ")}</p>;
+         }`,
+        "/repo/app/(app)/results/clinical-results/view/page.tsx"
+      )
+    ).toEqual(["otherUnits"]);
+
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         function displayUnit(unit) { return unit; }
+         export function GoalForm({bioOption}) {
+           const bioUnit = storedLabUnit(bioOption?.unit) ?? null;
+           return <p>{displayUnit(bioUnit)}</p>;
+         }`,
+        "/repo/app/(app)/training/GoalForm.tsx"
+      )
+    ).toEqual(["bioUnit"]);
+  });
+
+  it("allows exact stored DTO/comparison flows that format every display use", () => {
+    expect(
+      texts(
+        `import { displayUnit, storedLabUnit } from "@/lib/display-unit";
+         import { goalFactSummary } from "@/lib/goal-facts";
+         export function GoalForm({bioOption}) {
+           const bioUnit = storedLabUnit(bioOption?.unit) ?? null;
+           const summary = goalFactSummary({
+             target: { kind: "biomarker", unit: bioUnit }
+           });
+           return <p>{summary}{bioUnit ? displayUnit(bioUnit) : ""}</p>;
+         }`,
+        "/repo/app/(app)/training/GoalForm.tsx"
+      )
+    ).toEqual([]);
+
+    expect(
+      texts(
+        `import { displayUnit, storedLabUnit } from "@/lib/display-unit";
+         import { sameUnit } from "@/lib/unit-conversions";
+         export function ClinicalResultDetailPage({cb, rows}) {
+           let chartUnit;
+           let otherUnits;
+           chartUnit = storedLabUnit(cb.unit);
+           otherUnits = rows.map((x) => storedLabUnit(x.r.unit) ?? "—");
+           const matching = rows.filter((x) => sameUnit(x.r.unit, chartUnit));
+           const shownChartUnit = displayUnit(chartUnit);
+           const shownOtherUnits = otherUnits.map((unit) => displayUnit(unit) ?? unit);
+           return <p>{matching.length}{shownChartUnit}{shownOtherUnits.join(" ")}</p>;
+         }`,
+        "/repo/app/(app)/results/clinical-results/view/page.tsx"
+      )
+    ).toEqual([]);
+  });
+
   it("ignores ordinary units outside lab contexts", () => {
     expect(
       texts(
