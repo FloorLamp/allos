@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 // THE TAP FLOOR'S REACH (#3486 part 3, under the #3514 ruling), in one place.
 //
 // #3510 declared the height floor on the `.btn` family — `.btn`, `.btn-ghost`,
@@ -180,10 +182,137 @@ export class UnreadableControlError extends Error {}
  * a failing test in the other one.
  */
 export function withoutComments(source: string): string {
+  // Let the TSX parser decide what is trivia. A lexical `//` scanner cannot
+  // distinguish a JavaScript comment from the same bytes in `<p>a // b</p>`,
+  // while the parser already knows both JSX text and `{/* comment */}`.
+  try {
+    const sourceFile = ts.createSourceFile(
+      "tap-floor-candidate.tsx",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX
+    );
+    const ranges = new Map<string, ts.CommentRange>();
+    const add = (found: ts.CommentRange[] | undefined) => {
+      for (const range of found ?? [])
+        ranges.set(`${range.pos}:${range.end}`, range);
+    };
+    function collect(node: ts.Node) {
+      add(ts.getLeadingCommentRanges(source, node.pos));
+      add(ts.getTrailingCommentRanges(source, node.end));
+      for (const child of node.getChildren(sourceFile)) collect(child);
+    }
+    collect(sourceFile);
+    const chars = source.split("");
+    for (const { pos, end } of ranges.values())
+      for (let at = pos; at < end; at += 1)
+        if (chars[at] !== "\n" && chars[at] !== "\r") chars[at] = " ";
+    return chars.join("");
+  } catch {
+    // Keep the lightweight fallback for malformed snippets: its output remains
+    // position-preserving, and the later reader will fail closed on bad TSX.
+  }
   let out = "";
   let i = 0;
+  let mode: "code" | "tag" | "text" = "code";
+  const tags: { parent: "code" | "text"; closing: boolean }[] = [];
+  const elementParents: ("code" | "text")[] = [];
+  const expressions: { parent: "tag" | "text"; depth: number }[] = [];
   while (i < source.length) {
     const c = source[i];
+
+    // JSX text is prose, even when it contains JavaScript's comment tokens.
+    // Only a tag or a `{…}` expression leaves it.
+    if (mode === "text") {
+      const lineStart = source.lastIndexOf("\n", i - 1) + 1;
+      const linePrefixIsIndent = /^\s*$/.test(source.slice(lineStart, i));
+      // TypeScript accepts ordinary comments between JSX attributes. Preserve
+      // comment-shaped COPY, but still blank an indented comment line when a
+      // surrounding nested expression left this lightweight lexer in text mode.
+      if (
+        linePrefixIsIndent &&
+        c === "/" &&
+        (source[i + 1] === "/" || source[i + 1] === "*")
+      ) {
+        const lineComment = source[i + 1] === "/";
+        const end = lineComment
+          ? source.indexOf("\n", i + 2)
+          : source.indexOf("*/", i + 2);
+        const stop = end < 0 ? source.length : end + (lineComment ? 0 : 2);
+        for (; i < stop; i += 1) out += source[i] === "\n" ? "\n" : " ";
+        continue;
+      }
+      if (c === "<" && /[A-Za-z/>]/.test(source[i + 1] ?? "")) {
+        mode = "tag";
+        tags.push({ parent: "text", closing: source[i + 1] === "/" });
+      } else if (c === "{") {
+        mode = "code";
+        expressions.push({ parent: "text", depth: 1 });
+      }
+      out += c;
+      i += 1;
+      continue;
+    }
+
+    // Attribute strings are opaque, and a `>` inside one does not close the
+    // opening tag. JavaScript comments can occur only inside an attribute's
+    // `{…}` expression, which returns here after its closing brace.
+    if (mode === "tag") {
+      if (c === "/" && source[i + 1] === "/") {
+        while (i < source.length && source[i] !== "\n") {
+          out += " ";
+          i += 1;
+        }
+        continue;
+      }
+      if (c === "/" && source[i + 1] === "*") {
+        const end = source.indexOf("*/", i + 2);
+        const stop = end < 0 ? source.length : end + 2;
+        for (; i < stop; i += 1) out += source[i] === "\n" ? "\n" : " ";
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        const quote = c;
+        out += c;
+        i += 1;
+        while (i < source.length && source[i] !== quote) {
+          if (source[i] === "\\") {
+            out += source[i] + (source[i + 1] ?? "");
+            i += 2;
+          } else {
+            out += source[i];
+            i += 1;
+          }
+        }
+        if (i < source.length) {
+          out += source[i];
+          i += 1;
+        }
+        continue;
+      }
+      if (c === "{") {
+        mode = "code";
+        expressions.push({ parent: "tag", depth: 1 });
+        out += c;
+        i += 1;
+        continue;
+      }
+      if (c === ">") {
+        const selfClosing = /\/\s*$/.test(out);
+        const tag = tags.pop()!;
+        if (tag.closing) mode = elementParents.pop() ?? "code";
+        else if (selfClosing) mode = tag.parent;
+        else {
+          elementParents.push(tag.parent);
+          mode = "text";
+        }
+      }
+      out += c;
+      i += 1;
+      continue;
+    }
+
     if (c === "/" && source[i + 1] === "/") {
       while (i < source.length && source[i] !== "\n") {
         out += " ";
@@ -216,6 +345,24 @@ export function withoutComments(source: string): string {
       }
       continue;
     }
+    if (c === "<" && /[A-Za-z/>]/.test(source[i + 1] ?? "")) {
+      mode = "tag";
+      tags.push({ parent: "code", closing: source[i + 1] === "/" });
+      out += c;
+      i += 1;
+      continue;
+    }
+    const expression = expressions.at(-1);
+    if (expression !== undefined) {
+      if (c === "{") expression.depth += 1;
+      else if (c === "}") {
+        expression.depth -= 1;
+        if (expression.depth === 0) {
+          mode = expression.parent;
+          expressions.pop();
+        }
+      }
+    }
     out += c;
     i += 1;
   }
@@ -232,15 +379,20 @@ export function openingTag(
   from: number
 ): { tag: string; end: number } {
   let depth = 0;
+  let quote: '"' | "'" | "`" | null = null;
   for (let i = from; i < source.length; i += 1) {
     const c = source[i];
-    if (c === "{") depth += 1;
+    if (quote !== null) {
+      if (c === "\\") i += 1;
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") depth += 1;
     else if (c === "}") depth -= 1;
     else if (c === ">" && depth === 0) {
       return { tag: source.slice(from, i + 1), end: i + 1 };
     }
   }
-  throw new Error(
+  throw new UnreadableControlError(
     `unterminated JSX tag at offset ${from}: ${source.slice(from, from + 60)}`
   );
 }
@@ -1581,6 +1733,11 @@ function scaleToPx(value: string): number | null {
  *
  * `h-auto` / `h-full` / `h-fit` and friends UNPIN it: the height goes back to
  * being the content's, which this scan does not claim to know.
+ *
+ * When both `h-*` and `min-h-*` pin the same scope, this returns one authored
+ * token rather than reproducing the cascade. The real box is at least the
+ * maximum of both, so that approximation can create a finding but cannot clear
+ * a control whose true rendered height is below the floor.
  */
 export function belowSmHeightPx(className: string): number | null {
   let base: number | null = null;
@@ -1605,10 +1762,79 @@ export function belowSmHeightPx(className: string): number | null {
   return null;
 }
 
-/** True when this class list names a `.btn`-family member. */
-export function inButtonFamily(className: string): boolean {
-  return /(?:^|[\s"'`{}(),:?])btn(?:-ghost|-danger|-sm)?(?![\w-])/.test(
-    className
+/** A call-site `min-height` that can replace the button family's CSS floor. */
+function belowSmMinimumPx(className: string): number | null {
+  let base: number | null = null;
+  let basePinned = false;
+  let narrow: number | null = null;
+  let narrowPinned = false;
+  for (const m of className.matchAll(HEIGHT_TOKEN)) {
+    const { variants, utility, value } = heightTokenParts(m);
+    if (utility !== "min-h" && utility !== "[min-height]") continue;
+    const scope = heightScope(variants);
+    if (scope === null) continue;
+    const px = scaleToPx(value);
+    if (scope === "narrow") {
+      narrowPinned = true;
+      narrow = px;
+    } else {
+      basePinned = true;
+      base = px;
+    }
+  }
+  if (narrowPinned) return narrow;
+  if (basePinned) return base;
+  return null;
+}
+
+/**
+ * The exact class selectors receiving `min-block-size` in the phone button-floor
+ * rule. This is the family definition; `@utility btn-sm` is only a size modifier
+ * and does not join it unless the stylesheet's selector list says so.
+ */
+export function buttonFloorClasses(css: string): ReadonlySet<string> {
+  const classes = new Set<string>();
+  const media = /@media\s*\(max-width:\s*639\.98px\)\s*\{/g;
+  for (const match of css.matchAll(media)) {
+    const open = match.index + match[0].lastIndexOf("{");
+    let depth = 1;
+    let end = open + 1;
+    while (end < css.length && depth > 0) {
+      if (css[end] === "{") depth += 1;
+      else if (css[end] === "}") depth -= 1;
+      end += 1;
+    }
+    if (depth !== 0)
+      throw new UnreadableControlError(
+        "the below-sm tap-floor media block in app/globals.css is unterminated"
+      );
+    const body = css.slice(open + 1, end - 1);
+    for (const rule of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/(?:^|;)\s*min-block-size\s*:/.test(rule[2])) continue;
+      for (const selector of rule[1].split(",")) {
+        const exact = /^\s*\.([A-Za-z_-][\w-]*)\s*$/.exec(selector);
+        if (!exact)
+          throw new UnreadableControlError(
+            `the phone button-floor selector \`${selector.trim()}\` is not one exact class`
+          );
+        classes.add(exact[1]);
+      }
+    }
+  }
+  if (classes.size === 0)
+    throw new UnreadableControlError(
+      "app/globals.css has no exact class selector receiving the below-sm min-block-size floor"
+    );
+  return classes;
+}
+
+/** True when this class list names a selector that receives the CSS floor. */
+export function inButtonFamily(
+  className: string,
+  family: ReadonlySet<string>
+): boolean {
+  return (className.match(/[^\s"'`{}(),:?]+/g) ?? []).some((token) =>
+    family.has(token)
   );
 }
 
@@ -1620,6 +1846,14 @@ export function usesTapTarget(className: string): boolean {
 /** True when this class list carries the dense chip rendered-floor mechanism. */
 export function usesChipSm(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
+}
+
+/** True when this class list carries the deliberately floor-free base chip. */
+function usesRegularChip(className: string): boolean {
+  return (
+    /(?:^|[\s"'`{}(),:?])chip(?![\w-])/.test(className) &&
+    !usesChipSm(className)
+  );
 }
 
 /**
@@ -1704,7 +1938,8 @@ function kindOf(tag: string, openTag: string): ControlKind {
  */
 export function findFlooredControls(
   source: string,
-  readModule?: ModuleReader
+  readModule?: ModuleReader,
+  buttonFamily: ReadonlySet<string> = new Set()
 ): FlooredControl[] {
   const found: FlooredControl[] = [];
   const lineOf = (i: number) => source.slice(0, i).split("\n").length;
@@ -1792,7 +2027,7 @@ export function findFlooredControls(
 
     const belowSmPx = belowSmHeightPx(className);
     const kind = kindOf(tag, openTag);
-    const mechanism: FloorMechanism = inButtonFamily(className)
+    const mechanism: FloorMechanism = inButtonFamily(className, buttonFamily)
       ? "btn-family"
       : usesChipSm(className)
         ? "chip-sm"
@@ -1848,9 +2083,21 @@ export function floorMiss(control: FlooredControl): string | null {
   // the census rosters these EXACTLY rather than letting them look like the line
   // below, which is a control that was read and pins no height (#3561).
   if (!control.readable) return null;
+  // Regular chips are acquired by width in a scrolling row and deliberately
+  // carry no rendered floor. This is an explicit licensed class, not accidental
+  // silence from an unpinned height; `chip-sm` takes the rendered-floor branch.
+  if (usesRegularChip(control.className)) return null;
+  if (control.mechanism === "btn-family") {
+    const callSiteMinimum = belowSmMinimumPx(control.className);
+    if (callSiteMinimum === null || callSiteMinimum >= TAP_FLOOR_PX)
+      return null;
+    return (
+      `a ${callSiteMinimum}px call-site minimum replaces the button family's ` +
+      `${TAP_FLOOR_PX}px below-\`sm\` floor`
+    );
+  }
   if (control.belowSmPx === null) return null;
-  if (control.mechanism === "btn-family" || control.mechanism === "rendered")
-    return null;
+  if (control.mechanism === "rendered") return null;
   if (control.mechanism === "chip-sm") {
     if (control.belowSmPx >= CHIP_SM_RENDERED_PX) return null;
     return (

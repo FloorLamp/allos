@@ -9,6 +9,7 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
   UnreadableControlError,
   belowSmHeightPx,
+  buttonFloorClasses,
   findFlooredControls,
   floorMiss,
   usesTapTarget,
@@ -52,10 +53,9 @@ import { makeTmpDir } from "./tmp-dir";
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
 //      works, and `.chip-sm` using its shared rendered floor.
-//   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
-//      45 native boxes with a `<label>` taking the tap are licensed — and this file
-//      does not pretend otherwise; what it does is stop the number growing, and
-//      record what each group is waiting on.
+//   5. A RATCHET over what already misses. Labelled native boxes are licensed
+//      separately and counted exactly below; this file does not pretend the rest
+//      comply — it stops the number growing and records what each group awaits.
 //   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 22 `.tap-target`
 //      controls pin no height in source, so `floorMiss` returns null at its first
 //      line and they are neither findings nor cleared. Counting them is what
@@ -71,6 +71,9 @@ import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components"];
+const BUTTON_FLOOR_CLASSES = buttonFloorClasses(
+  fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8")
+);
 
 /**
  * ONE CORPUS THIS CENSUS CAN BE POINTED AT: a base directory, and the roots to
@@ -110,6 +113,11 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // that is a headline measuring the wrong population, which is #3563's third item
 // and is not fixed here.
 const CENSUS_FLOOR = 1200;
+// Unlike the headline population, these controls pin a below-sm height and can
+// therefore receive a source verdict. Measured at 178 on the #3656 dependency
+// head; leave ordinary feature churn room without letting the governed set fade.
+const JUDGED_CENSUS_FLOOR = 170;
+const LICENSED_NATIVE_BOXES = 51;
 
 /**
  * THE CONTROLS THAT MISS THE FLOOR TODAY, by file, with what each is waiting on.
@@ -555,7 +563,8 @@ function census(corpus: Corpus = TREE): Found[] {
       try {
         controls = findFlooredControls(
           withoutComments(read(file, corpus.base)),
-          moduleReader(corpus, path.dirname(path.join(corpus.base, file)))
+          moduleReader(corpus, path.dirname(path.join(corpus.base, file))),
+          BUTTON_FLOOR_CLASSES
         );
       } catch (error) {
         if (error instanceof UnreadableControlError)
@@ -595,6 +604,22 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
         "stopped seeing them (a rename, a move, a JSX shape it cannot parse) or the " +
         "controls really are gone — check which before lowering this number."
     ).toBeGreaterThanOrEqual(CENSUS_FLOOR);
+    const judged = found.filter(
+      (control) => control.readable && control.belowSmPx !== null
+    );
+    expect(
+      judged.length,
+      `Only ${judged.length} controls pin a below-sm height, below the governed ` +
+        `population floor of ${JUDGED_CENSUS_FLOOR}. The headline ${found.length} ` +
+        "controls cannot prove that the subset this source census can judge is still visible."
+    ).toBeGreaterThanOrEqual(JUDGED_CENSUS_FLOOR);
+    expect(
+      found.filter(
+        (control) => control.kind === "native-box" && control.labelled
+      ).length,
+      "The licensed native-box count changed. Each one is exempt only because an " +
+        "associated label owns its tap; inspect any added/removed association before updating it."
+    ).toBe(LICENSED_NATIVE_BOXES);
     // Both registered mechanisms are really present, so the verdicts below are
     // not green over a corpus that happens to contain neither.
     const mechanisms = found.map((c) => c.mechanism);
@@ -625,7 +650,8 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       const source = withoutComments(read(subject.file));
       const controls = findFlooredControls(
         source,
-        moduleReader(TREE, path.dirname(path.join(REPO, subject.file)))
+        moduleReader(TREE, path.dirname(path.join(REPO, subject.file))),
+        BUTTON_FLOOR_CLASSES
       ).filter((c) => c.mechanism === "tap-target" && c.belowSmPx !== null);
       expect(
         controls.length,
@@ -736,6 +762,11 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     expect(TAP_TARGET_MIN_RENDERED_PX).toBe(
       TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX
     );
+    expect([...BUTTON_FLOOR_CLASSES].sort()).toEqual([
+      "btn",
+      "btn-danger",
+      "btn-ghost",
+    ]);
     // And the family's own rendered floor is the same number the module names.
     // `2.75rem` is 44px; the census and the stylesheet hold ONE floor, which is
     // the property `lib/__tests__/card-mode-boundary.test.ts` keeps for the card
@@ -914,6 +945,30 @@ describe("the class lists this census cannot read (#3561)", () => {
 //
 // A green sweep over a complying tree says nothing about what the sweep can see.
 
+describe("the TSX source reader", () => {
+  it("preserves comment-shaped JSX text while blanking real comments", () => {
+    const source = [
+      `const hidden = "h-11"; // code comment h-4`,
+      `export default function X() {`,
+      `  return <><p>a // b</p><span>https://x.co</span><p>a /* b</p>`,
+      `    <button title="a > b" type="button" className="h-7 w-7">x</button></>;`,
+      `}`,
+    ].join("\n");
+    const clean = withoutComments(source);
+    expect(clean).toContain("<p>a // b</p>");
+    expect(clean).toContain("<span>https://x.co</span>");
+    expect(clean).toContain("<p>a /* b</p>");
+    expect(clean).not.toContain("code comment h-4");
+    const [control] = findFlooredControls(
+      clean,
+      undefined,
+      BUTTON_FLOOR_CLASSES
+    );
+    expect(control.className).toBe("h-7 w-7");
+    expect(floorMiss(control)).not.toBeNull();
+  });
+});
+
 describe("the height reader", () => {
   it("reads only what governs below `sm`", () => {
     // The mistake this exists to refuse: taking the smallest `h-*` in the class
@@ -943,7 +998,8 @@ describe("the height reader", () => {
   });
 });
 
-const scan = (source: string) => findFlooredControls(withoutComments(source));
+const scan = (source: string) =>
+  findFlooredControls(withoutComments(source), undefined, BUTTON_FLOOR_CLASSES);
 
 /**
  * The same scan with a handful of in-memory modules behind it, so an import hop
@@ -961,7 +1017,11 @@ function scanWith(
           readModule: reader,
         }
       : null;
-  return findFlooredControls(withoutComments(source), reader);
+  return findFlooredControls(
+    withoutComments(source),
+    reader,
+    BUTTON_FLOOR_CLASSES
+  );
 }
 
 describe("the sweep can see an offender", () => {
@@ -1305,6 +1365,33 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
+  it("derives family membership and catches a call-site minimum that lowers it", () => {
+    const [modifierOnly] = scan(
+      `export default function X() {
+         return <button type="button" className="btn-sm min-h-7">x</button>;
+       }`
+    );
+    expect(modifierOnly.mechanism).toBe("none");
+    expect(floorMiss(modifierOnly)).toContain("neither registered mechanism");
+
+    const [lowered] = scan(
+      `export default function X() {
+         return <button type="button" className="btn min-h-8">x</button>;
+       }`
+    );
+    expect(lowered.mechanism).toBe("btn-family");
+    expect(floorMiss(lowered)).toContain(
+      "32px call-site minimum replaces the button family's 44px"
+    );
+
+    const [heightOnly] = scan(
+      `export default function X() {
+         return <button type="button" className="btn h-8">x</button>;
+       }`
+    );
+    expect(floorMiss(heightOnly)).toBeNull();
+  });
+
   it("says nothing about `.tap-target` where its arithmetic works", () => {
     const [control] = scan(
       `export default function X() {
@@ -1326,18 +1413,24 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
-  it("says nothing about a regular `.chip`, which declares no rendered height floor", () => {
+  it("explicitly exempts a regular `.chip`, which declares no rendered height floor", () => {
     // The single most important silence here. A chip is acquired by its WIDTH
     // along a scrolling row, and app/globals.css says so in as many words ("NO
     // RENDERED HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
     // would be switched off within a week and would take the real rule with it.
     const [control] = scan(
       `export default function X() {
-         return <button type="button" className="chip chip-filter" aria-pressed={on}>Meds</button>;
+         return <button type="button" className="chip chip-filter h-7" aria-pressed={on}>Meds</button>;
        }`
     );
-    expect(control.belowSmPx).toBeNull();
+    expect(control.belowSmPx).toBe(28);
     expect(floorMiss(control)).toBeNull();
+    const [ordinary] = scan(
+      `export default function X() {
+         return <button type="button" className="foo bar h-7">Meds</button>;
+       }`
+    );
+    expect(floorMiss(ordinary)).not.toBeNull();
     expect(
       fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8"),
       "app/globals.css no longer records that `.chip` declares no height floor on " +
