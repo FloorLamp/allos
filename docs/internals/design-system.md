@@ -75,6 +75,13 @@ pairs. Keeping every custom named breakpoint in `rem` removes this repository's
 known mixed-unit named-breakpoint hazard without claiming that incomplete
 coverage.
 
+At the browser-default 16px initial font size, `120rem` preserves the former
+`1920px` 3xl boundary exactly. Media-query `rem` units use that browser initial
+font size, not an authored or computed `html { font-size: ... }` value. A user
+who chooses a different browser initial font size therefore intentionally shifts
+the 3xl boundary (for example, 20px makes it 2400px); the former fixed-pixel
+boundary did not respond to that preference.
+
 ## 2. Container grammar
 
 | container                     | rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | status                                                                                                                                                                                                                                                                                                       | guard                                                                                                                                                                                                                           |
