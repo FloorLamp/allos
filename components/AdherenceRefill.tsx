@@ -16,6 +16,7 @@ import { SUPPLIES_HREF } from "@/lib/hrefs";
 import { bottleLabel, productLabel } from "@/lib/supply-product";
 import { formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The refill "≈N days of supply left" badge (#38/#301), shared by the supplement
 // ROW and the medication CARD so both surface the same estimate identically
@@ -50,33 +51,35 @@ export function RefillBadge({
   const lowSupply = isLowSupply(daysLeft);
   const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
   const runOut = todayStr ? runOutDateStr(todayStr, daysLeft) : null;
+  const detail = runOut
+    ? `Runs out around ${formatMonthDay(runOut, formatPrefs)} — ${refillBasis}`
+    : `Estimated days of supply remaining — ${refillBasis}`;
   return (
-    <span
-      data-testid="refill-days-left"
-      className={`badge whitespace-nowrap ${
-        lowSupply
-          ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-          : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
-      }`}
-      title={
-        runOut
-          ? `Runs out around ${formatMonthDay(runOut, formatPrefs)} — ${refillBasis}`
-          : `Estimated days of supply remaining — ${refillBasis}`
-      }
-    >
-      {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"} left
-      {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
+    <span className="inline-flex items-center gap-0.5">
+      <span
+        data-testid="refill-days-left"
+        className={`badge whitespace-nowrap ${
+          lowSupply
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+        }`}
+      >
+        {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"}{" "}
+        left
+        {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
           a date is what you tell the pharmacy. Shown only where todayStr is threaded
           (the medication row + card); the supplement row keeps the compact form. */}
-      {runOut && (
-        <span className="hidden sm:inline" data-testid="refill-run-out">
-          {" "}
-          · runs out ~{formatMonthDay(runOut, formatPrefs)}
+        {runOut && (
+          <span className="hidden sm:inline" data-testid="refill-run-out">
+            {" "}
+            · runs out ~{formatMonthDay(runOut, formatPrefs)}
+          </span>
+        )}
+        <span className="ml-1 hidden font-normal opacity-70 sm:inline">
+          · {refillBasis}
         </span>
-      )}
-      <span className="ml-1 hidden font-normal opacity-70 sm:inline">
-        · {refillBasis}
       </span>
+      <InfoTooltipIcon label={detail} data-testid="refill-help" />
     </span>
   );
 }
@@ -161,8 +164,8 @@ export function AdherenceSummaryLine({
     <div
       data-testid="adherence-summary"
       className="mt-1.5 flex items-center gap-1.5 text-xs"
-      title="Adherence over the last 14 days"
     >
+      <span className="text-slate-500 dark:text-slate-400">Last 14 days:</span>
       {visibility.showDetail && adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
           {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)

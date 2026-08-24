@@ -13,6 +13,7 @@ import ResultForm from "./ResultForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
 import { useUndoableDelete } from "./useUndoableDelete";
+import InfoTooltipIcon from "./InfoTooltipIcon";
 import {
   updateResult,
   deleteResult,
@@ -92,26 +93,34 @@ function qs(params: Record<string, string | undefined>): AppRoute {
 // (over a year old — a yearly-retest heuristic).
 function staleBadge() {
   return (
-    <span
-      className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
-      title="Latest result over a year old — consider retesting"
-    >
-      Stale
+    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
+      <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
+        Stale
+      </span>
+      <InfoTooltipIcon
+        label="Latest result over a year old — consider retesting"
+        data-testid="clinical-stale-help"
+      />
     </span>
   );
 }
 
 // A small slate badge marking a read-time DERIVED index (issue #40) — computed
-// from other readings, not measured. The formula (with the component values) is the
-// hover title so the derivation is inspectable.
+// from other readings, not measured. The touch/keyboard info affordance keeps the
+// formula (with its component values) inspectable.
 function derivedBadge(formula?: string) {
+  const detail = formula
+    ? `Derived: ${formula}`
+    : "Computed from other readings";
   return (
-    <span
-      data-testid="derived-badge"
-      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-      title={formula ? `Derived: ${formula}` : "Computed from other readings"}
-    >
-      Derived
+    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
+      <span
+        data-testid="derived-badge"
+        className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+      >
+        Derived
+      </span>
+      <InfoTooltipIcon label={detail} data-testid="clinical-derived-help" />
     </span>
   );
 }
@@ -159,8 +168,8 @@ function nameCell(r: {
 // lines under one DATE label, two of which say the same thing and one of which is
 // not a date at all. The age is the shared compact formatter now (#1216, via
 // lib/reading-date-line) so this row and the dashboard's clinical-result readout round
-// into the same buckets, the over-a-year amber treatment and its title ride on the
-// AGE token (the age is what went stale), and the provenance link moved to the row's
+// into the same buckets, the over-a-year amber treatment and its pinned detail ride
+// on the AGE token (the age is what went stale), and provenance moved to the row's
 // ⋯ menu, which is what that menu is for. Older readings in a run still omit the age.
 function dateCell(
   r: { date: string; category: string | null },
@@ -175,13 +184,20 @@ function dateCell(
       {line.age ? (
         <>
           {DATE_AGE_SEPARATOR}
-          <span
-            data-testid="clinical-result-age"
-            className={`text-xs ${line.ageClassName}`}
-            title={line.ageTitle ?? undefined}
-          >
-            {line.stale && "⚠️ "}
-            {line.age}
+          <span className="inline-flex items-center gap-0.5">
+            <span
+              data-testid="clinical-result-age"
+              className={`text-xs ${line.ageClassName}`}
+            >
+              {line.stale && "⚠️ "}
+              {line.age}
+            </span>
+            {line.ageTitle && (
+              <InfoTooltipIcon
+                label={line.ageTitle}
+                data-testid="clinical-age-help"
+              />
+            )}
           </span>
         </>
       ) : null}
@@ -232,11 +248,9 @@ function PanelCell({
   return (
     <Td label="Panel" empty={!reported} className="hidden md:table-cell">
       {reported ? (
-        <span
-          className="text-xs text-slate-500 dark:text-slate-400"
-          title="Not mapped to a clinical panel — showing the heading it was reported under"
-        >
-          {reported}
+        <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <span>{reported}</span>
+          <InfoTooltipIcon label="Not mapped to a clinical panel — showing the heading it was reported under" />
         </span>
       ) : (
         <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -283,12 +297,19 @@ function ReferenceCellTd({
       empty={!resolved.text}
       className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
     >
-      <span
-        data-testid="clinical-result-reference"
-        data-judged={resolved.judged ? "true" : "false"}
-        title={resolved.title ?? undefined}
-      >
-        {resolved.text ?? "—"}
+      <span className="inline-flex items-center gap-0.5">
+        <span
+          data-testid="clinical-result-reference"
+          data-judged={resolved.judged ? "true" : "false"}
+        >
+          {resolved.text ?? "—"}
+        </span>
+        {resolved.title && (
+          <InfoTooltipIcon
+            label={resolved.title}
+            data-testid="clinical-reference-help"
+          />
+        )}
       </span>
     </Td>
   );

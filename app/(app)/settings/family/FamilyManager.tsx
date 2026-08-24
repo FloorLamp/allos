@@ -12,6 +12,7 @@ import NotifyScopeEditor from "@/components/NotifyScopeEditor";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { NOTICE_TONE } from "@/components/Notice";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
 import { grantCountSummary, type Access } from "@/lib/grants";
 import {
@@ -834,12 +835,17 @@ function LoginRow({
             {login.role}
           </span>
           {login.role === "member" && grantCount === 0 && (
-            <span
-              data-testid="login-no-access"
-              title="This login has no profile access — it can sign in but has nowhere to land. Grant it a profile under Access."
-              className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-            >
-              no access
+            <span className="inline-flex items-center gap-0.5">
+              <span
+                data-testid="login-no-access"
+                className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+              >
+                no access
+              </span>
+              <InfoTooltipIcon
+                label="This login has no profile access — it can sign in but has nowhere to land. Grant it a profile under Access."
+                data-testid="login-no-access-help"
+              />
             </span>
           )}
           <span className="text-xs text-slate-500 dark:text-slate-400">

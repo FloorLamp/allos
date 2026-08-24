@@ -223,11 +223,11 @@ export const HOVER_CAPTURES = [
   },
   {
     // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
-    // content exists ONLY in a mouse-driven panel — descriptions, schedule
-    // summaries and dose status, with no other path. The grid itself sits behind a
-    // closed <details>, which is what `openFirst` is for.
+    // content uses the same panel for mouse hover and pinned tap/keyboard access.
+    // The grid itself sits behind a closed <details>, which is what `openFirst` is
+    // for.
     route: "/records/history/immunizations",
-    label: "CDC schedule grid vaccine tooltip",
+    label: "CDC schedule grid vaccine details",
     // The vaccine NAME cell specifically. `tbody td` also matches the grid's
     // group-label rows, which carry no handler: registered that way the entry
     // reported an honest no-op and the surface stopped being captured (measured
@@ -235,7 +235,7 @@ export const HOVER_CAPTURES = [
     target: '[data-testid="schedule-grid-vaccine-cell"]',
     reveals: '[data-testid="schedule-grid-tip"]',
     openFirst: '[data-testid="immunization-schedule-disclosure"]',
-    ruling: "#3375 — the tooltip is the sole path to this content",
+    ruling: "#3375 — mouse hover preserved; tap/keyboard pin the same content",
   },
 ];
 

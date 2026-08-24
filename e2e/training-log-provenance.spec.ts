@@ -405,12 +405,14 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   const heartRate = primary.getByTestId("imported-heart-rate");
   // This one is an inline domain color, not a Tailwind palette utility.
   await expect(heartRate).toHaveCSS("color", "rgb(234, 179, 8)");
-  await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
+  await heartRate.getByTestId("imported-heart-rate-help").click();
+  await expect(page.getByRole("tooltip")).toHaveText("Zone 3 · Tempo");
+  await page.keyboard.press("Escape");
   await expect(primary).toContainText("Power186 W193 weighted · 612 max");
   await expect(primary).toContainText("Speed23.7 km/h41.8 max");
   await expect(primary).toContainText("Elevation gain210 m");
-  await expect(primary.getByText("193 weighted")).toHaveAttribute(
-    "title",
+  await primary.getByTestId("weighted-power-help").click();
+  await expect(page.getByRole("tooltip")).toHaveText(
     "Weighted power accounts for changes in effort and better reflects the ride’s physiological load."
   );
 

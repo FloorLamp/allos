@@ -310,6 +310,7 @@ test("supplement suggestion provenance stays visually bounded", async ({
 test("a curated supplement suggestion is visibly distinct from a generated one (#2378)", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   // Two suggestions side by side in the same panel: one from the committed
   // biomarker→supplement map (no model involved), one from the AI route. They are
   // different CLAIMS, so they must not render identically — each carries an origin
@@ -351,6 +352,11 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(curated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Curated"
     );
+    await curated.getByTestId("curated-origin-help").click();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "human-reviewed biomarker→supplement map"
+    );
+    await expect(page.getByRole("tooltip")).toContainText("no AI involved");
     await expect(curated).toContainText("Folate");
     await expect(curated).toContainText("Folic acid");
 
@@ -361,6 +367,10 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(generated).toBeVisible();
     await expect(generated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Generated"
+    );
+    await generated.getByTestId("generated-origin-help").click();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Written by AI from your data"
     );
   } finally {
     cleanup();

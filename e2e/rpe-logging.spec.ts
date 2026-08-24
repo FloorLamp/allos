@@ -174,6 +174,14 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // Opt in, from the editor's own options row — one tap, no settings trip.
   await setRpeColumn(page, true);
 
+  // RPE's expansion is information, not mouse chrome: the shared info affordance
+  // exposes it by click/tap before a person decides whether to record the field.
+  await page.getByTestId("rpe-help").click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "RPE means rate of perceived exertion"
+  );
+  await page.keyboard.press("Escape");
+
   // The RPE selector is BLANK by default (logging RPE is never required).
   const rpe = page.getByTestId("set1-rpe");
   const rpeValue = page.getByTestId("set1-rpe-value");
