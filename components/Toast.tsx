@@ -7,7 +7,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   IconCircleCheck,
@@ -23,6 +22,7 @@ import {
   visibleToasts,
 } from "@/lib/toast-upsert";
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
+import { useCompactViewport } from "@/components/useCompactViewport";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import {
   BOTTOM_EDGE_GUTTER_LEFT,
@@ -102,39 +102,6 @@ interface ToastApi {
 // something to read.
 const DEFAULT_DURATION: Record<Tone, number> = { success: 6000, error: 10000 };
 
-// The breakpoint the two shapes split on — Tailwind's `md`, the same one every
-// `md:` class below is written against.
-const SNACKBAR_QUERY = "(max-width: 767.98px)";
-
-function subscribeSnackbar(onChange: () => void): () => void {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-  const query = window.matchMedia(SNACKBAR_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-function snackbarSnapshot(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    !!window.matchMedia?.(SNACKBAR_QUERY).matches
-  );
-}
-
-const serverSnackbarSnapshot = () => false;
-
-// Whether toasts render as the phone snackbar. This is a genuine BEHAVIOUR fork —
-// how many toasts are on screen, and whether the rest are waiting — not a layout
-// one, so it cannot live in a media query the way the `md:` classes do. There is
-// no wrong first paint to worry about: a toast only ever exists because something
-// on the client raised one, so this is never read during SSR or hydration.
-function useSnackbarViewport(): boolean {
-  return useSyncExternalStore(
-    subscribeSnackbar,
-    snackbarSnapshot,
-    serverSnackbarSnapshot
-  );
-}
-
 const ToastContext = createContext<ToastApi | null>(null);
 
 let seq = 0;
@@ -142,7 +109,7 @@ let seq = 0;
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const reduceMotion = usePrefersReducedMotion();
-  const snackbar = useSnackbarViewport();
+  const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
 
   // Dismissal is two steps: mark the toast so it plays its exit animation, then
