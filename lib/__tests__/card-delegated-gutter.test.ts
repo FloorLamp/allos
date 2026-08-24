@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -101,10 +102,6 @@ function classToken(name: string): RegExp {
   );
 }
 
-function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-}
-
 function uiSources(
   root: string
 ): ReadonlyArray<{ file: string; source: string }> {
@@ -118,9 +115,7 @@ function uiSources(
       else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts")) {
         out.push({
           file,
-          source: withoutComments(
-            fs.readFileSync(path.join(root, file), "utf8")
-          ),
+          source: stripComments(fs.readFileSync(path.join(root, file), "utf8")),
         });
       }
     }
@@ -413,10 +408,7 @@ function utilityBody(css: string, name: string): string {
   if (starts.length !== 1)
     throw new Error(`${name} must be declared exactly once`);
   const start = starts[0].index! + marker.length;
-  return css
-    .slice(start, css.indexOf("}", start))
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .trim();
+  return stripComments(css.slice(start, css.indexOf("}", start))).trim();
 }
 
 describe("delegated card gutter contract (#3507)", () => {
