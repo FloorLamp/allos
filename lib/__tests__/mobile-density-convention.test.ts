@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { makeTmpDir } from "./tmp-dir";
 
 // The phone density conventions (issue #3466) — a source scan in the tradition of
 // bottom-edge-tokens.test.ts, over the two spacing layers that #3466 stepped down.
@@ -57,6 +55,85 @@ function hasClass(source: string, name: string): boolean {
   return classToken(name).test(source);
 }
 
+// The opening JSX tag carrying `needle`, found by scanning OUT from that
+// attribute rather than by matching the first `className=` in the file. The
+// difference is the whole point: a file-level `/className="([^"]*)"/` reads
+// whichever element happens to come first, so re-adding `card` to a component
+// AND switching its own className to a template literal would hand the assertion
+// a DIFFERENT element's class list — both `not.toBeNull()` and `not.toContain`
+// pass, on an element nobody asked about, and the nest is quietly back.
+function openingTagWith(source: string, needle: string): string {
+  const at = source.indexOf(needle);
+  if (at < 0) throw new Error(`no element carries ${needle}`);
+  const start = source.lastIndexOf("<", at);
+  if (start < 0) throw new Error(`${needle} is not inside a JSX tag`);
+  // Forward to this tag's own `>`, stepping over any `{...}` expression — an
+  // arrow function's `=>` lives inside one.
+  let depth = 0;
+  for (let i = at; i < source.length; i += 1) {
+    const c = source[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") depth -= 1;
+    else if (c === ">" && depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error(`unterminated JSX tag around ${needle}`);
+}
+
+// That tag's className expression — the quoted string, or the whole braced
+// expression with its interpolations. Comments inside the tag are NOT included:
+// this file's own subject components carry prose mentioning `.card` in order to
+// explain why they are not one, and a guard that fired on that explanation would
+// be deleted.
+function classNameExpression(tag: string): { literal: boolean; text: string } {
+  const at = tag.indexOf("className=");
+  if (at < 0) throw new Error("tag carries no className");
+  let i = at + "className=".length;
+  if (tag[i] === '"') {
+    const end = tag.indexOf('"', i + 1);
+    if (end < 0) throw new Error("unterminated className string");
+    return { literal: true, text: tag.slice(i + 1, end) };
+  }
+  if (tag[i] !== "{") throw new Error("unrecognised className form");
+  let depth = 0;
+  const start = i;
+  for (; i < tag.length; i += 1) {
+    if (tag[i] === "{") depth += 1;
+    else if (tag[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return { literal: false, text: tag.slice(start + 1, i) };
+    }
+  }
+  throw new Error("unterminated className expression");
+}
+
+// Module-scope `const NAME = …;` in the SAME file, substituted into an
+// expression. Bounded passes, so a cycle dies on the limit instead of hanging.
+function substituteModuleConsts(source: string, expression: string): string {
+  let out = expression;
+  for (let pass = 0; pass < 4; pass += 1) {
+    let changed = false;
+    for (const m of source.matchAll(
+      /^const ([A-Za-z_$][\w$]*)\s*=\s*([\s\S]*?);$/gm
+    )) {
+      const token = new RegExp(`(?<![\\w$])${m[1]}(?![\\w$])`, "g");
+      if (token.test(out)) {
+        out = out.replace(token, `(${m[2]})`);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return out;
+}
+
+// An identifier is allowed to REMAIN in an expression only where it cannot
+// contribute class text — a ternary test, a logical operand, a comparison, a
+// member base. Anything else (a bare `{LINK_CLASS}`, a `cn(...)` call, a
+// `props.className`) is text this scan cannot read.
+const IDENTIFIER_IN_CONDITION =
+  /^\s*(\?|&&|\|\||===|!==|==|!=|>=|<=|>|<|\)|,|\.)/;
+const NOT_A_VALUE = new Set(["true", "false", "null", "undefined"]);
+
 // THE CLASS TEXT A BROWSER WOULD ACTUALLY SEE — or a THROWN error.
 //
 // This is the shape the whole class-B check turns on, and the reason it is not
@@ -77,41 +154,69 @@ function hasClass(source: string, name: string): boolean {
 // left that could contribute class text and cannot be read, THROW. A red saying
 // "make this className readable" is the correct outcome; a green is not.
 function classTextOf(source: string, needle: string): string {
-  const syntax = ts.createSourceFile(
-    "probe.tsx",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
-  let target: OpeningTag | null = null;
-  const visit = (node: ts.Node) => {
-    if (
-      target == null &&
-      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
-      node.getText(syntax).includes(needle)
-    )
-      target = node;
-    if (target == null) ts.forEachChild(node, visit);
-  };
-  visit(syntax);
-  if (!target) throw new Error(`no element carries ${needle}`);
-  const variants = classVariantsOf(
-    target,
-    syntax,
-    moduleConstInitializers(syntax)
-  );
-  if (variants.length === 0)
-    throw new Error(`${needle}'s tag has no className`);
-  const unresolved = [
-    ...new Set(variants.flatMap((variant) => variant.unresolved)),
-  ];
-  if (unresolved.length > 0)
+  const expression = classNameExpression(openingTagWith(source, needle));
+  if (expression.literal) return expression.text;
+  return readClassText(substituteModuleConsts(source, expression.text), needle);
+}
+
+function readClassText(expression: string, needle: string): string {
+  const parts: string[] = [];
+  let residue = "";
+  let i = 0;
+  while (i < expression.length) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      const end = expression.indexOf(c, i + 1);
+      if (end < 0)
+        throw new Error(`unterminated string in ${needle}'s className`);
+      parts.push(expression.slice(i + 1, end));
+      i = end + 1;
+      continue;
+    }
+    if (c === "`") {
+      let j = i + 1;
+      let chunk = "";
+      while (j < expression.length && expression[j] !== "`") {
+        if (expression[j] === "$" && expression[j + 1] === "{") {
+          parts.push(chunk);
+          chunk = "";
+          let depth = 1;
+          let k = j + 2;
+          for (; k < expression.length && depth > 0; k += 1) {
+            if (expression[k] === "{") depth += 1;
+            else if (expression[k] === "}") depth -= 1;
+          }
+          // Recurse: a hole's own residue is checked by the same rules.
+          parts.push(readClassText(expression.slice(j + 2, k - 1), needle));
+          j = k;
+          continue;
+        }
+        chunk += expression[j];
+        j += 1;
+      }
+      if (j >= expression.length)
+        throw new Error(
+          `unterminated template literal in ${needle}'s className`
+        );
+      parts.push(chunk);
+      i = j + 1;
+      continue;
+    }
+    residue += c;
+    i += 1;
+  }
+
+  for (const m of residue.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    if (NOT_A_VALUE.has(m[0])) continue;
+    const after = residue.slice(m.index + m[0].length);
+    if (IDENTIFIER_IN_CONDITION.test(after)) continue;
     throw new Error(
-      `${needle}'s className cannot be read: ${unresolved.join(", ")}. ` +
-        "An absence assertion over unresolved text fails open."
+      `${needle}'s className cannot be read: \`${m[0]}\` may contribute class text and this scan cannot resolve it. ` +
+        "An absence assertion over unresolved text FAILS OPEN — it would pass while the class it forbids was present. " +
+        "Inline the classes, or declare the const at module scope in this same file."
     );
-  return variants.map((variant) => variant.text).join(" ");
+  }
+  return parts.join(" ");
 }
 
 // tier -> the phone value it sets. Desktop is whatever the call site already had.
@@ -189,10 +294,10 @@ const OWNED_STEP =
 // not a call site, and a guard that fires on its own source gets deleted.
 const NOT_A_CALL_SITE = /^lib\/__(tests|db_tests|action_tests)__\//;
 
-function sourceFiles(root = REPO): string[] {
+function sourceFiles(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const e of fs.readdirSync(path.join(root, dir), {
+    for (const e of fs.readdirSync(path.join(REPO, dir), {
       withFileTypes: true,
     })) {
       const rel = `${dir}/${e.name}`;
@@ -200,500 +305,8 @@ function sourceFiles(root = REPO): string[] {
       else if (e.name.endsWith(".tsx") || e.name.endsWith(".ts")) out.push(rel);
     }
   };
-  for (const d of ["app", "components", "lib"]) {
-    if (fs.existsSync(path.join(root, d))) walk(d);
-  }
+  for (const d of ["app", "components", "lib"]) walk(d);
   return out.filter((f) => !NOT_A_CALL_SITE.test(f));
-}
-
-type OpeningTag = ts.JsxOpeningElement | ts.JsxSelfClosingElement;
-
-type DelegatedGutterScan = {
-  cards: string[];
-  cells: { role: string; site: string }[];
-  offenders: string[];
-};
-
-type ClassVariant = { text: string; unresolved: string[] };
-
-type ClassRead = {
-  text: string | null;
-  variants: ClassVariant[];
-  error?: string;
-};
-
-function combineClassVariants(
-  left: ClassVariant[],
-  right: ClassVariant[]
-): ClassVariant[] {
-  const combined = left.flatMap((a) =>
-    right.map((b) => ({
-      text: `${a.text} ${b.text}`.trim(),
-      unresolved: [...a.unresolved, ...b.unresolved],
-    }))
-  );
-  const unique = new Map<string, ClassVariant>();
-  for (const variant of combined) {
-    const key = `${variant.text}\0${variant.unresolved.join("\0")}`;
-    unique.set(key, variant);
-  }
-  return [...unique.values()];
-}
-
-function moduleConstInitializers(
-  source: ts.SourceFile
-): Map<string, ts.Expression> {
-  const initializers = new Map<string, ts.Expression>();
-  for (const statement of source.statements) {
-    if (
-      !ts.isVariableStatement(statement) ||
-      !(statement.declarationList.flags & ts.NodeFlags.Const)
-    )
-      continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name) && declaration.initializer)
-        initializers.set(declaration.name.text, declaration.initializer);
-    }
-  }
-  return initializers;
-}
-
-// Resolve the finite set of class strings an expression can render. Conditions
-// contribute BRANCHES, never a union: a role is valid only when every reachable
-// branch carries its whole gutter. Same-file const aliases recurse to a fixed
-// point with an explicit cycle report. Class combiners are transparent over
-// their arguments; an arbitrary helper is unresolved and therefore fails any
-// card/cell whose contract depends on it.
-function classVariantsOf(
-  tag: OpeningTag,
-  syntax: ts.SourceFile,
-  consts: Map<string, ts.Expression>
-): ClassVariant[] {
-  const attribute = tag.attributes.properties.find(
-    (property): property is ts.JsxAttribute =>
-      ts.isJsxAttribute(property) && property.name.getText() === "className"
-  );
-  if (!attribute?.initializer) return [];
-  if (ts.isStringLiteral(attribute.initializer))
-    return [{ text: attribute.initializer.text, unresolved: [] }];
-  if (
-    !ts.isJsxExpression(attribute.initializer) ||
-    !attribute.initializer.expression
-  )
-    return [{ text: "", unresolved: ["unrecognised className initializer"] }];
-
-  const evaluate = (
-    expression: ts.Expression,
-    stack: readonly string[] = []
-  ): ClassVariant[] => {
-    let current = expression;
-    while (
-      ts.isParenthesizedExpression(current) ||
-      ts.isAsExpression(current) ||
-      ts.isSatisfiesExpression(current) ||
-      ts.isNonNullExpression(current)
-    )
-      current = current.expression;
-
-    if (
-      ts.isStringLiteral(current) ||
-      ts.isNoSubstitutionTemplateLiteral(current)
-    )
-      return [{ text: current.text, unresolved: [] }];
-    if (
-      current.kind === ts.SyntaxKind.TrueKeyword ||
-      current.kind === ts.SyntaxKind.FalseKeyword ||
-      current.kind === ts.SyntaxKind.NullKeyword ||
-      ts.isNumericLiteral(current)
-    )
-      return [{ text: "", unresolved: [] }];
-    if (ts.isIdentifier(current)) {
-      if (current.text === "undefined") return [{ text: "", unresolved: [] }];
-      const initializer = consts.get(current.text);
-      if (!initializer)
-        return [{ text: "", unresolved: [`identifier ${current.text}`] }];
-      if (stack.includes(current.text))
-        return [
-          {
-            text: "",
-            unresolved: [
-              `const cycle ${[...stack, current.text].join(" -> ")}`,
-            ],
-          },
-        ];
-      return evaluate(initializer, [...stack, current.text]);
-    }
-    if (ts.isConditionalExpression(current))
-      return [
-        ...evaluate(current.whenTrue, stack),
-        ...evaluate(current.whenFalse, stack),
-      ];
-    if (ts.isTemplateExpression(current)) {
-      let variants: ClassVariant[] = [
-        { text: current.head.text, unresolved: [] },
-      ];
-      for (const span of current.templateSpans) {
-        variants = combineClassVariants(
-          variants,
-          evaluate(span.expression, stack).map((variant) => ({
-            ...variant,
-            text: `${variant.text}${span.literal.text}`,
-          }))
-        );
-      }
-      return variants;
-    }
-    if (ts.isBinaryExpression(current)) {
-      if (current.operatorToken.kind === ts.SyntaxKind.PlusToken)
-        return combineClassVariants(
-          evaluate(current.left, stack),
-          evaluate(current.right, stack)
-        );
-      if (current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
-        return [
-          { text: "", unresolved: [] },
-          ...evaluate(current.right, stack),
-        ];
-      return [
-        {
-          text: "",
-          unresolved: [`binary expression ${current.getText(syntax)}`],
-        },
-      ];
-    }
-    if (ts.isCallExpression(current)) {
-      const callee = current.expression.getText(syntax);
-      let variants: ClassVariant[] = [{ text: "", unresolved: [] }];
-      for (const argument of current.arguments)
-        variants = combineClassVariants(variants, evaluate(argument, stack));
-      if (["cn", "clsx", "classNames", "twMerge"].includes(callee))
-        return variants;
-      return variants.map((variant) => ({
-        ...variant,
-        unresolved: [...variant.unresolved, `helper call ${callee}`],
-      }));
-    }
-    if (ts.isArrayLiteralExpression(current)) {
-      let variants: ClassVariant[] = [{ text: "", unresolved: [] }];
-      for (const element of current.elements) {
-        if (ts.isSpreadElement(element))
-          return [
-            {
-              text: variants.map((variant) => variant.text).join(" "),
-              unresolved: [`spread ${element.getText(syntax)}`],
-            },
-          ];
-        variants = combineClassVariants(variants, evaluate(element, stack));
-      }
-      return variants;
-    }
-    return [
-      {
-        text: "",
-        unresolved: [`expression ${current.getText(syntax)}`],
-      },
-    ];
-  };
-
-  return evaluate(attribute.initializer.expression);
-}
-
-function jsxAttribute(tag: OpeningTag, name: string): string | null {
-  const attribute = tag.attributes.properties.find(
-    (property): property is ts.JsxAttribute =>
-      ts.isJsxAttribute(property) && property.name.getText() === name
-  );
-  if (!attribute) return null;
-  if (!attribute.initializer) return "<boolean>";
-  if (ts.isStringLiteral(attribute.initializer))
-    return attribute.initializer.text;
-  if (
-    ts.isJsxExpression(attribute.initializer) &&
-    attribute.initializer.expression &&
-    (ts.isStringLiteral(attribute.initializer.expression) ||
-      ts.isNoSubstitutionTemplateLiteral(attribute.initializer.expression))
-  ) {
-    return attribute.initializer.expression.text;
-  }
-  return "<dynamic>";
-}
-
-function jsxAttributeSource(tag: OpeningTag, name: string): string | null {
-  const attribute = tag.attributes.properties.find(
-    (property): property is ts.JsxAttribute =>
-      ts.isJsxAttribute(property) && property.name.getText() === name
-  );
-  return attribute?.initializer?.getText() ?? null;
-}
-
-function directRenderedChildTags(tag: OpeningTag): OpeningTag[] {
-  if (!ts.isJsxOpeningElement(tag)) return [];
-  const children: OpeningTag[] = [];
-  const findOutermost = (node: ts.Node) => {
-    if (ts.isJsxElement(node)) {
-      children.push(node.openingElement);
-      return;
-    }
-    if (ts.isJsxSelfClosingElement(node)) {
-      children.push(node);
-      return;
-    }
-    ts.forEachChild(node, findOutermost);
-  };
-  for (const child of tag.parent.children) findOutermost(child);
-  return children;
-}
-
-// One relationship owns every zero-padding card rather than a named assertion
-// for each current site. The attributes make the two halves visible at the tag:
-// the card declares that its gutter is delegated, and one or more DIRECT cells
-// declare which existing horizontal gutter they carry. The role preserves the
-// intentionally different phone values without pretending this family has one
-// number. A direct local component is resolved to its rendered root; the marker
-// must live on that DOM carrier, never merely on `<ReadingsHeader />` where it
-// can disappear instead of being forwarded.
-function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
-  const result: DelegatedGutterScan = { cards: [], cells: [], offenders: [] };
-
-  for (const rel of sourceFiles(root).filter((file) => file.endsWith(".tsx"))) {
-    const source = fs.readFileSync(path.join(root, rel), "utf8");
-    const syntax = ts.createSourceFile(
-      rel,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX
-    );
-    const consts = moduleConstInitializers(syntax);
-    const tags: OpeningTag[] = [];
-    const componentRoots = new Map<string, OpeningTag>();
-    const unwrapJsx = (expression: ts.Expression): OpeningTag | null => {
-      let current = expression;
-      while (ts.isParenthesizedExpression(current))
-        current = current.expression;
-      if (ts.isJsxElement(current)) return current.openingElement;
-      if (ts.isJsxSelfClosingElement(current)) return current;
-      return null;
-    };
-    const visit = (node: ts.Node) => {
-      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-        tags.push(node);
-      }
-      if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-        const returned = node.body.statements.find(ts.isReturnStatement);
-        if (returned?.expression) {
-          const rootTag = unwrapJsx(returned.expression);
-          if (rootTag) componentRoots.set(node.name.text, rootTag);
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(syntax);
-
-    const site = (tag: OpeningTag) => {
-      const line =
-        syntax.getLineAndCharacterOfPosition(tag.getStart(syntax)).line + 1;
-      return `${rel}:${line}`;
-    };
-    const classCache = new Map<OpeningTag, ClassRead>();
-    const classes = (tag: OpeningTag): ClassRead => {
-      const cached = classCache.get(tag);
-      if (cached) return cached;
-      const ownSite = site(tag);
-      const classSource = jsxAttributeSource(tag, "className");
-      if (classSource == null) {
-        const missing = {
-          text: null,
-          variants: [],
-          error: "tag carries no className",
-        };
-        classCache.set(tag, missing);
-        return missing;
-      }
-      try {
-        const variants = classVariantsOf(tag, syntax, consts);
-        const unresolved = [
-          ...new Set(variants.flatMap((variant) => variant.unresolved)),
-        ];
-        const resolved = {
-          text: variants.map((variant) => variant.text).join(" "),
-          variants,
-          ...(unresolved.length
-            ? {
-                error: `${ownSite}'s className cannot be read completely: ${unresolved.join(", ")}`,
-              }
-            : {}),
-        };
-        classCache.set(tag, resolved);
-        return resolved;
-      } catch (error) {
-        const failed = { text: null, variants: [], error: String(error) };
-        classCache.set(tag, failed);
-        return failed;
-      }
-    };
-
-    const renderedTag = (tag: OpeningTag): OpeningTag => {
-      if (jsxAttributeSource(tag, "className") != null) return tag;
-      const name = tag.tagName.getText(syntax);
-      return componentRoots.get(name) ?? tag;
-    };
-    const horizontalGutters = (text: string) => {
-      const tokens = text.split(/\s+/).filter(Boolean);
-      return tokens.filter((token) => {
-        const utility = token.split(":").at(-1) ?? token;
-        return /^!?(?:p|px|pl|pr)-\S+!?$/.test(utility);
-      });
-    };
-    const gutterRoles: Record<string, readonly string[]> = {
-      standard: ["px-4", "sm:px-5"],
-      compact: ["px-2", "sm:px-5"],
-      action: ["px-2", "sm:px-3"],
-    };
-
-    const candidates: OpeningTag[] = [];
-    for (const tag of tags) {
-      const declaration = jsxAttribute(tag, "data-card-gutter");
-      const resolved = classes(tag);
-      if (resolved.text == null) {
-        if (declaration != null) {
-          result.offenders.push(`${site(tag)}: ${resolved.error}`);
-        }
-        continue;
-      }
-      const candidateBranches = resolved.variants.filter(
-        (variant) =>
-          hasClass(variant.text, "card") && hasClass(variant.text, "p-0!")
-      );
-      const ownSite = site(tag);
-      if (
-        resolved.error &&
-        (declaration != null || candidateBranches.length > 0)
-      ) {
-        result.offenders.push(`${ownSite}: ${resolved.error}`);
-        continue;
-      }
-      if (candidateBranches.length > 0) {
-        candidates.push(tag);
-        result.cards.push(ownSite);
-        if (candidateBranches.length !== resolved.variants.length) {
-          result.offenders.push(
-            `${ownSite}: data-card-gutter cannot describe only some className branches; every branch must retain both \`card\` and \`p-0!\``
-          );
-        }
-        if (declaration !== "delegated") {
-          result.offenders.push(
-            `${ownSite}: a \`card … p-0!\` must declare data-card-gutter="delegated" on that same tag`
-          );
-        }
-      } else if (declaration != null) {
-        result.offenders.push(
-          `${ownSite}: data-card-gutter="${declaration}" is licensed only on the same tag as both \`card\` and \`p-0!\``
-        );
-      }
-    }
-
-    const ownedRenderedRoots = new Set<OpeningTag>();
-    for (const card of candidates) {
-      let carriers = 0;
-      for (const child of directRenderedChildTags(card)) {
-        const effective = renderedTag(child);
-        const invocationRole = jsxAttribute(child, "data-card-gutter-cell");
-        const role = jsxAttribute(effective, "data-card-gutter-cell");
-        const resolved = classes(effective);
-        const childSite = site(child);
-        const effectiveSite = site(effective);
-        if (effective !== child && invocationRole != null) {
-          result.offenders.push(
-            `${childSite}: data-card-gutter-cell must be declared on the rendered root at ${effectiveSite}; a component invocation cannot substitute for its DOM carrier`
-          );
-        }
-        if (resolved.text == null) {
-          if (role != null) {
-            result.offenders.push(
-              `${effectiveSite}: marked rendered child classes cannot be resolved: ${resolved.error}`
-            );
-          }
-          continue;
-        }
-        const gutterVariants = resolved.variants.map((variant) => ({
-          ...variant,
-          gutters: horizontalGutters(variant.text),
-        }));
-        const carriesGutter = gutterVariants.some(
-          (variant) => variant.gutters.length > 0
-        );
-        if (!carriesGutter && role == null) continue;
-        carriers += 1;
-        ownedRenderedRoots.add(effective);
-
-        if (role == null) {
-          result.offenders.push(
-            `${effectiveSite}: this rendered direct child carries horizontal padding but does not declare data-card-gutter-cell`
-          );
-          continue;
-        }
-        result.cells.push({ role, site: effectiveSite });
-        const expected = gutterRoles[role];
-        if (!expected) {
-          result.offenders.push(
-            `${effectiveSite}: unknown delegated gutter role \`${role}\``
-          );
-        } else {
-          for (const [index, variant] of gutterVariants.entries()) {
-            const found = [...variant.gutters].sort();
-            const wanted = [...expected].sort();
-            if (
-              variant.unresolved.length > 0 ||
-              found.length !== wanted.length ||
-              found.some((token, tokenIndex) => token !== wanted[tokenIndex])
-            ) {
-              result.offenders.push(
-                `${effectiveSite}: the ${role} gutter cell must carry exactly \`${expected.join(" ")}\` horizontally in every className branch; branch ${index + 1} found \`${variant.gutters.join(" ") || "none"}\`${variant.unresolved.length ? ` with unresolved ${variant.unresolved.join(", ")}` : ""}`
-              );
-            }
-          }
-        }
-        for (const tier of TIERS.keys()) {
-          if (tier.startsWith("subpanel-") && hasClass(resolved.text, tier)) {
-            result.offenders.push(
-              `${effectiveSite}: a delegated gutter cell is the card's own gutter, not a ${tier} sub-panel`
-            );
-          }
-        }
-      }
-      if (carriers === 0) {
-        result.offenders.push(
-          `${site(card)}: a delegated card has no rendered direct child carrying its gutter`
-        );
-      }
-    }
-
-    for (const tag of tags) {
-      const role = jsxAttribute(tag, "data-card-gutter-cell");
-      if (role != null && !ownedRenderedRoots.has(tag)) {
-        result.offenders.push(
-          `${site(tag)}: a gutter cell must be a rendered direct child of a delegated card`
-        );
-      }
-    }
-  }
-  return result;
-}
-
-function scanDelegatedGutterFixture(
-  source: string,
-  file = "Offender.tsx"
-): DelegatedGutterScan {
-  const root = makeTmpDir("card-gutter-census");
-  try {
-    fs.mkdirSync(path.join(root, "app"));
-    fs.mkdirSync(path.join(root, "components"));
-    fs.writeFileSync(path.join(root, "components", file), source);
-    return scanDelegatedCardGutters(root);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
 }
 
 describe("phone density conventions (#3466)", () => {
@@ -860,162 +473,6 @@ describe("phone density conventions (#3466)", () => {
         `${expression} (${why}) must THROW — an absence assertion over it would pass while the class was present`
       ).toThrow(/cannot be read/);
     }
-  });
-
-  it("every zero-padding card declares its delegated gutter and a direct cell role (#3507)", () => {
-    const scan = scanDelegatedCardGutters();
-    expect(
-      scan.offenders,
-      "A `card … p-0!` spends its gutter in direct inner cells. Declare both halves on their own tags; these are card gutters, not sub-panel insets."
-    ).toEqual([]);
-
-    // Corpus reach, not a frozen ceiling: the four wrappers #3507 found must
-    // remain visible, while a correctly declared sixth site inherits the scan.
-    expect(
-      scan.cards.length,
-      "the delegated-card census no longer reaches all four wrappers #3507 found"
-    ).toBeGreaterThanOrEqual(4);
-    const roles = scan.cells.map((cell) => cell.role);
-    expect(
-      roles.filter((role) => role === "standard").length,
-      "the two 16px-phone delegated gutters #3507 found must remain in the census"
-    ).toBeGreaterThanOrEqual(2);
-    expect(
-      roles.filter((role) => role === "compact").length,
-      "MetricReadingsTable's two 8px-phone branches must remain in the census"
-    ).toBeGreaterThanOrEqual(2);
-  });
-
-  // Each offender is planted alone as a real TSX file in the same corpus walker
-  // the production assertion uses. Keeping the attacks independent prevents one
-  // loud failure from masking a survivor beside it.
-  it.each([
-    {
-      name: "an undeclared literal candidate",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!">
-          <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
-        </section>;
-      }`,
-      message: 'must declare data-card-gutter="delegated" on that same tag',
-    },
-    {
-      name: "a marker whose parent took padding back",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-4" data-card-gutter="delegated">
-          <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
-        </section>;
-      }`,
-      message: "is licensed only on the same tag as both `card` and `p-0!`",
-    },
-    {
-      name: "a changed compact role",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
-          <div className="px-4 sm:px-5" data-card-gutter-cell="compact" />
-        </section>;
-      }`,
-      message:
-        "the compact gutter cell must carry exactly `px-2 sm:px-5` horizontally",
-    },
-    {
-      name: "an unmarked sibling beside a correct cell",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
-          <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
-          <div className="px-3 sm:px-6" />
-        </section>;
-      }`,
-      message:
-        "this rendered direct child carries horizontal padding but does not declare data-card-gutter-cell",
-    },
-    {
-      name: "a changed rendered component root",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated"><Header /></section>;
-      }
-      function Header() {
-        return <div className="px-3 sm:px-6" data-card-gutter-cell="standard" />;
-      }`,
-      message:
-        "the standard gutter cell must carry exactly `px-4 sm:px-5` horizontally",
-    },
-    {
-      name: "a marker only on a component invocation",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
-          <Header data-card-gutter-cell="standard" />
-        </section>;
-      }
-      function Header(_props: { "data-card-gutter-cell": "standard" }) {
-        return <div className="px-4 sm:px-5" />;
-      }`,
-      message: "a component invocation cannot substitute for its DOM carrier",
-    },
-    {
-      name: "a conditional branch without a gutter",
-      source: `export function Offender({ menu }: { menu: boolean }) {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
-          <div className={\`flex \${menu ? "px-4 sm:px-5" : ""}\`} data-card-gutter-cell="standard" />
-        </section>;
-      }`,
-      message: "branch 2 found `none`",
-    },
-    {
-      name: "a later responsive horizontal override",
-      source: `export function Offender() {
-        return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
-          <div className="px-4 sm:px-5 md:px-8" data-card-gutter-cell="standard" />
-        </section>;
-      }`,
-      message: "branch 1 found `px-4 sm:px-5 md:px-8`",
-    },
-    {
-      name: "a five-deep candidate const chain",
-      source: `const FIVE_5 = "card overflow-hidden p-0!";
-      const FIVE_4 = FIVE_5;
-      const FIVE_3 = FIVE_4;
-      const FIVE_2 = FIVE_3;
-      const FIVE_1 = FIVE_2;
-      export function Offender() {
-        return <section className={FIVE_1}><div className="px-4 sm:px-5" /></section>;
-      }`,
-      message: 'must declare data-card-gutter="delegated" on that same tag',
-    },
-    {
-      name: "a candidate const cycle",
-      source: `const CARD_A = \`card overflow-hidden p-0! \${CARD_B}\`;
-      const CARD_B = CARD_A;
-      export function Offender() {
-        return <section className={CARD_A} data-card-gutter="delegated">
-          <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
-        </section>;
-      }`,
-      message: "const cycle CARD_A -> CARD_B -> CARD_A",
-    },
-    {
-      name: "a card candidate inside a class combiner",
-      source: `const CARD_CLASSES = "card overflow-hidden p-0!";
-      export function Offender() {
-        return <section className={cn(CARD_CLASSES)}><div className="px-4 sm:px-5" /></section>;
-      }`,
-      message: 'must declare data-card-gutter="delegated" on that same tag',
-    },
-  ])("catches $name", ({ source, message }) => {
-    expect(scanDelegatedGutterFixture(source).offenders.join("\n")).toContain(
-      message
-    );
-  });
-
-  it("does not classify a non-card p-0! class helper as a delegated card", () => {
-    const scan = scanDelegatedGutterFixture(
-      `const ICON_BUTTON_CLASSES = "btn-ghost p-0!";
-      export function IconButton() {
-        return <button className={cn(ICON_BUTTON_CLASSES)} aria-label="More" />;
-      }`,
-      "Quiet.tsx"
-    );
-    expect(scan).toEqual({ cards: [], cells: [], offenders: [] });
   });
 
   it("the two card-in-card nests draw one border each (#3466 class B)", () => {

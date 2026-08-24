@@ -192,15 +192,15 @@ export default function TrendMiniCard({
   if (compact) {
     return (
       <div
-        className="card flex items-stretch overflow-hidden p-0!"
-        data-card-gutter="delegated"
+        className="card card-delegated flex items-stretch"
+        data-card-delegated-site="trend-mini-compact"
         data-testid={testid}
       >
         <Link
           href={href}
-          data-card-gutter-cell="standard"
+          data-card-delegated-cell="trend-mini-compact-header"
           data-testid="trend-mini-header-link"
-          className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
+          className="card-gutter-standard group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-brand-950/40"
         >
           <span
             // Same breakpoint swap, same fix as the full variant's title below.
@@ -222,8 +222,8 @@ export default function TrendMiniCard({
         </Link>
         {menu && (
           <div
-            className="flex shrink-0 items-center px-2 sm:px-3"
-            data-card-gutter-cell="action"
+            className="card-gutter-action flex shrink-0 items-center"
+            data-card-delegated-cell="trend-mini-compact-action"
           >
             {menu}
           </div>

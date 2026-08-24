@@ -84,15 +84,10 @@ export default function MetricReadingsTable({
 }) {
   if (readOnlyReason) {
     return (
-      <div
-        className="card overflow-hidden p-0!"
-        data-card-gutter="delegated"
-        data-testid="metric-readings"
-      >
+      <div className="card card-delegated" data-testid="metric-readings">
         <ReadingsHeader />
         <div
-          className="px-2 pb-2 sm:px-5 sm:pb-5"
-          data-card-gutter-cell="compact"
+          className="card-gutter-compact pb-2 sm:pb-5"
           data-testid="metric-readings-body"
         >
           <EmptyState message={readOnlyReason} />
@@ -102,15 +97,10 @@ export default function MetricReadingsTable({
   }
 
   return (
-    <div
-      className="card overflow-hidden p-0!"
-      data-card-gutter="delegated"
-      data-testid="metric-readings"
-    >
+    <div className="card card-delegated" data-testid="metric-readings">
       <ReadingsHeader />
       <div
-        className="px-2 pb-2 sm:px-5 sm:pb-5"
-        data-card-gutter-cell="compact"
+        className="card-gutter-compact pb-2 sm:pb-5"
         data-testid="metric-readings-body"
       >
         {rows.length === 0 ? (
@@ -161,8 +151,7 @@ export default function MetricReadingsTable({
 function ReadingsHeader() {
   return (
     <div
-      className="px-4 pt-2.5 pb-1 sm:px-5 sm:pt-4 sm:pb-3"
-      data-card-gutter-cell="standard"
+      className="card-gutter-standard pt-2.5 pb-1 sm:pt-4 sm:pb-3"
       data-testid="metric-readings-header"
     >
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
