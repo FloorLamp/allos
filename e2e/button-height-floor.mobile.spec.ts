@@ -183,6 +183,91 @@ test.describe("the button family has one height at phone width (#3486)", () => {
   });
 });
 
+test.describe("segmented controls own disjoint rendered targets (#3514)", () => {
+  test.use({ viewport: PHONE });
+
+  const BINDING_SURFACES = [
+    {
+      binding: "button",
+      route: "/sleep",
+      optionTestId: "sleep-trend-range-14",
+      tagName: "BUTTON",
+    },
+    {
+      binding: "Link",
+      route: "/medical/episodes",
+      optionTestId: "care-trail-kind-illness",
+      tagName: "A",
+    },
+  ];
+
+  for (const surface of BINDING_SURFACES) {
+    test(`the ${surface.binding} binding is at least 44px tall and overlaps no sibling`, async ({
+      page,
+    }) => {
+      await page.goto(surface.route);
+      const premise = page.getByTestId(surface.optionTestId);
+      await expect(premise).toBeVisible();
+
+      // Scope the sweep to the known option instead of accepting an unrelated
+      // SegmentedControl elsewhere on the page as proof this binding rendered.
+      const tracks = page
+        .locator("[data-segmented]:visible")
+        .filter({ has: premise });
+      expect(await tracks.count()).toBe(1);
+      const geometry = await tracks.evaluateAll((groups) =>
+        groups.map((group) => {
+          const targets = Array.from(
+            group.querySelectorAll<HTMLElement>("[data-segmented-option]")
+          ).map((target) => {
+            const rect = target.getBoundingClientRect();
+            return {
+              label: (target.textContent ?? "").trim(),
+              tagName: target.tagName,
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+              height: rect.height,
+            };
+          });
+          const overlaps: string[] = [];
+          for (let i = 0; i < targets.length; i += 1) {
+            for (let j = i + 1; j < targets.length; j += 1) {
+              const horizontal =
+                Math.min(targets[i].right, targets[j].right) -
+                Math.max(targets[i].left, targets[j].left);
+              const vertical =
+                Math.min(targets[i].bottom, targets[j].bottom) -
+                Math.max(targets[i].top, targets[j].top);
+              if (horizontal > 0 && vertical > 0)
+                overlaps.push(`${targets[i].label}/${targets[j].label}`);
+            }
+          }
+          return { targets, overlaps };
+        })
+      );
+
+      for (const track of geometry) {
+        expect(track.targets.length).toBeGreaterThan(1);
+        expect(
+          [...new Set(track.targets.map((target) => target.tagName))],
+          `the ${surface.route} premise must exercise the ${surface.binding} binding`
+        ).toEqual([surface.tagName]);
+        for (const target of track.targets) {
+          expect(
+            target.height,
+            `${target.label} renders below the ${TAP_FLOOR_PX}px segmented target floor`
+          ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        }
+        expect(track.overlaps, "segment hit boxes must stay disjoint").toEqual(
+          []
+        );
+      }
+    });
+  }
+});
+
 // ── THE FLOOR'S REACH, OUTSIDE THE FAMILY (#3486 part 3) ────────────────────
 //
 // Everything above is about the `.btn` family, which is the set #3510 declared

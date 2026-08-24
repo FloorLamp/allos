@@ -25,6 +25,8 @@ export default function SettingsSubPageNav({
       {pages.map((p) => {
         const active = pathname === p.href;
         return (
+          // Selected-state registry keep (#2730): these are destinations,
+          // so they stay links in the registered chip-nav role, not segments.
           <Link
             key={p.href}
             href={p.href}

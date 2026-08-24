@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  CHIP_SM_RENDERED_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
   TAP_TARGET_MIN_RENDERED_PX,
@@ -50,7 +51,7 @@ import { makeTmpDir } from "./tmp-dir";
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
-//      works, and `.chip` — which app/globals.css declares floor-free ON PURPOSE.
+//      works, and `.chip-sm` using its shared rendered floor.
 //   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
 //      45 native boxes with a `<label>` taking the tap are licensed — and this file
 //      does not pretend otherwise; what it does is stop the number growing, and
@@ -204,7 +205,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     controls: 11,
     why: DENSE_EDITOR,
   },
-  { file: "components/DayHistory.tsx", controls: 4, why: DENSE_EDITOR },
   {
     file: "components/activity-form/ActivityFormHeader.tsx",
     controls: 2,
@@ -334,8 +334,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty-two have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other nineteen are UNMEASURED — nobody
+ * declare. Three of the twenty-one have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other eighteen are UNMEASURED — nobody
  * has looked, and this file says so rather than implying they are fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
@@ -343,13 +343,12 @@ type UnjudgedTapTarget = { file: string; controls: number };
 const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
   { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
-  { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
+  { file: "app/(app)/training/GoalForm.tsx", controls: 1 },
   // The injury bar's trailing-affordance MENU (#3221), the same control ProtocolForm
   // and GoalForm are rostered for: a `.tap-target` chip whose height is whatever its
   // padding and text come to. Unjudged for the same reason and counted for the same one.
   { file: "app/(app)/training/InjuryBar.tsx", controls: 1 },
-  { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
-  { file: "components/IntakeItemForm.tsx", controls: 2 },
+  { file: "components/IntakeItemForm.tsx", controls: 1 },
   // The purpose chips (#2857): the goal buttons and the suggestion offer, both
   // rounded-full chips whose padding decides their height. Nobody has measured them —
   // they sit beside the fact chips this roster already carries unmeasured.
@@ -387,15 +386,16 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
  * someone removes it.
  *
  * Before #3561 there was no list, because there was no way to tell these apart
- * from a control that had been read and pinned no height. Thirteen is the number
+ * from a control that had been read and pinned no height. Twelve is the number
  * after the resolver reaches module constants, imported constants, barrel
  * re-exports, record lookups and single-`return` helpers; without those it was 153.
+ * CustomRangeToggle left this roster when it took exact ownership of its chip
+ * class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
   { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
   { file: "components/Combobox.tsx", controls: 1 },
-  { file: "components/CustomRangeDisclosure.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
   { file: "components/DoseStatusControl.tsx", controls: 1 },
   { file: "components/ExerciseDetailPanel.tsx", controls: 1 },
@@ -408,7 +408,7 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
 ];
 
 /**
- * THE THREE OF THOSE NINETEEN THAT HAVE BEEN MEASURED, and all three are short.
+ * THE THREE OF THOSE TWENTY-ONE THAT HAVE BEEN MEASURED, and all three are short.
  *
  * Measured against the app's own compiled CSS at a 390px viewport with a coarse
  * pointer (#3557 review). These are the same defect this module is named for —
@@ -478,7 +478,7 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
  * #3221's trailing-affordance menu on the injury bar, which the other
  * facts-with-editors hosts already had, and #2857's two purpose chips.
  */
-const UNMEASURED_TAP_TARGETS = 21;
+const UNMEASURED_TAP_TARGETS = 18;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
@@ -932,6 +932,8 @@ describe("the height reader", () => {
     // Arbitrary values in units it knows.
     expect(belowSmHeightPx("input h-[38px]")).toBe(38);
     expect(belowSmHeightPx("h-[2rem]")).toBe(32);
+    expect(belowSmHeightPx("[min-height:2rem]")).toBe(32);
+    expect(belowSmHeightPx("pointer-coarse:h-8")).toBe(32);
     // Half steps and the 1px step.
     expect(belowSmHeightPx("h-3.5")).toBe(14);
     expect(belowSmHeightPx("h-px")).toBe(1);
@@ -982,6 +984,26 @@ describe("the sweep can see an offender", () => {
     );
     expect(control.mechanism).toBe("tap-target");
     expect(floorMiss(control)).toContain("40px effective");
+  });
+
+  it("catches the unapproved dense-chip payload directly and through an imported helper", () => {
+    const payload =
+      "chip chip-filter chip-sm outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]";
+    const [direct] = scan(
+      `export default function X() { return <button aria-pressed className="${payload}">x</button>; }`
+    );
+    const [imported] = scanWith(
+      'import { CHIP } from "@/lib/chips"; export default function X() { return <button aria-pressed className={CHIP}>x</button>; }',
+      { "@/lib/chips": `export const CHIP = "${payload}";` }
+    );
+    for (const control of [direct, imported]) {
+      expect(control.readable).toBe(true);
+      expect(control.mechanism).toBe("chip-sm");
+      expect(control.belowSmPx).toBe(32);
+      expect(floorMiss(control)).toContain(
+        "undercuts `chip-sm`'s shared 44px rendered floor"
+      );
+    }
   });
 
   it("catches a `sm:`-only floor, which governs the wrong side of the boundary", () => {
@@ -1304,10 +1326,10 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
-  it("says nothing about a `.chip`, which app/globals.css declares floor-free ON PURPOSE", () => {
+  it("says nothing about a regular `.chip`, which declares no rendered height floor", () => {
     // The single most important silence here. A chip is acquired by its WIDTH
     // along a scrolling row, and app/globals.css says so in as many words ("NO
-    // HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
+    // RENDERED HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
     // would be switched off within a week and would take the real rule with it.
     const [control] = scan(
       `export default function X() {
@@ -1321,7 +1343,7 @@ describe("the sweep is quiet on the benign neighbours", () => {
       "app/globals.css no longer records that `.chip` declares no height floor on " +
         "purpose. The silence above is licensed by that sentence; if the decision " +
         "changed, this census should stop being quiet."
-    ).toContain("NO HEIGHT FLOOR, DELIBERATELY");
+    ).toContain("NO RENDERED HEIGHT FLOOR, DELIBERATELY");
   });
 
   it("says nothing about a non-interactive element that happens to be short", () => {
@@ -1427,6 +1449,27 @@ describe("the census walk reaches a planted offender", () => {
     // The planted file is unregistered, so the real verdict fires too.
     const registered = new Set(UNDER_FLOOR_REGISTER.map((e) => e.file));
     expect(registered.has(plantedRel)).toBe(false);
+  });
+
+  it("flags a call-site minimum that undercuts chip-sm's rendered floor", () => {
+    if (fs.existsSync(planted)) fs.unlinkSync(planted);
+    const before = misses(census(corpus));
+    fs.writeFileSync(
+      planted,
+      "export default function PlantedDenseChip() {\n" +
+        '  return <button type="button" aria-pressed="false" className="chip chip-filter chip-sm min-h-4">x</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+    const after = misses(census(corpus));
+    const caught = after.filter((m) => m.control.file === plantedRel);
+    expect(caught).toHaveLength(1);
+    expect(caught[0].control.mechanism).toBe("chip-sm");
+    expect(caught[0].control.belowSmPx).toBe(16);
+    expect(caught[0].why).toContain(
+      `undercuts \`chip-sm\`'s shared ${CHIP_SM_RENDERED_PX}px rendered floor`
+    );
+    expect(after.length).toBe(before.length + 1);
   });
 
   it("stays quiet on a planted control that meets the floor", () => {

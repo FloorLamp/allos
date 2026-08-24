@@ -81,15 +81,7 @@ export default function SessionTelemetryChart({
                 }
                 title={zeroOnly ? "All recorded values are 0" : undefined}
                 onClick={() => setSelectedKey(trace.key)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
-                  active
-                    ? zeroOnly
-                      ? "bg-slate-200 text-slate-500 dark:bg-ink-750 dark:text-slate-400"
-                      : "bg-brand-600 text-white"
-                    : zeroOnly
-                      ? "text-slate-400 hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-ink-750"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
+                className="chip chip-filter"
               >
                 {trace.shortLabel}
               </button>

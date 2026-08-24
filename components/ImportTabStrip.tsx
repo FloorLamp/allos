@@ -7,7 +7,8 @@ import type { ImportTab } from "@/lib/import-browser";
 // #275 gave them a page, so the old count-chip-into-the-global-registry
 // placeholder is gone; their tab selects a real per-document Providers listing.
 // Server-rendered: each tab is a plain link that sets ?tab= on the document's own
-// path, so the active panel is chosen server-side.
+// path, so the active panel is chosen server-side. This is URL-state navigation,
+// so the registry assigns it the chip-nav role rather than a client-state segment.
 export default function ImportTabStrip({
   docId,
   tabs,
@@ -31,11 +32,7 @@ export default function ImportTabStrip({
             href={`/import/${docId}?tab=${encodeURIComponent(t.key)}`}
             aria-current={active ? "page" : undefined}
             data-testid={`import-tab-${t.key}`}
-            className={`badge inline-flex items-center gap-1 transition ${
-              active
-                ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
-                : "bg-slate-100 text-slate-700 hover:bg-brand-100 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-brand-950 dark:hover:text-brand-300"
-            }`}
+            className="chip chip-nav chip-sm"
           >
             {t.label}{" "}
             <span className="tabular-nums font-semibold">{t.count}</span>

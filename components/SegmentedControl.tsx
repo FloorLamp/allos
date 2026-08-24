@@ -52,7 +52,11 @@ export interface SegmentedControlOption<T extends string | number> {
   icon?: ReactNode;
   disabled?: boolean;
   testId?: string;
-  dataAttributes?: Record<string, string | number>;
+  dataAttributes?: {
+    "data-active"?: string;
+    "data-days-ago"?: number;
+    "data-observation-count"?: number;
+  };
 }
 
 export default function SegmentedControl<T extends string | number>({
@@ -92,9 +96,11 @@ export default function SegmentedControl<T extends string | number>({
       {options.map((option) => {
         const active = value === option.value;
         // The selected segment fills with the shared seg-active pair (the
-        // Botanical census's accent-filled pill).
-        const segmentClass = `shrink-0 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
-          option.icon ? "inline-flex items-center gap-1.5 " : ""
+        // Botanical census's accent-filled pill). Each option renders its own
+        // 44px target; the track's padding is visual inset, not a substitute
+        // non-clickable target and no pseudo-area can overlap a sibling.
+        const segmentClass = `inline-flex min-h-11 shrink-0 items-center justify-center rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
+          option.icon ? "gap-1.5 " : ""
         }${
           active
             ? "bg-(--seg-active-bg) text-(--seg-active-fg) shadow-xs"
@@ -112,8 +118,13 @@ export default function SegmentedControl<T extends string | number>({
               key={option.value}
               href={option.href}
               aria-current={active ? ariaCurrent : undefined}
+              data-segmented-option=""
               data-testid={option.testId}
-              {...option.dataAttributes}
+              data-active={option.dataAttributes?.["data-active"]}
+              data-days-ago={option.dataAttributes?.["data-days-ago"]}
+              data-observation-count={
+                option.dataAttributes?.["data-observation-count"]
+              }
               className={segmentClass}
             >
               {body}
@@ -126,9 +137,14 @@ export default function SegmentedControl<T extends string | number>({
             type="button"
             onClick={() => onChange?.(option.value)}
             aria-pressed={active}
+            data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}
-            {...option.dataAttributes}
+            data-active={option.dataAttributes?.["data-active"]}
+            data-days-ago={option.dataAttributes?.["data-days-ago"]}
+            data-observation-count={
+              option.dataAttributes?.["data-observation-count"]
+            }
             className={segmentClass}
           >
             {body}

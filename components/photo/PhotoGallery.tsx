@@ -5,6 +5,7 @@ import { useFocusTrap } from "@/components/useFocusTrap";
 import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
+import SegmentedControl from "@/components/SegmentedControl";
 import {
   dateGroups,
   filterBySeries,
@@ -130,32 +131,19 @@ export default function PhotoGallery({
   return (
     <div className="space-y-3" data-testid="photo-gallery">
       {usable.length > 1 ? (
-        <div
-          className="flex flex-wrap gap-1"
-          role="tablist"
-          aria-label="Photo domain"
-        >
-          {usable.map((d) => (
-            <button
-              key={d.key}
-              type="button"
-              role="tab"
-              aria-selected={d.key === domain.key}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                d.key === domain.key
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
-              onClick={() => {
-                setDomainKey(d.key);
-                setSeries(null);
-              }}
-              data-testid={`photo-gallery-domain-${d.key}`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={usable.map((d) => ({
+            value: d.key,
+            label: d.label,
+            testId: `photo-gallery-domain-${d.key}`,
+          }))}
+          value={domain.key}
+          onChange={(key) => {
+            setDomainKey(key);
+            setSeries(null);
+          }}
+          ariaLabel="Photo domain"
+        />
       ) : null}
 
       {domain.series.length > 0 ? (
@@ -165,11 +153,8 @@ export default function PhotoGallery({
               <button
                 key={s.key ?? "__all"}
                 type="button"
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  series === s.key
-                    ? "bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
+                aria-pressed={series === s.key}
+                className="chip chip-filter chip-sm"
                 onClick={() => setSeries(s.key)}
                 data-testid={`photo-gallery-series-${s.key ?? "all"}`}
               >

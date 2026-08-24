@@ -26,7 +26,9 @@
 //   2.75rem`).
 //
 //   HIT AREA — a deliberately smaller rendered control extended to >= 44
-//   effective by `.tap-target`'s `inset: -6px` overlay (#644).
+//   effective by the shared overlay: `.tap-target` uses `inset: -6px` around a
+//   32px box (#644). Dense `chip-sm` controls instead render at 44px themselves;
+//   an overlay would collide with adjacent chips and cannot enlarge a select.
 //
 // Rendered height and hit area are different guarantees, so a rule says which it
 // means. A control using NEITHER mechanism is the defect.
@@ -78,6 +80,9 @@ export const TAP_TARGET_INSET_PX = 6;
 export const TAP_TARGET_MIN_RENDERED_PX =
   TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
+/** The rendered floor owned centrally by `chip-sm` (#3525). */
+export const CHIP_SM_RENDERED_PX = TAP_FLOOR_PX;
+
 /** Which registered mechanism a control uses to meet the floor, if any. */
 export type FloorMechanism =
   /** Membership of the `.btn` family — the floor arrives from app/globals.css. */
@@ -86,6 +91,8 @@ export type FloorMechanism =
   | "rendered"
   /** `.tap-target`'s hit-area overlay. */
   | "tap-target"
+  /** `chip-sm`'s shared rendered `min-h-11` floor. */
+  | "chip-sm"
   /**
    * The class list could not be read, so NO mechanism can be established. This
    * is not a verdict — it is the absence of one, made countable. See
@@ -126,6 +133,10 @@ export type FlooredControl = {
    */
   belowSmPx: number | null;
   mechanism: FloorMechanism;
+  /** Whether the opening tag declares an announced selected state. */
+  selectedState: boolean;
+  /** Which selected-state attribute the opening tag declares, when readable. */
+  selectedAttribute?: "pressed" | "current" | "selected";
   /**
    * For a `native-box`: whether a `<label>` takes the tap on its behalf — either
    * by wrapping it, or by naming its `id` in an `htmlFor`. This is the premise
@@ -767,20 +778,184 @@ function objectValues(expression: string): string[] | null {
   return values.length > 0 ? values : null;
 }
 
-/**
- * The body of an arrow function `(a, b) => body`, or null — including when the
- * body is a BLOCK, which is a program rather than an expression this scan can
- * read.
- */
-function arrowBody(expression: string): string | null {
+/** Remove balanced parentheses around a complete expression. */
+function withoutOuterParentheses(expression: string): string {
+  let text = expression.trim();
+  while (text.startsWith("(") && closingBracket(text, 0) === text.length - 1)
+    text = text.slice(1, -1).trim();
+  return text;
+}
+
+/** The top-level comma-separated entries of an object literal. */
+function objectEntries(expression: string): string[] | null {
+  const text = withoutOuterParentheses(expression);
+  if (!text.startsWith("{") || closingBracket(text, 0) !== text.length - 1)
+    return null;
+  const inner = text.slice(1, -1);
+  const entries: string[] = [];
+  const stack: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= inner.length; i += 1) {
+    const c = inner[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < inner.length && inner[i] !== c) i += inner[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(inner, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    if (i === inner.length || (c === "," && stack.length === 0)) {
+      const entry = inner.slice(start, i).trim();
+      if (entry) entries.push(entry);
+      start = i + 1;
+    }
+  }
+  return entries;
+}
+
+/** The top-level object-property colon, or -1 for a shorthand entry. */
+function objectEntryColon(entry: string): number {
+  const stack: string[] = [];
+  for (let i = 0; i < entry.length; i += 1) {
+    const c = entry[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < entry.length && entry[i] !== c) i += entry[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(entry, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    else if (c === ":" && stack.length === 0) return i;
+  }
+  return -1;
+}
+
+/** The value after a top-level object-property colon, or null. */
+function objectEntryValue(entry: string): string | null {
+  const colon = objectEntryColon(entry);
+  return colon < 0 ? null : entry.slice(colon + 1).trim();
+}
+
+/** A literal expression that can name a computed object property. */
+function staticComputedObjectKey(expression: string): string | null {
   const text = expression.trim();
-  if (!text.startsWith("(")) return null;
+  if (
+    text.length >= 2 &&
+    (text[0] === '"' || text[0] === "'") &&
+    text.at(-1) === text[0]
+  )
+    return text.slice(1, -1);
+  return null;
+}
+
+/** A statically named object key, including the computed form `["key"]`. */
+function staticObjectKey(key: string): string | null {
+  const text = key.trim();
+  if (/^[A-Za-z_$][\w$]*$/.test(text)) return text;
+  const literal = staticComputedObjectKey(text);
+  if (literal !== null) return literal;
+  if (text.startsWith("[") && closingBracket(text, 0) === text.length - 1)
+    return staticComputedObjectKey(text.slice(1, -1));
+  return null;
+}
+
+/**
+ * One statically selected property of an object literal. Read from right to left,
+ * matching JavaScript's last-write-wins object construction: an explicit key can
+ * settle the answer before an earlier spread or computed key, while a later
+ * unknown contributor still refuses resolution because it could overwrite it.
+ */
+function staticObjectProperty(
+  expression: string,
+  key: string
+):
+  | { kind: "selected"; value: string }
+  | { kind: "ambiguous" }
+  | { kind: "missing" }
+  | { kind: "unsupported" } {
+  const entries = objectEntries(expression);
+  if (entries === null) return { kind: "unsupported" };
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.startsWith("...")) return { kind: "ambiguous" };
+    const colon = objectEntryColon(entry);
+    const value = objectEntryValue(entry);
+    const name = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
+    if (name === null) return { kind: "ambiguous" };
+    if (name === key) return { kind: "selected", value: value ?? name };
+  }
+  return { kind: "missing" };
+}
+
+/** Split a comma-separated parameter or argument list at bracket depth zero. */
+function topLevelCommaParts(expression: string): string[] {
+  const parts: string[] = [];
+  const stack: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= expression.length; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    if (i === expression.length || (c === "," && stack.length === 0)) {
+      const part = expression.slice(start, i).trim();
+      if (part) parts.push(part);
+      start = i + 1;
+    }
+  }
+  return parts;
+}
+
+type ArrowExpression = { parameters: string[]; body: string };
+
+/** A simple expression-bodied arrow, including its parameter names. */
+function arrowExpression(expression: string): ArrowExpression | null {
+  const text = expression.trim();
+  if (!text.startsWith("(")) {
+    const bare = /^([A-Za-z_$][\w$]*)\s*=>/.exec(text);
+    if (!bare) return null;
+    const body = text.slice(bare[0].length).trim();
+    return body.startsWith("{") ? null : { parameters: [bare[1]], body };
+  }
   const shut = closingBracket(text, 0);
   if (shut < 0) return null;
   const rest = text.slice(shut + 1).trimStart();
   if (!rest.startsWith("=>")) return null;
   const body = rest.slice(2).trim();
-  return body.startsWith("{") ? null : body;
+  if (body.startsWith("{")) return null;
+  const parameters: string[] = [];
+  for (const parameter of topLevelCommaParts(text.slice(1, shut))) {
+    const match = /^(?:\.\.\.)?([A-Za-z_$][\w$]*)/.exec(parameter);
+    if (!match) return null;
+    parameters.push(match[1]);
+  }
+  return { parameters, body };
+}
+
+/**
+ * The body of an arrow function `(a, b) => body` or `a => body`, or null —
+ * including when the body is a BLOCK, which is a program rather than an
+ * expression this scan can read.
+ */
+function arrowBody(expression: string): string | null {
+  return arrowExpression(expression)?.body ?? null;
 }
 
 /**
@@ -815,7 +990,8 @@ function substitute(expression: string, declared: ClassDeclarations): string {
 
 function substituteOnce(
   expression: string,
-  declared: ClassDeclarations
+  declared: ClassDeclarations,
+  failOnUnsupportedProjection = false
 ): string {
   const skip = literalSpans(expression);
   for (const m of expression.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
@@ -846,13 +1022,37 @@ function substituteOnce(
       replacement = `(${body})`;
       end = shut + 1;
     } else if (next.startsWith("[") || next.startsWith(".")) {
-      const values = objectValues(value);
-      if (values === null) continue;
       const shut = next.startsWith("[")
         ? closingBracket(expression, end + gap)
         : -1;
       if (next.startsWith("[") && shut < 0) continue;
-      replacement = values.map((v) => `(${v})`).join(" + ");
+      const member = next.startsWith("[")
+        ? staticComputedObjectKey(expression.slice(end + gap + 1, shut))
+        : (/^\.([\w$]+)/.exec(next)?.[1] ?? null);
+      if (member !== null) {
+        const selected = staticObjectProperty(value, member);
+        if (selected.kind === "ambiguous" && failOnUnsupportedProjection)
+          throw new UnreadableControlError(
+            `member \`${member}\` may be overwritten by a spread or dynamic object key`
+          );
+        if (selected.kind === "unsupported" && failOnUnsupportedProjection)
+          throw new UnreadableControlError(
+            `cannot resolve member \`${member}\` from an unsupported object producer`
+          );
+        if (selected.kind === "ambiguous" || selected.kind === "unsupported")
+          continue;
+        replacement =
+          selected.kind === "selected" ? `(${selected.value})` : "({})";
+      } else {
+        if (objectEntries(value) === null && failOnUnsupportedProjection)
+          throw new UnreadableControlError(
+            "cannot resolve a computed member from an unsupported object producer"
+          );
+        if (objectEntries(value) === null) continue;
+        const values = objectValues(value);
+        replacement =
+          values === null ? "({})" : values.map((v) => `(${v})`).join(" + ");
+      }
       end = next.startsWith("[")
         ? shut + 1
         : end + gap + /^\.[\w$]*/.exec(next)![0].length;
@@ -1059,10 +1259,294 @@ export function resolveClassName(
   return readClassText(substitute(expression, reachable), reachable);
 }
 
+/** The expressions spread directly onto one JSX opening tag. */
+function jsxSpreadExpressions(openTag: string): string[] {
+  const expressions: string[] = [];
+  for (let i = 0; i < openTag.length; i += 1) {
+    if (openTag[i] !== "{") continue;
+    const shut = closingBracket(openTag, i);
+    if (shut < 0) break;
+    const inner = openTag.slice(i + 1, shut).trim();
+    if (inner.startsWith("...")) expressions.push(inner.slice(3).trim());
+    // Jump over the whole JSX expression. Any object spread inside an ordinary
+    // prop belongs to that prop, not to the opening tag.
+    i = shut;
+  }
+  return expressions;
+}
+
+/**
+ * Replace helper parameters with their call arguments without rewriting object
+ * property keys. A shorthand property is expanded so `{ className }` keeps the
+ * key whose ownership the spread scan is proving.
+ */
+function bindHelperArguments(
+  expression: string,
+  bindings: Map<string, string>
+): string {
+  const literals = literalSpans(expression);
+  let out = "";
+  let copied = 0;
+  for (const match of expression.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
+    const argument = bindings.get(match[0]);
+    if (argument === undefined) continue;
+    const at = match.index;
+    if (literals.some((span) => at >= span.start && at < span.end)) continue;
+    const end = at + match[0].length;
+    const before = expression.slice(0, at).trimEnd().at(-1);
+    const after = expression.slice(end).trimStart()[0];
+    const propertyPosition = before === "{" || before === ",";
+    let replacement: string;
+    if (propertyPosition && after === ":") replacement = match[0];
+    else if (propertyPosition && (after === "," || after === "}"))
+      replacement = `${match[0]}: (${argument})`;
+    else replacement = `(${argument})`;
+    out += expression.slice(copied, at) + replacement;
+    copied = end;
+  }
+  return out + expression.slice(copied);
+}
+
+/** Instantiate one complete call to a declared expression-bodied helper. */
+function materializeHelperCall(
+  expression: string,
+  declared: ClassDeclarations
+): string | null {
+  const match = /^([A-Za-z_$][\w$]*)\s*\(/.exec(expression);
+  if (!match) return null;
+  const open = expression.indexOf("(", match[1].length);
+  const shut = closingBracket(expression, open);
+  if (shut < 0 || expression.slice(shut + 1).trim() !== "") return null;
+  const value = declared.get(match[1]);
+  if (value === undefined || value === AMBIGUOUS) return null;
+  const arrow = arrowExpression(value);
+  if (arrow === null) return null;
+  const args = topLevelCommaParts(expression.slice(open + 1, shut));
+  const bindings = new Map<string, string>();
+  for (let i = 0; i < arrow.parameters.length && i < args.length; i += 1)
+    bindings.set(arrow.parameters[i], args[i]);
+  return bindHelperArguments(arrow.body, bindings);
+}
+
+/**
+ * Reachable object-producing arms of a top-level conditional or logical
+ * expression. The condition itself cannot contribute props; both value arms
+ * can, so the ownership scan conservatively reads both.
+ */
+function objectExpressionBranches(expression: string): string[] | null {
+  const stack: string[] = [];
+  let question = -1;
+  let nestedQuestions = 0;
+  for (let i = 0; i < expression.length; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      stack.push(c);
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      stack.pop();
+      continue;
+    }
+    if (stack.length > 0) continue;
+    if (c === "?" && expression[i + 1] !== "?" && expression[i + 1] !== ".") {
+      if (question < 0) question = i;
+      nestedQuestions += 1;
+      continue;
+    }
+    if (c === ":" && question >= 0) {
+      nestedQuestions -= 1;
+      if (nestedQuestions === 0)
+        return [expression.slice(question + 1, i), expression.slice(i + 1)];
+    }
+  }
+
+  stack.length = 0;
+  for (let i = 0; i < expression.length - 1; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      stack.push(c);
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      stack.pop();
+      continue;
+    }
+    if (stack.length > 0) continue;
+    const operator = expression.slice(i, i + 2);
+    if (operator === "&&" || operator === "||" || operator === "??")
+      return [expression.slice(0, i), expression.slice(i + 2)];
+  }
+  return null;
+}
+
+function hasUnresolvedMemberProjection(expression: string): boolean {
+  return /(?:^[A-Za-z_$][\w$]*|\))\s*(?:\??\.\s*[A-Za-z_$][\w$]*|\[)/.test(
+    withoutOuterParentheses(expression)
+  );
+}
+
+/**
+ * Every className value an object expression explicitly contributes when it is
+ * spread onto JSX. Constants and single-expression arrow helpers are resolved
+ * by the same lexical, import-aware machinery as direct className attributes.
+ */
+function spreadClassNameExpressions(
+  expression: string,
+  declared: ClassDeclarations,
+  failOnUnresolved: boolean,
+  seen = new Set<string>()
+): string[] {
+  const written = withoutOuterParentheses(blankExpressionComments(expression));
+  if (seen.has(written)) return [];
+  seen.add(written);
+  const entries = objectEntries(written);
+  if (entries === null) {
+    const branches = objectExpressionBranches(written);
+    if (branches !== null)
+      return branches.flatMap((branch) =>
+        spreadClassNameExpressions(branch, declared, failOnUnresolved, seen)
+      );
+    const helper = materializeHelperCall(written, declared);
+    if (helper !== null)
+      return spreadClassNameExpressions(
+        helper,
+        declared,
+        failOnUnresolved,
+        seen
+      );
+    // Resolve only the expression that stands for the object, one lexical hop
+    // at a time. Substituting the whole object would also visit its property
+    // keys; a coincidentally named local `className` must not rewrite the key
+    // whose ownership this scan is establishing.
+    const materialized = withoutOuterParentheses(
+      substituteOnce(written, declared, true)
+    );
+    if (materialized === written) {
+      if (written === "null" || written === "undefined") return [];
+      if (!failOnUnresolved) return [];
+      const isCallExpression =
+        /^[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*\s*\(/.test(written);
+      if (!isCallExpression && hasUnresolvedMemberProjection(written))
+        throw new UnreadableControlError(
+          "cannot resolve an unsupported object member projection"
+        );
+      throw new UnreadableControlError(
+        `cannot resolve an unsupported JSX spread expression: ${written}`
+      );
+    }
+    return spreadClassNameExpressions(
+      materialized,
+      declared,
+      failOnUnresolved,
+      seen
+    );
+  }
+
+  const values: string[] = [];
+  for (const entry of entries) {
+    if (entry.startsWith("...")) {
+      values.push(
+        ...spreadClassNameExpressions(
+          entry.slice(3),
+          declared,
+          failOnUnresolved,
+          seen
+        )
+      );
+      continue;
+    }
+    const colonValue = objectEntryValue(entry);
+    const colon = objectEntryColon(entry);
+    const key = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
+    if (key === "className") values.push(colonValue ?? "className");
+  }
+  return values;
+}
+
+/**
+ * Every directly written or spread-provided className binding on one JSX tag.
+ * Returning all contributors is intentional: later JSX props win at runtime,
+ * but an ownership census must reject every shell vocabulary a reachable path
+ * can place on the control rather than blessing a dangerous overwritten value.
+ */
+export function resolveJsxClassNameBindings(
+  openTag: string,
+  declared: ClassDeclarations | (() => ClassDeclarations),
+  failOnUnresolvedSpreads = false
+): ClassText[] {
+  const bindings: ClassText[] = [];
+  const direct = resolveClassName(openTag, declared);
+  if (direct !== null) bindings.push(direct);
+
+  const spreads = jsxSpreadExpressions(openTag);
+  if (spreads.length === 0) return bindings;
+  const reachable = typeof declared === "function" ? declared() : declared;
+  for (const spread of spreads) {
+    for (const expression of spreadClassNameExpressions(
+      spread,
+      reachable,
+      failOnUnresolvedSpreads
+    )) {
+      bindings.push(
+        readClassText(
+          substitute(blankExpressionComments(expression), reachable),
+          reachable
+        )
+      );
+    }
+  }
+  return bindings;
+}
+
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
-// `max-sm:min-h-11`, `h-[38px]`.
+// `max-sm:min-h-11`, `h-[38px]`, or `[min-height:2rem]`.
 const HEIGHT_TOKEN =
-  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max)(?![\w.[-])/g;
+  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(?![\w.[-])/g;
+
+function heightTokenParts(match: RegExpMatchArray): {
+  variants: string[];
+  utility: string;
+  value: string;
+} {
+  return {
+    variants: match[1] ? match[1].slice(0, -1).split(":") : [],
+    utility: match[3] ?? "[min-height]",
+    value: match[4] ?? match[5],
+  };
+}
+
+function heightScope(variants: string[]): "base" | "narrow" | null {
+  if (variants.length === 0) return "base";
+  if (variants.every((variant) => variant === "pointer-coarse")) return "base";
+  if (
+    variants.includes("max-sm") &&
+    variants.every(
+      (variant) => variant === "max-sm" || variant === "pointer-coarse"
+    )
+  )
+    return "narrow";
+  return null;
+}
 
 /** A Tailwind spacing value as CSS pixels, or null when it is not a length. */
 function scaleToPx(value: string): number | null {
@@ -1075,6 +1559,10 @@ function scaleToPx(value: string): number | null {
     if (rem) return Number(rem[1]) * 16;
     return null;
   }
+  const arbitraryPx = /^(\d+(?:\.\d+)?)px$/.exec(value);
+  if (arbitraryPx) return Number(arbitraryPx[1]);
+  const arbitraryRem = /^(\d+(?:\.\d+)?)rem$/.exec(value);
+  if (arbitraryRem) return Number(arbitraryRem[1]) * 16;
   const n = Number(value);
   return Number.isFinite(n) ? n * 4 : null;
 }
@@ -1100,12 +1588,11 @@ export function belowSmHeightPx(className: string): number | null {
   let narrow: number | null = null;
   let narrowPinned = false;
   for (const m of className.matchAll(HEIGHT_TOKEN)) {
-    const variants = m[1] ? m[1].slice(0, -1).split(":") : [];
-    const governsBelowSm = variants.length === 0;
-    const governsNarrowly = variants.length === 1 && variants[0] === "max-sm";
-    if (!governsBelowSm && !governsNarrowly) continue;
-    const px = scaleToPx(m[3]);
-    if (governsNarrowly) {
+    const { variants, value } = heightTokenParts(m);
+    const scope = heightScope(variants);
+    if (scope === null) continue;
+    const px = scaleToPx(value);
+    if (scope === "narrow") {
       narrowPinned = true;
       narrow = px;
     } else {
@@ -1128,6 +1615,52 @@ export function inButtonFamily(className: string): boolean {
 /** True when this class list carries `.tap-target`. */
 export function usesTapTarget(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])tap-target(?![\w-])/.test(className);
+}
+
+/** True when this class list carries the dense chip rendered-floor mechanism. */
+export function usesChipSm(className: string): boolean {
+  return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
+}
+
+/**
+ * The complete call-site vocabulary of a registered chip. Shell, size, colour,
+ * and state live in the primitive; the lone visibility utility is the compact
+ * custom-range trigger that has a separate desktop control.
+ */
+export const CHIP_ADOPTER_VOCABULARY = new Set([
+  "chip",
+  "chip-nav",
+  "chip-filter",
+  "chip-sm",
+  "sm:hidden",
+]);
+
+/** The complete resolved class lists admitted at chip call sites. */
+export const CHIP_ADOPTER_CLASSES = new Set([
+  "chip chip-nav",
+  "chip chip-nav chip-sm",
+  "chip chip-filter",
+  "chip chip-filter chip-sm",
+  "sm:hidden chip chip-filter",
+]);
+
+/** Every class token outside the exact chip adopter vocabulary. */
+export function unapprovedChipAdopterTokens(className: string): string[] {
+  return (className.match(/[^\s"'`{}(),+?]+/g) ?? []).filter(
+    (token) => !CHIP_ADOPTER_VOCABULARY.has(token)
+  );
+}
+
+/** True only for one of the exact registered chip call-site class lists. */
+export function isApprovedChipAdopterClass(className: string): boolean {
+  return CHIP_ADOPTER_CLASSES.has(className.replace(/\s+/g, " ").trim());
+}
+
+function selectedAttribute(
+  openTag: string
+): FlooredControl["selectedAttribute"] {
+  return /\baria-(pressed|current|selected)\b/.exec(openTag)?.[1] as
+    FlooredControl["selectedAttribute"] | undefined;
 }
 
 const INTERACTIVE_TAGS = new Set([
@@ -1229,6 +1762,8 @@ export function findFlooredControls(
         kind: kindOf(tag, openTag),
         belowSmPx: null,
         mechanism: "unreadable",
+        selectedState: selectedAttribute(openTag) !== undefined,
+        selectedAttribute: selectedAttribute(openTag),
         labelled: false,
         className: classNameExpression(openTag)!
           .text.replace(/\s+/g, " ")
@@ -1241,17 +1776,13 @@ export function findFlooredControls(
 
     // The unreadable case: a height token in a shape this scan cannot price.
     for (const token of className.matchAll(HEIGHT_TOKEN)) {
-      const variants = token[1] ? token[1].slice(0, -1).split(":") : [];
-      const governs =
-        variants.length === 0 ||
-        (variants.length === 1 && variants[0] === "max-sm");
-      if (!governs) continue;
-      const value = token[3];
+      const { variants, utility, value } = heightTokenParts(token);
+      if (heightScope(variants) === null) continue;
       if (/^(auto|full|screen|fit|min|max)$/.test(value)) continue;
       if (scaleToPx(value) === null) {
         throw new UnreadableControlError(
           `line ${lineOf(m.index)}: <${tag}> pins its below-\`sm\` height with ` +
-            `\`${token[2]}-${value}\`, which this scan cannot turn into pixels. The tap ` +
+            `\`${utility}-${value}\`, which this scan cannot turn into pixels. The tap ` +
             `floor is ${TAP_FLOOR_PX}px effective (#3514) and a control whose height ` +
             "cannot be read is a control the floor has stopped governing. Use a scale " +
             "step, or an arbitrary value in `px` or `rem`."
@@ -1263,11 +1794,13 @@ export function findFlooredControls(
     const kind = kindOf(tag, openTag);
     const mechanism: FloorMechanism = inButtonFamily(className)
       ? "btn-family"
-      : usesTapTarget(className)
-        ? "tap-target"
-        : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
-          ? "rendered"
-          : "none";
+      : usesChipSm(className)
+        ? "chip-sm"
+        : usesTapTarget(className)
+          ? "tap-target"
+          : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
+            ? "rendered"
+            : "none";
     const id = /(?<![\w-])id\s*=\s*("[^"]*"|\{[^}]*\})/
       .exec(openTag)?.[1]
       ?.replace(/\s+/g, "");
@@ -1281,6 +1814,8 @@ export function findFlooredControls(
       kind,
       belowSmPx,
       mechanism,
+      selectedState: selectedAttribute(openTag) !== undefined,
+      selectedAttribute: selectedAttribute(openTag),
       labelled,
       className: className.replace(/\s+/g, " ").trim(),
       readable: true,
@@ -1299,10 +1834,10 @@ export function findFlooredControls(
  *   hit-area overlay. This is `StarButton`'s old `h-9`.
  *
  *   A MECHANISM THAT CANNOT REACH — `.tap-target` on a control rendered smaller
- *   than `TAP_TARGET_MIN_RENDERED_PX`. The overlay adds a fixed 12px, so below
- *   32px it lands short while wearing the class that says it does not. A control
- *   that believes it is already compliant is worse than one that knows it is
- *   not, because nothing will ever look at it again.
+ *   than `TAP_TARGET_MIN_RENDERED_PX`, or a `chip-sm` call site that undercuts
+ *   its shared min-h-11 floor. A control that believes it is already compliant
+ *   is worse than one that knows it is not, because nothing will ever look at
+ *   it again.
  *
  * A control that pins NO height is not judged here — see the module header on
  * what this scan can see. That is a stated bound, not a silent skip.
@@ -1316,6 +1851,13 @@ export function floorMiss(control: FlooredControl): string | null {
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "btn-family" || control.mechanism === "rendered")
     return null;
+  if (control.mechanism === "chip-sm") {
+    if (control.belowSmPx >= CHIP_SM_RENDERED_PX) return null;
+    return (
+      `a ${control.belowSmPx}px call-site minimum undercuts \`chip-sm\`'s shared ` +
+      `${CHIP_SM_RENDERED_PX}px rendered floor`
+    );
+  }
   if (control.mechanism === "tap-target") {
     if (control.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX) return null;
     return (

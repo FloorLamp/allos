@@ -73,7 +73,6 @@ import {
   sidePartial,
   blockedField,
   blockedRing,
-  chipCls,
   partSetsSummary,
   type PartEntry,
   type SetEntry,
@@ -772,7 +771,8 @@ export default function StrengthSets({
                   onUpdatePartName(composeVariant(variant.group, eq));
                   onUpdatePart({ equipmentId: null });
                 }}
-                className={chipCls(active)}
+                aria-pressed={active}
+                className="chip chip-filter chip-sm"
               >
                 {eq}
               </button>
@@ -785,7 +785,8 @@ export default function StrengthSets({
             type="button"
             onClick={() => onUpdatePart({ equipmentId: null })}
             title="Use the default equipment"
-            className={chipCls(p.equipmentId == null)}
+            aria-pressed={p.equipmentId == null}
+            className="chip chip-filter chip-sm"
           >
             {defaultEq}
           </button>
@@ -799,7 +800,7 @@ export default function StrengthSets({
             onChange={(e) =>
               selectEquipment(e.target.value ? Number(e.target.value) : null)
             }
-            className={chipCls(p.equipmentId != null)}
+            className="chip chip-filter chip-sm"
           >
             <option value="">Equipment</option>
             {equipmentList.map((eq) => (
@@ -818,7 +819,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => setAddingEquipment(true)}
             data-testid="strength-equipment-add"
-            className={chipCls(false)}
+            className="chip chip-filter chip-sm"
           >
             + Equipment
           </button>

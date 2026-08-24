@@ -638,18 +638,6 @@ export const INTENSITIES: {
   },
 ];
 
-// Shared by the equipment chips (variant/default/custom <select>) and the
-// custom activity's type chips. On touch devices globals.css floors
-// form-control text at 16px (the iOS focus-zoom guard), which would make the
-// select tower over text-xs buttons — so the whole row steps up to match
-// there, which also gives the chips finger-sized targets.
-export const chipCls = (active: boolean) =>
-  `cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium transition pointer-coarse:text-base ${
-    active
-      ? "border-brand-500 bg-brand-500 text-white"
-      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
-  }`;
-
 // Amber for the specific inputs the save is waiting on — the border for
 // fields, the ring for the equipment chip row — matching the blocker line.
 export const blockedField = "border-amber-400 dark:border-amber-600";

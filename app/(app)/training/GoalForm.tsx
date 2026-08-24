@@ -68,15 +68,7 @@ const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   above: "Over",
 };
 
-const PILL =
-  "rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
-const PILL_ON = "border-brand-500 bg-brand-500 text-white";
-const PILL_OFF =
-  "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300";
-
-function pillClass(active: boolean): string {
-  return `${PILL} ${active ? PILL_ON : PILL_OFF}`;
-}
+const PILL = "chip chip-filter";
 
 // Create or edit a goal (#3220), in the shared facts-with-editors grammar (#3218).
 //
@@ -663,9 +655,8 @@ export default function GoalForm({
                             composeVariant(variant!.group, eq)
                           )
                         }
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                          active ? PILL_ON : PILL_OFF
-                        }`}
+                        aria-pressed={active}
+                        className="chip chip-filter chip-sm"
                       >
                         {eq}
                       </button>
@@ -693,7 +684,8 @@ export default function GoalForm({
                   type="button"
                   data-testid={`goal-body-metric-${bm}`}
                   onClick={() => chooseBodyMetric(bm)}
-                  className={pillClass(kind === "body" && bodyMetric === bm)}
+                  aria-pressed={kind === "body" && bodyMetric === bm}
+                  className={PILL}
                 >
                   {BODY_METRIC_LABELS[bm]}
                 </button>
@@ -745,11 +737,7 @@ export default function GoalForm({
               data-testid="goal-kind-freeform"
               aria-pressed={kind === "freeform"}
               onClick={() => chooseKind("freeform")}
-              className={`tap-target rounded-full border px-3 py-1.5 text-sm transition ${
-                kind === "freeform"
-                  ? PILL_ON
-                  : "border-dashed border-(--border) text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-              }`}
+              className="chip chip-filter"
             >
               Track something else
             </button>
@@ -788,7 +776,8 @@ export default function GoalForm({
                       type="button"
                       disabled={disabled}
                       onClick={() => chooseMetric(m.value)}
-                      className={pillClass(metric === m.value)}
+                      aria-pressed={metric === m.value}
+                      className={PILL}
                     >
                       {m.label}
                     </button>
@@ -959,7 +948,8 @@ export default function GoalForm({
                     type="button"
                     data-testid={`goal-direction-${d}`}
                     onClick={() => setDirection(d)}
-                    className={pillClass(direction === d)}
+                    aria-pressed={direction === d}
+                    className={PILL}
                   >
                     {DIRECTION_LABEL[d]}
                   </button>

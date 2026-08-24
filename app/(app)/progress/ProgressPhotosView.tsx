@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import SegmentedControl from "@/components/SegmentedControl";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -156,25 +157,20 @@ export default function ProgressPhotosView({
             }}
           />
         ) : null}
-        <div className="ml-auto flex gap-1" role="tablist" aria-label="View">
-          {(["grid", "compare"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                view === v
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
-              onClick={() => setView(v)}
-              data-testid={`progress-view-${v}`}
-            >
-              {v === "grid" ? "Browse" : "Compare"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={[
+            { value: "grid", label: "Browse", testId: "progress-view-grid" },
+            {
+              value: "compare",
+              label: "Compare",
+              testId: "progress-view-compare",
+            },
+          ]}
+          value={view}
+          onChange={setView}
+          ariaLabel="View"
+          className="ml-auto"
+        />
       </div>
 
       {notice ? (
@@ -261,11 +257,8 @@ export default function ProgressPhotosView({
               <button
                 key={p}
                 type="button"
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  comparePose === p
-                    ? "bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
+                aria-pressed={comparePose === p}
+                className="chip chip-filter chip-sm"
                 onClick={() => {
                   setSeriesFilter(p);
                   setPose(p);

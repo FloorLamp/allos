@@ -204,11 +204,7 @@ function FilterChip({
       data-testid={testid}
       data-active={active}
       aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
-        active
-          ? "border-sky-500 bg-sky-50 font-medium text-sky-700 dark:border-sky-400 dark:bg-sky-950 dark:text-sky-300"
-          : "border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-      }`}
+      className="chip chip-filter"
     >
       {children}
     </button>

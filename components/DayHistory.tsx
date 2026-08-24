@@ -905,11 +905,7 @@ export default function DayHistory({
                 aria-label={g.label}
                 title={g.label}
                 onClick={() => toggle(g.key)}
-                className={`flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition ${
-                  isOn(g.key)
-                    ? "border-brand-500 bg-brand-500/10 font-medium text-slate-800 dark:text-slate-100"
-                    : "border-black/10 text-slate-500 dark:border-white/15 dark:text-slate-400"
-                }`}
+                className="chip chip-filter chip-sm"
               >
                 {g.foodSlug && (
                   <FoodGroupIcon
@@ -930,7 +926,7 @@ export default function DayHistory({
                 data-testid="day-history-filter-toggle"
                 aria-expanded={filtersExpanded}
                 onClick={() => setFiltersExpanded((v) => !v)}
-                className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs font-medium text-brand-700 transition hover:border-brand-500 dark:border-white/20 dark:text-brand-300"
+                className="chip chip-filter chip-sm"
               >
                 {filtersExpanded
                   ? "Show less"
@@ -950,7 +946,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
+                className="chip chip-filter chip-sm"
               >
                 All
               </button>
@@ -962,7 +958,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="min-h-7 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs text-slate-500 transition enabled:hover:border-brand-500 enabled:hover:text-slate-800 disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:enabled:hover:text-slate-100"
+                className="chip chip-filter chip-sm"
               >
                 None
               </button>

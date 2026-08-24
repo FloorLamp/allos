@@ -52,12 +52,11 @@ export function CustomRangeDisclosure({
   );
 }
 
-// The "Custom…" pill. Mobile-only (`sm:hidden` comes from the caller's class, so
-// the pill styling stays in one place — DateRangeControl's RANGE_PILL, which is
-// the chip primitive's filter role).
+// The "Custom…" pill. Mobile-only, and the owner of its complete registered
+// chip class. Keeping that exact class on the native control means a wrapper
+// cannot append a second shell or override the chip's target geometry.
 export function CustomRangeToggle({
   active,
-  className,
 }: {
   // Whether the window in effect IS a custom range — i.e. whether this pill is
   // the selected one among its quick-range siblings. `aria-current` rather than
@@ -67,7 +66,6 @@ export function CustomRangeToggle({
   // wearing one answer. The chip primitive paints the lit state from this
   // attribute (#3475), so the pill cannot look selected without saying so.
   active: boolean;
-  className: string;
 }) {
   const ctx = useContext(Ctx);
   if (!ctx) return null;
@@ -79,7 +77,7 @@ export function CustomRangeToggle({
       aria-expanded={ctx.open}
       aria-controls={ctx.panelId}
       onClick={ctx.toggle}
-      className={className}
+      className="sm:hidden chip chip-filter"
     >
       Custom&hellip;
     </button>

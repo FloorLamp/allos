@@ -322,11 +322,8 @@ export default function RoutineBuilder({
                       key={r}
                       type="button"
                       onClick={() => toggleFocus(di, r)}
-                      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
-                        active
-                          ? "border-brand-500 bg-brand-500 text-white"
-                          : "border-(--border) bg-surface text-slate-500 hover:bg-(--ghost-hover) dark:text-slate-400"
-                      }`}
+                      aria-pressed={active}
+                      className="chip chip-filter chip-sm"
                     >
                       {r}
                     </button>

@@ -226,11 +226,7 @@ export default function RestTimer({
             type="button"
             onClick={() => pickPreset(secs)}
             aria-pressed={target === secs}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition pointer-coarse:text-sm ${
-              target === secs
-                ? "border-brand-500 bg-brand-500 text-white"
-                : "border-black/10 bg-surface text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300"
-            }`}
+            className="chip chip-filter chip-sm"
           >
             {formatSeconds(secs)}
           </button>
