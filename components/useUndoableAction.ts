@@ -68,8 +68,20 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                 // inverse did or did not land — say so instead of claiming either.
                 outcome = { ok: false, reason: "failed" };
               }
-              if (outcome.ok) toast(offer.undoneMessage);
-              else toast(undoRefusalText(outcome.reason), { tone: "error" });
+              // A keyed cumulative lifecycle stays in ONE snackbar slot all the
+              // way through its inverse. On phones, posting this result keyless
+              // would put it at the head of the one-at-a-time queue and leave a
+              // subsequent keyed write waiting invisibly behind it (#3611).
+              // Reusing the key also cancels the action click's in-flight exit and
+              // restarts the slot timer; consumers without a key keep the original
+              // append-only behavior.
+              if (outcome.ok)
+                toast(offer.undoneMessage, { key: announcement.key });
+              else
+                toast(undoRefusalText(outcome.reason), {
+                  tone: "error",
+                  key: announcement.key,
+                });
             })();
           },
         },
