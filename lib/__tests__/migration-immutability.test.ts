@@ -388,6 +388,7 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     const nothingShipped: ShippedReference = {
       manifest: {},
       source: "a corpus with no history",
+      mergeBase: true,
     };
     const seed = generateManifest({ ...c, shipped: nothingShipped });
     expect(seed.wrote).toBe(true);
@@ -397,7 +398,11 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     expect(seed.rehashed).toEqual([]);
     return {
       ...c,
-      shipped: { manifest: seed.manifest, source: "main, in this test" },
+      shipped: {
+        manifest: seed.manifest,
+        source: "main, in this test",
+        mergeBase: true,
+      },
     };
   };
 
@@ -563,6 +568,37 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     expect(result.unshipped).toEqual([FIRST]);
     expect(result.error).toContain("dropped 1 migration(s)");
     expect(Object.keys(readManifest(c.manifestPath))).toEqual([SECOND]);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("does not ask about a deletion when the reference is a branch TIP, not an ancestor", () => {
+    // The CI shape. `actions/checkout` leaves a PR merge commit with no merge-base
+    // to find, so `resolveShippedReference` falls back to main's tip — and against
+    // a TIP, a name in the reference and not in the tree is far more often a
+    // migration main gained after this branch forked than one this branch deleted.
+    // Asking there would red every branch that is behind main, which is most of
+    // them, so the question is not asked. `rehashed` is unaffected.
+    const c = shipped();
+    const tip = { ...c.shipped, mergeBase: false };
+    deleteShipped(c);
+
+    const result = generateManifest({ ...c, shipped: tip });
+    expect(result.unshipped).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.wrote).toBe(true);
+    expect(result.report).toContain("GONE:      not asked");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("still catches a REHASH against a branch tip, which needs no ancestor", () => {
+    const c = shipped();
+    const tip = { ...c.shipped, mergeBase: false };
+    editShipped(c.versionsDir);
+
+    const result = generateManifest({ ...c, shipped: tip });
+    expect(result.rehashed).toEqual([FIRST]);
+    expect(result.exitCode).toBe(1);
+    expect(result.wrote).toBe(false);
     fs.rmSync(c.versionsDir, { recursive: true, force: true });
   });
 

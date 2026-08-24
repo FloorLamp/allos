@@ -262,6 +262,20 @@ export interface ShippedReference {
   manifest: Record<string, string>;
   /** One line naming where these hashes came from. Printed in the report. */
   source: string;
+  /**
+   * Is this reference a COMMON ANCESTOR of HEAD, rather than a branch tip that
+   * merely stands in for one?
+   *
+   * It decides which of the two alarms can be asked. A hash that differs between
+   * this tree and ANY commit on main is a rehash either way, so `rehashed` needs
+   * nothing here. "Is a shipped migration missing?" does: against a common
+   * ancestor, a name in the reference and not in the tree was deleted by this
+   * branch — but against main's TIP, it is far more likely to be a migration
+   * merged to main after this branch forked, which is the ordinary state of every
+   * branch that is behind. CI is exactly where that happens: the checkout has no
+   * merge-base to find, so the fallback below is main's tip.
+   */
+  mergeBase: boolean;
 }
 
 function git(
@@ -304,11 +318,16 @@ export function resolveShippedReference(options?: {
   // No commits at all: nothing CAN have shipped. This is git answering, not git
   // being unavailable — the distinction the whole refusal rests on.
   if (!git(["rev-parse", "--verify", "--quiet", "HEAD"], cwd).ok) {
-    return { manifest: {}, source: "no commits yet — nothing has shipped" };
+    return {
+      manifest: {},
+      source: "no commits yet — nothing has shipped",
+      mergeBase: true,
+    };
   }
 
   let base: string | undefined;
   let via = "";
+  let isMergeBase = false;
   for (const ref of refs) {
     if (!git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], cwd).ok) {
       continue;
@@ -317,6 +336,7 @@ export function resolveShippedReference(options?: {
     if (mergeBase.ok && mergeBase.stdout.trim()) {
       base = mergeBase.stdout.trim();
       via = `the merge-base with ${ref}`;
+      isMergeBase = true;
     } else {
       // Unrelated histories. `ref` itself is still a commit whose migrations
       // demonstrably shipped, and over-refusing is the safe direction.
@@ -350,6 +370,7 @@ export function resolveShippedReference(options?: {
     return {
       manifest: {},
       source: `${rel} did not exist at ${shortBase} (${via}) — nothing has shipped`,
+      mergeBase: isMergeBase,
     };
   }
 
@@ -362,6 +383,7 @@ export function resolveShippedReference(options?: {
   return {
     manifest: parseManifest(blob.stdout, `${rel} as of ${shortBase}`),
     source: `${rel} as of ${shortBase} (${via})`,
+    mergeBase: isMergeBase,
   };
 }
 
@@ -502,9 +524,17 @@ export function generateManifest(
   // applied row naming it; a fresh one now gets neither. That is the two-schemas
   // outcome the append-only rule exists to prevent, reached from the other side,
   // so it refuses through the same door.
-  const unshipped = Object.keys(shipped.manifest).filter(
-    (f) => !(f in manifest)
-  );
+  //
+  // ONLY AGAINST A COMMON ANCESTOR. Against main's TIP — the fallback when git
+  // finds no merge-base, which is what a CI checkout of a PR merge ref gets — a
+  // name in the reference and not in the tree is far more often a migration that
+  // landed on main after this branch forked than one this branch deleted. Asking
+  // there would red every branch that is behind, so the question is not asked and
+  // the report says so. `rehashed` is unaffected: a hash that differs from ANY
+  // commit on main is a rehash however the reference was reached.
+  const unshipped = shipped.mergeBase
+    ? Object.keys(shipped.manifest).filter((f) => !(f in manifest))
+    : [];
   const unchanged = Object.keys(manifest).length - added.length - edited.length;
 
   // The first four lines PARTITION the tree against the checked-in manifest —
@@ -523,7 +553,11 @@ export function generateManifest(
     `  edited:    ${edited.length}${list(edited)}`,
     `  dropped:   ${removed.length}${list(removed)}`,
     `  REHASHED:  ${rehashed.length}${list(rehashed)}`,
-    `  GONE:      ${unshipped.length}${list(unshipped)}`,
+    shipped.mergeBase
+      ? `  GONE:      ${unshipped.length}${list(unshipped)}`
+      : `  GONE:      not asked — the reference is a branch tip, not a common ` +
+        `ancestor, so a name missing here is more likely one main gained than ` +
+        `one this tree lost.`,
     `Shipped hashes read from ${shipped.source} — REHASHED and GONE are the ` +
       `two lines measured against it.`,
   ].join("\n");

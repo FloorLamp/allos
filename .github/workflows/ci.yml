@@ -160,8 +160,8 @@ jobs:
       # lib/__tests__/migration-immutability.test.ts proves manifest.json is what
       # hashing versions/ produces. That stays true after somebody edits a shipped
       # migration and regenerates — measured on a CI-shaped checkout: append a line
-      # to 001-baseline.ts, `gen:migration-manifest -- --allow-rehash`, and all 19
-      # cases in that file are green. The suite's own rehash cases drive synthetic
+      # to 001-baseline.ts, `gen:migration-manifest -- --allow-rehash`, and every
+      # case in that file is green. The suite's own rehash cases drive synthetic
       # corpora with the shipped hashes PASSED IN, so none of them ever asks git
       # about this repo.
       #
@@ -171,10 +171,12 @@ jobs:
       #
       # The fetch is what makes "on main" answerable at all — actions/checkout
       # leaves this checkout with no origin/main ref. Depth 1 is enough and costs
-      # ~1s: the shallow tip has no merge-base with the PR's merge commit, and the
-      # generator's documented fallback for that is main's tip itself, which is the
-      # right reference here anyway. Entries only on main are not compared, so a
-      # branch behind main raises nothing.
+      # ~1s: the shallow tip has no merge-base with the PR's merge commit, so the
+      # generator falls back to main's tip. That answers the rehash question fully
+      # (a hash differing from any commit on main is a rehash) and deliberately
+      # leaves the deletion question unasked, because against a TIP a name missing
+      # here is usually one main gained, not one this tree lost — see
+      # `mergeBase` in lib/migrations/manifest-source.ts.
       - name: Fetch main, the reference for what has shipped
         run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
 

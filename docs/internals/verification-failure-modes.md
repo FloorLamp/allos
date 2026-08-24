@@ -307,8 +307,8 @@ These are not review taste; each retired a green that meant nothing.
 - **A guard that recomputes the file it checks cannot see an edit that was
   recomputed too.** `lib/__tests__/migration-immutability.test.ts` asserts
   `manifest.json` is byte-identical to what hashing `versions/` produces. Append a
-  line to `001-baseline.ts`, run the generator with `--allow-rehash`, and all 19
-  cases stay green — measured on a CI-shaped shallow checkout. The suite's own
+  line to `001-baseline.ts`, run the generator with `--allow-rehash`, and every
+  case in it stays green — measured on a CI-shaped shallow checkout. The suite's own
   rehash cases are green too: they drive synthetic corpora with the shipped hashes
   PASSED IN, so not one of them asks git what this repo shipped. The reference has
   to come from outside the tree being checked, which is why CI now runs
