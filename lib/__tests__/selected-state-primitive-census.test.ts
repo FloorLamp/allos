@@ -8,7 +8,7 @@ import {
   findFlooredControls,
   isApprovedChipAdopterClass,
   openingTag,
-  resolveClassName,
+  resolveJsxClassNameBindings,
   unapprovedChipAdopterTokens,
   withoutComments,
   type ImportedModule,
@@ -136,14 +136,15 @@ function customComponentClassBindings(
     // body that can append a second shell.
     if (nextLinks.has(match[1])) continue;
     const open = openingTag(source, match.index).tag;
-    const resolved = resolveClassName(open, declarations);
-    if (!resolved?.readable || !isChipAdopter(resolved.text)) continue;
-    findings.push({
-      file,
-      line: lineOf(source, match.index),
-      component: match[1],
-      className: resolved.text.replace(/\s+/g, " ").trim(),
-    });
+    for (const resolved of resolveJsxClassNameBindings(open, declarations)) {
+      if (!resolved.readable || !isChipAdopter(resolved.text)) continue;
+      findings.push({
+        file,
+        line: lineOf(source, match.index),
+        component: match[1],
+        className: resolved.text.replace(/\s+/g, " ").trim(),
+      });
+    }
   }
   return findings;
 }
@@ -240,18 +241,30 @@ export function scanUnapprovedChipVocabularyCorpus(
   const findings: VocabularyFinding[] = [];
   for (const file of sourceFiles(base)) {
     const source = withoutComments(read(base, file));
-    const controls = findFlooredControls(
-      source,
-      moduleReader(base, path.dirname(path.join(base, file)))
-    );
-    for (const control of controls) {
-      if (!control.readable || !isChipAdopter(control.className)) continue;
-      if (!isApprovedChipAdopterClass(control.className)) {
-        const tokens = unapprovedChipAdopterTokens(control.className);
+    const readModule = moduleReader(base, path.dirname(path.join(base, file)));
+    let declared: ReturnType<typeof classDeclarations> | null = null;
+    const declarations = () =>
+      (declared ??= classDeclarations(source, readModule));
+    for (const match of source.matchAll(/<([a-z][\w-]*)(?=[\s>])/g)) {
+      const open = openingTag(source, match.index).tag;
+      const interactive =
+        ["button", "a", "select", "textarea", "input", "summary"].includes(
+          match[1]
+        ) ||
+        /(?<![\w-])onClick\s*=/.test(open) ||
+        /role\s*=\s*"(button|tab|switch|menuitem|menuitemcheckbox|menuitemradio|option|checkbox|radio|link)"/.test(
+          open
+        );
+      if (!interactive) continue;
+      for (const resolved of resolveJsxClassNameBindings(open, declarations)) {
+        if (!resolved.readable || !isChipAdopter(resolved.text)) continue;
+        const className = resolved.text.replace(/\s+/g, " ").trim();
+        if (isApprovedChipAdopterClass(className)) continue;
+        const tokens = unapprovedChipAdopterTokens(className);
         findings.push({
           file,
-          line: control.line,
-          className: control.className,
+          line: lineOf(source, match.index),
+          className,
           tokens,
         });
       }
@@ -312,6 +325,10 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
         path.join(base, "components/ImportedOffender.tsx"),
         'import { BASE, EXTRA } from "@/lib/chips";\nexport function ImportedOffender() { return <button aria-pressed className={`${BASE} ${EXTRA}`}>x</button>; }\n'
       );
+      fs.writeFileSync(
+        path.join(base, "components/SpreadOffender.tsx"),
+        'export function SpreadOffender() { return <button {...{ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Adversarial" }} />; }\n'
+      );
       const expectedTokens = [
         "outline-2",
         "outline-dashed",
@@ -329,6 +346,11 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           file: "components/ImportedOffender.tsx",
           line: 2,
           tokens: expectedTokens,
+        },
+        {
+          file: "components/SpreadOffender.tsx",
+          line: 1,
+          tokens: ["min-h-0!", "h-4", "outline-2"],
         },
       ]);
     } finally {
@@ -388,7 +410,7 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
       );
       fs.writeFileSync(
         path.join(base, "components/Caller.tsx"),
-        'import { ForwardedChip } from "./ForwardedChip";\nexport function Caller() { return <ForwardedChip className="chip chip-filter" />; }\n'
+        'import { ForwardedChip } from "./ForwardedChip";\nimport SubmitButton from "./SubmitButton";\nconst className = "an unrelated local must not rewrite an object key";\nconst IDENTIFIER_PROPS = { className: "chip chip-filter min-h-0! h-4 outline-2", children: "Identifier" };\nconst helperProps = () => ({ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Helper" });\nexport function Caller() { return <>\n<ForwardedChip className="chip chip-filter" />\n<SubmitButton {...{ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Adversarial" }} />\n<SubmitButton {...IDENTIFIER_PROPS} />\n<SubmitButton {...helperProps()} />\n</>; }\n'
       );
       expect(bindingSummary(scanForwardedChipBindings(base))).toEqual([
         {
@@ -396,6 +418,12 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           component: "ForwardedChip",
           className: "chip chip-filter",
           controls: 1,
+        },
+        {
+          file: "components/Caller.tsx",
+          component: "SubmitButton",
+          className: "chip chip-filter min-h-0! h-4 outline-2",
+          controls: 3,
         },
       ]);
     } finally {

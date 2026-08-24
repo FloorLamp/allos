@@ -778,6 +778,66 @@ function objectValues(expression: string): string[] | null {
   return values.length > 0 ? values : null;
 }
 
+/** Remove balanced parentheses around a complete expression. */
+function withoutOuterParentheses(expression: string): string {
+  let text = expression.trim();
+  while (text.startsWith("(") && closingBracket(text, 0) === text.length - 1)
+    text = text.slice(1, -1).trim();
+  return text;
+}
+
+/** The top-level comma-separated entries of an object literal. */
+function objectEntries(expression: string): string[] | null {
+  const text = withoutOuterParentheses(expression);
+  if (!text.startsWith("{") || closingBracket(text, 0) !== text.length - 1)
+    return null;
+  const inner = text.slice(1, -1);
+  const entries: string[] = [];
+  const stack: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= inner.length; i += 1) {
+    const c = inner[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < inner.length && inner[i] !== c) i += inner[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(inner, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    if (i === inner.length || (c === "," && stack.length === 0)) {
+      const entry = inner.slice(start, i).trim();
+      if (entry) entries.push(entry);
+      start = i + 1;
+    }
+  }
+  return entries;
+}
+
+/** The value after a top-level object-property colon, or null. */
+function objectEntryValue(entry: string): string | null {
+  const stack: string[] = [];
+  for (let i = 0; i < entry.length; i += 1) {
+    const c = entry[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < entry.length && entry[i] !== c) i += entry[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(entry, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    else if (c === ":" && stack.length === 0) return entry.slice(i + 1).trim();
+  }
+  return null;
+}
+
 /**
  * The body of an arrow function `(a, b) => body`, or null — including when the
  * body is a BLOCK, which is a program rather than an expression this scan can
@@ -1068,6 +1128,97 @@ export function resolveClassName(
   const reachable = typeof declared === "function" ? declared() : declared;
   const expression = blankExpressionComments(written.text);
   return readClassText(substitute(expression, reachable), reachable);
+}
+
+/** The expressions spread directly onto one JSX opening tag. */
+function jsxSpreadExpressions(openTag: string): string[] {
+  const expressions: string[] = [];
+  for (let i = 0; i < openTag.length; i += 1) {
+    if (openTag[i] !== "{") continue;
+    const shut = closingBracket(openTag, i);
+    if (shut < 0) break;
+    const inner = openTag.slice(i + 1, shut).trim();
+    if (inner.startsWith("...")) expressions.push(inner.slice(3).trim());
+    // Jump over the whole JSX expression. Any object spread inside an ordinary
+    // prop belongs to that prop, not to the opening tag.
+    i = shut;
+  }
+  return expressions;
+}
+
+/**
+ * Every className value an object expression explicitly contributes when it is
+ * spread onto JSX. Constants and single-expression arrow helpers are resolved
+ * by the same lexical, import-aware machinery as direct className attributes.
+ */
+function spreadClassNameExpressions(
+  expression: string,
+  declared: ClassDeclarations,
+  seen = new Set<string>()
+): string[] {
+  const written = withoutOuterParentheses(blankExpressionComments(expression));
+  if (seen.has(written)) return [];
+  seen.add(written);
+  const entries = objectEntries(written);
+  if (entries === null) {
+    // Resolve only the expression that stands for the object, one lexical hop
+    // at a time. Substituting the whole object would also visit its property
+    // keys; a coincidentally named local `className` must not rewrite the key
+    // whose ownership this scan is establishing.
+    const materialized = withoutOuterParentheses(
+      substituteOnce(written, declared)
+    );
+    if (materialized === written) return [];
+    return spreadClassNameExpressions(materialized, declared, seen);
+  }
+
+  const values: string[] = [];
+  for (const entry of entries) {
+    if (entry.startsWith("...")) {
+      values.push(
+        ...spreadClassNameExpressions(entry.slice(3), declared, seen)
+      );
+      continue;
+    }
+    const colonValue = objectEntryValue(entry);
+    const key = (
+      colonValue === null ? entry : entry.slice(0, entry.indexOf(":"))
+    )
+      .trim()
+      .replace(/^(?:"|')|(?:"|')$/g, "");
+    if (key === "className") values.push(colonValue ?? "className");
+  }
+  return values;
+}
+
+/**
+ * Every directly written or spread-provided className binding on one JSX tag.
+ * Returning all contributors is intentional: later JSX props win at runtime,
+ * but an ownership census must reject every shell vocabulary a reachable path
+ * can place on the control rather than blessing a dangerous overwritten value.
+ */
+export function resolveJsxClassNameBindings(
+  openTag: string,
+  declared: ClassDeclarations | (() => ClassDeclarations)
+): ClassText[] {
+  const bindings: ClassText[] = [];
+  const direct = resolveClassName(openTag, declared);
+  if (direct !== null) bindings.push(direct);
+
+  const spreads = jsxSpreadExpressions(openTag);
+  if (spreads.length === 0) return bindings;
+  const reachable = typeof declared === "function" ? declared() : declared;
+  for (const spread of spreads) {
+    for (const expression of spreadClassNameExpressions(spread, reachable)) {
+      bindings.push(
+        readClassText(
+          substitute(blankExpressionComments(expression), reachable),
+          reachable
+        )
+      );
+    }
+  }
+  return bindings;
 }
 
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
