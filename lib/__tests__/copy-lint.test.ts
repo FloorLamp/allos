@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { DISCLAIMER_PHRASINGS } from "@/lib/disclaimers";
 import { stripComments } from "./strip-comments";
 
@@ -299,14 +300,25 @@ function decodeHtmlCharacterReference(reference: string): string | null {
   }
 }
 
-function decodeJsStringContent(raw: string): string | null {
-  let decoded = "";
+type ProjectedText = { text: string; origins: number[] };
+
+function decodeJsStringContent(
+  raw: string,
+  sourceStart: number
+): ProjectedText | null {
+  const parts: string[] = [];
+  const origins: number[] = [];
+  const append = (value: string, origin: number) => {
+    parts.push(value);
+    origins.push(...Array.from({ length: value.length }, () => origin));
+  };
   for (let i = 0; i < raw.length; i++) {
     if (raw[i] !== "\\") {
-      decoded += raw[i];
+      append(raw[i], sourceStart + i);
       continue;
     }
 
+    const escapeStart = sourceStart + i;
     const next = raw[++i];
     if (next == null) return null;
     if (next === "\n") continue;
@@ -324,13 +336,13 @@ function decodeJsStringContent(raw: string): string | null {
       0: "\0",
     };
     if (next in simple) {
-      decoded += simple[next];
+      append(simple[next], escapeStart);
       continue;
     }
     if (next === "x") {
       const digits = raw.slice(i + 1, i + 3);
       if (!/^[0-9a-f]{2}$/i.test(digits)) return null;
-      decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+      append(String.fromCodePoint(Number.parseInt(digits, 16)), escapeStart);
       i += 2;
       continue;
     }
@@ -341,7 +353,10 @@ function decodeJsStringContent(raw: string): string | null {
         const digits = raw.slice(i + 2, close);
         if (!/^[0-9a-f]+$/i.test(digits)) return null;
         try {
-          decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+          append(
+            String.fromCodePoint(Number.parseInt(digits, 16)),
+            escapeStart
+          );
         } catch {
           return null;
         }
@@ -349,49 +364,154 @@ function decodeJsStringContent(raw: string): string | null {
       } else {
         const digits = raw.slice(i + 1, i + 5);
         if (!/^[0-9a-f]{4}$/i.test(digits)) return null;
-        decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+        append(String.fromCodePoint(Number.parseInt(digits, 16)), escapeStart);
         i += 4;
       }
       continue;
     }
-    decoded += next;
+    append(next, escapeStart);
   }
-  return decoded;
+  return { text: parts.join(""), origins };
 }
 
-// JSX can spell a rendered space as character data, an HTML character reference,
-// or a whitespace-only string expression. Decode those forms and test the same
-// whitespace class the production phrase regex uses (`\s`), then blank the source
-// spelling byte-for-byte while retaining CR/LF so locations remain exact.
-function normalizeRenderedWhitespace(text: string): string {
-  return text
-    .replace(
-      /\{[ \t\r\n]*\}/g,
-      (expression: string, offset: number, source: string) => {
-        const before = source[offset - 1] ?? "";
-        const after = source[offset + expression.length] ?? "";
-        // A stripped JSX comment contributes no text of its own. Only whitespace
-        // written beside the expression creates a rendered word boundary.
-        const hasRenderedBoundary = /[ \t]/.test(before) || /[ \t]/.test(after);
-        return expression.replace(/[^\r\n]/g, hasRenderedBoundary ? " " : "_");
-      }
-    )
-    .replace(
-      /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g,
-      (reference) =>
-        whitespaceOnly(decodeHtmlCharacterReference(reference))
-          ? " ".repeat(reference.length)
-          : reference
-    )
-    .replace(
-      /\{\s*(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)'|`((?:\\[\s\S]|[^`\\])*)`)\s*\}/g,
-      (expression, double: string, single: string, template: string) => {
-        const raw = double ?? single ?? template;
-        return whitespaceOnly(decodeJsStringContent(raw))
-          ? expression.replace(/[^\r\n]/g, " ")
-          : expression;
-      }
+function concatProjected(parts: ProjectedText[]): ProjectedText {
+  return {
+    text: parts.map((part) => part.text).join(""),
+    origins: parts.flatMap((part) => part.origins),
+  };
+}
+
+function staticStringExpression(
+  node: ts.Expression,
+  file: ts.SourceFile,
+  source: string
+): ProjectedText | null {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    const start = node.getStart(file);
+    return decodeJsStringContent(
+      source.slice(start + 1, node.end - 1),
+      start + 1
     );
+  }
+  if (ts.isTemplateExpression(node)) {
+    const headStart = node.head.getStart(file);
+    const parts: ProjectedText[] = [];
+    const head = decodeJsStringContent(
+      source.slice(headStart + 1, node.head.end - 2),
+      headStart + 1
+    );
+    if (!head) return null;
+    parts.push(head);
+    for (const span of node.templateSpans) {
+      const expression = staticStringExpression(span.expression, file, source);
+      if (!expression) return null;
+      parts.push(expression);
+      const literalStart = span.literal.getStart(file);
+      const literalEndTrim = ts.isTemplateTail(span.literal) ? 1 : 2;
+      const literal = decodeJsStringContent(
+        source.slice(literalStart + 1, span.literal.end - literalEndTrim),
+        literalStart + 1
+      );
+      if (!literal) return null;
+      parts.push(literal);
+    }
+    return concatProjected(parts);
+  }
+  if (ts.isParenthesizedExpression(node)) {
+    return staticStringExpression(node.expression, file, source);
+  }
+  if (
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    return staticStringExpression(node.expression, file, source);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = staticStringExpression(node.left, file, source);
+    const right = staticStringExpression(node.right, file, source);
+    return left && right ? concatProjected([left, right]) : null;
+  }
+  return null;
+}
+
+type ProjectionEdit = { start: number; end: number } & ProjectedText;
+
+// Project only syntax React renders as text. HTML character references decode in
+// JSX text, not inside JavaScript strings. Conversely, a statically provable JSX
+// string/template expression renders its evaluated value without its JS syntax.
+// Every projected character retains an offset into the original source so lint
+// diagnostics keep exact source lines even when a spelling expands or contracts.
+function projectRenderedJsxText(source: string): ProjectedText {
+  const file = ts.createSourceFile(
+    "copy-lint.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const edits: ProjectionEdit[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxExpression(node)) {
+      if (!node.expression) {
+        edits.push({
+          start: node.getStart(file),
+          end: node.end,
+          text: "",
+          origins: [],
+        });
+        return;
+      }
+      const rendered = staticStringExpression(node.expression, file, source);
+      if (rendered) {
+        edits.push({ start: node.getStart(file), end: node.end, ...rendered });
+        return;
+      }
+    }
+    if (ts.isJsxText(node)) {
+      const start = node.getStart(file);
+      const raw = source.slice(start, node.end);
+      const references =
+        /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g;
+      let match: RegExpExecArray | null;
+      while ((match = references.exec(raw)) !== null) {
+        const decoded = decodeHtmlCharacterReference(match[0]);
+        if (!whitespaceOnly(decoded)) continue;
+        edits.push({
+          start: start + match.index,
+          end: start + match.index + match[0].length,
+          text: decoded!,
+          origins: Array.from(
+            { length: decoded!.length },
+            () => start + match!.index
+          ),
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+
+  const text: string[] = [];
+  const origins: number[] = [];
+  let cursor = 0;
+  const appendIdentity = (end: number) => {
+    text.push(source.slice(cursor, end));
+    for (let offset = cursor; offset < end; offset++) origins.push(offset);
+  };
+  for (const edit of edits.sort((a, b) => a.start - b.start)) {
+    if (edit.start < cursor) continue;
+    appendIdentity(edit.start);
+    text.push(edit.text);
+    origins.push(...edit.origins);
+    cursor = edit.end;
+  }
+  appendIdentity(source.length);
+  return { text: text.join(""), origins };
 }
 
 // A line is a non-user-facing context (internal logging / thrown error / import) —
@@ -436,18 +556,23 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
 function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
-  const code = normalizeRenderedWhitespace(stripComments(text));
+  const code = stripComments(text);
+  const projection = projectRenderedJsxText(code);
   const violations = new Set<string>();
   for (const phrasing of DISCLAIMER_PHRASINGS) {
     const flags = `${phrasing.flags.replace(/g/g, "")}g`;
     const matcher = new RegExp(phrasing.source, flags);
     let match: RegExpExecArray | null;
-    while ((match = matcher.exec(code)) !== null) {
-      const line = code.slice(0, match.index).split("\n").length;
-      const lineStart = code.lastIndexOf("\n", match.index - 1) + 1;
-      const lineEnd = code.indexOf("\n", match.index + match[0].length);
-      const snippet = code
-        .slice(lineStart, lineEnd === -1 ? code.length : lineEnd)
+    while ((match = matcher.exec(projection.text)) !== null) {
+      const sourceOffset = projection.origins[match.index] ?? 0;
+      const line = code.slice(0, sourceOffset).split("\n").length;
+      const lineStart = projection.text.lastIndexOf("\n", match.index - 1) + 1;
+      const lineEnd = projection.text.indexOf(
+        "\n",
+        match.index + match[0].length
+      );
+      const snippet = projection.text
+        .slice(lineStart, lineEnd === -1 ? projection.text.length : lineEnd)
         .replace(/\s+/g, " ")
         .trim();
       if (!isInternalLine(snippet)) {
@@ -584,6 +709,21 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
       "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
     ]);
+  });
+
+  it("detects disclaimer prose assembled by a static JSX template expression", () => {
+    const sample = '<p>{`Informational${" "}only.`}</p>';
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
+  it("does not decode HTML entity spelling inside a JavaScript template", () => {
+    const sample = [
+      "const rawEntity = `Informational&nbsp;only.`;",
+      "<code>{rawEntity}</code>",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
 
   it("detects adjacent rendered-whitespace forms without moving their source lines", () => {
