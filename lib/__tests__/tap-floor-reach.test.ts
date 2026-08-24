@@ -199,13 +199,16 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   },
   {
     file: "components/facts/FactChipRow.tsx",
-    controls: 1,
+    controls: 2,
     why:
-      "the fact chip's remove `x`, 24px inside a 34px chip. It CARRIES `.tap-target` and " +
+      "the unpriced fact chip body and its remove `x`. The body CARRIES `.tap-target` " +
+      "but declares no rendered height, so the fixed overlay cannot yet prove 44px; the " +
+      "remove control is 24px inside a 34px chip. It also CARRIES `.tap-target` and " +
       `still lands at ${24 + 2 * TAP_TARGET_INSET_PX}px effective, because the overlay adds a fixed ` +
       `2x${TAP_TARGET_INSET_PX}px. Reaching ${TAP_FLOOR_PX} needs ${TAP_TARGET_MIN_RENDERED_PX}px rendered, which grows the chip ` +
       "from 34px to 46 and re-lays every fact row in the app — the #3536 shape, recorded " +
-      "rather than forced. The four steppers this PR did raise had the headroom; this does not",
+      "rather than forced. Both remain in the unjudged roster; #3562 owns their measured " +
+      "phone geometry",
   },
   {
     file: "components/illness/SymptomLogBar.tsx",
@@ -230,6 +233,13 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     why: DENSE_EDITOR,
   },
   { file: "components/MoodValencePicker.tsx", controls: 1, why: DENSE_EDITOR },
+  {
+    file: "components/intake/CadenceEditor.tsx",
+    controls: 1,
+    why:
+      `${DENSE_EDITOR}. Its weekday toggle is measured at 24px rendered and remains in ` +
+      "MEASURED_UNDER_FLOOR; #3562 owns the phone-row resolution",
+  },
   {
     file: "app/(app)/training/TrainingLogView.tsx",
     controls: 1,
@@ -1533,6 +1543,77 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
+  it("fails closed instead of flattening more than 64 class alternatives", () => {
+    const expression = ["a", "b", "c", "d", "e", "f", "g"]
+      .map(
+        (condition, index) =>
+          `(${condition} && "${index === 0 ? "btn" : `x${index}`}")`
+      )
+      .join(' + " " + ');
+    expect(() =>
+      scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      )
+    ).toThrow(/more than 64 reachable alternatives/);
+
+    const atBound = ["a", "b", "c", "d", "e", "f"]
+      .map(
+        (condition, index) =>
+          `(${condition} && "${index === 0 ? "btn" : `x${index}`}")`
+      )
+      .join(' + " " + ');
+    const [control] = scan(
+      `export default function X() {
+         return <button type="button" className={${atBound}}>x</button>;
+       }`
+    );
+    expect(floorMiss(control)).toContain("reachable class-expression arm");
+  });
+
+  it("requires priced tap-target arithmetic in every governed class arm", () => {
+    for (const expression of [
+      `ok ? "btn" : "tap-target"`,
+      `ok ? "tap-target" : "btn"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(control.mechanism, expression).toBe("tap-target");
+      expect(control.belowSmPx, expression).toBeNull();
+      expect(control.unprovenAlternative, expression).toBe(true);
+      expect(floorMiss(control), expression).toContain(
+        "reachable class-expression arm"
+      );
+      expect(control.reachableMechanisms, expression).toEqual([]);
+      expect(
+        control.readable &&
+          usesTapTarget(control.className) &&
+          control.belowSmPx === null,
+        expression
+      ).toBe(true);
+    }
+
+    const [safe] = scan(
+      `export default function X() {
+         return <button className={ok ? "btn" : "tap-target h-8"}>x</button>;
+       }`
+    );
+    expect(floorMiss(safe)).toBeNull();
+    expect(safe.reachableMechanisms).toEqual(["btn-family", "tap-target"]);
+
+    const [short] = scan(
+      `export default function X() {
+         return <button className={ok ? "btn" : "tap-target h-7"}>x</button>;
+       }`
+    );
+    expect(floorMiss(short)).toContain("40px effective");
+    expect(short.reachableMechanisms).toEqual([]);
+  });
+
   it("fails closed on explicit and important button-family minimum overrides", () => {
     for (const [classes, fragment] of [
       ["btn min-h-auto h-7", "cannot prove"],
@@ -1666,6 +1747,44 @@ describe("the sweep is quiet on the benign neighbours", () => {
     expect(floorMiss(lateLow)).toContain(
       "28px call-site minimum replaces the button family's 44px"
     );
+  });
+
+  it("resolves numeric arguments passed through style helpers", () => {
+    for (const helper of [
+      `const makeStyle = (n: number) => ({ minHeight: n });`,
+      `const makeStyle = (n: number) => ({ minBlockSize: n });`,
+      `const makeStyle = (minHeight: number) => ({ minHeight });`,
+      `const makeStyle = (minBlockSize: number) => ({ minBlockSize });`,
+    ]) {
+      const [safe] = scan(
+        `${helper}
+         export default function X() {
+           return <button className="btn h-7" style={makeStyle(44)}>x</button>;
+         }`
+      );
+      expect(floorMiss(safe), helper).toBeNull();
+
+      const [low] = scan(
+        `${helper}
+         export default function X() {
+           return <button className="btn h-7" style={makeStyle(28)}>x</button>;
+         }`
+      );
+      expect(floorMiss(low), helper).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+
+      expect(
+        () =>
+          scan(
+            `${helper}
+             export default function X({ size }: { size: number }) {
+               return <button className="btn h-7" style={makeStyle(size)}>x</button>;
+             }`
+          ),
+        helper
+      ).toThrow(UnreadableControlError);
+    }
   });
 
   it("accepts known-safe phone-applicable family minima", () => {

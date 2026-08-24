@@ -1388,14 +1388,18 @@ function readClassText(
   return { readable: true, text, alternatives: [text] };
 }
 
-function uniqueAlternatives(values: string[]): string[] | null {
+function uniqueAlternatives(values: string[]): string[] {
   const unique = [
     ...new Set(values.map((value) => value.replace(/\s+/g, " ").trim())),
   ];
-  return unique.length <= 64 ? unique : null;
+  if (unique.length > 64)
+    throw new UnreadableControlError(
+      "a class expression has more than 64 reachable alternatives"
+    );
+  return unique;
 }
 
-function combineAlternatives(left: string[], right: string[]): string[] | null {
+function combineAlternatives(left: string[], right: string[]): string[] {
   return uniqueAlternatives(left.flatMap((a) => right.map((b) => `${a} ${b}`)));
 }
 
@@ -1434,9 +1438,7 @@ function classAlternatives(expression: string): string[] | null {
         const hole = read(span.expression);
         if (hole === null) return null;
         const withHole = combineAlternatives(out, hole);
-        if (withHole === null) return null;
         const withText = combineAlternatives(withHole, [span.literal.text]);
-        if (withText === null) return null;
         out = withText;
       }
       return out;
@@ -2115,7 +2117,10 @@ function inlineMinimumTokens(
   const property =
     /(?:\b(?:minHeight|minBlockSize)\b|["'](?:min-height|min-block-size)["'])\s*:\s*([^,}\n]+)/g;
   for (const match of materialized.matchAll(property)) {
-    const raw = match[1].trim().replace(/^(["'])(.*)\1$/, "$2");
+    const raw = withoutOuterParentheses(match[1].trim()).replace(
+      /^(["'])(.*)\1$/,
+      "$2"
+    );
     const value = /^\d+(?:\.\d+)?$/.test(raw) ? `${raw}px` : raw;
     tokens.push(`[min-height:${value}]`);
   }
@@ -2339,10 +2344,14 @@ export function findFlooredControls(
       if (
         candidate.mechanism === "btn-family" ||
         candidate.mechanism === "chip-sm" ||
-        candidate.mechanism === "rendered" ||
-        candidate.mechanism === "tap-target"
+        candidate.mechanism === "rendered"
       )
         return true;
+      if (candidate.mechanism === "tap-target")
+        return (
+          candidate.belowSmPx !== null &&
+          candidate.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX
+        );
       if (isLicensedRegularChip(candidate.className)) return true;
       return false;
     };
