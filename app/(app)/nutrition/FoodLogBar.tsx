@@ -159,10 +159,9 @@ function FoodRowLabel({
   );
 }
 
-// The shared dense filter size keeps this correction row compact. Its registered
-// coarse-pointer overlay reaches 44px effective; `min-h-8` preserves the larger
-// painted box this surface already shipped after the rendered tap-floor sweep.
-const FOOD_TIME_CHIP = "chip chip-filter chip-sm min-h-8";
+// The shared dense filter size keeps this correction row compact while its
+// registered hit-area overlay reaches the 44px effective target.
+const FOOD_TIME_CHIP = "chip chip-filter chip-sm";
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
 // above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row

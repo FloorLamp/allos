@@ -178,11 +178,7 @@ function ProfileChip({
       onClick={onPress}
       disabled={disabled}
       data-testid="profile-chip"
-      className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-sm transition ${
-        pressed
-          ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
-          : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-      }`}
+      className="chip chip-filter chip-sm"
     >
       <Avatar
         profile={{

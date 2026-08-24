@@ -618,17 +618,16 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
+   NO RENDERED HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
    (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
    not reach here — chips are acquired by their WIDTH along a scrolling row, and
    a 44px-tall strip of seven is a band of chrome above the list it narrows
    (FilterPills' own measured note). #3514 has since RULED the floor at 44px
-   effective, by rendered size OR by `.tap-target`'s hit-area extension; this
-   primitive declares neither, so nothing here changed. A strip that genuinely needs a bigger target
-   still says so at its call site and wins — `@utility` sorts into the utilities
-   layer, so it cannot lower a call site's `min-h-*`. */
+   effective. Dense `chip-sm` controls preserve their compact painted box and
+   meet that target through the registered hit-area extension below; call sites
+   do not add their own `min-h-*` or coarse-pointer shell variants. */
 @utility chip {
-  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   /* Reserved so a bordered role and a borderless one occupy the same box. The
      fill paints under it (`background-clip` is `border-box` by default), so a
      transparent border is invisible rather than a 1px light seam. */

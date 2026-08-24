@@ -68,7 +68,7 @@ const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   above: "Over",
 };
 
-const PILL = "chip chip-filter disabled:cursor-not-allowed disabled:opacity-40";
+const PILL = "chip chip-filter";
 
 // Create or edit a goal (#3220), in the shared facts-with-editors grammar (#3218).
 //

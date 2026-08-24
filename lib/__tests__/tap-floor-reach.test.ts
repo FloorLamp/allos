@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  CHIP_SM_INSET_PX,
+  CHIP_SM_MIN_RENDERED_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
   TAP_TARGET_MIN_RENDERED_PX,
@@ -50,7 +52,7 @@ import { makeTmpDir } from "./tmp-dir";
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
-//      works, and `.chip` — which app/globals.css declares floor-free ON PURPOSE.
+//      works, and `.chip-sm` using its own registered hit-area inset.
 //   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
 //      45 native boxes with a `<label>` taking the tap are licensed — and this file
 //      does not pretend otherwise; what it does is stop the number growing, and
@@ -204,7 +206,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     controls: 11,
     why: DENSE_EDITOR,
   },
-  { file: "components/DayHistory.tsx", controls: 4, why: DENSE_EDITOR },
   {
     file: "components/activity-form/ActivityFormHeader.tsx",
     controls: 2,
@@ -1303,10 +1304,10 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
-  it("says nothing about a `.chip`, which app/globals.css declares floor-free ON PURPOSE", () => {
+  it("says nothing about a regular `.chip`, which declares no rendered height floor", () => {
     // The single most important silence here. A chip is acquired by its WIDTH
     // along a scrolling row, and app/globals.css says so in as many words ("NO
-    // HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
+    // RENDERED HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
     // would be switched off within a week and would take the real rule with it.
     const [control] = scan(
       `export default function X() {
@@ -1320,7 +1321,7 @@ describe("the sweep is quiet on the benign neighbours", () => {
       "app/globals.css no longer records that `.chip` declares no height floor on " +
         "purpose. The silence above is licensed by that sentence; if the decision " +
         "changed, this census should stop being quiet."
-    ).toContain("NO HEIGHT FLOOR, DELIBERATELY");
+    ).toContain("NO RENDERED HEIGHT FLOOR, DELIBERATELY");
   });
 
   it("says nothing about a non-interactive element that happens to be short", () => {
@@ -1426,6 +1427,28 @@ describe("the census walk reaches a planted offender", () => {
     // The planted file is unregistered, so the real verdict fires too.
     const registered = new Set(UNDER_FLOOR_REGISTER.map((e) => e.file));
     expect(registered.has(plantedRel)).toBe(false);
+  });
+
+  it("flags an undersized chip-sm the walk had to find on disk", () => {
+    if (fs.existsSync(planted)) fs.unlinkSync(planted);
+    const before = misses(census(corpus));
+    fs.writeFileSync(
+      planted,
+      "export default function PlantedDenseChip() {\n" +
+        '  return <button type="button" aria-pressed="false" className="chip chip-filter chip-sm h-4">x</button>;\n' +
+        "}\n",
+      "utf8"
+    );
+    const after = misses(census(corpus));
+    const caught = after.filter((m) => m.control.file === plantedRel);
+    expect(caught).toHaveLength(1);
+    expect(caught[0].control.mechanism).toBe("chip-sm");
+    expect(caught[0].control.belowSmPx).toBe(16);
+    expect(caught[0].why).toContain(`${16 + 2 * CHIP_SM_INSET_PX}px effective`);
+    expect(caught[0].why).toContain(
+      `only reaches it from ${CHIP_SM_MIN_RENDERED_PX}px up`
+    );
+    expect(after.length).toBe(before.length + 1);
   });
 
   it("stays quiet on a planted control that meets the floor", () => {

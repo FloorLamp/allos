@@ -75,6 +75,8 @@ const SWITCHES = /\?/;
 // the span early; none of the 25 recorded sites has one, and the census floor
 // below is what would notice if that stopped being true.
 const TEMPLATE_LITERAL = /`[^`]*`/gs;
+const PRIMITIVE_CLASS_LITERAL =
+  /["'`]([^"'`\n]*\bchip chip-(?:nav|filter)\b[^"'`\n]*)["'`]/g;
 
 // COMMENTS ARE BLANKED BEFORE THE SCAN, because a scan over raw source counts
 // PROSE AS CODE — the same trap an e2e-hygiene census hit when it flagged
@@ -231,6 +233,8 @@ const ADOPTERS: readonly (readonly [string, string])[] = [
   ["components/household/HouseholdHistoryTimeline.tsx", "chip chip-filter"],
   ["components/illness/EpisodeTimeline.tsx", "chip chip-filter chip-sm"],
   ["components/photo/PhotoGallery.tsx", "chip chip-filter chip-sm"],
+  ["components/activity-form/CustomTypeChips.tsx", "chip chip-filter chip-sm"],
+  ["components/activity-form/StrengthSets.tsx", "chip chip-filter chip-sm"],
 ];
 
 describe("the chip primitive and the stat tile (#3475)", () => {
@@ -258,6 +262,8 @@ describe("the chip primitive and the stat tile (#3475)", () => {
       /\bpx-3\b/
     );
     expect(base).toMatch(/\bpy-1\.5\b/);
+    expect(base).toMatch(/\bdisabled:cursor-not-allowed\b/);
+    expect(base).toMatch(/\bdisabled:opacity-40\b/);
     const small = utilityBody(css, "chip-sm");
     expect(small, "chip-sm records the existing dense scale (#3525)").toMatch(
       /\bpx-2\.5\b/
@@ -289,13 +295,13 @@ describe("the chip primitive and the stat tile (#3475)", () => {
     expect(utilityBody(css, "chip-nav")).toMatch(/rounded-full(?![\w-])/);
     expect(utilityBody(css, "chip-filter")).toMatch(/rounded-md(?![\w-])/);
 
-    // No height floor, deliberately — see the primitive's own note and #3514,
-    // which is unruled on whether the registry's tap floor is 40 or 44. A floor
-    // added here would silently answer a question nobody has answered.
+    // No rendered height floor: #3514 ruled 44px EFFECTIVE, and `chip-sm` meets
+    // it through the registered hit-area overlay. A rendered min-height here
+    // would replace rather than compose with a taller call-site request.
     for (const name of ["chip", "chip-nav", "chip-filter"]) {
       expect(
         utilityBody(css, name),
-        `${name} must declare no height floor: #3514 is open and unruled, and \`min-block-size\` REPLACES rather than composes (#3510)`
+        `${name} must declare no rendered height floor: #3514 ruled an effective target, and \`min-block-size\` REPLACES rather than composes (#3510)`
       ).not.toMatch(/min-(?:block-size|height|h-\d)/);
     }
   });
@@ -343,6 +349,25 @@ describe("the chip primitive and the stat tile (#3475)", () => {
         local,
         `${file} adopted the primitive and then hand-rolled a chip beside it — that is the drift, not a fix`
       ).toEqual([]);
+
+      const primitiveClasses = [...src.matchAll(PRIMITIVE_CLASS_LITERAL)].map(
+        (match) => match[1].trim()
+      );
+      expect(
+        primitiveClasses,
+        `${file} must expose a static primitive class for the audit to inspect`
+      ).not.toEqual([]);
+      for (const className of primitiveClasses) {
+        expect(
+          [
+            "chip chip-nav",
+            "chip chip-nav chip-sm",
+            "chip chip-filter",
+            "chip chip-filter chip-sm",
+          ],
+          `${file} adds a call-site shell variant to ${className}; role, optional density, selected aria, and disabled state are the whole chip contract`
+        ).toContain(className);
+      }
     }
   });
 

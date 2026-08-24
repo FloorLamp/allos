@@ -79,6 +79,12 @@ export const TAP_TARGET_INSET_PX = 6;
 export const TAP_TARGET_MIN_RENDERED_PX =
   TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
+/** `chip-sm`'s per-side hit-area extension (#3525). */
+export const CHIP_SM_INSET_PX = 11;
+
+/** The smallest painted box from which `chip-sm` reaches 44px effective. */
+export const CHIP_SM_MIN_RENDERED_PX = TAP_FLOOR_PX - 2 * CHIP_SM_INSET_PX;
+
 /** Which registered mechanism a control uses to meet the floor, if any. */
 export type FloorMechanism =
   /** Membership of the `.btn` family — the floor arrives from app/globals.css. */
@@ -129,6 +135,8 @@ export type FlooredControl = {
    */
   belowSmPx: number | null;
   mechanism: FloorMechanism;
+  /** Whether the opening tag declares an announced selected state. */
+  selectedState: boolean;
   /**
    * For a `native-box`: whether a `<label>` takes the tap on its behalf — either
    * by wrapping it, or by naming its `id` in an `htmlFor`. This is the premise
@@ -1237,6 +1245,7 @@ export function findFlooredControls(
         kind: kindOf(tag, openTag),
         belowSmPx: null,
         mechanism: "unreadable",
+        selectedState: /\baria-(?:pressed|current)\b/.test(openTag),
         labelled: false,
         className: classNameExpression(openTag)!
           .text.replace(/\s+/g, " ")
@@ -1291,6 +1300,7 @@ export function findFlooredControls(
       kind,
       belowSmPx,
       mechanism,
+      selectedState: /\baria-(?:pressed|current)\b/.test(openTag),
       labelled,
       className: className.replace(/\s+/g, " ").trim(),
       readable: true,
@@ -1326,7 +1336,15 @@ export function floorMiss(control: FlooredControl): string | null {
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "btn-family" || control.mechanism === "rendered")
     return null;
-  if (control.mechanism === "chip-sm") return null;
+  if (control.mechanism === "chip-sm") {
+    if (control.belowSmPx >= CHIP_SM_MIN_RENDERED_PX) return null;
+    return (
+      `${control.belowSmPx}px rendered + \`chip-sm\`'s 2x${CHIP_SM_INSET_PX}px = ` +
+      `${control.belowSmPx + 2 * CHIP_SM_INSET_PX}px effective, under the ` +
+      `${TAP_FLOOR_PX}px floor. The dense-chip hit-area mechanism only reaches it from ` +
+      `${CHIP_SM_MIN_RENDERED_PX}px up`
+    );
+  }
   if (control.mechanism === "tap-target") {
     if (control.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX) return null;
     return (
