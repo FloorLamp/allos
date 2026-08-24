@@ -45,13 +45,18 @@ test("food and practice ledgers are reachable and Timeline filters their day rol
   await page.goto("/nutrition");
   await hydratedClick(page, page.getByTestId("food-ledger-link"));
   await expect(page).toHaveURL(/\/nutrition\/food-history/);
+  await page.goto(`/nutrition/food-history?from=${DAY}&to=${DAY}`);
   await expect(page.getByTestId("food-ledger-page")).toBeVisible();
-  await expect(page.getByTestId("food-ledger-row")).toContainText("Berries");
+  const foodRow = page
+    .getByTestId("food-ledger-row")
+    .filter({ hasText: "Berries" });
+  await expect(foodRow).toHaveCount(1);
   await expect(page.getByTestId("food-ledger-pagination")).toContainText("of");
 
   await page.goto("/wellness");
   await hydratedClick(page, page.getByTestId("practice-ledger-link"));
   await expect(page).toHaveURL(/\/wellness\/practice-history/);
+  await page.goto(`/wellness/practice-history?from=${DAY}&to=${DAY}`);
   await expect(page.getByTestId("practice-ledger-page")).toBeVisible();
   await expect(page.getByTestId("practice-session-history")).toContainText(
     `Ledger practice ${stamp}`
