@@ -732,9 +732,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   type RenderInput =
     | { kind: "value"; value: InputValue }
     | { kind: "props"; props: ReadonlyMap<string, InputValue> };
+  type ResolvedCallable = {
+    node: ts.FunctionLikeDeclaration;
+    leadingInputs: RenderInput[];
+    receiver?: RenderInput;
+  };
   const activeParameterInputs = new Map<ts.ParameterDeclaration, RenderInput>();
   const activeThisInputs = new Map<ts.FunctionLikeDeclaration, RenderInput>();
   const lexicalThisInputs = new Map<ts.ArrowFunction, RenderInput>();
+  const activeGetterReads = new Set<ts.GetAccessorDeclaration>();
   const expressionInput = (expression: ts.Expression): RenderInput => ({
     kind: "value",
     value: { expressions: [expression], projections: [] },
@@ -761,6 +767,10 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     }
     return null;
   };
+  const receiverInput = (expression: ts.Expression): RenderInput =>
+    expression.kind === ts.SyntaxKind.ThisKeyword
+      ? (thisInput(expression) ?? expressionInput(expression))
+      : expressionInput(expression);
   const withThisInput = <T>(
     node: ts.FunctionLikeDeclaration,
     receiver: RenderInput,
@@ -773,6 +783,19 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     } finally {
       if (previous) activeThisInputs.set(node, previous);
       else activeThisInputs.delete(node);
+    }
+  };
+  const withGetterRead = <T>(
+    node: ts.GetAccessorDeclaration,
+    fallback: T,
+    callback: () => T
+  ): T => {
+    if (activeGetterReads.has(node)) return fallback;
+    activeGetterReads.add(node);
+    try {
+      return callback();
+    } finally {
+      activeGetterReads.delete(node);
     }
   };
   const functionReturnExpressions = (
@@ -835,12 +858,14 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ts.isGetAccessorDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
-          return withThisInput(property, expressionInput(expression), () => {
-            const [returned] = functionReturnExpressions(property);
-            return returned
-              ? staticExpressionAtPath(returned, tail, seen)
-              : null;
-          });
+          return withGetterRead(property, null, () =>
+            withThisInput(property, expressionInput(expression), () => {
+              const [returned] = functionReturnExpressions(property);
+              return returned
+                ? staticExpressionAtPath(returned, tail, seen)
+                : null;
+            })
+          );
         }
         if (ts.isSpreadAssignment(property)) {
           const candidate = staticExpressionAtPath(
@@ -948,18 +973,20 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ts.isGetAccessorDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
-          const states = withThisInput(
-            property,
-            expressionInput(expression),
-            () =>
-              functionReturnExpressions(property).map((returned) =>
-                staticPathExists(returned, tail, seen)
-              )
-          );
-          return states.length > 0 &&
-            states.every((state) => state === states[0])
-            ? states[0]
-            : null;
+          return withGetterRead(property, null, () => {
+            const states = withThisInput(
+              property,
+              expressionInput(expression),
+              () =>
+                functionReturnExpressions(property).map((returned) =>
+                  staticPathExists(returned, tail, seen)
+                )
+            );
+            return states.length > 0 &&
+              states.every((state) => state === states[0])
+              ? states[0]
+              : null;
+          });
         }
         if (ts.isSpreadAssignment(property)) {
           const state = staticPathExists(property.expression, path, seen);
@@ -1126,9 +1153,12 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       return { input: { kind: "props", props }, pathOffset: 0 };
     }
     const nested = inputValueAt(input, rest.path);
-    if (!nested || nested.tail.length > 0) return { input, pathOffset: 0 };
+    if (!nested) return { input, pathOffset: 0 };
     const states = nested.value.expressions.flatMap((expression) =>
-      objectPropVariants(expression)
+      (nested.tail.length === 0
+        ? [expression]
+        : staticExpressionNodesAtPath(expression, nested.tail, new Set())
+      ).flatMap((candidate) => objectPropVariants(candidate))
     );
     if (states.length === 0) return { input, pathOffset: 0 };
     const props = new Map<string, InputValue>();
@@ -1340,6 +1370,9 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
         ]);
       }
     }
+    if (ts.isCallExpression(expression) && path.length === 0) {
+      return renderedCallVariants(expression);
+    }
     if (ts.isCallExpression(expression) && path.length > 0) {
       const [head, ...tail] = path;
       if (typeof head !== "string") return [];
@@ -1395,10 +1428,12 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return withThisInput(property, expressionInput(expression), () =>
-              uniqueVariants(
-                functionReturnExpressions(property).flatMap((returned) =>
-                  staticVariantsAtPath(returned, tail, seen)
+            return withGetterRead(property, [], () =>
+              withThisInput(property, expressionInput(expression), () =>
+                uniqueVariants(
+                  functionReturnExpressions(property).flatMap((returned) =>
+                    staticVariantsAtPath(returned, tail, seen)
+                  )
                 )
               )
             );
@@ -1577,9 +1612,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return withThisInput(property, expressionInput(expression), () =>
-              functionReturnExpressions(property).flatMap((returned) =>
-                staticExpressionNodesAtPath(returned, tail, seen)
+            return withGetterRead(property, [], () =>
+              withThisInput(property, expressionInput(expression), () =>
+                functionReturnExpressions(property).flatMap((returned) =>
+                  staticExpressionNodesAtPath(returned, tail, seen)
+                )
               )
             );
           }
@@ -1928,7 +1965,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       if (component) {
         const variants = uniqueVariants(
           propStates.flatMap((props) =>
-            functionRenderedVariants(component, [{ kind: "props", props }])
+            functionRenderedVariants(
+              component.node,
+              [...component.leadingInputs, { kind: "props", props }],
+              component.receiver
+            )
           )
         );
         return variants.length > 0 ? variants : [empty];
@@ -1951,7 +1992,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     if (component) {
       const variants = uniqueVariants(
         propStates.flatMap((props) =>
-          functionRenderedVariants(component, [{ kind: "props", props }])
+          functionRenderedVariants(
+            component.node,
+            [...component.leadingInputs, { kind: "props", props }],
+            component.receiver
+          )
         )
       );
       return variants.length > 0 ? variants : [empty];
@@ -2139,9 +2184,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return withThisInput(property, expressionInput(expression), () =>
-              functionReturnExpressions(property).flatMap((returned) =>
-                jsxNodesAtPath(returned, tail, seen)
+            return withGetterRead(property, [], () =>
+              withThisInput(property, expressionInput(expression), () =>
+                functionReturnExpressions(property).flatMap((returned) =>
+                  jsxNodesAtPath(returned, tail, seen)
+                )
               )
             );
           }
@@ -2307,18 +2354,93 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   }
 
   function objectCallPropVariants(node: ts.CallExpression): PropState[] {
-    const resolved = resolveFunctionExpression(node.expression);
-    if (!resolved) return [];
-    const receiver =
-      ts.isPropertyAccessExpression(node.expression) ||
-      ts.isElementAccessExpression(node.expression)
-        ? expressionInput(node.expression.expression)
-        : undefined;
-    return functionObjectPropVariants(
-      resolved,
-      node.arguments.map((argument) => expressionInput(argument)),
-      receiver
+    return resolvedInvocations(node).flatMap((resolved) =>
+      functionObjectPropVariants(
+        resolved.node,
+        resolved.leadingInputs,
+        resolved.receiver
+      )
     );
+  }
+
+  const callMember = (
+    expression: ts.LeftHandSideExpression
+  ): { target: ts.Expression; name: string } | null => {
+    if (ts.isPropertyAccessExpression(expression)) {
+      return { target: expression.expression, name: expression.name.text };
+    }
+    if (
+      ts.isElementAccessExpression(expression) &&
+      expression.argumentExpression &&
+      ts.isStringLiteral(expression.argumentExpression)
+    ) {
+      return {
+        target: expression.expression,
+        name: expression.argumentExpression.text,
+      };
+    }
+    return null;
+  };
+
+  const staticArgumentLists = (expression: ts.Expression): RenderInput[][] =>
+    staticExpressionNodesAtPath(expression, [], new Set()).flatMap(
+      (candidate) =>
+        candidate.kind === ts.SyntaxKind.NullKeyword ||
+        (ts.isIdentifier(candidate) && candidate.text === "undefined")
+          ? [[]]
+          : ts.isArrayLiteralExpression(candidate) &&
+              candidate.elements.every(
+                (element) =>
+                  !ts.isSpreadElement(element) &&
+                  !ts.isOmittedExpression(element)
+              )
+            ? [
+                candidate.elements.map((element) =>
+                  expressionInput(element as ts.Expression)
+                ),
+              ]
+            : []
+    );
+
+  function resolvedInvocations(node: ts.CallExpression): ResolvedCallable[] {
+    const member = callMember(node.expression);
+    if (member && (member.name === "call" || member.name === "apply")) {
+      const target = resolveFunctionExpression(member.target);
+      if (!target) return [];
+      const receiver = node.arguments[0]
+        ? receiverInput(node.arguments[0])
+        : undefined;
+      const argumentLists =
+        member.name === "call"
+          ? [
+              node.arguments
+                .slice(1)
+                .map((argument) => expressionInput(argument)),
+            ]
+          : node.arguments[1]
+            ? staticArgumentLists(node.arguments[1])
+            : [[]];
+      return argumentLists.map((inputs) => ({
+        node: target.node,
+        leadingInputs: [...target.leadingInputs, ...inputs],
+        receiver: target.receiver ?? receiver,
+      }));
+    }
+    if (member?.name === "bind") return [];
+    const target = resolveFunctionExpression(node.expression);
+    if (!target) return [];
+    const receiver =
+      target.receiver ?? (member ? receiverInput(member.target) : undefined);
+    return [
+      {
+        node: target.node,
+        leadingInputs: [
+          ...target.leadingInputs,
+          ...node.arguments.map((argument) => expressionInput(argument)),
+        ],
+        receiver,
+      },
+    ];
   }
 
   const iterableInputs = (expression: ts.Expression): RenderInput[][] =>
@@ -2363,26 +2485,78 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             return resolved
               ? callbackInputs.length > 0
                 ? callbackInputs.flatMap((inputs) =>
-                    functionRenderedVariants(resolved, inputs, callbackReceiver)
+                    functionRenderedVariants(
+                      resolved.node,
+                      [...resolved.leadingInputs, ...inputs],
+                      resolved.receiver ?? callbackReceiver
+                    )
                   )
-                : functionRenderedVariants(resolved, [], callbackReceiver)
+                : functionRenderedVariants(
+                    resolved.node,
+                    resolved.leadingInputs,
+                    resolved.receiver ?? callbackReceiver
+                  )
               : [];
           })()
         : [];
     }
-    const resolved = resolveFunctionExpression(node.expression);
-    const receiver =
-      ts.isPropertyAccessExpression(node.expression) ||
-      ts.isElementAccessExpression(node.expression)
-        ? expressionInput(node.expression.expression)
-        : undefined;
-    return resolved
-      ? functionRenderedVariants(
-          resolved,
-          node.arguments.map((argument) => expressionInput(argument)),
-          receiver
-        )
-      : [];
+    return resolvedInvocations(node).flatMap((resolved) =>
+      functionRenderedVariants(
+        resolved.node,
+        resolved.leadingInputs,
+        resolved.receiver
+      )
+    );
+  }
+
+  const activeCallableCalls = new Set<ts.FunctionLikeDeclaration>();
+  function functionCallableVariants(
+    resolved: ResolvedCallable,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): ResolvedCallable[] {
+    const node = resolved.node;
+    if (!node.body || activeCallableCalls.has(node)) return [];
+    activeCallableCalls.add(node);
+    const previousInputs = node.parameters.map((parameter) => ({
+      parameter,
+      value: activeParameterInputs.get(parameter),
+    }));
+    const previousReceiver = activeThisInputs.get(node);
+    node.parameters.forEach((parameter, index) => {
+      const input = resolved.leadingInputs[index];
+      if (input) activeParameterInputs.set(parameter, input);
+      else activeParameterInputs.delete(parameter);
+    });
+    if (resolved.receiver && !ts.isArrowFunction(node)) {
+      activeThisInputs.set(node, resolved.receiver);
+    } else {
+      activeThisInputs.delete(node);
+    }
+    try {
+      const candidates = functionReturnExpressions(node).flatMap((returned) =>
+        callableNodesAtPath(returned, path, seen)
+      );
+      if (resolved.receiver && !ts.isArrowFunction(node)) {
+        for (const candidate of candidates) {
+          if (ts.isArrowFunction(candidate.node)) {
+            lexicalThisInputs.set(candidate.node, resolved.receiver);
+          }
+        }
+      }
+      return candidates;
+    } finally {
+      for (const previous of previousInputs) {
+        if (previous.value) {
+          activeParameterInputs.set(previous.parameter, previous.value);
+        } else {
+          activeParameterInputs.delete(previous.parameter);
+        }
+      }
+      if (previousReceiver) activeThisInputs.set(node, previousReceiver);
+      else activeThisInputs.delete(node);
+      activeCallableCalls.delete(node);
+    }
   }
 
   const renderedRoots: ProjectedText[] = [];
@@ -2442,7 +2616,7 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     expression: ts.Expression,
     path: StaticPath,
     seen: ReadonlySet<StaticBindingDeclaration>
-  ): ts.FunctionLikeDeclaration[] => {
+  ): ResolvedCallable[] => {
     if (
       ts.isParenthesizedExpression(expression) ||
       ts.isAsExpression(expression) ||
@@ -2469,6 +2643,32 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
         ...callableNodesAtPath(expression.left, path, seen),
         ...callableNodesAtPath(expression.right, path, seen),
       ];
+    }
+    if (ts.isCallExpression(expression)) {
+      const member = callMember(expression.expression);
+      if (member?.name === "bind") {
+        const target = resolveFunctionExpression(member.target);
+        if (!target) return [];
+        return [
+          {
+            node: target.node,
+            leadingInputs: [
+              ...target.leadingInputs,
+              ...expression.arguments
+                .slice(1)
+                .map((argument) => expressionInput(argument)),
+            ],
+            receiver:
+              target.receiver ??
+              (expression.arguments[0]
+                ? receiverInput(expression.arguments[0])
+                : undefined),
+          },
+        ];
+      }
+      return resolvedInvocations(expression).flatMap((resolved) =>
+        functionCallableVariants(resolved, path, seen)
+      );
     }
     if (ts.isPropertyAccessExpression(expression)) {
       return callableNodesAtPath(
@@ -2501,21 +2701,25 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ts.isMethodDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
-          return tail.length === 0 ? [property] : [];
+          return tail.length === 0
+            ? [{ node: property, leadingInputs: [] }]
+            : [];
         }
         if (
           ts.isGetAccessorDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
           const receiver = expressionInput(expression);
-          const candidates = withThisInput(property, receiver, () =>
-            functionReturnExpressions(property).flatMap((returned) =>
-              callableNodesAtPath(returned, tail, seen)
+          const candidates = withGetterRead(property, [], () =>
+            withThisInput(property, receiver, () =>
+              functionReturnExpressions(property).flatMap((returned) =>
+                callableNodesAtPath(returned, tail, seen)
+              )
             )
           );
           for (const candidate of candidates) {
-            if (ts.isArrowFunction(candidate)) {
-              lexicalThisInputs.set(candidate, receiver);
+            if (ts.isArrowFunction(candidate.node)) {
+              lexicalThisInputs.set(candidate.node, receiver);
             }
           }
           return candidates;
@@ -2525,10 +2729,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           property.name.text === head
         ) {
           return tail.length === 0
-            ? [resolveFunction(property.name)].filter(
-                (candidate): candidate is ts.FunctionLikeDeclaration =>
-                  !!candidate
-              )
+            ? [resolveFunction(property.name)]
+                .filter(
+                  (candidate): candidate is ts.FunctionLikeDeclaration =>
+                    !!candidate
+                )
+                .map((candidate) => ({
+                  node: candidate,
+                  leadingInputs: [],
+                }))
             : [];
         }
         if (ts.isSpreadAssignment(property)) {
@@ -2571,7 +2780,7 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
         path.length === 0 && reference.path.length === 0
           ? resolveFunction(reference.identifier)
           : null;
-      if (direct) return [direct];
+      if (direct) return [{ node: direct, leadingInputs: [] }];
       const binding = lexicalBinding(reference.identifier);
       const declaration = binding?.declaration;
       if (!binding || !declaration || seen.has(declaration)) return [];
@@ -2598,12 +2807,12 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     }
     return path.length === 0 &&
       (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))
-      ? [expression]
+      ? [{ node: expression, leadingInputs: [] }]
       : [];
   };
   const resolveFunctionExpression = (
     expression: ts.Expression
-  ): ts.FunctionLikeDeclaration | null => {
+  ): ResolvedCallable | null => {
     const candidates = callableNodesAtPath(expression, [], new Set());
     return candidates.length === 1 ? candidates[0] : null;
   };
@@ -2656,6 +2865,19 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     };
     visitReturns(node.body);
   };
+  const markCallable = (resolved: ResolvedCallable): void => {
+    if (resolved.leadingInputs.length === 0 && !resolved.receiver) {
+      markFunction(resolved.node);
+      return;
+    }
+    renderedRoots.push(
+      ...functionRenderedVariants(
+        resolved.node,
+        resolved.leadingInputs,
+        resolved.receiver
+      )
+    );
+  };
   const markExpression = (node: ts.Expression): void => {
     if (followedFlow.has(node)) return;
     followedFlow.add(node);
@@ -2705,15 +2927,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       for (const element of node.exportClause.elements) {
         const local = element.propertyName ?? element.name;
         if (!ts.isIdentifier(local)) continue;
-        const resolved = resolveFunction(local);
-        if (resolved) markFunction(resolved);
+        const resolved = resolveFunctionExpression(local);
+        if (resolved) markCallable(resolved);
         else markExpression(local);
       }
       return;
     }
     if (ts.isExportAssignment(node)) {
       const resolved = resolveFunctionExpression(node.expression);
-      if (resolved) markFunction(resolved);
+      if (resolved) markCallable(resolved);
       else markExpression(node.expression);
       return;
     }
@@ -3781,6 +4003,28 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", nestedRestSafe)).toEqual(
       []
     );
+
+    const deeplyNestedRestSafe = [
+      'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+      "function Wrapper({ config: { nested: { message, ...props } } }) {",
+      "  return <Notice {...props} />;",
+      "}",
+      'return <Wrapper config={{ nested: { message: "Informational only." } }} />;',
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", deeplyNestedRestSafe)
+    ).toEqual([]);
+
+    const deeplyNestedRestRendered = [
+      'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+      "function Wrapper({ config: { nested: { internal, ...props } } }) {",
+      "  return <Notice {...props} />;",
+      "}",
+      'return <Wrapper config={{ nested: { internal: "x", message: "Informational only." } }} />;',
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", deeplyNestedRestRendered)
+    ).toHaveLength(1);
   });
 
   it("treats a later undefined spread property as an overriding value", () => {
@@ -3865,6 +4109,57 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     );
   });
 
+  it("models call, apply, and bind receivers and arguments", () => {
+    const called = [
+      [
+        "function notice() { return <p>{this.message}</p>; }",
+        'return notice.call({ message: "Informational only." });',
+      ].join("\n"),
+      [
+        "function notice() { return <p>{this.message}</p>; }",
+        'return notice.apply({ message: "Consult a clinician." }, []);',
+      ].join("\n"),
+      [
+        "function notice(message) { return <p>{message}</p>; }",
+        'return notice.call(null, "Informational only.");',
+      ].join("\n"),
+      [
+        "function notice(message) { return <p>{message}</p>; }",
+        'const args = ["Consult a clinician."];',
+        "return notice.apply(null, args);",
+      ].join("\n"),
+      [
+        "function Notice(message) { return <p>{this.prefix}{message}</p>; }",
+        'const Bound = Notice.bind({ prefix: "Informational " }, "only.");',
+        "export { Bound };",
+      ].join("\n"),
+    ];
+    for (const sample of called) {
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", sample),
+        sample
+      ).toHaveLength(1);
+    }
+
+    for (const sample of called) {
+      const safe = sample
+        .replace("Informational only.", "Status")
+        .replace("Consult a clinician.", "Status")
+        .replace('prefix: "Informational "', 'prefix: "Status: "');
+      expect(disclaimerCopyViolations("synthetic.tsx", safe), safe).toEqual([]);
+    }
+
+    const arrowKeepsLexicalThis = [
+      "export function Page() {",
+      "  const notice = () => <p>{this.prefix}only.</p>;",
+      '  return notice.call({ prefix: "Informational " });',
+      "}",
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", arrowKeepsLexicalThis)
+    ).toEqual([]);
+  });
+
   it("projects statically rendered getter values", () => {
     const sample = [
       "const copy = {",
@@ -3926,6 +4221,78 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(
       disclaimerCopyViolations("synthetic.tsx", callableReceiverSafe)
     ).toEqual([]);
+
+    const composed = [
+      "const copy = {",
+      '  prefix: "Informational ",',
+      '  get message() { return (() => this.prefix + "only.")(); },',
+      "};",
+      "return <p>{copy.message}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", composed)).toHaveLength(1);
+    expect(
+      disclaimerCopyViolations(
+        "synthetic.tsx",
+        composed.replace('prefix: "Informational "', 'prefix: "Status: "')
+      )
+    ).toEqual([]);
+
+    const siblingCall = [
+      "const copy = {",
+      '  build() { return "Consult a clinician."; },',
+      "  get message() { return this.build(); },",
+      "};",
+      "return <p>{copy.message}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", siblingCall)).toHaveLength(
+      1
+    );
+    expect(
+      disclaimerCopyViolations(
+        "synthetic.tsx",
+        siblingCall.replace("Consult a clinician.", "Status")
+      )
+    ).toEqual([]);
+
+    const callableFactory = [
+      "const Parts = {",
+      "  make() { return () => <p>{this.prefix}only.</p>; },",
+      '  prefix: "Informational ",',
+      "  get Notice() { return this.make(); },",
+      "};",
+      "return <Parts.Notice />;",
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", callableFactory)
+    ).toHaveLength(1);
+    expect(
+      disclaimerCopyViolations(
+        "synthetic.tsx",
+        callableFactory.replace(
+          'prefix: "Informational "',
+          'prefix: "Status: "'
+        )
+      )
+    ).toEqual([]);
+
+    const callableCycle = [
+      "const Parts = {",
+      "  make() { return this.make(); },",
+      "  get Notice() { return this.make(); },",
+      "};",
+      "return <Parts.Notice />;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", callableCycle)).toEqual(
+      []
+    );
+
+    const getterCycle = [
+      "const copy = {",
+      "  get message() { return this.message; },",
+      "};",
+      "return <p>{copy.message}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", getterCycle)).toEqual([]);
   });
 
   it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
