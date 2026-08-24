@@ -384,7 +384,12 @@ function concatProjected(parts: ProjectedText[]): ProjectedText {
 function staticStringExpression(
   node: ts.Expression,
   file: ts.SourceFile,
-  source: string
+  source: string,
+  resolveIdentifier: (
+    node: ts.Identifier,
+    seen: ReadonlySet<ts.VariableDeclaration>
+  ) => ProjectedText | null,
+  seen: ReadonlySet<ts.VariableDeclaration> = new Set()
 ): ProjectedText | null {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     const start = node.getStart(file);
@@ -403,7 +408,13 @@ function staticStringExpression(
     if (!head) return null;
     parts.push(head);
     for (const span of node.templateSpans) {
-      const expression = staticStringExpression(span.expression, file, source);
+      const expression = staticStringExpression(
+        span.expression,
+        file,
+        source,
+        resolveIdentifier,
+        seen
+      );
       if (!expression) return null;
       parts.push(expression);
       const literalStart = span.literal.getStart(file);
@@ -418,7 +429,13 @@ function staticStringExpression(
     return concatProjected(parts);
   }
   if (ts.isParenthesizedExpression(node)) {
-    return staticStringExpression(node.expression, file, source);
+    return staticStringExpression(
+      node.expression,
+      file,
+      source,
+      resolveIdentifier,
+      seen
+    );
   }
   if (
     ts.isAsExpression(node) ||
@@ -426,28 +443,51 @@ function staticStringExpression(
     ts.isSatisfiesExpression(node) ||
     ts.isNonNullExpression(node)
   ) {
-    return staticStringExpression(node.expression, file, source);
+    return staticStringExpression(
+      node.expression,
+      file,
+      source,
+      resolveIdentifier,
+      seen
+    );
   }
   if (
     ts.isBinaryExpression(node) &&
     node.operatorToken.kind === ts.SyntaxKind.PlusToken
   ) {
-    const left = staticStringExpression(node.left, file, source);
-    const right = staticStringExpression(node.right, file, source);
+    const left = staticStringExpression(
+      node.left,
+      file,
+      source,
+      resolveIdentifier,
+      seen
+    );
+    const right = staticStringExpression(
+      node.right,
+      file,
+      source,
+      resolveIdentifier,
+      seen
+    );
     return left && right ? concatProjected([left, right]) : null;
   }
+  if (ts.isIdentifier(node)) return resolveIdentifier(node, seen);
   return null;
 }
 
 type ProjectionEdit = { start: number; end: number } & ProjectedText;
 
+type LexicalBinding = {
+  name: string;
+  scope: ts.Node;
+  declaration: ts.VariableDeclaration | null;
+};
+
 // Project syntax that is statically known to become rendered text. HTML character
-// references decode in JSX text, not inside JavaScript strings. A statically
-// provable JSX expression renders its evaluated value without its JS syntax. Const
-// string initializers are projected as candidates too: this matches the lint's
-// existing treatment of user-copy constants and catches values rendered later via
-// an identifier without needing scope lookup or risking binding cycles. Every
-// projected character retains an original offset so diagnostics keep exact lines.
+// references decode in JSX text and JSX string attributes, never JavaScript
+// strings. JSX expressions resolve only lexical const bindings they actually
+// render, transitively and with a cycle guard. Every projected character retains
+// an original offset so diagnostics keep exact lines after projection.
 function projectStaticRenderedCopy(source: string): ProjectedText {
   const file = ts.createSourceFile(
     "copy-lint.tsx",
@@ -456,24 +496,117 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
     true,
     ts.ScriptKind.TSX
   );
-  const edits: ProjectionEdit[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer &&
-      ts.isVariableDeclarationList(node.parent) &&
-      (node.parent.flags & ts.NodeFlags.Const) !== 0
-    ) {
-      const rendered = staticStringExpression(node.initializer, file, source);
-      if (rendered) {
-        edits.push({
-          start: node.initializer.getStart(file),
-          end: node.initializer.end,
-          ...rendered,
-        });
-        return;
+  // The shared lexical stripper intentionally has no JSX mode, so restore the
+  // parser-proven JSX text ranges where `//` and `/*` are rendered characters.
+  const visibleSource = stripComments(source).split("");
+  const bindings: LexicalBinding[] = [];
+
+  const enclosingScope = (node: ts.Node): ts.Node => {
+    for (let current = node.parent; current; current = current.parent) {
+      if (
+        ts.isSourceFile(current) ||
+        ts.isBlock(current) ||
+        ts.isModuleBlock(current) ||
+        ts.isCaseBlock(current) ||
+        ts.isCatchClause(current) ||
+        ts.isForStatement(current) ||
+        ts.isForInStatement(current) ||
+        ts.isForOfStatement(current) ||
+        ts.isFunctionLike(current)
+      ) {
+        return current;
       }
     }
+    return file;
+  };
+  const bindingNames = (name: ts.BindingName): string[] => {
+    if (ts.isIdentifier(name)) return [name.text];
+    return name.elements.flatMap((element) =>
+      ts.isOmittedExpression(element) ? [] : bindingNames(element.name)
+    );
+  };
+  const collectBindings = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node)) {
+      const declarationList = ts.isVariableDeclarationList(node.parent)
+        ? node.parent
+        : null;
+      const eligible =
+        declarationList &&
+        (declarationList.flags & ts.NodeFlags.Const) !== 0 &&
+        ts.isIdentifier(node.name) &&
+        node.initializer
+          ? node
+          : null;
+      for (const name of bindingNames(node.name)) {
+        bindings.push({
+          name,
+          scope: enclosingScope(node),
+          declaration: eligible,
+        });
+      }
+    } else if (ts.isParameter(node)) {
+      for (const name of bindingNames(node.name)) {
+        bindings.push({ name, scope: node.parent, declaration: null });
+      }
+    }
+    ts.forEachChild(node, collectBindings);
+  };
+  collectBindings(file);
+
+  const resolveIdentifier = (
+    identifier: ts.Identifier,
+    seen: ReadonlySet<ts.VariableDeclaration>
+  ): ProjectedText | null => {
+    const offset = identifier.getStart(file);
+    const candidates = bindings.filter(
+      (binding) =>
+        binding.name === identifier.text &&
+        binding.scope.getStart(file) <= offset &&
+        offset < binding.scope.end
+    );
+    if (candidates.length === 0) return null;
+    const nearestSize = Math.min(
+      ...candidates.map(
+        (binding) => binding.scope.end - binding.scope.getStart(file)
+      )
+    );
+    const nearest = candidates.filter(
+      (binding) =>
+        binding.scope.end - binding.scope.getStart(file) === nearestSize
+    );
+    if (nearest.length !== 1) return null;
+    const declaration = nearest[0].declaration;
+    if (!declaration?.initializer || seen.has(declaration)) return null;
+    const nextSeen = new Set(seen).add(declaration);
+    return staticStringExpression(
+      declaration.initializer,
+      file,
+      source,
+      resolveIdentifier,
+      nextSeen
+    );
+  };
+
+  const edits: ProjectionEdit[] = [];
+  const addHtmlWhitespaceEdits = (start: number, end: number) => {
+    const raw = source.slice(start, end);
+    const references = /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g;
+    let match: RegExpExecArray | null;
+    while ((match = references.exec(raw)) !== null) {
+      const decoded = decodeHtmlCharacterReference(match[0]);
+      if (!whitespaceOnly(decoded)) continue;
+      edits.push({
+        start: start + match.index,
+        end: start + match.index + match[0].length,
+        text: decoded!,
+        origins: Array.from(
+          { length: decoded!.length },
+          () => start + match!.index
+        ),
+      });
+    }
+  };
+  const visit = (node: ts.Node): void => {
     if (ts.isJsxExpression(node)) {
       if (!node.expression) {
         edits.push({
@@ -484,7 +617,12 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
         });
         return;
       }
-      const rendered = staticStringExpression(node.expression, file, source);
+      const rendered = staticStringExpression(
+        node.expression,
+        file,
+        source,
+        resolveIdentifier
+      );
       if (rendered) {
         edits.push({ start: node.getStart(file), end: node.end, ...rendered });
         return;
@@ -492,23 +630,18 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
     }
     if (ts.isJsxText(node)) {
       const start = node.getStart(file);
-      const raw = source.slice(start, node.end);
-      const references =
-        /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g;
-      let match: RegExpExecArray | null;
-      while ((match = references.exec(raw)) !== null) {
-        const decoded = decodeHtmlCharacterReference(match[0]);
-        if (!whitespaceOnly(decoded)) continue;
-        edits.push({
-          start: start + match.index,
-          end: start + match.index + match[0].length,
-          text: decoded!,
-          origins: Array.from(
-            { length: decoded!.length },
-            () => start + match!.index
-          ),
-        });
+      for (let offset = start; offset < node.end; offset++) {
+        visibleSource[offset] = source[offset];
       }
+      addHtmlWhitespaceEdits(start, node.end);
+    }
+    if (
+      ts.isJsxAttribute(node) &&
+      node.initializer &&
+      ts.isStringLiteral(node.initializer)
+    ) {
+      const start = node.initializer.getStart(file) + 1;
+      addHtmlWhitespaceEdits(start, node.initializer.end - 1);
     }
     ts.forEachChild(node, visit);
   };
@@ -518,7 +651,7 @@ function projectStaticRenderedCopy(source: string): ProjectedText {
   const origins: number[] = [];
   let cursor = 0;
   const appendIdentity = (end: number) => {
-    text.push(source.slice(cursor, end));
+    text.push(visibleSource.slice(cursor, end).join(""));
     for (let offset = cursor; offset < end; offset++) origins.push(offset);
   };
   for (const edit of edits.sort((a, b) => a.start - b.start)) {
@@ -574,8 +707,7 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
 function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
-  const code = stripComments(text);
-  const projection = projectStaticRenderedCopy(code);
+  const projection = projectStaticRenderedCopy(text);
   const violations = new Set<string>();
   for (const phrasing of DISCLAIMER_PHRASINGS) {
     const flags = `${phrasing.flags.replace(/g/g, "")}g`;
@@ -583,7 +715,7 @@ function disclaimerCopyViolations(rel: string, text: string): string[] {
     let match: RegExpExecArray | null;
     while ((match = matcher.exec(projection.text)) !== null) {
       const sourceOffset = projection.origins[match.index] ?? 0;
-      const line = code.slice(0, sourceOffset).split("\n").length;
+      const line = text.slice(0, sourceOffset).split("\n").length;
       const lineStart = projection.text.lastIndexOf("\n", match.index - 1) + 1;
       const lineEnd = projection.text.indexOf(
         "\n",
@@ -742,8 +874,35 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>{disclaimer}</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
-      "synthetic.tsx:1 — disclaimer prose in: const disclaimer = Informational only.;",
+      "synthetic.tsx:1 — disclaimer prose in: return <p>Informational only.</p>;",
     ]);
+  });
+
+  it("resolves rendered const templates transitively without projecting unrendered constants", () => {
+    const rendered = [
+      'const spacing = " ";',
+      "const disclaimer = `Informational${spacing}only.`;",
+      "return <p>{disclaimer}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", rendered)).toEqual([
+      "synthetic.tsx:2 — disclaimer prose in: return <p>Informational only.</p>;",
+    ]);
+
+    const internal = [
+      'const spacing = " ";',
+      "const disclaimer = `Informational${spacing}only.`;",
+      "console.debug(disclaimer);",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", internal)).toEqual([]);
+  });
+
+  it("stops safely when rendered const bindings form a cycle", () => {
+    const sample = [
+      "const first = `${second}`;",
+      "const second = `${first}`;",
+      "return <p>{first}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
 
   it("does not decode HTML entity spelling inside a JavaScript template", () => {
@@ -752,6 +911,24 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "<code>{rawEntity}</code>",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
+  });
+
+  it("decodes rendered whitespace entities in JSX string attributes", () => {
+    const sample = [
+      '<p title="Informational&nbsp;only.">Status</p>',
+      '<button aria-label="Consult&#32;a clinician.">Help</button>',
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      'synthetic.tsx:1 — disclaimer prose in: <p title="Informational only.">Status</p>',
+      'synthetic.tsx:2 — disclaimer prose in: <button aria-label="Consult a clinician.">Help</button>',
+    ]);
+  });
+
+  it("keeps comment-like URL text visible inside JSX text", () => {
+    const sample = "<p>See https://example.test. Informational only.</p>";
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>See https://example.test. Informational only.",
+    ]);
   });
 
   it("detects adjacent rendered-whitespace forms without moving their source lines", () => {
