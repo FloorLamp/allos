@@ -147,13 +147,16 @@ Two traps the guards exist for, both found by measurement rather than reading:
   with the `p-0!` premise that licenses it, so the exemption cannot outlive its
   reason. The card declares `data-card-gutter="delegated"` on that same tag and
   every rendered direct child that spends horizontal gutter declares
-  `data-card-gutter-cell`: `"standard"` is 16→20px, `"compact"` is 8→20px,
-  and `"action"` is 8→12px. This is a semantic guard, not a spacing primitive:
-  the current values stay at their call sites because the family is deliberately
-  non-uniform. The shared scan in `mobile-density-convention.test.ts` resolves
-  hoisted class text and local component roots, owns every `card … p-0!` site,
-  rejects a marker whose premise or rendered-parent relationship has gone stale,
-  and refuses an unmarked gutter-bearing sibling (#3507).
+  `data-card-gutter-cell` on its DOM root: `"standard"` is 16→20px,
+  `"compact"` is 8→20px, and `"action"` is 8→12px. This is a semantic guard,
+  not a spacing primitive: the current values stay at their call sites because
+  the family is deliberately non-uniform. Each reachable class branch must carry
+  the complete role, and no later responsive horizontal override may replace it.
+  The shared scan in `mobile-density-convention.test.ts` resolves same-file const
+  chains and class combiners, owns every `card … p-0!` site, rejects cycles and
+  markers whose premise or rendered-parent relationship has gone stale, and
+  refuses an unmarked gutter-bearing sibling. A marker on a local-component
+  invocation does not count for the root it renders (#3507).
 
 Scope, as **applied**: section rhythm was swept across every section-level seam
 in the app shell. Out deliberately: `app/(auth)/*` and `/offline` (not app
