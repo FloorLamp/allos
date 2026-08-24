@@ -63,7 +63,24 @@ restate Botanical literals on purpose, with focused tests against drift.
 | Card tiers `card` / `card-quiet`; responsive padding `p-4`→`sm:p-5`; `--card-gutter`      | #2701, #1416            | tier tests + census                                              |
 | Radii: `--radius-card` 14px surfaces, `--radius-control` 0.5rem controls                  | #2701                   | `chip-primitive-census.test.ts` (the stat tile's surface radius) |
 | Page width declared per page via `PageContainer`                                          | #794, #3253             | page-width scan test                                             |
+| Custom named breakpoints use `rem`, so Tailwind can order them with its named breakpoints | #3477                   | `breakpoint-order.test.ts` (real PostCSS/Tailwind compile)       |
 | Theme parity: tokens defined for both modes; body paints its ground                       | `lib/theme.ts`          | census both-theme captures                                       |
+
+The breakpoint guard deliberately stops at the token boundary. A source scanner
+for “an arbitrary px variant and a named variant set the same property” would
+have to reproduce Tailwind's candidate grammar, utility aliases, JSX class
+composition, and generated CSS property expansion. A partial scanner would
+either miss real collisions or report comments and harmless different-property
+pairs. Keeping every custom named breakpoint in `rem` removes this repository's
+known mixed-unit named-breakpoint hazard without claiming that incomplete
+coverage.
+
+At the browser-default 16px initial font size, `120rem` preserves the former
+`1920px` 3xl boundary exactly. Media-query `rem` units use that browser initial
+font size, not an authored or computed `html { font-size: ... }` value. A user
+who chooses a different browser initial font size therefore intentionally shifts
+the 3xl boundary (for example, 20px makes it 2400px); the former fixed-pixel
+boundary did not respond to that preference.
 
 ## 2. Container grammar
 
