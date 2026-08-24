@@ -270,11 +270,13 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
     "schedule-grid-tip"
   );
 
-  // Use the empty viewport gutter as a real outside pointer target. The phone
-  // heading is intentionally sr-only and cannot be clicked by a user.
-  await page.mouse.click(1, 1);
+  // The visible, inert legend is a deterministic outside pointer target. It
+  // dismisses the panel without activating the surrounding Records shell.
+  const immunizationsUrl = page.url();
+  await grid.getByText("Recorded", { exact: true }).click();
   await expect(pinnedTip).toHaveCount(0);
   await expect(doseTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(immunizationsUrl);
 
   await doseTrigger.focus();
   await page.keyboard.press("Space");
