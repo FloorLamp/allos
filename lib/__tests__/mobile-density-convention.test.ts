@@ -321,6 +321,8 @@ type DelegatedGutterScan = {
   offenders: string[];
 };
 
+type ClassRead = { text: string | null; error?: string; expanded: string };
+
 function jsxAttribute(tag: OpeningTag, name: string): string | null {
   const attribute = tag.attributes.properties.find(
     (property): property is ts.JsxAttribute =>
@@ -349,28 +351,31 @@ function jsxAttributeSource(tag: OpeningTag, name: string): string | null {
   return attribute?.initializer?.getText() ?? null;
 }
 
-function directChildTags(tag: OpeningTag): OpeningTag[] {
+function directRenderedChildTags(tag: OpeningTag): OpeningTag[] {
   if (!ts.isJsxOpeningElement(tag)) return [];
   const children: OpeningTag[] = [];
-  for (const child of tag.parent.children) {
-    if (ts.isJsxElement(child)) children.push(child.openingElement);
-    else if (ts.isJsxSelfClosingElement(child)) children.push(child);
-  }
+  const findOutermost = (node: ts.Node) => {
+    if (ts.isJsxElement(node)) {
+      children.push(node.openingElement);
+      return;
+    }
+    if (ts.isJsxSelfClosingElement(node)) {
+      children.push(node);
+      return;
+    }
+    ts.forEachChild(node, findOutermost);
+  };
+  for (const child of tag.parent.children) findOutermost(child);
   return children;
-}
-
-function directParentTag(tag: OpeningTag): OpeningTag | null {
-  const jsxNode = ts.isJsxOpeningElement(tag) ? tag.parent : tag;
-  const parent = jsxNode.parent;
-  return ts.isJsxElement(parent) ? parent.openingElement : null;
 }
 
 // One relationship owns every zero-padding card rather than a named assertion
 // for each current site. The attributes make the two halves visible at the tag:
 // the card declares that its gutter is delegated, and one or more DIRECT cells
 // declare which existing horizontal gutter they carry. The role preserves the
-// intentionally different phone values (16px or 8px) without pretending this
-// family has one number.
+// intentionally different phone values without pretending this family has one
+// number. A direct local component is resolved to its rendered root, so a marker
+// on `<ReadingsHeader />` owns the padding on the `<div>` it actually emits.
 function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
   const result: DelegatedGutterScan = { cards: [], cells: [], offenders: [] };
 
@@ -384,9 +389,25 @@ function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
       ts.ScriptKind.TSX
     );
     const tags: OpeningTag[] = [];
+    const componentRoots = new Map<string, OpeningTag>();
+    const unwrapJsx = (expression: ts.Expression): OpeningTag | null => {
+      let current = expression;
+      while (ts.isParenthesizedExpression(current))
+        current = current.expression;
+      if (ts.isJsxElement(current)) return current.openingElement;
+      if (ts.isJsxSelfClosingElement(current)) return current;
+      return null;
+    };
     const visit = (node: ts.Node) => {
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
         tags.push(node);
+      }
+      if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+        const returned = node.body.statements.find(ts.isReturnStatement);
+        if (returned?.expression) {
+          const rootTag = unwrapJsx(returned.expression);
+          if (rootTag) componentRoots.set(node.name.text, rootTag);
+        }
       }
       ts.forEachChild(node, visit);
     };
@@ -397,52 +418,95 @@ function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
         syntax.getLineAndCharacterOfPosition(tag.getStart(syntax)).line + 1;
       return `${rel}:${line}`;
     };
-    const classes = (tag: OpeningTag) => {
+    const classCache = new Map<OpeningTag, ClassRead>();
+    const classes = (tag: OpeningTag): ClassRead => {
+      const cached = classCache.get(tag);
+      if (cached) return cached;
       const ownSite = site(tag);
+      const classSource = jsxAttributeSource(tag, "className");
+      if (classSource == null) {
+        const missing = {
+          text: null,
+          expanded: "",
+          error: "tag carries no className",
+        };
+        classCache.set(tag, missing);
+        return missing;
+      }
+      let expanded = classSource;
       try {
         const expression = classNameExpression(tag.getText(syntax));
-        if (expression.literal) return expression.text;
-        return readClassText(
-          substituteModuleConsts(source, expression.text),
-          ownSite
-        );
+        expanded = expression.literal
+          ? expression.text
+          : substituteModuleConsts(source, expression.text);
+        const resolved = {
+          text: expression.literal
+            ? expression.text
+            : readClassText(expanded, ownSite),
+          expanded,
+        };
+        classCache.set(tag, resolved);
+        return resolved;
       } catch (error) {
-        result.offenders.push(`${ownSite}: ${String(error)}`);
-        return null;
+        const failed = { text: null, expanded, error: String(error) };
+        classCache.set(tag, failed);
+        return failed;
       }
     };
 
+    const renderedTag = (tag: OpeningTag): OpeningTag => {
+      if (jsxAttributeSource(tag, "className") != null) return tag;
+      const name = tag.tagName.getText(syntax);
+      return componentRoots.get(name) ?? tag;
+    };
+    const horizontalGutters = (text: string) => {
+      const tokens = text.split(/\s+/).filter(Boolean);
+      return {
+        phone: tokens.filter((token) =>
+          /^(?:p|px|pl|pr)-[\w.\[\]-]+!?$/.test(token)
+        ),
+        sm: tokens.filter((token) =>
+          /^sm:(?:p|px|pl|pr)-[\w.\[\]-]+!?$/.test(token)
+        ),
+      };
+    };
+    const gutterRoles: Record<string, { phone: string; sm: string }> = {
+      standard: { phone: "px-4", sm: "sm:px-5" },
+      compact: { phone: "px-2", sm: "sm:px-5" },
+      action: { phone: "px-2", sm: "sm:px-3" },
+    };
+    const referencedConstMentionsNoPadding = (classSource: string) =>
+      [
+        ...source.matchAll(
+          /^\s*const ([A-Za-z_$][\w$]*)\s*=\s*([^;]*p-0![^;]*);$/gm
+        ),
+      ].some(([, name]) =>
+        new RegExp(`(?<![\\w$])${name}(?![\\w$])`).test(classSource)
+      );
+
+    const candidates: OpeningTag[] = [];
     for (const tag of tags) {
       const declaration = jsxAttribute(tag, "data-card-gutter");
-      const cellRole = jsxAttribute(tag, "data-card-gutter-cell");
+      const resolved = classes(tag);
       const classSource = jsxAttributeSource(tag, "className") ?? "";
-      // `card` is also a common data variable and prop name. `p-0!` is the
-      // distinctive half of this relationship: once it appears literally, the
-      // whole expression must resolve so a dynamic `card` cannot hide beside it.
-      const mentionsOwnedToken = classToken("p-0!").test(classSource);
-      if (declaration == null && cellRole == null && !mentionsOwnedToken)
+      const expandedMentionsNoPadding =
+        hasClass(resolved.expanded, "p-0!") ||
+        referencedConstMentionsNoPadding(classSource);
+      if (resolved.text == null) {
+        if (declaration != null || expandedMentionsNoPadding) {
+          result.offenders.push(`${site(tag)}: ${resolved.error}`);
+        }
         continue;
-
-      const classText = classes(tag);
-      if (classText == null) continue;
-      const isCard = hasClass(classText, "card");
-      const hasNoPadding = hasClass(classText, "p-0!");
+      }
+      const isCard = hasClass(resolved.text, "card");
+      const hasNoPadding = hasClass(resolved.text, "p-0!");
       const ownSite = site(tag);
-
       if (isCard && hasNoPadding) {
+        candidates.push(tag);
         result.cards.push(ownSite);
         if (declaration !== "delegated") {
           result.offenders.push(
             `${ownSite}: a \`card … p-0!\` must declare data-card-gutter="delegated" on that same tag`
-          );
-        }
-        if (
-          !directChildTags(tag).some(
-            (child) => jsxAttribute(child, "data-card-gutter-cell") != null
-          )
-        ) {
-          result.offenders.push(
-            `${ownSite}: a delegated card must name at least one direct gutter cell`
           );
         }
       } else if (declaration != null) {
@@ -450,37 +514,77 @@ function scanDelegatedCardGutters(root = REPO): DelegatedGutterScan {
           `${ownSite}: data-card-gutter="${declaration}" is licensed only on the same tag as both \`card\` and \`p-0!\``
         );
       }
+    }
 
-      if (cellRole == null) continue;
-      result.cells.push({ role: cellRole, site: ownSite });
-      const parent = directParentTag(tag);
-      if (
-        parent == null ||
-        jsxAttribute(parent, "data-card-gutter") !== "delegated"
-      ) {
-        result.offenders.push(
-          `${ownSite}: a gutter cell must be a direct child of a delegated card`
-        );
-      }
-      const expectedPhone = cellRole === "standard" ? "px-4" : "px-2";
-      if (cellRole !== "standard" && cellRole !== "compact") {
-        result.offenders.push(
-          `${ownSite}: unknown delegated gutter role \`${cellRole}\``
-        );
-      } else if (
-        !hasClass(classText, expectedPhone) ||
-        !hasClass(classText, "sm:px-5")
-      ) {
-        result.offenders.push(
-          `${ownSite}: the ${cellRole} gutter cell must retain \`${expectedPhone} sm:px-5\``
-        );
-      }
-      for (const tier of TIERS.keys()) {
-        if (tier.startsWith("subpanel-") && hasClass(classText, tier)) {
+    const ownedCells = new Set<OpeningTag>();
+    const ownedRenderedRoots = new Set<OpeningTag>();
+    for (const card of candidates) {
+      let carriers = 0;
+      for (const child of directRenderedChildTags(card)) {
+        const role = jsxAttribute(child, "data-card-gutter-cell");
+        const effective = renderedTag(child);
+        const resolved = classes(effective);
+        const childSite = site(child);
+        if (resolved.text == null) {
+          if (role != null) {
+            result.offenders.push(
+              `${childSite}: marked direct child classes cannot be resolved: ${resolved.error}`
+            );
+          }
+          continue;
+        }
+        const gutters = horizontalGutters(resolved.text);
+        const carriesGutter = gutters.phone.length > 0 || gutters.sm.length > 0;
+        if (!carriesGutter && role == null) continue;
+        carriers += 1;
+        ownedCells.add(child);
+        if (effective !== child) ownedRenderedRoots.add(effective);
+
+        if (role == null) {
           result.offenders.push(
-            `${ownSite}: a delegated gutter cell is the card's own gutter, not a ${tier} sub-panel`
+            `${childSite}: this direct child carries horizontal padding but does not declare data-card-gutter-cell`
+          );
+          continue;
+        }
+        result.cells.push({ role, site: childSite });
+        const expected = gutterRoles[role];
+        if (!expected) {
+          result.offenders.push(
+            `${childSite}: unknown delegated gutter role \`${role}\``
+          );
+        } else if (
+          gutters.phone.join(" ") !== expected.phone ||
+          gutters.sm.join(" ") !== expected.sm
+        ) {
+          result.offenders.push(
+            `${childSite}: the ${role} gutter cell must carry exactly \`${expected.phone} ${expected.sm}\` horizontally; found \`${[...gutters.phone, ...gutters.sm].join(" ")}\``
           );
         }
+        for (const tier of TIERS.keys()) {
+          if (tier.startsWith("subpanel-") && hasClass(resolved.text, tier)) {
+            result.offenders.push(
+              `${childSite}: a delegated gutter cell is the card's own gutter, not a ${tier} sub-panel`
+            );
+          }
+        }
+      }
+      if (carriers === 0) {
+        result.offenders.push(
+          `${site(card)}: a delegated card has no rendered direct child carrying its gutter`
+        );
+      }
+    }
+
+    for (const tag of tags) {
+      const role = jsxAttribute(tag, "data-card-gutter-cell");
+      if (
+        role != null &&
+        !ownedCells.has(tag) &&
+        !ownedRenderedRoots.has(tag)
+      ) {
+        result.offenders.push(
+          `${site(tag)}: a gutter cell must be a rendered direct child of a delegated card`
+        );
       }
     }
   }
@@ -687,7 +791,9 @@ describe("phone density conventions (#3466)", () => {
       fs.mkdirSync(path.join(root, "components"));
       fs.writeFileSync(
         path.join(root, "components", "Offenders.tsx"),
-        `export function MissingDeclaration() {
+        `const FUTURE_CARD_CLASSES = "card overflow-hidden p-0!";
+        const HELPER_CARD_CLASSES = "card overflow-hidden p-0!";
+        export function MissingDeclaration() {
           return <section className="card overflow-hidden p-0!">
             <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
           </section>;
@@ -701,6 +807,30 @@ describe("phone density conventions (#3466)", () => {
           return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
             <div className="px-4 sm:px-5" data-card-gutter-cell="compact" />
           </section>;
+        }
+        export function HoistedCandidate() {
+          return <section className={FUTURE_CARD_CLASSES}>
+            <div className="px-3 sm:px-6" />
+          </section>;
+        }
+        export function UnresolvedHelperCandidate() {
+          return <section className={cn(HELPER_CARD_CLASSES)}>
+            <div className="px-4 sm:px-5" />
+          </section>;
+        }
+        export function MarkedSiblingBypass() {
+          return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
+            <div className="px-4 sm:px-5" data-card-gutter-cell="standard" />
+            <div className="px-3 sm:px-6" />
+          </section>;
+        }
+        export function ComponentBoundaryMutation() {
+          return <section className="card overflow-hidden p-0!" data-card-gutter="delegated">
+            <ForgedHeader data-card-gutter-cell="standard" />
+          </section>;
+        }
+        function ForgedHeader(_props: { "data-card-gutter-cell": "standard" }) {
+          return <div className="px-3 sm:px-6" />;
         }\n`
       );
 
@@ -712,8 +842,15 @@ describe("phone density conventions (#3466)", () => {
         "is licensed only on the same tag as both `card` and `p-0!`"
       );
       expect(offenders).toContain(
-        "the compact gutter cell must retain `px-2 sm:px-5`"
+        "the compact gutter cell must carry exactly `px-2 sm:px-5` horizontally"
       );
+      expect(offenders).toContain(
+        "this direct child carries horizontal padding but does not declare data-card-gutter-cell"
+      );
+      expect(offenders).toContain(
+        "the standard gutter cell must carry exactly `px-4 sm:px-5` horizontally; found `px-3 sm:px-6`"
+      );
+      expect(offenders).toContain("className cannot be read: `cn`");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

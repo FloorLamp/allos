@@ -89,7 +89,7 @@ export default function MetricReadingsTable({
         data-card-gutter="delegated"
         data-testid="metric-readings"
       >
-        <ReadingsHeader />
+        <ReadingsHeader data-card-gutter-cell="standard" />
         <div
           className="px-2 pb-2 sm:px-5 sm:pb-5"
           data-card-gutter-cell="compact"
@@ -107,7 +107,7 @@ export default function MetricReadingsTable({
       data-card-gutter="delegated"
       data-testid="metric-readings"
     >
-      <ReadingsHeader />
+      <ReadingsHeader data-card-gutter-cell="standard" />
       <div
         className="px-2 pb-2 sm:px-5 sm:pb-5"
         data-card-gutter-cell="compact"
@@ -158,10 +158,15 @@ export default function MetricReadingsTable({
   );
 }
 
-function ReadingsHeader() {
+function ReadingsHeader({
+  "data-card-gutter-cell": gutterRole,
+}: {
+  "data-card-gutter-cell": "standard";
+}) {
   return (
     <div
       className="px-4 pt-2.5 pb-1 sm:px-5 sm:pt-4 sm:pb-3"
+      data-card-gutter-cell={gutterRole}
       data-testid="metric-readings-header"
     >
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">

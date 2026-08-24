@@ -221,7 +221,12 @@ export default function TrendMiniCard({
           </span>
         </Link>
         {menu && (
-          <div className="flex shrink-0 items-center px-2 sm:px-3">{menu}</div>
+          <div
+            className="flex shrink-0 items-center px-2 sm:px-3"
+            data-card-gutter-cell="action"
+          >
+            {menu}
+          </div>
         )}
       </div>
     );
