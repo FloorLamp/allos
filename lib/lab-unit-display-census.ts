@@ -23,6 +23,99 @@ const POSSIBLE_UNIT_EXIT =
 const POSSIBLE_LAB_CONTEXT_SOURCE =
   /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|OutOfWindow|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer|\b(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)\b|["'`]biomarker["'`])/i;
 
+// Every canonical-storage escape is an exact producer → sink contract. The sink
+// kind matters: a `{ unit: ... }` DTO must not also license `const unit = ...`,
+// and an authentic marker used from any helper or unlisted owner fails closed.
+const STORED_LAB_UNIT_SINKS = [
+  [
+    "/app/(app)/results/clinical-result-index.ts",
+    "withReferenceCells",
+    "property:unit",
+    "r.unit",
+  ],
+  [
+    "/app/(app)/results/clinical-results/view/page.tsx",
+    "ClinicalResultDetailPage",
+    "assignment:chartUnit",
+    "cb.unit",
+  ],
+  [
+    "/app/(app)/results/clinical-results/view/page.tsx",
+    "ClinicalResultDetailPage",
+    "assignment:chartUnit",
+    "latestPlottable?.r.unit",
+  ],
+  [
+    "/app/(app)/results/clinical-results/view/page.tsx",
+    "ClinicalResultDetailPage",
+    "assignment:otherUnits",
+    "x.r.unit",
+  ],
+  [
+    "/app/(app)/training/GoalForm.tsx",
+    "GoalForm",
+    "variable:bioUnit",
+    "editGoal.unit",
+  ],
+  [
+    "/app/(app)/training/GoalForm.tsx",
+    "GoalForm",
+    "variable:bioUnit",
+    "bioOption?.unit",
+  ],
+  [
+    "/app/(app)/training/GoalForm.tsx",
+    "GoalForm",
+    "property:biomarkerUnit",
+    "bioOption?.latestUnit",
+  ],
+  [
+    "/app/(app)/training/goal-target-options.ts",
+    "getGoalBiomarkerOptions",
+    "property:unit",
+    "cb?.unit",
+  ],
+  [
+    "/app/(app)/training/goal-target-options.ts",
+    "getGoalBiomarkerOptions",
+    "property:latestUnit",
+    "plot?.unit",
+  ],
+  [
+    "/lib/biomarker-goal.ts",
+    "computeBiomarkerGoalProgress",
+    "property:unit",
+    "target.unit",
+  ],
+  ["/lib/biomarker-goal.ts", "biomarkerTargetOf", "property:unit", "goal.unit"],
+  ["/lib/fhir/bundle.ts", "entriesToImportResult", "property:unit", "rec.unit"],
+  ["/lib/import-diff.ts", "recordRow", "property:unit", "f.unit"],
+  [
+    "/lib/import-diff.ts",
+    "snapshotFromPersistInput",
+    "property:unit",
+    "r.unit",
+  ],
+  [
+    "/lib/queries/medical.ts",
+    "getSavedClinicalResults",
+    "property:latest_unit",
+    "latest?.unit",
+  ],
+  [
+    "/lib/queries/medical/immunizations.ts",
+    "getImmunityTiters",
+    "property:unit",
+    "row.unit",
+  ],
+  [
+    "/lib/rule-findings.ts",
+    "buildSunExposureFindings",
+    "property:vitaminDUnit",
+    "latest.unit",
+  ],
+] as const;
+
 function displayUnitModule(moduleName: string, fileName: string): boolean {
   if (moduleName === "@/lib/display-unit") return true;
   if (!moduleName.startsWith(".")) return false;
@@ -45,6 +138,40 @@ function medicalValueModule(moduleName: string, fileName: string): boolean {
     path.posix.resolve("/", path.posix.dirname(normalized), moduleName) ===
       `${root[1]}/components/ui`
   );
+}
+
+function projectModule(
+  moduleName: string,
+  fileName: string,
+  projectPath: string
+): boolean {
+  if (moduleName === `@/${projectPath}`) return true;
+  if (!moduleName.startsWith(".")) return false;
+  const normalized = fileName.replaceAll("\\", "/");
+  const root = /^(.*)\/(?:app|components|lib)\//.exec(normalized);
+  return (
+    !!root &&
+    path.posix.resolve("/", path.posix.dirname(normalized), moduleName) ===
+      `${root[1]}/${projectPath}`
+  );
+}
+
+function semanticModuleExports(
+  moduleName: string,
+  fileName: string
+): ReadonlySet<string> | null {
+  const modules = [
+    ["lib/unit-conversions", ["convertToCanonical", "sameUnit"]],
+    ["lib/reference-range", ["reconciledFlag"]],
+    ["lib/vitals-input", ["normalizeImportedTemperature"]],
+    ["lib/waist-circ-extract", ["waistCircToCm"]],
+    ["lib/head-circ-extract", ["headCircToCm"]],
+    ["lib/units", ["fmtTemp", "fmtWeight"]],
+  ] as const;
+  for (const [projectPath, exports] of modules)
+    if (projectModule(moduleName, fileName, projectPath))
+      return new Set(exports);
+  return null;
 }
 
 function declarationName(node: ts.Node): string | null {
@@ -138,6 +265,8 @@ interface Binding {
   trustedFormatterNamespace: boolean;
   trustedStoredUnit: boolean;
   trustedUnitRenderer: boolean;
+  trustedSemanticCall: boolean;
+  trustedSemanticNamespace: ReadonlySet<string> | null;
   rawUnit: boolean;
 }
 interface Scope {
@@ -238,7 +367,7 @@ function unitPropertyRead(
  * declared lab-display context a raw unit read must be consumed directly by the
  * canonical formatter. The only exceptions are syntax-local non-display
  * semantics: comparisons/guards, named conversion/import operations, and the
- * authenticated `storedLabUnit` contract for an intentional raw transfer.
+ * authenticated `storedLabUnit` inventory for an intentional raw transfer.
  * Arbitrary calls, assignments, spreads, aliases, and callbacks therefore fail
  * at the original read regardless of later execution order.
  */
@@ -280,7 +409,9 @@ export function rawRenderedUnitExits(
     trustedFormatterNamespace = false,
     trustedStoredUnit = false,
     trustedUnitRenderer = false,
-    constString: string | null = null
+    constString: string | null = null,
+    trustedSemanticCall = false,
+    trustedSemanticNamespace: ReadonlySet<string> | null = null
   ) {
     scope.bindings.set(identifier.text, {
       constString,
@@ -289,6 +420,8 @@ export function rawRenderedUnitExits(
       trustedFormatterNamespace,
       trustedStoredUnit,
       trustedUnitRenderer,
+      trustedSemanticCall,
+      trustedSemanticNamespace,
     });
   }
   function resolve(node: ts.Node, name: string): Binding | null {
@@ -319,6 +452,10 @@ export function rawRenderedUnitExits(
   }
   function collect(node: ts.Node) {
     const scope = scopeAt.get(node) ?? sourceScope;
+    const semanticExports =
+      ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+        ? semanticModuleExports(node.moduleSpecifier.text, fileName)
+        : null;
     if (
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
@@ -337,6 +474,38 @@ export function rawRenderedUnitExits(
             (element.propertyName ?? element.name).text === "storedLabUnit"
           );
       } else addBinding(scope, bindings.name, false, false, true);
+    } else if (
+      ts.isImportDeclaration(node) &&
+      semanticExports &&
+      node.importClause?.namedBindings
+    ) {
+      const bindings = node.importClause.namedBindings;
+      if (ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements)
+          addBinding(
+            scope,
+            element.name,
+            false,
+            false,
+            false,
+            false,
+            false,
+            null,
+            semanticExports.has((element.propertyName ?? element.name).text)
+          );
+      } else
+        addBinding(
+          scope,
+          bindings.name,
+          false,
+          false,
+          false,
+          false,
+          false,
+          null,
+          false,
+          semanticExports
+        );
     } else if (
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
@@ -400,7 +569,31 @@ export function rawRenderedUnitExits(
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
       node.name
     ) {
-      addBinding(scopeAt.get(node.parent) ?? sourceScope, node.name);
+      const localSemantic =
+        node.parent === sourceFile &&
+        ((normalized.endsWith(
+          "/lib/migrations/versions/074-imported-temperature-degf.ts"
+        ) &&
+          node.name.text === "unitKey") ||
+          (normalized.endsWith(
+            "/lib/migrations/versions/180-waist-circumference-metric.ts"
+          ) &&
+            node.name.text === "toCm") ||
+          (normalized.endsWith("/lib/waist-circ-extract.ts") &&
+            node.name.text === "waistCircToCm") ||
+          (normalized.endsWith("/lib/head-circ-extract.ts") &&
+            node.name.text === "headCircToCm"));
+      addBinding(
+        scopeAt.get(node.parent) ?? sourceScope,
+        node.name,
+        false,
+        false,
+        false,
+        false,
+        false,
+        null,
+        localSemantic
+      );
     } else if (
       (ts.isFunctionExpression(node) || ts.isClassExpression(node)) &&
       node.name
@@ -444,41 +637,50 @@ export function rawRenderedUnitExits(
       );
     return false;
   }
-  function explicitStoredUnitTransfer(node: ts.CallExpression): boolean {
+  function enclosingFunctionName(node: ts.Node): string | null {
+    for (
+      let current: ts.Node | undefined = node;
+      current;
+      current = current.parent
+    ) {
+      if (!ts.isFunctionLike(current)) continue;
+      const name = declarationName(current) ?? declarationName(current.parent);
+      if (name) return name;
+    }
+    return null;
+  }
+  function storedUnitSink(node: ts.CallExpression): string | null {
     let current: ts.Node = node;
     while (current.parent) {
       const parent = current.parent;
-      if (
-        ts.isJsxExpression(parent) ||
-        ts.isJsxAttribute(parent) ||
-        ts.isTemplateSpan(parent) ||
-        ts.isTaggedTemplateExpression(parent)
-      )
-        return false;
+      if (ts.isPropertyAssignment(parent) && parent.initializer === current)
+        return `property:${resolvedPropertyName(parent.name) ?? ""}`;
+      if (ts.isVariableDeclaration(parent) && parent.initializer === current)
+        return ts.isIdentifier(parent.name)
+          ? `variable:${parent.name.text}`
+          : null;
       if (
         ts.isBinaryExpression(parent) &&
-        parent.operatorToken.kind === ts.SyntaxKind.PlusToken
+        parent.right === current &&
+        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
       )
-        return false;
-      if (ts.isPropertyAssignment(parent) && parent.initializer === current)
-        return UNIT_PROPERTY.test(resolvedPropertyName(parent.name) ?? "");
-      if (
-        (ts.isVariableDeclaration(parent) && parent.initializer === current) ||
-        (ts.isBinaryExpression(parent) &&
-          parent.right === current &&
-          parent.operatorToken.kind === ts.SyntaxKind.EqualsToken)
-      )
-        return true;
-      if (ts.isFunctionLike(parent)) return true;
-      if (
-        ts.isReturnStatement(parent) ||
-        ts.isCallExpression(parent) ||
-        ts.isStatement(parent)
-      )
-        return false;
+        return ts.isIdentifier(parent.left)
+          ? `assignment:${parent.left.text}`
+          : null;
       current = parent;
     }
-    return false;
+    return null;
+  }
+  function explicitStoredUnitTransfer(node: ts.CallExpression): boolean {
+    const owner = enclosingFunctionName(node);
+    const sink = storedUnitSink(node);
+    return STORED_LAB_UNIT_SINKS.some(
+      ([file, expectedOwner, expectedSink, expectedSource]) =>
+        normalized.endsWith(file) &&
+        owner === expectedOwner &&
+        sink === expectedSink &&
+        node.arguments[0]?.getText(sourceFile) === expectedSource
+    );
   }
   function directlyFormatted(node: ts.Node): boolean {
     let current = node;
@@ -525,38 +727,32 @@ export function rawRenderedUnitExits(
     }
     return false;
   }
-  function semanticCallName(call: ts.CallExpression): string | null {
-    return ts.isIdentifier(call.expression)
-      ? call.expression.text
-      : ts.isPropertyAccessExpression(call.expression)
-        ? call.expression.name.text
-        : null;
+  function authenticSemanticCall(call: ts.CallExpression): boolean {
+    if (ts.isIdentifier(call.expression))
+      return (
+        resolve(call.expression, call.expression.text)?.trustedSemanticCall ===
+        true
+      );
+    if (
+      ts.isPropertyAccessExpression(call.expression) &&
+      ts.isIdentifier(call.expression.expression)
+    )
+      return (
+        resolve(
+          call.expression.expression,
+          call.expression.expression.text
+        )?.trustedSemanticNamespace?.has(call.expression.name.text) === true
+      );
+    return false;
   }
   function insideSemanticCall(node: ts.Node): boolean {
     let current = node;
     while (current.parent) {
       const parent = current.parent;
       if (ts.isCallExpression(parent)) {
-        const name = semanticCallName(parent);
         return (
           parent.arguments.includes(current as ts.Expression) &&
-          !!name &&
-          ((name === "convertToCanonical" &&
-            /(?:components\/BiomarkerScale\.tsx|app\/\(app\)\/results\/clinical-results\/view\/page\.tsx)$/.test(
-              normalized
-            )) ||
-            (name === "sameUnit" &&
-              /(?:app\/\(app\)\/results\/clinical-results\/view\/page\.tsx|lib\/(?:biomarker-goal|clinical-result-index|reading-reference-cell|rule-findings)\.ts)$/.test(
-                normalized
-              )) ||
-            (name === "reconciledFlag" &&
-              normalized.endsWith("/lib/queries/derived.ts")) ||
-            (/^(?:fmtTemp|fmtWeight|normalizeImportedTemperature|toCm|unitKey|waistCircToCm|headCircToCm)$/.test(
-              name
-            ) &&
-              /(?:lib\/(?:cda\/extractors\/observations|height-extract|head-circ-extract|migrations\/versions\/074-imported-temperature-degf|notifications\/telegram-quick-log|waist-circ-extract)\.ts)$/.test(
-                normalized
-              )))
+          authenticSemanticCall(parent)
         );
       }
       if (

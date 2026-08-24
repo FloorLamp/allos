@@ -383,21 +383,22 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     expect(
       texts(
         `import { storedLabUnit } from "@/lib/display-unit";
-         export function ClinicalResultIndex({row, canonical}) {
-           return sameUnit(row.unit, canonical)
-             ? { unit: storedLabUnit(row.unit) }
+         import { sameUnit } from "@/lib/unit-conversions";
+         export function withReferenceCells({r, canonical}) {
+           return sameUnit(r.unit, canonical)
+             ? { unit: storedLabUnit(r.unit) }
              : null;
          }`,
-        "/repo/lib/clinical-result-index.ts"
+        "/repo/app/(app)/results/clinical-result-index.ts"
       )
     ).toEqual([]);
     expect(
       texts(
         `import * as units from "@/lib/display-unit";
-         export function ClinicalResultIndex({row}) {
-           return { unit: units.storedLabUnit(row.unit) };
+         export function withReferenceCells({r}) {
+           return { unit: units.storedLabUnit(r.unit) };
          }`,
-        "/repo/lib/clinical-result-index.ts"
+        "/repo/app/(app)/results/clinical-result-index.ts"
       )
     ).toEqual([]);
     expect(
@@ -432,6 +433,69 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         `export function UnitMislabelReview({item}) { const payload={value:""}; payload.value=item.statedUnit; return <p>{payload.value}</p>; }`
       )
     ).toEqual(["item.statedUnit"]);
+  });
+
+  it("authenticates semantic callees and rejects local collisions", () => {
+    expect(
+      texts(
+        `import { sameUnit } from "@/lib/unit-conversions";
+         export function biomarkerTargetOf({row, canonical}) {
+           return sameUnit(row.unit, canonical) ? <p>same</p> : null;
+         }`,
+        "/repo/lib/biomarker-goal.ts"
+      )
+    ).toEqual([]);
+    expect(
+      texts(
+        `function sameUnit(a) { return a; }
+         export function biomarkerTargetOf({row}) {
+           return <p>{sameUnit(row.unit)}</p>;
+         }`,
+        "/repo/lib/biomarker-goal.ts"
+      )
+    ).toEqual(["row.unit"]);
+
+    expect(
+      texts(
+        `import { convertToCanonical } from "@/lib/unit-conversions";
+         export function ClinicalResultDetailPage({row, canonical}) {
+           return <p>{convertToCanonical(row.value, row.unit, canonical)}</p>;
+         }`,
+        "/repo/app/(app)/results/clinical-results/view/page.tsx"
+      )
+    ).toEqual([]);
+    expect(
+      texts(
+        `function convertToCanonical(_value, unit) { return unit; }
+         export function ClinicalResultDetailPage({row}) {
+           return <p>{convertToCanonical(row.value, row.unit)}</p>;
+         }`,
+        "/repo/app/(app)/results/clinical-results/view/page.tsx"
+      )
+    ).toEqual(["row.unit"]);
+  });
+
+  it("rejects stored-unit marker aliases and helper returns", () => {
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function biomarkerTargetOf({goal}) {
+           const unit = storedLabUnit(goal.unit);
+           return <p>{unit}</p>;
+         }`,
+        "/repo/lib/biomarker-goal.ts"
+      )
+    ).toEqual(["goal.unit"]);
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function biomarkerTargetOf({goal}) {
+           const leak = () => storedLabUnit(goal.unit);
+           return <p>{leak()}</p>;
+         }`,
+        "/repo/lib/biomarker-goal.ts"
+      )
+    ).toEqual(["goal.unit"]);
   });
 
   it("ignores ordinary units outside lab contexts", () => {
