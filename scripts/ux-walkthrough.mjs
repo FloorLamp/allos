@@ -108,6 +108,11 @@ import {
   uxSeedRunInfo,
   uxSeedShapeFromEnv,
 } from "./ux-seed-shapes.mjs";
+import {
+  allocateUxServedDb,
+  assertUxServedDbUnused,
+  cleanupUxServedDb,
+} from "./ux-served-db.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -1986,111 +1991,162 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds, UX_SEED=thin seeds then trims to ~7 days, UX_SEED=dirty pins import quirks + long names) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
+--serve boots the dev server itself on a unique tool-owned scratch DB (caller ALLOS_DB_PATH is ignored; UX_SEED=1 seeds, UX_SEED=thin seeds then trims to ~7 days, UX_SEED=dirty pins import quirks + long names) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
 }
 
-// --serve: own the server lifecycle — scratch-DB env, boot, poll ready, and
-// tear down in finally. NEVER defaults to the real data/allos.db.
+// --serve owns both the server and database lifecycle. Atomic mkdtemp ownership
+// replaces content-based "is this DB empty?" guesses and keeps caller paths,
+// :memory:, stale rows, and schema metadata outside the census run.
 let server = null;
-if (serve) {
-  const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
-  if (dbPath === ":memory:") {
-    throw new Error(
-      "--serve requires a file-backed ALLOS_DB_PATH shared by the seed and dev-server processes; :memory: creates a different database in each process."
-    );
-  }
-  if (fs.existsSync(dbPath)) {
-    throw new Error(
-      `Scratch DB already exists at ${dbPath} — refusing to reuse it for the ${UX_SEED_SHAPE.label} census shape. Remove it or choose a fresh ALLOS_DB_PATH.`
-    );
-  }
-  const port = new URL(BASE).port || "3111";
-  const env = applyUxSeedShapeEnv(
-    {
-      ...process.env,
-      ALLOS_DB_PATH: dbPath,
-      ADMIN_USERNAME: ADMIN_USER,
-      ADMIN_PASSWORD: ADMIN_PASS,
-      EMAIL_TEST_CAPTURE: MAIL_FILE,
-      PORT: port,
-    },
-    UX_SEED_SHAPE
+let servedDb = null;
+let browser = null;
+
+function verifyServedDb(env) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/verify-ux-seed-shape.ts"],
+    { env, stdio: "inherit" }
   );
-  // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
-  // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
-  // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
-  // SEED_PERSONA makes the seed write a persona character instead of the
-  // baseline story; uxSeedShapeFromEnv rejects incompatible labels before any
-  // journey mode reaches this lifecycle branch.
-  if (UX_SEED_SHAPE.seed) {
-    log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
-    const r = spawnSync(
-      process.execPath,
-      ["--import", "tsx", "scripts/seed.ts"],
-      { env, stdio: "inherit" }
+  if (result.status !== 0) {
+    throw new Error(
+      `database witness verification exited non-zero for ${UX_SEED_SHAPE.label}`
     );
-    if (r.status !== 0) {
-      throw new Error(
-        `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing stale or unseeded data under that label`
-      );
-    }
-    if (UX_SEED_SHAPE.postSeed === "thin") {
-      log("thinning scratch DB to the last ~7 days…");
-      const t = spawnSync(
-        process.execPath,
-        ["--import", "tsx", "scripts/ux-thin-data.ts"],
-        { env, stdio: "inherit" }
-      );
-      if (t.status !== 0) {
-        throw new Error(
-          "post-seed transform exited non-zero for thin — aborting instead of censusing the full seed under the thin label"
-        );
-      }
-    }
   }
-  log(`starting dev server on :${port} (db: ${dbPath})…`);
-  server = spawn("npm", ["run", "dev"], {
-    env,
-    stdio: "ignore",
-    detached: true,
-  });
-  let ready = false;
-  // First compile can take minutes on a slow filesystem — poll patiently.
-  for (let i = 0; i < 120 && !ready; i++) {
-    await new Promise((r) => setTimeout(r, 5000));
-    ready = await fetch(`${BASE}/login`)
-      .then((r) => r.status === 200)
-      .catch(() => false);
-  }
-  if (!ready) {
-    try {
-      process.kill(-server.pid);
-    } catch {}
-    throw new Error("--serve: dev server never became ready");
-  }
-  log("server ready");
 }
 
-const browser = await chromium.launch({
-  executablePath: process.env.UX_CHROMIUM || undefined,
-});
+async function stopDevServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const closed = new Promise((resolve) => child.once("close", resolve));
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {}
+  }
+  const stopped = await Promise.race([
+    closed.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+  ]);
+  if (!stopped && child.pid) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {}
+    await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+  }
+}
+
 try {
+  if (serve) {
+    servedDb = allocateUxServedDb();
+    assertUxServedDbUnused(servedDb);
+    const dbPath = servedDb.dbPath;
+    const port = new URL(BASE).port || "3111";
+    const env = applyUxSeedShapeEnv(
+      {
+        ...process.env,
+        ALLOS_DB_PATH: dbPath,
+        UX_OWNED_DB_DIR: servedDb.dir,
+        ADMIN_USERNAME: ADMIN_USER,
+        ADMIN_PASSWORD: ADMIN_PASS,
+        EMAIL_TEST_CAPTURE: MAIL_FILE,
+        PORT: port,
+      },
+      UX_SEED_SHAPE
+    );
+    log(`claimed private scratch DB path: ${dbPath}`);
+    if (process.env.ALLOS_DB_PATH) {
+      log("ignoring caller ALLOS_DB_PATH for this served census run");
+    }
+    // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
+    // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
+    // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
+    if (UX_SEED_SHAPE.seed) {
+      log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
+      const r = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "scripts/seed.ts"],
+        { env, stdio: "inherit" }
+      );
+      if (r.status !== 0) {
+        throw new Error(
+          `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing stale or unseeded data under that label`
+        );
+      }
+      if (UX_SEED_SHAPE.postSeed === "thin") {
+        log("thinning scratch DB to the last ~7 days…");
+        const t = spawnSync(
+          process.execPath,
+          ["--import", "tsx", "scripts/ux-thin-data.ts"],
+          { env, stdio: "inherit" }
+        );
+        if (t.status !== 0) {
+          throw new Error(
+            "post-seed transform exited non-zero for thin — aborting instead of censusing the full seed under the thin label"
+          );
+        }
+      }
+      verifyServedDb(env);
+    } else {
+      assertUxServedDbUnused(servedDb);
+    }
+    log(`starting dev server on :${port} (db: ${dbPath})…`);
+    server = spawn("npm", ["run", "dev"], {
+      env,
+      stdio: "ignore",
+      detached: true,
+    });
+    let serverFailure = null;
+    server.once("error", (error) => {
+      serverFailure = error;
+    });
+    server.once("exit", (code, signal) => {
+      if (code !== null || signal) {
+        serverFailure = new Error(
+          `dev server exited before readiness (code ${code}, signal ${signal})`
+        );
+      }
+    });
+    let ready = false;
+    // First compile can take minutes on a slow filesystem — poll patiently.
+    for (let i = 0; i < 120 && !ready && !serverFailure; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      ready = await fetch(`${BASE}/login`)
+        .then((r) => r.status === 200)
+        .catch(() => false);
+    }
+    if (!ready) {
+      if (serverFailure) throw serverFailure;
+      throw new Error("--serve: dev server never became ready");
+    }
+    verifyServedDb(env);
+    log("server ready");
+  }
+
+  browser = await chromium.launch({
+    executablePath: process.env.UX_CHROMIUM || undefined,
+  });
   for (const name of picked) {
     log(`— journey: ${name} —`);
     await journeys[name](browser);
   }
 } finally {
-  await browser.close();
-  writeContactSheet();
-  writeAuditArtifacts(baselineDir);
+  if (browser) {
+    await browser.close();
+    writeContactSheet();
+    writeAuditArtifacts(baselineDir);
+  }
   if (server) {
-    try {
-      process.kill(-server.pid);
-    } catch {}
+    await stopDevServer(server);
     log("dev server stopped");
+  }
+  if (servedDb) {
+    cleanupUxServedDb(servedDb);
+    log("scratch DB and sidecars removed");
   }
 }
 log("screenshots in", SHOTS);

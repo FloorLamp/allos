@@ -1,10 +1,16 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { LONG_NAMES } from "../../scripts/seed-long-names";
+import {
+  allocateUxServedDb,
+  assertUxServedDbUnused,
+  cleanupUxServedDb,
+} from "../../scripts/ux-served-db.mjs";
 import { makeTmpDir } from "../__tests__/tmp-dir";
 import { migratedDb } from "./migrated-db";
 
@@ -34,6 +40,39 @@ function runSeed(dbPath: string, shape: "baseline" | "dirty") {
     ["--import", "tsx", path.join(repo, "scripts", "seed.ts")],
     { cwd: repo, env, encoding: "utf8" }
   );
+}
+
+function runWitness(dbPath: string, uxSeed = "dirty") {
+  return spawnSync(
+    process.execPath,
+    ["--import", "tsx", path.join(repo, "scripts", "verify-ux-seed-shape.ts")],
+    {
+      cwd: repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ALLOS_DB_PATH: dbPath,
+        UX_OWNED_DB_DIR: path.dirname(dbPath),
+        UX_SEED: uxSeed,
+      },
+    }
+  );
+}
+
+async function availablePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("No TCP port allocated"));
+        return;
+      }
+      server.close(() => resolve(address.port));
+    });
+  });
 }
 
 function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
@@ -102,7 +141,26 @@ describe("named dirty seed data", () => {
     });
   }, 30_000);
 
-  it("rejects every standard census shape when its scratch DB is stale", () => {
+  it("checks the dirty witnesses again at the harness child boundary", () => {
+    const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
+    const dirty = runSeed(dirtyPath, "dirty");
+    expect(dirty.status, dirty.stderr || dirty.stdout).toBe(0);
+    const verified = runWitness(dirtyPath);
+    expect(verified.status, verified.stderr || verified.stdout).toBe(0);
+    expect(verified.stdout).toContain("verified dirty UX database");
+
+    const baselinePath = path.join(
+      makeTmpDir("dirty-witness-missing"),
+      "allos.db"
+    );
+    const baseline = runSeed(baselinePath, "baseline");
+    expect(baseline.status, baseline.stderr || baseline.stdout).toBe(0);
+    const mislabeled = runWitness(baselinePath);
+    expect(mislabeled.status).not.toBe(0);
+    expect(mislabeled.stderr).toContain("Dirty seed witnesses do not match");
+  }, 30_000);
+
+  it("keeps a stale caller DB outside every served census shape", () => {
     const dir = makeTmpDir("seed-shape-stale");
     const dbPath = path.join(dir, "allos.db");
     const baseline = runSeed(dbPath, "baseline");
@@ -114,95 +172,57 @@ describe("named dirty seed data", () => {
       "Database already has data — refusing named seed shape dirty"
     );
 
-    for (const [uxSeed, label] of [
-      ["", "fresh"],
-      ["1", "seeded"],
-      ["thin", "thin"],
-      ["dirty", "dirty"],
-    ]) {
-      const result = spawnSync(
-        process.execPath,
-        [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
-        {
-          cwd: repo,
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            ALLOS_DB_PATH: dbPath,
-            UX_SHOTS: path.join(dir, `shots-${uxSeed}`),
-            UX_SEED: uxSeed,
-            SEED_RNG: "",
-            SEED_PERSONA: "",
-            SEED_DIAL_SHAPE: "",
-          },
-        }
-      );
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        `refusing to reuse it for the ${label} census shape`
-      );
+    const before = fs.readFileSync(dbPath);
+    const allocations = [
+      allocateUxServedDb(dir),
+      allocateUxServedDb(dir),
+      allocateUxServedDb(dir),
+      allocateUxServedDb(dir),
+    ];
+    try {
+      expect(new Set(allocations.map(({ dbPath }) => dbPath)).size).toBe(4);
+      for (const allocation of allocations) {
+        expect(allocation.dbPath).not.toBe(dbPath);
+        assertUxServedDbUnused(allocation);
+      }
+      expect(fs.readFileSync(dbPath)).toEqual(before);
+    } finally {
+      for (const allocation of allocations) cleanupUxServedDb(allocation);
     }
   }, 30_000);
 
-  it.each([
-    [
-      "a profile-owned condition",
-      "conditions",
-      (database: Database.Database) =>
-        database
-          .prepare(
-            "INSERT INTO conditions (profile_id, name, status) VALUES (1, 'Stale sentinel condition', 'active')"
-          )
-          .run(),
-    ],
-    [
-      "global provider data",
-      "providers",
-      (database: Database.Database) =>
-        database
-          .prepare(
-            "INSERT INTO providers (name, type, dedup_key) VALUES ('Stale provider', 'organization', 'stale-provider')"
-          )
-          .run(),
-    ],
-    [
-      "a changed profile setting",
-      "profile_settings",
-      (database: Database.Database) =>
-        database
-          .prepare(
-            "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'sex', 'female')"
-          )
-          .run(),
-    ],
-  ])(
-    "refuses dirty seeding over %s through the real seed path",
-    (_label, table, mutate) => {
-      const dbPath = migratedFile(table, mutate);
-      const result = runSeed(dbPath, "dirty");
-
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        "Database already has data — refusing named seed shape dirty"
+  it("does not classify arbitrary rows, schema, or bootstrap metadata as fresh", () => {
+    const dbPath = migratedFile("arbitrary-stale-data", (database) => {
+      database
+        .prepare(
+          "INSERT INTO conditions (profile_id, name, status) VALUES (1, 'Stale sentinel condition', 'active')"
+        )
+        .run();
+      database.exec(
+        "CREATE TABLE arbitrary_stale_payload (value TEXT); INSERT INTO arbitrary_stale_payload VALUES ('preserve me')"
       );
-      expect(result.stderr).toContain(`${table} (`);
-
-      const database = new Database(dbPath, { readonly: true });
-      try {
-        const dirtyWitness = database
-          .prepare(
-            "SELECT COUNT(*) count FROM intake_items WHERE profile_id = 1 AND name = ?"
-          )
-          .get(LONG_NAMES.intakeItem) as { count: number };
-        expect(dirtyWitness.count).toBe(0);
-      } finally {
-        database.close();
-      }
+      database
+        .prepare(
+          "INSERT INTO settings (key, value) VALUES ('stale-bootstrap-metadata', 'yes')"
+        )
+        .run();
+    });
+    const before = fs.readFileSync(dbPath);
+    const allocation = allocateUxServedDb(path.dirname(dbPath));
+    try {
+      expect(allocation.dbPath).not.toBe(dbPath);
+      expect(fs.existsSync(allocation.dbPath)).toBe(false);
+      assertUxServedDbUnused(allocation);
+      expect(fs.readFileSync(dbPath)).toEqual(before);
+    } finally {
+      cleanupUxServedDb(allocation);
     }
-  );
+  });
 
   it("aborts when the real thin post-seed child fails", () => {
     const dir = makeTmpDir("seed-shape-thin-child-failure");
+    const callerDb = path.join(dir, "caller.db");
+    fs.writeFileSync(callerDb, "stale caller bytes");
     const result = spawnSync(
       process.execPath,
       [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
@@ -211,7 +231,7 @@ describe("named dirty seed data", () => {
         encoding: "utf8",
         env: {
           ...process.env,
-          ALLOS_DB_PATH: path.join(dir, "allos.db"),
+          ALLOS_DB_PATH: callerDb,
           UX_SHOTS: path.join(dir, "shots"),
           UX_SEED: "thin",
           UX_THIN_DAYS: "not-a-number",
@@ -228,5 +248,70 @@ describe("named dirty seed data", () => {
       "post-seed transform exited non-zero for thin — aborting instead of censusing the full seed under the thin label"
     );
     expect(result.stdout).not.toContain("starting dev server");
+    expect(fs.readFileSync(callerDb, "utf8")).toBe("stale caller bytes");
+    const claimed = result.stdout.match(
+      /claimed private scratch DB path: (.+\/allos\.db)/
+    )?.[1];
+    expect(claimed).toBeTruthy();
+    expect(fs.existsSync(path.dirname(claimed!))).toBe(false);
+    expect(result.stdout).toContain("scratch DB and sidecars removed");
+  }, 30_000);
+
+  it("stops the served child and removes its DB after a later browser failure", async () => {
+    const dir = makeTmpDir("seed-shape-browser-failure");
+    const fakeBin = path.join(dir, "bin");
+    const receipt = path.join(dir, "server-receipt.jsonl");
+    fs.mkdirSync(fakeBin);
+    const fakeNpm = path.join(fakeBin, "npm");
+    fs.writeFileSync(
+      fakeNpm,
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const http = require("node:http");
+fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify({ event: "start", dbPath: process.env.ALLOS_DB_PATH }) + "\\n");
+const server = http.createServer((_req, res) => { res.statusCode = 200; res.end("ok"); });
+server.listen(Number(process.env.PORT), "127.0.0.1");
+process.on("SIGTERM", () => server.close(() => {
+  fs.appendFileSync(process.env.FAKE_SERVER_RECEIPT, JSON.stringify({ event: "stop" }) + "\\n");
+  process.exit(0);
+}));
+`
+    );
+    fs.chmodSync(fakeNpm, 0o755);
+    const port = await availablePort();
+    const result = spawnSync(
+      process.execPath,
+      [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+      {
+        cwd: repo,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+          FAKE_SERVER_RECEIPT: receipt,
+          ALLOS_DB_PATH: ":memory:",
+          UX_BASE: `http://127.0.0.1:${port}`,
+          UX_CHROMIUM: path.join(dir, "missing-chromium"),
+          UX_SHOTS: path.join(dir, "shots"),
+          UX_SEED: "dirty",
+          SEED_RNG: "",
+          SEED_PERSONA: "",
+          SEED_DIAL_SHAPE: "",
+        },
+      }
+    );
+
+    expect(result.status).not.toBe(0);
+    const events = fs
+      .readFileSync(receipt, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; dbPath?: string });
+    expect(events.map(({ event }) => event)).toEqual(["start", "stop"]);
+    const servedPath = events[0].dbPath!;
+    expect(servedPath).not.toBe(":memory:");
+    expect(fs.existsSync(path.dirname(servedPath))).toBe(false);
+    expect(result.stdout).toContain("ignoring caller ALLOS_DB_PATH");
+    expect(result.stdout).toContain("scratch DB and sidecars removed");
   }, 30_000);
 });

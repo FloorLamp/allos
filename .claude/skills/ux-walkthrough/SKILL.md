@@ -34,7 +34,8 @@ PORT=3111 npm run dev
 ## 2. Drive the journeys
 
 Easiest: let the harness own the server lifecycle (`--serve` boots the dev
-server on the scratch DB, polls readiness, and tears it down; `UX_SEED=1`
+server on a unique private scratch DB, polls readiness, and tears the server and
+database down; a caller's `ALLOS_DB_PATH` is ignored in this mode. `UX_SEED=1`
 runs `scripts/seed.ts` first for a data-rich census, `UX_SEED=thin` seeds and
 then trims to the last ~7 days, and `UX_SEED=dirty` pins import residue plus
 long uncontrolled names — see the four shapes in §3):
@@ -224,8 +225,8 @@ The proven workflow for an all-pages consistency audit:
    passport (encounters, records, immunizations, procedures, preventive events)
    is deliberately kept: a week-old install can hold years of it from one
    document import, and keeping it lets the detail-page census still resolve ids
-   on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
-   between runs — the seed refuses a non-empty database.
+   on this shape. The served harness allocates a new file-backed database for
+   every run, so shapes cannot inherit data from one another.
 
    **Personas (`SEED_PERSONA`)**: the seeded shape can also swap WHO the
    profile is — `scripts/seed-personas.ts` seeds a coherent alternate

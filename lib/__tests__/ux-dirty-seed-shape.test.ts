@@ -9,7 +9,14 @@ import {
   uxSeedRunInfo,
   uxSeedShapeFromEnv,
 } from "../../scripts/ux-seed-shapes.mjs";
+import {
+  allocateUxServedDb,
+  assertUxServedDbUnused,
+  cleanupUxServedDb,
+  UX_SERVED_DB_PREFIX,
+} from "../../scripts/ux-served-db.mjs";
 import { stripComments } from "./strip-comments";
+import { makeTmpDir } from "./tmp-dir";
 
 // #3489 D3. The dangerous failure is a label/data split: audit.md says "dirty"
 // while scripts/seed.ts received a sampled or baseline vector. Drive the same
@@ -31,7 +38,6 @@ describe("UX_SEED=dirty", () => {
     const childEnv = applyUxSeedShapeEnv({}, dirtyShape());
     expect(childEnv).toEqual({
       SEED_DIAL_SHAPE: "dirty",
-      SEED_REQUIRE_EMPTY: "1",
     });
     const dials = seedDialsFromEnv(childEnv);
     expect(dials.kind).toBe("named");
@@ -51,7 +57,7 @@ describe("UX_SEED=dirty", () => {
     if (seeded.kind !== "found") return;
     expect(
       applyUxSeedShapeEnv({ SEED_DIAL_SHAPE: "dirty" }, seeded.shape)
-    ).toEqual({ SEED_REQUIRE_EMPTY: "1" });
+    ).toEqual({});
   });
 
   it("fails unknown names and a conflicting entropy seed loudly", () => {
@@ -97,26 +103,28 @@ describe("UX_SEED=dirty", () => {
     );
   });
 
-  it("rejects an in-memory database before served child processes start", () => {
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ALLOS_DB_PATH: ":memory:",
-      UX_SEED: "dirty",
-    };
-    delete env.SEED_RNG;
-    delete env.SEED_PERSONA;
-    delete env.SEED_DIAL_SHAPE;
-    const result = spawnSync(
-      process.execPath,
-      [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
-      { cwd: repo, env, encoding: "utf8" }
-    );
+  it("atomically owns an absent file-backed path and detects precreation", () => {
+    const tmpRoot = makeTmpDir("ux-served-db-test");
+    const allocation = allocateUxServedDb(tmpRoot);
+    try {
+      expect(path.dirname(allocation.dir)).toBe(tmpRoot);
+      expect(path.basename(allocation.dir)).toMatch(
+        new RegExp(`^${UX_SERVED_DB_PREFIX}`)
+      );
+      expect(allocation.dbPath).not.toBe(":memory:");
+      expect(fs.existsSync(allocation.dbPath)).toBe(false);
+      assertUxServedDbUnused(allocation);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(
-      "--serve requires a file-backed ALLOS_DB_PATH shared by the seed and dev-server processes"
-    );
-    expect(result.stdout).not.toContain("seeding scratch DB");
+      fs.writeFileSync(allocation.dbPath, "race-style precreation");
+      expect(() => assertUxServedDbUnused(allocation)).toThrow(
+        "was pre-created before use"
+      );
+      fs.writeFileSync(`${allocation.dbPath}-wal`, "wal");
+      fs.writeFileSync(`${allocation.dbPath}-shm`, "shm");
+    } finally {
+      cleanupUxServedDb(allocation);
+      expect(fs.existsSync(allocation.dir)).toBe(false);
+    }
   });
 
   it("records the named shape independently in run.json data", () => {
@@ -145,6 +153,10 @@ describe("UX_SEED=dirty", () => {
       "const UX_SEED_SELECTION = uxSeedShapeFromEnv(process.env);"
     );
     expect(walkthrough).toContain("const env = applyUxSeedShapeEnv(");
+    expect(walkthrough).toContain("servedDb = allocateUxServedDb();");
+    expect(walkthrough).toContain("ALLOS_DB_PATH: dbPath");
+    expect(walkthrough).toContain("UX_OWNED_DB_DIR: servedDb.dir");
+    expect(walkthrough).toContain("cleanupUxServedDb(servedDb);");
     expect(walkthrough).toContain("if (UX_SEED_SHAPE.seed)");
     expect(walkthrough).toMatch(
       /spawnSync\(\s*process\.execPath,\s*\["--import", "tsx", "scripts\/seed\.ts"\]/
@@ -152,6 +164,7 @@ describe("UX_SEED=dirty", () => {
     expect(walkthrough).toContain(
       "seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting"
     );
+    expect(walkthrough).toContain("verifyServedDb(env);");
     expect(walkthrough).toContain(
       "const runInfo = uxSeedRunInfo(UX_SEED_SHAPE, process.env);"
     );

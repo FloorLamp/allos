@@ -11,10 +11,7 @@ import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
 import { hashPasswordSync } from "../lib/password";
-import {
-  seedStandardMetricSaves,
-  STANDARD_TREND_METRIC_IDS,
-} from "../lib/standard-metric-seeds";
+import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 import { createShareLink } from "../lib/share-links-db";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "../lib/demo";
 import {
@@ -132,121 +129,20 @@ if (!profileOne) {
 
 type CountRow = { c: number };
 
-// A seed owns the whole application data set, not just its two historically
-// convenient sentinel tables. Derive the inventory from sqlite_schema so a new
-// user-data table fails closed until it is deliberately classified. Only the
-// migration ledger, canonical reference catalog, global configuration, and the
-// exact first-boot identity/profile rows are permitted on an empty seed target.
-function occupiedSeedTables(): { table: string; rows: number }[] {
-  const tableNames = db
-    .prepare(
-      `SELECT name
-         FROM sqlite_schema
-        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-        ORDER BY name`
-    )
-    .all() as { name: string }[];
-  const ignored = new Set([
-    "schema_migrations",
-    "canonical_result_definitions",
-    "settings",
-  ]);
-  const expectedOnboarding = serializeOnboardingState(initialOnboardingState());
-  const exactBootstrapCounts = new Map<string, number>([
-    [
-      "profiles",
-      (
-        db
-          .prepare("SELECT COUNT(*) c FROM profiles WHERE id = 1")
-          .get() as CountRow
-      ).c === 1
-        ? 1
-        : -1,
-    ],
-    [
-      "logins",
-      (
-        db
-          .prepare(
-            "SELECT COUNT(*) c FROM logins WHERE id = 1 AND role = 'admin' AND own_profile_id = 1"
-          )
-          .get() as CountRow
-      ).c === 1
-        ? 1
-        : -1,
-    ],
-    [
-      "login_profiles",
-      (
-        db
-          .prepare(
-            "SELECT COUNT(*) c FROM login_profiles WHERE login_id = 1 AND profile_id = 1 AND access = 'write'"
-          )
-          .get() as CountRow
-      ).c === 1
-        ? 1
-        : -1,
-    ],
-    [
-      "profile_settings",
-      (
-        db
-          .prepare(
-            "SELECT COUNT(*) c FROM profile_settings WHERE profile_id = 1 AND key = 'onboarding_state' AND value = ?"
-          )
-          .get(expectedOnboarding) as CountRow
-      ).c === 1
-        ? 1
-        : -1,
-    ],
-    [
-      "saved_items",
-      (
-        db
-          .prepare(
-            `SELECT COUNT(*) c
-               FROM saved_items
-              WHERE profile_id = 1
-                AND kind = 'trend-metric'
-                AND key IN (${STANDARD_TREND_METRIC_IDS.map(() => "?").join(", ")})
-                AND position IS NULL
-                AND backed = 0`
-          )
-          .get(...STANDARD_TREND_METRIC_IDS) as CountRow
-      ).c === STANDARD_TREND_METRIC_IDS.length
-        ? STANDARD_TREND_METRIC_IDS.length
-        : -1,
-    ],
-  ]);
-
-  const occupied: { table: string; rows: number }[] = [];
-  for (const { name } of tableNames) {
-    if (ignored.has(name)) continue;
-    // sqlite_schema names are trusted, but keep dynamic identifier quoting
-    // correct even if a future table includes a quote.
-    const quoted = `"${name.replaceAll('"', '""')}"`;
-    const total = (
-      db.prepare(`SELECT COUNT(*) c FROM ${quoted}`).get() as CountRow
-    ).c;
-    const expected = exactBootstrapCounts.get(name) ?? 0;
-    if (expected < 0 || total !== expected) {
-      occupied.push({ table: name, rows: total });
-    }
-  }
-  return occupied;
-}
-
-const occupied = occupiedSeedTables();
-if (occupied.length > 0) {
-  const refusal =
-    process.env.SEED_REQUIRE_EMPTY === "1"
-      ? "census seed"
-      : DIAL_SELECTION.kind === "named"
-        ? `named seed shape ${DIAL_SELECTION.shape.name}`
-        : null;
-  if (refusal) {
+// Ordinary direct seed invocations keep their longstanding no-op behavior.
+// Served census freshness is not inferred from a moving table allowlist: the
+// walkthrough owns a newly-created directory and a never-before-used DB path.
+const existing = db
+  .prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM activities WHERE profile_id = ?) +
+       (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) AS c`
+  )
+  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as CountRow;
+if (existing.c > 0) {
+  if (DIAL_SELECTION.kind === "named") {
     console.error(
-      `Database already has data — refusing ${refusal}. Use a fresh scratch DB for each census shape. Occupied tables: ${occupied.map(({ table, rows }) => `${table} (${rows})`).join(", ")}.`
+      `Database already has data — refusing named seed shape ${DIAL_SELECTION.shape.name}. Use a fresh scratch DB for each census shape.`
     );
     process.exit(1);
   }
