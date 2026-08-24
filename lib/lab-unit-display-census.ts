@@ -288,7 +288,6 @@ export function rawRenderedUnitExits(
   const scopeAt = new Map<ts.Node, LexicalScope>();
   const declarationBindings = new Map<ts.Identifier, UnitBinding>();
   const trustedFormatterBindings = new Set<UnitBinding>();
-  const boundFunctions = new Map<UnitBinding, RuntimeFunction>();
 
   type RuntimeFunction =
     | ts.FunctionDeclaration
@@ -298,6 +297,14 @@ export function rawRenderedUnitExits(
     | ts.ConstructorDeclaration
     | ts.GetAccessorDeclaration
     | ts.SetAccessorDeclaration;
+
+  interface CallableTarget {
+    runtime: RuntimeFunction;
+    boundArguments: ts.Expression[];
+  }
+
+  const boundFunctions = new Map<UnitBinding, CallableTarget>();
+  const objectMethods = new Map<string, CallableTarget>();
 
   function runtimeFunction(node: ts.Node): node is RuntimeFunction {
     return (
@@ -399,7 +406,7 @@ export function rawRenderedUnitExits(
     if (node !== sourceFile && runtimeFunction(node)) {
       if (ts.isFunctionDeclaration(node) && node.name) {
         const binding = declareIdentifier(node.name, inherited);
-        boundFunctions.set(binding, node);
+        boundFunctions.set(binding, { runtime: node, boundArguments: [] });
       }
       scope = childScope(node, inherited);
       scopeAt.set(node, scope);
@@ -450,7 +457,11 @@ export function rawRenderedUnitExits(
           ts.isFunctionExpression(node.initializer))
       ) {
         const binding = declarationBindings.get(node.name);
-        if (binding) boundFunctions.set(binding, node.initializer);
+        if (binding)
+          boundFunctions.set(binding, {
+            runtime: node.initializer,
+            boundArguments: [],
+          });
       }
     } else if (ts.isParameter(node)) {
       declarePattern(node.name, scope, true);
@@ -500,6 +511,99 @@ export function rawRenderedUnitExits(
   function bindingForTarget(identifier: ts.Identifier): UnitBinding | null {
     return declarationBindings.get(identifier) ?? resolveIdentifier(identifier);
   }
+
+  function methodKey(binding: UnitBinding, name: string): string {
+    return `${binding.id}:${name}`;
+  }
+
+  function resolveCallableExpression(
+    expression: ts.Expression
+  ): CallableTarget | null {
+    const target = unwrapAssignmentTarget(expression);
+    if (ts.isIdentifier(target)) {
+      const binding = resolveIdentifier(target);
+      return binding ? (boundFunctions.get(binding) ?? null) : null;
+    }
+    if (ts.isArrowFunction(target) || ts.isFunctionExpression(target))
+      return { runtime: target, boundArguments: [] };
+    if (ts.isPropertyAccessExpression(target)) {
+      if (!ts.isIdentifier(target.expression)) return null;
+      const binding = resolveIdentifier(target.expression);
+      return binding
+        ? (objectMethods.get(methodKey(binding, target.name.text)) ?? null)
+        : null;
+    }
+    if (
+      ts.isCallExpression(target) &&
+      ts.isPropertyAccessExpression(target.expression) &&
+      target.expression.name.text === "bind"
+    ) {
+      const callable = resolveCallableExpression(target.expression.expression);
+      if (!callable) return null;
+      return {
+        runtime: callable.runtime,
+        boundArguments: [
+          ...callable.boundArguments,
+          ...target.arguments.slice(1),
+        ],
+      };
+    }
+    return null;
+  }
+
+  // Resolve named callbacks, aliases, `.bind(...)`, and object-literal methods
+  // after every lexical binding exists. Iterate because an object method may name
+  // a function alias declared elsewhere in the same scope.
+  function collectCallableAliases() {
+    const variables: ts.VariableDeclaration[] = [];
+    function collect(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
+        variables.push(node);
+      ts.forEachChild(node, collect);
+    }
+    collect(sourceFile);
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const variable of variables) {
+        if (!ts.isIdentifier(variable.name)) continue;
+        const binding = declarationBindings.get(variable.name);
+        if (!binding || !variable.initializer) continue;
+        const initializer = unwrapAssignmentTarget(variable.initializer);
+        if (ts.isObjectLiteralExpression(initializer)) {
+          for (const property of initializer.properties) {
+            let name: string | null = null;
+            let callable: CallableTarget | null = null;
+            if (ts.isMethodDeclaration(property) && property.name) {
+              name = propertyText(property.name);
+              callable = { runtime: property, boundArguments: [] };
+            } else if (ts.isPropertyAssignment(property)) {
+              name = propertyText(property.name);
+              callable = resolveCallableExpression(property.initializer);
+            } else if (ts.isShorthandPropertyAssignment(property)) {
+              name = property.name.text;
+              callable = resolveCallableExpression(property.name);
+            }
+            if (!name || !callable) continue;
+            const key = methodKey(binding, name);
+            if (!objectMethods.has(key)) {
+              objectMethods.set(key, callable);
+              changed = true;
+            }
+          }
+          continue;
+        }
+        if (boundFunctions.has(binding)) continue;
+        const callable = resolveCallableExpression(initializer);
+        if (callable) {
+          boundFunctions.set(binding, callable);
+          changed = true;
+        }
+      }
+    }
+  }
+  collectCallableAliases();
 
   function addWrite(binding: UnitBinding | null, write: BindingWrite) {
     if (binding) binding.writes.push(write);
@@ -723,6 +827,7 @@ export function rawRenderedUnitExits(
   interface RuntimeInvocation {
     node: ts.CallExpression;
     definite: boolean;
+    arguments: ts.Expression[];
   }
 
   const runtimeInvocations = new Map<RuntimeFunction, RuntimeInvocation[]>();
@@ -733,29 +838,45 @@ export function rawRenderedUnitExits(
   // zero or many times.
 
   function addRuntimeInvocation(
-    runtime: RuntimeFunction,
+    callable: CallableTarget,
     node: ts.CallExpression,
-    definite: boolean
+    definite: boolean,
+    callArguments: readonly ts.Expression[] = []
   ) {
-    const sites = runtimeInvocations.get(runtime) ?? [];
-    sites.push({ node, definite });
-    runtimeInvocations.set(runtime, sites);
+    const sites = runtimeInvocations.get(callable.runtime) ?? [];
+    sites.push({
+      node,
+      definite,
+      arguments: [...callable.boundArguments, ...callArguments],
+    });
+    runtimeInvocations.set(callable.runtime, sites);
   }
 
   function collectRuntimeInvocations(node: ts.Node) {
     if (ts.isCallExpression(node)) {
-      if (ts.isIdentifier(node.expression)) {
-        const binding = resolveIdentifier(node.expression);
-        const declaration = binding ? boundFunctions.get(binding) : undefined;
-        if (declaration) addRuntimeInvocation(declaration, node, true);
-      }
-      for (const argument of node.arguments) {
+      const direct = resolveCallableExpression(node.expression);
+      if (direct) addRuntimeInvocation(direct, node, true, node.arguments);
+      const callbackArguments =
+        ts.isPropertyAccessExpression(node.expression) &&
+        /^(?:every|filter|find|findIndex|flatMap|forEach|map|reduce|reduceRight|some)$/.test(
+          node.expression.name.text
+        )
+          ? [node.expression.expression]
+          : [];
+      for (const [index, argument] of node.arguments.entries()) {
+        const invokedArguments = index === 0 ? callbackArguments : [];
         if (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
-          addRuntimeInvocation(argument, node, false);
+          addRuntimeInvocation(
+            { runtime: argument, boundArguments: [] },
+            node,
+            false,
+            invokedArguments
+          );
         else if (ts.isIdentifier(argument)) {
           const binding = resolveIdentifier(argument);
-          const runtime = binding ? boundFunctions.get(binding) : undefined;
-          if (runtime) addRuntimeInvocation(runtime, node, false);
+          const callable = binding ? boundFunctions.get(binding) : undefined;
+          if (callable)
+            addRuntimeInvocation(callable, node, false, invokedArguments);
         }
       }
     }
@@ -849,11 +970,49 @@ export function rawRenderedUnitExits(
     position: number;
     order: number;
     definite: boolean;
+    context?: EvaluationContext;
+  }
+
+  interface EvaluationContext {
+    key: string;
+    runtime: RuntimeFunction;
+    site: ts.CallExpression;
+    arguments: ts.Expression[];
+    parent?: EvaluationContext;
+  }
+
+  function invocationContext(
+    runtime: RuntimeFunction,
+    invocation: RuntimeInvocation,
+    parent?: EvaluationContext
+  ): EvaluationContext {
+    return {
+      key: `${runtime.pos}@${invocation.node.pos}:${parent?.key ?? "root"}`,
+      runtime,
+      site: invocation.node,
+      arguments: invocation.arguments,
+      parent,
+    };
+  }
+
+  function parameterArgument(
+    binding: UnitBinding,
+    context: EvaluationContext
+  ): ts.Expression | null {
+    for (const [index, parameter] of context.runtime.parameters.entries()) {
+      if (
+        ts.isIdentifier(parameter.name) &&
+        declarationBindings.get(parameter.name) === binding
+      )
+        return context.arguments[index] ?? parameter.initializer ?? null;
+    }
+    return null;
   }
 
   function effectiveWritesForUse(
     binding: UnitBinding,
-    use: ts.Node
+    use: ts.Node,
+    context?: EvaluationContext
   ): EffectiveWrite[] {
     const useRuntime = enclosingRuntime(use);
     const events: EffectiveWrite[] = [];
@@ -865,6 +1024,7 @@ export function rawRenderedUnitExits(
           position: write.position,
           order: write.node.getStart(sourceFile),
           definite: writeIsDefiniteForUse(write, use),
+          context,
         });
         continue;
       }
@@ -886,14 +1046,19 @@ export function rawRenderedUnitExits(
             invocation.definite &&
             internallyDefinite &&
             writeIsDefiniteForUse(callWrite, use),
+          context: invocationContext(writeRuntime, invocation, context),
         });
       }
     }
     return events.sort((a, b) => a.position - b.position || a.order - b.order);
   }
 
-  function bindingTaintedAt(binding: UnitBinding, use: ts.Node): boolean {
-    const key = `${binding.id}:${use.pos}:${use.end}`;
+  function bindingTaintedAt(
+    binding: UnitBinding,
+    use: ts.Node,
+    context?: EvaluationContext
+  ): boolean {
+    const key = `${binding.id}:${use.pos}:${use.end}:${context?.key ?? "root"}`;
     const memoized = taintMemo.get(key);
     if (memoized != null) return memoized;
     if (evaluatingTaint.has(key)) return binding.initialRaw;
@@ -901,12 +1066,13 @@ export function rawRenderedUnitExits(
 
     let tainted = binding.initialRaw;
     const useStart = use.getStart(sourceFile);
-    for (const event of effectiveWritesForUse(binding, use)) {
+    for (const event of effectiveWritesForUse(binding, use, context)) {
       if (event.position >= useStart) continue;
       const write = event.write;
       const writeTainted =
         write.raw === true ||
-        (write.expression != null && carriesRawUnit(write.expression));
+        (write.expression != null &&
+          carriesRawUnit(write.expression, event.context));
       if (event.definite) tainted = writeTainted;
       else if (writeTainted) tainted = true;
     }
@@ -916,10 +1082,21 @@ export function rawRenderedUnitExits(
     return tainted;
   }
 
-  function rawIdentifierUse(identifier: ts.Identifier): boolean {
+  function rawIdentifierUse(
+    identifier: ts.Identifier,
+    context?: EvaluationContext
+  ): boolean {
     if (!identifierIsReference(identifier)) return false;
     const binding = resolveIdentifier(identifier);
-    if (binding) return bindingTaintedAt(binding, identifier);
+    if (binding) {
+      if (context) {
+        const argument = parameterArgument(binding, context);
+        if (argument) return carriesRawUnit(argument, context.parent);
+        if (!isDescendant(binding.scope.node, context.runtime))
+          return bindingTaintedAt(binding, context.site, context.parent);
+      }
+      return bindingTaintedAt(binding, identifier, context);
+    }
     return conventionalUnitName(identifier.text);
   }
 
@@ -927,7 +1104,38 @@ export function rawRenderedUnitExits(
   // values merely because their computation consulted a unit (range badges,
   // conversion results, formatter-return objects). Only spelling-preserving
   // operations and copy composition propagate the value to a later display sink.
-  function carriesRawUnit(node: ts.Node): boolean {
+  function callableReturnsRaw(
+    callable: CallableTarget,
+    receiver: ts.Expression,
+    site: ts.CallExpression,
+    parent?: EvaluationContext
+  ): boolean {
+    const context: EvaluationContext = {
+      key: `${callable.runtime.pos}@map:${site.pos}:${parent?.key ?? "root"}`,
+      runtime: callable.runtime,
+      site,
+      arguments: [...callable.boundArguments, receiver],
+      parent,
+    };
+    const body = callable.runtime.body;
+    if (!body) return false;
+    if (!ts.isBlock(body)) return carriesRawUnit(body, context);
+    let rawReturn = false;
+    function visit(current: ts.Node) {
+      if (
+        ts.isReturnStatement(current) &&
+        current.expression &&
+        carriesRawUnit(current.expression, context)
+      )
+        rawReturn = true;
+      if (!rawReturn && !runtimeFunction(current))
+        ts.forEachChild(current, visit);
+    }
+    for (const statement of body.statements) visit(statement);
+    return rawReturn;
+  }
+
+  function carriesRawUnit(node: ts.Node, context?: EvaluationContext): boolean {
     if (isAuthenticDisplayUnitCall(node)) return false;
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -940,13 +1148,14 @@ export function rawRenderedUnitExits(
       UNIT_PROPERTY.test(node.argumentExpression.text)
     )
       return true;
-    if (ts.isIdentifier(node) && rawIdentifierUse(node)) return true;
+    if (ts.isIdentifier(node) && rawIdentifierUse(node, context)) return true;
     if (ts.isArrayLiteralExpression(node))
       return node.elements.some(
         (element) =>
           !ts.isOmittedExpression(element) &&
           carriesRawUnit(
-            ts.isSpreadElement(element) ? element.expression : element
+            ts.isSpreadElement(element) ? element.expression : element,
+            context
           )
       );
     if (
@@ -956,9 +1165,12 @@ export function rawRenderedUnitExits(
       ts.isNonNullExpression(node) ||
       ts.isSatisfiesExpression(node)
     )
-      return carriesRawUnit(node.expression);
+      return carriesRawUnit(node.expression, context);
     if (ts.isConditionalExpression(node))
-      return carriesRawUnit(node.whenTrue) || carriesRawUnit(node.whenFalse);
+      return (
+        carriesRawUnit(node.whenTrue, context) ||
+        carriesRawUnit(node.whenFalse, context)
+      );
     if (ts.isBinaryExpression(node)) {
       const operator = node.operatorToken.kind;
       if (
@@ -978,17 +1190,22 @@ export function rawRenderedUnitExits(
         operator === ts.SyntaxKind.BarBarToken ||
         operator === ts.SyntaxKind.AmpersandAmpersandToken
       )
-        return carriesRawUnit(node.left) || carriesRawUnit(node.right);
+        return (
+          carriesRawUnit(node.left, context) ||
+          carriesRawUnit(node.right, context)
+        );
       return false;
     }
     if (ts.isTemplateExpression(node))
-      return node.templateSpans.some((span) => carriesRawUnit(span.expression));
+      return node.templateSpans.some((span) =>
+        carriesRawUnit(span.expression, context)
+      );
     if (ts.isCallExpression(node)) {
       if (
         ts.isPropertyAccessExpression(node.expression) &&
         /^(?:trim|toString|valueOf)$/.test(node.expression.name.text)
       )
-        return carriesRawUnit(node.expression.expression);
+        return carriesRawUnit(node.expression.expression, context);
       if (ts.isPropertyAccessExpression(node.expression)) {
         const receiver = node.expression.expression;
         const method = node.expression.name.text;
@@ -997,14 +1214,14 @@ export function rawRenderedUnitExits(
         )
           // These operations retain or compose the receiver's spelling.
           return (
-            carriesRawUnit(receiver) ||
-            node.arguments.some((argument) => carriesRawUnit(argument))
+            carriesRawUnit(receiver, context) ||
+            node.arguments.some((argument) => carriesRawUnit(argument, context))
           );
         if (/^(?:flatMap|map)$/.test(method)) {
           // A mapper owns the output spelling: an authentic formatter kills raw
           // taint, while a raw-returning callback starts it.
           const mapper = node.arguments[0];
-          if (!mapper) return carriesRawUnit(receiver);
+          if (!mapper) return carriesRawUnit(receiver, context);
           if (ts.isArrowFunction(mapper) || ts.isFunctionExpression(mapper)) {
             if (ts.isBlock(mapper.body)) {
               let rawReturn = false;
@@ -1012,7 +1229,7 @@ export function rawRenderedUnitExits(
                 if (
                   ts.isReturnStatement(current) &&
                   current.expression &&
-                  carriesRawUnit(current.expression)
+                  carriesRawUnit(current.expression, context)
                 )
                   rawReturn = true;
                 if (!rawReturn) ts.forEachChild(current, visitReturn);
@@ -1020,13 +1237,16 @@ export function rawRenderedUnitExits(
               visitReturn(mapper.body);
               return rawReturn;
             }
-            return carriesRawUnit(mapper.body);
+            return carriesRawUnit(mapper.body, context);
           }
           if (ts.isIdentifier(mapper)) {
             const binding = resolveIdentifier(mapper);
             if (binding && trustedFormatterBindings.has(binding)) return false;
           }
-          return carriesRawUnit(receiver);
+          const callable = resolveCallableExpression(mapper);
+          if (callable)
+            return callableReturnsRaw(callable, receiver, node, context);
+          return carriesRawUnit(receiver, context);
         }
       }
       if (
@@ -1034,7 +1254,7 @@ export function rawRenderedUnitExits(
         node.expression.text === "String" &&
         node.arguments.length === 1
       )
-        return carriesRawUnit(node.arguments[0]);
+        return carriesRawUnit(node.arguments[0], context);
     }
     return false;
   }
