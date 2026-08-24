@@ -24,6 +24,15 @@ interface Anchor {
   viaComponent?: string;
 }
 
+interface LayoutAnchor {
+  site: string;
+  file: string;
+  needle: string;
+  count: number;
+  ownerNeedle: string;
+  className: string;
+}
+
 // This is deliberately a small DOM-tag registry, not an expression interpreter.
 // Every delegated parent and every rendered gutter carrier has one stable anchor.
 const ADOPTERS: readonly Anchor[] = [
@@ -96,6 +105,29 @@ const ADOPTERS: readonly Anchor[] = [
     count: 1,
     token: "card-gutter-action",
     ownerNeedle: 'data-card-delegated-site="trend-mini-compact"',
+  },
+];
+
+// The only non-literal className ancestors between a delegated parent and one
+// of its carriers. They own responsive layout/borders, never horizontal gutter.
+const LAYOUTS: readonly LayoutAnchor[] = [
+  {
+    site: "period-stats",
+    file: "app/(app)/trends/metric/[kind]/page.tsx",
+    needle: 'data-card-delegated-layout="period-stats-grid"',
+    count: 1,
+    ownerNeedle: 'data-testid="metric-period-stats"',
+    className:
+      '{`grid grid-cols-1 ${ desktopSidebar ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}` : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3") }`}',
+  },
+  {
+    site: "period-stats",
+    file: "app/(app)/trends/metric/[kind]/page.tsx",
+    needle: 'data-card-delegated-layout="period-stat-border"',
+    count: 1,
+    ownerNeedle: 'data-testid="metric-period-stats"',
+    className:
+      "{`min-w-0 ${periodItemBorders( i, periodGridCols(stats.length), desktopSidebar )}`}",
   },
 ];
 
@@ -223,6 +255,15 @@ function literalClassName(tag: string): string {
   return match[1];
 }
 
+function classNameValue(tag: string): string {
+  const at = tag.indexOf("className=");
+  if (at < 0) throw new Error("tag carries no className");
+  return tag
+    .slice(at + "className=".length, tag.lastIndexOf(">"))
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 function classTagSpansWithin(
   source: string,
   start: number,
@@ -263,7 +304,11 @@ function isPadding(token: string, horizontalOnly: boolean): boolean {
     : /^(?:p|px|py|pt|pb|pl|pr|ps|pe)-/.test(leaf);
 }
 
-function contractProblems(root: string, adopters: readonly Anchor[]): string[] {
+function contractProblems(
+  root: string,
+  adopters: readonly Anchor[],
+  layouts: readonly LayoutAnchor[] = LAYOUTS
+): string[] {
   const files = uiSources(root);
   const byFile = new Map(files.map((entry) => [entry.file, entry.source]));
   const problems: string[] = [];
@@ -387,6 +432,55 @@ function contractProblems(root: string, adopters: readonly Anchor[]): string[] {
     }
   }
 
+  const expectedLayouts = layouts.reduce(
+    (sum, layout) => sum + layout.count,
+    0
+  );
+  const observedLayouts = files.reduce(
+    (sum, entry) =>
+      sum + rawTokenCount(entry.source, "data-card-delegated-layout"),
+    0
+  );
+  if (observedLayouts !== expectedLayouts) {
+    problems.push(
+      `delegated layouts: ${observedLayouts} occurrence(s), ${expectedLayouts} registered tag(s)`
+    );
+  }
+  for (const layout of layouts) {
+    const source = byFile.get(layout.file);
+    if (!source) {
+      problems.push(`${layout.file}: registered layout file is missing`);
+      continue;
+    }
+    const tags = openingTagSpansWith(source, layout.needle);
+    if (tags.length !== layout.count) {
+      problems.push(
+        `${layout.file}: ${layout.needle} occurs ${tags.length} time(s), expected ${layout.count}`
+      );
+      continue;
+    }
+    for (const tag of tags) {
+      if (classNameValue(tag.text) !== layout.className.replace(/\s+/g, " ")) {
+        problems.push(
+          `${layout.file}: ${layout.needle} changed its registered layout-only className`
+        );
+      }
+      if (horizontalPaddingTokens(tag.text).length > 0) {
+        problems.push(
+          `${layout.file}: ${layout.needle} carries horizontal padding`
+        );
+      }
+      const insideOwner = openingTagSpansWith(source, layout.ownerNeedle)
+        .map((owner) => elementRange(source, owner))
+        .some(([start, end]) => tag.start > start && tag.end < end);
+      if (!insideOwner) {
+        problems.push(
+          `${layout.file}: ${layout.needle} is outside ${layout.ownerNeedle}`
+        );
+      }
+    }
+  }
+
   for (const parent of adopters.filter(
     (entry) => entry.token === "card-delegated"
   )) {
@@ -403,21 +497,51 @@ function contractProblems(root: string, adopters: readonly Anchor[]): string[] {
 
     const source = byFile.get(parent.file);
     if (!source) continue;
-    const carrierRanges = adopters
+    const carrierSpans = adopters
       .filter(
         (entry) =>
           entry.site === parent.site &&
           entry.ownerNeedle === parent.needle &&
           !entry.viaComponent
       )
-      .flatMap((entry) =>
-        openingTagSpansWith(source, entry.needle).map((tag) =>
-          elementRange(source, tag)
+      .flatMap((entry) => openingTagSpansWith(source, entry.needle));
+    const carrierRanges = carrierSpans.map((tag) => elementRange(source, tag));
+    const registeredLayoutStarts = new Set(
+      layouts
+        .filter(
+          (layout) => layout.site === parent.site && layout.file === parent.file
         )
-      );
+        .flatMap((layout) =>
+          openingTagSpansWith(source, layout.needle).map((tag) => tag.start)
+        )
+    );
     for (const parentTag of openingTagSpansWith(source, parent.needle)) {
       const [start, end] = elementRange(source, parentTag);
-      for (const tag of classTagSpansWithin(source, start, end)) {
+      const classTags = classTagSpansWithin(source, start, end);
+      for (const carrier of carrierSpans.filter(
+        (tag) => tag.start > start && tag.end < end
+      )) {
+        for (const ancestor of classTags) {
+          if (
+            ancestor.start === parentTag.start ||
+            ancestor.start === carrier.start ||
+            /className\s*=\s*"/.test(ancestor.text)
+          ) {
+            continue;
+          }
+          const [ancestorStart, ancestorEnd] = elementRange(source, ancestor);
+          if (
+            ancestorStart < carrier.start &&
+            ancestorEnd > carrier.end &&
+            !registeredLayoutStarts.has(ancestor.start)
+          ) {
+            problems.push(
+              `${parent.file}: unresolved className lies between ${parent.needle} and a registered carrier`
+            );
+          }
+        }
+      }
+      for (const tag of classTags) {
         const horizontal = horizontalPaddingTokens(tag.text);
         if (
           horizontal.length > 0 &&
@@ -506,7 +630,7 @@ describe("delegated card gutter contract (#3507)", () => {
       `<button className="${PROTOCOL_P0.className}" />`
     );
     fs.writeFileSync(path.join(root, "components/Fixture.tsx"), source);
-    return contractProblems(root, adopters);
+    return contractProblems(root, adopters, []);
   }
 
   function periodStatsProblems(source: string) {
@@ -525,7 +649,8 @@ describe("delegated card gutter contract (#3507)", () => {
     );
     return contractProblems(
       root,
-      ADOPTERS.filter((entry) => entry.site === "period-stats")
+      ADOPTERS.filter((entry) => entry.site === "period-stats"),
+      LAYOUTS.filter((entry) => entry.site === "period-stats")
     );
   }
 
@@ -645,6 +770,19 @@ describe("delegated card gutter contract (#3507)", () => {
     expect(periodStatsProblems(wrapped).join("\n")).toMatch(
       /unregistered horizontal-padding carrier/
     );
+
+    for (const [declaration, expression] of [
+      ['const WRAP = "px-8";', "{WRAP}"],
+      [
+        'const WRAP = "px-8"; const wrapperClass = (value: string) => value;',
+        "{wrapperClass(WRAP)}",
+      ],
+    ]) {
+      const hidden = `${declaration}\n${live.slice(0, start)}<div className=${expression}>${live.slice(start, end)}</div>${live.slice(end)}`;
+      expect(periodStatsProblems(hidden).join("\n")).toMatch(
+        /unresolved className lies between/
+      );
+    }
   });
 
   it("requires every registered delegated parent to own a registered carrier", () => {

@@ -149,9 +149,12 @@ Two traps the guards exist for, both found by measurement rather than reading:
   without repeating horizontal numbers at call sites. The focused guard keeps a
   literal DOM-tag registry of all four parents and every carrier (including a
   local component's rendered root), bans local horizontal overrides at every
-  breakpoint and logical edge, and rejects any unregistered adopter. It also
-  bans ad-hoc `p-0!` throughout `app/` and `components/`; the sole exact,
-  fail-stale exception is ProtocolCompare's non-card icon button (#3507).
+  breakpoint and logical edge, and rejects any unregistered adopter. A
+  non-literal class wrapper between a parent and carrier fails closed; the two
+  PeriodStats wrappers with dynamic grid/border classes are registered and
+  pinned exactly as layout-only. The guard also bans ad-hoc `p-0!` throughout
+  `app/` and `components/`; the sole exact, fail-stale exception is
+  ProtocolCompare's non-card icon button (#3507).
 
 Scope, as **applied**: section rhythm was swept across every section-level seam
 in the app shell. Out deliberately: `app/(auth)/*` and `/offline` (not app

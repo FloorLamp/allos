@@ -831,6 +831,7 @@ function PeriodStatsCard({
         </p>
       </div>
       <div
+        data-card-delegated-layout="period-stats-grid"
         className={`grid grid-cols-1 ${
           desktopSidebar
             ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`
@@ -840,6 +841,7 @@ function PeriodStatsCard({
         {stats.map((s, i) => (
           <article
             key={s.label}
+            data-card-delegated-layout="period-stat-border"
             data-testid={`period-stat-${s.days}`}
             className={`min-w-0 ${periodItemBorders(
               i,
