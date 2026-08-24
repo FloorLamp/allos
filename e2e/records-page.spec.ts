@@ -273,7 +273,7 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   // The visible, inert legend is a deterministic outside pointer target. It
   // dismisses the panel without activating the surrounding Records shell.
   const immunizationsUrl = page.url();
-  await grid.getByText("Recorded", { exact: true }).click();
+  await grid.getByTestId("schedule-grid-legend").click();
   await expect(pinnedTip).toHaveCount(0);
   await expect(doseTrigger).toHaveAttribute("aria-expanded", "false");
   await expect(page).toHaveURL(immunizationsUrl);

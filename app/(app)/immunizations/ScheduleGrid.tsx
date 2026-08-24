@@ -581,7 +581,10 @@ export default function ScheduleGrid({
 
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+    <div
+      data-testid="schedule-grid-legend"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-slate-500 dark:text-slate-400"
+    >
       <span className="flex items-center gap-1.5">
         <span className="inline-block h-3 w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
         Recommended
