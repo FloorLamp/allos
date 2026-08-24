@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 
 // THE EVENT-LEDGER SEAM (#3484 part 2).
 //
@@ -82,14 +83,12 @@ const DOMAIN_WORDS = [
 // The frame's own header names the dose ledger as the shape it was extracted from, and
 // forbidding that would make the file harder to read for no gain in the seam.
 //
-// The line-comment pattern requires a non-`:` character before the slashes so a
-// `https://` inside a string survives; there are none in the shell today, and this is
-// the cheap way to keep it that way.
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:\w])\/\/.*$/gm, "$1");
-}
+// Through the shared scanner (#3595), which reads the file in order tracking what it is
+// inside, rather than through the pair of regexes this file first hand-rolled: block
+// comments stripped first means a `/*` written inside a `//` sentence swallows every
+// line to the next unrelated `*/`, and a scan that silently loses source is a scan that
+// passes for the wrong reason. String literals survive it, which is what the
+// "reads comments and code differently" case below turns on.
 
 function importsOf(text: string): string[] {
   return [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
@@ -255,5 +254,14 @@ describe("the recognizers can see", () => {
     expect(
       stripComments(`const u = "https://example.test/dose";`).includes("dose")
     ).toBe(true);
+    // And a `/*` inside a line comment does not eat the code beneath it. The
+    // hand-rolled pair of regexes this scan started with strips BLOCK comments first,
+    // so the `/*` below opened a comment that ran to the next unrelated `*/` and took
+    // the line between them with it — the #3595 failure, in three lines.
+    expect(
+      domainWordsIn(
+        `// see components/x/*: notes\nconst a = "dose";\n/* trailing */`
+      )
+    ).toEqual(["dose"]);
   });
 });
