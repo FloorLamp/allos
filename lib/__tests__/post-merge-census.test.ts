@@ -50,7 +50,7 @@ function commit(repo: string, files: Record<string, string>): void {
 function runCli(
   repo: string,
   args: readonly string[],
-  env: NodeJS.ProcessEnv = {}
+  env: Record<string, string> = {}
 ) {
   return spawnSync(process.execPath, [SCRIPT, ...args], {
     cwd: repo,
