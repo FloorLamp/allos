@@ -355,6 +355,101 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     ).toEqual(["item.statedUnit", "item.correctedUnit", "item.correctedUnit"]);
   });
 
+  it("follows name-independent aliases and destructuring to rendered lab copy", () => {
+    const cases = [
+      {
+        source: `
+          export function LabResultCard({ row }) {
+            const u = row.unit;
+            return <span>{row.value} {u}</span>;
+          }
+        `,
+        file: "/repo/components/LabResultCard.tsx",
+        exits: ["u"],
+      },
+      {
+        source: `
+          export function ClinicalResultCard({ row }) {
+            const { unit: u } = row;
+            return <span>{row.value} {u}</span>;
+          }
+        `,
+        file: "/repo/components/ClinicalResultCard.tsx",
+        exits: ["u"],
+      },
+      {
+        source: `
+          export function ClinicalResultCard({ unit: u, value }) {
+            return <span>{value} {u}</span>;
+          }
+        `,
+        file: "/repo/components/ClinicalResultCard.tsx",
+        exits: ["u"],
+      },
+      {
+        source: `
+          export function UnitMislabelReview({ item, toast }) {
+            const stated = item.statedUnit;
+            const corrected = item.correctedUnit;
+            toast("Unit corrected to " + corrected);
+            return <p>{item.value} {stated} → {corrected}</p>;
+          }
+        `,
+        file: "/repo/components/UnitMislabelReview.tsx",
+        exits: ["corrected", "stated", "corrected"],
+      },
+      {
+        source: `
+          export function LabResultCard({ row }) {
+            const first = row.unit;
+            const second = first;
+            return <span>{second}</span>;
+          }
+        `,
+        file: "/repo/components/LabResultCard.tsx",
+        exits: ["second"],
+      },
+    ];
+    for (const candidate of cases) {
+      expect(
+        rawRenderedUnitExits(candidate.source, candidate.file).map(
+          (hit) => hit.text
+        ),
+        candidate.file
+      ).toEqual(candidate.exits);
+    }
+  });
+
+  it("does not taint aliases whose raw source crossed the formatter boundary", () => {
+    const source = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function LabResultCard({ row }) {
+        const u = displayUnit(row.unit);
+        const alias = u;
+        return <span>{alias}</span>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(source, "/repo/components/LabResultCard.tsx")
+    ).toEqual([]);
+  });
+
+  it("does not leak a tainted alias through an unrelated nested shadow", () => {
+    const source = `
+      export function LabResultCard({ row }) {
+        const u = row.unit;
+        function DoseCopy() {
+          const u = "mcg";
+          return <span>{u}</span>;
+        }
+        return <DoseCopy />;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(source, "/repo/components/LabResultCard.tsx")
+    ).toEqual([]);
+  });
+
   it("ignores ordinary unit suffixes outside lab contexts", () => {
     expect(
       rawRenderedUnitExits(`

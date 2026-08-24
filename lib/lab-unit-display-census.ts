@@ -293,11 +293,267 @@ export function rawRenderedUnitExits(
   const seen = new Set<number>();
   const trustedBindings = importedDisplayUnitBindings(sourceFile, fileName);
 
+  // Follow raw unit values through local aliases instead of trusting a handful of
+  // conventional names. The map is function-scoped so an ordinary `u` in another
+  // helper cannot inherit taint; ancestor scopes are consulted so callbacks still
+  // see aliases captured from their enclosing lab-copy producer.
+  const taintedAliases = new Map<ts.Node, Set<string>>();
+  const declaredAliases = new Map<ts.Node, Set<string>>();
+
+  function aliasScope(node: ts.Node): ts.Node {
+    for (
+      let current: ts.Node | undefined = node;
+      current;
+      current = current.parent
+    ) {
+      if (
+        ts.isSourceFile(current) ||
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      )
+        return current;
+    }
+    return sourceFile;
+  }
+
+  function taint(name: string, node: ts.Node): boolean {
+    const scope = aliasScope(node);
+    const names = taintedAliases.get(scope) ?? new Set<string>();
+    if (names.has(name)) return false;
+    names.add(name);
+    taintedAliases.set(scope, names);
+    return true;
+  }
+
+  function recordDeclaration(name: string, node: ts.Node) {
+    const scope = aliasScope(node);
+    const names = declaredAliases.get(scope) ?? new Set<string>();
+    names.add(name);
+    declaredAliases.set(scope, names);
+  }
+
+  function recordBindingDeclarations(name: ts.BindingName, owner: ts.Node) {
+    if (ts.isIdentifier(name)) {
+      recordDeclaration(name.text, owner);
+      return;
+    }
+    for (const element of name.elements) {
+      if (!ts.isOmittedExpression(element))
+        recordBindingDeclarations(element.name, owner);
+    }
+  }
+
+  function collectDeclarations(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node))
+      recordBindingDeclarations(node.name, node);
+    ts.forEachChild(node, collectDeclarations);
+  }
+  collectDeclarations(sourceFile);
+
+  function tainted(identifier: ts.Identifier): boolean {
+    const visited = new Set<ts.Node>();
+    for (
+      let current: ts.Node | undefined = identifier;
+      current;
+      current = current.parent
+    ) {
+      const scope = aliasScope(current);
+      if (visited.has(scope)) continue;
+      visited.add(scope);
+      if (taintedAliases.get(scope)?.has(identifier.text)) return true;
+      if (declaredAliases.get(scope)?.has(identifier.text)) return false;
+      if (ts.isSourceFile(scope)) break;
+      current = scope;
+    }
+    return false;
+  }
+
   function rawAlias(identifier: ts.Identifier) {
     return (
       UNIT_IDENTIFIER.test(identifier.text) ||
-      LAB_UNIT_IDENTIFIER.test(identifier.text)
+      LAB_UNIT_IDENTIFIER.test(identifier.text) ||
+      tainted(identifier)
     );
+  }
+
+  function rawIdentifierUse(identifier: ts.Identifier): boolean {
+    return (
+      rawAlias(identifier) &&
+      !(
+        ts.isPropertyAccessExpression(identifier.parent) &&
+        identifier.parent.name === identifier
+      ) &&
+      !(
+        ts.isPropertyAssignment(identifier.parent) &&
+        identifier.parent.name === identifier
+      ) &&
+      !(
+        ts.isVariableDeclaration(identifier.parent) &&
+        identifier.parent.name === identifier
+      ) &&
+      !(
+        ts.isBindingElement(identifier.parent) &&
+        identifier.parent.name === identifier
+      ) &&
+      !(
+        ts.isParameter(identifier.parent) &&
+        identifier.parent.name === identifier
+      )
+    );
+  }
+
+  // Does this expression still CARRY the raw unit string? Do not taint arbitrary
+  // values merely because their computation consulted a unit (range badges,
+  // conversion results, formatter-return objects). Only spelling-preserving
+  // operations and copy composition propagate the value to a later display sink.
+  function carriesRawUnit(node: ts.Node): boolean {
+    if (isDisplayUnitCall(node, trustedBindings)) return false;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      UNIT_PROPERTY.test(node.name.text)
+    )
+      return true;
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isStringLiteral(node.argumentExpression) &&
+      UNIT_PROPERTY.test(node.argumentExpression.text)
+    )
+      return true;
+    if (ts.isIdentifier(node) && rawIdentifierUse(node)) return true;
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isSatisfiesExpression(node)
+    )
+      return carriesRawUnit(node.expression);
+    if (ts.isConditionalExpression(node))
+      return carriesRawUnit(node.whenTrue) || carriesRawUnit(node.whenFalse);
+    if (ts.isBinaryExpression(node)) {
+      const operator = node.operatorToken.kind;
+      if (
+        operator === ts.SyntaxKind.PlusToken ||
+        operator === ts.SyntaxKind.QuestionQuestionToken ||
+        operator === ts.SyntaxKind.BarBarToken ||
+        operator === ts.SyntaxKind.AmpersandAmpersandToken
+      )
+        return carriesRawUnit(node.left) || carriesRawUnit(node.right);
+      return false;
+    }
+    if (ts.isTemplateExpression(node))
+      return node.templateSpans.some((span) => carriesRawUnit(span.expression));
+    if (ts.isCallExpression(node)) {
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        /^(?:trim|toString|valueOf)$/.test(node.expression.name.text)
+      )
+        return carriesRawUnit(node.expression.expression);
+      if (
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "String" &&
+        node.arguments.length === 1
+      )
+        return carriesRawUnit(node.arguments[0]);
+    }
+    return false;
+  }
+
+  function directVariableExit(node: ts.VariableDeclaration): boolean {
+    return (
+      (isLabCopyProducer(node, fileName) &&
+        (isWithinBiomarkerBranch(node) ||
+          isPrecomposedLabCopyProducer(node))) ||
+      (ts.isIdentifier(node.name) &&
+        /^(?:correctedUnit|shownUnit|shownVitaminDUnit|statedUnit|suffix)$/.test(
+          node.name.text
+        ) &&
+        isDirectDisplayProducer(node))
+    );
+  }
+
+  function taintBindingName(name: ts.BindingName, owner: ts.Node): boolean {
+    if (ts.isIdentifier(name)) return taint(name.text, owner);
+    let changed = false;
+    for (const element of name.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (taintBindingName(element.name, owner)) changed = true;
+    }
+    return changed;
+  }
+
+  function taintUnitBindings(
+    pattern: ts.ObjectBindingPattern,
+    owner: ts.Node
+  ): boolean {
+    let changed = false;
+    for (const element of pattern.elements) {
+      const property = element.propertyName ?? element.name;
+      if (
+        ts.isIdentifier(property) &&
+        UNIT_PROPERTY.test(property.text) &&
+        taintBindingName(element.name, owner)
+      )
+        changed = true;
+      if (
+        ts.isObjectBindingPattern(element.name) &&
+        taintUnitBindings(element.name, owner)
+      )
+        changed = true;
+    }
+    return changed;
+  }
+
+  // Resolve alias chains to a fixed point (`const a = row.unit; const b = a`).
+  // Destructured unit properties are raw by construction at this boundary, even
+  // though the property access is represented by a BindingElement rather than an
+  // expression node.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    function collectAliases(node: ts.Node) {
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.initializer &&
+        isLabDisplayContext(node, fileName) &&
+        !directVariableExit(node)
+      ) {
+        if (
+          ts.isIdentifier(node.name) &&
+          carriesRawUnit(node.initializer) &&
+          taint(node.name.text, node)
+        )
+          changed = true;
+        if (
+          ts.isObjectBindingPattern(node.name) &&
+          taintUnitBindings(node.name, node)
+        )
+          changed = true;
+      }
+      if (
+        ts.isParameter(node) &&
+        ts.isObjectBindingPattern(node.name) &&
+        isLabDisplayContext(node, fileName)
+      ) {
+        if (taintUnitBindings(node.name, node)) changed = true;
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) &&
+        isLabDisplayContext(node, fileName) &&
+        carriesRawUnit(node.right) &&
+        taint(node.left.text, node)
+      )
+        changed = true;
+      ts.forEachChild(node, collectAliases);
+    }
+    collectAliases(sourceFile);
   }
 
   function inspect(expression: ts.Expression) {
@@ -350,19 +606,7 @@ export function rawRenderedUnitExits(
         out.push({ line, text: node.getText(sourceFile) });
         return;
       }
-      if (
-        !protectedHere &&
-        ts.isIdentifier(node) &&
-        rawAlias(node) &&
-        // The property/element cases above own their key; declarations are not
-        // rendered reads even when a JSX expression happens to contain a callback.
-        !(
-          ts.isPropertyAccessExpression(node.parent) &&
-          node.parent.name === node
-        ) &&
-        !(ts.isPropertyAssignment(node.parent) && node.parent.name === node) &&
-        !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)
-      ) {
+      if (!protectedHere && ts.isIdentifier(node) && rawIdentifierUse(node)) {
         const start = node.getStart(sourceFile);
         if (seen.has(start)) return;
         seen.add(start);
@@ -406,14 +650,7 @@ export function rawRenderedUnitExits(
     if (
       ts.isVariableDeclaration(node) &&
       node.initializer &&
-      ((isLabCopyProducer(node, fileName) &&
-        (isWithinBiomarkerBranch(node) ||
-          isPrecomposedLabCopyProducer(node))) ||
-        (ts.isIdentifier(node.name) &&
-          /^(?:correctedUnit|shownUnit|shownVitaminDUnit|statedUnit|suffix)$/.test(
-            node.name.text
-          ) &&
-          isDirectDisplayProducer(node)))
+      directVariableExit(node)
     ) {
       inspect(node.initializer);
     }

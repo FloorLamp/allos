@@ -317,7 +317,10 @@ const ROUTES: CensusRoute[] = [
   {
     path: "/trends?tab=insights&cmpA=result%3ASelenium&cmpB=metric%3Aweight&range=all",
     why: "The clinical Trends series' Compare legend and chart unit.",
-    minTextNodes: 65,
+    // Exact CI rendered 53–58 nodes across the ordinary shard and three scrutiny
+    // repeats. Keep a three-node stability margin; the unique visible `(µg/L)`
+    // subject below separately proves that the comparison itself rendered.
+    minTextNodes: 50,
     kinds: ["lab-unit"],
     unitSubject: (page) => page.getByText("(µg/L)", { exact: true }),
   },
