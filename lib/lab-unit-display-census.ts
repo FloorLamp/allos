@@ -318,6 +318,7 @@ export function rawRenderedUnitExits(
     position: number;
     expression?: ts.Expression;
     target?: CallableTarget;
+    objectProperty?: { binding: UnitBinding; name: string };
   }
 
   interface CallableState {
@@ -333,7 +334,26 @@ export function rawRenderedUnitExits(
 
   const callableWrites = new Map<UnitBinding, CallableWrite[]>();
   const objectCallableWrites = new Map<string, CallableWrite[]>();
+  const objectParents = new Map<UnitBinding, UnitBinding>();
+  const projectedObjectWrites = new Map<
+    number,
+    Array<{ path: Array<string | number>; write: BindingWrite }>
+  >();
   const runtimeInvocations = new Map<RuntimeFunction, RuntimeInvocation[]>();
+
+  function objectRoot(binding: UnitBinding): UnitBinding {
+    const parent = objectParents.get(binding);
+    if (!parent) return binding;
+    const root = objectRoot(parent);
+    objectParents.set(binding, root);
+    return root;
+  }
+
+  function aliasObjectBindings(left: UnitBinding, right: UnitBinding) {
+    const leftRoot = objectRoot(left);
+    const rightRoot = objectRoot(right);
+    if (leftRoot !== rightRoot) objectParents.set(leftRoot, rightRoot);
+  }
 
   function addCallableWrite(binding: UnitBinding, write: CallableWrite) {
     const writes = callableWrites.get(binding) ?? [];
@@ -347,7 +367,7 @@ export function rawRenderedUnitExits(
     name: string,
     write: CallableWrite
   ) {
-    const key = `${binding.id}:${name}`;
+    const key = methodKey(binding, name);
     const writes = objectCallableWrites.get(key) ?? [];
     writes.push(write);
     writes.sort((a, b) => a.position - b.position);
@@ -553,7 +573,7 @@ export function rawRenderedUnitExits(
   }
 
   function methodKey(binding: UnitBinding, name: string): string {
-    return `${binding.id}:${name}`;
+    return `${objectRoot(binding).id}:${name}`;
   }
 
   function mergeCallableStates(
@@ -584,6 +604,18 @@ export function rawRenderedUnitExits(
     context?: EvaluationContext
   ): CallableState {
     if (write.target) return { targets: [write.target], unknown: false };
+    if (write.objectProperty) {
+      const key = methodKey(
+        write.objectProperty.binding,
+        write.objectProperty.name
+      );
+      return effectiveCallableState(
+        `method:${key}`,
+        objectCallableWrites.get(key) ?? [],
+        write.node,
+        context
+      );
+    }
     if (write.expression)
       return resolveCallableState(write.expression, write.node, context);
     return { targets: [], unknown: true };
@@ -799,6 +831,27 @@ export function rawRenderedUnitExits(
   // values are resolved at a call site, so conditional writes join, definite
   // writes replace, and writes in helpers take effect only when invoked.
   function collectCallableWrites() {
+    function collectStableObjectAliases(node: ts.Node) {
+      const initializer =
+        ts.isVariableDeclaration(node) && node.initializer
+          ? unwrapAssignmentTarget(node.initializer)
+          : null;
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        initializer &&
+        ts.isIdentifier(initializer) &&
+        ts.isVariableDeclarationList(node.parent) &&
+        (node.parent.flags & ts.NodeFlags.Const) !== 0
+      ) {
+        const binding = declarationBindings.get(node.name);
+        const source = resolveIdentifier(initializer);
+        if (binding && source) aliasObjectBindings(binding, source);
+      }
+      ts.forEachChild(node, collectStableObjectAliases);
+    }
+    collectStableObjectAliases(sourceFile);
+
     function collect(node: ts.Node) {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const binding = declarationBindings.get(node.name);
@@ -839,6 +892,29 @@ export function rawRenderedUnitExits(
                 });
               }
             }
+          }
+        }
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isObjectBindingPattern(node.name) &&
+        node.initializer
+      ) {
+        const initializer = unwrapAssignmentTarget(node.initializer);
+        const source = ts.isIdentifier(initializer)
+          ? resolveIdentifier(initializer)
+          : null;
+        if (source) {
+          for (const element of node.name.elements) {
+            if (!ts.isIdentifier(element.name)) continue;
+            const binding = declarationBindings.get(element.name);
+            const name = propertyText(element.propertyName ?? element.name);
+            if (binding && name)
+              addCallableWrite(binding, {
+                node,
+                position: node.end,
+                objectProperty: { binding: source, name },
+              });
           }
         }
       }
@@ -1072,6 +1148,32 @@ export function rawRenderedUnitExits(
     }
   }
 
+  function projectedAssignmentTarget(
+    expression: ts.Expression
+  ): { binding: UnitBinding; path: Array<string | number> } | null {
+    let target = unwrapAssignmentTarget(expression);
+    const propertyPath: Array<string | number> = [];
+    while (
+      ts.isPropertyAccessExpression(target) ||
+      ts.isElementAccessExpression(target)
+    ) {
+      if (ts.isPropertyAccessExpression(target)) {
+        propertyPath.unshift(target.name.text);
+        target = unwrapAssignmentTarget(target.expression);
+        continue;
+      }
+      const argument = target.argumentExpression;
+      if (ts.isStringLiteral(argument)) propertyPath.unshift(argument.text);
+      else if (ts.isNumericLiteral(argument))
+        propertyPath.unshift(Number(argument.text));
+      else return null;
+      target = unwrapAssignmentTarget(target.expression);
+    }
+    if (!ts.isIdentifier(target) || propertyPath.length === 0) return null;
+    const binding = resolveIdentifier(target);
+    return binding ? { binding, path: propertyPath } : null;
+  }
+
   function collectWrites(node: ts.Node) {
     if (
       ts.isVariableDeclaration(node) &&
@@ -1113,6 +1215,20 @@ export function rawRenderedUnitExits(
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken
     ) {
       const target = unwrapAssignmentTarget(node.left);
+      const projected = projectedAssignmentTarget(target);
+      if (projected) {
+        const root = objectRoot(projected.binding);
+        const writes = projectedObjectWrites.get(root.id) ?? [];
+        writes.push({
+          path: projected.path,
+          write: {
+            node,
+            position: node.end,
+            expression: node.right,
+          },
+        });
+        projectedObjectWrites.set(root.id, writes);
+      }
       if (ts.isIdentifier(target)) {
         addWrite(bindingForTarget(target), {
           node,
@@ -1515,11 +1631,12 @@ export function rawRenderedUnitExits(
   function effectiveWritesForUse(
     binding: UnitBinding,
     use: ts.Node,
-    context?: EvaluationContext
+    context?: EvaluationContext,
+    writes: readonly BindingWrite[] = binding.writes
   ): EffectiveWrite[] {
     const useRuntime = enclosingRuntime(use);
     const events: EffectiveWrite[] = [];
-    for (const write of binding.writes) {
+    for (const write of writes) {
       const writeRuntime = enclosingRuntime(write.node);
       if (writeRuntime === useRuntime) {
         events.push({
@@ -1709,7 +1826,41 @@ export function rawRenderedUnitExits(
       binding.initialRaw ||
       (typeof path[0] === "string" && UNIT_PROPERTY.test(path[0]));
     const useStart = use.getStart(sourceFile);
-    for (const event of effectiveWritesForUse(binding, use, context)) {
+    const events = effectiveWritesForUse(binding, use, context).map(
+      (event) => ({ event, remainingPath: [...path] })
+    );
+    for (const projected of projectedObjectWrites.get(objectRoot(binding).id) ??
+      []) {
+      if (
+        projected.path.length > path.length ||
+        !projected.path.every((part, index) => part === path[index])
+      )
+        continue;
+      for (const event of effectiveWritesForUse(binding, use, context, [
+        projected.write,
+      ])) {
+        events.push({
+          event,
+          remainingPath: path.slice(projected.path.length),
+        });
+      }
+    }
+    events.sort((left, right) => {
+      if (left.event.position !== right.event.position)
+        return left.event.position - right.event.position;
+      for (
+        let index = 0;
+        index < Math.max(left.event.order.length, right.event.order.length);
+        index++
+      ) {
+        const difference =
+          (left.event.order[index] ?? Number.MAX_SAFE_INTEGER) -
+          (right.event.order[index] ?? Number.MAX_SAFE_INTEGER);
+        if (difference) return difference;
+      }
+      return 0;
+    });
+    for (const { event, remainingPath } of events) {
       if (event.position >= useStart) continue;
       const writeTainted =
         event.write.raw === true ||
@@ -1717,7 +1868,7 @@ export function rawRenderedUnitExits(
           carriesParameterSource(
             {
               expression: event.write.expression,
-              path: [...(event.write.path ?? []), ...path],
+              path: [...(event.write.path ?? []), ...remainingPath],
             },
             event.context
           ));
@@ -1822,6 +1973,38 @@ export function rawRenderedUnitExits(
       UNIT_PROPERTY.test(node.argumentExpression.text)
     )
       return true;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const binding = resolveIdentifier(node.expression);
+      if (binding)
+        return bindingTaintedAtPath(
+          binding,
+          node.expression,
+          [node.name.text],
+          context
+        );
+    }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      (ts.isStringLiteral(node.argumentExpression) ||
+        ts.isNumericLiteral(node.argumentExpression))
+    ) {
+      const binding = resolveIdentifier(node.expression);
+      if (binding)
+        return bindingTaintedAtPath(
+          binding,
+          node.expression,
+          [
+            ts.isNumericLiteral(node.argumentExpression)
+              ? Number(node.argumentExpression.text)
+              : node.argumentExpression.text,
+          ],
+          context
+        );
+    }
     if (ts.isIdentifier(node) && rawIdentifierUse(node, context)) return true;
     if (ts.isArrayLiteralExpression(node))
       return node.elements.some(

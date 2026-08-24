@@ -1191,6 +1191,147 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     ).toEqual([]);
   });
 
+  it("preserves callable object identity across aliases and destructuring", () => {
+    const rawCases = [
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = {};
+          const alias = helper;
+          alias.pick = (item) => item.statedUnit;
+          const copy = items.map(helper.pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = {};
+          const alias = helper;
+          helper.pick = (item) => item.statedUnit;
+          const copy = items.map(alias.pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = { pick: (item) => item.statedUnit };
+          const { pick } = helper;
+          const copy = items.map(pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+    ];
+    for (const [index, source] of rawCases.entries()) {
+      expect(
+        rawRenderedUnitExits(
+          source,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text),
+        `raw identity ${index}`
+      ).toEqual(["copy"]);
+    }
+
+    const definiteKills = [
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = {};
+          const alias = helper;
+          helper.pick = (item) => item.statedUnit;
+          alias.pick = Math.abs;
+          const copy = items.map(helper.pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = {};
+          const alias = helper;
+          alias.pick = (item) => item.statedUnit;
+          helper.pick = Math.abs;
+          const copy = items.map(alias.pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items }) {
+          const helper = { pick: (item) => item.statedUnit };
+          helper.pick = Math.abs;
+          const { pick } = helper;
+          const copy = items.map(pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+    ];
+    for (const [index, source] of definiteKills.entries()) {
+      expect(
+        rawRenderedUnitExits(source, "/repo/components/UnitMislabelReview.tsx"),
+        `identity kill ${index}`
+      ).toEqual([]);
+    }
+  });
+
+  it("orders projected data-property writes with control-flow joins", () => {
+    const rawCases = [
+      `
+        export function UnitMislabelReview({ item }) {
+          const payload = { value: "safe" };
+          payload.value = item.statedUnit;
+          const copy = payload.value;
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        import { displayUnit } from "@/lib/display-unit";
+        export function UnitMislabelReview({ item, confirmed }) {
+          const payload = { value: item.statedUnit };
+          if (confirmed) payload.value = displayUnit(payload.value);
+          const copy = payload.value;
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item, confirmed }) {
+          const payload = { value: "safe" };
+          if (confirmed) payload.value = item.statedUnit;
+          const copy = payload.value;
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item }) {
+          const payload = { value: "safe" };
+          const alias = payload;
+          alias.value = item.statedUnit;
+          const copy = payload.value;
+          return <p>{copy}</p>;
+        }
+      `,
+    ];
+    for (const source of rawCases) {
+      expect(
+        rawRenderedUnitExits(
+          source,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text)
+      ).toEqual(["copy"]);
+    }
+
+    const definiteKill = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item }) {
+        const payload = { value: item.statedUnit };
+        payload.value = displayUnit(payload.value);
+        const copy = payload.value;
+        return <p>{copy}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        definiteKill,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+  });
+
   it("orders captured writes at their runtime invocation, not source location", () => {
     const rawBeforeRender = `
       export function UnitMislabelReview({ item }) {
