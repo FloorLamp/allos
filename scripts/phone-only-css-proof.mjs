@@ -595,21 +595,33 @@ function runtimeClassCandidates(root, label) {
     return inspect(checker.getTypeAtLocation(node));
   };
 
-  const isSyntacticCallArgument = (node) => {
+  const syntacticArgumentCall = (node) => {
     let current = node;
     while (current.parent && !ts.isFunctionLike(current.parent)) {
       const parent = current.parent;
       if (ts.isCallExpression(parent) || ts.isNewExpression(parent))
-        return parent.arguments?.includes(current) ?? false;
+        return parent.arguments?.includes(current) ? parent : null;
       if (
         ts.isStatement(parent) ||
         ts.isVariableDeclaration(parent) ||
         ts.isJsxExpression(parent)
       )
-        return false;
+        return null;
       current = parent;
     }
-    return false;
+    return null;
+  };
+
+  const isClassCombinerArgument = (node) => {
+    const call = syntacticArgumentCall(node);
+    if (!call) return false;
+    const callee = ts.isPropertyAccessExpression(call.expression)
+      ? call.expression.name
+      : call.expression;
+    return (
+      ts.isIdentifier(callee) &&
+      /^(?:c(?:lass(?:es|Names?)?|n)|clsx)$/i.test(callee.text)
+    );
   };
 
   const staticMemberValues = (
@@ -903,7 +915,9 @@ function runtimeClassCandidates(root, label) {
     }
     if (ts.isIdentifier(node)) {
       if (node.text === "undefined") return;
-      visitBinding(node, { allowDynamic });
+      visitBinding(node, {
+        allowDynamic: allowDynamic && !isClassCombinerArgument(node),
+      });
       return;
     }
     if (ts.isPropertyAccessExpression(node)) {
@@ -945,8 +959,7 @@ function runtimeClassCandidates(root, label) {
         : allStaticMemberValues(node.expression);
       if (
         !values.length &&
-        (!allowDynamic ||
-          (isSyntacticCallArgument(node) && mayBeClassText(node)))
+        (!allowDynamic || (syntacticArgumentCall(node) && mayBeClassText(node)))
       )
         bindingError(
           node,
