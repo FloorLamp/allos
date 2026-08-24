@@ -21,8 +21,8 @@ import { withVisitFact } from "./visit-form-helpers";
 // the recent blood-pressure readings satisfy the BP screening — pinned below.
 //
 // These specs prove, end-to-end, that:
-//   1. a due preventive item renders on /upcoming with the general-guidelines
-//      disclaimer,
+//   1. a due preventive item renders on /upcoming with one short link to the
+//      canonical disclaimer section,
 //   2. "Mark done" records a satisfaction and clears the item,
 //   3. the "Not applicable" override hides a different item,
 //   4. a rule already satisfied by seeded records does NOT render (inference),
@@ -192,7 +192,7 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     ).toBeVisible();
   });
 
-  test("a due preventive visit shows the disclaimer, marks done, and clears", async ({
+  test("a due preventive visit links the canonical disclaimer, marks done, and clears", async ({
     page,
   }) => {
     test.slow();
@@ -204,10 +204,29 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(visit).toBeVisible();
     await expect(visit).toContainText("Dental check-up & cleaning");
 
-    // The informational disclaimer is present whenever preventive items show.
+    // #3521 restores #1049's one-surface contract: Upcoming links to the
+    // anchored canonical section and carries no hand-written disclaimer prose.
+    const disclaimerLink = main.getByRole("link", {
+      name: "About these suggestions →",
+      exact: true,
+    });
+    await expect(disclaimerLink).toBeVisible();
+    await expect(disclaimerLink).toHaveAttribute(
+      "href",
+      "/disclaimer#suggestions-and-reference-ranges"
+    );
+    await expect(main).not.toContainText("individual clinician guidance wins");
+    await followLink(
+      page,
+      disclaimerLink,
+      /\/disclaimer#suggestions-and-reference-ranges$/
+    );
     await expect(
-      main.getByText("individual clinician guidance wins")
+      page.locator("#suggestions-and-reference-ranges")
     ).toBeVisible();
+
+    await page.goto("/upcoming");
+    await expect(visit).toBeVisible();
 
     // Mark it done → the satisfaction advances the next-due out of the window and
     // the row drops off the list on revalidate.

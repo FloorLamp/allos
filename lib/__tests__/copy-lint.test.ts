@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DISCLAIMER_PHRASINGS } from "@/lib/disclaimers";
+import { stripComments } from "./strip-comments";
 
 // Copy-lint source-scan (issue #945) — the profile-scoping / telegram-chokepoint /
 // notes-text pattern applied to user-facing COPY. It reads every source under the
@@ -260,24 +261,108 @@ function crossProfileSourceFiles(): { rel: string; text: string }[] {
   );
 }
 
-// Strip block + line comments so prose mentioning a banned phrase (e.g. this file's
-// own doc comment, or app/not-found.tsx quoting Next's "could not be found") can't
-// trip the scan. The line-comment strip preserves a leading non-`:` char so URLs
-// ("https://…") survive.
-function stripComments(text: string): string {
-  return text
-    .replace(
-      /(^|[\s{(;,=:])\/\*[\s\S]*?\*\//gm,
-      (match: string, prefix: string) =>
-        prefix + match.slice(prefix.length).replace(/[^\r\n]/g, " ")
-    )
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+const NAMED_HTML_WHITESPACE = new Map<string, string>([
+  ["Tab", "\t"],
+  ["NewLine", "\n"],
+  ["nbsp", "\u00a0"],
+  ["NonBreakingSpace", "\u00a0"],
+  ["ensp", "\u2002"],
+  ["emsp", "\u2003"],
+  ["emsp13", "\u2004"],
+  ["emsp14", "\u2005"],
+  ["numsp", "\u2007"],
+  ["puncsp", "\u2008"],
+  ["thinsp", "\u2009"],
+  ["ThinSpace", "\u2009"],
+  ["hairsp", "\u200a"],
+  ["VeryThinSpace", "\u200a"],
+  ["MediumSpace", "\u205f"],
+  ["ThickSpace", "\u205f\u200a"],
+]);
+
+function whitespaceOnly(text: string | null): boolean {
+  return !!text && /^\s+$/u.test(text);
 }
 
-// JSX has two ordinary source spellings for a rendered space that a text regex
-// cannot see: an entity (`&nbsp;`) and a whitespace-only expression (`{" "}` or
-// `{"\u0020"}`). Blank each spelling byte-for-byte while retaining CR/LF, so the
-// phrase becomes matchable without moving its source line or later offsets.
+function decodeHtmlCharacterReference(reference: string): string | null {
+  const body = reference.slice(1, -1);
+  if (!body.startsWith("#")) return NAMED_HTML_WHITESPACE.get(body) ?? null;
+
+  const hex = body[1] === "x" || body[1] === "X";
+  const digits = body.slice(hex ? 2 : 1);
+  if (!(hex ? /^[0-9a-f]+$/i : /^\d+$/).test(digits)) return null;
+  const codePoint = Number.parseInt(digits, hex ? 16 : 10);
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return null;
+  }
+}
+
+function decodeJsStringContent(raw: string): string | null {
+  let decoded = "";
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== "\\") {
+      decoded += raw[i];
+      continue;
+    }
+
+    const next = raw[++i];
+    if (next == null) return null;
+    if (next === "\n") continue;
+    if (next === "\r") {
+      if (raw[i + 1] === "\n") i++;
+      continue;
+    }
+    const simple: Record<string, string> = {
+      t: "\t",
+      n: "\n",
+      r: "\r",
+      f: "\f",
+      v: "\v",
+      b: "\b",
+      0: "\0",
+    };
+    if (next in simple) {
+      decoded += simple[next];
+      continue;
+    }
+    if (next === "x") {
+      const digits = raw.slice(i + 1, i + 3);
+      if (!/^[0-9a-f]{2}$/i.test(digits)) return null;
+      decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+      i += 2;
+      continue;
+    }
+    if (next === "u") {
+      if (raw[i + 1] === "{") {
+        const close = raw.indexOf("}", i + 2);
+        if (close === -1) return null;
+        const digits = raw.slice(i + 2, close);
+        if (!/^[0-9a-f]+$/i.test(digits)) return null;
+        try {
+          decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+        } catch {
+          return null;
+        }
+        i = close;
+      } else {
+        const digits = raw.slice(i + 1, i + 5);
+        if (!/^[0-9a-f]{4}$/i.test(digits)) return null;
+        decoded += String.fromCodePoint(Number.parseInt(digits, 16));
+        i += 4;
+      }
+      continue;
+    }
+    decoded += next;
+  }
+  return decoded;
+}
+
+// JSX can spell a rendered space as character data, an HTML character reference,
+// or a whitespace-only string expression. Decode those forms and test the same
+// whitespace class the production phrase regex uses (`\s`), then blank the source
+// spelling byte-for-byte while retaining CR/LF so locations remain exact.
 function normalizeRenderedWhitespace(text: string): string {
   return text
     .replace(
@@ -291,10 +376,21 @@ function normalizeRenderedWhitespace(text: string): string {
         return expression.replace(/[^\r\n]/g, hasRenderedBoundary ? " " : "_");
       }
     )
-    .replace(/&nbsp;/gi, (entity) => " ".repeat(entity.length))
     .replace(
-      /\{\s*(["'`])(?:(?:[ \t\r\n]+)|(?:\\(?:[tnr]|u(?:0009|000a|000d|0020|00a0)|x(?:09|0a|0d|20))))+\1\s*\}/gi,
-      (expression) => expression.replace(/[^\r\n]/g, " ")
+      /&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g,
+      (reference) =>
+        whitespaceOnly(decodeHtmlCharacterReference(reference))
+          ? " ".repeat(reference.length)
+          : reference
+    )
+    .replace(
+      /\{\s*(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)'|`((?:\\[\s\S]|[^`\\])*)`)\s*\}/g,
+      (expression, double: string, single: string, template: string) => {
+        const raw = double ?? single ?? template;
+        return whitespaceOnly(decodeJsStringContent(raw))
+          ? expression.replace(/[^\r\n]/g, " ")
+          : expression;
+      }
     );
 }
 
@@ -491,13 +587,35 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
   });
 
   it("detects adjacent rendered-whitespace forms without moving their source lines", () => {
-    const samples = [
-      "<p>Informational {/* design note */} only.</p>",
-      "<p>Informational&nbsp;only.</p>",
-      '<p>Informational{"\\u0020"}only.</p>',
+    const samples: { label: string; source: string }[] = [
+      {
+        label: "JSX comment with adjacent text spaces",
+        source: "<p>Informational {/* design note */} only.</p>",
+      },
+      {
+        label: "non-breaking entity",
+        source: "<p>Informational&nbsp;only.</p>",
+      },
+      { label: "numeric entity", source: "<p>Informational&#32;only.</p>" },
+      {
+        label: "alternate named entity",
+        source: "<p>Informational&ensp;only.</p>",
+      },
+      {
+        label: "escaped ASCII space expression",
+        source: '<p>Informational{"\\u0020"}only.</p>',
+      },
+      {
+        label: "actual NBSP expression",
+        source: '<p>Informational{"\u00a0"}only.</p>',
+      },
+      {
+        label: "escaped Unicode em-space expression",
+        source: '<p>Informational{"\\u2003"}only.</p>',
+      },
     ];
-    for (const sample of samples) {
-      expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+    for (const { label, source } of samples) {
+      expect(disclaimerCopyViolations("synthetic.tsx", source), label).toEqual([
         "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
       ]);
     }
@@ -507,9 +625,12 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     const sample = [
       "<p>Informational{/* no rendered space */}only.</p>",
       "<p>Informational&copy;only.</p>",
+      "<p>Informational&#65;only.</p>",
       '<p>Informational{"x"}only.</p>',
+      '<p>Informational{"\\u200b"}only.</p>',
       "// Informational&nbsp;only.",
       "{/* Informational only. Consult a clinician. */}",
+      "const raw = String.raw/* Informational only. */`camera`;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
