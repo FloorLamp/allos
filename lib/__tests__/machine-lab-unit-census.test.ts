@@ -13,8 +13,11 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(full);
-    return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")
+    if (entry.isDirectory())
+      return /^__(?:db_)?tests__$/.test(entry.name) ? [] : sourceFiles(full);
+    return /\.tsx?$/.test(entry.name) &&
+      !entry.name.endsWith(".d.ts") &&
+      !/\.(?:test|spec)\.tsx?$/.test(entry.name)
       ? [full]
       : [];
   });
@@ -61,9 +64,9 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     expect(MACHINE_LAB_UNIT_RE.lastIndex).toBe(0);
   });
 
-  // Coverage instruments every lib source while this intentionally scans the
-  // repository; exact CI measured 27.168s before the source prefilter. Keep the
-  // test bounded, but above that known honest runtime (#3669 timeout precedent).
+  // Coverage instruments the census while it scans every shipped source. Test
+  // modules are not browser/server exits and are excluded before file I/O. Keep
+  // the bound above the known honest runtime (#3669 timeout precedent).
   it("discovers every raw unit property at a lab-copy boundary", () => {
     const offenders = ["app", "components", "lib"].flatMap((root) =>
       sourceFiles(path.join(REPO, root)).flatMap((file) =>
@@ -775,12 +778,13 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         `,
       ],
     ];
-    for (const [raw, safe] of pairs) {
+    for (const [index, [raw, safe]] of pairs.entries()) {
       expect(
         rawRenderedUnitExits(
           raw,
           "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
+        ).map((hit) => hit.text),
+        `mutation ${index}`
       ).toEqual(["spelling"]);
       expect(
         rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
@@ -971,6 +975,219 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         killedAssignment,
         "/repo/components/UnitMislabelReview.tsx"
       )
+    ).toEqual([]);
+  });
+
+  it("uses callable assignments only on executable control-flow paths", () => {
+    const mutations = [
+      `
+        export function UnitMislabelReview({ items }) {
+          let pick = (item) => item.statedUnit;
+          function disable() { pick = Math.abs; }
+          const copy = items.map(pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item }) {
+          let copy = "";
+          let set = () => {};
+          const populate = (value) => { copy = value; };
+          setup(populate);
+          set(item.statedUnit);
+          return <p>{copy}</p>;
+          function setup(next) { set = next; }
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items, confirmed }) {
+          let pick = (item) => item.statedUnit;
+          if (confirmed) pick = Math.abs;
+          const copy = items.map(pick).join(" ");
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item }) {
+          let copy = "";
+          let set = () => {};
+          setup();
+          set(item.statedUnit);
+          return <p>{copy}</p>;
+          function setup() { set = (value) => { copy = value; }; }
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item, confirmed }) {
+          let copy = "";
+          let set = (value) => { copy = value; };
+          if (confirmed) set = () => { copy = "safe"; };
+          set(item.statedUnit);
+          return <p>{copy}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item }) {
+          let copy = "";
+          let set = (value) => { copy = value; };
+          set(item.statedUnit);
+          set = Math.abs;
+          return <p>{copy}</p>;
+        }
+      `,
+    ];
+    for (const [index, source] of mutations.entries()) {
+      expect(
+        rawRenderedUnitExits(
+          source,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text),
+        `mutation ${index}`
+      ).toEqual(["copy"]);
+    }
+
+    const unconditionalKill = `
+      export function UnitMislabelReview({ item }) {
+        let copy = "safe";
+        let set = (value) => { copy = value; };
+        set = Math.abs;
+        set(item.statedUnit);
+        return <p>{copy}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        unconditionalKill,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+
+    const safeSetupAlias = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item }) {
+        let copy = "";
+        let set = () => {};
+        const populate = (value) => { copy = value; };
+        setup(populate);
+        set(displayUnit(item.statedUnit));
+        return <p>{copy}</p>;
+        function setup(next) { set = next; }
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        safeSetupAlias,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+  });
+
+  it("propagates object aliases and indexed rest values", () => {
+    const mutations = [
+      [
+        `
+        export function UnitMislabelReview({ item }) {
+          let copy = "";
+          const payload = { value: item.statedUnit };
+          populate(payload);
+          return <p>{copy}</p>;
+          function populate({ value }) { copy = value; }
+        }
+      `,
+        `
+        import { displayUnit } from "@/lib/display-unit";
+        export function UnitMislabelReview({ item }) {
+          let copy = "";
+          const payload = { value: displayUnit(item.statedUnit) };
+          populate(payload);
+          return <p>{copy}</p>;
+          function populate({ value }) { copy = value; }
+        }
+      `,
+      ],
+      [
+        `
+        export function UnitMislabelReview({ item }) {
+          let spelling = "";
+          populate(item.statedUnit);
+          return <p>{spelling}</p>;
+          function populate(...values) { spelling = values[0]; }
+        }
+      `,
+        `
+        import { displayUnit } from "@/lib/display-unit";
+        export function UnitMislabelReview({ item }) {
+          let spelling = "";
+          populate(displayUnit(item.statedUnit));
+          return <p>{spelling}</p>;
+          function populate(...values) { spelling = values[0]; }
+        }
+      `,
+      ],
+    ];
+    for (const [index, [raw, safe]] of mutations.entries()) {
+      expect(
+        rawRenderedUnitExits(
+          raw,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text),
+        `mutation ${index}`
+      ).toEqual([index === 0 ? "copy" : "spelling"]);
+      expect(
+        rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
+      ).toEqual([]);
+    }
+
+    const semanticStorage = `
+      export function UnitMislabelReview({ item }) {
+        let first = "";
+        const payload = { value: item.value, unit: item.statedUnit };
+        populate(payload);
+        const { value: second } = payload;
+        return <p>{first} {second}</p>;
+        function populate({ value }) { first = value; }
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        semanticStorage,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+  });
+
+  it("resolves callable methods assigned after object construction", () => {
+    for (const [assignment, callback] of [
+      ["helper.pick = (item) => item.statedUnit;", "helper.pick"],
+      ['helper["pick"] = (item) => item.statedUnit;', 'helper["pick"]'],
+    ]) {
+      const raw = `
+        export function UnitMislabelReview({ items }) {
+          const helper = {};
+          ${assignment}
+          const copy = items.map(${callback}).join(" ");
+          return <p>{copy}</p>;
+        }
+      `;
+      expect(
+        rawRenderedUnitExits(
+          raw,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text)
+      ).toEqual(["copy"]);
+    }
+
+    const safe = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ items }) {
+        const helper = {};
+        helper.pick = (item) => displayUnit(item.statedUnit);
+        const copy = items.map(helper["pick"]).join(" ");
+        return <p>{copy}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
     ).toEqual([]);
   });
 

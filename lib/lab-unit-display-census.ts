@@ -24,6 +24,8 @@ const PRECOMPOSED_LAB_COPY_PRODUCER =
   /(?:BioAgeEffect|Biomarker|CensoredInput|ClinicalResult|LabValue|ReferenceCell|ReferenceHint|Revision|SunExposure|Trajectory|unitSuffix)/i;
 const POSSIBLE_UNIT_EXIT =
   /(?:\.\s*(?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)\b|\[\s*["'](?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)["']\s*\]|\b(?:bio(?:marker)?Unit|chartUnit|correctedUnit|latestUnit|otherUnits|statedUnit|units?|vitaminDUnit)\b)/i;
+const POSSIBLE_LAB_CONTEXT_SOURCE =
+  /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer|\b(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)\b|["'`]biomarker["'`])/i;
 
 function displayUnitModule(moduleName: string, fileName: string): boolean {
   if (moduleName === "@/lib/display-unit") return true;
@@ -247,7 +249,13 @@ export function rawRenderedUnitExits(
   // files cannot contain a unit exit; reject those before TypeScript builds an
   // AST. The prefilter is deliberately broader than the classifier below and is
   // mutation-tested by every hostile spelling in the suite.
-  if (!POSSIBLE_UNIT_EXIT.test(source)) return [];
+  const normalizedFileName = fileName.replaceAll("\\", "/");
+  if (
+    !POSSIBLE_UNIT_EXIT.test(source) ||
+    (!LAB_CONTEXT_PATH.test(normalizedFileName) &&
+      !POSSIBLE_LAB_CONTEXT_SOURCE.test(source))
+  )
+    return [];
   const sourceFile = ts.createSourceFile(
     fileName,
     source,
@@ -272,6 +280,7 @@ export function rawRenderedUnitExits(
     node: ts.Node;
     position: number;
     expression?: ts.Expression;
+    path?: Array<string | number>;
     raw?: boolean;
     appliesWithin?: ts.Node;
   }
@@ -303,48 +312,46 @@ export function rawRenderedUnitExits(
     boundArguments: ts.Expression[];
   }
 
-  interface CallableValue {
+  interface CallableWrite {
+    node: ts.Node;
+    execution?: ts.Node;
     position: number;
-    target: CallableTarget | null;
+    expression?: ts.Expression;
+    target?: CallableTarget;
   }
 
-  const callableValues = new Map<UnitBinding, CallableValue[]>();
-  const objectMethods = new Map<string, CallableTarget>();
-
-  function addCallableValue(
-    binding: UnitBinding,
-    position: number,
-    target: CallableTarget | null
-  ): boolean {
-    const values = callableValues.get(binding) ?? [];
-    const signature = (callable: CallableTarget | null) =>
-      callable
-        ? `${callable.runtime.pos}:${callable.boundArguments
-            .map((argument) => argument.pos)
-            .join(",")}`
-        : "none";
-    const existing = values.find((value) => value.position === position);
-    if (existing) {
-      if (signature(existing.target) === signature(target)) return false;
-      existing.target = target;
-      return true;
-    }
-    values.push({ position, target });
-    values.sort((a, b) => a.position - b.position);
-    callableValues.set(binding, values);
-    return true;
+  interface CallableState {
+    targets: CallableTarget[];
+    unknown: boolean;
   }
 
-  function callableAt(
+  interface RuntimeInvocation {
+    node: ts.CallExpression;
+    definite: boolean;
+    arguments: ts.Expression[];
+  }
+
+  const callableWrites = new Map<UnitBinding, CallableWrite[]>();
+  const objectCallableWrites = new Map<string, CallableWrite[]>();
+  const runtimeInvocations = new Map<RuntimeFunction, RuntimeInvocation[]>();
+
+  function addCallableWrite(binding: UnitBinding, write: CallableWrite) {
+    const writes = callableWrites.get(binding) ?? [];
+    writes.push(write);
+    writes.sort((a, b) => a.position - b.position);
+    callableWrites.set(binding, writes);
+  }
+
+  function addObjectCallableWrite(
     binding: UnitBinding,
-    position: number
-  ): CallableTarget | null {
-    let found: CallableTarget | null = null;
-    for (const value of callableValues.get(binding) ?? []) {
-      if (value.position > position) break;
-      found = value.target;
-    }
-    return found;
+    name: string,
+    write: CallableWrite
+  ) {
+    const key = `${binding.id}:${name}`;
+    const writes = objectCallableWrites.get(key) ?? [];
+    writes.push(write);
+    writes.sort((a, b) => a.position - b.position);
+    objectCallableWrites.set(key, writes);
   }
 
   function runtimeFunction(node: ts.Node): node is RuntimeFunction {
@@ -447,9 +454,11 @@ export function rawRenderedUnitExits(
     if (node !== sourceFile && runtimeFunction(node)) {
       if (ts.isFunctionDeclaration(node) && node.name) {
         const binding = declareIdentifier(node.name, inherited);
-        addCallableValue(binding, -1, {
-          runtime: node,
-          boundArguments: [],
+        addCallableWrite(binding, {
+          node,
+          execution: inherited.node,
+          position: -1,
+          target: { runtime: node, boundArguments: [] },
         });
       }
       scope = childScope(node, inherited);
@@ -494,19 +503,6 @@ export function rawRenderedUnitExits(
           ? scope
           : nearestVarScope(scope);
       declarePattern(node.name, declarationScope, false);
-      if (
-        ts.isIdentifier(node.name) &&
-        node.initializer &&
-        (ts.isArrowFunction(node.initializer) ||
-          ts.isFunctionExpression(node.initializer))
-      ) {
-        const binding = declarationBindings.get(node.name);
-        if (binding)
-          addCallableValue(binding, node.end, {
-            runtime: node.initializer,
-            boundArguments: [],
-          });
-      }
     } else if (ts.isParameter(node)) {
       declarePattern(node.name, scope, true);
     } else if (ts.isCatchClause(node) && node.variableDeclaration) {
@@ -560,22 +556,203 @@ export function rawRenderedUnitExits(
     return `${binding.id}:${name}`;
   }
 
-  function resolveCallableExpression(
-    expression: ts.Expression
-  ): CallableTarget | null {
+  function mergeCallableStates(
+    left: CallableState,
+    right: CallableState
+  ): CallableState {
+    const targets = [...left.targets];
+    for (const target of right.targets) {
+      if (
+        !targets.some(
+          (candidate) =>
+            candidate.runtime === target.runtime &&
+            candidate.boundArguments.length === target.boundArguments.length &&
+            candidate.boundArguments.every(
+              (argument, index) => argument === target.boundArguments[index]
+            )
+        )
+      )
+        targets.push(target);
+    }
+    return { targets, unknown: left.unknown || right.unknown };
+  }
+
+  const evaluatingCallableSlots = new Set<string>();
+
+  function callableStateForWrite(
+    write: CallableWrite,
+    context?: EvaluationContext
+  ): CallableState {
+    if (write.target) return { targets: [write.target], unknown: false };
+    if (write.expression)
+      return resolveCallableState(write.expression, write.node, context);
+    return { targets: [], unknown: true };
+  }
+
+  function effectiveCallableState(
+    slot: string,
+    writes: readonly CallableWrite[],
+    use: ts.Node,
+    context?: EvaluationContext
+  ): CallableState {
+    const evaluationKey = `${slot}@${use.pos}:${context?.key ?? "root"}`;
+    if (evaluatingCallableSlots.has(evaluationKey))
+      return { targets: [], unknown: true };
+    evaluatingCallableSlots.add(evaluationKey);
+    const useRuntime = enclosingRuntime(use);
+    const useStart = use.getStart(sourceFile);
+    const events: Array<{
+      write: CallableWrite;
+      position: number;
+      order: number[];
+      definite: boolean;
+      context?: EvaluationContext;
+    }> = [];
+    for (const write of writes) {
+      const writeRuntime = enclosingRuntime(write.execution ?? write.node);
+      if (write.position === -1 && isDescendant(use, writeRuntime)) {
+        events.push({
+          write,
+          position: -1,
+          order: [write.node.getStart(sourceFile)],
+          definite: true,
+          context,
+        });
+        continue;
+      }
+      if (writeRuntime === useRuntime) {
+        if (write.position >= useStart && write.position !== -1) continue;
+        events.push({
+          write,
+          position: write.position,
+          order: [write.node.getStart(sourceFile)],
+          definite:
+            write.position === -1 ||
+            writeIsDefiniteForUse(
+              { node: write.node, position: write.position },
+              use
+            ),
+          context,
+        });
+        continue;
+      }
+      if (!runtimeFunction(writeRuntime)) continue;
+      for (const occurrence of invocationOccurrences(
+        writeRuntime,
+        useRuntime,
+        context
+      )) {
+        if (occurrence.position >= useStart) continue;
+        const callWrite: BindingWrite = {
+          node: occurrence.site,
+          position: occurrence.position,
+        };
+        events.push({
+          write,
+          position: occurrence.position,
+          order: [...occurrence.order, write.node.getStart(sourceFile)],
+          definite:
+            occurrence.definite &&
+            guardedRegions(write.node, writeRuntime).length === 0 &&
+            writeIsDefiniteForUse(callWrite, use),
+          context: occurrence.context,
+        });
+      }
+    }
+    events.sort((left, right) => {
+      if (left.position !== right.position)
+        return left.position - right.position;
+      for (
+        let index = 0;
+        index < Math.max(left.order.length, right.order.length);
+        index++
+      ) {
+        const difference =
+          (left.order[index] ?? Number.MAX_SAFE_INTEGER) -
+          (right.order[index] ?? Number.MAX_SAFE_INTEGER);
+        if (difference) return difference;
+      }
+      return 0;
+    });
+    let state: CallableState = { targets: [], unknown: true };
+    for (const event of events) {
+      const next = callableStateForWrite(event.write, event.context);
+      state = event.definite ? next : mergeCallableStates(state, next);
+    }
+    evaluatingCallableSlots.delete(evaluationKey);
+    return state;
+  }
+
+  function resolveCallableState(
+    expression: ts.Expression,
+    use: ts.Node = expression,
+    context?: EvaluationContext
+  ): CallableState {
     const target = unwrapAssignmentTarget(expression);
     if (ts.isIdentifier(target)) {
       const binding = resolveIdentifier(target);
-      return binding ? callableAt(binding, target.getStart(sourceFile)) : null;
+      if (!binding) return { targets: [], unknown: true };
+      if (context) {
+        const substitution = parameterValue(binding, context);
+        if (substitution) {
+          let state: CallableState = {
+            targets: [],
+            unknown: substitution.value.sources.length === 0,
+          };
+          for (const source of substitution.value.sources) {
+            state = mergeCallableStates(
+              state,
+              source.path.length === 0
+                ? resolveCallableState(
+                    source.expression,
+                    source.expression,
+                    substitution.parent
+                  )
+                : { targets: [], unknown: true }
+            );
+          }
+          return state;
+        }
+        const bindingRuntime = enclosingRuntime(binding.scope.node);
+        for (
+          let current: EvaluationContext | undefined = context;
+          current;
+          current = current.parent
+        ) {
+          if (enclosingRuntime(current.site) === bindingRuntime)
+            return effectiveCallableState(
+              `binding:${binding.id}`,
+              callableWrites.get(binding) ?? [],
+              current.site,
+              current.parent
+            );
+        }
+      }
+      return effectiveCallableState(
+        `binding:${binding.id}`,
+        callableWrites.get(binding) ?? [],
+        use,
+        context
+      );
     }
     if (ts.isArrowFunction(target) || ts.isFunctionExpression(target))
-      return { runtime: target, boundArguments: [] };
+      return {
+        targets: [{ runtime: target, boundArguments: [] }],
+        unknown: false,
+      };
     if (ts.isPropertyAccessExpression(target)) {
-      if (!ts.isIdentifier(target.expression)) return null;
+      if (!ts.isIdentifier(target.expression))
+        return { targets: [], unknown: true };
       const binding = resolveIdentifier(target.expression);
       return binding
-        ? (objectMethods.get(methodKey(binding, target.name.text)) ?? null)
-        : null;
+        ? effectiveCallableState(
+            `method:${methodKey(binding, target.name.text)}`,
+            objectCallableWrites.get(methodKey(binding, target.name.text)) ??
+              [],
+            use,
+            context
+          )
+        : { targets: [], unknown: true };
     }
     if (
       ts.isElementAccessExpression(target) &&
@@ -584,93 +761,128 @@ export function rawRenderedUnitExits(
     ) {
       const binding = resolveIdentifier(target.expression);
       return binding
-        ? (objectMethods.get(
-            methodKey(binding, target.argumentExpression.text)
-          ) ?? null)
-        : null;
+        ? effectiveCallableState(
+            `method:${methodKey(binding, target.argumentExpression.text)}`,
+            objectCallableWrites.get(
+              methodKey(binding, target.argumentExpression.text)
+            ) ?? [],
+            use,
+            context
+          )
+        : { targets: [], unknown: true };
     }
     if (
       ts.isCallExpression(target) &&
       ts.isPropertyAccessExpression(target.expression) &&
       target.expression.name.text === "bind"
     ) {
-      const callable = resolveCallableExpression(target.expression.expression);
-      if (!callable) return null;
+      const state = resolveCallableState(
+        target.expression.expression,
+        use,
+        context
+      );
       return {
-        runtime: callable.runtime,
-        boundArguments: [
-          ...callable.boundArguments,
-          ...target.arguments.slice(1),
-        ],
+        targets: state.targets.map((callable) => ({
+          runtime: callable.runtime,
+          boundArguments: [
+            ...callable.boundArguments,
+            ...target.arguments.slice(1),
+          ],
+        })),
+        unknown: state.unknown,
       };
     }
-    return null;
+    return { targets: [], unknown: true };
   }
 
-  // Resolve named callbacks, aliases, `.bind(...)`, and object-literal methods
-  // after every lexical binding exists. Iterate because an object method may name
-  // a function alias declared elsewhere in the same scope.
-  function collectCallableAliases() {
-    const variables: ts.VariableDeclaration[] = [];
-    const assignments: ts.BinaryExpression[] = [];
+  // Callable variables and object properties use the same write model. Their
+  // values are resolved at a call site, so conditional writes join, definite
+  // writes replace, and writes in helpers take effect only when invoked.
+  function collectCallableWrites() {
     function collect(node: ts.Node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
-        variables.push(node);
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        const binding = declarationBindings.get(node.name);
+        if (binding) {
+          addCallableWrite(binding, {
+            node,
+            position: node.end,
+            expression: node.initializer,
+          });
+          const initializer = node.initializer
+            ? unwrapAssignmentTarget(node.initializer)
+            : null;
+          if (initializer && ts.isObjectLiteralExpression(initializer)) {
+            for (const property of initializer.properties) {
+              const name = ts.isShorthandPropertyAssignment(property)
+                ? property.name.text
+                : "name" in property && property.name
+                  ? propertyText(property.name)
+                  : null;
+              if (!name) continue;
+              if (ts.isMethodDeclaration(property)) {
+                addObjectCallableWrite(binding, name, {
+                  node,
+                  position: node.end,
+                  target: { runtime: property, boundArguments: [] },
+                });
+              } else if (ts.isPropertyAssignment(property)) {
+                addObjectCallableWrite(binding, name, {
+                  node,
+                  position: node.end,
+                  expression: property.initializer,
+                });
+              } else if (ts.isShorthandPropertyAssignment(property)) {
+                addObjectCallableWrite(binding, name, {
+                  node,
+                  position: node.end,
+                  expression: property.name,
+                });
+              }
+            }
+          }
+        }
+      }
       if (
         ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(unwrapAssignmentTarget(node.left))
-      )
-        assignments.push(node);
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        const target = unwrapAssignmentTarget(node.left);
+        if (ts.isIdentifier(target)) {
+          const binding = resolveIdentifier(target);
+          if (binding)
+            addCallableWrite(binding, {
+              node,
+              position: node.end,
+              expression: node.right,
+            });
+        } else {
+          const access =
+            ts.isPropertyAccessExpression(target) ||
+            (ts.isElementAccessExpression(target) &&
+              ts.isStringLiteral(target.argumentExpression))
+              ? target
+              : null;
+          if (access && ts.isIdentifier(access.expression)) {
+            const binding = resolveIdentifier(access.expression);
+            const name = ts.isPropertyAccessExpression(access)
+              ? access.name.text
+              : ts.isStringLiteral(access.argumentExpression)
+                ? access.argumentExpression.text
+                : null;
+            if (binding && name)
+              addObjectCallableWrite(binding, name, {
+                node,
+                position: node.end,
+                expression: node.right,
+              });
+          }
+        }
+      }
       ts.forEachChild(node, collect);
     }
     collect(sourceFile);
-
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const variable of variables) {
-        if (!ts.isIdentifier(variable.name)) continue;
-        const binding = declarationBindings.get(variable.name);
-        if (!binding || !variable.initializer) continue;
-        const initializer = unwrapAssignmentTarget(variable.initializer);
-        if (ts.isObjectLiteralExpression(initializer)) {
-          for (const property of initializer.properties) {
-            let name: string | null = null;
-            let callable: CallableTarget | null = null;
-            if (ts.isMethodDeclaration(property) && property.name) {
-              name = propertyText(property.name);
-              callable = { runtime: property, boundArguments: [] };
-            } else if (ts.isPropertyAssignment(property)) {
-              name = propertyText(property.name);
-              callable = resolveCallableExpression(property.initializer);
-            } else if (ts.isShorthandPropertyAssignment(property)) {
-              name = property.name.text;
-              callable = resolveCallableExpression(property.name);
-            }
-            if (!name || !callable) continue;
-            const key = methodKey(binding, name);
-            if (!objectMethods.has(key)) {
-              objectMethods.set(key, callable);
-              changed = true;
-            }
-          }
-          continue;
-        }
-        const callable = resolveCallableExpression(initializer);
-        if (addCallableValue(binding, variable.end, callable)) changed = true;
-      }
-      for (const assignment of assignments) {
-        const target = unwrapAssignmentTarget(assignment.left);
-        if (!ts.isIdentifier(target)) continue;
-        const binding = resolveIdentifier(target);
-        const callable = resolveCallableExpression(assignment.right);
-        if (binding && addCallableValue(binding, assignment.end, callable))
-          changed = true;
-      }
-    }
   }
-  collectCallableAliases();
+  collectCallableWrites();
 
   function addWrite(binding: UnitBinding | null, write: BindingWrite) {
     if (binding) binding.writes.push(write);
@@ -693,7 +905,8 @@ export function rawRenderedUnitExits(
     owner: ts.Node,
     source?: ts.Expression,
     appliesWithin?: ts.Node,
-    rawFromProperty = false
+    rawFromProperty = false,
+    sourcePath: Array<string | number> = []
   ) {
     if (ts.isIdentifier(name)) {
       addWrite(bindingForTarget(name), {
@@ -702,7 +915,7 @@ export function rawRenderedUnitExits(
         ...(rawFromProperty
           ? { raw: true }
           : source
-            ? { expression: source }
+            ? { expression: source, path: sourcePath }
             : {}),
         appliesWithin,
       });
@@ -712,17 +925,36 @@ export function rawRenderedUnitExits(
       if (ts.isOmittedExpression(element)) continue;
       const property = element.propertyName ?? element.name;
       const propertyName = propertyText(property);
-      const raw =
-        rawFromProperty ||
-        (propertyName != null && UNIT_PROPERTY.test(propertyName));
+      let elementSource = source;
+      let elementPath = sourcePath;
+      if (ts.isArrayBindingPattern(name)) {
+        const found =
+          sourcePath.length === 0 ? arrayElementSource(source, index) : source;
+        if (found && found !== source) {
+          elementSource = found;
+          elementPath = [];
+        } else {
+          elementPath = [...sourcePath, index];
+        }
+      } else if (propertyName != null) {
+        const found =
+          source && sourcePath.length === 0
+            ? objectPropertySource(source, propertyName)
+            : null;
+        if (found) {
+          elementSource = found;
+          elementPath = [];
+        } else {
+          elementPath = [...sourcePath, propertyName];
+        }
+      }
       addBindingTargetWrites(
         element.name,
         owner,
-        ts.isArrayBindingPattern(name)
-          ? arrayElementSource(source, index)
-          : source,
+        elementSource,
         appliesWithin,
-        raw
+        rawFromProperty && !source,
+        elementPath
       );
     }
   }
@@ -746,7 +978,8 @@ export function rawRenderedUnitExits(
     owner: ts.Node,
     source?: ts.Expression,
     appliesWithin?: ts.Node,
-    rawFromProperty = false
+    rawFromProperty = false,
+    sourcePath: Array<string | number> = []
   ) {
     const target = unwrapAssignmentTarget(expression);
     if (ts.isIdentifier(target)) {
@@ -756,7 +989,7 @@ export function rawRenderedUnitExits(
         ...(rawFromProperty
           ? { raw: true }
           : source
-            ? { expression: source }
+            ? { expression: source, path: sourcePath }
             : {}),
         appliesWithin,
       });
@@ -771,7 +1004,8 @@ export function rawRenderedUnitExits(
         owner,
         source,
         appliesWithin,
-        rawFromProperty
+        rawFromProperty,
+        sourcePath
       );
       return;
     }
@@ -779,21 +1013,31 @@ export function rawRenderedUnitExits(
       for (const property of target.properties) {
         if (ts.isPropertyAssignment(property)) {
           const name = propertyText(property.name);
+          const found =
+            source && name && sourcePath.length === 0
+              ? objectPropertySource(source, name)
+              : null;
           addExpressionTargetWrites(
             property.initializer,
             owner,
-            source,
+            found ?? source,
             appliesWithin,
-            rawFromProperty || (name != null && UNIT_PROPERTY.test(name))
+            rawFromProperty && !source,
+            found ? [] : name ? [...sourcePath, name] : sourcePath
           );
         } else if (ts.isShorthandPropertyAssignment(property)) {
           const name = property.name.text;
+          const found =
+            source && sourcePath.length === 0
+              ? objectPropertySource(source, name)
+              : null;
           addExpressionTargetWrites(
             property.name,
             owner,
-            source,
+            found ?? source,
             appliesWithin,
-            rawFromProperty || UNIT_PROPERTY.test(name)
+            rawFromProperty && !source,
+            found ? [] : [...sourcePath, name]
           );
         } else if (ts.isSpreadAssignment(property)) {
           addExpressionTargetWrites(
@@ -801,7 +1045,8 @@ export function rawRenderedUnitExits(
             owner,
             source,
             appliesWithin,
-            rawFromProperty
+            rawFromProperty,
+            sourcePath
           );
         }
       }
@@ -809,14 +1054,20 @@ export function rawRenderedUnitExits(
     }
     if (ts.isArrayLiteralExpression(target)) {
       for (const [index, element] of target.elements.entries()) {
-        if (!ts.isOmittedExpression(element))
+        if (!ts.isOmittedExpression(element)) {
+          const found =
+            sourcePath.length === 0
+              ? arrayElementSource(source, index)
+              : source;
           addExpressionTargetWrites(
             ts.isSpreadElement(element) ? element.expression : element,
             owner,
-            arrayElementSource(source, index),
+            found,
             appliesWithin,
-            rawFromProperty
+            rawFromProperty,
+            found && found !== source ? [] : [...sourcePath, index]
           );
+        }
       }
     }
   }
@@ -891,14 +1142,6 @@ export function rawRenderedUnitExits(
       binding.writes.sort((a, b) => a.position - b.position);
   }
 
-  interface RuntimeInvocation {
-    node: ts.CallExpression;
-    definite: boolean;
-    arguments: ts.Expression[];
-  }
-
-  const runtimeInvocations = new Map<RuntimeFunction, RuntimeInvocation[]>();
-
   // A captured write happens when its function is invoked, not where that
   // function's body happens to appear in the file. Direct calls are definite;
   // callback arguments are conservative joins because the callee may invoke them
@@ -909,20 +1152,40 @@ export function rawRenderedUnitExits(
     node: ts.CallExpression,
     definite: boolean,
     callArguments: readonly ts.Expression[] = []
-  ) {
+  ): boolean {
     const sites = runtimeInvocations.get(callable.runtime) ?? [];
+    const argumentsAtSite = [...callable.boundArguments, ...callArguments];
+    if (
+      sites.some(
+        (site) =>
+          site.node === node &&
+          site.definite === definite &&
+          site.arguments.length === argumentsAtSite.length &&
+          site.arguments.every(
+            (argument, index) => argument === argumentsAtSite[index]
+          )
+      )
+    )
+      return false;
     sites.push({
       node,
       definite,
-      arguments: [...callable.boundArguments, ...callArguments],
+      arguments: argumentsAtSite,
     });
     runtimeInvocations.set(callable.runtime, sites);
+    return true;
   }
 
-  function collectRuntimeInvocations(node: ts.Node) {
+  function collectRuntimeInvocations(node: ts.Node): boolean {
+    let changed = false;
     if (ts.isCallExpression(node)) {
-      const direct = resolveCallableExpression(node.expression);
-      if (direct) addRuntimeInvocation(direct, node, true, node.arguments);
+      const direct = resolveCallableState(node.expression, node);
+      const targetIsDefinite = direct.targets.length === 1 && !direct.unknown;
+      for (const callable of direct.targets)
+        if (
+          addRuntimeInvocation(callable, node, targetIsDefinite, node.arguments)
+        )
+          changed = true;
       const callbackArguments =
         ts.isPropertyAccessExpression(node.expression) &&
         /^(?:every|filter|find|findIndex|flatMap|forEach|map|reduce|reduceRight|some)$/.test(
@@ -932,14 +1195,20 @@ export function rawRenderedUnitExits(
           : [];
       for (const [index, argument] of node.arguments.entries()) {
         const invokedArguments = index === 0 ? callbackArguments : [];
-        const callable = resolveCallableExpression(argument);
-        if (callable)
-          addRuntimeInvocation(callable, node, false, invokedArguments);
+        const state = resolveCallableState(argument, node);
+        for (const callable of state.targets)
+          if (addRuntimeInvocation(callable, node, false, invokedArguments))
+            changed = true;
       }
     }
-    ts.forEachChild(node, collectRuntimeInvocations);
+    ts.forEachChild(node, (child) => {
+      if (collectRuntimeInvocations(child)) changed = true;
+    });
+    return changed;
   }
-  collectRuntimeInvocations(sourceFile);
+  while (collectRuntimeInvocations(sourceFile)) {
+    // Invocation-driven callable assignments can reveal another call site.
+  }
 
   function isDescendant(node: ts.Node, ancestor: ts.Node): boolean {
     for (
@@ -1052,8 +1321,13 @@ export function rawRenderedUnitExits(
     };
   }
 
+  interface ParameterSource {
+    expression: ts.Expression;
+    path: Array<string | number>;
+  }
+
   interface ParameterValue {
-    expressions: ts.Expression[];
+    sources: ParameterSource[];
     raw: boolean;
   }
 
@@ -1085,14 +1359,13 @@ export function rawRenderedUnitExits(
 
   function bindParameterPattern(
     name: ts.BindingName,
-    sources: ts.Expression[],
+    sources: ParameterSource[],
     values: Map<UnitBinding, ParameterValue>,
     rawFromProperty = false
   ) {
     if (ts.isIdentifier(name)) {
       const binding = declarationBindings.get(name);
-      if (binding)
-        values.set(binding, { expressions: sources, raw: rawFromProperty });
+      if (binding) values.set(binding, { sources, raw: rawFromProperty });
       return;
     }
     for (const [index, element] of name.elements.entries()) {
@@ -1100,38 +1373,58 @@ export function rawRenderedUnitExits(
       const property = element.propertyName ?? element.name;
       const propertyName = propertyText(property);
       let exactObjectProperty = false;
-      let elementSources: ts.Expression[];
+      let elementSources: ParameterSource[];
       if (ts.isArrayBindingPattern(name)) {
         if (element.dotDotDotToken) {
           elementSources = sources.flatMap((source) => {
-            const unwrapped = unwrapAssignmentTarget(source);
-            if (!ts.isArrayLiteralExpression(unwrapped)) return [source];
-            return unwrapped.elements
-              .slice(index)
-              .flatMap((part) =>
-                ts.isOmittedExpression(part)
-                  ? []
-                  : [ts.isSpreadElement(part) ? part.expression : part]
-              );
+            if (source.path.length > 0)
+              return [{ ...source, path: [...source.path, index] }];
+            const unwrapped = unwrapAssignmentTarget(source.expression);
+            if (!ts.isArrayLiteralExpression(unwrapped))
+              return [{ ...source, path: [...source.path, index] }];
+            return unwrapped.elements.slice(index).flatMap((part) =>
+              ts.isOmittedExpression(part)
+                ? []
+                : [
+                    {
+                      expression: ts.isSpreadElement(part)
+                        ? part.expression
+                        : part,
+                      path: [],
+                    },
+                  ]
+            );
           });
         } else {
           elementSources = sources.flatMap((source) => {
-            const found = arrayElementSource(source, index);
-            return found ? [found] : [];
+            if (source.path.length > 0)
+              return [{ ...source, path: [...source.path, index] }];
+            const found = arrayElementSource(source.expression, index);
+            return found
+              ? [
+                  found === source.expression
+                    ? { ...source, path: [index] }
+                    : { expression: found, path: [] },
+                ]
+              : [];
           });
         }
       } else if (propertyName != null) {
         elementSources = sources.flatMap((source) => {
-          const found = objectPropertySource(source, propertyName);
-          if (!found) return [source];
+          const found =
+            source.path.length === 0
+              ? objectPropertySource(source.expression, propertyName)
+              : null;
+          if (!found)
+            return [{ ...source, path: [...source.path, propertyName] }];
           exactObjectProperty = true;
-          return [found];
+          return [{ expression: found, path: [] }];
         });
       } else {
         elementSources = sources;
       }
       if (element.initializer && elementSources.length === 0)
-        elementSources.push(element.initializer);
+        elementSources.push({ expression: element.initializer, path: [] });
       const raw =
         rawFromProperty ||
         (!exactObjectProperty &&
@@ -1152,13 +1445,15 @@ export function rawRenderedUnitExits(
     ) {
       const values = new Map<UnitBinding, ParameterValue>();
       for (const [index, parameter] of current.runtime.parameters.entries()) {
-        const sources = parameter.dotDotDotToken
-          ? current.arguments.slice(index)
-          : current.arguments[index]
-            ? [current.arguments[index]]
-            : [];
+        const sources: ParameterSource[] = (
+          parameter.dotDotDotToken
+            ? current.arguments.slice(index)
+            : current.arguments[index]
+              ? [current.arguments[index]]
+              : []
+        ).map((expression) => ({ expression, path: [] }));
         if (parameter.initializer && sources.length === 0)
-          sources.push(parameter.initializer);
+          sources.push({ expression: parameter.initializer, path: [] });
         bindParameterPattern(parameter.name, sources, values);
       }
       const value = values.get(binding);
@@ -1296,13 +1591,142 @@ export function rawRenderedUnitExits(
       const writeTainted =
         write.raw === true ||
         (write.expression != null &&
-          carriesRawUnit(write.expression, event.context));
+          (write.path && write.path.length > 0
+            ? carriesParameterSource(
+                { expression: write.expression, path: write.path },
+                event.context
+              )
+            : carriesRawUnit(write.expression, event.context)));
       if (event.definite) tainted = writeTainted;
       else if (writeTainted) tainted = true;
     }
 
     evaluatingTaint.delete(key);
     taintMemo.set(key, tainted);
+    return tainted;
+  }
+
+  const projectedTaintMemo = new Map<string, boolean>();
+  const evaluatingProjectedTaint = new Set<string>();
+
+  function projectedSources(
+    sources: readonly ParameterSource[],
+    path: readonly (string | number)[]
+  ): ParameterSource[] {
+    if (path.length === 0) return [...sources];
+    const [head, ...rest] = path;
+    if (typeof head === "number" && sources.length > 1) {
+      const selected = sources[head];
+      return selected
+        ? [{ ...selected, path: [...selected.path, ...rest] }]
+        : [];
+    }
+    return sources.map((source) => ({
+      ...source,
+      path: [...source.path, ...path],
+    }));
+  }
+
+  function carriesParameterSource(
+    source: ParameterSource,
+    context?: EvaluationContext
+  ): boolean {
+    if (source.path.length === 0)
+      return carriesRawUnit(source.expression, context);
+    const [head, ...rest] = source.path;
+    const expression = unwrapAssignmentTarget(source.expression);
+    if (typeof head === "number" && ts.isArrayLiteralExpression(expression)) {
+      const selected = arrayElementSource(expression, head);
+      return selected
+        ? carriesParameterSource({ expression: selected, path: rest }, context)
+        : false;
+    }
+    if (typeof head === "string" && ts.isObjectLiteralExpression(expression)) {
+      const selected = objectPropertySource(expression, head);
+      return selected
+        ? carriesParameterSource({ expression: selected, path: rest }, context)
+        : false;
+    }
+    if (ts.isIdentifier(expression)) {
+      const binding = resolveIdentifier(expression);
+      if (binding)
+        return bindingTaintedAtPath(binding, expression, source.path, context);
+    }
+    if (typeof head === "string" && UNIT_PROPERTY.test(head)) return true;
+    return carriesRawUnit(expression, context);
+  }
+
+  function bindingTaintedAtPath(
+    binding: UnitBinding,
+    use: ts.Node,
+    path: readonly (string | number)[],
+    context?: EvaluationContext
+  ): boolean {
+    if (path.length === 0) return bindingTaintedAt(binding, use, context);
+    const key = `${binding.id}:${use.pos}:${path.join(".")}:${context?.key ?? "root"}`;
+    const memoized = projectedTaintMemo.get(key);
+    if (memoized != null) return memoized;
+    if (evaluatingProjectedTaint.has(key))
+      return (
+        binding.initialRaw ||
+        (typeof path[0] === "string" && UNIT_PROPERTY.test(path[0]))
+      );
+    evaluatingProjectedTaint.add(key);
+
+    if (context) {
+      const substitution = parameterValue(binding, context);
+      if (substitution) {
+        const raw =
+          substitution.value.raw ||
+          projectedSources(substitution.value.sources, path).some((source) =>
+            carriesParameterSource(source, substitution.parent)
+          );
+        evaluatingProjectedTaint.delete(key);
+        projectedTaintMemo.set(key, raw);
+        return raw;
+      }
+      const bindingRuntime = enclosingRuntime(binding.scope.node);
+      for (
+        let current: EvaluationContext | undefined = context;
+        current;
+        current = current.parent
+      ) {
+        if (enclosingRuntime(current.site) === bindingRuntime) {
+          const raw = bindingTaintedAtPath(
+            binding,
+            current.site,
+            path,
+            current.parent
+          );
+          evaluatingProjectedTaint.delete(key);
+          projectedTaintMemo.set(key, raw);
+          return raw;
+        }
+      }
+    }
+
+    let tainted =
+      binding.initialRaw ||
+      (typeof path[0] === "string" && UNIT_PROPERTY.test(path[0]));
+    const useStart = use.getStart(sourceFile);
+    for (const event of effectiveWritesForUse(binding, use, context)) {
+      if (event.position >= useStart) continue;
+      const writeTainted =
+        event.write.raw === true ||
+        (event.write.expression != null &&
+          carriesParameterSource(
+            {
+              expression: event.write.expression,
+              path: [...(event.write.path ?? []), ...path],
+            },
+            event.context
+          ));
+      if (event.definite) tainted = writeTainted;
+      else if (writeTainted) tainted = true;
+    }
+
+    evaluatingProjectedTaint.delete(key);
+    projectedTaintMemo.set(key, tainted);
     return tainted;
   }
 
@@ -1318,8 +1742,8 @@ export function rawRenderedUnitExits(
         if (substitution)
           return (
             substitution.value.raw ||
-            substitution.value.expressions.some((expression) =>
-              carriesRawUnit(expression, substitution.parent)
+            substitution.value.sources.some((source) =>
+              carriesParameterSource(source, substitution.parent)
             )
           );
         const bindingRuntime = enclosingRuntime(binding.scope.node);
@@ -1408,6 +1832,34 @@ export function rawRenderedUnitExits(
             context
           )
       );
+    if (ts.isObjectLiteralExpression(node))
+      return node.properties.some((property) => {
+        if (ts.isPropertyAssignment(property))
+          return carriesRawUnit(property.initializer, context);
+        if (ts.isShorthandPropertyAssignment(property))
+          return carriesRawUnit(property.name, context);
+        if (ts.isSpreadAssignment(property))
+          return carriesRawUnit(property.expression, context);
+        return false;
+      });
+    if (
+      ts.isElementAccessExpression(node) &&
+      (ts.isNumericLiteral(node.argumentExpression) ||
+        (ts.isStringLiteral(node.argumentExpression) &&
+          /^\d+$/.test(node.argumentExpression.text)))
+    ) {
+      if (ts.isIdentifier(node.expression)) {
+        const binding = resolveIdentifier(node.expression);
+        if (binding)
+          return bindingTaintedAtPath(
+            binding,
+            node.expression,
+            [Number(node.argumentExpression.text)],
+            context
+          );
+      }
+      return carriesRawUnit(node.expression, context);
+    }
     if (
       ts.isParenthesizedExpression(node) ||
       ts.isAsExpression(node) ||
@@ -1451,14 +1903,17 @@ export function rawRenderedUnitExits(
         carriesRawUnit(span.expression, context)
       );
     if (ts.isCallExpression(node)) {
-      const directCallable = resolveCallableExpression(node.expression);
-      if (directCallable)
-        return callableReturnsRaw(
-          directCallable,
-          node.arguments,
-          node,
-          context
-        );
+      const directCallables = resolveCallableState(
+        node.expression,
+        node,
+        context
+      );
+      if (
+        directCallables.targets.some((callable) =>
+          callableReturnsRaw(callable, node.arguments, node, context)
+        )
+      )
+        return true;
       if (
         ts.isPropertyAccessExpression(node.expression) &&
         /^(?:trim|toString|valueOf)$/.test(node.expression.name.text)
@@ -1501,9 +1956,11 @@ export function rawRenderedUnitExits(
             const binding = resolveIdentifier(mapper);
             if (binding && trustedFormatterBindings.has(binding)) return false;
           }
-          const callable = resolveCallableExpression(mapper);
-          if (callable)
-            return callableReturnsRaw(callable, [receiver], node, context);
+          const callables = resolveCallableState(mapper, node, context);
+          if (callables.targets.length > 0)
+            return callables.targets.some((callable) =>
+              callableReturnsRaw(callable, [receiver], node, context)
+            );
           return carriesRawUnit(receiver, context);
         }
       }
