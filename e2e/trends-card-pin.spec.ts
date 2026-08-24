@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { followLink, settledClick } from "./helpers";
-import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_TRENDS_PIN,
+  TRENDS_PIN_PROFILE,
+} from "./fixture-logins";
+import { resetSavedMetrics } from "./saved-metrics-fixture";
 
 // ★-PINNED Body card order (#1643) — the USER's half of the Trends → Overview → body census sequence.
 //
@@ -21,8 +26,18 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 //
 // Fixture (#868 hygiene): a dedicated WRITE-granted member whose profile has exactly
 // two Body cards with data — `weight` (a standard metric seed, so already starred and
-// leading) and `steps` (unstarred, ranked behind it). Each test restores the seed
-// state, so --repeat-each stays clean and no neighbouring Trends spec's order moves.
+// leading) and `steps` (unstarred, ranked behind it).
+//
+// EVERY TEST STARTS FROM THE SEEDED ★ STORE, and it is restored in a beforeEach
+// rather than by each test undoing itself (#3637). The tests here share one profile
+// and a worker's database outlives every test that worker runs, so a test that
+// unstars what it starred still hands the next one a re-sequence it cannot see: the
+// menu's arrow stamps a `position` on every row of the kind, and a positioned row
+// sorts ahead of the unpositioned one a later ★ creates. That is why the empty-window
+// test below read `metric:weight` where it wanted `metric:steps` — deterministically
+// at one worker, and on the scheduler's whim at CI's two, which is what made the
+// victim look like it rotated. Restoring BEFORE rather than after also covers the
+// case a `finally` cannot: a test that dies mid-sequence.
 
 const PIN = { username: E2E_LOGIN_TRENDS_PIN, password: E2E_MEMBER_PASSWORD };
 
@@ -101,6 +116,10 @@ function reorderSettled(page: Page) {
 }
 
 test.describe("★-pinned Body card order (#1643)", () => {
+  test.beforeEach(() => {
+    resetSavedMetrics(TRENDS_PIN_PROFILE);
+  });
+
   test("starring a Body metric pins its card to the top; unstarring returns it to its ranked slot", async ({
     browser,
   }) => {

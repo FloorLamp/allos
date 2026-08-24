@@ -9,6 +9,7 @@ import {
   openCombobox,
   settledBoxes,
   settledClick,
+  settledClickApplied,
   settledFill,
 } from "./helpers";
 import {
@@ -16,12 +17,22 @@ import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
 } from "./fixture-logins";
+import { resetSavedMetrics } from "./saved-metrics-fixture";
 import { workerDbPath } from "./worker-env";
 
 // #3387's one Trends tile flow at 390px: saved metrics pin inside the Body census,
 // the picker is its last equal-geometry cell, and the pinned run owns drag plus the
-// menu-arrow fallback. The dedicated profile starts with Weight and Resting Heart
-// Rate saved, so every write below is restored before the test exits.
+// menu-arrow fallback. The dedicated profile starts with the standard metric seeds
+// saved, and Weight and Resting Heart Rate are the two that draw a sparkline.
+//
+// THE ★ STORE IS RESTORED IN A beforeEach, not by each test undoing itself (#3637).
+// These tests share one profile and a worker's database outlives every test that
+// worker runs, so the drag test's re-sequence — which stamps a `position` on every
+// row of the kind — survives into whatever runs next on that worker even though the
+// order it leaves behind looks unchanged. The first test then unstars Weight and
+// re-stars it through the picker, which recreates it UNPOSITIONED, and an
+// unpositioned row sorts behind every positioned one: the re-pinned Weight lands
+// second and `pinnedOrder()[0]` reads the wrong key. See e2e/saved-metrics-fixture.ts.
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
@@ -65,6 +76,10 @@ function reorderSettled(page: Page) {
     { timeout: 15_000 }
   );
 }
+
+test.beforeEach(() => {
+  resetSavedMetrics(TRENDS_CURATE_PROFILE);
+});
 
 function setSavedMetric(key: string, saved: boolean): void {
   const db = new Database(workerDbPath());
@@ -184,8 +199,21 @@ test("saved empty and gated metrics keep a linked tile and an unstar path", asyn
     await expect(page.getByText("This metric isn’t available")).toBeVisible();
     const calmStar = page.getByTestId("star-toggle");
     await expect(calmStar).toHaveAttribute("aria-pressed", "true");
-    await settledClick(page, calmStar);
-    await expect(calmStar).toHaveAttribute("aria-pressed", "false");
+    // The unstar REMOVES THE STAR FROM THE PAGE, so the settled state is its absence
+    // (#3637). Once the save is gone a gated Calm falls back to the unknown-metric
+    // page, which renders no ★ at all — app/(app)/trends/metric/[kind]/page.tsx
+    // gates the "isn’t available" branch on `starred`. Asserting `aria-pressed` on
+    // the button after the click therefore asserts the OPTIMISTIC value and wins
+    // only while the revalidated tree has not landed yet; `settledClick` waits for
+    // the action's POST, never for the router's apply, so which of the two arrives
+    // first is a coin flip. `settledClickApplied` waits for both, with the marker
+    // the mutation itself produces.
+    await settledClickApplied(
+      page,
+      calmStar,
+      page.getByText("Unknown metric.")
+    );
+    await expect(calmStar).toHaveCount(0);
   } finally {
     setSavedMetric("bmr", false);
     setSavedMetric("calm", false);
