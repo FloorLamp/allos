@@ -126,7 +126,7 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
     writtenBy:
       "a document/portal import (source='extracted') or the person typing a product name",
     controls: [
-      "components/intake/DoseLedgerItemFilter.tsx — the ledger's Item select (#3478's own control)",
+      "components/ledger/EventLedgerItemFilter.tsx — the event ledger's Item select (#3478's own control, shared by every mount since #3484)",
       "components/intake/IntakeRulesEditor.tsx — the keep-apart / take-together Other item select",
       "app/(app)/medications/MedicationCard.tsx — the card heading and its chip row",
     ],

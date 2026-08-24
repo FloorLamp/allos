@@ -619,10 +619,14 @@ renderer:
   same window — asserted row-for-row in
   `lib/__db_tests__/supplement-dose-history.test.ts`, which is what makes the
   ledger and the panel two views of one record rather than two answers.
-- `components/intake/DoseLedgerView.tsx` (server) + `DoseLedgerTable.tsx` (client)
-  render it on `EntryHistoryTable` with the SAME ⋯ Edit / Delete-with-undo over
-  the same unchanged cores. Columns: date · time · item · amount · product,
-  newest first.
+- `components/intake/DoseLedgerMount.tsx` (server) mounts the shared
+  event-ledger frame (`docs/internals/event-ledger.md`, #3484 part 2) and brings
+  the dose-specific halves with it: `DoseLedgerRows.tsx` renders the rows on
+  `EntryHistoryTable` with the SAME ⋯ Edit / Delete-with-undo over the same
+  unchanged cores (columns: date · time · item · amount · product, newest
+  first), and `DoseBackfillLauncher.tsx` fills the frame's backfill slot. The
+  frame contributes the box — range control, chips, item filter, note, empty
+  state, pager — and knows nothing about doses.
 - Two routes, one component: `/nutrition/dose-history` and
   `/medications/dose-history`, each opening **pre-filtered to its own surface's
   kind** — the same kind→surface seam `intakeHref` encodes one level up, spelled
