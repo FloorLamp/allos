@@ -477,7 +477,7 @@ export default function BottomSheet({
                     // 2.16/2.56: ONE disabled look for one control, at both
                     // widths, rather than a second one invented for the phone.
                     "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:pointer-events-none disabled:text-slate-500 disabled:opacity-50 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 dark:disabled:text-slate-400 md:dark:text-slate-400 md:dark:hover:text-slate-300"
-                  : "shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
+                  : "min-h-11 min-w-11 shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
               }
               // "Cancel" at BOTH widths when full-screen, so the accessible
               // name matches the visible one below `md` (WCAG 2.5.3) instead of

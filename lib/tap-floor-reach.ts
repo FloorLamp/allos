@@ -162,6 +162,8 @@ export type FlooredControl = {
   governedAlternative?: boolean;
   /** Registered mechanisms authenticated by any reachable class arm. */
   reachableMechanisms?: FloorMechanism[];
+  /** A governed class expression has a reachable arm with no proven floor. */
+  unprovenAlternative?: boolean;
 };
 
 /** Raised when the scan meets a control whose height it cannot read. */
@@ -1900,16 +1902,34 @@ function belowSmMinimum(className: string): MinimumOverride {
   const possiblyPhone = candidates.filter(
     (candidate) => candidate.scope === "possibly-phone"
   );
-  if (possiblyPhone.length > 0)
+  if (
+    possiblyPhone.some(
+      (candidate) => candidate.px === null || candidate.px < TAP_FLOOR_PX
+    )
+  )
     return {
       kind: "ambiguous",
       tokens: possiblyPhone.map((candidate) => candidate.token),
     };
 
+  // A known phone-applicable variant can only preserve or raise the floor in
+  // its active state when it is at least 44px. Keep evaluating the base/narrow
+  // state as well: a safe `dark:min-h-11` cannot rescue a low unprefixed arm
+  // while dark mode is inactive.
+  const settled = candidates.filter(
+    (candidate) => candidate.scope !== "possibly-phone"
+  );
+  if (settled.length === 0) {
+    const phoneValues = new Set(possiblyPhone.map((candidate) => candidate.px));
+    return phoneValues.size === 1
+      ? { kind: "known", px: [...phoneValues][0]! }
+      : { kind: "known", px: Math.min(...possiblyPhone.map((c) => c.px!)) };
+  }
+
   // Importance beats both source order and a narrower non-important variant.
   // Within the winning importance tier, max-sm is the below-sm specialization.
-  const important = candidates.filter((candidate) => candidate.important);
-  const tier = important.length > 0 ? important : candidates;
+  const important = settled.filter((candidate) => candidate.important);
+  const tier = important.length > 0 ? important : settled;
   const narrow = tier.filter((candidate) => candidate.scope === "narrow");
   const applicable = narrow.length > 0 ? narrow : tier;
   const values = new Set(applicable.map((candidate) => candidate.px));
@@ -2062,22 +2082,119 @@ function inlineMinimumTokens(
   openTag: string,
   declared: ClassDeclarations | (() => ClassDeclarations)
 ): string[] {
+  const reachable = typeof declared === "function" ? declared() : declared;
   let materialized = openTag;
   const spreads = jsxSpreadExpressions(openTag);
   if (spreads.length > 0) {
-    const reachable = typeof declared === "function" ? declared() : declared;
     materialized += ` ${spreads
       .map((spread) => substitute(spread, reachable))
       .join(" ")}`;
   }
+  const style = /(?<![\w-])style\s*=\s*/.exec(openTag);
+  if (style !== null) {
+    const open = style.index + style[0].length;
+    if (openTag[open] !== "{")
+      throw new UnreadableControlError(
+        "writes an inline style in a shape this scan cannot resolve"
+      );
+    const shut = closingBracket(openTag, open);
+    if (shut < 0)
+      throw new UnreadableControlError("has an unterminated inline style");
+    // Do not also regex the unresolved spelling in the opening tag. The
+    // materialized object below owns last-write-wins spread semantics.
+    materialized =
+      materialized.slice(0, open) +
+      " ".repeat(shut - open + 1) +
+      materialized.slice(shut + 1);
+    materialized += ` ${materializeStyleExpression(
+      openTag.slice(open + 1, shut),
+      reachable
+    ).join(" ")}`;
+  }
   const tokens: string[] = [];
-  const property = /(?:\bminHeight\b|["']min-height["'])\s*:\s*([^,}\n]+)/g;
+  const property =
+    /(?:\b(?:minHeight|minBlockSize)\b|["'](?:min-height|min-block-size)["'])\s*:\s*([^,}\n]+)/g;
   for (const match of materialized.matchAll(property)) {
     const raw = match[1].trim().replace(/^(["'])(.*)\1$/, "$2");
     const value = /^\d+(?:\.\d+)?$/.test(raw) ? `${raw}px` : raw;
     tokens.push(`[min-height:${value}]`);
   }
   return tokens;
+}
+
+/** Resolve the object arms an inline React `style` expression can produce. */
+function materializeStyleExpression(
+  expression: string,
+  declared: ClassDeclarations,
+  seen = new Set<string>()
+): string[] {
+  const written = withoutOuterParentheses(blankExpressionComments(expression));
+  if (written === "null" || written === "undefined" || written === "false")
+    return ["{}"];
+  if (seen.has(written))
+    throw new UnreadableControlError(
+      "contains a cyclic inline style expression"
+    );
+  const nextSeen = new Set(seen).add(written);
+  const entries = objectEntries(written);
+  if (entries !== null) {
+    let arms = [""];
+    for (const entry of entries) {
+      if (!entry.startsWith("...")) {
+        arms = arms.map((arm) => `${arm},${entry}`);
+        continue;
+      }
+      const spread = materializeStyleExpression(
+        entry.slice(3),
+        declared,
+        nextSeen
+      );
+      arms = arms.flatMap((arm) =>
+        spread.map((value) => `${arm},${value.slice(1, -1)}`)
+      );
+    }
+    return arms.map((arm) => collapseStyleObject(`{${arm.slice(1)}}`));
+  }
+  const branches = objectExpressionBranches(written);
+  if (branches !== null)
+    return branches.flatMap((branch) =>
+      materializeStyleExpression(branch, declared, nextSeen)
+    );
+  const helper = materializeHelperCall(written, declared);
+  if (helper !== null)
+    return materializeStyleExpression(helper, declared, nextSeen);
+  if (/^[A-Za-z_$][\w$]*$/.test(written)) {
+    const value = declared.get(written);
+    if (value !== undefined && value !== AMBIGUOUS)
+      return materializeStyleExpression(value, declared, nextSeen);
+  }
+  throw new UnreadableControlError(
+    `cannot resolve inline style expression: ${written}`
+  );
+}
+
+/** Apply JavaScript object spread/override order to one materialized style. */
+function collapseStyleObject(expression: string): string {
+  const entries = objectEntries(expression);
+  if (entries === null)
+    throw new UnreadableControlError("cannot resolve an inline style object");
+  const properties = new Map<string, string>();
+  for (const entry of entries) {
+    const colon = objectEntryColon(entry);
+    const key = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
+    if (key === null)
+      throw new UnreadableControlError(
+        "cannot resolve a computed inline style property"
+      );
+    properties.delete(key);
+    properties.set(key, objectEntryValue(entry) ?? key);
+  }
+  return `{${[...properties]
+    .map(
+      ([key, value]) =>
+        `${/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}:${value}`
+    )
+    .join(",")}}`;
 }
 
 /**
@@ -2217,20 +2334,42 @@ export function findFlooredControls(
         readable: true,
       };
     });
-    const governedAlternative = candidates.some(
-      (candidate) =>
+    const provesFloor = (candidate: FlooredControl) => {
+      if (floorMiss(candidate) !== null) return false;
+      if (
         candidate.mechanism === "btn-family" ||
         candidate.mechanism === "chip-sm" ||
-        candidate.belowSmPx !== null
-    );
-    const chosen =
-      candidates.find((candidate) => floorMiss(candidate)) ?? candidates[0];
+        candidate.mechanism === "rendered" ||
+        candidate.mechanism === "tap-target"
+      )
+        return true;
+      if (isLicensedRegularChip(candidate.className)) return true;
+      return false;
+    };
+    const governedAlternative =
+      candidates.length > 1 &&
+      candidates.some(
+        (candidate) =>
+          candidate.mechanism !== "none" ||
+          candidate.belowSmPx !== null ||
+          isLicensedRegularChip(candidate.className)
+      );
+    const failed = candidates.find((candidate) => floorMiss(candidate));
+    const unproven = governedAlternative
+      ? candidates.find((candidate) => !provesFloor(candidate))
+      : undefined;
+    const chosen = failed ?? unproven ?? candidates[0];
+    const allAlternativesProven =
+      !governedAlternative || candidates.every(provesFloor);
     found.push({
       ...chosen,
       governedAlternative,
-      reachableMechanisms: [
-        ...new Set(candidates.map((candidate) => candidate.mechanism)),
-      ],
+      unprovenAlternative: failed === undefined && unproven !== undefined,
+      // A mixed expression must not keep the live-population ratchet green by
+      // borrowing a mechanism from one arm while another arm drops the floor.
+      reachableMechanisms: allAlternativesProven
+        ? [...new Set(candidates.map((candidate) => candidate.mechanism))]
+        : [],
     });
   }
 
@@ -2262,6 +2401,11 @@ export function floorMiss(control: FlooredControl): string | null {
   // the census rosters these EXACTLY rather than letting them look like the line
   // below, which is a control that was read and pins no height (#3561).
   if (!control.readable) return null;
+  if (control.unprovenAlternative)
+    return (
+      "a reachable class-expression arm has no authenticated floor mechanism " +
+      "or rendered 44px floor"
+    );
   if (control.mechanism === "btn-family" || control.mechanism === "chip-sm") {
     const callSiteMinimum = belowSmMinimum(control.className);
     if (callSiteMinimum.kind === "absent") return null;

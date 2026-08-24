@@ -348,8 +348,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty-one have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other eighteen are UNMEASURED — nobody
+ * declare. Three of the twenty have now been measured (MEASURED_UNDER_FLOOR)
+ * and all three are under the floor. The other seventeen are UNMEASURED — nobody
  * has looked, and this file says so rather than implying they are fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
@@ -367,11 +367,10 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
   // rounded-full chips whose padding decides their height. Nobody has measured them —
   // they sit beside the fact chips this roster already carries unmeasured.
   { file: "components/intake/PurposesEditor.tsx", controls: 2 },
-  // Two arrived with #3561: this file's dock button and one more chip in
-  // FactChipRow, both of whose class lists were hoisted constants the scan
+  // Two arrived with #3561: the dock button and one more chip in FactChipRow,
+  // both of whose class lists were hoisted constants the scan
   // returned as identifiers. They were always unjudged; now they are counted.
   { file: "components/MobileDock.tsx", controls: 1 },
-  { file: "components/ProfileIdentityBar.tsx", controls: 1 },
   { file: "components/QuickLogSheet.tsx", controls: 2 },
   { file: "components/encounters/VisitFactRow.tsx", controls: 1 },
   { file: "components/facts/FactChipRow.tsx", controls: 3 },
@@ -484,15 +483,16 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
 ];
 
 /**
- * The twenty-one nobody has measured. Stated as a number rather than left as
+ * The seventeen nobody has measured. Stated as a number rather than left as
  * subtraction, because "we have not looked" is the fact worth being able to
  * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
- * readable — the controls did not change, the scan's sight did. The other three
+ * readable — the controls did not change, the scan's sight did. ProfileIdentityBar
+ * now declares its phone floor, taking that count back to 17. The other three
  * are the other kind of increase, new controls nobody has put a ruler to:
  * #3221's trailing-affordance menu on the injury bar, which the other
  * facts-with-editors hosts already had, and #2857's two purpose chips.
  */
-const UNMEASURED_TAP_TARGETS = 18;
+const UNMEASURED_TAP_TARGETS = 17;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
@@ -1513,6 +1513,26 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
+  it("does not let a governed class arm lend its proof to an empty arm", () => {
+    for (const expression of [
+      `ok && "btn"`,
+      `ok ? "btn" : ""`,
+      `ok ? "btn" : "px-1"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(floorMiss(control), expression).toContain(
+        "reachable class-expression arm"
+      );
+      expect(control.reachableMechanisms, expression).not.toContain(
+        "btn-family"
+      );
+    }
+  });
+
   it("fails closed on explicit and important button-family minimum overrides", () => {
     for (const [classes, fragment] of [
       ["btn min-h-auto h-7", "cannot prove"],
@@ -1586,6 +1606,88 @@ describe("the sweep is quiet on the benign neighbours", () => {
        }`
     );
     expect(floorMiss(inlineSafe)).toBeNull();
+  });
+
+  it("resolves referenced and spread inline minima, including block-size", () => {
+    for (const source of [
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={SMALL}>x</button>;
+       }`,
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SMALL }}>x</button>;
+       }`,
+      `export default function X() {
+         return <button className="btn h-7" style={{ minBlockSize: 28 }}>x</button>;
+       }`,
+      `export default function X() {
+         return <button className="btn h-7" style={{ "min-block-size": 28 }}>x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+    }
+
+    for (const source of [
+      `const SAFE = { minHeight: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={SAFE}>x</button>;
+       }`,
+      `const SAFE = { minBlockSize: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SAFE }}>x</button>;
+       }`,
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SMALL, minHeight: 44 }}>x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toBeNull();
+    }
+
+    expect(() =>
+      scan(
+        `export default function X({ style }) {
+           return <button className="btn h-7" style={style}>x</button>;
+         }`
+      )
+    ).toThrow(UnreadableControlError);
+
+    const [lateLow] = scan(
+      `const SAFE = { minHeight: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SAFE, minHeight: 28 }}>x</button>;
+       }`
+    );
+    expect(floorMiss(lateLow)).toContain(
+      "28px call-site minimum replaces the button family's 44px"
+    );
+  });
+
+  it("accepts known-safe phone-applicable family minima", () => {
+    for (const token of [
+      "dark:min-h-11",
+      "max-md:min-h-11",
+      "landscape:min-h-11",
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button className="btn h-7 ${token}">x</button>;
+         }`
+      );
+      expect(floorMiss(control), token).toBeNull();
+    }
+
+    const [conflicting] = scan(
+      `export default function X() {
+         return <button className="btn h-7 dark:min-h-11 dark:min-h-7">x</button>;
+       }`
+    );
+    expect(floorMiss(conflicting)).toContain("cannot prove");
   });
 
   it("says nothing about `.tap-target` where its arithmetic works", () => {
