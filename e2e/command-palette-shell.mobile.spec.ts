@@ -188,6 +188,40 @@ test.describe("command palette — the phone shell (#3423)", () => {
     await expect(page.getByTestId("activity-form")).toBeVisible();
   });
 
+  test("a per-hit action owns its 44px target above and below centre", async ({
+    page,
+  }) => {
+    for (const offsetY of [-10, 10]) {
+      await page.goto("/upcoming");
+      const input = await openCommandPalette(page);
+      await settledPanel(page);
+      await input.fill("LDL Cholesterol");
+
+      const action = page
+        .getByRole("listbox", { name: "Results" })
+        .getByTestId("palette-hit-action-add-result")
+        .first(); // first-ok: the add-result action in the scoped palette results — order-agnostic
+      await expect(action).toBeVisible({ timeout: 20_000 });
+      const box = await action.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+
+      // Real coarse-pointer coordinates, deliberately off the visual centre.
+      // Before #3458 the chip was ~26px inside a 44px sibling row whose action
+      // was different; the phone target now owns this whole vertical reach.
+      await page.touchscreen.tap(
+        box!.x + box!.width / 2,
+        box!.y + box!.height / 2 + offsetY
+      );
+      await expect(page).toHaveURL(
+        /\/results\/clinical-results\?.*name=LDL(\+|%20)Cholesterol/
+      );
+      await expect(page.locator("#rec-new-name")).toHaveValue(
+        "LDL Cholesterol"
+      );
+    }
+  });
+
   test("the field asks the phone keyboard for a search key and an uncapitalised query", async ({
     page,
   }) => {
