@@ -692,7 +692,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
         });
       }
     } else if (ts.isParameter(node)) {
-      for (const binding of bindingEntries(node.name)) {
+      for (const binding of bindingEntries(
+        node.name,
+        [],
+        node.initializer ? [{ initializer: node.initializer, depth: 0 }] : []
+      )) {
         bindings.push({
           ...binding,
           scope: node.parent,
@@ -703,6 +707,24 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     ts.forEachChild(node, collectBindings);
   };
   collectBindings(file);
+
+  type InputValue = {
+    expressions: ts.Expression[];
+    projections: ProjectedText[];
+    definitelyDefined?: boolean;
+    scanAsProp?: boolean;
+  };
+  type RenderInput =
+    | { kind: "value"; value: InputValue }
+    | { kind: "props"; props: ReadonlyMap<string, InputValue> };
+  const activeParameterInputs = new Map<ts.ParameterDeclaration, RenderInput>();
+
+  const parameterInput = (
+    declaration: StaticBindingDeclaration | null
+  ): RenderInput | null =>
+    declaration && ts.isParameter(declaration)
+      ? (activeParameterInputs.get(declaration) ?? null)
+      : null;
 
   const staticExpressionAtPath = (
     expression: ts.Expression,
@@ -766,7 +788,6 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     path: StaticPath,
     seen: ReadonlySet<StaticBindingDeclaration>
   ): boolean | null {
-    if (path.length === 0) return true;
     if (
       ts.isParenthesizedExpression(expression) ||
       ts.isAsExpression(expression) ||
@@ -775,6 +796,32 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       ts.isNonNullExpression(expression)
     ) {
       return staticPathExists(expression.expression, path, seen);
+    }
+    if (path.length === 0) {
+      if (
+        (ts.isIdentifier(expression) && expression.text === "undefined") ||
+        ts.isVoidExpression(expression)
+      ) {
+        return false;
+      }
+      if (ts.isConditionalExpression(expression)) {
+        const whenTrue = staticPathExists(expression.whenTrue, path, seen);
+        const whenFalse = staticPathExists(expression.whenFalse, path, seen);
+        return whenTrue === whenFalse ? whenTrue : null;
+      }
+      const reference = staticReference(expression);
+      if (reference) {
+        const binding = lexicalBinding(reference.identifier);
+        const declaration = binding?.declaration;
+        return declaration?.initializer && !seen.has(declaration)
+          ? staticPathExists(
+              declaration.initializer,
+              [...(binding?.path ?? []), ...reference.path],
+              new Set(seen).add(declaration)
+            )
+          : null;
+      }
+      return true;
     }
     if (ts.isConditionalExpression(expression)) {
       const whenTrue = staticPathExists(expression.whenTrue, path, seen);
@@ -847,6 +894,61 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     return nearest.length === 1 ? nearest[0] : null;
   };
 
+  const inputValueAt = (
+    input: RenderInput,
+    path: StaticPath
+  ): { value: InputValue; tail: StaticPath } | null => {
+    if (input.kind === "value") return { value: input.value, tail: path };
+    if (path.length === 0) {
+      return {
+        value: { expressions: [], projections: [], definitelyDefined: true },
+        tail: [],
+      };
+    }
+    const [head, ...tail] = path;
+    if (typeof head !== "string") return null;
+    const value = input.props.get(head);
+    return value ? { value, tail } : null;
+  };
+  function inputStaticVariants(
+    input: RenderInput,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): ProjectedText[] {
+    const resolved = inputValueAt(input, path);
+    if (!resolved) return [];
+    const projected =
+      resolved.tail.length === 0 ? resolved.value.projections : [];
+    return uniqueVariants([
+      ...projected,
+      ...resolved.value.expressions.flatMap((expression) =>
+        staticVariantsAtPath(expression, resolved.tail, seen)
+      ),
+    ]);
+  }
+  function inputDefinedAt(
+    input: RenderInput,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): boolean | null {
+    const resolved = inputValueAt(input, path);
+    if (!resolved) return false;
+    if (
+      resolved.tail.length === 0 &&
+      resolved.value.definitelyDefined !== undefined
+    ) {
+      return resolved.value.definitelyDefined;
+    }
+    if (resolved.tail.length === 0 && resolved.value.projections.length > 0) {
+      return true;
+    }
+    const states = resolved.value.expressions.map((expression) =>
+      staticPathExists(expression, resolved.tail, seen)
+    );
+    if (states.length === 0) return null;
+    return states.every((state) => state === states[0]) ? states[0] : null;
+  }
+
   const resolveReference: StaticReferenceResolver = (
     identifier: ts.Identifier,
     path: StaticPath,
@@ -857,21 +959,33 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding.declaration;
     if (!declaration || seen.has(declaration)) return null;
     const nextSeen = new Set(seen).add(declaration);
-    const resolved = declaration.initializer
-      ? staticExpressionAtPath(
-          declaration.initializer,
-          [...binding.path, ...path],
-          nextSeen
-        )
-      : null;
+    const input = parameterInput(declaration);
+    const requestedPath = [...binding.path, ...path];
+    const inputVariants = input
+      ? inputStaticVariants(input, requestedPath, nextSeen)
+      : [];
+    if (inputVariants.length > 0) return inputVariants[0];
+    if (input && inputDefinedAt(input, requestedPath, nextSeen) === true) {
+      return null;
+    }
+    const resolved =
+      !input && declaration.initializer
+        ? staticExpressionAtPath(
+            declaration.initializer,
+            [...binding.path, ...path],
+            nextSeen
+          )
+        : null;
     if (resolved) return resolved;
     let activeExpression = declaration.initializer;
     let activeBasePath: StaticPath = [];
     for (const fallback of binding.defaults) {
       const triggerPath = fallback.triggerPath.slice(activeBasePath.length);
       if (
-        activeExpression &&
-        staticPathExists(activeExpression, triggerPath, nextSeen) === true
+        (activeBasePath.length === 0 && input
+          ? inputDefinedAt(input, fallback.triggerPath, nextSeen)
+          : activeExpression &&
+            staticPathExists(activeExpression, triggerPath, nextSeen)) === true
       ) {
         continue;
       }
@@ -1029,21 +1143,33 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding?.declaration;
     if (!binding || !declaration || seen.has(declaration)) return [];
     const nextSeen = new Set(seen).add(declaration);
-    const variants = declaration.initializer
-      ? staticVariantsAtPath(
-          declaration.initializer,
-          [...binding.path, ...path],
-          nextSeen
-        )
+    const input = parameterInput(declaration);
+    const requestedPath = [...binding.path, ...path];
+    const inputVariants = input
+      ? inputStaticVariants(input, requestedPath, nextSeen)
       : [];
+    if (inputVariants.length > 0) return inputVariants;
+    if (input && inputDefinedAt(input, requestedPath, nextSeen) === true) {
+      return [];
+    }
+    const variants =
+      !input && declaration.initializer
+        ? staticVariantsAtPath(
+            declaration.initializer,
+            [...binding.path, ...path],
+            nextSeen
+          )
+        : [];
     if (variants.length > 0) return variants;
     let activeExpression = declaration.initializer;
     let activeBasePath: StaticPath = [];
     for (const fallback of binding.defaults) {
       const triggerPath = fallback.triggerPath.slice(activeBasePath.length);
       if (
-        activeExpression &&
-        staticPathExists(activeExpression, triggerPath, nextSeen) === true
+        (activeBasePath.length === 0 && input
+          ? inputDefinedAt(input, fallback.triggerPath, nextSeen)
+          : activeExpression &&
+            staticPathExists(activeExpression, triggerPath, nextSeen)) === true
       ) {
         continue;
       }
@@ -1057,6 +1183,117 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       if (candidates.length > 0) return candidates;
     }
     return [];
+  }
+  function staticExpressionNodesAtPath(
+    expression: ts.Expression,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): ts.Expression[] {
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isTypeAssertionExpression(expression) ||
+      ts.isSatisfiesExpression(expression) ||
+      ts.isNonNullExpression(expression)
+    ) {
+      return staticExpressionNodesAtPath(expression.expression, path, seen);
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return [
+        ...staticExpressionNodesAtPath(expression.whenTrue, path, seen),
+        ...staticExpressionNodesAtPath(expression.whenFalse, path, seen),
+      ];
+    }
+    if (
+      ts.isBinaryExpression(expression) &&
+      (expression.operatorToken.kind ===
+        ts.SyntaxKind.AmpersandAmpersandToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+    ) {
+      return [
+        ...staticExpressionNodesAtPath(expression.left, path, seen),
+        ...staticExpressionNodesAtPath(expression.right, path, seen),
+      ];
+    }
+    if (ts.isPropertyAccessExpression(expression)) {
+      return staticExpressionNodesAtPath(
+        expression.expression,
+        [expression.name.text, ...path],
+        seen
+      );
+    }
+    if (
+      ts.isElementAccessExpression(expression) &&
+      expression.argumentExpression &&
+      (ts.isStringLiteral(expression.argumentExpression) ||
+        ts.isNumericLiteral(expression.argumentExpression))
+    ) {
+      const key = ts.isNumericLiteral(expression.argumentExpression)
+        ? Number(expression.argumentExpression.text)
+        : expression.argumentExpression.text;
+      return staticExpressionNodesAtPath(
+        expression.expression,
+        [key, ...path],
+        seen
+      );
+    }
+    if (path.length > 0) {
+      const [head, ...tail] = path;
+      if (ts.isObjectLiteralExpression(expression)) {
+        for (const property of expression.properties) {
+          if (
+            ts.isPropertyAssignment(property) &&
+            propertyKey(property.name) === head
+          ) {
+            return staticExpressionNodesAtPath(
+              property.initializer,
+              tail,
+              seen
+            );
+          }
+          if (
+            ts.isShorthandPropertyAssignment(property) &&
+            property.name.text === head
+          ) {
+            if (tail.length === 0) return [property.name];
+            return staticExpressionNodesAtPath(property.name, tail, seen);
+          }
+        }
+        return [];
+      }
+      if (ts.isArrayLiteralExpression(expression) && typeof head === "number") {
+        const element = expression.elements[head];
+        return element && !ts.isSpreadElement(element)
+          ? staticExpressionNodesAtPath(element, tail, seen)
+          : [];
+      }
+    }
+    const reference = staticReference(expression);
+    if (reference) {
+      const binding = lexicalBinding(reference.identifier);
+      const declaration = binding?.declaration;
+      if (!binding || !declaration || seen.has(declaration)) return [];
+      const nextSeen = new Set(seen).add(declaration);
+      const requestedPath = [...binding.path, ...reference.path, ...path];
+      const input = parameterInput(declaration);
+      if (input) {
+        const resolved = inputValueAt(input, requestedPath);
+        return resolved
+          ? resolved.value.expressions.flatMap((candidate) =>
+              staticExpressionNodesAtPath(candidate, resolved.tail, nextSeen)
+            )
+          : [];
+      }
+      return declaration.initializer
+        ? staticExpressionNodesAtPath(
+            declaration.initializer,
+            requestedPath,
+            nextSeen
+          )
+        : [];
+    }
+    return path.length === 0 ? [expression] : [];
   }
   const combineVariants = (
     left: ProjectedText[],
@@ -1101,77 +1338,184 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       !name.startsWith("data-") &&
       !/^on[A-Z]/.test(name) &&
       !TECHNICAL_CUSTOM_PROPS.has(name));
-  const collectSpreadCopyCandidates = (
+  type PropState = Map<string, InputValue>;
+  const cloneProps = (props: ReadonlyMap<string, InputValue>): PropState =>
+    new Map(props);
+  const objectPropVariants = (
     expression: ts.Expression,
-    customComponent: boolean,
     seen: ReadonlySet<StaticBindingDeclaration> = new Set()
-  ): void => {
+  ): PropState[] => {
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isTypeAssertionExpression(expression) ||
+      ts.isSatisfiesExpression(expression) ||
+      ts.isNonNullExpression(expression)
+    ) {
+      return objectPropVariants(expression.expression, seen);
+    }
     if (ts.isObjectLiteralExpression(expression)) {
+      let states: PropState[] = [new Map()];
       for (const property of expression.properties) {
         if (ts.isSpreadAssignment(property)) {
-          collectSpreadCopyCandidates(
-            property.expression,
-            customComponent,
-            seen
-          );
+          const spreadStates = objectPropVariants(property.expression, seen);
+          if (spreadStates.length > 0) {
+            states = states.flatMap((state) =>
+              spreadStates.map((spread) => {
+                const merged = cloneProps(state);
+                for (const [name, value] of spread) merged.set(name, value);
+                return merged;
+              })
+            );
+          }
           continue;
         }
         if (
-          (ts.isPropertyAssignment(property) ||
-            ts.isShorthandPropertyAssignment(property)) &&
-          isCopyProp(
-            propertyKey(property.name)?.toString() ?? "",
-            customComponent
-          )
+          ts.isPropertyAssignment(property) ||
+          ts.isShorthandPropertyAssignment(property)
         ) {
+          const name = propertyKey(property.name)?.toString();
+          if (!name) continue;
           const value = ts.isPropertyAssignment(property)
             ? property.initializer
             : property.name;
-          attributeCandidates.push(...expressionVariants(value));
+          states = states.map((state) => {
+            const next = cloneProps(state);
+            next.set(name, { expressions: [value], projections: [] });
+            return next;
+          });
         }
       }
-      return;
+      return states;
     }
     if (ts.isConditionalExpression(expression)) {
-      collectSpreadCopyCandidates(expression.whenTrue, customComponent, seen);
-      collectSpreadCopyCandidates(expression.whenFalse, customComponent, seen);
-      return;
+      return [
+        ...objectPropVariants(expression.whenTrue, seen),
+        ...objectPropVariants(expression.whenFalse, seen),
+      ];
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      ) {
+        return [new Map(), ...objectPropVariants(expression.right, seen)];
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        const left = objectPropVariants(expression.left, seen);
+        const right = objectPropVariants(expression.right, seen);
+        return [
+          ...(left.length > 0 ? left : [new Map()]),
+          ...(right.length > 0 ? right : [new Map()]),
+        ];
+      }
     }
     const reference = staticReference(expression);
-    if (!reference || reference.path.length > 0) return;
+    if (!reference) return [];
     const binding = lexicalBinding(reference.identifier);
     const declaration = binding?.declaration;
-    if (!declaration?.initializer || seen.has(declaration)) return;
-    collectSpreadCopyCandidates(
-      declaration.initializer,
-      customComponent,
-      new Set(seen).add(declaration)
-    );
+    if (!binding || !declaration || seen.has(declaration)) return [];
+    const nextSeen = new Set(seen).add(declaration);
+    const input = parameterInput(declaration);
+    const requestedPath = [...binding.path, ...reference.path];
+    if (input) {
+      const resolved = inputValueAt(input, requestedPath);
+      return resolved
+        ? resolved.value.expressions.flatMap((candidate) =>
+            staticExpressionNodesAtPath(
+              candidate,
+              resolved.tail,
+              nextSeen
+            ).flatMap((node) => objectPropVariants(node, nextSeen))
+          )
+        : [];
+    }
+    return declaration.initializer
+      ? staticExpressionNodesAtPath(
+          declaration.initializer,
+          requestedPath,
+          nextSeen
+        ).flatMap((node) => objectPropVariants(node, nextSeen))
+      : [];
   };
-  const collectAttributeCandidates = (
+  const jsxPropVariants = (
     attributes: ts.JsxAttributes,
-    customComponent: boolean
-  ): void => {
+    children?: ts.NodeArray<ts.JsxChild>
+  ): PropState[] => {
+    let states: PropState[] = [new Map()];
     for (const property of attributes.properties) {
       if (ts.isJsxSpreadAttribute(property)) {
-        collectSpreadCopyCandidates(property.expression, customComponent);
+        const spreadStates = objectPropVariants(property.expression);
+        if (spreadStates.length > 0) {
+          states = states.flatMap((state) =>
+            spreadStates.map((spread) => {
+              const merged = cloneProps(state);
+              for (const [name, value] of spread) merged.set(name, value);
+              return merged;
+            })
+          );
+        }
         continue;
       }
-      if (!property.initializer) continue;
       const name = property.name.getText(file);
-      if (!isCopyProp(name, customComponent)) continue;
-      if (ts.isStringLiteral(property.initializer)) {
+      let value: InputValue;
+      if (!property.initializer) {
+        value = { expressions: [], projections: [], definitelyDefined: true };
+      } else if (ts.isStringLiteral(property.initializer)) {
         const start = property.initializer.getStart(file) + 1;
-        attributeCandidates.push(
-          htmlTextProjection(start, property.initializer.end - 1)
-        );
+        value = {
+          expressions: [],
+          projections: [
+            htmlTextProjection(start, property.initializer.end - 1),
+          ],
+          definitelyDefined: true,
+        };
       } else if (
         ts.isJsxExpression(property.initializer) &&
         property.initializer.expression
       ) {
-        attributeCandidates.push(
-          ...expressionVariants(property.initializer.expression)
-        );
+        value = {
+          expressions: [property.initializer.expression],
+          projections: [],
+        };
+      } else {
+        continue;
+      }
+      states = states.map((state) => {
+        const next = cloneProps(state);
+        next.set(name, value);
+        return next;
+      });
+    }
+    if (children && children.length > 0) {
+      const projections = renderChildren(children);
+      states = states.map((state) => {
+        const next = cloneProps(state);
+        next.set("children", {
+          expressions: [],
+          projections,
+          definitelyDefined: true,
+          scanAsProp: false,
+        });
+        return next;
+      });
+    }
+    return states;
+  };
+  const collectPropCandidates = (
+    states: PropState[],
+    customComponent: boolean
+  ): void => {
+    for (const state of states) {
+      for (const [name, value] of state) {
+        if (value.scanAsProp === false) continue;
+        if (!isCopyProp(name, customComponent)) continue;
+        attributeCandidates.push(...value.projections);
+        for (const expression of value.expressions) {
+          attributeCandidates.push(...expressionVariants(expression));
+        }
       }
     }
   };
@@ -1191,26 +1535,43 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   ): ProjectedText[] => {
     if (ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(file);
-      collectAttributeCandidates(node.attributes, /^[A-Z]/.test(tag));
-      if (ts.isIdentifier(node.tagName)) {
-        const component = resolveFunction(node.tagName);
-        if (component) return functionRenderedVariants(component);
+      const component =
+        ts.isIdentifier(node.tagName) ||
+        ts.isPropertyAccessExpression(node.tagName)
+          ? resolveFunctionExpression(node.tagName)
+          : null;
+      const propStates = jsxPropVariants(node.attributes);
+      if (!component) collectPropCandidates(propStates, /^[A-Z]/.test(tag));
+      if (component) {
+        const variants = uniqueVariants(
+          propStates.flatMap((props) =>
+            functionRenderedVariants(component, [{ kind: "props", props }])
+          )
+        );
+        return variants.length > 0 ? variants : [empty];
       }
       return [empty];
     }
     if (ts.isJsxFragment(node)) return renderChildren(node.children);
 
     const tag = node.openingElement.tagName.getText(file);
-    collectAttributeCandidates(
+    const component =
+      ts.isIdentifier(node.openingElement.tagName) ||
+      ts.isPropertyAccessExpression(node.openingElement.tagName)
+        ? resolveFunctionExpression(node.openingElement.tagName)
+        : null;
+    const propStates = jsxPropVariants(
       node.openingElement.attributes,
-      /^[A-Z]/.test(tag)
+      component ? node.children : undefined
     );
-    if (ts.isIdentifier(node.openingElement.tagName)) {
-      const component = resolveFunction(node.openingElement.tagName);
-      if (component) {
-        const variants = functionRenderedVariants(component);
-        if (variants.length > 0) return variants;
-      }
+    if (!component) collectPropCandidates(propStates, /^[A-Z]/.test(tag));
+    if (component) {
+      const variants = uniqueVariants(
+        propStates.flatMap((props) =>
+          functionRenderedVariants(component, [{ kind: "props", props }])
+        )
+      );
+      return variants.length > 0 ? variants : [empty];
     }
     const children = renderChildren(node.children);
     if (!root) return children;
@@ -1299,6 +1660,19 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     }
     return [empty];
   };
+
+  function inputJsxNodes(
+    input: RenderInput,
+    path: StaticPath,
+    seen: ReadonlySet<StaticBindingDeclaration>
+  ): (ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment)[] {
+    const resolved = inputValueAt(input, path);
+    return resolved
+      ? resolved.value.expressions.flatMap((expression) =>
+          jsxNodesAtPath(expression, resolved.tail, seen)
+        )
+      : [];
+  }
 
   function jsxNodesAtPath(
     expression: ts.Expression,
@@ -1395,17 +1769,28 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     if (!binding || !declaration || seen.has(declaration)) return [];
     const nextSeen = new Set(seen).add(declaration);
     const requestedPath = [...binding.path, ...reference.path, ...path];
-    const primary = declaration.initializer
-      ? jsxNodesAtPath(declaration.initializer, requestedPath, nextSeen)
+    const input = parameterInput(declaration);
+    const inputNodes = input
+      ? inputJsxNodes(input, requestedPath, nextSeen)
       : [];
+    if (inputNodes.length > 0) return inputNodes;
+    if (input && inputDefinedAt(input, requestedPath, nextSeen) === true) {
+      return [];
+    }
+    const primary =
+      !input && declaration.initializer
+        ? jsxNodesAtPath(declaration.initializer, requestedPath, nextSeen)
+        : [];
     if (primary.length > 0) return primary;
     let activeExpression = declaration.initializer;
     let activeBasePath: StaticPath = [];
     for (const fallback of binding.defaults) {
       const triggerPath = fallback.triggerPath.slice(activeBasePath.length);
       if (
-        activeExpression &&
-        staticPathExists(activeExpression, triggerPath, nextSeen) === true
+        (activeBasePath.length === 0 && input
+          ? inputDefinedAt(input, fallback.triggerPath, nextSeen)
+          : activeExpression &&
+            staticPathExists(activeExpression, triggerPath, nextSeen)) === true
       ) {
         continue;
       }
@@ -1422,11 +1807,25 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   }
 
   const activeRenderCalls = new Set<ts.FunctionLikeDeclaration>();
+  const expressionInput = (expression: ts.Expression): RenderInput => ({
+    kind: "value",
+    value: { expressions: [expression], projections: [] },
+  });
   function functionRenderedVariants(
-    node: ts.FunctionLikeDeclaration
+    node: ts.FunctionLikeDeclaration,
+    inputs: RenderInput[] = []
   ): ProjectedText[] {
     if (!node.body || activeRenderCalls.has(node)) return [];
     activeRenderCalls.add(node);
+    const previousInputs = node.parameters.map((parameter) => ({
+      parameter,
+      value: activeParameterInputs.get(parameter),
+    }));
+    node.parameters.forEach((parameter, index) => {
+      const input = inputs[index];
+      if (input) activeParameterInputs.set(parameter, input);
+      else activeParameterInputs.delete(parameter);
+    });
     try {
       if (!ts.isBlock(node.body)) return expressionVariants(node.body);
       const variants: ProjectedText[] = [];
@@ -1441,9 +1840,28 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       visitReturns(node.body);
       return uniqueVariants(variants);
     } finally {
+      for (const previous of previousInputs) {
+        if (previous.value) {
+          activeParameterInputs.set(previous.parameter, previous.value);
+        } else {
+          activeParameterInputs.delete(previous.parameter);
+        }
+      }
       activeRenderCalls.delete(node);
     }
   }
+
+  const iterableInputs = (expression: ts.Expression): RenderInput[][] =>
+    staticExpressionNodesAtPath(expression, [], new Set()).flatMap(
+      (candidate) =>
+        ts.isArrayLiteralExpression(candidate)
+          ? candidate.elements.flatMap((element) =>
+              ts.isSpreadElement(element) || ts.isOmittedExpression(element)
+                ? []
+                : [[expressionInput(element)]]
+            )
+          : []
+    );
 
   function renderedCallVariants(node: ts.CallExpression): ProjectedText[] {
     if (
@@ -1453,19 +1871,35 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     ) {
       const callback = node.arguments[0];
       if (!callback) return [];
+      const callbackInputs = iterableInputs(node.expression.expression);
       if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) {
-        return functionRenderedVariants(callback);
+        return callbackInputs.length > 0
+          ? callbackInputs.flatMap((inputs) =>
+              functionRenderedVariants(callback, inputs)
+            )
+          : functionRenderedVariants(callback);
       }
       return ts.isIdentifier(callback)
         ? (() => {
             const resolved = resolveFunction(callback);
-            return resolved ? functionRenderedVariants(resolved) : [];
+            return resolved
+              ? callbackInputs.length > 0
+                ? callbackInputs.flatMap((inputs) =>
+                    functionRenderedVariants(resolved, inputs)
+                  )
+                : functionRenderedVariants(resolved)
+              : [];
           })()
         : [];
     }
     if (!ts.isIdentifier(node.expression)) return [];
     const resolved = resolveFunction(node.expression);
-    return resolved ? functionRenderedVariants(resolved) : [];
+    return resolved
+      ? functionRenderedVariants(
+          resolved,
+          node.arguments.map((argument) => expressionInput(argument))
+        )
+      : [];
   }
 
   const renderedRoots: ProjectedText[] = [];
@@ -1520,6 +1954,25 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
         binding.scope.end - binding.scope.getStart(file) === nearestSize
     );
     return nearest.length === 1 ? nearest[0].declaration : null;
+  };
+  const resolveFunctionExpression = (
+    expression: ts.Expression
+  ): ts.FunctionLikeDeclaration | null => {
+    if (ts.isIdentifier(expression)) return resolveFunction(expression);
+    const candidates = staticExpressionNodesAtPath(expression, [], new Set())
+      .map((candidate) => {
+        if (
+          ts.isArrowFunction(candidate) ||
+          ts.isFunctionExpression(candidate)
+        ) {
+          return candidate;
+        }
+        return ts.isIdentifier(candidate) ? resolveFunction(candidate) : null;
+      })
+      .filter(
+        (candidate): candidate is ts.FunctionLikeDeclaration => !!candidate
+      );
+    return candidates.length === 1 ? candidates[0] : null;
   };
 
   const isFunctionImplementation = (
@@ -1605,12 +2058,32 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       return;
     }
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const resolved = resolveFunction(node.expression);
-      if (resolved) markFunction(resolved);
+      renderedRoots.push(...renderedCallVariants(node));
       return;
     }
   };
   const seedFlow = (node: ts.Node): void => {
+    if (
+      ts.isExportDeclaration(node) &&
+      !node.moduleSpecifier &&
+      node.exportClause &&
+      ts.isNamedExports(node.exportClause)
+    ) {
+      for (const element of node.exportClause.elements) {
+        const local = element.propertyName ?? element.name;
+        if (!ts.isIdentifier(local)) continue;
+        const resolved = resolveFunction(local);
+        if (resolved) markFunction(resolved);
+        else markExpression(local);
+      }
+      return;
+    }
+    if (ts.isExportAssignment(node)) {
+      const resolved = resolveFunctionExpression(node.expression);
+      if (resolved) markFunction(resolved);
+      else markExpression(node.expression);
+      return;
+    }
     if (isFunctionImplementation(node) && isComponentFunction(node)) {
       markFunction(node);
       return;
@@ -2384,6 +2857,133 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", rendered)).toEqual([
       "synthetic.tsx:1 — disclaimer prose in: Informational only.",
     ]);
+  });
+
+  it("applies defaults to statically undefined object and array values", () => {
+    const banned = [
+      [
+        'const { copy = "Informational only." } = { copy: undefined };',
+        "return <p>{copy}</p>;",
+      ].join("\n"),
+      [
+        'const [copy = "Consult a clinician."] = [undefined];',
+        "return <p>{copy}</p>;",
+      ].join("\n"),
+    ];
+    for (const sample of banned) {
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", sample),
+        sample
+      ).toHaveLength(1);
+    }
+
+    const safe = [
+      'const { copy = "Status" } = { copy: undefined };',
+      "return <p>{copy}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", safe)).toEqual([]);
+  });
+
+  it("propagates rendered helper, map, component, and children inputs", () => {
+    const renderedInputs = [
+      [
+        'function renderNotice(copy = "Status") { return <p>{copy}</p>; }',
+        'return renderNotice("Informational only.");',
+      ].join("\n"),
+      [
+        'const copies = ["Consult a clinician."];',
+        'const renderNotice = (copy = "Status") => <p>{copy}</p>;',
+        "return <main>{copies.map(renderNotice)}</main>;",
+      ].join("\n"),
+      [
+        'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+        'return <Notice message="Informational only." />;',
+      ].join("\n"),
+      [
+        "function Notice({ children }) { return <p>{children}</p>; }",
+        "return <Notice>Consult a clinician.</Notice>;",
+      ].join("\n"),
+    ];
+    for (const sample of renderedInputs) {
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", sample),
+        sample
+      ).toHaveLength(1);
+    }
+
+    const overriddenDefaults = [
+      [
+        'function renderNotice(copy = "Informational only.") { return <p>{copy}</p>; }',
+        'return renderNotice("Status");',
+      ].join("\n"),
+      [
+        'const copies = ["Status"];',
+        'const renderNotice = (copy = "Informational only.") => <p>{copy}</p>;',
+        "return <main>{copies.map(renderNotice)}</main>;",
+      ].join("\n"),
+      [
+        'function Notice({ message = "Informational only." }) { return <p>{message}</p>; }',
+        'return <Notice message="Status" />;',
+      ].join("\n"),
+    ];
+    for (const sample of overriddenDefaults) {
+      expect(disclaimerCopyViolations("synthetic.tsx", sample), sample).toEqual(
+        []
+      );
+    }
+  });
+
+  it("resolves spread sources and applies JSX override precedence", () => {
+    const detected = [
+      [
+        'const props = { message: "Informational only." } as const;',
+        "return <Notice {...props} />;",
+      ].join("\n"),
+      [
+        'const groups = { notice: { message: "Consult a clinician." } };',
+        "return <Notice {...groups.notice} />;",
+      ].join("\n"),
+      'return <Notice {...(show && { message: "Informational only." })} />;',
+      'return <Notice message="Status" {...{ message: "Informational only." }} />;',
+    ];
+    for (const sample of detected) {
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", sample),
+        sample
+      ).toHaveLength(1);
+    }
+
+    const overridden =
+      'return <Notice {...{ message: "Informational only." }} message="Status" />;';
+    expect(disclaimerCopyViolations("synthetic.tsx", overridden)).toEqual([]);
+  });
+
+  it("discovers indirect exports and rendered JSX member components", () => {
+    const samples = [
+      [
+        "const Page = () => <p>Informational only.</p>;",
+        "export { Page };",
+      ].join("\n"),
+      [
+        "const Page = () => <p>Consult a clinician.</p>;",
+        "export default Page;",
+      ].join("\n"),
+      [
+        "const Parts = { Notice: () => <p>Informational only.</p> };",
+        "export function Page() { return <Parts.Notice />; }",
+      ].join("\n"),
+      [
+        "function Notice() { return <p>Consult a clinician.</p>; }",
+        "const Parts = { Notice };",
+        "export function Page() { return <Parts.Notice />; }",
+      ].join("\n"),
+    ];
+    for (const sample of samples) {
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", sample),
+        sample
+      ).toHaveLength(1);
+    }
   });
 
   it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
