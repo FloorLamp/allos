@@ -356,6 +356,22 @@ metrics/taps into audit.md. firstData/height growth **>15%** flags a route;
 — annotate the new baseline when a trade is deliberate, e.g. #1509, rather
 than suppressing the flag).
 
+### Post-merge mini-census
+
+Run a seeded mini-census while a merged UI change is still fresh:
+
+```bash
+UX_SEED=1 npm run census:post-merge -- HEAD^ HEAD --run
+```
+
+The command reads Git's changed-file records and sets `UX_ROUTES` from
+`app/(app)/X/**` → `/X`. It validates each prefix against the current route
+tree. A change under `components/**`, or in shared app chrome such as a layout
+or `app/globals.css`, runs the whole route set: there is no import-graph coverage
+that could defend a narrower claim. A renamed/deleted route, an unknown `app/`
+shape, or a diff with no censused UI target stops loudly for a manual plan.
+Run without `--run` to print the planned scope and harness command only.
+
 The target vocabulary the audits established (use it when filing from a run):
 first data inside one viewport-height; no standing rare-cadence entry forms
 (#1497); nothing unrolls unbounded (#1496/#1504); one h1-scale heading per

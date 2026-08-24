@@ -25,6 +25,7 @@
     "census:dialogs": "tsx scripts/dialog-census.ts",
     "census:hc-overlaps": "tsx scripts/hc-origin-overlap-census.ts",
     "census:migration-replay": "tsx scripts/migration-replay-census.ts",
+    "census:post-merge": "node scripts/post-merge-census.mjs",
     "seed": "tsx scripts/seed.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",
     "notify": "tsx scripts/notify.ts",
