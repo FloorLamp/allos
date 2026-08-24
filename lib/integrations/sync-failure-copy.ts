@@ -25,9 +25,8 @@ import {
 // source inherits it by calling this.
 //
 // WHERE THE RECONNECT SENTENCE COMES FROM, and why it is not here: a status alone
-// cannot answer "does this source even have a connection to re-authorize?".
-// `isAuthRefreshFailure(400)` is TRUE with no body — correct for a token refresh,
-// and wrong for keyless Open-Meteo, which answers 400 for a bad parameter. So the
+// cannot answer "does this source even have a connection to re-authorize?" — keyless
+// Open-Meteo answers 400 for a bad parameter and has no connection at all. So the
 // reconnect line is chosen by lib/integrations/pull-sync.ts from the connection's
 // OWN RECORDED STATE (`needs_reauth`), in the same failure exit that put it there.
 // That is the same state every reconnect affordance already keys on — the notice on
@@ -36,37 +35,70 @@ import {
 //
 // PURE (no db, no fs, no clock).
 
-// `upstream` — the other end did not answer, or answered that it was broken. Asking
-//              again may well work, and the hourly tick will.
+// `upstream` — asking again may well work, and the hourly tick will. The other end
+//              did not answer, answered that it was broken, or answered "not now".
 // `refused`  — the request itself was rejected and will be rejected the same way
 //              next time (#3007's `isDeterministicFailure` reads the same split).
 //              Nothing for a person to do, so no retry advice is offered.
 export type SyncFailureFamily = "upstream" | "refused";
 
-// Status 0 is every pull source's marker for "the request THREW — there was no HTTP
-// response at all". It groups with 5xx because it is the same thing to a reader.
+// THE QUESTION IS "WILL ASKING AGAIN HELP?", not "was the status a 4xx?". Those two
+// coincide for most of the range and part company at exactly two codes:
 //
-// This runs over TWO STATUS DIALECTS: HTTP codes, and Withings' `{status, body}`
-// envelope, whose codes are its own (601 over-quota, 2555 "unknown error, try
-// again"). The split is chosen to be true in both — a Withings 2555 lands in
-// `upstream` and its documented advice IS to try again — and to fail toward the
-// branch that promises less.
+//   • 429 Too Many Requests and 408 Request Timeout are the other end saying "not
+//     now" — the next hourly tick fixes them by itself. Reading them off the 4xx
+//     boundary told a person there was nothing to try over a rate limit, which is
+//     the opposite of what a rate limit means. Oura/Strava/Withings never reach here
+//     with a 429 (pageOutcome truncates first) but Open-Meteo's hourly fetch has no
+//     rate-limit truncate and does, and it is the half whose failure IS the run's.
+//
+// Status 0 is every pull source's marker for "the request THREW — there was no HTTP
+// response at all". A NEGATIVE status is Withings' marker for an envelope this app
+// could not read a status out of at all (a gateway's HTML page in place of the JSON).
+// Both group with 5xx: nobody was refused anything, and a retry is the right advice.
 export function syncFailureFamily(status: number): SyncFailureFamily {
-  return status === 0 || status >= 500 ? "upstream" : "refused";
+  if (status === 429 || status === 408) return "upstream";
+  return status <= 0 || status >= 500 ? "upstream" : "refused";
 }
+
+// WHICH STATUS DIALECT a caller is spending. HTTP is the default; `vendor` is for a
+// source that rides its own error codes inside a body served over HTTP 200 —
+// Withings' `{status, body}` envelope (601 over-quota, 2554/2555/2556 "unknown
+// error, try again"), which is the only one today.
+//
+// It exists because ONE sentence in the bank makes a claim only the HTTP dialect can
+// support. `upstream` with a service name reads "Couldn't reach Withings." — and for
+// every code in this dialect we DID reach Withings; they answered HTTP 200 and put a
+// number in the payload. The family is still right (2555's own documented advice is
+// to try again, and an unparseable envelope is worth retrying); it is the "reach"
+// that is false. So the vendor dialect spends the same family's SERVICE-LESS
+// sentence — "Couldn't sync your Withings data. Try again." — which is true either
+// way. `refused` needs no such care: it never names the third party.
+export type StatusDialect = "http" | "vendor";
 
 // The house sentence for a source that answered a failing status. Takes the same
 // context `userErrorCopy` takes, so a source declares its verb phrase and its
 // third-party name ONCE and both its throw branch and its status branch spend it.
-export function syncFailureCopy(status: number, ctx: UserErrorContext): string {
+export function syncFailureCopy(
+  status: number,
+  ctx: UserErrorContext,
+  dialect: StatusDialect = "http"
+): string {
   // `refused` spends the bank's no-advice sentence rather than its `write` one. A
   // 4xx on a pull IS usually our request being wrong, and "It's a bug on our side."
   // would be the kinder line — but this classifier reads two status dialects and a
   // 403 is a missing grant rather than a bug, so it would be asserting a cause it
   // cannot know. What it CAN say honestly is that there is nothing to try again.
+  if (syncFailureFamily(status) !== "upstream") {
+    return houseErrorSentence("unknown", ctx);
+  }
+  // The one place the dialect matters (see StatusDialect): a vendor code arrived
+  // over a 200, so the sentence must not claim we failed to reach anyone. Dropping
+  // `service` falls through to the same family's verb-phrase sentence, which keeps
+  // the retry advice and drops only the claim.
   return houseErrorSentence(
-    syncFailureFamily(status) === "upstream" ? "upstream" : "unknown",
-    ctx
+    "upstream",
+    dialect === "vendor" ? { doing: ctx.doing } : ctx
   );
 }
 

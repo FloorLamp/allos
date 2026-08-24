@@ -476,6 +476,26 @@ export async function openMeteoFetch(
       // "weather fetch failed (503): Squid error: unable to forward to the origin"
       // is a status and an upstream body, neither of which a person can act on.
       // #3007's value was always diagnostic, so it goes where diagnostics go.
+      //
+      // AND YES, THIS SOURCE NOW SPEAKS IN TWO REGISTERS — deliberately, because it
+      // writes into two slots with two different contracts, and this decision is
+      // recorded rather than left to be re-derived:
+      //
+      //   • THIS one is the run's FAILURE LINE. The run produced nothing; a person
+      //     is being told their weather data did not arrive, on the card, in the
+      //     toast and in the digest. House copy, because there is nothing here for
+      //     them to read a parameter name out of and act on.
+      //   • The daily/air-quality half's failure is a PARTIAL on a run that
+      //     SUCCEEDED, and its line (weatherPartialWarning, weather-sync.ts) is a
+      //     Review detail explaining which half is missing and whether it will fix
+      //     itself. The vendor's parenthetical is exactly what makes that answerable
+      //     — #3007 exists because eight runs recorded only "air-quality fetch
+      //     failed (400)" and the cause needed a hand-run curl — and #3007's own
+      //     worked example is an air-quality 400, so it still shows there.
+      //
+      // The register follows the SLOT, not the source. What #3007 bought is not lost
+      // on this half either: the same `failureReason(res)` is logged below, which is
+      // where the hand-run curl was replaced.
       log.error("weather hourly fetch failed", {
         endpoint,
         status: res.status,

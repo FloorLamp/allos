@@ -1,6 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
-import { syncFailureCopy } from "./sync-failure-copy";
+import { syncFailureCopy, type StatusDialect } from "./sync-failure-copy";
 import { parseJsonPreservingIds } from "./json-big-ids";
 import { addCanonicalNames, reconcileFlags } from "@/lib/queries";
 import {
@@ -60,9 +60,15 @@ export interface WithingsSyncResult {
   truncated?: true;
 }
 
+// WHICH DIALECT `status` IS SPOKEN IN. Withings answers failures two ways — an
+// ordinary HTTP status, and its own code inside a `{status, body}` envelope served
+// over HTTP 200 — and the two are indistinguishable as numbers (601 is not an HTTP
+// code, but 401 is both). The copy layer needs them apart: an envelope code means we
+// REACHED Withings and they answered, so it may not earn "Couldn't reach Withings."
+// See StatusDialect in ./sync-failure-copy.ts.
 type WGet =
   | { ok: true; body: Record<string, unknown> }
-  | { ok: false; status: number; error?: string };
+  | { ok: false; status: number; dialect: StatusDialect; error?: string };
 
 async function withingsPost(
   path: string,
@@ -79,7 +85,7 @@ async function withingsPost(
       body: new URLSearchParams(params).toString(),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return { ok: false, status: res.status };
+    if (!res.ok) return { ok: false, status: res.status, dialect: "http" };
     // NOT `res.json()`. Withings documents `measuregrps[].grpid` — the id this app
     // stores as `withings:<grpid>:<analyte>` — as `type: integer, format: int64`,
     // so nothing in the contract keeps it under 2^53 and an ordinary parse would
@@ -93,8 +99,19 @@ async function withingsPost(
     // Withings wraps everything in { status, body }; status 0 = success. An error
     // (bad/expired token, rate limit) rides in the envelope with HTTP 200, so the
     // envelope status is authoritative.
+    // -1 when the envelope PARSED but carried no numeric `status` — a shape this
+    // app does not recognise. It is a NEGATIVE sentinel on purpose: the copy layer
+    // reads `status <= 0` as "nobody refused us anything" and offers the retry that
+    // an unrecognised response deserves, where a positive placeholder would have
+    // been classified as a refusal and told a person there was nothing to try.
+    //
+    // A body that does not parse at all (a gateway's HTML page) never reaches here —
+    // parseJsonPreservingIds throws and the catch below owns it. OPEN QUESTION: that
+    // branch classifies a SyntaxError as `unknown` and so offers no retry either,
+    // which has the same backwards shape one layer over. It is userErrorCopy's
+    // classifier, shared by every caller, so it is recorded rather than changed here.
     const status = typeof json.status === "number" ? json.status : -1;
-    if (status !== 0) return { ok: false, status };
+    if (status !== 0) return { ok: false, status, dialect: "vendor" };
     const body =
       json.body && typeof json.body === "object"
         ? (json.body as Record<string, unknown>)
@@ -111,6 +128,7 @@ async function withingsPost(
     return {
       ok: false,
       status: 0,
+      dialect: "http",
       error: userErrorCopy(err, WITHINGS_FAILURE),
     };
   }
@@ -169,7 +187,14 @@ async function fetchPages(
         // the house sentence the throw's own family earned (#3592). A FAILING
         // status takes the status-keyed house sentence (#3618): this line used to
         // read "Withings /measure request failed (601)" on the integration card.
-        error: res.error ?? syncFailureCopy(res.status, WITHINGS_FAILURE),
+        //
+        // The dialect travels WITH the status (see WGet). An envelope code rode an
+        // HTTP 200 — Withings answered — so a 2555 gets "Couldn't sync your Withings
+        // data. Try again." rather than a "Couldn't reach Withings." that is false on
+        // its face; a real HTTP 503 still gets the sentence that names them.
+        error:
+          res.error ??
+          syncFailureCopy(res.status, WITHINGS_FAILURE, res.dialect),
       };
     }
     const body = res.body;

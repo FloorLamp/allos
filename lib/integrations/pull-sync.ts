@@ -9,7 +9,7 @@ import {
   recordSyncEvent,
   recordSyncRows,
 } from "./connections";
-import { isAuthRefreshFailure } from "./auth-failure";
+import { isAuthPullFailure } from "./auth-failure";
 import { reconnectCopy } from "./sync-failure-copy";
 import {
   dateWindow,
@@ -105,10 +105,11 @@ export interface PullGather<TCursor extends string | number> {
 }
 
 // A gather that could not complete. `status` is the failing HTTP status when there
-// was one — a DEFINITIVE auth failure (a revoked personal access token) flips the
-// connection to needs_reauth so the tick stops retrying forever (#326). A source
-// that resolves credentials through its own refresh path leaves it unset, because
-// that path already owns the reauth transition.
+// was one — a DEFINITIVE auth failure on a DATA PULL (a revoked personal access
+// token, which is a 401 and only a 401 — see isAuthPullFailure) flips the connection
+// to needs_reauth so the tick stops retrying forever (#326). A source that resolves
+// credentials through its own refresh path leaves it unset, because that path
+// already owns the reauth transition.
 export interface PullFailure {
   error: string;
   status?: number;
@@ -236,7 +237,11 @@ export async function runPullSync<
   const cursor = spec.cursor.read(profileId);
   const outcome = await spec.gather(profileId, token, cursor);
   if (isFailure(outcome)) {
-    if (outcome.status != null && isAuthRefreshFailure(outcome.status)) {
+    // THE DATA-PULL RULE, NOT THE REFRESH ONE (auth-failure.ts). A pull's 401 is a
+    // revoked credential; its 400 is ordinarily our own window or page token being
+    // wrong, and reading the refresh rule here told people their connection had
+    // expired over an out-of-range `end_date`.
+    if (outcome.status != null && isAuthPullFailure(outcome.status)) {
       markConnectionNeedsReauth(profileId, spec.id);
     }
     // Marked FIRST, then read: this run's own 401 is what the sentence is about.

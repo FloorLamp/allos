@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { syncNow } from "@/app/(app)/integrations/sync-actions";
 import { setOuraToken, getConnection } from "@/lib/integrations/connections";
+import { setHomeLocation } from "@/lib/settings";
 import { getLatestSyncEvent } from "@/lib/queries";
 import { actAs, createLogin, createProfile } from "./harness";
 
@@ -78,5 +79,34 @@ describe("the Sync now toast", () => {
     const res = await syncNow("oura");
     expect(res.status).toBe("error");
     expect(res.message).toBe("Connect Oura Ring first, then sync.");
+  });
+
+  // THE ONE RUNNER FRAGMENT A PERSON COULD REACH, PINNED (#3618 review). The claim
+  // at sync-actions.ts is that every `res.error` is now a whole house sentence, and
+  // two runner returns are still raw fragments: weather-sync's `"no home location"`
+  // and strava-sync's `"Strava read-request budget exhausted"`. Neither reaches this
+  // toast today, but only one of them is guarded by something a person configured —
+  // and it is the guard, not the fragment, that has to stay true.
+  it("a profile with no home location is stopped before the runner speaks", async () => {
+    // `blockedReason` answers first, so `runWeatherSync`'s "no home location" — a
+    // fragment, and one that reads as a diagnosis rather than an instruction — never
+    // becomes the toast. Remove the guard and this reads "no home location".
+    const res = await syncNow("weather");
+    expect(res.status).toBe("error");
+    expect(res.message).toBe(
+      "Set your home location first (Settings → Profile)."
+    );
+    expect(res.message).not.toBe("no home location");
+  });
+
+  it("…and with one set, the run proceeds to the real failure line", async () => {
+    setHomeLocation(profileId, { lat: 40.7, lng: -74 });
+    fetchMock.mockResolvedValue(new Response("upstream", { status: 503 }));
+
+    const res = await syncNow("weather");
+
+    expect(res.status).toBe("error");
+    expect(res.message).toBe("Couldn't reach Open-Meteo. Try again.");
+    expect(res.message).not.toMatch(/\d/);
   });
 });

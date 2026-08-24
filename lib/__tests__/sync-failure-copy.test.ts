@@ -36,7 +36,24 @@ describe("the split is keyed on what the status means", () => {
     expect(syncFailureFamily(400)).toBe("refused");
     expect(syncFailureFamily(403)).toBe("refused");
     expect(syncFailureFamily(404)).toBe("refused");
-    expect(syncFailureFamily(429)).toBe("refused");
+    expect(syncFailureFamily(422)).toBe("refused");
+  });
+
+  it('calls "not now" upstream, because asking again is exactly what fixes it', () => {
+    // THE TWO CODES WHERE "is it a 4xx?" AND "will asking again help?" PART COMPANY.
+    // Reading them off the 4xx boundary put a rate limit in the family whose stated
+    // contract is "nothing for a person to do" — the opposite of what it means, and
+    // the next hourly tick clears it unaided.
+    expect(syncFailureFamily(429)).toBe("upstream");
+    expect(syncFailureFamily(408)).toBe("upstream");
+    // …and the sentence follows the family, so the advice is offered.
+    expect(syncFailureCopy(429, OURA)).toBe("Couldn't reach Oura. Try again.");
+    expect(syncFailureCopy(408, OURA)).toBe("Couldn't reach Oura. Try again.");
+    // Their 4xx neighbours are untouched — this is two codes, not a boundary move.
+    expect(syncFailureFamily(428)).toBe("refused");
+    expect(syncFailureFamily(430)).toBe("refused");
+    expect(syncFailureFamily(407)).toBe("refused");
+    expect(syncFailureFamily(409)).toBe("refused");
   });
 
   it("is true in Withings' envelope dialect too, not only in HTTP", () => {
@@ -45,6 +62,60 @@ describe("the split is keyed on what the status means", () => {
     // request parameter, which is what `refused` says.
     expect(syncFailureFamily(2555)).toBe("upstream");
     expect(syncFailureFamily(247)).toBe("refused");
+  });
+
+  it("treats an unreadable envelope as no answer, not as a refusal", () => {
+    // Withings' -1 is "the body carried no numeric status at all" — a gateway's HTML
+    // page where the JSON should be. Nobody refused us anything and a retry is the
+    // right advice, so it groups with the status-0 throw rather than landing in the
+    // family that offers none.
+    expect(syncFailureFamily(-1)).toBe("upstream");
+    expect(syncFailureCopy(-1, { doing: "sync your Withings data" })).toContain(
+      "Try again"
+    );
+  });
+});
+
+// The one claim in the module that a single dialect could not support (#3618 review).
+describe("a vendor code that rode an HTTP 200 never says we couldn't reach anyone", () => {
+  const WITHINGS = {
+    doing: "sync your Withings data",
+    service: "Withings",
+  } as const;
+
+  it("drops the service name for a vendor code, and keeps the retry advice", () => {
+    // 2554/2555/2556 are Withings' "unknown error, try again" family. They are >= 500
+    // so the family is right — but they arrive INSIDE a 200 response, so "Couldn't
+    // reach Withings." is false on its face: we reached them and they answered.
+    for (const code of [2554, 2555, 2556]) {
+      const line = syncFailureCopy(code, WITHINGS, "vendor");
+      expect(line, `code ${code}`).toBe(
+        "Couldn't sync your Withings data. Try again."
+      );
+      expect(line, `code ${code}`).not.toContain("reach");
+    }
+    // Same for the unreadable envelope.
+    expect(syncFailureCopy(-1, WITHINGS, "vendor")).toBe(
+      "Couldn't sync your Withings data. Try again."
+    );
+  });
+
+  it("still names them when the status really was an HTTP one", () => {
+    // A Withings 503 IS a failure to reach them, and the dialect travels with the
+    // status (withings-sync.ts's WGet) so this half keeps the sentence that names
+    // the third party.
+    expect(syncFailureCopy(503, WITHINGS, "http")).toBe(
+      "Couldn't reach Withings. Try again."
+    );
+    expect(syncFailureCopy(503, WITHINGS)).toBe(
+      "Couldn't reach Withings. Try again."
+    );
+  });
+
+  it("needs no dialect care on the refused side — it names nobody either way", () => {
+    expect(syncFailureCopy(247, WITHINGS, "vendor")).toBe(
+      syncFailureCopy(247, WITHINGS, "http")
+    );
   });
 });
 
@@ -77,8 +148,8 @@ describe("the sentences", () => {
     // The whole class, swept rather than sampled: every status any of the four
     // sources can hand this, including Withings' envelope dialect.
     const statuses = [
-      0, 100, 247, 286, 400, 401, 403, 404, 422, 429, 500, 502, 503, 504, 601,
-      2555,
+      -1, 0, 100, 247, 286, 400, 401, 403, 404, 408, 422, 429, 500, 502, 503,
+      504, 601, 2555,
     ];
     for (const status of statuses) {
       const line = syncFailureCopy(status, OURA);

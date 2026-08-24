@@ -174,12 +174,26 @@ export interface DigestSyncIssue {
   // (#1913 item 6 — owner ruling).
   //
   // The old field was the item's `detail`, and `${title} — ${detail}` silently assumed
-  // that detail was a cause fragment. That held for the integration producer ("Weather &
-  // UV sync needs attention — Couldn't reach Open-Meteo. Try again.") and was never
-  // portal producer wrote to a different contract: `syncRequestCopy`'s detail is a
-  // COMPLETE SENTENCE that re-contains the title ("tbh has never been checked — run the
-  // portal tool on your computer."), and joined it read imperative → em dash → subject
-  // restated → em dash → the same imperative.
+  // that detail was a cause fragment. Nothing said so, and the two producers had read the
+  // unwritten contract differently. The integration producer's detail WAS a fragment, and
+  // named a status — "Weather & UV sync needs attention — weather fetch failed (503)".
+  // `syncRequestCopy`'s is a COMPLETE SENTENCE that re-contains the title ("tbh has never
+  // been checked — run the portal tool on your computer."), and joined it read imperative
+  // → em dash → subject restated → em dash → the same imperative.
+  //
+  // THAT SPLIT NO LONGER RUNS BETWEEN THE PRODUCERS, and saying so is more honest than
+  // swapping in a newer example that sits on the same side as the old counter-example.
+  // Since #3592 and #3618 every recorded sync reason is a whole house sentence too, so
+  // the line above now reads "Weather & UV sync needs attention — Couldn't reach
+  // Open-Meteo. Try again." Both producers supply sentences; the fragment/sentence
+  // distinction this paragraph was written to explain has collapsed to one side.
+  //
+  // What is left of the difference is narrower and is still the part that read badly:
+  // the portal sentence RE-CONTAINS THE TITLE and the sync sentence does not. Whether
+  // this slot should therefore be re-specified as a sentence, or whether the integration
+  // producer owes it a fragment, is a live question recorded at its source
+  // (lib/attention.ts) and deliberately not settled here — settling it in a renderer is
+  // how the undeclared contract happened the first time.
   //
   // Putting the contract in the TYPE is the point: the next producer of a named line is
   // asked for a cause fragment by the signature instead of inheriting a convention it
@@ -387,8 +401,8 @@ export function buildUpcomingDigest(
   // ONE ENTRY PER NAMED-LINE ITEM (#1913 items 2 and 5). A named-line domain used to be
   // counted in its band AND named below it, so a single 503 arrived twice in one message
   // — "📝 Today: Weather & UV sync needs attention" over "🔌 Weather & UV sync needs
-  // attention — Couldn't reach Open-Meteo. Try again." — the #1880 one-surface disease
-  // inside the digest.
+  // attention — Couldn't reach Open-Meteo. Try again." — which is the #1880 one-surface
+  // disease inside the digest.
   //
   // The merge is keyed on NAMED_LINE_DOMAINS rather than on the weather standing,
   // deliberately: it is a property of the digest's SHAPE, not of one domain. A merge

@@ -223,6 +223,78 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     expect(ev.ok).toBe(0);
   });
 
+  // AN INJECTED SOURCE THAT AUTHORS NO SENTENCE (#3618 review). Every case above
+  // hands `error` in, so the runner's own fallback — the only line a WeatherSource
+  // that returns none can produce — was reachable and unpinned: `""` there passed
+  // every suite, and an empty `integration_sync_events.error` is a red line on the
+  // card with nothing in it.
+  //
+  // It is SOURCE-AGNOSTIC on purpose: the runner does not know which third party an
+  // injected source reaches, so it names none and spends the verb phrase instead.
+  it("authors the run's line itself when the source hands it none", async () => {
+    const p = newProfile("weather-fallback");
+    const silent: WeatherSource = {
+      id: "fixture",
+      async fetchHourly() {
+        return { ok: false, rows: [], status: 503 };
+      },
+      async fetchDaily() {
+        return { ok: false, rows: [], status: 503 };
+      },
+    };
+    const res = await runWeatherSync(p, silent);
+
+    expect(res).toEqual({
+      error: "Couldn't refresh the weather forecast. Try again.",
+    });
+    const ev = db
+      .prepare(
+        `SELECT ok, error FROM integration_sync_events
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
+      )
+      .get(p) as { ok: number; error: string | null };
+    expect(ev.ok).toBe(0);
+    // The thing an empty fallback would break: the recorded line is what the card,
+    // the toast and the digest all render, so it may never be blank.
+    expect(ev.error).toBe("Couldn't refresh the weather forecast. Try again.");
+    expect(String(ev.error)).not.toMatch(/\d/);
+    // It names no third party, because the runner does not know one here.
+    expect(String(ev.error)).not.toContain("Open-Meteo");
+  });
+
+  // A RATE LIMIT IS NOT "NOTHING TO TRY" (#3618 review). Weather's hourly fetch has
+  // no rate-limit truncate — Oura/Strava/Withings never reach the classifier with a
+  // 429 — so this source is where the 4xx boundary was actually read, and it told a
+  // person there was nothing to do about a limit the next hourly tick clears.
+  it("offers the retry on a 429, which is the whole point of a rate limit", async () => {
+    const p = newProfile("weather-429");
+    const limited: WeatherSource = {
+      id: "fixture",
+      async fetchHourly() {
+        return { ok: false, rows: [], status: 429 };
+      },
+      async fetchDaily() {
+        return { ok: false, rows: [], status: 429 };
+      },
+    };
+    const res = await runWeatherSync(p, limited);
+
+    expect(res).toEqual({
+      error: "Couldn't refresh the weather forecast. Try again.",
+    });
+    // A 404 on the same source still offers none — this is two codes, not the whole
+    // 4xx side moving.
+    const missing: WeatherSource = {
+      ...limited,
+      async fetchHourly() {
+        return { ok: false, rows: [], status: 404 };
+      },
+    };
+    expect(await runWeatherSync(p, missing)).toEqual({
+      error: "Couldn't refresh the weather forecast.",
+    });
+  });
+
   // #1771 defect 2: the daily half (#1743) reaches WEATHER_FORECAST_DAYS ahead, but
   // the hourly-fetch FAILURE paths used to stamp the hourly half's shorter window —
   // so interleaved events of one provider described two different window shapes, and

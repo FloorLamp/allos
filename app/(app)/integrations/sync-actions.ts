@@ -128,10 +128,27 @@ export async function syncNow(id: IntegrationId): Promise<SyncNowResult> {
       // and a status: "Sync failed: Oura /v2/usercollection/sleep request failed
       // (401)" is unreadable without it. Since #3592 the throw branch already
       // returned a whole house sentence, so the prefix had started doubling up
-      // ("Sync failed: Couldn't reach Strava. Try again."); since #3618 EVERY
-      // branch does, so it doubles up on all of them. Removing it while the HTTP
-      // branch still read that way would have made the toast worse, which is why
-      // the two halves are one change.
+      // ("Sync failed: Couldn't reach Strava. Try again."); since #3618 every branch
+      // that can REACH THIS LINE does, so it doubles up on all of them. Removing it
+      // while the HTTP branch still read that way would have made the toast worse,
+      // which is why the two halves are one change.
+      //
+      // "EVERY BRANCH THAT CAN REACH THIS LINE" is the honest scope, not "every
+      // branch". Two runner returns are still raw fragments, and both are stopped
+      // before here by something other than this file:
+      //
+      //   • weather-sync.ts's `"no home location"` — the weather runner declares a
+      //     `blockedReason` (pull-runners.ts) that answers above, with a sentence
+      //     that tells a person what to set. PINNED at the action tier
+      //     (lib/__action_tests__/sync-now-message.actions.test.ts), because it is a
+      //     guard that could be removed, not a structural impossibility.
+      //   • strava-sync.ts's `"Strava read-request budget exhausted"` — it carries
+      //     `status: 429`, which the list loop reads through `isPullRateLimited`
+      //     first and turns into a TRUNCATED run, so it is never a `{ error }` at
+      //     all. That one is structural: it would take a status change to surface.
+      //
+      // Recorded rather than smoothed over: if a third source ever returns a bare
+      // fragment with no guard in front of it, this line ships it to a person as-is.
       //
       // The failure framing is not lost with it: the toast is rendered with
       // `tone: "error"` (components/SyncNowButton.tsx) off the `status` field

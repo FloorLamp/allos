@@ -245,8 +245,19 @@ test.describe("Data → Review import inbox", () => {
     await expect(
       history.getByText(/Couldn't reach Strava\. Try again\./)
     ).toBeVisible();
-    // Since #3618 neither reason names an HTTP status, a path or a vendor code —
-    // this is that guarantee read off the RENDERED history, not off a producer.
+    // WHAT THESE TWO LINES ARE, stated plainly because they are easy to over-read.
+    // No spec here runs a sync runner: `e2e/seed/integrations.ts` writes the `error`
+    // column directly, so these assertions are satisfied by that seed and NOT by the
+    // producer. They are a RENDER guarantee only — that this surface prints the
+    // recorded reason as recorded, and does not staple a status back onto it (the
+    // history row also renders counts, a verdict and a window, any of which could
+    // grow one).
+    //
+    // The PRODUCER guarantee — that no failing shape of any source can write a
+    // status into that column in the first place — is pinned where the producer
+    // actually runs: lib/__db_tests__/connection-reauth.test.ts (Oura, Strava,
+    // Withings, both doors into needs_reauth), lib/__db_tests__/weather-uv.test.ts
+    // and lib/__db_tests__/pull-runner.test.ts.
     await expect(history).not.toContainText("(401)");
     await expect(history).not.toContainText("(429)");
   });

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isAuthRefreshFailure } from "@/lib/integrations/auth-failure";
+import {
+  isAuthPullFailure,
+  isAuthRefreshFailure,
+} from "@/lib/integrations/auth-failure";
 
 // Issue #326: classify an OAuth/token-refresh failure as a DEFINITIVE auth failure
 // (dead/revoked grant → needs re-auth) vs a TRANSIENT one (retry next tick). Only the
@@ -43,5 +46,33 @@ describe("isAuthRefreshFailure", () => {
   it("does not misclassify other 4xx (403/404) as an auth-grant failure", () => {
     expect(isAuthRefreshFailure(403)).toBe(false);
     expect(isAuthRefreshFailure(404)).toBe(false);
+  });
+});
+
+// THE DATA-PULL RULE IS ITS OWN, AND NARROWER (#3618 review). The refresh rule above
+// answers "did the token endpoint reject this grant?" — where a 400 with no usable
+// body can only be the grant. A data pull sends a window, a page token and a field
+// list, so its 400 is ordinarily one of those, and reading the refresh rule there
+// told people their connection had expired over an out-of-range `end_date`.
+describe("isAuthPullFailure", () => {
+  it("is a 401 and nothing else", () => {
+    expect(isAuthPullFailure(401)).toBe(true);
+    // Oura's personal access token has no refresh; a revoked one surfaces here.
+  });
+
+  it("does NOT read a data-pull 400 as a dead grant, unlike the refresh rule", () => {
+    // The two rules disagree on exactly this number, deliberately. If they ever
+    // agree again, an ordinary parameter-validation 400 is once more minting "Your
+    // Oura Ring connection expired.", flipping the connection, and stopping the sync.
+    expect(isAuthPullFailure(400)).toBe(false);
+    expect(isAuthRefreshFailure(400)).toBe(true);
+  });
+
+  it("leaves every other status transient", () => {
+    for (const status of [
+      -1, 0, 403, 404, 408, 422, 429, 500, 503, 601, 2555,
+    ]) {
+      expect(isAuthPullFailure(status), `status ${status}`).toBe(false);
+    }
   });
 });

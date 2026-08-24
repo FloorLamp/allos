@@ -1772,9 +1772,10 @@ marker is identical either way.
 
 **Silence is the whole escalation rule (#1685, unified in #2263).** The two
 event-driven "this provider needs attention" signals cannot see a connection that
-is recording nothing at all. `isAuthRefreshFailure` (#326) only flips a connection
-to `needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay transient on
-purpose, or a passing cloud hiccup would tear down a healthy connection — and
+is recording nothing at all. The #326 auth classifiers only flip a connection to
+`needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay transient on
+purpose, or a passing cloud hiccup would tear down a healthy connection, and on a
+DATA PULL a 400 stays transient too (`isAuthPullFailure`) — and
 `currentlyFailingProviders` only fires when a provider's LATEST recorded event is a
 failure. A phone exporter the OS stopped running, or a poll that never gets far
 enough to log, leaves the connection sitting at `connected` with a green badge,
@@ -2151,11 +2152,34 @@ there is — has an obvious answer that line never gave.
 the authored-copy sibling of `lib/user-error-copy.ts`'s caught-text translation
 (#3198 / #3592). Three answers, because there are three things a person can do:
 
-| Situation                        | Line                                                           | Why                                                             |
-| -------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| The connection is `needs_reauth` | `Your <name> connection expired. Reconnect to resume syncing.` | Reconnecting is the whole of what a person can do.              |
-| Status `0` or `>= 500`           | `Couldn't reach <service>. Try again.`                         | No answer, or the other end said it was broken.                 |
-| Anything else                    | `Couldn't <doing>.`                                            | Deterministic — retrying changes nothing, so it is not offered. |
+| Situation                                     | Line                                                           | Why                                                                |
+| --------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
+| The connection is `needs_reauth`              | `Your <name> connection expired. Reconnect to resume syncing.` | Reconnecting is the whole of what a person can do.                 |
+| Status `<= 0`, `>= 500`, `429` or `408`       | `Couldn't reach <service>. Try again.`                         | No answer, the other end said it was broken, or it said "not now". |
+| …the same, but a VENDOR code over an HTTP 200 | `Couldn't <doing>. Try again.`                                 | The family is right, but we DID reach them — see the dialect note. |
+| Anything else                                 | `Couldn't <doing>.`                                            | Deterministic — retrying changes nothing, so it is not offered.    |
+
+**The question is "will asking again help?", not "was it a 4xx?".** Those coincide
+for most of the range and part company at `429` and `408`, which are the other end
+saying _not now_ — the next hourly tick clears them unaided. Reading them off the
+4xx boundary put a rate limit in the family whose stated contract is _nothing for a
+person to do_. Oura, Strava and Withings never reach the classifier with a `429`
+(`pageOutcome` truncates first), but **Open-Meteo's hourly fetch has no rate-limit
+truncate and does** — and that half's failure IS the run's failure, so it was the
+line on the card. `<= 0` rather than `== 0` covers Withings' `-1`, its marker for an
+envelope that parsed but carried no status: nobody refused us anything.
+
+**Two status dialects, and one sentence that only the HTTP one can support.**
+`syncFailureCopy` takes a `StatusDialect`. `http` is the default; `vendor` is a
+source that rides its own codes inside a body served over HTTP 200 — Withings'
+`{status, body}` envelope, the only one today. The `upstream` sentence names the
+third party (`Couldn't reach Withings.`) and for every code in the vendor dialect
+that claim is **false**: they answered. Withings' `2554/2555/2556` ("unknown error,
+try again") are `>= 500`, so the family and its retry advice are right; only the
+"reach" is wrong. The vendor dialect therefore spends the same family's
+service-less sentence. The dialect travels **with** the status out of `withingsPost`
+(`WGet`), so a genuine Withings HTTP `503` still names them. `refused` needs no such
+care — it never names anyone.
 
 The middle two share `lib/user-error-copy.ts`'s sentence bank through
 `houseErrorSentence`, deliberately: a 503 answered by Oura and an `ECONNRESET`
@@ -2168,9 +2192,8 @@ status.** `lib/integrations/pull-sync.ts` reads
 it. Two reasons, and both are load-bearing:
 
 - A status alone cannot answer "does this source even have a connection to
-  re-authorize?". `isAuthRefreshFailure(400)` is TRUE with no body — correct for a
-  token refresh, and wrong for keyless Open-Meteo, which answers 400 for a bad
-  parameter.
+  re-authorize?" — keyless Open-Meteo answers 400 for a bad parameter and has no
+  connection at all.
 - `needs_reauth` is what every reconnect affordance already keys on: the notice
   on each source's page, and `ConnectedSources`' `Reconnect <name> →` link. Asking
   the same question means the sentence can never send a person to a control the
@@ -2181,6 +2204,24 @@ access token arrives as a 401 on the DATA PULL, and a dead Strava/Withings refre
 token is caught by the REFRESH PATH, which marks the connection and throws before
 any pull happens. A status test at either door would see only its own half.
 `lib/__db_tests__/connection-reauth.test.ts` drives both.
+
+**And the two doors ask DIFFERENT questions about the same number (#326's
+transition set, narrowed).** `isAuthRefreshFailure` answers _did the token endpoint
+reject this grant?_, where a `400` with no usable body can only be the grant.
+`isAuthPullFailure` answers _was this data pull's credential revoked?_ — and that is
+a `401` and nothing else. A data pull sends a window, a page token and a field list,
+so its `400` is ordinarily one of those being wrong; Oura answers `400` for an
+out-of-range `end_date` exactly as Open-Meteo does.
+
+The runner used to ask the REFRESH question of a DATA-PULL status. An ordinary
+parameter-validation `400` from Oura's data API therefore flipped a healthy
+connection to `needs_reauth` — which stops the hourly tick syncing that source at
+all and escalates past the digest's silence tolerance — and, once the exit had a
+sentence, told the person _Your Oura Ring connection expired._ **This is a change to
+when `needs_reauth` is set**, pinned at the db tier alongside the 401 it does not
+touch. Carrying the response body onto `PullFailure` was the other option and does
+not close the door: the body guard's default is _no body ⇒ dead grant_, and the pull
+sources do not read a body on a non-OK response at all.
 
 **The status is not lost — it is an operator's fact.** Every source logs
 `{ path, status }` through `log.error` at the failing exit, and the weather hourly
@@ -2200,7 +2241,8 @@ renders as `tone: "error"`.
 Adding a source to the registry gets the vocabulary for free — call
 `syncFailureCopy(status, { doing, service })` at the failing-status exit and
 `userErrorCopy(err, …)` at the throw, with ONE declared `{ doing, service }` spent
-by both. Two things it does NOT get for free:
+by both. A source whose failing codes ride inside an HTTP 200 body passes
+`"vendor"` as the third argument. Two things it does NOT get for free:
 
 1. **How the provider spells its id key.** `ID_KEY_NAMES` in
    `lib/integrations/json-big-ids.ts` is **enumerated, not a broad pattern**, and
