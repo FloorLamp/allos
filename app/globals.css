@@ -40,7 +40,7 @@
    chokepoint tokens in the `:root` blocks after this one. */
 
 @theme {
-  --breakpoint-3xl: 1920px;
+  --breakpoint-3xl: 120rem;
 
   --color-brand-50: #f0fdf4;
   --color-brand-100: #dcfce7;

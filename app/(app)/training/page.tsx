@@ -83,7 +83,7 @@ export default async function TrainingPage(props: {
     // (Analyze's chart + 28rem aside). The cap wraps the WHOLE tab-first shell
     // — header, tab strip, and panel — the way records and nutrition cap
     // theirs: capping only the panel left the tab strip running to the shell's
-    // 3xl (~1760px) edge, wider than the content beneath it.
+    // 3xl (1920px at the 16px root) edge, wider than the content beneath it.
     <PageContainer width="wide" className="mx-auto">
       <TabFirstPage
         config={TRAINING_TAB_FIRST_PAGE}
