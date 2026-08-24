@@ -329,6 +329,10 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
         path.join(base, "components/SpreadOffender.tsx"),
         'export function SpreadOffender() { return <button {...{ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Adversarial" }} />; }\n'
       );
+      fs.writeFileSync(
+        path.join(base, "components/SpreadFlowOffender.tsx"),
+        'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };\nconst withClass = (className: string) => ({ className });\nexport function SpreadFlowOffender({ enabled, maybe }: { enabled: boolean; maybe: { className?: string } | null }) { return <>\n<button {...withClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<button {...(enabled ? BAD : {})} />\n<button {...(maybe || BAD)} />\n</>; }\n'
+      );
       const expectedTokens = [
         "outline-2",
         "outline-dashed",
@@ -346,6 +350,21 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           file: "components/ImportedOffender.tsx",
           line: 2,
           tokens: expectedTokens,
+        },
+        {
+          file: "components/SpreadFlowOffender.tsx",
+          line: 4,
+          tokens: ["min-h-0!", "h-4", "outline-2"],
+        },
+        {
+          file: "components/SpreadFlowOffender.tsx",
+          line: 5,
+          tokens: ["min-h-0!", "h-4", "outline-2"],
+        },
+        {
+          file: "components/SpreadFlowOffender.tsx",
+          line: 6,
+          tokens: ["min-h-0!", "h-4", "outline-2"],
         },
         {
           file: "components/SpreadOffender.tsx",
@@ -410,7 +429,7 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
       );
       fs.writeFileSync(
         path.join(base, "components/Caller.tsx"),
-        'import { ForwardedChip } from "./ForwardedChip";\nimport SubmitButton from "./SubmitButton";\nconst className = "an unrelated local must not rewrite an object key";\nconst IDENTIFIER_PROPS = { className: "chip chip-filter min-h-0! h-4 outline-2", children: "Identifier" };\nconst helperProps = () => ({ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Helper" });\nexport function Caller() { return <>\n<ForwardedChip className="chip chip-filter" />\n<SubmitButton {...{ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Adversarial" }} />\n<SubmitButton {...IDENTIFIER_PROPS} />\n<SubmitButton {...helperProps()} />\n</>; }\n'
+        'import { ForwardedChip } from "./ForwardedChip";\nimport SubmitButton from "./SubmitButton";\nconst className = "an unrelated local must not rewrite an object key";\nconst IDENTIFIER_PROPS = { className: "chip chip-filter min-h-0! h-4 outline-2", children: "Identifier" };\nconst helperProps = () => ({ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Helper" });\nconst withClass = (className: string) => ({ className });\nconst enabled = true;\nconst CONDITIONAL_PROPS = enabled ? IDENTIFIER_PROPS : {};\nconst LOGICAL_PROPS = null || IDENTIFIER_PROPS;\nexport function Caller() { return <>\n<ForwardedChip className="chip chip-filter" />\n<SubmitButton {...{ className: "chip chip-filter min-h-0! h-4 outline-2", children: "Adversarial" }} />\n<SubmitButton {...IDENTIFIER_PROPS} />\n<SubmitButton {...helperProps()} />\n<SubmitButton {...withClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<SubmitButton {...CONDITIONAL_PROPS} />\n<SubmitButton {...LOGICAL_PROPS} />\n</>; }\n'
       );
       expect(bindingSummary(scanForwardedChipBindings(base))).toEqual([
         {
@@ -423,7 +442,7 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           file: "components/Caller.tsx",
           component: "SubmitButton",
           className: "chip chip-filter min-h-0! h-4 outline-2",
-          controls: 3,
+          controls: 6,
         },
       ]);
     } finally {

@@ -838,12 +838,38 @@ function objectEntryValue(entry: string): string | null {
   return null;
 }
 
-/**
- * The body of an arrow function `(a, b) => body`, or null — including when the
- * body is a BLOCK, which is a program rather than an expression this scan can
- * read.
- */
-function arrowBody(expression: string): string | null {
+/** Split a comma-separated parameter or argument list at bracket depth zero. */
+function topLevelCommaParts(expression: string): string[] {
+  const parts: string[] = [];
+  const stack: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= expression.length; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") stack.pop();
+    if (i === expression.length || (c === "," && stack.length === 0)) {
+      const part = expression.slice(start, i).trim();
+      if (part) parts.push(part);
+      start = i + 1;
+    }
+  }
+  return parts;
+}
+
+type ArrowExpression = { parameters: string[]; body: string };
+
+/** A simple expression-bodied arrow, including its parameter names. */
+function arrowExpression(expression: string): ArrowExpression | null {
   const text = expression.trim();
   if (!text.startsWith("(")) return null;
   const shut = closingBracket(text, 0);
@@ -851,7 +877,23 @@ function arrowBody(expression: string): string | null {
   const rest = text.slice(shut + 1).trimStart();
   if (!rest.startsWith("=>")) return null;
   const body = rest.slice(2).trim();
-  return body.startsWith("{") ? null : body;
+  if (body.startsWith("{")) return null;
+  const parameters: string[] = [];
+  for (const parameter of topLevelCommaParts(text.slice(1, shut))) {
+    const match = /^(?:\.\.\.)?([A-Za-z_$][\w$]*)/.exec(parameter);
+    if (!match) return null;
+    parameters.push(match[1]);
+  }
+  return { parameters, body };
+}
+
+/**
+ * The body of an arrow function `(a, b) => body`, or null — including when the
+ * body is a BLOCK, which is a program rather than an expression this scan can
+ * read.
+ */
+function arrowBody(expression: string): string | null {
+  return arrowExpression(expression)?.body ?? null;
 }
 
 /**
@@ -1147,6 +1189,130 @@ function jsxSpreadExpressions(openTag: string): string[] {
 }
 
 /**
+ * Replace helper parameters with their call arguments without rewriting object
+ * property keys. A shorthand property is expanded so `{ className }` keeps the
+ * key whose ownership the spread scan is proving.
+ */
+function bindHelperArguments(
+  expression: string,
+  bindings: Map<string, string>
+): string {
+  const literals = literalSpans(expression);
+  let out = "";
+  let copied = 0;
+  for (const match of expression.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
+    const argument = bindings.get(match[0]);
+    if (argument === undefined) continue;
+    const at = match.index;
+    if (literals.some((span) => at >= span.start && at < span.end)) continue;
+    const end = at + match[0].length;
+    const before = expression.slice(0, at).trimEnd().at(-1);
+    const after = expression.slice(end).trimStart()[0];
+    const propertyPosition = before === "{" || before === ",";
+    let replacement: string;
+    if (propertyPosition && after === ":") replacement = match[0];
+    else if (propertyPosition && (after === "," || after === "}"))
+      replacement = `${match[0]}: (${argument})`;
+    else replacement = `(${argument})`;
+    out += expression.slice(copied, at) + replacement;
+    copied = end;
+  }
+  return out + expression.slice(copied);
+}
+
+/** Instantiate one complete call to a declared expression-bodied helper. */
+function materializeHelperCall(
+  expression: string,
+  declared: ClassDeclarations
+): string | null {
+  const match = /^([A-Za-z_$][\w$]*)\s*\(/.exec(expression);
+  if (!match) return null;
+  const open = expression.indexOf("(", match[1].length);
+  const shut = closingBracket(expression, open);
+  if (shut < 0 || expression.slice(shut + 1).trim() !== "") return null;
+  const value = declared.get(match[1]);
+  if (value === undefined || value === AMBIGUOUS) return null;
+  const arrow = arrowExpression(value);
+  if (arrow === null) return null;
+  const args = topLevelCommaParts(expression.slice(open + 1, shut));
+  const bindings = new Map<string, string>();
+  for (let i = 0; i < arrow.parameters.length && i < args.length; i += 1)
+    bindings.set(arrow.parameters[i], args[i]);
+  return bindHelperArguments(arrow.body, bindings);
+}
+
+/**
+ * Reachable object-producing arms of a top-level conditional or logical
+ * expression. The condition itself cannot contribute props; both value arms
+ * can, so the ownership scan conservatively reads both.
+ */
+function objectExpressionBranches(expression: string): string[] | null {
+  const stack: string[] = [];
+  let question = -1;
+  let nestedQuestions = 0;
+  for (let i = 0; i < expression.length; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      stack.push(c);
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      stack.pop();
+      continue;
+    }
+    if (stack.length > 0) continue;
+    if (c === "?" && expression[i + 1] !== "?" && expression[i + 1] !== ".") {
+      if (question < 0) question = i;
+      nestedQuestions += 1;
+      continue;
+    }
+    if (c === ":" && question >= 0) {
+      nestedQuestions -= 1;
+      if (nestedQuestions === 0)
+        return [expression.slice(question + 1, i), expression.slice(i + 1)];
+    }
+  }
+
+  stack.length = 0;
+  for (let i = 0; i < expression.length - 1; i += 1) {
+    const c = expression[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < expression.length && expression[i] !== c)
+        i += expression[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "`") {
+      i = endOfTemplate(expression, i);
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      stack.push(c);
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      stack.pop();
+      continue;
+    }
+    if (stack.length > 0) continue;
+    const operator = expression.slice(i, i + 2);
+    if (operator === "&&" || operator === "||" || operator === "??")
+      return [expression.slice(0, i), expression.slice(i + 2)];
+  }
+  return null;
+}
+
+/**
  * Every className value an object expression explicitly contributes when it is
  * spread onto JSX. Constants and single-expression arrow helpers are resolved
  * by the same lexical, import-aware machinery as direct className attributes.
@@ -1161,6 +1327,14 @@ function spreadClassNameExpressions(
   seen.add(written);
   const entries = objectEntries(written);
   if (entries === null) {
+    const branches = objectExpressionBranches(written);
+    if (branches !== null)
+      return branches.flatMap((branch) =>
+        spreadClassNameExpressions(branch, declared, seen)
+      );
+    const helper = materializeHelperCall(written, declared);
+    if (helper !== null)
+      return spreadClassNameExpressions(helper, declared, seen);
     // Resolve only the expression that stands for the object, one lexical hop
     // at a time. Substituting the whole object would also visit its property
     // keys; a coincidentally named local `className` must not rewrite the key
