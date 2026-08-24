@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { LONG_NAMES } from "../../scripts/seed-long-names";
 import {
   allocateUxServedDb,
+  assertUxServedDbOwned,
   assertUxServedDbUnused,
   cleanupUxServedDb,
 } from "../../scripts/ux-served-db.mjs";
@@ -257,6 +258,7 @@ describe("named dirty seed data", () => {
       expect(new Set(allocations.map(({ dbPath }) => dbPath)).size).toBe(4);
       for (const allocation of allocations) {
         expect(allocation.dbPath).not.toBe(dbPath);
+        assertUxServedDbOwned(allocation);
         assertUxServedDbUnused(allocation);
       }
       expect(fs.readFileSync(dbPath)).toEqual(before);
@@ -285,7 +287,7 @@ describe("named dirty seed data", () => {
     const allocation = allocateUxServedDb(path.dirname(dbPath));
     try {
       expect(allocation.dbPath).not.toBe(dbPath);
-      expect(fs.existsSync(allocation.dbPath)).toBe(false);
+      expect(fs.lstatSync(allocation.dbPath).isFile()).toBe(true);
       assertUxServedDbUnused(allocation);
       expect(fs.readFileSync(dbPath)).toEqual(before);
     } finally {

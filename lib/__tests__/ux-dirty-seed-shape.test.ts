@@ -11,6 +11,7 @@ import {
 } from "../../scripts/ux-seed-shapes.mjs";
 import {
   allocateUxServedDb,
+  assertUxServedDbOwned,
   assertUxServedDbUnused,
   cleanupUxServedDb,
   UX_SERVED_DB_PREFIX,
@@ -171,7 +172,7 @@ describe("UX_SEED=dirty", () => {
     );
   });
 
-  it("atomically owns an absent file-backed path and detects precreation", () => {
+  it("atomically reserves one file inode and detects mutation or replacement", () => {
     const tmpRoot = makeTmpDir("ux-served-db-test");
     const allocation = allocateUxServedDb(tmpRoot);
     try {
@@ -180,12 +181,19 @@ describe("UX_SEED=dirty", () => {
         new RegExp(`^${UX_SERVED_DB_PREFIX}`)
       );
       expect(allocation.dbPath).not.toBe(":memory:");
-      expect(fs.existsSync(allocation.dbPath)).toBe(false);
+      expect(fs.lstatSync(allocation.dbPath).isFile()).toBe(true);
+      expect(fs.lstatSync(allocation.dbPath).size).toBe(0);
+      assertUxServedDbOwned(allocation);
       assertUxServedDbUnused(allocation);
 
       fs.writeFileSync(allocation.dbPath, "race-style precreation");
       expect(() => assertUxServedDbUnused(allocation)).toThrow(
-        "was pre-created before use"
+        "reservation was modified before use"
+      );
+      fs.unlinkSync(allocation.dbPath);
+      fs.writeFileSync(allocation.dbPath, "replacement inode");
+      expect(() => assertUxServedDbOwned(allocation)).toThrow(
+        "no longer names its reserved regular file"
       );
       fs.writeFileSync(`${allocation.dbPath}-wal`, "wal");
       fs.writeFileSync(`${allocation.dbPath}-shm`, "shm");
@@ -193,6 +201,57 @@ describe("UX_SEED=dirty", () => {
       cleanupUxServedDb(allocation);
       expect(fs.existsSync(allocation.dir)).toBe(false);
     }
+  });
+
+  it("rejects a dangling symlink without creating or cleaning its outside target", () => {
+    const tmpRoot = makeTmpDir("ux-served-db-symlink-test");
+    const outside = path.join(tmpRoot, "outside-target.db");
+    const outsideWal = `${outside}-wal`;
+    const outsideShm = `${outside}-shm`;
+    const allocation = allocateUxServedDb(tmpRoot);
+    fs.unlinkSync(allocation.dbPath);
+    fs.symlinkSync(outside, allocation.dbPath);
+    try {
+      expect(fs.lstatSync(allocation.dbPath).isSymbolicLink()).toBe(true);
+      expect(() => assertUxServedDbOwned(allocation)).toThrow(
+        "no longer names its reserved regular file"
+      );
+      expect(() => assertUxServedDbUnused(allocation)).toThrow(
+        "no longer names its reserved regular file"
+      );
+      expect(fs.existsSync(outside)).toBe(false);
+      expect(fs.existsSync(outsideWal)).toBe(false);
+      expect(fs.existsSync(outsideShm)).toBe(false);
+    } finally {
+      cleanupUxServedDb(allocation);
+    }
+    expect(fs.existsSync(allocation.dir)).toBe(false);
+    expect(fs.existsSync(outside)).toBe(false);
+    expect(fs.existsSync(outsideWal)).toBe(false);
+    expect(fs.existsSync(outsideShm)).toBe(false);
+  });
+
+  it("rejects a replacement symlink and preserves an existing outside target", () => {
+    const tmpRoot = makeTmpDir("ux-served-db-external-target-test");
+    const outside = path.join(tmpRoot, "outside-target.db");
+    const outsideWal = `${outside}-wal`;
+    const outsideShm = `${outside}-shm`;
+    fs.writeFileSync(outside, "outside sentinel");
+    fs.writeFileSync(outsideWal, "outside wal sentinel");
+    fs.writeFileSync(outsideShm, "outside shm sentinel");
+    const allocation = allocateUxServedDb(tmpRoot);
+    fs.unlinkSync(allocation.dbPath);
+    fs.symlinkSync(outside, allocation.dbPath);
+    try {
+      expect(() => assertUxServedDbOwned(allocation)).toThrow(
+        "no longer names its reserved regular file"
+      );
+    } finally {
+      cleanupUxServedDb(allocation);
+    }
+    expect(fs.readFileSync(outside, "utf8")).toBe("outside sentinel");
+    expect(fs.readFileSync(outsideWal, "utf8")).toBe("outside wal sentinel");
+    expect(fs.readFileSync(outsideShm, "utf8")).toBe("outside shm sentinel");
   });
 
   it.each(["browser", "contact sheet", "audit artifacts"])(
@@ -259,6 +318,9 @@ describe("UX_SEED=dirty", () => {
     expect(walkthrough).toContain("ALLOS_DB_PATH: dbPath");
     expect(walkthrough).toContain("UX_OWNED_DB_DIR: servedDb.dir");
     expect(walkthrough).toContain("cleanupUxServedDb(servedDb)");
+    expect(
+      walkthrough.match(/assertUxServedDbOwned\(servedDb\)/g)?.length
+    ).toBeGreaterThanOrEqual(3);
     expect(walkthrough).toContain('process.kill(-child.pid, "SIGTERM")');
     expect(walkthrough).toContain('process.on("SIGTERM", onSigterm)');
     expect(walkthrough).toContain('process.on("SIGINT", onSigint)');

@@ -110,6 +110,7 @@ import {
 } from "./ux-seed-shapes.mjs";
 import {
   allocateUxServedDb,
+  assertUxServedDbOwned,
   assertUxServedDbUnused,
   cleanupUxServedDb,
 } from "./ux-served-db.mjs";
@@ -2007,6 +2008,7 @@ let browser = null;
 let cleanupPromise = null;
 
 function verifyServedDb(env) {
+  assertUxServedDbOwned(servedDb);
   const result = spawnSync(
     process.execPath,
     ["--import", "tsx", "scripts/verify-ux-seed-shape.ts"],
@@ -2126,6 +2128,7 @@ try {
     // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
     if (UX_SEED_SHAPE.seed) {
       log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
+      assertUxServedDbUnused(servedDb);
       const r = spawnSync(
         process.execPath,
         ["--import", "tsx", "scripts/seed.ts"],
@@ -2138,6 +2141,7 @@ try {
       }
       if (UX_SEED_SHAPE.postSeed === "thin") {
         log("thinning scratch DB to the last ~7 days…");
+        assertUxServedDbOwned(servedDb);
         const t = spawnSync(
           process.execPath,
           ["--import", "tsx", "scripts/ux-thin-data.ts"],
@@ -2154,6 +2158,7 @@ try {
       assertUxServedDbUnused(servedDb);
     }
     log(`starting dev server on :${port} (db: ${dbPath})…`);
+    assertUxServedDbOwned(servedDb);
     server = spawn("npm", ["run", "dev"], {
       env,
       stdio: "ignore",
