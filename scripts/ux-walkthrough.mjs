@@ -98,6 +98,11 @@ import {
   hoverAuditSections,
   measureHover,
 } from "./ux-hover-census.mjs";
+import {
+  consistencyAuditSection,
+  consistencyReviewEntries,
+  consistencyReviewHtml,
+} from "./ux-consistency-review.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -134,11 +139,11 @@ const recentHashes = [];
 // while the audit row beside it said five elements had been revealed. A picture
 // that contradicts its own caption is the worst available outcome here, because
 // the picture is what gets believed.
-async function shot(page, name, { fullPage = true } = {}) {
+async function shot(page, name, { fullPage = true, consistency = null } = {}) {
   const file = `${String(shotSeq++).padStart(2, "0")}-${name}.png`;
   const p = path.join(SHOTS, file);
   await page.screenshot({ path: p, fullPage });
-  manifest.push({ file, name });
+  manifest.push({ file, name, ...(consistency ? { consistency } : {}) });
   recentHashes.push(
     crypto.createHash("md5").update(fs.readFileSync(p)).digest("hex")
   );
@@ -299,6 +304,23 @@ function tapGesture() {
 // action (step-function damage — no percentage threshold, per #1510).
 function writeAuditArtifacts(baselineDir) {
   const out = [];
+  // #3489 D2+D7: one reduced artifact, not an every-shot assignment. It carries
+  // exactly one explicitly marked DEFAULT DESKTOP capture per reached route;
+  // mobile, expanded and hover shots stay in index.html but cannot leak into the
+  // between-page lane by filename convention or reviewer memory.
+  const consistencyEntries = consistencyReviewEntries(
+    manifest,
+    metricsRows
+      .filter((row) => row.viewport === "desktop")
+      .map((row) => row.route)
+  );
+  if (consistencyEntries.length) {
+    fs.writeFileSync(
+      path.join(SHOTS, "consistency.html"),
+      consistencyReviewHtml(consistencyEntries)
+    );
+    out.push("consistency.html");
+  }
   // The run's data shape (#2594): which census shape seeded it and which
   // entropy seed shaped the data. Written beside metrics.json so a look is
   // reproducible from its artifacts, and so --baseline can refuse to compare
@@ -387,6 +409,10 @@ function writeAuditArtifacts(baselineDir) {
     for (const r of aliased) lines.push(`| ${r.route} | ${r.landedOn} |`);
     lines.push("");
   }
+  // #3489 D2+D7: put the lane in every pages run's report. This is process, not
+  // an automated verdict: the generated section names the artifact, scope and
+  // dimensions so omission cannot masquerade as a completed census review.
+  lines.push(...consistencyAuditSection(consistencyEntries));
   // #3489 deliverable 1: geometry findings rank ABOVE the existing tables. They
   // are the only rows here that name a specific broken element rather than a
   // page-level number, so they are what a reader should meet first — and unlike
@@ -1091,7 +1117,9 @@ async function pagesJourney(browser) {
       try {
         await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
-        await shot(page, `page-${tag}-${slug}`);
+        await shot(page, `page-${tag}-${slug}`, {
+          consistency: { kind: "page-default", route, viewport: tag },
+        });
         // #2616: a route that redirects captures its destination — fine, but
         // record WHERE, so the hash-validation step can tell a known alias's
         // byte-identical shot from a stuck census.

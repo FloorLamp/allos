@@ -123,24 +123,46 @@ The proven workflow for an all-pages consistency audit:
    census). The harness now aborts loudly on auth failure, but verify anyway;
    duplicates should correspond only to the audit.md "Alias routes" table's
    rows (routes recorded as landing on another path).
-2. **Dispatch 3–4 parallel reviewer subagents**, each owning ~15–20 shots (split
-   desktop alphabetically; one agent takes a mobile sample). Give each: the
-   exact file list, the house conventions to judge against (one PageHeader h1 +
-   subtitle, sentence case, frosted cards, `section-label` field groups, one
-   date format per context, friendly empty states), and the three dimensions —
-   hierarchy / text / layout.
-3. **Tell reviewers which artifacts to EXCLUDE** or they'll report them as
+2. **Dispatch 3–4 territory reviewer subagents**, each owning ~15–20 shots
+   (split the full-size desktop captures alphabetically; one agent takes a
+   mobile sample). Give each the exact file list and the house conventions to
+   judge against: one PageHeader h1 + subtitle, sentence case, frosted cards,
+   `section-label` field groups, one date format per context, and friendly empty
+   states.
+3. **Dispatch one cross-page consistency reviewer** with the run's generated
+   `consistency.html`, not a list of every raw screenshot. The artifact is the
+   tractable view: exactly one DEFAULT desktop capture per reached route, all at
+   low zoom; it excludes mobile, expanded, and hover states so every tile is
+   comparable. The reviewer reports only BETWEEN-page drift and uses the pinned
+   control checklist: chips, buttons, stat tiles, arrow glyphs, and link colors.
+   Clicking a candidate opens its full-size shot for verification. This is one
+   reduced artifact, so it does not break the 15–20-shot territory cap.
+4. **Name every review dimension in every brief.** Keep hierarchy / text /
+   layout, and add the dimensions prior reviews silently dropped:
+
+   - **Density** — information and control density compared with peer surfaces.
+   - **Inset stacking** — cards in cards, doubled gutters, and competing
+     boundaries.
+   - **Copy jargon** — terms a regular person would not use or understand.
+   - **State honesty** — claims stronger than the visible sample or state
+     supports.
+
+   The consistency lane also names **control grammar** using the checklist in
+   step 3. `lib/__tests__/ux-consistency-review.test.ts` pins this vocabulary and
+   the artifact's default-desktop-only selection rule.
+
+5. **Tell reviewers which artifacts to EXCLUDE** or they'll report them as
    findings: the dev-overlay "1 Issue" badge (dev-only chrome) and any
    position:fixed bar smeared mid-image by fullPage capture (a fixed element
    renders once at an arbitrary scroll position — its mid-page "occlusion" is a
    screenshot artifact, though its presence may itself be a bug worth a
    separate look).
-4. **Require refutability**: reviewers must name the route and the exact visible
+6. **Require refutability**: reviewers must name the route and the exact visible
    defect ("two identical ⋯ buttons at x1170/x1225"), list routes that look
    GOOD (proves coverage), and end with a top-5. Cross-check surprising claims
    against the code before filing (a "dead route" may be an intentional
    relevance redirect).
-5. **Run all three census shapes** — they surface disjoint finding sets, and a
+7. **Run all three census shapes** — they surface disjoint finding sets, and a
    whole class of degradation lives only in the middle one:
 
    | shape  | command                                                      | what it shows                |
